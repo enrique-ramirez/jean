@@ -1,0 +1,21 @@
+{
+  "name": "beefweb-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "bash scripts/deploy.sh"
+  },
+  "dependencies": {
+    "@tanstack/react-hotkeys": "^0.10.0",
+    "@tanstack/react-query": "^5.102.8",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.2.2"
+  }
+}

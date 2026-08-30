@@ -1,0 +1,109 @@
+/* Rows: chrome / content / status bar. The content row is the ONLY scroll
+   container in the app -- the virtualiser needs an explicit scrollElement, and
+   the status bar is pinned by construction rather than by position: sticky. */
+.app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100dvh;
+  min-height: 420px;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 0;
+  transition: grid-template-columns 0.22s var(--ease);
+}
+
+.body[data-collapsed='true'] {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  margin: 0 6px 0 2px;
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.brand span {
+  color: var(--accent);
+}
+
+.search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  max-width: 440px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  text-align: left;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.search:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.searchLabel {
+  font-size: 0.8125rem;
+}
+
+.searchHint {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: var(--font-numeric);
+  font-size: 0.6875rem;
+  color: var(--faint);
+}
+
+.actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+@media (max-width: 860px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand {
+    width: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .searchLabel,
+  .searchHint {
+    display: none;
+  }
+
+  .search {
+    flex: 0 0 auto;
+    padding: 8px;
+  }
+}

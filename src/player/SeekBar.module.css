@@ -1,0 +1,66 @@
+/* Full-bleed across the top of the status bar. The hit area is taller than the
+   visible rail so it is grabbable without being a thick line. */
+.bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 14px;
+  margin-top: -7px;
+  touch-action: none;
+}
+
+.bar[data-seekable='true'] {
+  cursor: pointer;
+}
+
+.rail {
+  position: absolute;
+  inset-inline: 0;
+  height: 3px;
+  background: var(--surface-sunken);
+  transition: height 0.12s var(--ease);
+}
+
+.fill {
+  position: absolute;
+  inset-inline: 0;
+  height: 3px;
+  background: var(--accent);
+  transform-origin: left;
+  transition: height 0.12s var(--ease);
+}
+
+.thumb {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  translate: -50% 0;
+  opacity: 0;
+  scale: 0.5;
+  transition: opacity 0.12s var(--ease), scale 0.12s var(--ease);
+}
+
+.bar[data-seekable='true']:hover .rail,
+.bar[data-seekable='true']:hover .fill,
+.bar[data-scrubbing='true'] .rail,
+.bar[data-scrubbing='true'] .fill,
+.bar:focus-visible .rail,
+.bar:focus-visible .fill {
+  height: 5px;
+}
+
+.bar[data-seekable='true']:hover .thumb,
+.bar[data-scrubbing='true'] .thumb,
+.bar:focus-visible .thumb {
+  opacity: 1;
+  scale: 1;
+}
+
+.bar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-pill);
+}

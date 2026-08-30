@@ -1,0 +1,56 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-size: 0.8125rem;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background 0.14s var(--ease), border-color 0.14s var(--ease), color 0.14s var(--ease);
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--accent-line);
+  background: var(--surface-raised);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.button[aria-pressed='true'] {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.iconOnly {
+  padding: 8px;
+}
+
+.primary {
+  padding: 9px 18px;
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.primary:hover:not(:disabled) {
+  border-color: transparent;
+  background: oklch(calc(var(--accent-l) + 0.05) var(--accent-c) var(--accent-h));
+}
+
+.ghost {
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+
+.ghost:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface);
+  color: var(--text);
+}

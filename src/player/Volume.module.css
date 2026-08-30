@@ -1,0 +1,175 @@
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.button {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--muted);
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.button:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.button[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+/* The hit area is taller than the visible rail, the same trick the seek bar
+   uses: grabbable without being a thick line. */
+.slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.slider[data-orientation='horizontal'] {
+  width: 88px;
+  height: 16px;
+}
+
+.slider[data-orientation='vertical'] {
+  justify-content: center;
+  width: 26px;
+  height: 116px;
+}
+
+.rail,
+.fill {
+  position: absolute;
+  border-radius: var(--radius-pill);
+  transition: height 0.12s var(--ease), width 0.12s var(--ease), background 0.12s var(--ease);
+}
+
+.rail {
+  background: var(--surface-sunken);
+}
+
+.fill {
+  background: var(--muted);
+}
+
+[data-orientation='horizontal'] .rail,
+[data-orientation='horizontal'] .fill {
+  inset-inline: 0;
+  height: 3px;
+  transform-origin: left;
+}
+
+[data-orientation='vertical'] .rail,
+[data-orientation='vertical'] .fill {
+  inset-block: 0;
+  width: 4px;
+  transform-origin: bottom;
+}
+
+.thumb {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+  translate: -50% 0;
+  opacity: 0;
+  scale: 0.6;
+  transition: opacity 0.12s var(--ease), scale 0.12s var(--ease), background 0.12s var(--ease);
+}
+
+.slider:hover .fill,
+.slider[data-dragging='true'] .fill,
+.slider:focus-visible .fill {
+  background: var(--accent);
+}
+
+.slider:hover .thumb,
+.slider[data-dragging='true'] .thumb,
+.slider:focus-visible .thumb {
+  background: var(--accent);
+  opacity: 1;
+  scale: 1;
+}
+
+[data-orientation='horizontal']:hover .rail,
+[data-orientation='horizontal']:hover .fill,
+[data-orientation='horizontal'][data-dragging='true'] .rail,
+[data-orientation='horizontal'][data-dragging='true'] .fill {
+  height: 5px;
+}
+
+/* Touch-first, so the vertical track is always at its full width and the thumb
+   is always visible -- there is no hover to reveal them. */
+[data-orientation='vertical'] .thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  opacity: 1;
+  scale: 1;
+  translate: 0 50%;
+}
+
+[data-orientation='vertical'] .fill {
+  background: var(--accent);
+}
+
+/* Muted still shows the level it will return to, just greyed out. */
+.slider[data-muted='true'] .fill,
+.slider[data-muted='true'] .thumb {
+  opacity: 0.35;
+}
+
+.slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-pill);
+}
+
+/* Popover ---------------------------------------------------------------- */
+
+.popoverAnchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.popover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  /* Right-aligned to the button, not centred on it: the button sits at the edge
+     of the screen, so a centred popover hangs off it. */
+  right: -4px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  animation: volume-in 160ms var(--ease);
+}
+
+.readout {
+  font-family: var(--font-numeric);
+  font-size: 0.6875rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes volume-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}

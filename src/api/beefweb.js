@@ -1,38 +1,91 @@
+import { TRACK_EXPRESSIONS } from '../playlist/fields.js'
+
 // Columns are foobar2000 title-formatting expressions, evaluated by the player
-// itself. Whatever you put here comes back in `activeItem.columns`, in order — so
-// adding %album%, %codec% or $upper(%artist%) is a one-line change, no API support
-// needed on beefweb's side.
+// itself. Whatever goes in comes back positionally, so adding a field needs no
+// support on beefweb's side.
 //
-// Multi-argument functions are not usable: this list is split on commas before the
-// player evaluates it, so $if(a,b,c) arrives as three separate columns. See API.md.
+// Multi-argument functions are unusable: the list is split on commas before the
+// player evaluates it, so $if(a,b,c) arrives as three columns. Single-argument
+// functions do nest -- $len($meta(unsynced lyrics)) works. See API.md.
 export const TRACK_COLUMNS = ['%artist%', '%title%']
 
-const columns = encodeURIComponent(TRACK_COLUMNS.join(','))
+const encode = (expressions) => encodeURIComponent(expressions.join(','))
 
-// Change-driven stream: beefweb pushes on track change, pause, volume — not on
-// a timer. Expect long silences while a track plays. That is not a stall.
-export const UPDATES_URL = `/api/query/updates?player=true&trcolumns=${columns}`
+const nowPlayingColumns = encode(TRACK_COLUMNS)
 
-/**
- * Cold-start / reconnect snapshot.
- *
- * Note this goes through /api/query rather than /api/player: the latter ignores
- * `trcolumns` and hands back an empty columns array.
- */
+// Change-driven stream: beefweb pushes on track change, pause, volume and
+// playlist edits, not on a timer. Long silences are normal, not a stall.
+export const UPDATES_URL = `/api/query/updates?player=true&playlists=true&trcolumns=${nowPlayingColumns}`
+
+async function request(path, options) {
+  const response = await fetch(path, options)
+  if (!response.ok) throw new Error(`${options?.method ?? 'GET'} ${path} failed: ${response.status}`)
+  return response
+}
+
+const post = (path, body) =>
+  request(path, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+// Goes through /api/query rather than /api/player: the latter ignores
+// trcolumns and hands back an empty columns array.
 export async function fetchPlayer() {
-  const response = await fetch(`/api/query?player=true&trcolumns=${columns}`)
-  if (!response.ok) throw new Error(`GET /api/query failed: ${response.status}`)
+  const response = await request(`/api/query?player=true&trcolumns=${nowPlayingColumns}`)
   const { player } = await response.json()
   return player
 }
 
-/** Toggles play/pause, and resumes from a stopped state. */
-export async function playPause() {
-  const response = await fetch('/api/player/play-pause', { method: 'POST' })
-  if (!response.ok) throw new Error(`POST /api/player/play-pause failed: ${response.status}`)
+export async function fetchPlaylists() {
+  const response = await request('/api/playlists')
+  const { playlists } = await response.json()
+  return playlists
 }
 
-/** Maps the positional columns array back onto names. */
+// Returns the raw positional column arrays rather than objects. One array of
+// strings per track is markedly lighter than an object with a key per field at
+// 30k+ rows, and it is the shape dictionary encoding will want later.
+export async function fetchPlaylistItems(playlistId, offset, count, { signal } = {}) {
+  const columns = encode(TRACK_EXPRESSIONS)
+  const response = await request(
+    `/api/playlists/${playlistId}/items/${offset}:${count}?columns=${columns}`,
+    { signal },
+  )
+  const { playlistItems } = await response.json()
+  return {
+    rows: playlistItems.items.map((item) => item.columns),
+    totalCount: playlistItems.totalCount,
+    offset: playlistItems.offset,
+  }
+}
+
+export const artworkUrl = (playlistId, index) => `/api/artwork/${playlistId}/${index}`
+
+export const playPause = () => post('/api/player/play-pause')
+export const nextTrack = () => post('/api/player/next')
+export const previousTrack = () => post('/api/player/previous')
+export const stop = () => post('/api/player/stop')
+export const playItem = (playlistId, index) => post(`/api/player/play/${playlistId}/${index}`)
+export const setPlayerState = (state) => post('/api/player', state)
+export const seekTo = (position) => post('/api/player', { position })
+export const seekBy = (offset) => post('/api/player', { relativePosition: offset })
+export const setVolume = (volume) => post('/api/player', { volume })
+export const setMuted = (isMuted) => post('/api/player', { isMuted })
+
+// The player owns the step size for these, which is why they are endpoints
+// rather than a relativeVolume value picked here.
+export const volumeUp = () => post('/api/player/volume/up')
+export const volumeDown = () => post('/api/player/volume/down')
+
+// playbackMode is deprecated in the spec; the options array is the current form.
+export const setPlaybackOrder = (value) =>
+  post('/api/player', { options: [{ id: 'playbackOrder', value }] })
+export const addToPlayQueue = (playlistId, itemIndex) =>
+  post('/api/playqueue/add', { plref: playlistId, itemIndex })
+
+// Maps the positional columns array back onto names.
 export function readTrack(player) {
   const values = player?.activeItem?.columns
   if (!values?.length) return null

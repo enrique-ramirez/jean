@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react()],
 
   // Relative asset paths, so a build works under whatever prefix beefweb
-  // mounts it at (/, /muse, anything) without rebuilding.
+  // mounts it at (/, /jean, anything) without rebuilding.
   base: './',
 
   server: {

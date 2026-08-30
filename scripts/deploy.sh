@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # Build and copy the UI to the foobar2000 machine.
 #
-# Requires SSH key auth to the Windows box. Configure with:
-#   export BEEFWEB_SSH=you@home.local
-#   export BEEFWEB_WEB_DIR='C:/Users/you/AppData/Roaming/foobar2000-v2/beefweb/ui'
+# Requires SSH key auth to the player machine. Configure with:
+#   export BEEFWEB_SSH=user@player-host
+#   export BEEFWEB_WEB_DIR='/path/to/beefweb/ui'
 #
-# Then in %APPDATA%\foobar2000-v2\beefweb\config.json:
-#   { "urlMappings": { "/muse": "ui" } }
+# BEEFWEB_WEB_DIR must be inside beefweb's profile directory, which for a portable
+# foobar2000 install is next to the executable, NOT in %APPDATA%. See README, "Deploying".
 #
-# Then point beefweb at that directory — see README, "Deploying".
+# Then in that profile's config.json (create it if absent):
+#   { "urlMappings": { "/jean": "ui" } }
+
 set -euo pipefail
 
-: "${BEEFWEB_SSH:?set BEEFWEB_SSH, e.g. you@home.local}"
+: "${BEEFWEB_SSH:?set BEEFWEB_SSH, e.g. user@player-host}"
 : "${BEEFWEB_WEB_DIR:?set BEEFWEB_WEB_DIR, the target directory on Windows}"
 
 pnpm build

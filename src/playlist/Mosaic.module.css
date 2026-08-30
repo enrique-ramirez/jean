@@ -1,0 +1,40 @@
+.mosaic {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 3px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow);
+}
+
+.mosaic[data-tiles='1'] {
+  grid-template: 1fr / 1fr;
+}
+
+.mosaic[data-tiles='4'] {
+  grid-template: repeat(2, 1fr) / repeat(2, 1fr);
+}
+
+.mosaic[data-tiles='9'] {
+  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+}
+
+.tile {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+}
+
+@media (max-width: 720px) {
+  .mosaic {
+    width: 116px !important;
+    height: 116px !important;
+  }
+}

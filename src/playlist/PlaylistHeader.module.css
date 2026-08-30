@@ -1,0 +1,110 @@
+.header {
+  position: relative;
+  display: flex;
+  gap: 24px;
+  padding: 28px 24px 20px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+.header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.06),
+    transparent 72%
+  );
+  pointer-events: none;
+}
+
+.main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 13px;
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(1.75rem, 4.2vw, 3rem);
+  font-weight: 680;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.stats b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.separator {
+  color: var(--faint);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+}
+
+.meterTrack {
+  width: 104px;
+  height: 5px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+}
+
+.meterFill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+}
+
+@media (max-width: 720px) {
+  .header {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 16px 16px;
+  }
+}

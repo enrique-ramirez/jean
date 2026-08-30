@@ -93,8 +93,14 @@ range will feel wrong; map it.
 ]}
 ```
 
-IDs are `p1`, `p2`, … and are stable while the player runs. `totalTime` reads 0.0
-here; don't rely on it.
+IDs are `p1`, `p2`, … and are stable while the player runs. They are **not
+contiguous** — creating one playlist produced `p7` where `p6` was free. `totalTime`
+reads 0.0 here; don't rely on it.
+
+**These six fields are the whole schema** — confirmed against both the live API and
+`docs/player-api.yml`. There is **no flag distinguishing an autoplaylist from an
+ordinary one**, and `GET /playlists/{id}` returns the same six. Smart playlists are
+therefore undetectable: they reject edits, but the only way to find out is to try.
 
 ### `playlistItems`
 
@@ -143,12 +149,35 @@ not limited to fields beefweb knows about.
 | `%directoryname%` | `(2015) Born in the Echoes` |
 | `%path%` | `F:\Musica\#\1975, The\…\10. Robbers.mp3` |
 | `%rating%` | `5` |
-| `%play_count%`, `%last_played%`, `%replaygain_track_gain%` | `?` — no component supplies them here |
+| `%play_count%`, `%replaygain_track_gain%` | `?` — no component supplies them here |
+| `%lastfm_play_count%` | `70` — from `foo_enhanced_playcount`. `0`, not `?`, when unplayed |
+| `%lastfm_last_played%` / `%lastfm_first_played%` | `2025-12-16 14:21:38`, or `N/A` when never played |
+| `$meta(rating)` | `5` — a file tag, unlike the last.fm fields |
+| `$meta(unsynced lyrics)` | LRC-timestamped lyrics. **Tag name has a space** |
+| `%last_modified%` | `2025-10-07 10:54:28` — see the warning below |
 | `$upper(%artist%)` | `THE CHEMICAL BROTHERS` |
 | `$abbr(%album%)` | `BitE` |
 | `%album artist% - %title%` | concatenation works |
 
-An unresolved field returns `?`, not an error.
+An unresolved field returns `?`, not an error. A field that resolves but is empty
+returns `''`, `0` or `N/A`. **That difference is a usable capability probe**: `?`
+everywhere means the component is absent, so a feature can be hidden rather than
+shown broken.
+
+> **Corrupt fields (*measured*):** `%date%` and `%added%` return mangled constants
+> (`\ufffdte`, `\ufffdded`) rather than `?` or a value. Use `%year%` instead. There is
+> no working "date added" field.
+
+> **`%last_modified%` is not a date-added field (*measured*).** Playback can rewrite
+> tags, which bumps the file's mtime — the mtime moves ~55 s before the scrobble
+> lands, and 21% of played tracks have an mtime within ten minutes of their last
+> play. It is `max(added, last played or retagged)`, and it is wrong precisely at the
+> recent end where a "recently added" view would look.
+
+> **Lyrics need no component.** `$meta(unsynced lyrics)` — with a space — returns
+> LRC-timestamped lyrics from an ordinary tag, on 24% of tracks in this library.
+> `%lyrics%` returns `?` and `$meta(unsyncedlyrics)` finds nothing. `foo_openlyrics`
+> is what *writes* that tag; reading it requires nothing.
 
 > **Hard limitation (*measured*):** the column list is split on commas **before** the
 > expressions are evaluated, so **any title-format function taking more than one
@@ -159,6 +188,10 @@ An unresolved field returns `?`, not an error.
 >
 > So: single fields, concatenation, and single-argument functions only. Anything
 > conditional has to be computed client-side from the raw fields.
+>
+> **Single-argument functions do nest, though (*measured*):**
+> `$len($meta(unsynced lyrics))` works. The limitation is on *arguments*, not on
+> composition — useful for asking about a large field without downloading it.
 
 ## Every endpoint
 
@@ -190,16 +223,58 @@ An unresolved field returns `?`, not an error.
 
 **Client config** — `GET|POST /clientconfig/{id}` · `POST /clientconfig/remove/{id}`
 
+## Changing things
+
+Request bodies, from `docs/player-api.yml` and verified against the live player.
+
+| Operation | Endpoint | Body |
+|---|---|---|
+| Seek | `POST /player` | `{ position }` or `{ relativePosition }` (seconds) |
+| Volume / mute | `POST /player` | `{ volume }`, `{ relativeVolume }`, `{ isMuted }` |
+| Playback order | `POST /player` | `{ options: [{ id: 'playbackOrder', value }] }` |
+| Remove items | `POST /playlists/{id}/items/remove` | `{ items: [indices] }` |
+| Copy / move items | `POST /playlists/{src}/{dst}/items/copy` \| `move` | `{ items: [indices], targetIndex }` |
+| Reorder within a playlist | `POST /playlists/{id}/items/move` | `{ items: [indices], targetIndex }` |
+| Sort a playlist | `POST /playlists/{id}/items/sort` | `{ by: "expression", desc, random }` |
+| Add files or folders | `POST /playlists/{id}/items/add` | `{ items: [paths], index, replace, play, async }` |
+| Queue an item | `POST /playqueue/add` | `{ plref, itemIndex }` |
+
+Notes that cost time to rediscover:
+
+- **`/playqueue/add` takes one item per request.** Queueing forty tracks is forty
+  POSTs. `queueIndex` exists but is DeaDBeeF-only. For "shuffle this playlist", set
+  `playbackOrder` instead — one request, no queue involved.
+- **`playbackMode` on `POST /player` is deprecated.** Use the `options` array.
+- **Sorting is whole-playlist and destructive.** There is no sort-a-selection, and no
+  view-level sort — the player owns playback order, so a client-side sort would
+  desync from what plays next.
+- **`items/sort` takes a title-format expression**, so it inherits the comma
+  limitation. Concatenation works: `%album artist%%album%%tracknumber%`.
+- **There is no tag-writing endpoint.** All 27 POST routes are playback, playlists,
+  queue, outputs and clientconfig. Ratings and lyrics can be *read* through title
+  formatting but cannot be written back through beefweb at all.
+
 ## The library: what is and isn't reachable
 
 **Correct — there is no library API.** No `/library`, no `/search`, nothing that
 touches foobar2000's Media Library index. beefweb sees *playlists* and *the
 filesystem*, and that is the whole surface. Four ways to work around it:
 
-1. **An "everything" playlist as a library mirror.** `Default Playlist` already holds
-   30,441 tracks. Loading it whole costs 462 KB / ~205 ms, after which client-side
-   filtering across artist/album/title is an array operation. In practice this is the
-   best answer and the one this UI should take.
+1. **An autoplaylist as a library mirror. This is the answer.** An autoplaylist is a
+   live Media Library query; create one with the query `ALL` and it holds every track
+   in the library, updates itself as the library changes, and appears in
+   `/api/playlists` like any other playlist. It needs no components, and it turns
+   "there is no library API" into "there is one, you switch it on once". Autoplaylists
+   cannot be *created* remotely, so this is a one-time setup step at the player.
+
+   > **Do not use `Default Playlist` for this (*measured*).** It is foobar's scratch
+   > buffer: selecting an album in the library view replaces its entire contents. It
+   > went from 30,441 items to 12 within an hour of ordinary use. It looks like a
+   > library mirror and is not one.
+
+   Loading a 30,441-track playlist whole costs ~0.85 MB gzipped (6.4 MB raw), ~430 ms
+   to fetch and ~40 ms to parse with 10 columns, after which client-side filtering
+   across artist/album/title is an array operation.
 
 2. **The filesystem browser.** `/browser/entries` walks `F:\Musica` (*measured*: it
    returns real directories). This is the disk, not the tagged library — you get paths

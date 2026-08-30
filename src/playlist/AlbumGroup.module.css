@@ -1,0 +1,81 @@
+.group {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 20px;
+  padding: 14px 24px;
+}
+
+.aside {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.art {
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+.caption {
+  min-width: 0;
+}
+
+/* Clamped so the caption can never grow past the height the virtualiser
+   allotted this group and spill into the next one. */
+.title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.meta {
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.tracks {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Rows inside a group are tighter and lose the outer gutter -- the cover is
+   already setting the block apart. */
+.tracks > * {
+  height: 34px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* On a phone the cover moves above the tracks: side-by-side leaves the titles
+   about half the screen, which is not enough for real album and track names. */
+.group[data-compact='true'] {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px 14px;
+}
+
+.group[data-compact='true'] .aside {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.group[data-compact='true'] .title {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  font-size: 0.875rem;
+}
+
+.group[data-compact='true'] .tracks > * {
+  padding-left: 0;
+  padding-right: 0;
+}

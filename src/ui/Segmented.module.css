@@ -1,0 +1,37 @@
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  font-size: 0.75rem;
+  color: var(--muted);
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+
+.option[aria-pressed='true'] {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+/* Icons carry the meaning on a phone; the labels are pure width there. */
+@media (max-width: 720px) {
+  .option:has(svg) .label {
+    display: none;
+  }
+
+  .option {
+    padding: 6px 12px;
+  }
+}

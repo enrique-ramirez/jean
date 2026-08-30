@@ -1,0 +1,73 @@
+/* One warm hue, two lightness ramps. The accent is split into l/c/h channels so
+   translucent variants can be composed inline — `oklch(from …)` would be nicer
+   but this composes anywhere without relative-colour support. */
+:root {
+  --accent-l: 0.8238;
+  --accent-c: 0.1408;
+  --accent-h: 70.17;
+
+  --bg: oklch(0.1722 0.007 258);
+  --surface: oklch(0.2125 0.0109 260);
+  --surface-raised: oklch(0.245 0.012 260);
+  --surface-sunken: oklch(0.148 0.006 258);
+  --border: oklch(0.2875 0.0163 260);
+  --border-strong: oklch(0.36 0.018 260);
+  --text: oklch(0.9417 0.0052 248);
+  --muted: oklch(0.676 0.0193 253);
+  --faint: oklch(0.52 0.015 255);
+
+  --on-accent: oklch(0.18 0.01 260);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 8px 24px oklch(0 0 0 / 0.28);
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --accent-l: 0.6;
+  --accent-c: 0.155;
+  --accent-h: 58;
+
+  --bg: oklch(0.985 0.004 80);
+  --surface: oklch(0.967 0.006 80);
+  --surface-raised: oklch(1 0 0);
+  --surface-sunken: oklch(0.94 0.007 80);
+  --border: oklch(0.9 0.008 78);
+  --border-strong: oklch(0.83 0.01 78);
+  --text: oklch(0.26 0.012 260);
+  --muted: oklch(0.5 0.014 258);
+  --faint: oklch(0.62 0.012 258);
+
+  --on-accent: oklch(1 0 0);
+  --shadow: 0 1px 2px oklch(0.4 0.02 260 / 0.1), 0 8px 24px oklch(0.4 0.02 260 / 0.1);
+
+  color-scheme: light;
+}
+
+:root {
+  --accent: oklch(var(--accent-l) var(--accent-c) var(--accent-h));
+  --accent-quiet: oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.16);
+  --accent-line: oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.4);
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+
+  --row-height: 44px;
+  --row-height-compact: 38px;
+  --statusbar-height: 76px;
+  --sidebar-width: 260px;
+
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-numeric: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

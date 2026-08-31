@@ -70,47 +70,74 @@ If you would rather not create an autoplaylist, Jean can build a playlist from y
 folders instead. That mirrors what is on disk rather than what is in your library, and needs
 a manual refresh when you add music.
 
-## Deploying to the player
+## Installing it on a player
 
-Jean is a static build. Copy it somewhere beefweb can serve and add a URL mapping — no
-CORS setup, nothing to uninstall, and the stock UI stays where it is as a fallback.
+Jean is a static build. `pnpm build` produces a `dist/` folder holding an
+`index.html` and one JS and one CSS file — about 108 KB over the wire, since beefweb
+gzips. Copy those files anywhere the player can read, point beefweb at them, and
+restart it.
+
+**1. Build.**
 
 ```sh
-export BEEFWEB_SSH=user@player-host
-export BEEFWEB_WEB_DIR='/path/to/beefweb/ui'   # inside the beefweb profile directory
-pnpm deploy
+pnpm build
 ```
 
-Then in the beefweb profile's `config.json` (create it if absent):
+**2. Copy `dist/` somewhere.** Any directory the player process can read. Inside the
+beefweb profile directory is tidy, but nothing requires it. **Empty the target folder
+first if you are replacing an older build** — asset filenames are content-hashed, so
+old bundles accumulate rather than being overwritten.
+
+**3. Point beefweb at it** in `config.json`, in the beefweb profile directory. Create
+the file if it does not exist:
 
 ```json
 {
   "urlMappings": {
-    "/jean": "ui"
+    "/jean": "F:\\Music\\jean"
   }
 }
 ```
 
-Relative paths resolve against the beefweb profile directory, so `"ui"` is the folder you
-deployed to. Jean then lives at `http://player-host:8880/jean` while the stock UI stays at
-`/`.
+> **The path must be absolute**, with backslashes escaped for JSON on Windows.
+> Relative paths and the `webroot/` fallthrough described in beefweb's `master`
+> documentation are **not in the current release (v0.10)** — a relative path there
+> silently 404s.
 
-**Finding the profile directory** is the fiddly part, and where most of the confusion
-happens:
+**4. Restart the player.** `config.json` is read at startup, so nothing happens until
+you do.
 
-- **Standard Windows install** — `%APPDATA%\foobar2000-v2\beefweb\`
-- **Portable install** — next to the executable instead, e.g. `<install dir>\profile\beefweb\`.
-  If foobar lives on an external drive, so does its profile. `%APPDATA%` will be empty and
-  a deploy there fails silently: the files copy fine and beefweb keeps serving the stock UI.
-- **DeaDBeeF** — under `~/.config/deadbeef/beefweb/`
+**5. Open `http://your-player-host:8880/jean/`** — or whatever port you have beefweb
+set to. The trailing slash matters.
 
-When deploying over SSH to Windows, note that OpenSSH reads
-`C:\ProgramData\ssh\administrators_authorized_keys` for accounts in the Administrators
-group and ignores `~/.ssh/authorized_keys` entirely. That file must also grant access to
-only Administrators and SYSTEM, or sshd refuses it without logging why.
+Jean then lives at `/jean` while the stock UI stays at `/`, so there is nothing to
+uninstall and an instant fallback if something breaks.
 
-`base: './'` in the Vite config is what makes that work: assets are referenced
-relatively, so the same build runs under any mount prefix.
+### Finding the beefweb profile directory
+
+| Setup | Location |
+|---|---|
+| foobar2000, Windows | `%APPDATA%\foobar2000-v2\beefweb\` |
+| foobar2000, macOS | `~/Library/foobar2000-v2/beefweb/` |
+| foobar2000, **portable install** | next to the executable — `<install dir>\profile\beefweb\`, *not* `%APPDATA%` |
+| DeaDBeeF, Linux/BSD | `~/.config/deadbeef/beefweb/` |
+| DeaDBeeF, macOS | `~/Library/Preferences/deadbeef/beefweb/` |
+
+The portable case catches people out: a deploy to `%APPDATA%` there fails silently,
+because the files copy fine and beefweb simply keeps serving the stock UI.
+
+### You do not have to tell Jean your port
+
+Every request Jean makes is a root-relative path — `/api/playlists`, never a full
+URL. The browser resolves those against whatever origin served the page, and beefweb
+serves both the UI and the API. So changing the port in the player's settings needs no
+change here: open it on the new port and the API follows. The stock UI works the same
+way, which is why beefweb has no way to tell a UI its own address.
+
+The one arrangement this does not survive is hosting Jean somewhere *other* than
+beefweb — a static host, or a separate box. There is no same-origin API then, and you
+would need both a configurable base URL and `responseHeaders` set on the beefweb side
+to allow CORS, which is off by default.
 
 ## How the data flows
 

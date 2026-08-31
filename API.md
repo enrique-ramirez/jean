@@ -325,7 +325,7 @@ component — both larger projects than they sound.
 | Path | What's in it |
 |---|---|
 | `docs/player-api.yml` | **The OpenAPI spec — the authority.** Request bodies, parameters, response schemas |
-| `docs/advanced-config.md` | `config.json` options: `webRoot`, `altWebRoot`, `urlMappings`, `responseHeaders`, auth |
+| `docs/advanced-config.md` | `config.json` options: `webRoot`, `urlMappings`, `responseHeaders`, auth. **Read the tag matching your plugin version, not `master`** — `altWebRoot` and relative `urlMappings` paths are documented on `master` but absent from the v0.10 release, and a relative path there silently 404s |
 | `js/api_tests/` | Integration tests. The fastest way to find the exact body shape for a mutation |
 | `js/client/` | Official JS client, `beefweb-client`. **Not published to npm** (`private: true`, 404 on the registry) — read it, don't depend on it |
 | `js/webui/` | Source of the stock UI we are replacing. Useful for seeing how it handles playlist paging |

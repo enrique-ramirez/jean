@@ -8,7 +8,16 @@
   align-content: start;
   gap: 13px 24px;
   padding: 28px 24px 20px;
-  overflow: hidden;
+  /* Deliberately not clipped, and it must stay that way.
+     This was `overflow: hidden`, which clipped nothing -- the mosaic already
+     clips itself and nothing else here reaches an edge -- while making the
+     header a scroll container, which `hidden` still is. The save-playlist
+     popover opens 100px past the header's bottom, so focusing its field had the
+     browser scroll it into view by scrolling *the header inside itself*,
+     carrying the title and the mosaic up out of sight while the page had not
+     moved at all. `clip` would have stopped the scrolling and then cut the
+     popover's buttons off instead. */
+  overflow: visible;
   border-bottom: 1px solid var(--border);
 }
 

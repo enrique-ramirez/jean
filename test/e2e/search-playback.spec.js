@@ -1,0 +1,265 @@
+import { expect, requestsTo, test } from './fixtures.js'
+
+// 'babasonicos' matches the twelve Jessico tracks, library indices 0-11.
+const QUERY = { text: 'babasonicos', matches: 12, title: '#Jean [babasonicos]' }
+const NARROWER = { text: 'delectrico', matches: 1, title: '#Jean [delectrico]' }
+
+const header = (page) => page.locator('main header')
+const scratchOf = (player) => player.playlists.find((entry) => entry.title.startsWith('#Jean ['))
+
+const search = async (page, text) => {
+  await page.goto('/#/search')
+  await page.getByLabel('Search your library').fill(text)
+  await expect(page.getByRole('heading', { level: 1, name: text })).toBeVisible()
+  await expect(page.locator('[role="row"][data-row="0"]')).toBeAttached()
+}
+
+const playedFrom = (player) => {
+  const play = requestsTo(player, '/player/play/').at(-1)
+  if (!play) return null
+  // '' / api / player / play / {plref} / {index}
+  const [, , , , plref, index] = play.path.split('/')
+  return { plref, index: Number(index) }
+}
+
+test.describe('playing from search results', () => {
+  test('the results become a real playlist and playback happens inside it', async ({
+    page,
+    player,
+  }) => {
+    await search(page, QUERY.text)
+
+    // Nothing exists until someone actually asks to hear something: typing and
+    // refining stay entirely client-side.
+    expect(scratchOf(player)).toBeUndefined()
+
+    await page.locator('[role="row"][data-row="2"]').dblclick()
+
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    const scratch = scratchOf(player)
+    expect(scratch.title).toBe(QUERY.title)
+
+    // Played from the scratch playlist by position, not from the library by
+    // index -- which is the whole point. What comes next is now these results'
+    // business rather than the library's.
+    await expect.poll(() => playedFrom(player)?.plref).toBe(scratch.id)
+    expect(playedFrom(player).index).toBe(2)
+  })
+
+  test('it holds exactly the matches, in the order shown', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    const library = player.playlists.find((entry) => entry.title === 'Library')
+    const titleOf = (track) => track['%title%']
+
+    // Identity by track rather than by index: the copy is by index, so an
+    // off-by-one would still produce twelve items and the wrong twelve.
+    expect(scratchOf(player).items.map(titleOf)).toEqual(
+      library.items.slice(0, QUERY.matches).map(titleOf),
+    )
+  })
+
+  test('refining the query rebuilds it rather than making another', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    const firstId = scratchOf(player).id
+
+    await page.getByLabel('Search your library').fill(NARROWER.text)
+    await expect(page.getByRole('heading', { level: 1, name: NARROWER.text })).toBeVisible()
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(NARROWER.matches)
+    // One playlist, reused. Creating one per search would churn ids and litter
+    // the player with a playlist per keystroke anyone happened to play from.
+    expect(player.playlists.filter((entry) => entry.title.startsWith('#Jean ['))).toHaveLength(1)
+    expect(scratchOf(player).id).toBe(firstId)
+    expect(scratchOf(player).title).toBe(NARROWER.title)
+  })
+
+  test('playing a second result from the same search does not rebuild it', async ({
+    page,
+    player,
+  }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    const copiesBefore = requestsTo(player, '/items/copy').length
+    await page.locator('[role="row"][data-row="5"]').dblclick()
+
+    await expect.poll(() => playedFrom(player)?.index).toBe(5)
+    // Already holds this set, so the second play is one request.
+    expect(requestsTo(player, '/items/copy')).toHaveLength(copiesBefore)
+  })
+
+  test('shuffle shuffles the results and nothing else', async ({ page, player }) => {
+    await search(page, QUERY.text)
+
+    await header(page).getByRole('button', { name: 'Shuffle' }).click()
+
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await expect.poll(() => playedFrom(player)?.plref).toBe(scratchOf(player).id)
+    // The order is on, and it is drawing from a playlist that is exactly these
+    // twelve tracks -- so there is nowhere else for it to go.
+    await expect.poll(() => player.player.playbackMode).toBe(4)
+    expect(playedFrom(player).index).toBeLessThan(QUERY.matches)
+  })
+
+  test('Jean does not show its own scratch playlist anywhere', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    // It exists on the player and it will show up in foobar -- there is no
+    // hidden playlist to be had -- but it is Jean's workspace, not one of the
+    // user's playlists, so it appears in none of the places those are offered.
+    await page.goto('/#/p5')
+    await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
+
+    // Opened first on a phone, where the sidebar is a drawer -- asserting
+    // against a closed one would pass without having looked at anything. On a
+    // desktop it is already there, and the same button would collapse it.
+    const sidebar = page.getByRole('navigation')
+    if (test.info().project.name === 'mobile') {
+      await page.getByRole('button', { name: 'Show playlists' }).click()
+    }
+    await expect(sidebar.getByText('Rock en Español')).toBeVisible()
+    await expect(sidebar.getByText(QUERY.title)).toHaveCount(0)
+  })
+
+  test('and does not offer it as somewhere to file tracks', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    await page.goto('/#/p5')
+    await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
+
+    // Filing a track into the scratch playlist would put it somewhere the next
+    // search silently empties.
+    await page.locator('[role="row"][data-row="0"]').click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Add to playlist' }).click()
+
+    await expect(page.getByRole('menuitem', { name: 'Favorites' })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: QUERY.title })).toHaveCount(0)
+  })
+
+  test('and does not offer it as somewhere to go', async ({ page, player }) => {
+    test.skip(test.info().project.name === 'mobile', 'the palette is a keyboard shortcut')
+
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    await page.keyboard.press('Meta+Shift+p')
+    // Scoped to the palette: the sidebar names these playlists too.
+    const palette = page.getByRole('dialog', { name: 'Go to playlist' })
+    await expect(palette.getByRole('option', { name: 'Favorites' })).toBeVisible()
+    await expect(palette.getByRole('option', { name: QUERY.title })).toHaveCount(0)
+  })
+
+})
+
+test.describe('a search outlives the tab it was typed in', () => {
+  const playFirstResult = async (page) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+  }
+
+  test('a reload comes back to the same results', async ({ page, player }) => {
+    await playFirstResult(page)
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    await page.reload()
+
+    // The query was only ever in memory; the player is what remembered it,
+    // because the playlist it is holding is named after it.
+    await expect(page.getByRole('heading', { level: 1, name: QUERY.text })).toBeVisible()
+    await expect(page.getByLabel('Search your library')).toHaveValue(QUERY.text)
+    await expect(page.locator('[role="row"]').first()).toContainText('Los Calientes')
+  })
+
+  test('another device finds it, and can see it is what is playing', async ({ page, player }) => {
+    await playFirstResult(page)
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    // A different device: nothing of Jean's own kept, landing on the root
+    // rather than on the search route.
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.goto('/')
+    await expect(page.locator('footer')).toContainText('Los Calientes')
+
+    const sidebar = page.getByRole('navigation')
+    if (test.info().project.name === 'mobile') {
+      await page.getByRole('button', { name: 'Show playlists' }).click()
+    }
+    await expect(sidebar.getByText(QUERY.text)).toBeVisible()
+    // The scratch playlist is hidden, so without this the status bar would name
+    // a track with nothing on screen saying where it came from.
+    await expect(sidebar.getByLabel('Playing from here')).toBeVisible()
+
+    await sidebar.getByText(QUERY.text).click()
+
+    await expect(page.getByRole('heading', { level: 1, name: QUERY.text })).toBeVisible()
+    await expect(page.locator('[role="row"]').first()).toContainText('Los Calientes')
+  })
+
+  test('and with no search behind it there is no shelf at all', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
+
+    const sidebar = page.getByRole('navigation')
+    if (test.info().project.name === 'mobile') {
+      await page.getByRole('button', { name: 'Show playlists' }).click()
+    }
+    // An entry that means nothing most of the time is a dead shelf.
+    await expect(sidebar.getByText('Search', { exact: true })).toHaveCount(0)
+  })
+})
+
+test.describe('saving results as a playlist', () => {
+  test('opening the form does not carry the header off the top', async ({ page }) => {
+    await search(page, QUERY.text)
+    const titleTop = () =>
+      page.evaluate(() => Math.round(document.querySelector('main h1').getBoundingClientRect().top))
+    const before = await titleTop()
+
+    await page.getByRole('button', { name: 'Save as playlist' }).click()
+    await expect(page.getByRole('textbox', { name: 'Playlist name' })).toBeFocused()
+
+    // The header was a scroll container -- `overflow: hidden` still is one --
+    // so focusing a field the popover put past its bottom edge had the browser
+    // scroll the header inside itself, taking the title and the mosaic with it
+    // while the page never moved.
+    expect(await page.evaluate(() => document.querySelector('main header').scrollTop)).toBe(0)
+    expect(await titleTop()).toBe(before)
+
+    // And the form is whole: clipping the header instead of letting it scroll
+    // would have cut these off rather than moved them.
+    const create = page.getByRole('button', { name: 'Create' })
+    await expect(create).toBeVisible()
+    await expect(create).toBeInViewport()
+  })
+})
+
+test.describe('a player that will not let Jean make playlists', () => {
+  test.use({ playerState: { permissions: { changePlaylists: false, changeOutput: true, changeClientConfig: true } } })
+
+  test('results still play, in place, and say nothing about shuffle', async ({ page, player }) => {
+    await search(page, QUERY.text)
+
+    // No scratch playlist is possible, so the old behaviour is the honest
+    // fallback: the track plays, and what follows it is the library's business.
+    await expect(header(page).getByRole('button', { name: 'Shuffle' })).toHaveCount(0)
+
+    await page.locator('[role="row"][data-row="2"]').dblclick()
+
+    await expect.poll(() => playedFrom(player)?.plref).toBe('p7')
+    expect(playedFrom(player).index).toBe(2)
+    expect(scratchOf(player)).toBeUndefined()
+  })
+})

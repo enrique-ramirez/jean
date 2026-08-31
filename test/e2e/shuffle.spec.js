@@ -92,13 +92,11 @@ test.describe('the header shuffle starts a shuffled run', () => {
   })
 })
 
-test.describe('search results have no shuffle', () => {
-  test('only Play and Save as playlist', async ({ page }) => {
-    // Removed on purpose, not missing. Shuffle is the player's playback order
-    // and it draws from the active playlist; these results are a view over one,
-    // not a playlist of their own. Turning it on would start inside the results
-    // and then wander the whole library, which is not what a button sitting
-    // above 21 matches appears to promise.
+test.describe('search results have shuffle again', () => {
+  test('between Play and Save, now that results become a real playlist', async ({ page }) => {
+    // It was removed while playing a result played it in place: the order draws
+    // from the active playlist, so shuffling started inside the results and
+    // then wandered the library. Now the results are the active playlist.
     await page.goto('/#/search')
     await page.getByLabel('Search your library').fill('babasonicos')
     await expect(page.getByRole('heading', { level: 1, name: 'babasonicos' })).toBeVisible()
@@ -107,7 +105,7 @@ test.describe('search results have no shuffle', () => {
       .getByRole('button')
       .evaluateAll((buttons) => buttons.map((button) => button.textContent.trim()))
 
-    expect(labels).toEqual(['Play', 'Save as playlist'])
+    expect(labels).toEqual(['Play', 'Shuffle', 'Save as playlist'])
   })
 })
 

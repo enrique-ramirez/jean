@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, Shuffle } from 'lucide-react'
 
 import { playItem } from '../api/beefweb.js'
 import { SCOPE } from '../keyboard/keymap.js'
 import { useKeymap } from '../keyboard/useKeymap.js'
-import { useActiveItem, usePlayer } from '../player/usePlayer.js'
+import { useActiveItem, usePlaybackOrder, usePlayer } from '../player/usePlayer.js'
 import { Mosaic } from '../playlist/Mosaic.jsx'
 import { TrackBrowser } from '../playlist/TrackBrowser.jsx'
 import { ViewHeader } from '../playlist/ViewHeader.jsx'
@@ -15,6 +15,7 @@ import { PlayIcon } from '../ui/icons.jsx'
 import { LibraryPicker, LibrarySetup } from './LibrarySetup.jsx'
 import { SavePlaylistButton } from './SavePlaylistButton.jsx'
 import { positionOf } from './libraryIndex.js'
+import { useScratchPlaylist } from './useScratchPlaylist.js'
 import styles from './SearchResults.module.css'
 
 // A view over the library, never a playlist. Nothing here is created, cleared
@@ -26,19 +27,32 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
   const [isSaving, setIsSaving] = useState(false)
 
   const { data: playerSnapshot } = usePlayer()
-  const activeItem = useActiveItem(search.playlist?.id)
+  const order = usePlaybackOrder()
 
   const { rows, indices, heat, patina, playedCount } = search.results
   const { hasPlayCounts } = useAvailableFields(rows)
 
   const stats = useMemo(() => summarise(rows, playedCount), [rows, playedCount])
-  const activePosition = useMemo(
-    () => positionOf(indices, activeItem?.index),
-    [indices, activeItem?.index],
-  )
 
   // A read-only instance gets a read-only Jean: no button that would 403.
   const canSavePlaylists = playerSnapshot?.player?.permissions?.changePlaylists === true
+
+  const scratch = useScratchPlaylist({
+    playlists,
+    viewKey: search.viewKey,
+    canEdit: canSavePlaylists,
+  })
+
+  // Two playlists are in play at once and they must not be confused. Reading
+  // stays with the library -- the rows, their artwork, their heat all come from
+  // it -- while playback moves into the scratch playlist, whose contents are
+  // these results in this order. So a position is a position there, and the
+  // indices mapping is only needed for the library side.
+  const scratchItem = useActiveItem(scratch.playlist?.id)
+  const libraryItem = useActiveItem(search.playlist?.id)
+  const activePosition = scratch.holdsCurrentView
+    ? (scratchItem?.index ?? -1)
+    : positionOf(indices, libraryItem?.index)
 
   useKeymap(
     SCOPE.search,
@@ -47,10 +61,27 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
   )
 
   const libraryId = search.playlist?.id
+
+  // Materialised on play, never on typing: browsing and refining stay entirely
+  // client-side, and the player only hears about a result set once someone
+  // actually asks to hear it.
   const play = useCallback(
-    (position) => playItem(libraryId, indices[position]),
-    [libraryId, indices],
+    async (position) => {
+      const scratchId = await scratch.ensure({ sourceId: libraryId, indices, query: search.query })
+      // No scratch playlist means a player that will not let us make one. The
+      // track still plays; it just plays in place, and what follows it is the
+      // library's business rather than these results'.
+      if (scratchId) playItem(scratchId, position)
+      else playItem(libraryId, indices[position])
+    },
+    [libraryId, indices, scratch, search.query],
   )
+
+  const shufflePlay = useCallback(() => {
+    if (rows.length === 0) return
+    order.enableShuffle()
+    browserRef.current?.play(Math.floor(Math.random() * rows.length))
+  }, [order, rows.length])
 
   if (!search.playlist) {
     return <LibrarySetup playlists={playlists} onChoose={search.choose} />
@@ -140,14 +171,20 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
               >
                 Play
               </Button>
-              {/* No Shuffle here, deliberately. Shuffle is the player's
-                  playback order and it draws from the active playlist -- and
-                  these results are a view over one, not a playlist of their
-                  own. Turning it on would start inside the results and then
-                  wander the whole library, which is not what a button sitting
-                  above 21 matches appears to promise. Confining it needs a real
-                  playlist to exist, which is a separate decision.
-                  "Save as playlist" is the honest route to it today. */}
+              {/* Shuffle belongs here again now that the results become a real
+                  playlist when they are played: the order draws from that, so
+                  it shuffles these matches and nothing else. Without the
+                  permission to make one it would be back to shuffling the whole
+                  library, so it goes when that goes. */}
+              {canSavePlaylists ? (
+                <Button
+                  icon={Shuffle}
+                  onClick={shufflePlay}
+                  disabled={rows.length === 0 || !order.canShuffle}
+                >
+                  Shuffle
+                </Button>
+              ) : null}
               {canSavePlaylists ? (
                 <SavePlaylistButton
                   search={search}

@@ -23,6 +23,7 @@ import { PlaylistView } from '../playlist/PlaylistView.jsx'
 import { Button } from '../ui/Button.jsx'
 import { DragGhost } from '../ui/DragGhost.jsx'
 import { Toasts } from '../ui/Toasts.jsx'
+import { withoutScratchPlaylists } from '../library/scratchPlaylist.js'
 import { CommandPalette } from './CommandPalette.jsx'
 import { Sidebar } from './Sidebar.jsx'
 import { useHashRoute } from './useHashRoute.js'
@@ -54,7 +55,26 @@ export function App() {
   const scrollRef = useRef(null)
 
   const isSearchRoute = route === SEARCH_ROUTE
-  const routedId = playlists.some((entry) => entry.id === route) ? route : null
+
+  // Jean's own scratch playlist is not somewhere to browse to. Playing a set of
+  // search results makes it the current playlist, and landing there would show
+  // those results stripped of the search that made them, under a name nobody
+  // chose.
+  const browsable = useMemo(() => withoutScratchPlaylists(playlists), [playlists])
+  const routedId = browsable.some((entry) => entry.id === route) ? route : null
+
+  // A reload lands back on #/search with an empty field, and the results gone
+  // with it -- the query was only ever in memory. The player still knows what
+  // it was, because the playlist it is holding is named after it, so take it
+  // back. Once per mount: clearing the search navigates away, but not before a
+  // render where both conditions still hold.
+  const restoredSearch = useRef(false)
+  const { hasQuery, remembered: rememberedQuery, restore: restoreSearch } = search
+  useEffect(() => {
+    if (restoredSearch.current || !isSearchRoute || hasQuery || !rememberedQuery) return
+    restoredSearch.current = true
+    restoreSearch()
+  }, [isSearchRoute, hasQuery, rememberedQuery, restoreSearch])
 
   // Where leaving the search puts you back. Held rather than derived: while the
   // results are on screen the route no longer names a playlist.
@@ -65,16 +85,16 @@ export function App() {
 
   // Default to whatever the player is on, so opening Jean lands somewhere
   // meaningful rather than on an arbitrary playlist.
-  const fallbackId = playlists.find((entry) => entry.isCurrent)?.id ?? playlists[0]?.id
+  const fallbackId = browsable.find((entry) => entry.isCurrent)?.id ?? browsable[0]?.id
   // Checked against the live list rather than trusted: a playlist you were last
   // looking at can be deleted, from here or from the desktop.
-  const remembered = playlists.some((entry) => entry.id === lastPlaylistId.current)
+  const remembered = browsable.some((entry) => entry.id === lastPlaylistId.current)
     ? lastPlaylistId.current
     : null
   const selectedId = routedId ?? remembered ?? fallbackId
   const playlist = useMemo(
-    () => playlists.find((entry) => entry.id === selectedId) ?? null,
-    [playlists, selectedId],
+    () => browsable.find((entry) => entry.id === selectedId) ?? null,
+    [browsable, selectedId],
   )
 
   // Each result set is its own view, so refining a query starts at the top
@@ -207,7 +227,7 @@ export function App() {
 
       {isPaletteOpen ? (
         <CommandPalette
-          playlists={playlists}
+          playlists={browsable}
           onSelect={openPlaylist}
           onDismiss={() => setIsPaletteOpen(false)}
         />

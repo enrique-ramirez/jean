@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ListMusic, ListPlus, Music } from 'lucide-react'
 
+import { withoutScratchPlaylists } from '../library/scratchPlaylist.js'
 import { usePermissions, usePlaylists } from '../player/usePlayer.js'
 import { ActionMenu } from '../ui/ActionMenu.jsx'
 import { useContextMenu } from '../ui/useContextMenu.js'
@@ -72,7 +73,11 @@ export function useTrackContextMenu({ rows, indices, playlistId, selection, onSe
     if (count === 0) return []
 
     const itemIndices = positions.map((position) => (indices ? indices[position] : position))
-    const targets = playlists.filter((entry) => entry.id !== playlistId)
+    // Not the one you are already in, and not Jean's own scratch playlist --
+    // that is a place results are put to be played, not a playlist anyone
+    // should be able to file tracks into. It would be emptied by the next
+    // search anyway.
+    const targets = withoutScratchPlaylists(playlists).filter((entry) => entry.id !== playlistId)
 
     return [
       {

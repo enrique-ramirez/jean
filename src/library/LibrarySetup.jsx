@@ -1,5 +1,6 @@
 import { AlertTriangle, ListMusic } from 'lucide-react'
 
+import { withoutScratchPlaylists } from './scratchPlaylist.js'
 import styles from './LibrarySetup.module.css'
 
 // foobar's scratch buffer: selecting an album in its library view replaces the
@@ -10,7 +11,7 @@ const SCRATCH_TITLE = 'Default Playlist'
 export function LibraryPicker({ playlists, currentId, onChoose }) {
   return (
     <div className={styles.picker} role="list">
-      {playlists.map((playlist) => (
+      {withoutScratchPlaylists(playlists).map((playlist) => (
         <button
           key={playlist.id}
           type="button"

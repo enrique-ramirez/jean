@@ -9,6 +9,7 @@ import {
   usePlaylistActions,
 } from '../player/usePlayer.js'
 import { ActionMenu } from '../ui/ActionMenu.jsx'
+import { isScratchPlaylist, withoutScratchPlaylists } from '../library/scratchPlaylist.js'
 import { useContextMenu } from '../ui/useContextMenu.js'
 import { mergeHandlers } from '../ui/mergeHandlers.js'
 import { useDragState } from '../ui/dnd.js'
@@ -42,26 +43,44 @@ export function Sidebar({
   const [renamingId, setRenamingId] = useState(null)
   const [focusedId, setFocusedId] = useState(null)
 
-  const target = playlists.find((entry) => entry.id === targetId) ?? null
-  const focusedIndex = playlists.findIndex((entry) => entry.id === focusedId)
+  // Jean's own scratch playlist is not the user's, so it is not in their list.
+  // It still exists on the player, and they will see it in foobar -- there is
+  // no hidden playlist to be had -- but here it would be a row whose name
+  // changed every time they searched.
+  const shown = useMemo(() => withoutScratchPlaylists(playlists), [playlists])
+
+  // Playing from a set of search results makes Jean's scratch playlist the
+  // current one -- and it is hidden, so without this the status bar would name
+  // a track with nothing on screen saying where it came from.
+  const isPlayingSearch = playlists.some((entry) => isScratchPlaylist(entry) && entry.isCurrent)
+
+  const target = shown.find((entry) => entry.id === targetId) ?? null
+  const focusedIndex = shown.findIndex((entry) => entry.id === focusedId)
+
+  // Reordering is the one place the hidden row still has to be accounted for.
+  // The player orders the real list and `move` takes a position in it, so a
+  // drop position among the visible rows is translated through the playlist
+  // that currently occupies it -- which lands the dragged one on the correct
+  // side of the hidden entry whichever direction it came from.
+  const playerIndexOf = (position) =>
+    playlists.findIndex((entry) => entry.id === shown[position].id)
+
+  const reorder = (from, to) =>
+    move.mutate(
+      { id: shown[from].id, index: playerIndexOf(to) },
+      { onError: refused('The player would not reorder that.') },
+    )
 
   const sortable = useSortableList({
-    keys: playlists.map((entry) => entry.id),
+    keys: shown.map((entry) => entry.id),
     disabled: !canEdit,
-    onReorder: (from, to) =>
-      move.mutate(
-        { id: playlists[from].id, index: to },
-        { onError: refused('The player would not reorder that.') },
-      ),
+    onReorder: reorder,
   })
 
   const moveFocused = (delta) => {
     const to = focusedIndex + delta
-    if (focusedIndex < 0 || to < 0 || to >= playlists.length) return
-    move.mutate(
-      { id: playlists[focusedIndex].id, index: to },
-      { onError: refused('The player would not reorder that.') },
-    )
+    if (focusedIndex < 0 || to < 0 || to >= shown.length) return
+    reorder(focusedIndex, to)
   }
 
   // Only while a playlist row holds focus. These are ordinary arrow keys with a
@@ -82,7 +101,7 @@ export function Sidebar({
   const refused = (message) => () => pushToast({ tone: 'error', message })
 
   const newPlaylist = () =>
-    create.mutate(untitledPlaylistName(playlists), {
+    create.mutate(untitledPlaylistName(shown), {
       onSuccess: (playlist) => setRenamingId(playlist.id),
       onError: refused('The player would not create a playlist.'),
     })
@@ -91,8 +110,8 @@ export function Sidebar({
     // Step onto the neighbour before it goes, so deleting what you are looking
     // at lands somewhere real instead of on an empty view.
     if (playlist.id === selectedId) {
-      const at = playlists.findIndex((entry) => entry.id === playlist.id)
-      const next = playlists[at + 1] ?? playlists[at - 1]
+      const at = shown.findIndex((entry) => entry.id === playlist.id)
+      const next = shown[at + 1] ?? shown[at - 1]
       if (next) onSelect(next.id)
     }
     remove.mutate(playlist.id, {
@@ -132,7 +151,7 @@ export function Sidebar({
         ],
       },
     ]
-  }, [target, playlists, selectedId])
+  }, [target, shown, selectedId])
 
   return (
     <>
@@ -150,10 +169,12 @@ export function Sidebar({
         aria-label="Playlists"
         aria-hidden={isCollapsed}
       >
-        {/* Only while a search is live. A permanent entry that means nothing
-            most of the time is a dead shelf, and results are not a playlist --
-            they do not persist and nothing was written to make them. */}
-        {search.hasQuery ? (
+        {/* While a search is live, and also while the player is still holding
+            one: playing results writes them to a playlist named after the
+            query, so the search outlives the tab it was typed in and can be
+            picked up on another device. Not a permanent shelf -- with neither
+            of those true there is nothing here at all. */}
+        {search.hasQuery || search.remembered ? (
           <>
             <p className={styles.heading}>Search</p>
             <div className={styles.row}>
@@ -161,11 +182,23 @@ export function Sidebar({
                 type="button"
                 className={styles.item}
                 aria-current={isSearchOpen}
-                onClick={onOpenSearch}
+                onClick={() => {
+                  // Taking back a search the player remembered is what loads
+                  // the library, so it happens on the tap rather than on every
+                  // launch that happens to follow one.
+                  if (!search.hasQuery) search.restore()
+                  onOpenSearch()
+                }}
               >
-                <Search size={15} strokeWidth={2} aria-hidden="true" />
-                <span className={styles.label}>{search.query}</span>
-                <span className={styles.count}>{search.matchCount.toLocaleString()}</span>
+                {isPlayingSearch ? (
+                  <Volume2 size={15} strokeWidth={2} aria-label="Playing from here" />
+                ) : (
+                  <Search size={15} strokeWidth={2} aria-hidden="true" />
+                )}
+                <span className={styles.label}>{search.query || search.remembered}</span>
+                <span className={styles.count}>
+                  {search.hasQuery ? search.matchCount.toLocaleString() : ''}
+                </span>
               </button>
             </div>
           </>
@@ -185,7 +218,7 @@ export function Sidebar({
             </button>
           ) : null}
         </div>
-        {playlists.map((playlist, index) => (
+        {shown.map((playlist, index) => (
           <PlaylistRow
             key={playlist.id}
             playlist={playlist}

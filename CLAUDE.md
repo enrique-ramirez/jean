@@ -113,12 +113,13 @@ item per request with no bulk form -- measured, both `{items:[…]}` and an arra
 cap nobody can see the edge of, and it has to clobber whatever the user had
 queued to mean anything.
 
-**Search results have no Shuffle, deliberately.** The order draws from the active
-playlist, and results are a view over one rather than a playlist of their own, so
-turning it on would start inside the results and then wander the whole library --
-which is not what a button sitting above 21 matches appears to promise.
-Confining it would need a real playlist to exist. `Save as playlist` is the
-honest route to that today.
+**Search results shuffle too, because playing them makes them a real playlist.**
+That was not true for a while and the button was removed: the order draws from
+the active playlist, so shuffling a set of results started inside them and then
+wandered the whole library. Materialising the results on play fixes the cause
+rather than the symptom -- see *Search results are a view until you play them*.
+Without `permissions.changePlaylists` there is no playlist to make, so the
+button goes again.
 
 **The list follows playback, and only when the track actually changes.** Scrolling
 away from the playing track does not change which track is playing, so nothing
@@ -242,12 +243,61 @@ So handle the split by design rather than detection:
   top as the primary browse entry. This is tier three of the source-of-truth ladder, and
   legitimate precisely because foobar exposes no such concept.
 
-### Search results are a view, not a playlist
+### Search results are a view until you play them
 
-Search is a client-side filter over the in-memory library index. **No request, no playlist
-created, nothing written to the player.** Do not render it as a playlist in the sidebar —
-that invites the expectation that it persists. To play a filtered set, queue it through
-`/playqueue/add`, which takes playlist+index and needs no playlist to exist.
+Searching is a client-side filter over the in-memory library index: **no request, no
+playlist created, nothing written to the player.** Do not render it as a playlist in the
+sidebar — that invites the expectation that it persists.
+
+**Playing is the exception, and it has to be.** beefweb plays from playlists and knows
+nothing else, so playing a result in place — by its index in the library playlist — leaves
+the player carrying on from *there*. The next track is the library's next track, and with
+shuffle on it is a random one out of everything. Neither is what a list of matches on
+screen promises. So the results are materialised into a real playlist at the moment
+someone asks to hear them, and playback happens inside it. Every playback order then means
+what it says: Default stops at the end of the results, Repeat loops them, Shuffle shuffles
+them.
+
+- **One playlist, reused, not one per search.** `#Jean [query]` — the title carries the
+  query so the thing is self-describing wherever it surfaces, including foobar's own
+  sidebar next to its `#Quicksearch [...]` playlists, and on another device. Reusing it
+  avoids id churn and means never deleting something that is currently playing.
+- **Resolved by stored id, falling back to the title**, the same ladder the library
+  playlist climbs and for the same reason.
+- **Hidden from Jean, visible in foobar.** There is no hidden-playlist concept and beefweb
+  cannot fake one, so it is filtered out of the sidebar, the command palette, the library
+  picker and the routing fallback — the last of those because playing a set makes it the
+  *current* playlist, and landing there on next open would show those results stripped of
+  the search that made them. Reordering is where the hidden row still has to be counted:
+  the player orders the real list, so a drop position among the visible rows is translated
+  through whichever playlist currently occupies it.
+- **Lazy.** Nothing is written while typing or refining. The player only hears about a
+  result set once someone plays from it, and a second play of the same set reuses what is
+  already there.
+- **The playlist is how a search survives, and how it travels.** The query was only
+  ever in memory, so a reload lost it and another device never had it. The player is
+  holding a playlist named after it, which every client can already see -- so a reload
+  onto `#/search` takes the query back, and the sidebar offers it wherever you open Jean
+  next, marked as the thing being played from since the playlist itself is hidden. Reading
+  the title costs nothing and, in particular, does not touch the library: a session that
+  never searches still never loads it, and taking a remembered search back is what pays
+  for the index. Jean needs no state of its own for this; `clientconfig` would be a second
+  copy of something the player already knows.
+- **`permissions.changePlaylists: false` means no scratch playlist**, so results fall back
+  to playing in place and the Shuffle button goes. Degraded, and honestly so.
+
+**Do not reach for the play queue here.** `/playqueue/add` takes one item per request and
+has no bulk form — measured, both `{items: [...]}` and an array `itemIndex` return 400 —
+so any real set means hundreds of calls behind a lookahead cap nobody can see the edge of.
+
+*Measured* against the live player: copying 500 indices takes 17 ms, 5,000 takes 33 ms and
+20,000 takes 166 ms, so materialising is cheap even at library size. Emptying a playlist
+that is currently playing leaves the track playing but detached — `activeItem.index` goes
+to -1 — which is harmless only because a play always follows immediately.
+
+**beefweb cannot reach other components.** `/api/commands`, `/api/mainmenu`,
+`/api/contextmenu`, `/api/plugins` are all 404. `foo_quicksearch` builds a real playlist
+that Jean can read like any other, but nothing can trigger it from here.
 
 ### Loading it
 

@@ -3,6 +3,7 @@ import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { playlistKey } from '../playlist/playlistStore.js'
 import { usePlaylistItems } from '../playlist/usePlaylistItems.js'
 import { libraryIndex, searchLibrary } from './libraryIndex.js'
+import { isScratchPlaylist, queryOfScratchPlaylist } from './scratchPlaylist.js'
 import { useLibraryPlaylist } from './useLibraryPlaylist.js'
 
 const NO_RESULTS = { rows: [], indices: new Int32Array(0), heat: new Float32Array(0), patina: new Float32Array(0), playedCount: 0 }
@@ -37,8 +38,24 @@ export function useLibrarySearch(playlists) {
   const { playlist, choose } = useLibraryPlaylist(playlists)
   const [query, setQuery] = useState('')
   const [isEngaged, setIsEngaged] = useState(false)
+
+  // The last search anyone played from, still on the player: the scratch
+  // playlist's title is the query that built it. Reading it costs nothing --
+  // the playlist list is already here -- and in particular it does not touch
+  // the library, so a session that never searches still never loads it.
+  //
+  // This is what makes a search survive a reload and reach another device. The
+  // player is the shared state; Jean does not need one of its own.
+  const remembered = useMemo(
+    () => queryOfScratchPlaylist(playlists.find(isScratchPlaylist)) || null,
+    [playlists],
+  )
   const [isFocused, setIsFocused] = useState(false)
   const inputRef = useRef(null)
+
+  const restore = useCallback(() => {
+    setQuery((current) => current || remembered || '')
+  }, [remembered])
 
   // The library is megabytes and most sessions never search, so nothing is
   // fetched until someone actually reaches for the field.
@@ -75,6 +92,8 @@ export function useLibrarySearch(playlists) {
     clear: useCallback(() => setQuery(''), []),
     inputRef,
     focus,
+    remembered,
+    restore,
     // Meta and Ctrl chords still fire inside a text field by design, so the
     // list has to stand down while the field has focus or Mod+A selects thirty
     // thousand rows instead of the word you were fixing.

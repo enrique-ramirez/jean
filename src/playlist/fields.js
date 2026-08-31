@@ -4,6 +4,7 @@
 // by playlist index, so it can be fetched on demand if a detail view needs it.
 const FIELDS = [
   ['trackNumber', '%tracknumber%'],
+  ['discNumber', '%discnumber%'],
   ['title', '%title%'],
   ['artist', '%artist%'],
   ['album', '%album%'],

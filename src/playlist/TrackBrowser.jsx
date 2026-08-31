@@ -12,6 +12,7 @@ import { ColumnsMenu } from './ColumnsMenu.jsx'
 import { HeatLegend } from './HeatLegend.jsx'
 import { TrackList } from './TrackList.jsx'
 import { DEFAULT_COLUMN_IDS, resolveColumns } from './columns.js'
+import { groupByAlbum } from './grouping.js'
 import { targetsFrom } from './trackTargets.js'
 import { useAvailableFields } from './useAvailableFields.js'
 import { useTrackContextMenu } from './useTrackContextMenu.jsx'
@@ -93,9 +94,18 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     setIsHeatInfoOpen(true)
   }, [heatIntroSeen, hasPlayCounts, showHeat])
 
+  // Grouped here rather than inside the list because both layouts want it and
+  // neither owns it. The album layout draws the groups; the list layout draws
+  // none, but a multi-disc album still changes what it renders -- the track
+  // number grows a disc prefix, and the column has to be wide enough for it
+  // before a single row is laid out. One pass over rows when they change,
+  // shared by the two.
+  const groups = useMemo(() => groupByAlbum(rows), [rows])
+  const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups])
+
   const { optional, template, albumTemplate } = useMemo(
-    () => resolveColumns({ enabledIds, showArtwork, isCompactViewport, isAvailable }),
-    [enabledIds, showArtwork, isCompactViewport, isAvailable],
+    () => resolveColumns({ enabledIds, showArtwork, isCompactViewport, isAvailable, hasDiscs }),
+    [enabledIds, showArtwork, isCompactViewport, isAvailable, hasDiscs],
   )
 
   const scrollToTrack = useCallback((position, options) => {
@@ -382,6 +392,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
           <TrackList
             ref={listRef}
             rows={rows}
+            groups={groups}
             indices={indices}
             viewKey={viewKey}
             playlistId={playlistId}

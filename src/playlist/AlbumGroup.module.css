@@ -55,6 +55,46 @@
   --row-gutter: 8px;
 }
 
+/* The eyebrow the view header already uses, at row scale: uppercase, tracked
+   out, faint. Same vocabulary means a disc heading is recognisably a label
+   about the block under it rather than a new kind of thing.
+   The rule is the part worth arguing about -- Apple Music sets 'Disc 1' as
+   plain bold text and it reads as a very short track title, which is the whole
+   failure mode here. A hairline running to the row's right edge makes it a
+   division of the list. It stops where the rows stop, not where the group does,
+   so it sits on the same two lines the tracks do. */
+.disc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-inline: var(--row-gutter);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.disc::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Overrides the 34px every direct child of .tracks gets. Shorter than a row on
+   purpose: a heading the same height as the thing it labels competes with it.
+   Air above every heading but the first -- disc one's boundary is the top of
+   the group, which the padding already draws. */
+.tracks > .disc {
+  height: 26px;
+  margin-top: 14px;
+}
+
+.tracks > .disc:first-child {
+  margin-top: 0;
+}
+
 /* On a phone the cover moves above the tracks: side-by-side leaves the titles
    about half the screen, which is not enough for real album and track names. */
 .group[data-compact='true'] {

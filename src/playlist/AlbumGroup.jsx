@@ -1,3 +1,5 @@
+import { Fragment } from 'react'
+
 import { Artwork } from '../ui/Artwork.jsx'
 import { TrackRow } from './TrackRow.jsx'
 import { FIELD, sameTagValue, value } from './fields.js'
@@ -28,9 +30,34 @@ export function AlbumGroup({
   onSelect,
   isCompactViewport,
 }) {
-  const positions = Array.from({ length: group.count }, (_, offset) => group.start + offset)
   const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER
   const itemIndexOf = (position) => (indices ? indices[position] : position)
+
+  // A single-disc album is one unlabelled run, so the ordinary case renders
+  // through the same loop rather than through a branch around it.
+  const runs = group.discs ?? [{ number: null, start: group.start, count: group.count }]
+
+  const track = (index) => (
+    <TrackRow
+      key={index}
+      row={rows[index]}
+      index={index}
+      itemIndex={itemIndexOf(index)}
+      playlistId={playlistId}
+      columns={columns}
+      template={template}
+      showArtwork={false}
+      heat={heat[index]}
+      patina={patina[index]}
+      isActive={index === activeIndex}
+      isPlaying={isPlaying}
+      isSelected={selection.has(index)}
+      isCursor={index === cursor}
+      isMatch={matches?.has(index) ?? false}
+      showArtist={!sameTagValue(value(rows[index], FIELD.artist), group.albumArtist)}
+      onSelect={onSelect}
+    />
+  )
 
   return (
     <section className={styles.group} data-compact={isCompactViewport}>
@@ -52,26 +79,17 @@ export function AlbumGroup({
       </div>
 
       <div className={styles.tracks}>
-        {positions.map((index) => (
-          <TrackRow
-            key={index}
-            row={rows[index]}
-            index={index}
-            itemIndex={itemIndexOf(index)}
-            playlistId={playlistId}
-            columns={columns}
-            template={template}
-            showArtwork={false}
-            heat={heat[index]}
-            patina={patina[index]}
-            isActive={index === activeIndex}
-            isPlaying={isPlaying}
-            isSelected={selection.has(index)}
-            isCursor={index === cursor}
-            isMatch={matches?.has(index) ?? false}
-            showArtist={!sameTagValue(value(rows[index], FIELD.artist), group.albumArtist)}
-            onSelect={onSelect}
-          />
+        {runs.map((run) => (
+          <Fragment key={run.start}>
+            {/* Above disc one as well as the rest. A label that only appears
+                once you are already past the boundary tells you where you are
+                too late to have used it, and the first run is the one that
+                establishes what these headings mean. The rule is what makes it
+                a break rather than a row: 'Disc 2' on its own line looks like a
+                track called Disc 2. */}
+            {run.number === null ? null : <h3 className={styles.disc}>Disc {run.number}</h3>}
+            {Array.from({ length: run.count }, (_, offset) => track(run.start + offset))}
+          </Fragment>
         ))}
       </div>
     </section>

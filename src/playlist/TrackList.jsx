@@ -12,13 +12,14 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { ALBUM_COVER, ALBUM_COVER_COMPACT, AlbumGroup } from './AlbumGroup.jsx'
 import { animateScrollTo } from '../ui/animateScroll.js'
 import { TrackRow } from './TrackRow.jsx'
-import { groupByAlbum } from './grouping.js'
+import { multiDiscRows } from './grouping.js'
 import styles from './TrackList.module.css'
 
 const ROW_HEIGHT = 46
 const COMPACT_ROW_HEIGHT = 34
 const GROUP_PADDING = 28
 const GROUP_CAPTION = 56
+const DISC_HEADING = 40
 const COMPACT_HEADER = ALBUM_COVER_COMPACT + 34
 
 // Album groups are measured, not computed. Their height depends on how the
@@ -26,7 +27,7 @@ const COMPACT_HEADER = ALBUM_COVER_COMPACT + 34
 // wrong leaves visible gaps between groups -- so this is only the first guess
 // the virtualiser uses before it measures the real thing.
 const estimateGroupHeight = (group, isCompactViewport) => {
-  const tracks = group.count * COMPACT_ROW_HEIGHT
+  const tracks = group.count * COMPACT_ROW_HEIGHT + (group.discs?.length ?? 0) * DISC_HEADING
   if (isCompactViewport) return COMPACT_HEADER + tracks + GROUP_PADDING
   return Math.max(ALBUM_COVER + GROUP_CAPTION + GROUP_PADDING, tracks + GROUP_PADDING)
 }
@@ -34,6 +35,7 @@ const estimateGroupHeight = (group, isCompactViewport) => {
 export const TrackList = forwardRef(function TrackList(
   {
     rows,
+    groups,
     indices,
     viewKey,
     playlistId,
@@ -59,7 +61,13 @@ export const TrackList = forwardRef(function TrackList(
 ) {
   const isAlbumLayout = layout === 'album'
 
-  const groups = useMemo(() => (isAlbumLayout ? groupByAlbum(rows) : []), [isAlbumLayout, rows])
+  // The list draws no group headings, so a multi-disc album has to say so in
+  // the track numbers instead -- one byte per row, filled from the same runs
+  // the album layout draws.
+  const discPrefixed = useMemo(
+    () => (isAlbumLayout ? null : multiDiscRows(groups, rows.length)),
+    [isAlbumLayout, groups, rows.length],
+  )
 
   // How far down the scroll container the list actually begins. The view header
   // and the toolbar sit above it, so row 0 is not at scroll offset 0 -- and
@@ -289,6 +297,7 @@ export const TrackList = forwardRef(function TrackList(
               isSelected={selection.has(virtualRow.index)}
               isCursor={virtualRow.index === cursor}
               isMatch={matches?.has(virtualRow.index) ?? false}
+              showDisc={discPrefixed[virtualRow.index] === 1}
               onSelect={onSelect}
             />
           )}

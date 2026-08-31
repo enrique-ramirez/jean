@@ -38,6 +38,13 @@ const LEADING = {
   // into the gap that follows rather than pushing every row across for it.
   number: { width: '2rem', compactWidth: '1.5rem' },
   numberBare: { width: '1.5rem', compactWidth: '1.25rem' },
+  // A disc prefix makes the number four characters instead of two, and at that
+  // width the two sizes above stop distinguishing anything -- there is no slack
+  // left to hide behind the artwork, so both would run into the gap. One size,
+  // measured against '1.01' rather than against the artwork. Only the list
+  // layout ever asks for it: album groups head their discs instead of
+  // prefixing, so their numbers stay two characters wide.
+  numberWithDisc: { width: '2.375rem', compactWidth: '2.25rem' },
   artwork: { width: '34px', compactWidth: '32px' },
   names: { width: 'minmax(0, 2fr)', compactWidth: 'minmax(6rem, 1fr)' },
 }
@@ -57,12 +64,21 @@ function selectOptional({ enabledIds, isCompactViewport, isAvailable }) {
     .slice(0, COMPACT_MAX_COLUMNS)
 }
 
-export function resolveColumns({ enabledIds, showArtwork, isCompactViewport, isAvailable }) {
+export function resolveColumns({
+  enabledIds,
+  showArtwork,
+  isCompactViewport,
+  isAvailable,
+  hasDiscs = false,
+}) {
   const optional = selectOptional({ enabledIds, isCompactViewport, isAvailable })
 
-  const build = (withArtwork) =>
+  const leadingNumber = (withArtwork, withDisc) =>
+    withDisc ? LEADING.numberWithDisc : withArtwork ? LEADING.number : LEADING.numberBare
+
+  const build = (withArtwork, withDisc) =>
     [
-      widthOf(withArtwork ? LEADING.number : LEADING.numberBare, isCompactViewport),
+      widthOf(leadingNumber(withArtwork, withDisc), isCompactViewport),
       withArtwork ? widthOf(LEADING.artwork, isCompactViewport) : null,
       widthOf(LEADING.names, isCompactViewport),
       ...optional.map((column) => widthOf(column, isCompactViewport)),
@@ -73,5 +89,5 @@ export function resolveColumns({ enabledIds, showArtwork, isCompactViewport, isA
   // Album rows sit beside a cover and carry no artwork cell of their own, so
   // they need a template with that track removed -- reusing the compact one
   // leaves an empty column and shifts every cell after it.
-  return { optional, template: build(showArtwork), albumTemplate: build(false) }
+  return { optional, template: build(showArtwork, hasDiscs), albumTemplate: build(false, false) }
 }

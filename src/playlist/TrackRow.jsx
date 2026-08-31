@@ -3,6 +3,7 @@ import { memo } from 'react'
 import { Artwork } from '../ui/Artwork.jsx'
 import { formatTime } from '../player/position.js'
 import { FIELD, number, timestamp, value } from './fields.js'
+import { discNumber } from './grouping.js'
 import styles from './TrackRow.module.css'
 
 const MAX_STARS = 5
@@ -94,11 +95,19 @@ function TrackRowComponent({
   isCursor,
   isMatch,
   showArtist = true,
+  showDisc = false,
   onSelect,
 }) {
   const title = value(row, FIELD.title) ?? 'Unknown title'
   const artist = value(row, FIELD.artist) ?? 'Unknown artist'
   const trackNumber = value(row, FIELD.trackNumber)
+
+  // '1.01', the way a booklet writes it. Only where a heading cannot say it
+  // instead -- the album layout groups the discs and labels them, so repeating
+  // the disc on every row under its own heading would be saying it twice. The
+  // fallback for an untagged track is its position in the view, which belongs
+  // to no disc, so it never takes the prefix.
+  const disc = showDisc && trackNumber !== null ? discNumber(row) : null
 
   return (
     <div
@@ -119,7 +128,13 @@ function TrackRowComponent({
       }}
     >
       <span className={`${styles.index} tabular`}>
-        {isActive && isPlaying ? <NowPlayingBars /> : (trackNumber ?? index + 1)}
+        {isActive && isPlaying ? (
+          <NowPlayingBars />
+        ) : disc !== null ? (
+          `${disc}.${trackNumber}`
+        ) : (
+          (trackNumber ?? index + 1)
+        )}
       </span>
 
       {/* index is the row's place in the view; itemIndex is where the player

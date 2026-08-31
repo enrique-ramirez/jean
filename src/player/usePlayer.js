@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
@@ -272,9 +272,9 @@ function usePlayerPatch(mutationFn, patch) {
 }
 
 // How long a value we just sent stays authoritative over what the player
-// reports. Long enough to cover a push that was already in flight describing an
-// older position of the slider, short enough that a real external change (the
-// volume knob on the PC) shows up promptly.
+// reports, if the player never confirms it. Long enough to cover a push that
+// was already in flight describing an older position of the slider, short
+// enough that turning the knob on the PC itself shows up promptly.
 const VOLUME_SETTLE_MS = 1000
 const VOLUME_EPSILON = 0.5
 
@@ -285,33 +285,42 @@ export function useVolume() {
   const nudgeUp = useMutation({ mutationFn: volumeUp })
   const nudgeDown = useMutation({ mutationFn: volumeDown })
 
-  // Deliberately not written into the query cache. Volume state is shared, so a
-  // cache write per pointer move would re-render every subscriber -- including
-  // the virtualised track list -- for the whole length of a drag. This ref is
-  // the local truth instead, and it only has to outlive the round trip.
-  const written = useRef(null)
+  // State, not a ref. A ref would not re-render, so the moment a drag ends and
+  // the control stops showing the pointer position, it would fall back to the
+  // last value the player reported -- visibly snapping to where the volume used
+  // to be until the round trip lands.
+  //
+  // Kept here rather than in the query cache on purpose: this re-renders the
+  // status bar, where a cache write would re-render every subscriber of player
+  // state, including the virtualised track list, for the whole gesture.
+  const [pending, setPending] = useState(null)
+
+  const reported = data?.player?.volume ?? null
+
+  useEffect(() => {
+    if (pending === null || !reported) return undefined
+
+    if (Math.abs(reported.value - pending) < VOLUME_EPSILON) {
+      setPending(null)
+      return undefined
+    }
+
+    // The player never confirmed. Hand control back rather than showing a value
+    // that is no longer true.
+    const timer = setTimeout(() => setPending(null), VOLUME_SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [pending, reported])
 
   const setValue = useCallback(
     (value) => {
-      written.current = { value, at: performance.now() }
+      setPending(value)
       send(value)
     },
     [send],
   )
 
-  const reported = data?.player?.volume ?? null
-  let volume = reported
-
-  if (reported && written.current) {
-    const agreed = Math.abs(reported.value - written.current.value) < VOLUME_EPSILON
-    const expired = performance.now() - written.current.at > VOLUME_SETTLE_MS
-
-    if (agreed || expired) written.current = null
-    else volume = { ...reported, value: written.current.value }
-  }
-
   return {
-    volume,
+    volume: reported && pending !== null ? { ...reported, value: pending } : reported,
     setValue,
     setMuted: mute.mutate,
     up: nudgeUp.mutate,

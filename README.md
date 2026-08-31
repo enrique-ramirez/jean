@@ -84,6 +84,11 @@ settings live.
 > Jean asks the player first and only falls back to the autoplaylist below when the
 > answer is no — on DeaDBeeF, or on any beefweb up to and including 0.10, which is
 > the current release. Nothing here is wasted; it is just no longer the only route.
+>
+> On a player that has it, **searching reads the media library directly** and the
+> autoplaylist is not involved. Browsing a playlist still browses that playlist:
+> Jean never reinterprets one of your playlists as something else, so if you made a
+> `Library` autoplaylist it stays exactly what it is.
 
 beefweb has no library API — it can see **playlists and the filesystem, and nothing else**.
 foobar2000's Media Library is invisible to it. So Jean needs a playlist that mirrors your

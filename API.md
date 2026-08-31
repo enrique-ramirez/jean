@@ -438,6 +438,14 @@ Folder nodes carry `itemCount` and no columns; track nodes carry `subsong` and
 > The PR description mentions a `pathSeparator` field on this response. **It is not
 > there** — *measured*, the keys are `items`, `offset`, `path`, `totalCount`, plus
 > `parentPath` below the top level.
+>
+> **The player and the library disagree about what a path is**, which matters the
+> moment you try to match them. `activeItem`'s `%path%` is absolute and
+> platform-separated (`F:\Musica\K\Korn\…`); a library item's is relative and
+> forward-slashed (`K/Korn/…`). Nothing tells a client where the library folders are,
+> so the two are matched by **suffix** after normalising separators — a relative path
+> is unique within the library, so it cannot collide. `pathMatchesLibraryPath()` in
+> `api/beefweb.js`.
 
 *Measured*: 27 folders at the top level of a 30,441-track library. **Ordering is a
 byte-wise case-sensitive compare**, so `Zappa` sorts before `abba` — re-sort

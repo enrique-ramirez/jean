@@ -183,119 +183,98 @@ Fallback for users who won't create an autoplaylist: Jean can build its own play
 `/api/browser/roots` via `POST /playlists/add` + `items/add`. That mirrors the *disk* rather
 than the library and needs manual refresh, so it is a second choice, not the default.
 
-### The library API — we develop against it, ahead of its release
+### The library API — wired, behind a source seam
 
-**The development player runs a pre-release beefweb.** `0.11~git.dc0fdfc`, which is
-CI's merge of [PR #382](https://github.com/hyperblast/beefweb/pull/382) into master,
-installed from the GitHub Actions artifact rather than built locally. So
-`/library/*` is live here and Jean is built as though it were shipped.
-
-The released plugin is 0.10 and has none of it. That is the whole reason the
-detection below is not optional.
+**The development player runs a pre-release beefweb**: `0.11~git.dc0fdfc`, CI's merge
+of [PR #382](https://github.com/hyperblast/beefweb/pull/382) into master, installed
+from the GitHub Actions artifact. Jean uses it when it is there and falls back when it
+is not. Released beefweb is 0.10 and has none of it; DeaDBeeF never will.
 
 #### The endpoints
 
 | | |
 |---|---|
-| `GET /library/info` | `{supported, enabled, itemCount}` |
-| `GET /library/items` | `{offset, totalCount, items:[{path, subsong, columns}]}`; `columns` required, optional `range`, `query`, `sort`, `desc` |
-| `GET /library/items/by-path` | one tree level: folders first with a recursive `itemCount`, then tracks; carries `path`, `parentPath` (absent at the top) |
+| `GET /library/info` | `{supported, enabled, itemCount}` -- 8 ms, and the only one that answers without the API |
+| `GET /library/items` | `{offset, totalCount, items:[{path, subsong, columns}]}`; `columns` required, `range` optional |
+| `GET /library/items/by-path` | one tree level; folders with a recursive `itemCount`, then tracks |
 | `GET /artwork/library?path=&subsong=` | artwork with no playlist involved |
 | `POST /playlists/{id}/items/add-from-library` | `{items \| query, index, replace, play}`, needs `changePlaylists` |
 
-*Measured* against the 30,441-track library: `info` returns
-`{"enabled":true,"itemCount":30441,"supported":true}` and agrees with the
-autoplaylist to the track. Paths are relative to the media library folders and keep
-their folder structure -- `#/2 Mello/(2012) Chrono Jigga/01. Intro.mp3`. The top
-level of `by-path` had 27 folders and no `parentPath`.
+Full shapes and measurements in `API.md`.
 
-#### The autoplaylist does not go away
+#### `library/librarySource.js` is the seam, and the only place that knows
 
-It demotes from *the* answer to *the fallback*, and `LibrarySetup` stays for three
-states that are all real:
+Two sources, one interface: `{ kind, playlistId, needsHeldCount, artworkUrl(ref),
+fill(targetId, refs, heldCount), addTo(targetId, refs), isPlaying(ref, track,
+activeItem) }`.
 
-- **`supported: false`** — DeaDBeeF, where every library endpoint is 501.
-- **The endpoint 404s** — any released beefweb, which is everyone who is not us
-  until 0.11 ships. Treat a 404 exactly like `supported: false`.
-- **`supported: true, enabled: false`** — foobar2000 with no Media Library
-  configured. A different sentence from "make an autoplaylist": the fix is in
-  foobar's own preferences.
+**A ref is an integer.** The playlist source's is a playlist index; the library
+source's is a position in its own `paths` array. That is what keeps the seam from
+leaking: `indices`, `useTrackSelection`, the search index and the whole virtualised
+list stay integer-keyed and never learn which source they are looking at. Only the
+things that *act* on a row resolve the ref, and they do it through the source.
 
-This is the same rule as every other component -- detect, never require -- and here
-it costs one request to `/library/info` at startup.
+**If something outside that file has to ask which source it is, the seam is in the
+wrong place.**
 
-#### What it changes that was previously settled
+#### Which view uses which, and why
 
-- **Identity is real.** Library items carry `(path, subsong)`. "Playlist items have
-  no ID, index is identity" still holds for *playlists*, but not for library rows --
-  which is what makes an exact now-playing mark possible from any playlist rather
-  than the tag-matching compromise.
-- **The scratch playlist rebuild collapses.** `add-from-library` with
-  `replace: true, play: true` is the rename/empty/refill/play sequence in one
-  request, and the stale-count corruption it used to invite stops being expressible.
-- **`%path%` stops being optional, and costs less than feared.** *Measured* at
-  30,441 tracks with the same 14 columns: the library read is **1.02 MB on the wire
-  against the playlist read's 0.80 MB** (+28%), and 7.24 MB decoded against 4.61 MB
-  (+57%). Paths share long prefixes so they compress well; it is the *parse* and the
-  heap that pay, not the network. At 200k that extrapolates to roughly 17 MB of path
-  strings in memory, which is the number to design against -- dictionary encoding
-  cannot help, because a path is unique per track by definition.
-- **Chunking is strictly worse here, and going wide buys nothing.** The strategy for
-  playlist reads -- chunk for first paint, then four concurrent large ones -- inverts.
-  *Measured*:
+**`#/search` uses the library API. A playlist route never does.** *Measured* against
+the live player: `#/p7` issues five `playlists/p7/items` reads and 370
+`artwork/{plid}/{index}`; `#/search` issues two `library/items` and thirty
+`artwork/library`.
 
-  | strategy | time |
-  |---|---|
-  | one request for all 30,441 | **825 ms** |
-  | 4 x 10,000, four at a time | 1,198 ms |
-  | 7 x 5,000, four at a time | 1,441 ms |
-  | 16 x 2,000, four at a time | 2,662 ms |
-  | 16 x 2,000, one at a time | 2,722 ms |
+That is deliberate. **Playlists are playlists** -- `p7` is a real playlist on the
+player, Jean shows it under its real name and reads it as one. It cannot tell that a
+user made it to stand in for the library, and reading it through the library API
+would be lying about which object is on screen. The two are not even the same set
+once the autoplaylist's query drifts from `ALL`.
 
-  A sweep from 1 to 30,441 rows fits **104 ms fixed per call + 26 us per item**. The
-  fixed part is the enumeration the PR warns about, and every chunk pays it again:
-  sixteen chunks is ~1.7 s of pure overhead, which is almost exactly the 1,837 ms
-  they cost over one request. Concurrency recovers 2% of it (2,722 -> 2,662), so the
-  work is **serialised on the player's side** -- there is no width to exploit.
+Consequence: on a 0.11 player the autoplaylist is redundant but still visible, and
+there is **no library browse view yet** -- the "primary browse entry" is still a
+playlist the user had to create. Building one is what would actually retire the setup
+step. `/library/items/by-path` has no playlist equivalent and is the obvious start.
 
-  What survives is the *first paint* half of the rule: 500 rows come back in 117 ms.
-  So **one small chunk, then one request for the remainder** -- 117 ms to paint and
-  920 ms to finish, against 825 ms with no paint until the end. Ninety-five
-  milliseconds of total time for a screenful seven times sooner. Do not go wide.
+#### Rules that are not obvious
 
-  Re-run `test/measure-library.mjs` when the endpoint changes; caching is on the
-  PR's own list of things it does not do yet, and if it lands this all shifts.
-- **Two filter syntaxes that must not be mixed.** `query` is the player's own query
-  syntax; Jean's search is `fold()`-based accent-insensitive token matching. They do
-  not return the same set, so filtering client-side and adding server-side by
-  `query` would add tracks that are not the ones on screen. Address adds by explicit
-  `items: [{path, subsong}]`.
-- **Paging needs an explicit `sort`.** The spec says library items are produced by
-  applying search criteria rather than being naturally ordered.
+- **The source is chosen by what can actually play**, not only by what exists:
+  `useApi = hasLibraryApi && (canWrite || !playlist)`. Playing a set of results always
+  needs a playlist to play it *in* -- there is no "play this library item" -- so on a
+  player that refuses playlist writes the API can browse but never play, while an
+  autoplaylist can still be played in place. Prefer the one that works.
+- **`Array.from(refs, …)`, never `refs.map(…)`.** Refs arrive as an `Int32Array` from
+  the search index, and mapping a typed array returns a typed array: the objects are
+  coerced to `NaN` and the request body serialises as `{"0":0,…}` rather than a list.
+  `copyPlaylistItems` has guarded this for the same reason since before the seam.
+- **Search filters client-side, always.** `query` is the player's own syntax and does
+  not agree with Jean's `fold()`-based token matching, so filtering client-side and
+  adding server-side by `query` would add tracks that are not the ones on screen.
+  Address adds by explicit `items: [{path, subsong}]`.
+- **Chunking inverts on this endpoint.** One small chunk to paint, then a **single**
+  request for the rest -- never wide. See "Loading it" for the numbers.
+- **Row order is the API's default (file path)**, and that is deliberate. *Measured*
+  on a 30,441-track library: path order gives 2,382 contiguous album runs against
+  2,386 for a tag sort, for 2,366 albums. A tag sort is fractionally *worse*, because
+  server-side sort is exact-string lexicographic and splits `5 Seconds Of Summer` from
+  `5 Seconds of Summer` -- the drift `sameTagValue()` exists to absorb, except once
+  the order is wrong the client cannot fix it. A badly-foldered library gets more,
+  smaller album groups; that is a degradation, not a requirement, and no user is ever
+  forced into a file layout.
+- **`%path%` and `%subsong%` are in `TRACK_COLUMNS`** for identity, not display -- one
+  string per player update, not per row. The player reports an **absolute** path and
+  the library a **relative, forward-slashed** one, and Jean is never told where the
+  library folders are, so they are matched by suffix: `pathMatchesLibraryPath()`.
 
-#### Traps the PR names itself
+#### Still open
 
-Folder artwork probes the filesystem on the player's work queue and "a folder-
-thumbnail grid multiplies it" -- which is exactly the home screen's albums grid, so
-do not build that on folder art. Folder ordering is a byte-wise case-sensitive
-compare, so `Zappa` sorts before `abba`. There is no `library` event key on
-`/api/query`, so library changes cannot be observed at all; detecting drift means
-polling `itemCount` from `/library/info`, which is three fields and cheap.
-
-#### Two standing risks while it is unmerged
-
-**The API is still moving.** It has already been renamed once mid-review
-(`/library/items/add` became `/playlists/{id}/items/add-from-library`, `view=folders`
-became `/library/items/by-path`) and the maintainer may polish the endpoints
-himself. Keep every call behind `api/beefweb.js` and one library module, so a rename
-is one file rather than a search across the app.
-
-**The fake player does not implement any of it**, so nothing built on these
-endpoints is covered by the suite until it does. That is a prerequisite for the
-feature work, not a follow-up to it -- see `test/README.md`.
-
-**Autoplaylists still cannot be created remotely**, which is the one thing that
-would turn the setup screen into a button. Asked on the PR, unanswered.
+- `isPlaying` is written and **not yet used**: `SearchResults` still computes
+  `activePosition` with `positionOf(indices, …)`. Wiring it is what makes the
+  now-playing mark exact, including while the player is inside some other playlist.
+- `SavePlaylistButton` still copies by index and has not moved onto the source.
+- No library browse view; no folder tree.
+- Reconciling a stale `itemCount` (see the tripwire note in `API.md`) is not built.
+- Artwork lazy-loading and `Mosaic` are **on hold at the owner's request** -- changes
+  coming there, do not test or rework them yet.
 
 ### Never mutate playlists as a side effect
 
@@ -907,6 +886,18 @@ after it. Drag state stays local to the control -- writing it into shared player
 state on every move re-renders every subscriber, including the virtualised list,
 for the whole gesture.
 
+**`<Artwork>` takes a URL, not an address.** It used to take `playlistId` and
+`index` and build the URL itself; it now takes `src` and is purely presentational.
+*Where* artwork lives is the source's business -- a playlist addresses it by index,
+the media library by path, and the status bar by whatever the player is currently on.
+Anything drawing a row's cover calls `source.artworkUrl(ref)`.
+
+**List components take `source`, not `playlistId`.** `TrackBrowser`, `TrackList`,
+`TrackRow`, `AlbumGroup` and `Mosaic` all receive the source; so do
+`useTrackContextMenu`, `useTrackDragSource` and `useAddTracks`. A component that
+wants a playlist id for anything other than *identifying a playlist* is a sign the
+seam has been bypassed.
+
 **Comments explain why, not what.** No JSDoc. If a line needs a comment to say what it
 does, rename something instead. The comments worth writing are the ones recording a
 measurement, a trap, or a decision that looks wrong until you know the reason.
@@ -979,4 +970,12 @@ There is an end-to-end suite in `test/e2e`, run against a fake player in `test/f
 whose fixture was captured off a real one. It covers both layouts and both surfaces; see
 `test/README.md` for why there are no unit tests and none of it uses jsdom.
 
-The home screen, the Web Worker and IndexedDB persistence are not built yet.
+Search reads the **media library API** when the player has one (beefweb 0.11+,
+foobar2000), and the autoplaylist otherwise; both go through the source seam in
+`library/librarySource.js`, and the whole test suite passes against either --
+`JEAN_NO_LIBRARY_API=1 pnpm test` runs it against the fallback. Playlist routes are
+always read as playlists.
+
+The home screen, the Web Worker and IndexedDB persistence are not built yet. Neither
+is a library *browse* view: with the API in play the autoplaylist is redundant but is
+still the only way to browse the library, which is the next obvious thing to build.

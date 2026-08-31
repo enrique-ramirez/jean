@@ -33,6 +33,28 @@ setup that exists only on the machine it was written on.
 app uses, holds real playlists, and pushes SSE the way beefweb does -- a full
 snapshot on connect, then only what changed, and **never on a timer**.
 
+### The suite runs against both library sources
+
+The app is supposed to behave identically whether the library comes from the media
+library API or from an autoplaylist -- that is what the source seam exists for -- so
+the same assertions run against both:
+
+```sh
+pnpm test                          # the media library API (the default)
+JEAN_NO_LIBRARY_API=1 pnpm test    # the autoplaylist fallback
+```
+
+Both are green at the same count. That is the check that the seam has not leaked: if
+a change makes one pass and the other fail, something outside `librarySource.js` has
+learned which source it is talking to.
+
+Three specs are source-aware, and only three. `fake-library.spec.js` and one describe
+in `library-source.spec.js` **pin the API on**, because they are about it -- pinned
+rather than skipped, so they still cover it on a fallback run. And
+`navigation.spec.js`'s first-run block asks for `withoutLibraryPlaylist` *and*
+`library: { supported: false }`, because the setup screen exists only when there is no
+API **and** no autoplaylist. Give it the API and there is nothing to set up.
+
 ### Measuring the library API
 
 `test/measure-library.mjs` times the media library endpoints against a real player

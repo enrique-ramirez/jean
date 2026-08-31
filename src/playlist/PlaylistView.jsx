@@ -72,6 +72,7 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
       scrollRef={scrollRef}
       isCompactViewport={isCompactViewport}
       keysEnabled={!isFinding}
+      canFollowPlayback
       onPlay={play}
       onOpenFinder={() => setIsFinding(true)}
       emptyNotice="This playlist is empty."

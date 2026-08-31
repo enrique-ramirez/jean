@@ -26,6 +26,27 @@ const allTracks = () => LIBRARY.albums.flatMap((album) => album.tracks)
 // real install looks like -- creating one playlist there produced p7, not p6 --
 // and anything in the app that quietly assumes otherwise should fail here
 // rather than on someone's machine.
+// A library-sized playlist, synthesised from the captured tracks. The point is
+// not the metadata -- it is that 30,000 rows arrive in chunks rather than in one
+// response, that the virtualiser is never holding more than a screenful, and
+// that scroll offsets are computed over a list far taller than anything a
+// hand-written fixture produces. Bugs that only appear past a few thousand rows
+// have nowhere else to show up.
+export function generateTracks(count) {
+  const source = allTracks()
+  const tracks = new Array(count)
+  for (let index = 0; index < count; index += 1) {
+    const template = source[index % source.length]
+    tracks[index] = {
+      ...template,
+      '%title%': `${template['%title%']} (${index + 1})`,
+      '%tracknumber%': String((index % 99) + 1).padStart(2, '0'),
+      '%path%': `${template['%path%']}#${index}`,
+    }
+  }
+  return tracks
+}
+
 const DEFAULT_PLAYLISTS = () => [
   { id: 'p1', title: 'Default Playlist', isCurrent: false, items: tracksOf('jar-of-flies').slice(0, 4) },
   { id: 'p7', title: 'Library', isCurrent: true, items: allTracks() },
@@ -51,7 +72,32 @@ export const evaluate = (track, expression) => track[expression] ?? '?'
 
 const columnsFor = (track, expressions) => expressions.map((expression) => evaluate(track, expression))
 
-export function createState({ playlists = DEFAULT_PLAYLISTS(), player } = {}) {
+export function createState({
+  playlists = DEFAULT_PLAYLISTS(),
+  player,
+  librarySize,
+  // Expressions this player cannot resolve. Dropping them from the tracks makes
+  // evaluate() answer '?', which is exactly what a real player does for a field
+  // no component provides -- so `withoutFields: ['%lastfm_play_count%']` is an
+  // install with no playback-statistics component, not a mock of one.
+  withoutFields = [],
+} = {}) {
+  if (withoutFields.length > 0) {
+    const drop = new Set(withoutFields)
+    for (const playlist of playlists) {
+      playlist.items = playlist.items.map((track) => {
+        const kept = { ...track }
+        for (const expression of drop) delete kept[expression]
+        return kept
+      })
+    }
+  }
+
+  if (librarySize) {
+    const library = playlists.find((entry) => entry.title === 'Library')
+    if (library) library.items = generateTracks(librarySize)
+  }
+
   const listeners = new Set()
 
   const state = {

@@ -111,6 +111,16 @@ test('does the thing', async ({ page, player }) => {
 - **`POST /__control/play`** drives the player the way the desktop would --
   the case Jean has to survive and which cannot be provoked reliably against a
   real one.
+- **`librarySize`** swaps the 54 captured tracks for that many generated ones.
+  `test.use({ librarySize: 30441 })` gets a library that loads in chunks rather
+  than one response, over a list 1.4 million pixels tall. Scroll arithmetic that
+  breaks past a few thousand rows has nowhere else to show up.
+- **`withoutFields`** removes title-formatting expressions from the fixture, so
+  the player answers `?` for them exactly as a real one does for a field no
+  component provides. `test.use({ withoutFields: ['%lastfm_play_count%'] })` is
+  foobar2000 with no playback-statistics component, and everything built on play
+  counts should disappear rather than break. This is the promise nothing else
+  can check: a bare install must get a complete app, never a dead control.
 - **`settings`** seeds localStorage. It defaults to marking the play-count
   shading as already introduced, since that popover otherwise opens over the
   toolbar in every test that never asked about it. Override it with
@@ -122,9 +132,30 @@ test('does the thing', async ({ page, player }) => {
   it is accepted and silently ignored, which is why the fixture calls
   `page.emulateMedia()` instead.
 
+**Parameterise over the layouts, not just the viewports.** Compact and album are
+not one code path with a different stylesheet: album virtualises groups rather
+than rows, so the index the virtualiser is given is not the index being scrolled
+to, and on a phone the cover stacks above its tracks instead of beside them.
+Looping a describe over `['compact', 'album']` and seeding `jean.layout` costs
+one line and doubles into four cases, since both projects run everything.
+
 Both projects -- `desktop` and `mobile` (Pixel 7, touch on) -- run every spec.
 Skip explicitly when a gesture has no equivalent on the other surface, and say
 why.
+
+**Drive timing-sensitive input from inside the page.** Anything racing an
+animation -- interrupting a 240ms scroll, say -- cannot be driven over the wire:
+`keyboard.press` then `waitForTimeout(80)` then `mouse.wheel` is three round
+trips, and under parallel workers they land after the animation has already
+finished, so the test passes whether the behaviour works or not. That is worse
+than a test that cannot fail, because it *does* fail correctly when run alone
+and then passes in a full run. Dispatch the events from `page.evaluate` instead,
+one frame apart. A synthetic wheel event scrolls nothing, which is usually the
+point: what is under test is the listener, not the scrolling.
+
+**Check an injection more than once.** A guard that fails on one run and passes
+on the next is not covered, it is flaky, and running the suite three times under
+the injection is what tells the two apart.
 
 A test that cannot fail is worse than no test. When one covers a guard rather
 than a feature -- "a long press plays nothing", "a desktop click does not

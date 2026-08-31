@@ -22,10 +22,23 @@ export const test = base.extend({
     { scope: 'worker' },
   ],
 
+  // How many tracks the Library playlist holds. The captured 54 are enough for
+  // anything about one screen of rows; past a few thousand the app behaves
+  // differently -- rows arrive in chunks rather than one response, and scroll
+  // offsets are computed over a list taller than any hand-written fixture.
+  // test.use({ librarySize: 30441 }) to ask for that.
+  librarySize: [null, { option: true }],
+
+  // Title-formatting expressions this player cannot resolve, so a spec can ask
+  // for a bare install: test.use({ withoutFields: ['%lastfm_play_count%'] }) is
+  // foobar2000 with no playback-statistics component, and everything built on
+  // play counts should disappear rather than break.
+  withoutFields: [[], { option: true }],
+
   // A fresh player per test. The previous test's page is closed by now, so no
   // stream is left subscribed to the state being discarded.
-  player: async ({ fakeServer }, use) => {
-    await use(fakeServer.reset(createState()))
+  player: async ({ fakeServer, librarySize, withoutFields }, use) => {
+    await use(fakeServer.reset(createState({ librarySize, withoutFields })))
   },
 
   baseURL: async ({ fakeServer }, use) => {
@@ -73,6 +86,36 @@ export const trackRow = (page, index) => page.locator(`[role="row"][data-row="${
 
 export const rowByTitle = (page, title) =>
   page.locator('[role="row"]').filter({ hasText: title }).first()
+
+// Whether a row is actually on screen, which is not the same question as
+// whether it rendered: overscan deliberately mounts rows past the fold, and an
+// album group is tall enough that its rows can be mounted while sitting well
+// below the viewport. Measured against the scroll container, the same way
+// TrackList decides which way the "Now playing" pill points.
+//
+// The tolerance is not slack, it is the unit the browser works in. Row heights,
+// the scroll offset and the container's own rect are all fractional, so a row
+// scrolled exactly to the bottom edge lands a few tenths of a pixel past it.
+// Asserting exact containment fails on geometry nobody can see.
+const EDGE_TOLERANCE_PX = 1
+
+export const isRowOnScreen = (page, index) =>
+  page.evaluate(
+    ({ row, slack }) => {
+      const element = document.querySelector(`[role="row"][data-row="${row}"]`)
+      if (!element) return false
+      const scroller = document.querySelector('main')
+      const seen = element.getBoundingClientRect()
+      const view = scroller.getBoundingClientRect()
+      return seen.top >= view.top - slack && seen.bottom <= view.bottom + slack
+    },
+    { row: index, slack: EDGE_TOLERANCE_PX },
+  )
+
+export const scrollTop = (page) => page.evaluate(() => document.querySelector('main').scrollTop)
+
+export const scrollTo = (page, offset) =>
+  page.evaluate((to) => document.querySelector('main').scrollTo(0, to), offset)
 
 // What the app sent, so a test can assert on the wire rather than only on the
 // screen. Reads the fake's own log, not the browser's.

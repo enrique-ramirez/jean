@@ -53,6 +53,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     toolbarLeading,
     emptyNotice,
     keysEnabled = true,
+    // Off unless a view asks for it. A playlist is a place you sit in while
+    // something plays, so following the track is welcome there. A set of search
+    // results is not: the rows change under every keystroke, and jumping to the
+    // playing track the moment it appears in them would take the view away from
+    // the matches that were just typed for.
+    canFollowPlayback = false,
     onPlay,
     onOpenFinder,
   },
@@ -64,6 +70,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
   const [showHeat, setShowHeat] = useStoredState('jean.heat', true)
   const [showArtwork, setShowArtwork] = useStoredState('jean.artwork', true)
   const [enabledIds, setEnabledIds] = useStoredState('jean.columns', DEFAULT_COLUMN_IDS)
+  const [followPlayback] = useStoredState('jean.followPlayback', true)
   const [isColumnsOpen, setIsColumnsOpen] = useState(false)
   const [isHeatInfoOpen, setIsHeatInfoOpen] = useState(false)
   const [heatIntroSeen, setHeatIntroSeen] = useStoredState('jean.heatIntroSeen', false)
@@ -228,6 +235,42 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     pendingScroll.current = false
     scrollToTrack(selection.cursor, { align: 'auto' })
   }, [selection.cursor, scrollToTrack])
+
+  // Follow playback: when the track changes, bring it into view.
+  //
+  // Which index was last followed, rather than which one was last seen. The
+  // difference is what keeps this from fighting the user -- scrolling away from
+  // the playing track does not change `activeIndex`, so nothing re-fires and
+  // the view stays where it was put. Getting back is the "Now playing" pill's
+  // job, and `n`'s.
+  //
+  // It also covers a race the naive version loses: at library size the active
+  // index can arrive before the chunk holding that row does, and scrolling to a
+  // row the virtualiser does not have yet is a no-op that never retries. Rows
+  // are a dependency, so the jump happens when the row actually exists.
+  const followedIndex = useRef(-1)
+
+  useEffect(() => {
+    if (!canFollowPlayback || !followPlayback) return
+    if (activeIndex < 0 || activeIndex >= rows.length) return
+    if (followedIndex.current === activeIndex) return
+
+    followedIndex.current = activeIndex
+    // Centred every time, in both directions.
+    //
+    // Minimal scrolling was the obvious choice and the wrong one: it brings a
+    // row in from whichever edge it crossed and leaves it there, so going
+    // forwards parked the track on the status bar and going backwards tucked it
+    // under the sticky toolbar, where it was in view by the letter and needed a
+    // nudge of the wheel to actually be seen. Centring has no edge to land on,
+    // so the direction stops mattering -- and it makes the position of the
+    // playing track a fact rather than a consequence of how you arrived at it.
+    //
+    // Advancing a track now scrolls the list by exactly one row, which is
+    // cheaper than it sounds: the row is already rendered, so this is one
+    // compositor scroll rather than a re-render of the list.
+    scrollToTrack(activeIndex, { align: 'center', animate: true })
+  }, [activeIndex, rows.length, canFollowPlayback, followPlayback, scrollToTrack])
 
   useKeymap(
     SCOPE.playlist,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 
 import { useDebounced } from '../hooks/useDebounced.js'
@@ -29,6 +29,53 @@ export function Finder({ rows, results, matches, query, onQueryChange, onPreview
   useEffect(() => {
     setActive(0)
   }, [query])
+
+  // Hover only counts if the pointer actually went somewhere.
+  //
+  // A dropdown that appears under a stationary cursor gets a mouseenter it did
+  // not earn: the mouse has not moved, the element beneath it changed. That
+  // happens on every open -- the results render exactly where the button that
+  // opened them was -- and again on every keystroke, as a new set lands under
+  // the same cursor. Measured, opening the finder and typing selected the fifth
+  // result purely because that is where the pointer was sitting, and Enter then
+  // plays that one instead of the first match.
+  //
+  // Two signals, because one is not enough. `moved` covers the ordinary case,
+  // and is re-armed per result set since each new set is a fresh chance to land
+  // something unaimed-at under the cursor -- in a layout effect, so the reset is
+  // in place before the browser dispatches the mouseenter that follows paint.
+  // The coordinate check covers the first move onto a result, where mouseenter
+  // arrives *before* the mousemove that would have set the flag; there the
+  // pointer is demonstrably somewhere new. With neither -- a mouse that has not
+  // moved all session -- hover stays out of it, which is the safe way to be
+  // wrong.
+  const moved = useRef(false)
+  const lastSeen = useRef(null)
+
+  useEffect(() => {
+    const track = (event) => {
+      moved.current = true
+      lastSeen.current = { x: event.clientX, y: event.clientY }
+    }
+    window.addEventListener('mousemove', track)
+    return () => window.removeEventListener('mousemove', track)
+  }, [])
+
+  useLayoutEffect(() => {
+    moved.current = false
+  }, [results])
+
+  const aimedAt = (event) => {
+    if (moved.current) return true
+    // The first enter after the finder opens has no earlier position to be
+    // compared against -- the click that opened it happened before any of this
+    // was listening -- so it is rejected and its coordinates become the
+    // reference. Anything arriving from somewhere else afterwards is a real
+    // move, whether or not a mousemove has been seen yet.
+    const previous = lastSeen.current
+    lastSeen.current = { x: event.clientX, y: event.clientY }
+    return previous !== null && (event.clientX !== previous.x || event.clientY !== previous.y)
+  }
 
   useEffect(() => {
     const index = results[debouncedActive]
@@ -83,7 +130,9 @@ export function Finder({ rows, results, matches, query, onQueryChange, onPreview
                 data-active={position === active}
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => onConfirm(index)}
-                onMouseEnter={() => setActive(position)}
+                onMouseEnter={(event) => {
+                  if (aimedAt(event)) setActive(position)
+                }}
               >
                 <span className={styles.names}>
                   <span className={styles.resultTitle}>{value(rows[index], FIELD.title) ?? 'Unknown'}</span>

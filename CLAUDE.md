@@ -98,6 +98,24 @@ rows is far worse than not offering the undo.
 are not looking at does, and that is what a toast is for; it is also where the undo
 lives. A message about something already on screen is noise.
 
+**The list follows playback, and only when the track actually changes.** Scrolling
+away from the playing track does not change which track is playing, so nothing
+re-fires and the view stays where it was put; the "Now playing" pill and `n` are
+how you get back. It **centres the track, in both directions**.
+Minimal scrolling was the obvious choice and the wrong one: it brings a row in
+from whichever edge it crossed and leaves it there, so going forwards parked the
+playing track on the status bar -- measured at zero pixels from the bottom edge,
+ten track changes running -- and going backwards tucked it under the sticky
+toolbar, in view by the letter and needing a nudge of the wheel to be seen.
+Centre has no edge to land on, so the direction stops mattering, and where the
+playing track sits becomes a fact rather than a consequence of how you got
+there. Advancing a track then scrolls the list by exactly one row, which is
+cheaper than it sounds: the row is already rendered, so it is one compositor
+scroll and not a re-render. Off for search
+results: those rows change under every keystroke, and jumping to the playing
+track the moment it appears among them would take the view away from the matches
+just typed for. Stored as `jean.followPlayback`, on by default, with no UI yet.
+
 **Anything ambient enough to need explaining gets explained once, where it happens.**
 The play-count shading is the case in point: it is legible only if you already know what
 it means, so it introduces itself the first time it is actually on screen, in a popover
@@ -257,6 +275,28 @@ Two traps, both of which have already shipped bugs:
   calling `virtualizer.measure()` hands each layout the other's heights — which
   looked like list rows suddenly being 200px tall. Reset on any change that
   redefines what an index is.
+- **The virtualiser thinks its list starts at scroll offset 0.** It does not:
+  the view header and the toolbar sit above it, and without `scrollMargin`
+  every `scrollToIndex` lands short by exactly their height. Rendering still
+  looks right, because the rows are positioned inside a list that is itself in
+  normal flow -- only the scroll arithmetic is wrong. Measured on one viewport
+  it was 292px, which read as "jump to playing centres a bit off" on a tall
+  window, as "it does not scroll at all" on a short one, and as "it works
+  sometimes" near the end of the list, where the scroll offset clamps and
+  absorbs the error. `scrollMargin` has to be measured and re-measured -- a
+  wrapping title, the stats appearing once rows load, and the finder opening
+  all move the list -- and because `start` then includes it, the row transform
+  has to subtract it back off.
+- **In album mode the virtualiser's index is not the track's index.** Its items
+  are groups, so asking it to centre index N centres the *album*, and the track
+  lands wherever it happens to sit inside it -- measured at up to 271px out on a
+  735px viewport, and off screen entirely once an album is longer than the
+  window. Centring is therefore measured off the row's own rect rather than
+  computed from an index, falling back to the group's offset only until the row
+  is mounted. `animateScrollTo` re-reads its target every frame, so the first
+  frames aim at the album, that brings the row into existence, and the target
+  refines to the track. In list mode a row and its index are the same thing, so
+  the two agree and it is one path rather than a special case.
 - **Rendered is not visible.** `overscan` deliberately mounts rows past the fold, and
   an album group is tall enough that its rows can be mounted while sitting well below
   the screen. Anything asking "is this row on screen?" must measure the element
@@ -314,6 +354,16 @@ an array, not another component.
   already swallows the one that follows a hold. Both handlers sit on the rows
   container and find their row through `targetsFrom`; 30,000 rows must not each
   carry a closure.
+- **A list that appears under a stationary pointer gets a `mouseenter` it did
+  not earn.** The mouse has not gone anywhere; the element beneath it changed.
+  The finder's results render exactly where the button that opened them was, and
+  again under the same cursor on every keystroke -- so hover handed the active
+  result to whatever happened to land there, measured as the fifth match, and
+  Enter played that instead of the first. Hover has to prove the pointer moved:
+  a flag re-armed per result set covers the ordinary case, and comparing the
+  event's coordinates against the last seen ones covers the first move onto a
+  result, where `mouseenter` arrives before the `mousemove` that would have set
+  the flag.
 - **`useContextMenu` unifies the three ways of asking for one**: right-click,
   press-and-hold, and the Menu key -- which reports no coordinates, so a keyboard
   invocation has to anchor to the element rather than to `0,0`.
@@ -623,6 +673,17 @@ for the whole gesture.
 **Comments explain why, not what.** No JSDoc. If a line needs a comment to say what it
 does, rename something instead. The comments worth writing are the ones recording a
 measurement, a trap, or a decision that looks wrong until you know the reason.
+
+**An animated scroll must not treat every wheel event as a decision.** Trackpad
+and mouse momentum keep emitting for a second or more after the fingers have
+left, so a jump asked for at the end of a flick gets cancelled by the tail of
+the gesture that preceded it -- measured, a single delta of one pixel stranded
+the scroll partway and left the target row not merely off centre but unmounted.
+That is the whole of "jump to playing works sometimes": it depended on whether
+the list happened to still be coasting. `animateScrollTo` accumulates wheel
+delta and gives up at 40px, which deliberate scrolling passes in one or two
+events and a decaying tail never reaches. A touch still cancels on contact,
+because a finger on the glass is unambiguous where a wheel event is not.
 
 **Animation is compositor-only by default** — `transform`, `scale`, `rotate`,
 `opacity`. `border-radius` and layout properties repaint every frame; that is

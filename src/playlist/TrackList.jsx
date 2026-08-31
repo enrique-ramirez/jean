@@ -1,4 +1,12 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { ALBUM_COVER, ALBUM_COVER_COMPACT, AlbumGroup } from './AlbumGroup.jsx'
@@ -53,7 +61,51 @@ export const TrackList = forwardRef(function TrackList(
 
   const groups = useMemo(() => (isAlbumLayout ? groupByAlbum(rows) : []), [isAlbumLayout, rows])
 
+  // How far down the scroll container the list actually begins. The view header
+  // and the toolbar sit above it, so row 0 is not at scroll offset 0 -- and
+  // without telling the virtualiser that, every scrollToIndex lands short by
+  // exactly this much. Rendering still looked right, because the rows are
+  // positioned inside a list that is itself in normal flow; only the scroll
+  // arithmetic was wrong, which is why it read as "jump to playing is a bit
+  // off" rather than as anything obviously broken. On a short viewport that
+  // same error is the whole distance, so the track never came into view at all.
+  const listElement = useRef(null)
+  const [scrollMargin, setScrollMargin] = useState(0)
+
+  useLayoutEffect(() => {
+    const list = listElement.current
+    const scroller = scrollRef.current
+    if (!list || !scroller) return undefined
+
+    const measure = () => {
+      // Rounded so that `start - scrollMargin` stays the whole number it was
+      // before this existed. A fractional margin would otherwise leak into
+      // every row's transform, and sub-pixel churn would re-render the list
+      // for nothing.
+      const next = Math.round(
+        list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop,
+      )
+      setScrollMargin((current) => (current === next ? current : next))
+    }
+
+    measure()
+
+    // The header is what moves the list, and the only boxes that grow when it
+    // does are the list's own ancestors -- so observing the chain up to the
+    // scroller catches a wrapping title, the stats appearing once rows load,
+    // the finder opening, and the loading bar, without knowing about any of
+    // them. `.rows` is display:contents and generates no box, so observing it
+    // costs nothing and reports nothing.
+    const observer = new ResizeObserver(measure)
+    observer.observe(scroller)
+    for (let node = list.parentElement; node && node !== scroller; node = node.parentElement) {
+      observer.observe(node)
+    }
+    return () => observer.disconnect()
+  }, [scrollRef])
+
   const virtualizer = useVirtualizer({
+    scrollMargin,
     count: isAlbumLayout ? groups.length : rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) =>
@@ -80,18 +132,50 @@ export const TrackList = forwardRef(function TrackList(
           : index
         if (target < 0) return
 
-        if (!animate) {
-          virtualizer.scrollToIndex(target, { align })
-          return
-        }
-
         const element = scrollRef.current
         if (!element) return
 
-        cancelScroll.current = animateScrollTo(
-          element,
-          () => virtualizer.getOffsetForIndex(target, align)?.[0] ?? null,
-        )
+        // Centring is measured off the row, not computed from the index.
+        //
+        // In album mode the virtualiser's items are groups, so asking it to
+        // centre gets the *album* centred and the track left wherever it falls
+        // inside it -- measured at up to 271px out on a 735px viewport, and off
+        // screen entirely once an album is longer than the window. In list mode
+        // a row and its index are the same thing, so the two agree and this is
+        // one path for both rather than a special case for one.
+        //
+        // Returns null until the row is mounted, which is what the fallback is
+        // for: the first frames aim at the group, that brings the row into
+        // existence, and the target refines to the track itself. It converges
+        // rather than oscillating -- the offset is absolute, so once the row is
+        // measurable every frame computes the same answer.
+        const centreOnRow = () => {
+          const row = element.querySelector(`[data-row="${index}"]`)
+          if (!row) return null
+          const seen = row.getBoundingClientRect()
+          const view = element.getBoundingClientRect()
+          return element.scrollTop + (seen.top + seen.bottom) / 2 - (view.top + view.bottom) / 2
+        }
+
+        const offsetFor = () =>
+          (align === 'center' ? centreOnRow() : null) ??
+          virtualizer.getOffsetForIndex(target, align)?.[0] ??
+          null
+
+        if (!animate) {
+          virtualizer.scrollToIndex(target, { align })
+          // The row exists now even if it did not a moment ago, so a second
+          // pass puts the track where the group just went.
+          if (align === 'center') {
+            requestAnimationFrame(() => {
+              const refined = centreOnRow()
+              if (refined != null) element.scrollTop = refined
+            })
+          }
+          return
+        }
+
+        cancelScroll.current = animateScrollTo(element, offsetFor)
       },
     }),
     [isAlbumLayout, groups, virtualizer, scrollRef],
@@ -154,6 +238,7 @@ export const TrackList = forwardRef(function TrackList(
 
   return (
     <div
+      ref={listElement}
       className={showHeat ? styles.list : `${styles.list} heat-off`}
       style={{ height: virtualizer.getTotalSize() }}
       role="grid"
@@ -166,7 +251,7 @@ export const TrackList = forwardRef(function TrackList(
           ref={isAlbumLayout ? virtualizer.measureElement : undefined}
           className={styles.row}
           style={{
-            transform: `translateY(${virtualRow.start}px)`,
+            transform: `translateY(${virtualRow.start - scrollMargin}px)`,
             ...(isAlbumLayout ? null : { height: virtualRow.size }),
           }}
         >

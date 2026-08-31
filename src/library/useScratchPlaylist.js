@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 
 import {
   copyPlaylistItems,
@@ -7,38 +7,39 @@ import {
   renamePlaylist,
 } from '../api/beefweb.js'
 import { useStoredState } from '../hooks/useStoredState.js'
-import { isScratchPlaylist, scratchTitle } from './scratchPlaylist.js'
+import { isScratchPlaylist, queryOfScratchPlaylist, scratchTitle } from './scratchPlaylist.js'
 
 // Resolved by stored id, falling back to the title -- the same ladder
 // useLibraryPlaylist climbs, and for the same reason: playlist ids are neither
 // contiguous nor promised to outlive the player process, while the title is
 // ours and recognisable from any device.
-export function useScratchPlaylist({ playlists, viewKey, canEdit }) {
+export function useScratchPlaylist({ playlists, query, count, canEdit }) {
   const [pinnedId, setPinnedId] = useStoredState('jean.scratchPlaylist', null)
 
   const playlist = useMemo(() => {
-    const byId = pinnedId ? playlists.find((entry) => entry.id === pinnedId) : null
+    const pinned = pinnedId ? playlists.find((entry) => entry.id === pinnedId) : null
+    // The pin is checked, not trusted. Saving a set of results renames this
+    // playlist into the user's, so a stale pin would hand their playlist back
+    // to be emptied by the next search.
+    const byId = isScratchPlaylist(pinned) ? pinned : null
     return byId ?? playlists.find(isScratchPlaylist) ?? null
   }, [playlists, pinnedId])
 
-  // What the playlist currently holds, as far as this client knows. State
-  // rather than a ref because the now-playing highlight is derived from it: a
-  // result set that has been typed past is no longer the thing playing, and
-  // lighting up whichever row now sits at that position would be a lie.
-  const [held, setHeld] = useState(null)
-
+  // Whether it already holds what is on screen, read off the playlist itself
+  // rather than remembered here: the title is the query that built it and the
+  // count is how many matched. Derived that way it survives a reload and gives
+  // the same answer on another device, where local state would give neither.
   const holdsCurrentView =
     Boolean(playlist) &&
-    held?.viewKey === viewKey &&
-    // Another client may have rebuilt it for its own search since.
-    held?.count === playlist.itemCount
+    queryOfScratchPlaylist(playlist) === query &&
+    playlist.itemCount === count
 
   // Serialised: two quick clicks would otherwise interleave a rebuild with a
   // refill and leave the playlist holding half of each.
   const pending = useRef(null)
 
   const ensure = useCallback(
-    async ({ sourceId, indices, query }) => {
+    async ({ sourceId, indices }) => {
       if (!canEdit || !sourceId || indices.length === 0) return null
       if (holdsCurrentView) return playlist.id
 
@@ -60,16 +61,29 @@ export function useScratchPlaylist({ playlists, viewKey, canEdit }) {
           await removePlaylistItems(target.id, Array.from({ length: target.itemCount }, (_, at) => at))
         }
         await copyPlaylistItems(sourceId, target.id, indices)
-
-        setHeld({ viewKey, count: indices.length })
         return target.id
       }
 
       pending.current = (pending.current ?? Promise.resolve()).then(build, build)
       return pending.current
     },
-    [canEdit, holdsCurrentView, playlist, viewKey, setPinnedId],
+    [canEdit, holdsCurrentView, playlist, query, setPinnedId],
   )
 
-  return { playlist, holdsCurrentView, ensure }
+  // Saving these results as a playlist, when the scratch already *is* these
+  // results: rename it and it stops being Jean's. Nothing is copied, the
+  // duplicate that create-and-copy would leave behind never exists, and --
+  // measured against the live player -- playback carries straight on through
+  // the rename, same track, same position, because it is the same playlist.
+  const adopt = useCallback(
+    async (title) => {
+      if (!playlist) return null
+      await renamePlaylist(playlist.id, title)
+      setPinnedId(null)
+      return playlist.id
+    },
+    [playlist, setPinnedId],
+  )
+
+  return { playlist, holdsCurrentView, ensure, adopt }
 }

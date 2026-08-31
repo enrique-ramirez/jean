@@ -39,7 +39,8 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
 
   const scratch = useScratchPlaylist({
     playlists,
-    viewKey: search.viewKey,
+    query: search.query,
+    count: indices.length,
     canEdit: canSavePlaylists,
   })
 
@@ -67,7 +68,7 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
   // actually asks to hear it.
   const play = useCallback(
     async (position) => {
-      const scratchId = await scratch.ensure({ sourceId: libraryId, indices, query: search.query })
+      const scratchId = await scratch.ensure({ sourceId: libraryId, indices })
       // No scratch playlist means a player that will not let us make one. The
       // track still plays; it just plays in place, and what follows it is the
       // library's business rather than these results'.
@@ -188,6 +189,7 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
               {canSavePlaylists ? (
                 <SavePlaylistButton
                   search={search}
+                  scratch={scratch}
                   isOpen={isSaving}
                   onOpenChange={setIsSaving}
                   onOpenPlaylist={onOpenPlaylist}

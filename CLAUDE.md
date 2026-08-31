@@ -283,6 +283,21 @@ them.
   never searches still never loads it, and taking a remembered search back is what pays
   for the index. Jean needs no state of its own for this; `clientconfig` would be a second
   copy of something the player already knows.
+- **Saving results as a playlist renames the scratch rather than copying it.** When the
+  scratch already holds exactly these results it *is* what is being saved, so it is
+  renamed and stops being Jean's. Nothing is copied, no near-duplicate is left beside the
+  original, and -- measured against the live player -- playback carries straight on
+  through the rename, same track, same position, because it is the same playlist. The
+  search then leaves the sidebar on its own: there is no scratch playlist to remember it
+  by. Falls back to create-and-copy when the scratch holds something else, or when there
+  is none because nothing was played.
+
+  The stored id must be re-checked against the title after this, and the pin cleared:
+  the id now points at the *user's* playlist, and resolving the scratch by it would hand
+  their playlist to the next search, which empties what it finds before refilling it.
+  Two guards for one mistake, because the cost of it is their data rather than a wrong
+  view.
+
 - **Dismissing the search deletes it, unless the player is on it.** Nobody asked for a
   leftover playlist named after a search they closed, and saving results as a real
   playlist finishes the search off the same way. But *measured*: deleting the playing

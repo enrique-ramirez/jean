@@ -266,6 +266,84 @@ test.describe('clearing the search', () => {
 })
 
 test.describe('saving results as a playlist', () => {
+  test('saving adopts the playlist the results were already playing from', async ({
+    page,
+    player,
+  }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    const scratchId = scratchOf(player).id
+    const playlistsBefore = player.playlists.length
+    await expect(page.locator('footer')).toContainText('Los Calientes')
+
+    await page.getByRole('button', { name: 'Save as playlist' }).click()
+    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Keepers')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Keepers' })).toBeVisible()
+
+    // The same playlist, renamed -- not a second copy of it beside the first.
+    // Counted rather than matched on length: two unrelated playlists can hold
+    // the same number of tracks, and in this fixture two of them do.
+    const keepers = player.playlists.find((entry) => entry.title === 'Keepers')
+    expect(keepers.id).toBe(scratchId)
+    expect(keepers.items).toHaveLength(QUERY.matches)
+    expect(player.playlists).toHaveLength(playlistsBefore)
+    expect(scratchOf(player)).toBeUndefined()
+
+    // And playback never moved, because it never had to.
+    expect(player.player.activeItem.playlistId).toBe(scratchId)
+    await expect(page.locator('footer')).toContainText('Los Calientes')
+  })
+
+  test('and takes the search out of the sidebar with it', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await expect(page.locator('footer')).toContainText('Los Calientes')
+
+    await page.getByRole('button', { name: 'Save as playlist' }).click()
+    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Keepers')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Keepers' })).toBeVisible()
+
+    const sidebar = page.getByRole('navigation')
+    if (test.info().project.name === 'mobile') {
+      await page.getByRole('button', { name: 'Show playlists' }).click()
+    }
+    // The search is over: it has become a playlist, which is right there.
+    await expect(sidebar.getByText('Keepers')).toBeVisible()
+    await expect(sidebar.getByText(QUERY.text)).toHaveCount(0)
+    await expect(page.getByLabel('Search your library')).toHaveValue('')
+  })
+
+  test('a later search does not reclaim the playlist that was saved', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await expect(page.locator('footer')).toContainText('Los Calientes')
+
+    await page.getByRole('button', { name: 'Save as playlist' }).click()
+    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Keepers')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Keepers' })).toBeVisible()
+    const keepersId = player.playlists.find((entry) => entry.title === 'Keepers').id
+
+    // Adopting leaves the stored id pointing at a playlist that is now the
+    // user's. Resolving the scratch by that id without checking it is still one
+    // would hand their saved playlist to the next search, which empties what it
+    // finds before refilling it -- so the failure here is not a wrong view, it
+    // is their playlist gone.
+    await search(page, NARROWER.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(NARROWER.matches)
+
+    const keepers = player.playlists.find((entry) => entry.id === keepersId)
+    expect(keepers.title).toBe('Keepers')
+    expect(keepers.items).toHaveLength(QUERY.matches)
+    expect(scratchOf(player).id).not.toBe(keepersId)
+  })
+
   test('saving finishes the search off', async ({ page, player }) => {
     await search(page, QUERY.text)
     await page.locator('[role="row"][data-row="0"]').dblclick()

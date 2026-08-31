@@ -11,7 +11,7 @@ import styles from './SavePlaylistButton.module.css'
 // The one place Jean writes a playlist, and it takes an explicit click to get
 // here: browsing and searching never do. Copying is by index -- the player
 // already holds these tracks -- so nothing is uploaded but a list of numbers.
-export function SavePlaylistButton({ search, isOpen, onOpenChange, onOpenPlaylist }) {
+export function SavePlaylistButton({ search, scratch, isOpen, onOpenChange, onOpenPlaylist }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState(search.query)
   const inputRef = useRef(null)
@@ -32,7 +32,20 @@ export function SavePlaylistButton({ search, isOpen, onOpenChange, onOpenPlaylis
 
   const save = useMutation({
     mutationFn: async () => {
-      const playlist = await createPlaylist(title.trim())
+      const name = title.trim()
+
+      // If playing these results already built a playlist of exactly them, that
+      // playlist *is* what is being saved -- so rename it rather than making a
+      // second copy beside it. Playback carries straight on through the rename,
+      // and the scratch stops existing because it stops being Jean's, which is
+      // what takes the search out of the sidebar.
+      if (scratch?.holdsCurrentView) {
+        const id = await scratch.adopt(name)
+        await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY })
+        return { id, title: name }
+      }
+
+      const playlist = await createPlaylist(name)
       await copyPlaylistItems(search.playlist.id, playlist.id, indices)
       // Refetched rather than invalidated: the route that follows resolves
       // against this list, and navigating to an id it has not seen yet would

@@ -8,6 +8,16 @@ export default defineConfig({
   testDir: './test/e2e',
   globalSetup: './test/e2e/build.js',
 
+  // Generous rather than tight. A slow machine -- a laptop doing three other
+  // things, CI on a shared runner -- pushed a handful of ordinary
+  // toBeVisible assertions past the 5s default and reported them as failures,
+  // which is the most expensive kind of wrong: nothing was broken, and the
+  // suite said something was. Raising the ceiling cannot make a failing
+  // assertion pass; it only stops a passing one from being cut off. Genuine
+  // hangs are still caught by the test timeout below.
+  expect: { timeout: 15_000 },
+  timeout: 60_000,
+
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

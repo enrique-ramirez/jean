@@ -283,6 +283,16 @@ them.
   never searches still never loads it, and taking a remembered search back is what pays
   for the index. Jean needs no state of its own for this; `clientconfig` would be a second
   copy of something the player already knows.
+- **Dismissing the search deletes it, unless the player is on it.** Nobody asked for a
+  leftover playlist named after a search they closed, and saving results as a real
+  playlist finishes the search off the same way. But *measured*: deleting the playing
+  playlist does not end playback at the end of the track -- the player falls back to
+  another playlist and carries on, which is exactly the wandering out of the results this
+  arrangement exists to stop. So it outlives the search for as long as it is being
+  listened to, and the next search played from takes it over. The check is the active
+  item's `playlistId`, not `isCurrent`: that stays pointing at the last playlist played
+  from long after playback stopped, and would have kept the scratch alive forever once it
+  had been used once.
 - **`permissions.changePlaylists: false` means no scratch playlist**, so results fall back
   to playing in place and the Shuffle button goes. Degraded, and honestly so.
 

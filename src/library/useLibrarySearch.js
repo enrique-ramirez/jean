@@ -1,5 +1,7 @@
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 
+import { removePlaylist } from '../api/beefweb.js'
+import { usePermissions, usePlayer } from '../player/usePlayer.js'
 import { playlistKey } from '../playlist/playlistStore.js'
 import { usePlaylistItems } from '../playlist/usePlaylistItems.js'
 import { libraryIndex, searchLibrary } from './libraryIndex.js'
@@ -36,6 +38,8 @@ function project(rows, matched, heat, patina) {
 // and back. The query is the state; everything else falls out of it.
 export function useLibrarySearch(playlists) {
   const { playlist, choose } = useLibraryPlaylist(playlists)
+  const permissions = usePermissions()
+  const { data: playerSnapshot } = usePlayer()
   const [query, setQuery] = useState('')
   const [isEngaged, setIsEngaged] = useState(false)
 
@@ -56,6 +60,27 @@ export function useLibrarySearch(playlists) {
   const restore = useCallback(() => {
     setQuery((current) => current || remembered || '')
   }, [remembered])
+
+  // Dismissing the search takes the playlist with it: it exists to be played,
+  // and nobody asked for a leftover named after a search they closed.
+  //
+  // Except while the player is on it. Deleting the playing playlist does not
+  // end playback at the end of the track -- measured, the player falls back to
+  // another playlist and carries on, which is exactly the wandering out of the
+  // results that this whole arrangement exists to stop. So it outlives the
+  // search only for as long as it is being listened to, and the next search to
+  // be played from takes it over.
+  const clear = useCallback(() => {
+    setQuery('')
+
+    // The active item, not `isCurrent`: that stays pointing at the last
+    // playlist played from long after playback stopped, which would have kept
+    // the scratch alive forever once it had been used once.
+    const playingFrom = playerSnapshot?.player?.activeItem?.playlistId
+    const scratch = playlists.find(isScratchPlaylist)
+    if (!scratch || scratch.id === playingFrom || permissions.changePlaylists === false) return
+    removePlaylist(scratch.id)
+  }, [playlists, permissions.changePlaylists, playerSnapshot])
 
   // The library is megabytes and most sessions never search, so nothing is
   // fetched until someone actually reaches for the field.
@@ -89,7 +114,7 @@ export function useLibrarySearch(playlists) {
     choose,
     query,
     setQuery,
-    clear: useCallback(() => setQuery(''), []),
+    clear,
     inputRef,
     focus,
     remembered,

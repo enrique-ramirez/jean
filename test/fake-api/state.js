@@ -81,7 +81,23 @@ export function createState({
   // no component provides -- so `withoutFields: ['%lastfm_play_count%']` is an
   // install with no playback-statistics component, not a mock of one.
   withoutFields = [],
+  // Tag values the capture does not happen to carry, keyed by track title. One
+  // person's library is not every library: this one has no featured artist and
+  // no compilation on it, and neither is worth a sixth album of invented
+  // fixture. Stating the tag a test needs keeps everything else captured.
+  retagged = {},
 } = {}) {
+  const patches = Object.entries(retagged)
+  if (patches.length > 0) {
+    const byTitle = new Map(patches)
+    for (const playlist of playlists) {
+      playlist.items = playlist.items.map((track) => {
+        const patch = byTitle.get(track['%title%'])
+        return patch ? { ...track, ...patch } : track
+      })
+    }
+  }
+
   if (withoutFields.length > 0) {
     const drop = new Set(withoutFields)
     for (const playlist of playlists) {

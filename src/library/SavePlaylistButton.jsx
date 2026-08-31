@@ -41,6 +41,10 @@ export function SavePlaylistButton({ search, isOpen, onOpenChange, onOpenPlaylis
       return playlist
     },
     onSuccess: (playlist) => {
+      // The results have somewhere permanent to live now, so the search that
+      // made them is done -- and with it the scratch playlist, which was only
+      // ever the temporary version of what was just saved.
+      search.clear()
       onOpenChange(false)
       onOpenPlaylist(playlist.id)
     },

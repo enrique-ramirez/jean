@@ -1,4 +1,4 @@
-import { expect, rowByTitle, test } from './fixtures.js'
+import { expect, rowByTitle, scrollUntilMounted, test } from './fixtures.js'
 
 // Deathconsciousness is the fixture's two-disc album and the last one in the
 // Library, which is why everything here scrolls to the end first. Both discs
@@ -10,26 +10,6 @@ const DISC_TWO = 'Waiting For Black Metal Records To Come In The Mail'
 // Jar Of Flies is one disc, so it must look exactly as it did before.
 const SINGLE_DISC_ALBUM = 'Jar Of Flies'
 const SINGLE_DISC_TRACK = 'Nutshell'
-
-// The virtualiser only mounts what is near the viewport, so a row further down
-// the library does not exist to be located until the list has been scrolled to
-// it. A screenful at a time rather than a jump to scrollHeight: the albums
-// wanted here are in the middle of the library as well as at the end of it, and
-// in album mode the total height is an estimate until the groups have been
-// measured, so any single jump is aimed at the wrong place anyway.
-const scrollUntilMounted = async (page, locator) => {
-  await expect
-    .poll(async () => {
-      if (await locator.count()) return true
-      await page.evaluate(() => {
-        const scroller = document.querySelector('main')
-        scroller.scrollBy(0, scroller.clientHeight * 0.8)
-      })
-      return false
-    })
-    .toBe(true)
-  await expect(locator).toBeAttached()
-}
 
 const trackNumberOf = (row) => row.locator(':scope > span').first()
 

@@ -67,3 +67,33 @@ export function fieldIsAvailable(rows, field, sampleSize = 200) {
 const normalise = (value) => (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 
 export const sameTagValue = (a, b) => normalise(a) === normalise(b)
+
+const escapeForRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// What a track's artist adds to the album's -- 'feat. Future & Halsey' out of
+// 'Post Malone feat. Future & Halsey' on a Post Malone album. Null when the
+// artist is not the album's with something on the end, which is the compilation
+// case: there the artist is the fact about the row rather than a footnote to
+// it, so the caller shows it whole instead.
+//
+// Matched loosely and sliced out of the original, never rebuilt from the
+// normalised form: the album artist comes off the first row of the group and
+// may be another file's spelling of the same name, but what is displayed still
+// has to be the spelling this file carries.
+export function featuring(artist, albumArtist) {
+  if (!artist || !albumArtist) return null
+
+  // The lookahead is what stops a prefix from being a coincidence: without it a
+  // 'Kid' album turns 'Kidz Bop' into 'z Bop'. The album artist has to end
+  // where a word ends, not part-way through one.
+  const name = escapeForRegExp(albumArtist.trim()).replace(/\s+/g, '\\s+')
+  const head = new RegExp(`^\\s*${name}(?=$|[\\s,;/&])`, 'i')
+  const match = head.exec(artist)
+  if (!match) return null
+
+  // A separator the tag happened to choose carries nothing -- 'Post Malone, Ty
+  // Dolla $ign' and 'Post Malone & Ty Dolla $ign' say the same thing, and a
+  // leading comma is not something to print. A connective word is different:
+  // 'feat.' and 'w.' are how the sleeve says it, and they stay.
+  return artist.slice(match[0].length).replace(/^[\s,;/&]+/, '') || null
+}

@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 
 import { Artwork } from '../ui/Artwork.jsx'
 import { TrackRow } from './TrackRow.jsx'
-import { FIELD, sameTagValue, value } from './fields.js'
+import { FIELD, featuring, sameTagValue, value } from './fields.js'
 import styles from './AlbumGroup.module.css'
 
 // One fixed cover size per breakpoint. Scaling it to the run length made the
@@ -37,27 +37,44 @@ export function AlbumGroup({
   // through the same loop rather than through a branch around it.
   const runs = group.discs ?? [{ number: null, start: group.start, count: group.count }]
 
-  const track = (index) => (
-    <TrackRow
-      key={index}
-      row={rows[index]}
-      index={index}
-      itemIndex={itemIndexOf(index)}
-      playlistId={playlistId}
-      columns={columns}
-      template={template}
-      showArtwork={false}
-      heat={heat[index]}
-      patina={patina[index]}
-      isActive={index === activeIndex}
-      isPlaying={isPlaying}
-      isSelected={selection.has(index)}
-      isCursor={index === cursor}
-      isMatch={matches?.has(index) ?? false}
-      showArtist={!sameTagValue(value(rows[index], FIELD.artist), group.albumArtist)}
-      onSelect={onSelect}
-    />
-  )
+  // Three states, and the caption to the left is why there are three. It
+  // already names the album artist, so a row whose artist is that name plus a
+  // guest only has to say the guest -- on the title's line, the way a sleeve
+  // prints it and the way every distributor delivers it. A row whose artist is
+  // someone else entirely is a compilation, where the artist is the fact about
+  // the row rather than a footnote to it, and it keeps its own line.
+  //
+  // The second line was previously both cases at once, which is what looked
+  // bad: 'Post Malone' repeated down the column under every other title, and a
+  // rhythm that broke between one-line and two-line rows for a difference of a
+  // few words.
+  const track = (index) => {
+    const artist = value(rows[index], FIELD.artist)
+    const guest = featuring(artist, group.albumArtist)
+
+    return (
+      <TrackRow
+        key={index}
+        row={rows[index]}
+        index={index}
+        itemIndex={itemIndexOf(index)}
+        playlistId={playlistId}
+        columns={columns}
+        template={template}
+        showArtwork={false}
+        heat={heat[index]}
+        patina={patina[index]}
+        isActive={index === activeIndex}
+        isPlaying={isPlaying}
+        isSelected={selection.has(index)}
+        isCursor={index === cursor}
+        isMatch={matches?.has(index) ?? false}
+        showArtist={guest === null && !sameTagValue(artist, group.albumArtist)}
+        note={guest}
+        onSelect={onSelect}
+      />
+    )
+  }
 
   return (
     <section className={styles.group} data-compact={isCompactViewport}>

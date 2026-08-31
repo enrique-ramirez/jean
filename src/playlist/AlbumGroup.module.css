@@ -48,11 +48,19 @@
 }
 
 /* Rows inside a group are tighter and lose the outer gutter -- the cover is
-   already setting the block apart. Set through the row's own variable so the
-   play-count wash follows the gutter instead of keeping the list layout's. */
+   already setting the block apart. Set through the row's own variables so the
+   play-count wash follows the gutter instead of keeping the list layout's.
+
+   A floor rather than a height. Most rows are one line and sit at exactly 34px;
+   a compilation, where every artist is someone other than the album's, gives
+   every row two -- and two lines of 14px and 12.5px type in 34px left about half
+   a pixel above and below, so the text of one row all but touched the next. The
+   group is measured by the virtualiser, so letting a row grow costs nothing. */
 .tracks > * {
-  height: 34px;
+  min-height: 34px;
+  height: auto;
   --row-gutter: 8px;
+  --row-pad-block: 4px;
 }
 
 /* The eyebrow the view header already uses, at row scale: uppercase, tracked

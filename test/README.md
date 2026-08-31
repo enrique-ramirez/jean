@@ -121,6 +121,12 @@ test('does the thing', async ({ page, player }) => {
   foobar2000 with no playback-statistics component, and everything built on play
   counts should disappear rather than break. This is the promise nothing else
   can check: a bare install must get a complete app, never a dead control.
+- **`retagged`** patches tag values onto captured tracks, keyed by title:
+  `test.use({ retagged: { Nutshell: { '%artist%': 'Alice in Chains feat. X' } } })`.
+  One person's library is not every library -- this capture has no featured
+  artist on it and no compilation, and an album row draws those two differently.
+  Stating the tag a test needs beats growing an invented sixth album, and
+  everything else about the track stays captured.
 - **`settings`** seeds localStorage. It defaults to marking the play-count
   shading as already introduced, since that popover otherwise opens over the
   toolbar in every test that never asked about it. Override it with

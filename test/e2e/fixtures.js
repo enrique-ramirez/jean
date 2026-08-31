@@ -35,6 +35,13 @@ export const test = base.extend({
   // play counts should disappear rather than break.
   withoutFields: [[], { option: true }],
 
+  // Tag values the capture does not carry, keyed by track title:
+  // test.use({ retagged: { Bloodhail: { '%artist%': 'Have a Nice Life feat. X' } } }).
+  // The captured library has no featured artist and no compilation on it, and
+  // both change what a row renders -- so a test states the tag rather than the
+  // fixture growing an invented album for it.
+  retagged: [{}, { option: true }],
+
   // Overrides merged onto the captured player state, for the things that vary
   // between installs and are not in the fixture: permissions, the volume range,
   // which playback orders the player actually offers.
@@ -42,8 +49,10 @@ export const test = base.extend({
 
   // A fresh player per test. The previous test's page is closed by now, so no
   // stream is left subscribed to the state being discarded.
-  player: async ({ fakeServer, librarySize, withoutFields, playerState }, use) => {
-    await use(fakeServer.reset(createState({ librarySize, withoutFields, player: playerState })))
+  player: async ({ fakeServer, librarySize, withoutFields, retagged, playerState }, use) => {
+    await use(
+      fakeServer.reset(createState({ librarySize, withoutFields, retagged, player: playerState })),
+    )
   },
 
   baseURL: async ({ fakeServer }, use) => {
@@ -116,6 +125,32 @@ export const isRowOnScreen = (page, index) =>
     },
     { row: index, slack: EDGE_TOLERANCE_PX },
   )
+
+// The virtualiser only mounts what is near the viewport, so a row further down
+// a playlist does not exist to be located until the list has been scrolled to
+// it. A screenful at a time rather than a jump to the end: the row wanted is as
+// often in the middle as at the bottom, and in album mode the total height is an
+// estimate until the groups have been measured, so any single jump is aimed at
+// the wrong place anyway.
+export const scrollUntilMounted = async (page, locator) => {
+  // Wait for the view before scrolling it. Without this the poll below starts
+  // against an empty list, scrolls a container with nothing in it to scroll,
+  // and spends its whole budget before the rows have even arrived -- which is
+  // why it failed only in a full parallel run and never on its own.
+  await expect(page.locator('[role="row"]').first()).toBeAttached()
+
+  await expect
+    .poll(async () => {
+      if (await locator.count()) return true
+      await page.evaluate(() => {
+        const scroller = document.querySelector('main')
+        scroller.scrollBy(0, scroller.clientHeight * 0.8)
+      })
+      return false
+    })
+    .toBe(true)
+  await expect(locator).toBeAttached()
+}
 
 export const scrollTop = (page) => page.evaluate(() => document.querySelector('main').scrollTop)
 

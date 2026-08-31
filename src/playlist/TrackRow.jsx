@@ -95,6 +95,7 @@ function TrackRowComponent({
   isCursor,
   isMatch,
   showArtist = true,
+  note = null,
   showDisc = false,
   onSelect,
 }) {
@@ -142,8 +143,12 @@ function TrackRowComponent({
           the player's index. */}
       {showArtwork ? <Artwork playlistId={playlistId} index={itemIndex} size={34} /> : null}
 
-      <span className={styles.names}>
+      <span className={styles.names} data-inline={note !== null}>
         <span className={styles.title}>{title}</span>
+        {/* No separator between the two. The note starts with the word the tag
+            used -- 'feat.', 'w.' -- which is already a join, and a middot on
+            every second row is the clutter this is removing. */}
+        {note === null ? null : <span className={styles.note}>{note}</span>}
         {showArtist ? <span className={styles.artist}>{artist}</span> : null}
       </span>
 

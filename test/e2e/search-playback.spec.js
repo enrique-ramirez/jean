@@ -221,7 +221,74 @@ test.describe('a search outlives the tab it was typed in', () => {
   })
 })
 
+test.describe('clearing the search', () => {
+  test('takes the scratch playlist with it', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    // Stop first, so the player is not on it. Nobody asked for a playlist named
+    // after a search they closed.
+    await page.locator('footer').getByRole('button', { name: 'Pause' }).click()
+    await page.goto('/#/p5')
+    await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
+
+    // Stopped on the player, and then waited for the browser to have heard it.
+    // Whether the scratch survives is decided from the app's copy of the player
+    // state, so clicking before the push lands reads the old answer.
+    // Playing is two requests -- build the playlist, then play from it -- and
+    // the poll above only waits for the first. Stopping between them would land
+    // before playback had started and the play would undo it.
+    await expect(page.locator('footer')).toContainText('Los Calientes')
+    player.stop()
+    await expect(page.locator('footer')).toContainText('Nothing playing')
+
+    await page.getByRole('button', { name: 'Clear search' }).click()
+
+    await expect.poll(() => scratchOf(player)).toBeUndefined()
+  })
+
+  test('but not while the player is still on it', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    await page.getByRole('button', { name: 'Clear search' }).click()
+    await page.waitForTimeout(400)
+
+    // Measured: deleting the playing playlist does not stop at the end of the
+    // track. The player falls back to another playlist and keeps going, which
+    // is the wandering out of the results this arrangement exists to stop. So
+    // it outlives the search for as long as it is being listened to.
+    expect(scratchOf(player)).toBeDefined()
+    expect(scratchOf(player).items).toHaveLength(QUERY.matches)
+  })
+})
+
 test.describe('saving results as a playlist', () => {
+  test('saving finishes the search off', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+
+    // Playing is two requests -- build the playlist, then play from it -- and
+    // the poll above only waits for the first. Stopping between them would land
+    // before playback had started and the play would undo it.
+    await expect(page.locator('footer')).toContainText('Los Calientes')
+    player.stop()
+    await expect(page.locator('footer')).toContainText('Nothing playing')
+
+    await page.getByRole('button', { name: 'Save as playlist' }).click()
+    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Keepers')
+    await page.getByRole('button', { name: 'Create' }).click()
+
+    // The results have somewhere permanent to live now, so the temporary
+    // version of them goes.
+    await expect(page.getByRole('heading', { level: 1, name: 'Keepers' })).toBeVisible()
+    await expect.poll(() => scratchOf(player)).toBeUndefined()
+    await expect(page.getByLabel('Search your library')).toHaveValue('')
+  })
+
   test('opening the form does not carry the header off the top', async ({ page }) => {
     await search(page, QUERY.text)
     const titleTop = () =>

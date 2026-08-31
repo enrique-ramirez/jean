@@ -166,9 +166,14 @@ Measured on a 30,441-track library, 12 columns: 1.03 MB gzipped, 6.95 MB raw, ~6
 fetch, ~46 ms parse. That scales to 100k–200k libraries only with the following, all of
 which are required, not optional:
 
-- **Fetch in chunks** (`offset:count`). Not for throughput — the server is the bottleneck
-  and parallel chunks barely beat one request — but for **time to first paint**. The first
-  chunk lands in ~77 ms and can render immediately while the rest streams in.
+- **Fetch in chunks** (`offset:count`), but count the requests, not the rows. Measured
+  since: a request costs ~270 ms before it returns anything and only ~30 ms more to return
+  2,000 rows instead of 500, so sixteen sequential chunks of 2,000 took 5.5 s where one
+  small chunk followed by four concurrent large ones paints at ~730 ms and finishes in
+  ~1.5 s. Chunk for **time to first paint**, then go wide, and never issue many small
+  sequential requests.
+- **One load, shared.** The library has more than one consumer — the playlist view and
+  search — and neither may fetch its own copy. `playlist/playlistStore.js` owns it.
 - **Parse and index in a Web Worker.** A 46 ms parse at 30k is a ~300 ms main-thread
   freeze at 200k.
 - **Dictionary-encode into columns.** Parallel `Uint32Array`s of indices into shared string
@@ -372,7 +377,14 @@ Deploying is only for making it permanent — see `README.md`.
 **Stack:** React 19 · Vite 8 · TanStack Query 5 · TanStack Virtual · TanStack Hotkeys ·
 lucide-react · CSS Modules · pnpm. No test setup yet.
 
-**Built so far:** the app shell, both themes, and the playlist view (compact and album
+**Built so far:** the app shell, both themes, the playlist view (compact and album
 layouts, heat/patina, the finder, column picker, keyboard navigation, transport with a
-seekable progress bar). The home screen, library-wide search, selection actions, the
-Web Worker and IndexedDB persistence are not built yet.
+seekable progress bar), and library-wide search — a persistent field bound to `⌘K`, its
+own `#/search` route with a sidebar entry, and per-view scroll and cursor memory so
+leaving a result set and coming back returns you to where you were. The shared list
+machinery both views render through is `playlist/TrackBrowser.jsx`, and `indices` is how
+a filtered view maps a row back to the playlist index the player addresses.
+Results can also be saved as a real playlist -- `/playlists/add` returns the new id and
+`/playlists/{src}/{dst}/items/copy` copies by index, so no `%path%` is ever fetched -- gated
+on `permissions.changePlaylists` and on the library having finished loading. The home
+screen, selection actions, the Web Worker and IndexedDB persistence are not built yet.

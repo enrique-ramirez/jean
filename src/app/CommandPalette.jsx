@@ -3,8 +3,8 @@ import { ListMusic, Search } from 'lucide-react'
 
 import styles from './CommandPalette.module.css'
 
-// Playlists only, for now. Once the library index lands this is where track,
-// album and artist results join them -- the shape is deliberately the same.
+// Jumping between playlists, not searching them: tracks are the library
+// field's job, up in the top bar, where it is visible on a phone as well.
 export function CommandPalette({ playlists, onSelect, onDismiss }) {
   const inputRef = useRef(null)
   const [query, setQuery] = useState('')

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Keyboard, Moon, PanelLeft, Search, Sun } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Keyboard, Moon, PanelLeft, Sun } from 'lucide-react'
 
 import { nextTrack, previousTrack, stop } from '../api/beefweb.js'
 import { useIsCompactViewport } from '../hooks/useMediaQuery.js'
@@ -7,6 +7,9 @@ import { useStoredState } from '../hooks/useStoredState.js'
 import { SCOPE } from '../keyboard/keymap.js'
 import { ShortcutSheet } from '../keyboard/ShortcutSheet.jsx'
 import { useKeymap } from '../keyboard/useKeymap.js'
+import { LibrarySearchField } from '../library/LibrarySearchField.jsx'
+import { SearchResults } from '../library/SearchResults.jsx'
+import { useLibrarySearch } from '../library/useLibrarySearch.js'
 import { StatusBar } from '../player/StatusBar.jsx'
 import {
   usePlayPause,
@@ -21,10 +24,12 @@ import { Button } from '../ui/Button.jsx'
 import { CommandPalette } from './CommandPalette.jsx'
 import { Sidebar } from './Sidebar.jsx'
 import { useHashRoute } from './useHashRoute.js'
+import { useScrollMemory } from './useScrollMemory.js'
 import { useTheme } from './useTheme.js'
 import styles from './App.module.css'
 
 const SEEK_STEP = 5
+const SEARCH_ROUTE = 'search'
 
 export function App() {
   usePlayerStream()
@@ -36,6 +41,7 @@ export function App() {
   const volume = useVolume()
   const { theme, toggle: toggleTheme } = useTheme()
   const isCompactViewport = useIsCompactViewport()
+  const search = useLibrarySearch(playlists)
 
   const [route, navigate] = useHashRoute()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -45,20 +51,28 @@ export function App() {
 
   const scrollRef = useRef(null)
 
+  const isSearchRoute = route === SEARCH_ROUTE
+  const routedId = playlists.some((entry) => entry.id === route) ? route : null
+
+  // Where leaving the search puts you back. Held rather than derived: while the
+  // results are on screen the route no longer names a playlist.
+  const lastPlaylistId = useRef(null)
+  useEffect(() => {
+    if (routedId) lastPlaylistId.current = routedId
+  }, [routedId])
+
   // Default to whatever the player is on, so opening Jean lands somewhere
   // meaningful rather than on an arbitrary playlist.
   const fallbackId = playlists.find((entry) => entry.isCurrent)?.id ?? playlists[0]?.id
-  const selectedId = playlists.some((entry) => entry.id === route) ? route : fallbackId
+  const selectedId = routedId ?? lastPlaylistId.current ?? fallbackId
   const playlist = useMemo(
     () => playlists.find((entry) => entry.id === selectedId) ?? null,
     [playlists, selectedId],
   )
 
-  // A new playlist starts at the top; keeping the old offset would land the
-  // user in the middle of something they have not seen.
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 })
-  }, [selectedId])
+  // Each result set is its own view, so refining a query starts at the top
+  // while stepping back into a playlist returns to the row you left.
+  useScrollMemory(scrollRef, isSearchRoute ? search.viewKey : `playlist:${selectedId}`)
 
   const toggleSidebar = () => {
     if (isCompactViewport) setIsSidebarOpen((current) => !current)
@@ -71,6 +85,23 @@ export function App() {
     setIsPaletteOpen(false)
   }
 
+  const openSearch = useCallback(() => {
+    navigate(`/${SEARCH_ROUTE}`)
+    setIsSidebarOpen(false)
+  }, [navigate])
+
+  const onQueryChange = (value) => {
+    search.setQuery(value)
+    // Typing is the navigation. Waiting for Enter would leave the first
+    // keystrokes filtering a page nobody is looking at.
+    if (value.trim()) openSearch()
+  }
+
+  const dismissSearch = () => {
+    search.clear()
+    if (isSearchRoute) navigate(`/${selectedId}`)
+  }
+
   useKeymap(SCOPE.global, {
     playPause: () => playPause.mutate(),
     nextTrack: () => nextTrack(),
@@ -81,7 +112,11 @@ export function App() {
     volumeUp: () => volume.up(),
     volumeDown: () => volume.down(),
     toggleMute: () => volume.setMuted(!volume.volume?.isMuted),
-    globalSearch: () => setIsPaletteOpen(true),
+    globalSearch: () => {
+      search.focus()
+      if (search.hasQuery) openSearch()
+    },
+    openPalette: () => setIsPaletteOpen(true),
     toggleSidebar,
     showShortcuts: () => setIsSheetOpen((current) => !current),
     toggleTheme,
@@ -104,11 +139,7 @@ export function App() {
           </p>
         )}
 
-        <button type="button" className={styles.search} onClick={() => setIsPaletteOpen(true)}>
-          <Search size={15} strokeWidth={2} aria-hidden="true" />
-          <span className={styles.searchLabel}>Go to playlist</span>
-          <kbd className={styles.searchHint}>⌘K</kbd>
-        </button>
+        <LibrarySearchField search={search} onChange={onQueryChange} onDismiss={dismissSearch} />
 
         <div className={styles.actions}>
           <Button
@@ -129,19 +160,32 @@ export function App() {
       <div className={styles.body} data-collapsed={!isCompactViewport && isSidebarCollapsed}>
         <Sidebar
           playlists={playlists}
-          selectedId={selectedId}
+          selectedId={isSearchRoute ? null : selectedId}
           onSelect={openPlaylist}
+          search={search}
+          isSearchOpen={isSearchRoute}
+          onOpenSearch={openSearch}
           isOpen={isSidebarOpen}
           isCollapsed={!isCompactViewport && isSidebarCollapsed}
           onDismiss={() => setIsSidebarOpen(false)}
         />
 
         <main className={styles.main} ref={scrollRef}>
-          <PlaylistView
-            playlist={playlist}
-            scrollRef={scrollRef}
-            isCompactViewport={isCompactViewport}
-          />
+          {isSearchRoute ? (
+            <SearchResults
+              search={search}
+              playlists={playlists}
+              scrollRef={scrollRef}
+              isCompactViewport={isCompactViewport}
+              onOpenPlaylist={openPlaylist}
+            />
+          ) : (
+            <PlaylistView
+              playlist={playlist}
+              scrollRef={scrollRef}
+              isCompactViewport={isCompactViewport}
+            />
+          )}
         </main>
       </div>
 

@@ -26,6 +26,8 @@ const estimateGroupHeight = (group, isCompactViewport) => {
 export const TrackList = forwardRef(function TrackList(
   {
     rows,
+    indices,
+    viewKey,
     playlistId,
     scrollRef,
     layout,
@@ -98,15 +100,18 @@ export const TrackList = forwardRef(function TrackList(
 
   useEffect(() => () => cancelScroll.current?.(), [])
 
-  // Measurements are cached by index, and the two layouts mean completely
-  // different things by index -- row 4 in list mode is not album 4. Without
-  // this reset, switching layouts reuses the other one's heights.
+  // Measurements are cached by index, and an index means different things in
+  // different layouts -- row 4 in list mode is not album 4. Without this reset,
+  // switching layouts reuses the other one's heights. `viewKey` covers the same
+  // trap from the other side: a new set of search results reuses the previous
+  // set's indices for a completely different set of rows. Chunks arriving do
+  // not change the key, so a load in progress is left alone.
   const virtualizerRef = useRef(virtualizer)
   virtualizerRef.current = virtualizer
 
   useEffect(() => {
     virtualizerRef.current.measure()
-  }, [isAlbumLayout, isCompactViewport])
+  }, [isAlbumLayout, isCompactViewport, viewKey])
 
   const virtualItems = virtualizer.getVirtualItems()
 
@@ -170,6 +175,7 @@ export const TrackList = forwardRef(function TrackList(
             <AlbumGroup
               group={groups[virtualRow.index]}
               rows={rows}
+              indices={indices}
               playlistId={playlistId}
               columns={columns}
               template={albumTemplate}
@@ -188,6 +194,7 @@ export const TrackList = forwardRef(function TrackList(
             <TrackRow
               row={rows[virtualRow.index]}
               index={virtualRow.index}
+              itemIndex={indices ? indices[virtualRow.index] : virtualRow.index}
               playlistId={playlistId}
               columns={columns}
               template={template}

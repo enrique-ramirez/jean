@@ -1,22 +1,7 @@
-.view {
-  position: relative;
-  padding-bottom: 32px;
-}
-
-.toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.spacer {
-  flex: 1;
+.notice {
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--muted);
 }
 
 .hint {
@@ -30,71 +15,7 @@
   color: var(--faint);
 }
 
-.progress {
-  height: 2px;
-  background: var(--accent);
-  transform-origin: left;
-  transition: transform 160ms var(--ease);
-}
-
-.notice {
-  padding: 56px 24px;
-  text-align: center;
-  color: var(--muted);
-}
-
-/* Zero height, so an always-mounted pill reserves nothing at the end of the
-   list. Sticky still works at height 0. */
-.pillSlot {
-  position: sticky;
-  bottom: 16px;
-  z-index: 12;
-  height: 0;
-  pointer-events: none;
-}
-
-/* Transitions rather than a keyframe, so it slides both ways: up on the way in,
-   back down on the way out. */
-.pill {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow);
-  font-size: 0.8125rem;
-  white-space: nowrap;
-  translate: -50% 0;
-  transition:
-    opacity 170ms var(--ease),
-    translate 240ms var(--ease);
-}
-
-.pill[data-visible='true'] {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.pill[data-visible='false'] {
-  opacity: 0;
-  translate: -50% 12px;
-  pointer-events: none;
-}
-
-.pill svg {
-  color: var(--accent);
-}
-
 @media (max-width: 720px) {
-  .toolbar {
-    padding: 8px 12px;
-  }
-
   /* No keyboard to press it with. */
   .hint {
     display: none;

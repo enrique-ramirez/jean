@@ -68,6 +68,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A second heading needs room above it; the first one sits under the top bar. */
+.heading:not(:first-child) {
+  margin-top: 16px;
+}
+
 /* The grid column goes to zero, but padding and border are not part of that --
    they have to be zeroed here or the nav overflows into the content. */
 .sidebar[data-collapsed='true'] {

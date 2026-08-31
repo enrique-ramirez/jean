@@ -85,6 +85,20 @@ export const setPlaybackOrder = (value) =>
 export const addToPlayQueue = (playlistId, itemIndex) =>
   post('/api/playqueue/add', { plref: playlistId, itemIndex })
 
+// Returns the new playlist, id included, so nothing has to guess which of the
+// player's playlists just appeared.
+export async function createPlaylist(title) {
+  const response = await post(`/api/playlists/add?title=${encodeURIComponent(title)}`)
+  return response.json()
+}
+
+// Copies by index, so a derived playlist costs no %path% lookup and no upload
+// of anything but numbers. Measured: 15,000 indices in one request, 323 ms.
+// `items` is often a typed array, which JSON.stringify would turn into an
+// object -- hence the copy.
+export const copyPlaylistItems = (sourceId, targetId, items) =>
+  post(`/api/playlists/${sourceId}/${targetId}/items/copy`, { items: Array.from(items) })
+
 // Maps the positional columns array back onto names.
 export function readTrack(player) {
   const values = player?.activeItem?.columns

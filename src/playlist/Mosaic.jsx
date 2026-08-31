@@ -22,24 +22,26 @@ const hash = (text) => {
   return value
 }
 
-// Evenly spaced across the playlist rather than randomly sampled, so the tiles
+// Evenly spaced across the set rather than randomly sampled, so the tiles
 // represent the whole thing instead of clustering. The offset is derived from
-// the playlist id so two playlists of the same length still look different, and
-// so a given playlist looks the same on every render.
-const pickIndices = (playlistId, trackCount, tiles) => {
+// the seed so two lists of the same length still look different, and so a given
+// list looks the same on every render.
+const pickPositions = (seed, trackCount, tiles) => {
   if (tiles === 0) return []
   const stride = trackCount / tiles
-  const offset = hash(playlistId) % Math.max(1, Math.floor(stride))
+  const offset = hash(seed) % Math.max(1, Math.floor(stride))
   return Array.from({ length: tiles }, (_, tile) =>
     Math.min(trackCount - 1, Math.floor(tile * stride) + offset),
   )
 }
 
-export function Mosaic({ playlistId, trackCount, size = 176 }) {
+// `indices` maps a position in the set back to the playlist index artwork is
+// addressed by; without it the set is the playlist and the two are the same.
+export function Mosaic({ playlistId, trackCount, indices = null, seed = playlistId, size = 176 }) {
   const tiles = tileCountFor(trackCount)
-  const indices = useMemo(
-    () => pickIndices(playlistId, trackCount, tiles),
-    [playlistId, trackCount, tiles],
+  const positions = useMemo(
+    () => pickPositions(seed, trackCount, tiles).map((position) => (indices ? indices[position] : position)),
+    [seed, trackCount, tiles, indices],
   )
 
   if (tiles === 0) {
@@ -52,7 +54,7 @@ export function Mosaic({ playlistId, trackCount, size = 176 }) {
 
   return (
     <div className={styles.mosaic} data-tiles={tiles} style={{ width: size, height: size }}>
-      {indices.map((index, position) => (
+      {positions.map((index, position) => (
         <Artwork
           key={`${index}-${position}`}
           playlistId={playlistId}

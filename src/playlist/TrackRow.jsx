@@ -81,6 +81,7 @@ function NowPlayingBars() {
 function TrackRowComponent({
   row,
   index,
+  itemIndex,
   playlistId,
   columns,
   template,
@@ -117,7 +118,10 @@ function TrackRowComponent({
         {isActive && isPlaying ? <NowPlayingBars /> : (trackNumber ?? index + 1)}
       </span>
 
-      {showArtwork ? <Artwork playlistId={playlistId} index={index} size={34} /> : null}
+      {/* index is the row's place in the view; itemIndex is where the player
+          keeps it. They differ in a filtered view, and artwork is addressed by
+          the player's index. */}
+      {showArtwork ? <Artwork playlistId={playlistId} index={itemIndex} size={34} /> : null}
 
       <span className={styles.names}>
         <span className={styles.title}>{title}</span>

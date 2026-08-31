@@ -1,11 +1,6 @@
-import { Shuffle } from 'lucide-react'
-
-import { Button } from '../ui/Button.jsx'
 import { Chip } from '../ui/Chip.jsx'
-import { PlayIcon } from '../ui/icons.jsx'
-import { Mosaic } from './Mosaic.jsx'
 import { formatDuration } from './stats.js'
-import styles from './PlaylistHeader.module.css'
+import styles from './ViewHeader.module.css'
 
 function PlayedMeter({ share }) {
   return (
@@ -18,7 +13,10 @@ function PlayedMeter({ share }) {
   )
 }
 
-export function PlaylistHeader({ playlist, stats, hasPlayCounts, onPlay, shuffle, canPlay }) {
+// One header for anything that is a list of tracks. A playlist and a set of
+// search results differ in where they came from, not in what is worth saying
+// about them -- how many tracks, how long, which years, what it is made of.
+export function ViewHeader({ eyebrow, title, stats, hasPlayCounts, actions, aside }) {
   const duration = formatDuration(stats.seconds)
   const span =
     stats.earliest && stats.latest
@@ -30,8 +28,8 @@ export function PlaylistHeader({ playlist, stats, hasPlayCounts, onPlay, shuffle
   return (
     <header className={styles.header}>
       <div className={styles.main}>
-        <p className={styles.eyebrow}>{playlist.isCurrent ? 'Playing from' : 'Playlist'}</p>
-        <h1 className={styles.title}>{playlist.title}</h1>
+        <p className={styles.eyebrow}>{eyebrow}</p>
+        <h1 className={styles.title}>{title}</h1>
 
         <div className={styles.stats}>
           <span>
@@ -60,23 +58,10 @@ export function PlaylistHeader({ playlist, stats, hasPlayCounts, onPlay, shuffle
           </div>
         ) : null}
 
-        <div className={styles.actions}>
-          <Button variant="primary" icon={PlayIcon} onClick={onPlay} disabled={!canPlay}>
-            Play
-          </Button>
-          <Button
-            icon={Shuffle}
-            onClick={shuffle.toggleShuffle}
-            disabled={!shuffle.canShuffle}
-            aria-pressed={shuffle.isShuffle}
-            title={shuffle.orderName ? `Playback order: ${shuffle.orderName}` : 'Shuffle'}
-          >
-            Shuffle
-          </Button>
-        </div>
+        <div className={styles.actions}>{actions}</div>
       </div>
 
-      <Mosaic playlistId={playlist.id} trackCount={stats.trackCount} />
+      {aside}
     </header>
   )
 }

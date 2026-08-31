@@ -2,14 +2,16 @@
 // declared here and nowhere else: `useKeymap` registers them and ShortcutSheet
 // renders the help overlay from the same array, so the two cannot drift.
 //
-// `/` is contextual — it filters whatever list you are looking at. `Mod+K`
-// always searches the whole library. Keep that distinction; it is the reason
-// both can exist without competing.
+// `/` is contextual — it filters whatever list you are looking at, which on the
+// search page is the library field itself. `Mod+K` always searches the whole
+// library. Keep that distinction; it is the reason both can exist without
+// competing.
 
 export const SCOPE = {
   global: 'global',
   playlist: 'playlist',
   finder: 'finder',
+  search: 'search',
 }
 
 export const KEYMAP = [
@@ -29,6 +31,7 @@ export const KEYMAP = [
 
   // Navigation -----------------------------------------------------------
   { id: 'globalSearch', scope: SCOPE.global, group: 'Navigation', name: 'Search the library', keys: ['Mod+k'] },
+  { id: 'openPalette', scope: SCOPE.global, group: 'Navigation', name: 'Go to playlist', keys: ['Mod+Shift+p'] },
   { id: 'toggleSidebar', scope: SCOPE.global, group: 'Navigation', name: 'Show / hide sidebar', keys: ['Mod+b'] },
   { id: 'showShortcuts', scope: SCOPE.global, group: 'Navigation', name: 'Keyboard shortcuts', keys: ['Shift+/'] },
 
@@ -51,6 +54,9 @@ export const KEYMAP = [
   { id: 'clearSelection', scope: SCOPE.playlist, group: 'In a playlist', name: 'Clear selection', keys: ['Escape'] },
   { id: 'toggleLayout', scope: SCOPE.playlist, group: 'In a playlist', name: 'Switch compact / album view', keys: ['v'] },
   { id: 'toggleHeat', scope: SCOPE.playlist, group: 'In a playlist', name: 'Show / hide play-count heat', keys: ['h'] },
+
+  // In search results ----------------------------------------------------
+  { id: 'saveSearch', scope: SCOPE.search, group: 'In search results', name: 'Save results as a playlist', keys: ['Mod+s'] },
 
   // Finder ---------------------------------------------------------------
   // These fire while a text input holds focus, so ignoreInputs has to be off.

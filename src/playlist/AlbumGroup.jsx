@@ -14,6 +14,7 @@ export const ALBUM_COVER_COMPACT = 72
 export function AlbumGroup({
   group,
   rows,
+  indices,
   playlistId,
   columns,
   template,
@@ -28,15 +29,16 @@ export function AlbumGroup({
   onPlay,
   isCompactViewport,
 }) {
-  const indices = Array.from({ length: group.count }, (_, offset) => group.start + offset)
+  const positions = Array.from({ length: group.count }, (_, offset) => group.start + offset)
   const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER
+  const itemIndexOf = (position) => (indices ? indices[position] : position)
 
   return (
     <section className={styles.group} data-compact={isCompactViewport}>
       <div className={styles.aside}>
         <Artwork
           playlistId={playlistId}
-          index={group.start}
+          index={itemIndexOf(group.start)}
           size={coverSize}
           className={styles.art}
           alt={`${group.album} cover`}
@@ -51,11 +53,12 @@ export function AlbumGroup({
       </div>
 
       <div className={styles.tracks}>
-        {indices.map((index) => (
+        {positions.map((index) => (
           <TrackRow
             key={index}
             row={rows[index]}
             index={index}
+            itemIndex={itemIndexOf(index)}
             playlistId={playlistId}
             columns={columns}
             template={template}

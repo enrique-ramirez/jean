@@ -7,13 +7,17 @@ network.
 Named for how it feels to use, not for anything it does. Rhymes with *pan*, not
 with *bean* — the "ea" is the A in apple.
 
-**Where it is:** the playlist view works. Compact and album layouts over a virtualised
-list that stays smooth at 30,000 tracks, find-within-playlist that jumps rather than
-filters, toggleable columns, full keyboard navigation, light and dark themes, and a
-transport with a seekable progress bar. If your player reports play counts, tracks are
-shaded by how often you have played them and faded by how long it has been.
+**Where it is:** the playlist view and library search work. Compact and album layouts
+over a virtualised list that stays smooth at 30,000 tracks, search across the whole
+library from the bar at the top, find-within-playlist that jumps rather than filters,
+toggleable columns, full keyboard navigation, light and dark themes, and a transport
+with a seekable progress bar. If your player reports play counts, tracks are shaded by
+how often you have played them and faded by how long it has been.
 
-**Not built yet:** the home screen, library-wide search, and playlist editing.
+Search results can be saved as a real playlist in one click, copied by index so nothing
+is uploaded but a list of numbers.
+
+**Not built yet:** the home screen, and editing playlists once they exist.
 
 ## Development
 
@@ -51,14 +55,16 @@ library, and the right kind is an **autoplaylist**: a live Media Library query t
 sync on its own.
 
 In foobar2000: **Library → Search**, enter `ALL` as the query, and create an autoplaylist
-from the result. Name it whatever you like — Jean will ask you to pick it on first run.
+from the result. Call it **Library** and Jean finds it by itself; call it anything else and
+the search page will ask you to pick it once, then remember.
 
 That playlist then contains every track in your Media Library, updates itself when you add
 or remove music, and costs nothing to keep around.
 
 > **Do not point Jean at `Default Playlist`.** It is foobar's scratch buffer — clicking an
 > album in the library view replaces its entire contents. It can look like a library one
-> minute and hold twelve tracks the next. Jean never reads or writes it.
+> minute and hold twelve tracks the next. Jean never chooses it for you, and flags it in
+> the picker if you go looking.
 
 If you would rather not create an autoplaylist, Jean can build a playlist from your music
 folders instead. That mirrors what is on disk rather than what is in your library, and needs
@@ -125,11 +131,30 @@ projects forward from that anchor. `<SeekBar>` runs the animation frame loop and
 deliberately a leaf — that state must never be lifted, or it would repaint a
 30,000-row virtualised track list sixty times a second.
 
-Playlist contents are a separate path. They arrive in **chunks of 2,000**, rendered as
-they land, so the list is usable long before the tail arrives — the first chunk of a
-30,000-track playlist shows up in well under a tenth of the total time. Rows are kept
-as the raw positional arrays beefweb returns rather than being turned into objects,
-and play-count "heat" is precomputed into typed arrays alongside them.
+Playlist contents are a separate path. They arrive in chunks, rendered as they land, so
+the list is usable long before the tail arrives. The shape of that chunking is measured
+rather than guessed: a request costs about 270 ms before it returns a single row and only
+30 ms more to return 2,000 rows instead of 500, so what matters is how many requests there
+are, not how big they are. One modest chunk lands first to paint something, then four
+concurrent large ones finish the job — a 30,441-track library shows its first rows at
+~730 ms and is fully loaded in ~1.5 s, where sixteen sequential chunks of 2,000 took 5.5 s.
+
+Rows are kept as the raw positional arrays beefweb returns rather than being turned into
+objects, and play-count "heat" is precomputed into typed arrays alongside them. One load
+is shared by everything that needs it, so opening the library playlist and searching it do
+not fetch it twice.
+
+Search is a **view, not a playlist**: a filter over the rows already in memory, matching
+every word of the query against title, artist and album in any order. Nothing is written to
+the player, no playlist is created, and playing a result plays it where it already lives.
+
+Turning results *into* a playlist is the one write, and it takes an explicit click.
+`POST /playlists/add` returns the new playlist id, and
+`POST /playlists/{src}/{dst}/items/copy` copies by **index** — no `%path%` lookup, no
+upload beyond a list of numbers. Measured: 15,000 indices in a single request, 323 ms. The
+button is hidden entirely when the player reports `changePlaylists: false`, and disabled
+while the library is still loading, since a partial result set would save as if it were the
+whole answer.
 
 ## API notes worth remembering
 
@@ -187,8 +212,10 @@ stale. The short version:
 | `m` | Mute |
 | `↑` `↓` · `j` `k` | Move through the list |
 | `Enter` | Play the selected track |
-| `/` | Find within the playlist |
-| `⌘K` | Go to playlist |
+| `/` | Find within the list — the library field, on the search page |
+| `⌘K` | Search the library |
+| `⌘S` | Save search results as a playlist |
+| `⌘⇧P` | Go to playlist |
 | `n` | Jump to what is playing |
 | `v` | Switch compact / album layout |
 | `t` | Switch light / dark |

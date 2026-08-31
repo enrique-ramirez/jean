@@ -17,6 +17,7 @@ import {
   volumeDown,
   volumeUp,
 } from '../api/beefweb.js'
+import { useCoalescedWrite } from '../hooks/useCoalescedWrite.js'
 import { positionAt } from './position.js'
 
 export const PLAYER_KEY = ['player']
@@ -270,17 +271,48 @@ function usePlayerPatch(mutationFn, patch) {
   })
 }
 
+// How long a value we just sent stays authoritative over what the player
+// reports. Long enough to cover a push that was already in flight describing an
+// older position of the slider, short enough that a real external change (the
+// volume knob on the PC) shows up promptly.
+const VOLUME_SETTLE_MS = 1000
+const VOLUME_EPSILON = 0.5
+
 export function useVolume() {
   const { data } = usePlayer()
-
-  const set = usePlayerPatch(setVolume, (volume, value) => ({ ...volume, value }))
+  const send = useCoalescedWrite(setVolume)
   const mute = usePlayerPatch(setMuted, (volume, isMuted) => ({ ...volume, isMuted }))
   const nudgeUp = useMutation({ mutationFn: volumeUp })
   const nudgeDown = useMutation({ mutationFn: volumeDown })
 
+  // Deliberately not written into the query cache. Volume state is shared, so a
+  // cache write per pointer move would re-render every subscriber -- including
+  // the virtualised track list -- for the whole length of a drag. This ref is
+  // the local truth instead, and it only has to outlive the round trip.
+  const written = useRef(null)
+
+  const setValue = useCallback(
+    (value) => {
+      written.current = { value, at: performance.now() }
+      send(value)
+    },
+    [send],
+  )
+
+  const reported = data?.player?.volume ?? null
+  let volume = reported
+
+  if (reported && written.current) {
+    const agreed = Math.abs(reported.value - written.current.value) < VOLUME_EPSILON
+    const expired = performance.now() - written.current.at > VOLUME_SETTLE_MS
+
+    if (agreed || expired) written.current = null
+    else volume = { ...reported, value: written.current.value }
+  }
+
   return {
-    volume: data?.player?.volume ?? null,
-    setValue: set.mutate,
+    volume,
+    setValue,
     setMuted: mute.mutate,
     up: nudgeUp.mutate,
     down: nudgeDown.mutate,

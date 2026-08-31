@@ -350,6 +350,22 @@ one artist. Anything comparing tags to decide what the user sees goes through
 original spelling. A strict `===` here makes a track look like a guest on its own
 album, and splits one album into two groups mid-run.
 
+**Never gate behaviour on a `mounted` ref set only in an effect cleanup.**
+StrictMode mounts, unmounts and remounts in development, so the cleanup sets the
+flag false and nothing sets it back -- the guard is then permanently on, in dev
+only, and silently disables whatever it protects. If a guard is genuinely needed,
+set it true in the effect body as well. Usually it is not needed: work that only
+touches refs and network calls is safe to finish after unmount, and finishing it
+is often the correct behaviour.
+
+**Writes driven by a drag must be coalesced, not fired per event.** One pointer
+gesture is ~40 pointer moves; a request each floods the player, and the responses
+can land out of order so the last value to arrive wins rather than the last one
+sent. `useCoalescedWrite` keeps one request in flight and sends the newest value
+after it. Drag state stays local to the control -- writing it into shared player
+state on every move re-renders every subscriber, including the virtualised list,
+for the whole gesture.
+
 **Comments explain why, not what.** No JSDoc. If a line needs a comment to say what it
 does, rename something instead. The comments worth writing are the ones recording a
 measurement, a trap, or a decision that looks wrong until you know the reason.

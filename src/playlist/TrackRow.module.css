@@ -1,11 +1,21 @@
 .track {
   --heat-alpha: calc(var(--heat, 0) * 0.22 * (1 - var(--patina, 0) * 0.62));
+  /* One knob for the row's horizontal inset, because the heat wash has to be
+     derived from it rather than stated again. Hardcoded, the two drift: album
+     rows set their own gutter and the wash kept the list layout's, so it began
+     *inside* the content and left the track number stranded outside the tint.
+     Gutter = the view's content line + the lead, which puts the wash's edge on
+     that line and the number a little way inside it. Three things want that
+     line -- the number, the wash, and a gap between them -- and only two of
+     them can have it. The wash is the larger shape, so it takes the line. */
+  --row-gutter: 32px;
+  --heat-lead: 8px;
   position: relative;
   display: grid;
   align-items: center;
   gap: 12px;
   height: 100%;
-  padding: 0 24px;
+  padding: 0 var(--row-gutter);
   cursor: default;
   user-select: none;
 }
@@ -16,7 +26,8 @@
 .track::before {
   content: '';
   position: absolute;
-  inset: 2px 14px;
+  /* Clamped: a row with a gutter smaller than the lead has nowhere to put it. */
+  inset: 2px max(0px, calc(var(--row-gutter) - var(--heat-lead)));
   border-radius: var(--radius-sm);
   background: linear-gradient(
     90deg,
@@ -60,8 +71,14 @@
   text-underline-offset: 3px;
 }
 
+/* Left, not right. Right-aligning a number inside a column wide enough for the
+   longest one parks every short number away from the edge, and the edge is the
+   line the title, the buttons and the toolbar all start on -- so the first
+   thing in the row was the only thing not aligned to anything. The cost is a
+   ragged right on mixed-width numbers, which the gap before the artwork
+   absorbs. */
 .index {
-  text-align: right;
+  text-align: left;
   color: var(--faint);
 }
 
@@ -107,11 +124,8 @@
 @media (max-width: 720px) {
   .track {
     gap: 9px;
-    padding: 0 12px;
-  }
-
-  .track::before {
-    inset: 2px 6px;
+    /* 16px content line + the same 8px lead. */
+    --row-gutter: 24px;
   }
 
   .cell,
@@ -143,7 +157,8 @@
 .equalizer {
   display: inline-flex;
   align-items: flex-end;
-  justify-content: flex-end;
+  /* Follows .index -- the bars stand in for the number and sit where it sits. */
+  justify-content: flex-start;
   gap: 2px;
   height: 12px;
 }

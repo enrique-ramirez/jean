@@ -32,9 +32,11 @@
   color: var(--faint);
 }
 
+/* Beside the name rather than above it, so it is sized to sit against two
+   lines of text instead of to fill a row on its own. */
 @media (max-width: 720px) {
   .mosaic {
-    width: 116px !important;
-    height: 116px !important;
+    width: 92px !important;
+    height: 92px !important;
   }
 }

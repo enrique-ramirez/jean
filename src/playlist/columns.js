@@ -28,7 +28,16 @@ const COMPACT_PRIORITY = ['duration', 'playCount', 'rating']
 const COMPACT_MAX_COLUMNS = 2
 
 const LEADING = {
-  number: { width: '2.5rem', compactWidth: '1.75rem' },
+  // Two sizes for one column. The number is left-aligned, so its slack falls on
+  // the right -- and whether that slack is visible depends on what comes next.
+  // With artwork it disappears behind the cover. Without it, in an album group
+  // or a list with artwork switched off, it sits straight against the title and
+  // reads as a hole, so the column tightens to about what the digits need.
+  //
+  // Neither is sized for the longest index there could be. Anything longer runs
+  // into the gap that follows rather than pushing every row across for it.
+  number: { width: '2rem', compactWidth: '1.5rem' },
+  numberBare: { width: '1.5rem', compactWidth: '1.25rem' },
   artwork: { width: '34px', compactWidth: '32px' },
   names: { width: 'minmax(0, 2fr)', compactWidth: 'minmax(6rem, 1fr)' },
 }
@@ -53,7 +62,7 @@ export function resolveColumns({ enabledIds, showArtwork, isCompactViewport, isA
 
   const build = (withArtwork) =>
     [
-      widthOf(LEADING.number, isCompactViewport),
+      widthOf(withArtwork ? LEADING.number : LEADING.numberBare, isCompactViewport),
       withArtwork ? widthOf(LEADING.artwork, isCompactViewport) : null,
       widthOf(LEADING.names, isCompactViewport),
       ...optional.map((column) => widthOf(column, isCompactViewport)),

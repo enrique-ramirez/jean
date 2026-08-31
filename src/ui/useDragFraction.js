@@ -2,6 +2,20 @@ import { useCallback, useRef, useState } from 'react'
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
+// Spread onto the track along with the handlers. Without it, pressing on a
+// slider and moving starts a *text selection* that runs out across whatever is
+// beside it, and dragging a selection is a native drag -- so the browser paints
+// a translucent snapshot of the control and follows the pointer with it instead
+// of moving the thumb. It looks like the slider has come loose.
+//
+// It reads as intermittent because it depends on where the press lands and what
+// was already selected, which is what makes it easy to dismiss as a glitch.
+const GRABBABLE = Object.freeze({
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
+  WebkitUserDrag: 'none',
+})
+
 // Pointer-drag along a horizontal track, reported as 0..1. Shared by the seek
 // bar and the volume slider: both need capture, clamping and rect maths, and
 // neither should reimplement them.
@@ -25,6 +39,12 @@ export function useDragFraction({ onDrag, onCommit, disabled = false, orientatio
   )
 
   const handlers = {
+    style: GRABBABLE,
+
+    // Belt to the CSS braces: states the guarantee outright rather than leaving
+    // it to hold as a consequence of nothing being selectable.
+    onDragStart: (event) => event.preventDefault(),
+
     onPointerDown: (event) => {
       if (disabled) return
       event.currentTarget.setPointerCapture(event.pointerId)

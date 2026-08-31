@@ -48,11 +48,11 @@
 }
 
 /* Rows inside a group are tighter and lose the outer gutter -- the cover is
-   already setting the block apart. */
+   already setting the block apart. Set through the row's own variable so the
+   play-count wash follows the gutter instead of keeping the list layout's. */
 .tracks > * {
   height: 34px;
-  padding-left: 8px;
-  padding-right: 8px;
+  --row-gutter: 8px;
 }
 
 /* On a phone the cover moves above the tracks: side-by-side leaves the titles
@@ -60,7 +60,21 @@
 .group[data-compact='true'] {
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
-  padding: 10px 12px 14px;
+  padding-top: 10px;
+  padding-bottom: 14px;
+}
+
+/* The horizontal gutter is deliberately NOT set by [data-compact]. That comes
+   from `isCompactViewport`, which flips at 860px, while every gutter in the app
+   -- the toolbar, the view header, the list rows -- flips at 720px. Setting it
+   here too left a band between the two where the album group indented itself to
+   the phone gutter while everything above it stayed on the desktop one.
+   It goes on the group rather than on the rows so the cover, the album title
+   and the track numbers keep one left edge: stacked, they are the same column. */
+@media (max-width: 720px) {
+  .group {
+    padding-inline: 16px;
+  }
 }
 
 .group[data-compact='true'] .aside {
@@ -75,7 +89,8 @@
   font-size: 0.875rem;
 }
 
+/* Same 8px as the wide layout -- stated rather than inherited, so it does not
+   depend on this file happening to come after TrackRow's media query. */
 .group[data-compact='true'] .tracks > * {
-  padding-left: 0;
-  padding-right: 0;
+  --row-gutter: 8px;
 }

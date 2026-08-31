@@ -26,11 +26,20 @@ export function ViewHeader({ eyebrow, title, stats, hasPlayCounts, actions, asid
       : null
 
   return (
+    // Three grid areas rather than one column beside the mosaic. On a wide
+    // screen they stack into that same column, but on a phone the naming can
+    // move up alongside the mosaic while the rest stays full width -- which is
+    // the whole point: stacked, the mosaic owned a row and left the space next
+    // to it empty, and the header ran to six separate bands before a track.
     <header className={styles.header}>
-      <div className={styles.main}>
+      <div className={styles.naming}>
         <p className={styles.eyebrow}>{eyebrow}</p>
         <h1 className={styles.title}>{title}</h1>
+      </div>
 
+      {aside ? <div className={styles.aside}>{aside}</div> : null}
+
+      <div className={styles.meta}>
         <div className={styles.stats}>
           <span>
             <b>{stats.trackCount.toLocaleString()}</b> tracks
@@ -60,8 +69,6 @@ export function ViewHeader({ eyebrow, title, stats, hasPlayCounts, actions, asid
 
         <div className={styles.actions}>{actions}</div>
       </div>
-
-      {aside}
     </header>
   )
 }

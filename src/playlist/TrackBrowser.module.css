@@ -81,7 +81,9 @@
 
 @media (max-width: 720px) {
   .toolbar {
-    padding: 8px 12px;
+    /* 16px, matching ViewHeader. The two disagreed, so nothing below them had a
+       single line to line up with. */
+    padding: 8px 16px;
   }
 }
 

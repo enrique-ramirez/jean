@@ -540,6 +540,15 @@ set it true in the effect body as well. Usually it is not needed: work that only
 touches refs and network calls is safe to finish after unmount, and finishing it
 is often the correct behaviour.
 
+**A control you drag must be unselectable.** Press on a slider without
+`user-select: none` and the browser starts a text selection running out across
+whatever sits beside it; dragging a selection is a native drag, so it paints a
+translucent snapshot of the control and follows the pointer with that instead of
+moving the thumb. It looks like the slider has come loose, and it reads as
+intermittent because it depends on where the press landed and what was already
+selected. `useDragFraction` returns the style with its handlers so the two
+cannot be separated.
+
 **Writes driven by a drag must be coalesced, not fired per event.** One pointer
 gesture is ~40 pointer moves; a request each floods the player, and the responses
 can land out of order so the last value to arrive wins rather than the last one

@@ -21,29 +21,47 @@
   color: var(--faint);
 }
 
-.item {
+/* The row owns the background and the position; the button inside it owns the
+   navigation. They had to be separated once the row grew a second control --
+   a drag handle cannot live inside a button. */
+.row {
+  position: relative;
   display: flex;
   align-items: center;
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s var(--ease);
+}
+
+.row:hover,
+.row:focus-within,
+.row:has(.item[aria-current='true']) {
+  background: var(--surface);
+}
+
+.item {
+  display: flex;
+  flex: 1;
+  align-items: center;
   gap: 10px;
-  width: 100%;
+  min-width: 0;
   padding: 8px 10px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: inherit;
   background: none;
   font-size: 0.875rem;
   text-align: left;
   color: var(--muted);
-  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+  transition: color 0.12s var(--ease);
 }
 
-.item:hover {
-  background: var(--surface);
+.row:hover .item,
+.item:hover,
+.item[aria-current='true'] {
   color: var(--text);
 }
 
 .item[aria-current='true'] {
-  background: var(--surface);
-  color: var(--text);
   font-weight: 550;
 }
 
@@ -63,9 +81,111 @@
 
 .count {
   margin-left: auto;
+  padding-left: 8px;
   font-size: 0.75rem;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
+}
+
+/* Reordering ---------------------------------------------------------------
+
+   No handle and no cursor change on a pointer: the row itself drags, which is
+   what a sidebar of links does everywhere else, and a grip on every row is a
+   permanent cost for something done twice a year. Grips belong to editors,
+   where a row has several parts and one of them has to be named as the one
+   that drags.
+
+   Touch is a different question, not a smaller one. There the vertical axis is
+   already the scroller's, and the gesture that would normally settle it --
+   hold, then drag -- is spent on the menu. So on a coarse pointer there is a
+   handle, permanently, because nothing else can claim the axis. */
+.grip {
+  position: absolute;
+  right: 3px;
+  display: none;
+  place-items: center;
+  width: 26px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--faint);
+  opacity: 0.55;
+  /* The browser must not claim this gesture as a scroll before we do. */
+  touch-action: none;
+}
+
+@media (pointer: coarse) {
+  .grip {
+    display: grid;
+  }
+
+  .item {
+    padding-right: 34px;
+  }
+}
+
+.row[data-dragging='true'] {
+  z-index: 2;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.row[data-dragging='true'] .grip {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* Only the rows getting out of the way animate. The dragged one is following a
+   finger and must not be smoothed, and once the drop lands the attribute is
+   gone in the same commit as the new order -- so nothing animates twice. */
+.row[data-settling='true'] {
+  transition: transform 0.2s var(--ease), background 0.12s var(--ease);
+}
+
+.sidebar[data-reordering='true'] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.sidebar[data-reordering='true'] .row:hover {
+  background: none;
+}
+
+/* Renaming ---------------------------------------------------------------- */
+
+.renameForm {
+  flex: 1;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.renameInput {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: 0.875rem;
+  color: var(--text);
+  outline: none;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 0.75rem;
+  text-align: left;
+  color: var(--danger);
+}
+
+.notice svg:last-child {
+  margin-left: auto;
+  color: var(--faint);
 }
 
 /* A second heading needs room above it; the first one sits under the top bar. */

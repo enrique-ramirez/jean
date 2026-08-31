@@ -17,6 +17,9 @@
   --faint: oklch(0.52 0.015 255);
 
   --on-accent: oklch(0.18 0.01 260);
+  /* Destructive actions. Pulled towards the warm end of red so it reads as part
+     of the same palette as the accent rather than as a browser default. */
+  --danger: oklch(0.68 0.17 26);
   --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 8px 24px oklch(0 0 0 / 0.28);
 
   color-scheme: dark;
@@ -38,6 +41,7 @@
   --faint: oklch(0.62 0.012 258);
 
   --on-accent: oklch(1 0 0);
+  --danger: oklch(0.53 0.2 27);
   --shadow: 0 1px 2px oklch(0.4 0.02 260 / 0.1), 0 8px 24px oklch(0.4 0.02 260 / 0.1);
 
   color-scheme: light;

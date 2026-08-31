@@ -92,6 +92,14 @@ export async function createPlaylist(title) {
   return response.json()
 }
 
+// The three ways a playlist itself changes. Everything else Jean does to a
+// playlist changes its *contents*; these change the playlist in the sidebar.
+// A negative move index means "last", per the spec.
+export const renamePlaylist = (playlistId, title) => post(`/api/playlists/${playlistId}`, { title })
+export const removePlaylist = (playlistId) => post(`/api/playlists/remove/${playlistId}`)
+export const movePlaylist = (playlistId, index) =>
+  post(`/api/playlists/move/${playlistId}/${index}`)
+
 // Copies by index, so a derived playlist costs no %path% lookup and no upload
 // of anything but numbers. Measured: 15,000 indices in one request, 323 ms.
 // `items` is often a typed array, which JSON.stringify would turn into an

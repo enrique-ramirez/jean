@@ -9,6 +9,7 @@
 
 export const SCOPE = {
   global: 'global',
+  sidebar: 'sidebar',
   playlist: 'playlist',
   finder: 'finder',
   search: 'search',
@@ -37,6 +38,12 @@ export const KEYMAP = [
 
   // Appearance -----------------------------------------------------------
   { id: 'toggleTheme', scope: SCOPE.global, group: 'Appearance', name: 'Switch light / dark', keys: ['t'] },
+
+  // In the sidebar -------------------------------------------------------
+  // Registered only while a playlist row has focus. The same gesture the drag
+  // handle performs, for people who never reach for the mouse.
+  { id: 'movePlaylistUp', scope: SCOPE.sidebar, group: 'In the sidebar', name: 'Move playlist up', keys: ['Alt+ArrowUp'] },
+  { id: 'movePlaylistDown', scope: SCOPE.sidebar, group: 'In the sidebar', name: 'Move playlist down', keys: ['Alt+ArrowDown'] },
 
   // In a playlist --------------------------------------------------------
   { id: 'openFinder', scope: SCOPE.playlist, group: 'In a playlist', name: 'Find in this playlist', keys: ['/'] },

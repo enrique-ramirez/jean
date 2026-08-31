@@ -15,6 +15,29 @@ The primary axis of quality is **UX/UI, and performance is part of UX**. A featu
 makes the interface slower needs to justify itself. When in doubt, favour the choice that
 keeps interaction responsive.
 
+## Look it up before you draw it
+
+**Every piece of UI gets a reference pass before it gets written.** Search for how good
+products solve the same problem, then decide. Worth having in the rotation: **Mobbin**,
+**Refero**, **Screenlane**, **UI Sources**, **Godly**, **Awwwards**, **Land-book**,
+**Dribbble**, **Behance**, **DeviantArt**, **Pinterest**. Naming the component and the
+platform is usually enough of a query -- "action sheet mobile", "context menu desktop
+dark", "sidebar drag reorder".
+
+The point is not to copy. It is that the shape a component takes when you write it from
+memory is the median of everything you have ever seen, and the median is exactly what
+makes an interface look templated. Look at several, take the one decision from each that
+is actually good, and know what you rejected.
+
+Two standing rules fall out of it:
+
+- **Never look like Spotify.** It is the obvious reference for a music player and
+  therefore the one place Jean has nothing to gain by resembling. If a screen could be
+  mistaken for it, redraw it.
+- **Record the choice.** A comment saying "this is an action sheet, not a bottom sheet,
+  because ..." is worth more than the code under it. Vocabulary is a design decision --
+  the two are different components and only one of them is detached from the edges.
+
 ## Ground rules
 
 - **Fully responsive.** One codebase, no separate mobile build.
@@ -218,6 +241,72 @@ height) and `measureElement` where they are not. Album group heights depend on
 caption wrapping and breakpoint, and hand-computing them left visible gaps between
 groups.
 
+### Menus, gestures and other shared behaviour
+
+`ui/ActionMenu.jsx` is the only menu surface in the app. Actions are declared as **data**
+and the surface decides how to draw them -- a popover at the pointer on a desktop
+viewport, a floating action sheet on a compact one. Adding a menu anywhere means writing
+an array, not another component.
+
+- **An action sheet, not a bottom sheet.** Detached from every edge, all four corners
+  rounded, floating above the safe-area inset. The edge-to-edge kind is Spotify's, and is
+  also the less interesting of the two.
+- **Nested pages slide in place, on desktop too**, rather than flying out to the side. A
+  flyout that closes when the pointer strays is the wrong place to put a confirmation,
+  and one drill-in implementation beats two half-tested ones. **Destructive actions
+  confirm on a nested page** -- same machinery, no dialog component, identical on both
+  surfaces.
+- **The accent budget of a menu is the two-pixel rail on the item under the cursor.**
+  Scaled, not faded, so it grows out of its own centre.
+- **`useContextMenu` unifies the three ways of asking for one**: right-click,
+  press-and-hold, and the Menu key -- which reports no coordinates, so a keyboard
+  invocation has to anchor to the element rather than to `0,0`.
+- **`useLongPress` owns the echoes of the gesture, not just the gesture.** The synthetic
+  click and, on Android, a native `contextmenu` both arrive after a hold has already been
+  answered, and both have to be swallowed. Suppression is time-boxed rather than cleared
+  by whichever event turns up, because which one turns up differs by platform: iOS sends
+  the click and no contextmenu, Android the reverse, and waiting for a specific one
+  leaves the guard permanently on.
+- Anything long-pressable needs `-webkit-touch-callout: none` or iOS draws its own
+  selection callout over the menu. `useLongPress` returns the style to spread.
+- **While a menu is open, no key belongs to the app behind it.** Without stopping
+  propagation, the arrow keys seek the player while you are choosing an action.
+- **An exit animation's "closing" flag must be derived during render, not set in an
+  effect.** An effect leaves one commit in which the menu is neither open nor leaving:
+  it unmounts, the effect brings it straight back to play the exit, and that remount
+  re-runs the surface's focus effect. Anything the chosen action just focused loses it —
+  which is how Rename came to close itself on the phone, one frame after opening.
+- **A menu returns focus only if it still has it.** An action is allowed to send focus
+  somewhere on purpose; restoring blindly on close undoes that.
+
+`ui/useSortableList.js` is drag-to-reorder for lists short enough to see at once. Rows
+are measured on drag start, so variable heights need no special case. What is
+load-bearing:
+
+- **The drop is held, not cleared.** The reorder goes through the query cache, which is a
+  microtask away at best, so clearing the transforms on `pointerup` flicks the row back
+  to where it started for a frame. It keeps the landing transform until the caller's
+  `keys` actually change, with a timeout in case the player refuses the move.
+- **On a pointer the row itself drags, with no affordance at all.** That is what a
+  sidebar of links does everywhere -- Finder favourites, Chrome bookmarks, Slack
+  sections -- and a grip on every row is a permanent cost for something done twice a
+  year. Grips are an *editor* idiom: they exist where a row has several parts and one of
+  them has to be named as the one that drags.
+- **Touch is a different question, not a smaller one.** There the vertical axis is
+  already the scroller's, and the gesture that would normally settle it -- hold, then
+  drag -- is spent on the menu. So a coarse pointer gets a permanent handle, because
+  nothing else can claim the axis. Same fact, stated once in CSS and once in JS: the row
+  starts a drag for `pointerType === 'mouse'` only.
+- **A drag that starts on a link ends with a click on that link.** Reordering would also
+  navigate. The gesture has to swallow its own click, exactly as the long press does --
+  and the flag is cleared on the next pointer-down rather than on a timer, so a gesture
+  that produced no click leaves nothing armed.
+- **Two behaviours on one element share their handler names.** A row that both
+  press-and-holds and drags wants `onPointerDown/Move/Up/Cancel` twice over, and
+  spreading one props object after the other drops the first silently. Compose them
+  through `ui/mergeHandlers.js`.
+- `Alt+Arrow` does the same from the keyboard, registered only while a row has focus.
+
 ### Layout
 
 The app shell is a `100dvh` grid, rows `auto / 1fr / auto` — chrome, content, status bar —
@@ -337,6 +426,11 @@ someone re-theming Jean should only ever need to edit ~30 lines of custom proper
 with no build step and no knowledge of our class names. Do not add global classes for
 component styling.
 
+**Menus come from `ui/ActionMenu.jsx`, as an array of actions.** Never hand-roll a
+popover, an action sheet or a confirmation dialog -- the gestures, the keyboard
+handling, the nested pages and both surfaces already exist there, and a second
+implementation of any of them will be the one that is wrong on a phone.
+
 **Keyboard bindings are declared in `keyboard/keymap.js` and nowhere else.**
 `useKeymap(scope, handlers)` registers whatever that scope declares and has a handler
 for, and `ShortcutSheet` renders the help overlay from the same array — so the
@@ -400,6 +494,9 @@ own `#/search` route with a sidebar entry, and per-view scroll and cursor memory
 leaving a result set and coming back returns you to where you were. The shared list
 machinery both views render through is `playlist/TrackBrowser.jsx`, and `indices` is how
 a filtered view maps a row back to the playlist index the player addresses.
+Playlists themselves can be renamed, deleted and reordered from the sidebar: an action
+menu on secondary-click or press-and-hold, inline renaming in the row itself, delete
+behind a confirmation page, and drag-to-reorder through `/playlists/move/{id}/{index}`.
 Results can also be saved as a real playlist -- `/playlists/add` returns the new id and
 `/playlists/{src}/{dst}/items/copy` copies by index, so no `%path%` is ever fetched -- gated
 on `permissions.changePlaylists` and on the library having finished loading. The home

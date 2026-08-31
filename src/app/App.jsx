@@ -64,7 +64,12 @@ export function App() {
   // Default to whatever the player is on, so opening Jean lands somewhere
   // meaningful rather than on an arbitrary playlist.
   const fallbackId = playlists.find((entry) => entry.isCurrent)?.id ?? playlists[0]?.id
-  const selectedId = routedId ?? lastPlaylistId.current ?? fallbackId
+  // Checked against the live list rather than trusted: a playlist you were last
+  // looking at can be deleted, from here or from the desktop.
+  const remembered = playlists.some((entry) => entry.id === lastPlaylistId.current)
+    ? lastPlaylistId.current
+    : null
+  const selectedId = routedId ?? remembered ?? fallbackId
   const playlist = useMemo(
     () => playlists.find((entry) => entry.id === selectedId) ?? null,
     [playlists, selectedId],

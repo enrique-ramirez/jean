@@ -1,11 +1,8 @@
 # jean
 
-A replacement web UI for the [beefweb](https://github.com/hyperblast/beefweb) plugin,
-controlling foobar2000 — and, best-effort, DeaDBeeF — from any browser on your
-network.
-
-Named for how it feels to use, not for anything it does. Rhymes with *pan*, not
-with *bean* — the "ea" is the A in apple.
+Jean (/ʝan/) is a replacement web UI for the [beefweb](https://github.com/hyperblast/beefweb) plugin,
+controlling foobar2000 - and, best-effort, DeaDBeeF - from any browser on your
+network. Namely affectively for the feelings it evoked on me when the idea came.
 
 **Where it is:** the playlist view and library search work. Compact and album layouts
 over a virtualised list that stays smooth at 30,000 tracks, search across the whole
@@ -17,7 +14,12 @@ how often you have played them and faded by how long it has been.
 Search results can be saved as a real playlist in one click, copied by index so nothing
 is uploaded but a list of numbers.
 
-**Not built yet:** the home screen, and editing playlists once they exist.
+Playlists in the sidebar can be renamed, deleted and dragged into whatever order you
+want them in. Right-click a playlist for the menu, or press and hold it on a phone,
+where the same menu arrives as a sheet you can flick away. `Alt` with the arrow keys
+moves a playlist without touching the mouse.
+
+**Not built yet:** the home screen, and editing the contents of a playlist.
 
 ## Development
 

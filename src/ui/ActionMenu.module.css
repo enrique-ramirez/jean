@@ -1,0 +1,383 @@
+/* Two surfaces, one list. Everything that differs between the popover and the
+   tray is a custom property set on the surface, so `.item` is written once. */
+
+.popover,
+.sheet {
+  --menu-pad: 5px;
+  --menu-item-height: 34px;
+  --menu-item-gap: 10px;
+  --menu-item-font: 0.8125rem;
+  --menu-icon: 15px;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  /* A hairline of light along the top edge. It is what stops a dark panel on a
+     dark page from reading as a hole rather than as something lying on top. */
+  box-shadow: var(--shadow), inset 0 1px 0 oklch(1 0 0 / 0.05);
+}
+
+.popover {
+  position: fixed;
+  z-index: 70;
+  min-width: 216px;
+  max-width: 300px;
+  /* Placement is measured from the rendered box, so the first frame has to
+     exist before it can be positioned. Hidden, not transparent -- a menu that
+     fades in from the wrong corner is worse than one that appears. */
+  visibility: hidden;
+}
+
+.popover[data-placed='true'] {
+  visibility: visible;
+  animation: emerge 0.13s var(--ease) backwards;
+}
+
+@keyframes emerge {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+/* Mobile: an action sheet, not a bottom sheet -- detached from every edge, all
+   four corners rounded. It sits on the page rather than growing out of it. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  padding: 10px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  background: oklch(0 0 0 / 0.5);
+  touch-action: none;
+}
+
+.scrim[data-state='open'] {
+  animation: fade 0.2s var(--ease) backwards;
+}
+
+/* A separate keyframe name rather than `reverse` on the same one: flipping
+   animation-direction on an animation that has already finished updates it in
+   place instead of running it again, so the exit would never play. */
+.scrim[data-state='closed'] {
+  animation: unfade 0.2s var(--ease) forwards;
+  /* On the way out it is only a picture. Leaving it live would swallow the
+     next tap for a fifth of a second. */
+  pointer-events: none;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes unfade {
+  to {
+    opacity: 0;
+  }
+}
+
+.sheet {
+  --menu-pad: 6px;
+  --menu-item-height: 52px;
+  --menu-item-gap: 14px;
+  --menu-item-font: 0.9375rem;
+  --menu-icon: 19px;
+
+  width: 100%;
+  max-height: 76dvh;
+  border-radius: calc(var(--radius) + 8px);
+}
+
+.sheet[data-state='open'] {
+  animation: rise 0.26s var(--ease) backwards;
+}
+
+.sheet[data-state='closed'] {
+  animation: sink 0.22s var(--ease) forwards;
+}
+
+@keyframes rise {
+  from {
+    /* Past the bottom of the scrim's padding, so no corner is left behind. */
+    transform: translate3d(0, calc(100% + 16px), 0);
+  }
+}
+
+@keyframes sink {
+  to {
+    transform: translate3d(0, calc(100% + 16px), 0);
+  }
+}
+
+/* Released mid-pull: spring back rather than snap. While the finger is down the
+   transform is driven per event and must not be smoothed, or it lags behind. */
+.sheet {
+  transition: transform 0.24s var(--ease);
+}
+
+.sheet[data-dragging='true'] {
+  transition: none;
+}
+
+.grabber {
+  display: flex;
+  justify-content: center;
+  padding: 9px 0 5px;
+  touch-action: none;
+}
+
+.handle {
+  width: 34px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet .header {
+  padding: 8px 16px 14px;
+}
+
+.headerIcon {
+  display: none;
+}
+
+/* The tray is opened from a gesture rather than from a labelled button, so it
+   has to say what it is acting on. The popover appears next to the row it
+   belongs to and only needs to confirm it. */
+.sheet .headerIcon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.headerText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.headerTitle {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet .headerTitle {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.headerMeta {
+  font-size: 0.6875rem;
+  color: var(--faint);
+}
+
+.sheet .headerMeta {
+  font-size: 0.75rem;
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  text-align: left;
+  transition: color 0.12s var(--ease);
+}
+
+.sheet .back {
+  padding: 12px 16px;
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+.backLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.sheet .backLabel {
+  font-size: 0.875rem;
+}
+
+/* Pages ------------------------------------------------------------------- */
+
+.viewport {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  transition: height 0.26s var(--ease);
+}
+
+.track {
+  display: flex;
+  align-items: flex-start;
+  transition: transform 0.26s var(--ease);
+}
+
+.page {
+  flex: 0 0 100%;
+  padding: var(--menu-pad);
+}
+
+/* Items ------------------------------------------------------------------- */
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--menu-item-gap);
+  width: 100%;
+  min-height: var(--menu-item-height);
+  padding: 0 11px 0 13px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--menu-item-font);
+  text-align: left;
+  color: var(--text);
+  transition: background 0.12s var(--ease);
+}
+
+.sheet .item {
+  padding: 0 14px;
+  border-radius: 12px;
+}
+
+.item:hover:not(:disabled),
+.item:focus-visible {
+  background: var(--surface-sunken);
+}
+
+.item:active:not(:disabled) {
+  background: var(--surface);
+}
+
+.item:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+/* The whole accent budget of the menu: a two-pixel mark on the item you are
+   about to choose. Scaled rather than faded so it grows out of its own centre,
+   and scale is the one transform a row of these can afford. */
+.rail {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 2px;
+  height: 15px;
+  border-radius: 1px;
+  background: var(--accent);
+  /* Centred here rather than left to the flex container: an absolutely
+     positioned flex child's static position is not something to rely on. */
+  transform: translateY(-50%) scaleY(0);
+  transition: transform 0.16s var(--ease);
+}
+
+.sheet .rail {
+  left: 3px;
+  height: 20px;
+}
+
+.item:hover:not(:disabled) .rail,
+.item:focus-visible .rail {
+  transform: translateY(-50%) scaleY(1);
+}
+
+.item[data-danger='true'] {
+  color: var(--danger);
+}
+
+.item[data-danger='true'] .rail {
+  background: var(--danger);
+}
+
+.icon {
+  flex: 0 0 auto;
+  width: var(--menu-icon);
+  height: var(--menu-icon);
+  color: var(--muted);
+}
+
+.item[data-danger='true'] .icon {
+  color: currentColor;
+}
+
+.item:disabled .icon {
+  color: inherit;
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shortcut {
+  margin-left: auto;
+  padding-left: 12px;
+  font-family: var(--font-numeric);
+  font-size: 0.6875rem;
+  color: var(--faint);
+}
+
+.chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--faint);
+}
+
+.separator {
+  height: 1px;
+  margin: var(--menu-pad) 8px;
+  background: var(--border);
+}
+
+.message {
+  margin: 0;
+  padding: 4px 13px 10px;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.sheet .message {
+  padding: 2px 16px 12px;
+  font-size: 0.875rem;
+}

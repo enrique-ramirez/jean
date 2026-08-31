@@ -5,9 +5,12 @@ import {
   UPDATES_URL,
   fetchPlayer,
   fetchPlaylists,
+  movePlaylist,
   nextTrack,
   playPause,
   previousTrack,
+  removePlaylist,
+  renamePlaylist,
   seekBy,
   seekTo,
   setMuted,
@@ -65,6 +68,70 @@ export function usePlaylists() {
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   })
+}
+
+// What the player will let this client do. A read-only instance must get a
+// read-only Jean rather than buttons that come back 403.
+export function usePermissions() {
+  const { data } = usePlayer()
+  return data?.player?.permissions ?? {}
+}
+
+// Rename, delete and reorder, written straight into the cache before the
+// request goes out. The stream echoes the real state a moment later, but the
+// sidebar is the thing being dragged -- it cannot wait a round trip to redraw.
+//
+// `index` is rewritten on every one of these because it is positional, and the
+// player renumbers the whole list when any playlist moves or goes away.
+const renumber = (playlists) => playlists.map((entry, index) => ({ ...entry, index }))
+
+function usePlaylistPatch(mutationFn, patch) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn,
+
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: PLAYLISTS_KEY })
+      const previous = queryClient.getQueryData(PLAYLISTS_KEY)
+      if (previous) queryClient.setQueryData(PLAYLISTS_KEY, renumber(patch(previous, input)))
+      return { previous }
+    },
+
+    // Both failure modes land here: the request was refused, or the player
+    // does not allow it at all. Putting the list back is the honest response --
+    // the caller reports it, and the affordance can then be withdrawn.
+    onError: (_error, _input, context) => {
+      if (context?.previous) queryClient.setQueryData(PLAYLISTS_KEY, context.previous)
+    },
+  })
+}
+
+export function usePlaylistActions() {
+  const rename = usePlaylistPatch(
+    ({ id, title }) => renamePlaylist(id, title),
+    (playlists, { id, title }) =>
+      playlists.map((entry) => (entry.id === id ? { ...entry, title } : entry)),
+  )
+
+  const remove = usePlaylistPatch(
+    (id) => removePlaylist(id),
+    (playlists, id) => playlists.filter((entry) => entry.id !== id),
+  )
+
+  const move = usePlaylistPatch(
+    ({ id, index }) => movePlaylist(id, index),
+    (playlists, { id, index }) => {
+      const from = playlists.findIndex((entry) => entry.id === id)
+      if (from < 0) return playlists
+      const next = [...playlists]
+      const [moved] = next.splice(from, 1)
+      next.splice(index, 0, moved)
+      return next
+    },
+  )
+
+  return { rename, remove, move }
 }
 
 // The track the player is on, only when it belongs to the playlist being viewed.

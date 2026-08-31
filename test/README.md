@@ -153,6 +153,32 @@ and then passes in a full run. Dispatch the events from `page.evaluate` instead,
 one frame apart. A synthetic wheel event scrolls nothing, which is usually the
 point: what is under test is the listener, not the scrolling.
 
+**Wait on the player, not on the render that looks right.** Four separate flakes
+this session were the same mistake: waiting for a signal that goes true *before*
+the app has settled, then measuring.
+
+It has two faces. One is transitions -- `isRowOnScreen` is true as soon as an
+animated scroll brings the row into view, which is several hundred milliseconds
+before it stops moving, so anything that then measures the position or scrolls
+away is fighting the animation still in flight. That is what `settle()` in
+`follow.spec.js` is for: two equal scroll readings, and only then measure.
+
+The other is optimistic state. Mutations write to the query cache before the
+request goes out, so the UI flips immediately -- and if a second request is in
+flight concurrently, the stream can still be describing the state before both of
+them. The status bar's shuffle toggle genuinely flickers unpressed for a beat
+and settles pressed. Harmless to a person, a coin flip to press a second button
+against.
+
+So prefer the fake's own state as the thing you wait on -- `player.player.playbackMode`
+is what the player really thinks, with no optimism in it -- and assert the
+property rather than the exact traffic. "Nothing it sends ever asks for a
+different order" survives a duplicated idempotent request; `toEqual([4])` does
+not, and the difference between those two is not a bug.
+
+These fail once in five full runs and pass every time in isolation, which is the
+worst way for a test to be wrong: you debug it alone, it passes, and you move on.
+
 **Check an injection more than once.** A guard that fails on one run and passes
 on the next is not covered, it is flaky, and running the suite three times under
 the injection is what tells the two apart.

@@ -153,6 +153,12 @@ Icons come from **`lucide-react`**, imported per-icon so they tree-shake.
 
 ### The library
 
+> **This describes released beefweb (0.10), which is the fallback rather than the
+> target.** The development player runs a pre-release 0.11 that has a real library
+> API -- see "The library API" below. Everything here still has to work, because it
+> is what DeaDBeeF and every un-upgraded install get, but it is no longer the path
+> to design *from*.
+
 beefweb has **no library API**. It sees playlists and the filesystem, and that is the whole
 surface. foobar's Media Library is invisible to it.
 
@@ -176,6 +182,120 @@ Three rules follow, all of them load-bearing:
 Fallback for users who won't create an autoplaylist: Jean can build its own playlist from
 `/api/browser/roots` via `POST /playlists/add` + `items/add`. That mirrors the *disk* rather
 than the library and needs manual refresh, so it is a second choice, not the default.
+
+### The library API — we develop against it, ahead of its release
+
+**The development player runs a pre-release beefweb.** `0.11~git.dc0fdfc`, which is
+CI's merge of [PR #382](https://github.com/hyperblast/beefweb/pull/382) into master,
+installed from the GitHub Actions artifact rather than built locally. So
+`/library/*` is live here and Jean is built as though it were shipped.
+
+The released plugin is 0.10 and has none of it. That is the whole reason the
+detection below is not optional.
+
+#### The endpoints
+
+| | |
+|---|---|
+| `GET /library/info` | `{supported, enabled, itemCount}` |
+| `GET /library/items` | `{offset, totalCount, items:[{path, subsong, columns}]}`; `columns` required, optional `range`, `query`, `sort`, `desc` |
+| `GET /library/items/by-path` | one tree level: folders first with a recursive `itemCount`, then tracks; carries `path`, `parentPath` (absent at the top) |
+| `GET /artwork/library?path=&subsong=` | artwork with no playlist involved |
+| `POST /playlists/{id}/items/add-from-library` | `{items \| query, index, replace, play}`, needs `changePlaylists` |
+
+*Measured* against the 30,441-track library: `info` returns
+`{"enabled":true,"itemCount":30441,"supported":true}` and agrees with the
+autoplaylist to the track. Paths are relative to the media library folders and keep
+their folder structure -- `#/2 Mello/(2012) Chrono Jigga/01. Intro.mp3`. The top
+level of `by-path` had 27 folders and no `parentPath`.
+
+#### The autoplaylist does not go away
+
+It demotes from *the* answer to *the fallback*, and `LibrarySetup` stays for three
+states that are all real:
+
+- **`supported: false`** — DeaDBeeF, where every library endpoint is 501.
+- **The endpoint 404s** — any released beefweb, which is everyone who is not us
+  until 0.11 ships. Treat a 404 exactly like `supported: false`.
+- **`supported: true, enabled: false`** — foobar2000 with no Media Library
+  configured. A different sentence from "make an autoplaylist": the fix is in
+  foobar's own preferences.
+
+This is the same rule as every other component -- detect, never require -- and here
+it costs one request to `/library/info` at startup.
+
+#### What it changes that was previously settled
+
+- **Identity is real.** Library items carry `(path, subsong)`. "Playlist items have
+  no ID, index is identity" still holds for *playlists*, but not for library rows --
+  which is what makes an exact now-playing mark possible from any playlist rather
+  than the tag-matching compromise.
+- **The scratch playlist rebuild collapses.** `add-from-library` with
+  `replace: true, play: true` is the rename/empty/refill/play sequence in one
+  request, and the stale-count corruption it used to invite stops being expressible.
+- **`%path%` stops being optional, and costs less than feared.** *Measured* at
+  30,441 tracks with the same 14 columns: the library read is **1.02 MB on the wire
+  against the playlist read's 0.80 MB** (+28%), and 7.24 MB decoded against 4.61 MB
+  (+57%). Paths share long prefixes so they compress well; it is the *parse* and the
+  heap that pay, not the network. At 200k that extrapolates to roughly 17 MB of path
+  strings in memory, which is the number to design against -- dictionary encoding
+  cannot help, because a path is unique per track by definition.
+- **Chunking is strictly worse here, and going wide buys nothing.** The strategy for
+  playlist reads -- chunk for first paint, then four concurrent large ones -- inverts.
+  *Measured*:
+
+  | strategy | time |
+  |---|---|
+  | one request for all 30,441 | **825 ms** |
+  | 4 x 10,000, four at a time | 1,198 ms |
+  | 7 x 5,000, four at a time | 1,441 ms |
+  | 16 x 2,000, four at a time | 2,662 ms |
+  | 16 x 2,000, one at a time | 2,722 ms |
+
+  A sweep from 1 to 30,441 rows fits **104 ms fixed per call + 26 us per item**. The
+  fixed part is the enumeration the PR warns about, and every chunk pays it again:
+  sixteen chunks is ~1.7 s of pure overhead, which is almost exactly the 1,837 ms
+  they cost over one request. Concurrency recovers 2% of it (2,722 -> 2,662), so the
+  work is **serialised on the player's side** -- there is no width to exploit.
+
+  What survives is the *first paint* half of the rule: 500 rows come back in 117 ms.
+  So **one small chunk, then one request for the remainder** -- 117 ms to paint and
+  920 ms to finish, against 825 ms with no paint until the end. Ninety-five
+  milliseconds of total time for a screenful seven times sooner. Do not go wide.
+
+  Re-run `test/measure-library.mjs` when the endpoint changes; caching is on the
+  PR's own list of things it does not do yet, and if it lands this all shifts.
+- **Two filter syntaxes that must not be mixed.** `query` is the player's own query
+  syntax; Jean's search is `fold()`-based accent-insensitive token matching. They do
+  not return the same set, so filtering client-side and adding server-side by
+  `query` would add tracks that are not the ones on screen. Address adds by explicit
+  `items: [{path, subsong}]`.
+- **Paging needs an explicit `sort`.** The spec says library items are produced by
+  applying search criteria rather than being naturally ordered.
+
+#### Traps the PR names itself
+
+Folder artwork probes the filesystem on the player's work queue and "a folder-
+thumbnail grid multiplies it" -- which is exactly the home screen's albums grid, so
+do not build that on folder art. Folder ordering is a byte-wise case-sensitive
+compare, so `Zappa` sorts before `abba`. There is no `library` event key on
+`/api/query`, so library changes cannot be observed at all; detecting drift means
+polling `itemCount` from `/library/info`, which is three fields and cheap.
+
+#### Two standing risks while it is unmerged
+
+**The API is still moving.** It has already been renamed once mid-review
+(`/library/items/add` became `/playlists/{id}/items/add-from-library`, `view=folders`
+became `/library/items/by-path`) and the maintainer may polish the endpoints
+himself. Keep every call behind `api/beefweb.js` and one library module, so a rename
+is one file rather than a search across the app.
+
+**The fake player does not implement any of it**, so nothing built on these
+endpoints is covered by the suite until it does. That is a prerequisite for the
+feature work, not a follow-up to it -- see `test/README.md`.
+
+**Autoplaylists still cannot be created remotely**, which is the one thing that
+would turn the setup screen into a button. Asked on the PR, unanswered.
 
 ### Never mutate playlists as a side effect
 
@@ -369,12 +489,20 @@ grid is ~100 MB of images.
 
 Two traps, both of which have already shipped bugs:
 
-- **Measurements are cached by index, and an index means different things in
-  different layouts.** The compact list and the album view share one virtualizer;
-  row 4 is a track in one and an album group in the other. Switching layouts without
-  calling `virtualizer.measure()` hands each layout the other's heights — which
-  looked like list rows suddenly being 200px tall. Reset on any change that
-  redefines what an index is.
+- **Measurements are cached by *item key*, and the default key is the index.** Two
+  different traps come out of that, and they need different answers.
+  *Different data at the same index* — a new set of search results, where group 0 is
+  a different album — is a **key** problem, and `getItemKey` is the answer: new keys
+  are new items and are measured when they mount. `measure()` cannot fix this one and
+  actively breaks it, because it runs after the refs have measured the new elements
+  and throws those measurements away; nothing re-measures afterwards, since
+  `measureElement` reports on mount and on resize and a mounted group does neither.
+  That left the first album of a search lying 133px under the second until you
+  scrolled, which remounts them.
+  *The same data in a different shape* — switching layout, or crossing the compact
+  breakpoint — is what `virtualizer.measure()` is for: row 4 is a track in one layout
+  and an album group in the other, and reusing those heights looked like list rows
+  suddenly being 200px tall.
 - **The virtualiser thinks its list starts at scroll offset 0.** It does not:
   the view header and the toolbar sit above it, and without `scrollMargin`
   every `scrollToIndex` lands short by exactly their height. Rendering still
@@ -666,6 +794,15 @@ without a real report.
   another player may report a linear range. `src/player/volume.js` squares the
   normalised distance from the top, which puts half the slider around -25 dB and
   three quarters around -6 dB instead of spending most of the travel on silence.
+- **`itemCount` in `PlaylistInfo` goes stale and nothing corrects it.** *Measured*:
+  the update stream pushes `playlists` when a playlist is added, renamed or deleted,
+  and pushes nothing at all when its *items* change. So a cached count is wrong from
+  the first `items/copy` onwards. Re-read it from the player before doing arithmetic
+  with it — how many rows to remove, whether a cached view still matches, whether an
+  undo range is still the range it was. Trusting it emptied 99 rows out of a 113-row
+  playlist and then played whatever had drifted into the row that was clicked. A
+  one-item `playlistItems` subscription is a cheap tripwire if you need to notice;
+  see `API.md`.
 - **Playlist items have no ID.** Index is identity, so any mutation invalidates indices
   you were holding.
 - **SSE is change-driven, not a ticker.** Long silences are normal; `position` alone never

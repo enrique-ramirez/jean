@@ -53,6 +53,36 @@ playlist switch — not on a timer, and `position` alone does not trigger one.
 Consequences: a progress display has to interpolate locally from the last message
 (see `src/player/position.js`), and a long silence is normal, not a stall.
 
+**`playlists` fires when the *set* of playlists changes -- not when their contents
+do.** *Measured* against the live player, subscribing to `player=true&playlists=true`
+and mutating in turn, with four-second waits:
+
+| what happened | what arrived |
+|---|---|
+| playlist added | `playlists` |
+| playlist renamed | `playlists` |
+| playlist deleted | `playlists` |
+| 5 items copied in | **`player` only** |
+| 2 items removed | **`player` only** |
+
+So `itemCount` in `PlaylistInfo` is stale from the first write onwards, and nothing
+will correct it. Anything that depends on it -- how many rows to remove, whether a
+cached view still matches, a sidebar count -- has to re-read it rather than trust
+what arrived on the stream. Trusting it once emptied 99 rows out of a 113-row
+playlist, left 14 behind, appended the new contents after them, and played whatever
+had drifted into the row that was clicked.
+
+**A one-item `playlistItems` window is a cheap tripwire.** Subscribing with
+`playlistItems=true&plref=…&plrange=0:1` pushes on *any* item change in that
+playlist, including appends past the end of the window, because `totalCount` is part
+of the diff. *Measured*: ~939-994 bytes per change, most of it the `player` object
+that was coming anyway, and nothing at all across six idle seconds. `plref` is
+singular, so it watches one playlist -- changing it means reconnecting.
+
+Detection is therefore nearly free. Reacting is not: items have no id, so any change
+invalidates every index being held, and for the library that means re-reading a
+megabyte. Treat a push as a signal to reconcile, not as a reason to refetch.
+
 ## Shapes
 
 ### `player`
@@ -287,6 +317,14 @@ Notes that cost time to rediscover:
 
 ## The library: what is and isn't reachable
 
+> **The development player runs a pre-release beefweb with a real library API.**
+> `0.11~git.dc0fdfc` -- CI's merge of
+> [PR #382](https://github.com/hyperblast/beefweb/pull/382) into master, installed
+> from the GitHub Actions artifact. The section below describes **released 0.10**,
+> which is what DeaDBeeF and every un-upgraded install still get, and is therefore
+> the fallback rather than the target. The new surface is documented under
+> "The media library API" further down.
+
 **Correct — there is no library API.** No `/library`, no `/search`, nothing that
 touches foobar2000's Media Library index. beefweb sees *playlists* and *the
 filesystem*, and that is the whole surface. Four ways to work around it:
@@ -319,6 +357,123 @@ filesystem*, and that is the whole surface. Four ways to work around it:
 
 4. **Add by path.** `/playlists/{id}/items/add` takes file or directory paths, so you
    can build playlists programmatically from anything on disk without the library.
+
+## The media library API
+
+**foobar2000 only, and only on beefweb 0.11+.** Unreleased at the time of writing --
+see the note under "The library" above. On DeaDBeeF every endpoint here is **501**;
+on a released 0.10 they are **404**. Treat both the same way: no library API, fall
+back to the autoplaylist.
+
+### `GET /library/info`
+
+```jsonc
+{ "library": { "supported": true, "enabled": true, "itemCount": 30441 } }
+```
+
+*Measured* against a 30,441-track library: agrees with the `ALL` autoplaylist to the
+track. `enabled: false` means foobar2000 has no Media Library configured — a
+different problem from "this player has no library API", and one the user fixes in
+foobar's own preferences rather than in Jean.
+
+### `GET /library/items`
+
+`columns` is **required**. `range` is a **query parameter** in `offset:count`
+form, not a path segment (all items if omitted). Optional besides, `query` (the
+*player's* query syntax), `sort` (a title-format expression, defaults to file path),
+`desc`.
+
+```jsonc
+{ "libraryItems": {
+  "offset": 0,
+  "totalCount": 30441,
+  "items": [ {
+    "path": "#/2 Mello/(2012) Chrono Jigga/01. Intro.mp3",
+    "subsong": 0,
+    "columns": ["2 Mello", "Intro"]
+  } ]
+}}
+```
+
+**Paths are relative to the media library folders**, not absolute, and keep their
+folder structure. **A track is `(path, subsong)`** — subsong is non-zero for cue
+sheets and disc images, so it is not decoration.
+
+> **Items are not naturally ordered.** The spec says they are produced by applying
+> search criteria, so paging without an explicit `sort` may not be stable across
+> requests.
+
+> **There is no caching (stated in the PR), and it is measurable.** Every call
+> enumerates the library and computes a relative path per item. *Measured* at 30,441
+> tracks: **104 ms fixed per call plus 26 µs per item**, and the work is serialised
+> on the player, so concurrent requests do not overlap. One request for everything
+> beats sixteen chunks by 1.8 s. See CLAUDE.md, "The library API", for the table and
+> what to do about it.
+
+### `GET /library/items/by-path`
+
+One level of the tree: folders first, each with a recursive `itemCount`, then tracks
+with the requested columns.
+
+```jsonc
+{ "libraryNodes": {
+  "offset": 0, "totalCount": 27,
+  "path": "#/2 Mello", "parentPath": "#",   // parentPath absent at the top level
+  "items": [ { "type": "D", "name": "A", "path": "A", "itemCount": 2147 },
+             { "type": "F", "name": "01. Intro.mp3",
+               "path": "#/2 Mello/(2012) Chrono Jigga/01. Intro.mp3",
+               "subsong": 0, "columns": ["Intro"] } ]
+}}
+```
+
+Folder nodes carry `itemCount` and no columns; track nodes carry `subsong` and
+`columns` and no `itemCount`.
+
+> **Library paths are `/`-separated regardless of platform**, and relative to the
+> media library folders. *Measured* on Windows, where `pathSeparator` from
+> `/browser/roots` is `\\`: a track under `F:\Musica` comes back as
+> `B/Babasónicos/(2001) Jessico/01. Los Calientes.mp3`. Do not build these with
+> `pathSeparator`.
+>
+> The PR description mentions a `pathSeparator` field on this response. **It is not
+> there** — *measured*, the keys are `items`, `offset`, `path`, `totalCount`, plus
+> `parentPath` below the top level.
+
+*Measured*: 27 folders at the top level of a 30,441-track library. **Ordering is a
+byte-wise case-sensitive compare**, so `Zappa` sorts before `abba` — re-sort
+client-side if it is shown.
+
+### `GET /artwork/library?path=&subsong=`
+
+Artwork without a playlist, which is the constraint it removes: everywhere else
+artwork is addressed by *playlist index*. A folder prefers its own image file
+(`folder`/`cover`/`front`/`album`/`artwork`) and falls back to the first track's.
+
+> **Folder artwork probes the filesystem on the player's work queue**, and the PR
+> notes a folder-thumbnail grid multiplies it. Do not build an album grid on it.
+
+### `POST /playlists/{playlistId}/items/add-from-library`
+
+`{ items: [{path, subsong}] | query, index, replace, play }`. Requires
+`changePlaylists`. Omitting both `items` and `query` adds the entire library.
+
+This is the one that matters most: **`replace: true, play: true` is a whole scratch
+playlist rebuild in one request** — no rename, no remove-by-range, no copy, no
+separate play, and so no client-side count arithmetic to get wrong.
+
+> **Do not mix the two filters.** `query` is the player's query syntax; Jean's search
+> is `fold()`-based accent-insensitive token matching. They do not return the same
+> set, so filtering client-side and then adding server-side by `query` adds tracks
+> that are not the ones on screen. Address adds by explicit `items`.
+
+### What it does not give you
+
+- **No playback without a playlist.** There is no "play this library item"; you add
+  to a playlist with `play: true`. The scratch playlist stays.
+- **No library change events.** There is no `library` key for `/api/query`, so
+  library changes cannot be observed. Detecting drift means polling `itemCount` from
+  `/library/info` — three fields, cheap.
+- **No autoplaylist creation.** Still impossible remotely.
 
 ## Reaching other foobar2000 components
 

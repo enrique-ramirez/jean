@@ -41,6 +41,21 @@ export const test = base.extend({
   // always has one.
   withoutLibraryPlaylist: [false, { option: true }],
 
+  // The media library's state, as beefweb 0.11+ reports it.
+  // test.use({ library: { supported: false } }) is DeaDBeeF, where every
+  // library endpoint answers 501; { enabled: false } is foobar2000 with no
+  // media library configured. Both send Jean back to the autoplaylist, but for
+  // different reasons and with different fixes.
+  // JEAN_NO_LIBRARY_API=1 runs the whole suite against the autoplaylist
+  // fallback instead. The app is supposed to behave identically either way --
+  // that is what the source seam is for -- so the same assertions should hold
+  // with the data coming from somewhere else entirely. Where they cannot, the
+  // spec says so and skips.
+  library: [
+    process.env.JEAN_NO_LIBRARY_API ? { supported: false } : {},
+    { option: true },
+  ],
+
   // Tag values the capture does not carry, keyed by track title:
   // test.use({ retagged: { Bloodhail: { '%artist%': 'Have a Nice Life feat. X' } } }).
   // The captured library has no featured artist and no compilation on it, and
@@ -56,7 +71,15 @@ export const test = base.extend({
   // A fresh player per test. The previous test's page is closed by now, so no
   // stream is left subscribed to the state being discarded.
   player: async (
-    { fakeServer, librarySize, withoutFields, retagged, withoutLibraryPlaylist, playerState },
+    {
+      fakeServer,
+      librarySize,
+      withoutFields,
+      retagged,
+      withoutLibraryPlaylist,
+      library,
+      playerState,
+    },
     use,
   ) => {
     const playlists = DEFAULT_PLAYLISTS()
@@ -68,7 +91,14 @@ export const test = base.extend({
 
     await use(
       fakeServer.reset(
-        createState({ playlists, librarySize, withoutFields, retagged, player: playerState }),
+        createState({
+          playlists,
+          librarySize,
+          withoutFields,
+          retagged,
+          library,
+          player: playerState,
+        }),
       ),
     )
   },

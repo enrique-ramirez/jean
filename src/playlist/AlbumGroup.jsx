@@ -17,7 +17,7 @@ export function AlbumGroup({
   group,
   rows,
   indices,
-  playlistId,
+  source,
   columns,
   template,
   heat,
@@ -58,7 +58,7 @@ export function AlbumGroup({
         row={rows[index]}
         index={index}
         itemIndex={itemIndexOf(index)}
-        playlistId={playlistId}
+        source={source}
         columns={columns}
         template={template}
         showArtwork={false}
@@ -80,8 +80,7 @@ export function AlbumGroup({
     <section className={styles.group} data-compact={isCompactViewport}>
       <div className={styles.aside}>
         <Artwork
-          playlistId={playlistId}
-          index={itemIndexOf(group.start)}
+          src={source.artworkUrl(itemIndexOf(group.start))}
           size={coverSize}
           className={styles.art}
           alt={`${group.album} cover`}

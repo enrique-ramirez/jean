@@ -61,21 +61,22 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
     { enabled: canSavePlaylists && rows.length > 0 && !search.isLoading },
   )
 
-  const libraryId = search.playlist?.id
 
   // Materialised on play, never on typing: browsing and refining stay entirely
   // client-side, and the player only hears about a result set once someone
   // actually asks to hear it.
   const play = useCallback(
     async (position) => {
-      const scratchId = await scratch.ensure({ sourceId: libraryId, indices })
-      // No scratch playlist means a player that will not let us make one. The
-      // track still plays; it just plays in place, and what follows it is the
-      // library's business rather than these results'.
+      const scratchId = await scratch.ensure({ source: search.source, indices })
+      // No scratch playlist means a player that will not let us make one. On
+      // the fallback the track still plays, in place, and what follows it is
+      // the library's business rather than these results'. With the media
+      // library API there is no playlist to play in place *in*, so there is
+      // nothing to fall back to.
       if (scratchId) playItem(scratchId, position)
-      else playItem(libraryId, indices[position])
+      else if (search.playlist) playItem(search.playlist.id, indices[position])
     },
-    [libraryId, indices, scratch, search.query],
+    [search.source, search.playlist, indices, scratch, search.query],
   )
 
   const shufflePlay = useCallback(() => {
@@ -84,7 +85,7 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
     browserRef.current?.play(Math.floor(Math.random() * rows.length))
   }, [order, rows.length])
 
-  if (!search.playlist) {
+  if (search.needsSetup) {
     return <LibrarySetup playlists={playlists} onChoose={search.choose} />
   }
 
@@ -98,21 +99,31 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
         <Search size={26} strokeWidth={1.5} aria-hidden="true" />
         <h1 className={styles.idleTitle}>Search your library</h1>
         <p className={styles.idleBody}>
-          {search.playlist.itemCount.toLocaleString()} tracks in <b>{search.playlist.title}</b>.
+          {/* With the media library API there is no playlist standing in for
+              the library, so there is nothing to name and nothing to swap. */}
+          {search.playlist ? (
+            <>
+              {search.playlist.itemCount.toLocaleString()} tracks in <b>{search.playlist.title}</b>.{' '}
+            </>
+          ) : (
+            <>{search.total.toLocaleString()} tracks in your library. </>
+          )}
           Title, artist and album, as you type -- every word has to match, in any order.
         </p>
         <Button variant="primary" icon={Search} onClick={search.focus}>
           Start typing
         </Button>
-        <button
-          type="button"
-          className={styles.link}
-          aria-expanded={isPicking}
-          onClick={() => setIsPicking((current) => !current)}
-        >
-          Search a different playlist
-        </button>
-        {isPicking ? (
+        {search.playlist ? (
+          <button
+            type="button"
+            className={styles.link}
+            aria-expanded={isPicking}
+            onClick={() => setIsPicking((current) => !current)}
+          >
+            Search a different playlist
+          </button>
+        ) : null}
+        {isPicking && search.playlist ? (
           <LibraryPicker
             playlists={playlists}
             currentId={search.playlist.id}
@@ -131,7 +142,7 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
       ref={browserRef}
       rows={rows}
       indices={indices}
-      playlistId={search.playlist.id}
+      source={search.source}
       viewKey={search.viewKey}
       heat={heat}
       patina={patina}
@@ -150,13 +161,13 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
       emptyNotice="Nothing in your library matches that."
       header={
         <ViewHeader
-          eyebrow={`Search results in ${search.playlist.title}`}
+          eyebrow={`Search results in ${search.playlist?.title ?? 'your library'}`}
           title={search.query}
           stats={stats}
           hasPlayCounts={hasPlayCounts}
           aside={
             <Mosaic
-              playlistId={search.playlist.id}
+              source={search.source}
               trackCount={rows.length}
               indices={indices}
               seed={search.viewKey}

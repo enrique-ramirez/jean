@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Shuffle } from 'lucide-react'
 
-import { readTrack } from '../api/beefweb.js'
+import { artworkUrl, readTrack } from '../api/beefweb.js'
 import { useIsCompactViewport } from '../hooks/useMediaQuery.js'
 import { Artwork } from '../ui/Artwork.jsx'
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from '../ui/icons.jsx'
@@ -91,8 +91,7 @@ export function StatusBar() {
         <div className={styles.now}>
           <Artwork
             key={hasTrack ? `${item.playlistId}:${item.index}` : 'idle'}
-            playlistId={hasTrack ? item.playlistId : null}
-            index={hasTrack ? item.index : null}
+            src={hasTrack ? artworkUrl(item.playlistId, item.index) : null}
             size={44}
             className={styles.art}
           />

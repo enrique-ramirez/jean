@@ -2,9 +2,12 @@ import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 
 import { removePlaylist } from '../api/beefweb.js'
 import { usePermissions, usePlayer } from '../player/usePlayer.js'
-import { playlistKey } from '../playlist/playlistStore.js'
+import { libraryKey, playlistKey } from '../playlist/playlistStore.js'
 import { usePlaylistItems } from '../playlist/usePlaylistItems.js'
 import { libraryIndex, searchLibrary } from './libraryIndex.js'
+import { librarySourceOf } from './librarySource.js'
+import { useLibraryItems } from './useLibraryItems.js'
+import { useLibraryInfo } from './useLibrarySource.js'
 import { isScratchPlaylist, queryOfScratchPlaylist } from './scratchPlaylist.js'
 import { useLibraryPlaylist } from './useLibraryPlaylist.js'
 
@@ -85,14 +88,36 @@ export function useLibrarySearch(playlists) {
   // The library is megabytes and most sessions never search, so nothing is
   // fetched until someone actually reaches for the field.
   const isWanted = isEngaged || query.length > 0
-  const library = usePlaylistItems(
-    isWanted ? playlist?.id : null,
-    isWanted ? playlist?.itemCount : null,
+
+  // Two places the library can come from. The API when the player has one, the
+  // autoplaylist otherwise -- DeaDBeeF, and every beefweb up to 0.10. Both are
+  // loaded through the same store and produce the same rows; what differs is
+  // how a row is addressed afterwards, which is what `source` carries.
+  const { hasLibraryApi, info } = useLibraryInfo()
+
+  // Playing a set of results always needs a playlist to play it in -- there is
+  // no "play this library item". So on a player that will not let Jean make
+  // one, the media library API can browse but can never play, while the
+  // autoplaylist can still be played *in place*. Prefer the one that works.
+  const canWrite = permissions.changePlaylists !== false
+  const useApi = hasLibraryApi && (canWrite || !playlist)
+
+  const viaApi = useLibraryItems(isWanted && useApi ? info.itemCount : null)
+  const viaPlaylist = usePlaylistItems(
+    isWanted && !useApi ? playlist?.id : null,
+    isWanted && !useApi ? playlist?.itemCount : null,
   )
+  const library = useApi ? viaApi : viaPlaylist
 
   // Typing stays responsive while the filter runs over 30k rows behind it.
   const deferredQuery = useDeferredValue(query)
-  const key = playlist ? playlistKey(playlist.id, playlist.itemCount) : null
+  // Keyed per source, and carrying the count either way, so an edited library
+  // indexes afresh rather than inheriting rows that have moved.
+  const key = useApi
+    ? libraryKey(info.itemCount)
+    : playlist
+      ? playlistKey(playlist.id, playlist.itemCount)
+      : null
 
   const matched = useMemo(
     () => (key && library.rows.length > 0 ? searchLibrary(libraryIndex(key, library.rows), deferredQuery) : null),
@@ -104,6 +129,17 @@ export function useLibrarySearch(playlists) {
     [library.rows, matched, library.heat, library.patina],
   )
 
+  // How to act on a row. The list machinery never sees this -- it holds integer
+  // refs and nothing else -- but everything that plays, copies or draws artwork
+  // goes through it.
+  const source = useMemo(
+    () =>
+      useApi
+        ? librarySourceOf({ kind: 'library', paths: library.paths, subsongs: library.subsongs })
+        : librarySourceOf({ kind: 'playlist', playlistId: playlist?.id }),
+    [useApi, library.paths, library.subsongs, playlist?.id],
+  )
+
   const focus = useCallback(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
@@ -111,6 +147,10 @@ export function useLibrarySearch(playlists) {
 
   return {
     playlist,
+    source,
+    // The setup screen is for players with no library API. With one, there is
+    // nothing to point Jean at and nothing to ask the user for.
+    needsSetup: !useApi && !playlist,
     choose,
     query,
     setQuery,

@@ -76,7 +76,11 @@ test.describe('the command palette', () => {
 // points Jean at. On an install that has none by that name, the first thing
 // search can do is explain how to make one.
 test.describe('the first run, with no library playlist', () => {
-  test.use({ withoutLibraryPlaylist: true })
+  // Both, and the pairing is the point: the setup screen exists only for a
+  // player with no media library API *and* no autoplaylist to fall back on.
+  // Give it the API and there is nothing to set up, which is the whole reason
+  // the API is worth having.
+  test.use({ withoutLibraryPlaylist: true, library: { supported: false } })
 
   test('it explains the autoplaylist rather than showing an empty result set', async ({ page }) => {
     await page.goto('/#/search')

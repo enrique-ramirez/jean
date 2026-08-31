@@ -171,6 +171,62 @@ async function handleApi({ state, method, path, url, body, response }) {
     }
   }
 
+  // ---- media library (beefweb 0.11+) ------------------------------------
+  //
+  // `/library/info` always answers, because that is how a client discovers it
+  // has no library to work with. Everything else is 501 when the player has no
+  // support -- which is DeaDBeeF, and is the state that sends Jean back to the
+  // autoplaylist.
+  if (head === 'library') {
+    if (method === 'GET' && rest[0] === 'info') return json(response, state.libraryInfo())
+
+    if (!state.library.supported) return empty(response, 501)
+
+    // `range` is a query parameter here, not a path segment as it is for
+    // playlist items, and it is optional: everything is returned without it.
+    const range = url.searchParams.get('range')
+    const [offset, count] = range ? range.split(':').map(Number) : [0, null]
+    const expressions = parseColumns(url.searchParams.get('columns'))
+
+    // The player's own query syntax, which is not the token matching Jean does
+    // client-side. The fake refuses rather than implementing something close
+    // but different -- a filter that silently disagreed with the real one is
+    // exactly the kind of lie that makes a green suite worthless.
+    if (url.searchParams.get('query')) {
+      return json(response, { error: 'the fake does not implement player query syntax' }, 400)
+    }
+
+    if (method === 'GET' && rest[0] === 'items' && rest[1] === 'by-path') {
+      const payload = state.libraryNodesPayload({
+        path: url.searchParams.get('path') ?? '',
+        offset,
+        count,
+        expressions,
+      })
+      return payload ? json(response, payload) : json(response, { error: 'no such folder' }, 404)
+    }
+
+    if (method === 'GET' && rest[0] === 'items' && rest.length === 1) {
+      const sort = url.searchParams.get('sort')
+      // Bare %field% only. The real player takes any title-format expression;
+      // evaluating those is a player's job, and guessing at one would sort by
+      // something no real player would agree with.
+      if (sort && !/^%[^%]+%$/.test(sort)) {
+        return json(response, { error: 'the fake only sorts by a bare %field%' }, 400)
+      }
+      return json(
+        response,
+        state.libraryItemsPayload({
+          offset,
+          count,
+          expressions,
+          sort,
+          desc: url.searchParams.get('desc') === 'true',
+        }),
+      )
+    }
+  }
+
   // ---- playlists -------------------------------------------------------
   if (head === 'playlists') {
     if (method === 'GET' && rest.length === 0) {
@@ -198,6 +254,11 @@ async function handleApi({ state, method, path, url, body, response }) {
 
     if (method === 'POST' && rest[0] === 'move' && rest.length === 3) {
       return state.movePlaylist(rest[1], Number(rest[2])) ? empty(response) : empty(response, 404)
+    }
+
+    if (method === 'POST' && rest.length === 3 && rest[1] === 'items' && rest[2] === 'add-from-library') {
+      if (!state.library.supported) return empty(response, 501)
+      return state.addFromLibrary(rest[0], body ?? {}) ? empty(response) : empty(response, 404)
     }
 
     if (method === 'POST' && rest.length === 4 && rest[2] === 'items' && rest[3] === 'copy') {
@@ -235,6 +296,13 @@ async function handleApi({ state, method, path, url, body, response }) {
   }
 
   // ---- artwork ---------------------------------------------------------
+  if (method === 'GET' && head === 'artwork' && rest[0] === 'library') {
+    if (!state.library.supported) return empty(response, 501)
+    const file = state.libraryArtworkFor(url.searchParams.get('path'))
+    if (!file) return empty(response, 404)
+    return serveFile(join(HERE, 'artwork', file), response)
+  }
+
   if (method === 'GET' && head === 'artwork' && rest.length === 2) {
     const file = state.artworkFor(rest[0], Number(rest[1]))
     // 404 is the normal answer for a track with no embedded cover, not an

@@ -35,9 +35,9 @@ const pickPositions = (seed, trackCount, tiles) => {
   )
 }
 
-// `indices` maps a position in the set back to the playlist index artwork is
-// addressed by; without it the set is the playlist and the two are the same.
-export function Mosaic({ playlistId, trackCount, indices = null, seed = playlistId, size = 176 }) {
+// `indices` maps a position in the set back to the ref the source addresses
+// artwork by; without it the set is the whole list and the two are the same.
+export function Mosaic({ source, trackCount, indices = null, seed = null, size = 176 }) {
   const tiles = tileCountFor(trackCount)
   const positions = useMemo(
     () => pickPositions(seed, trackCount, tiles).map((position) => (indices ? indices[position] : position)),
@@ -57,8 +57,7 @@ export function Mosaic({ playlistId, trackCount, indices = null, seed = playlist
       {positions.map((index, position) => (
         <Artwork
           key={`${index}-${position}`}
-          playlistId={playlistId}
-          index={index}
+          src={source.artworkUrl(index)}
           size="100%"
           className={styles.tile}
         />

@@ -83,7 +83,7 @@ function TrackRowComponent({
   row,
   index,
   itemIndex,
-  playlistId,
+  source,
   columns,
   template,
   showArtwork,
@@ -138,10 +138,9 @@ function TrackRowComponent({
         )}
       </span>
 
-      {/* index is the row's place in the view; itemIndex is where the player
-          keeps it. They differ in a filtered view, and artwork is addressed by
-          the player's index. */}
-      {showArtwork ? <Artwork playlistId={playlistId} index={itemIndex} size={34} /> : null}
+      {/* index is the row's place in the view; itemIndex is the ref the source
+          addresses it by. They differ in a filtered view. */}
+      {showArtwork ? <Artwork src={source.artworkUrl(itemIndex)} size={34} /> : null}
 
       <span className={styles.names} data-inline={note !== null}>
         <span className={styles.title}>{title}</span>

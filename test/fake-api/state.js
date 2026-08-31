@@ -47,6 +47,47 @@ export function generateTracks(count) {
   return tracks
 }
 
+// ---- media library (beefweb 0.11+) -------------------------------------
+//
+// The library is the same set of files the Library playlist holds -- in the
+// capture it is one media library folder, `F:\Musica`, and every track sits
+// under it. So the library-relative paths the real API returns are derivable
+// from the captured `%path%` rather than invented: strip the root and flip the
+// separators.
+//
+// *Measured* against the live player: paths come back `/`-separated even on
+// Windows, where `pathSeparator` is `\`. A track under `F:\Musica` is
+// `B/Babasónicos/(2001) Jessico/01. Los Calientes.mp3`.
+
+// The deepest directory every track shares, which is what foobar2000 would have
+// been pointed at. Derived rather than hardcoded so a recapture from a
+// differently-organised library still works.
+const libraryRoot = (tracks) => {
+  const paths = tracks.map((track) => (track['%path%'] ?? '').split('\\').slice(0, -1))
+  if (paths.length === 0) return []
+  return paths.reduce((common, parts) => {
+    let at = 0
+    while (at < common.length && at < parts.length && common[at] === parts[at]) at += 1
+    return common.slice(0, at)
+  })
+}
+
+const libraryPathOf = (track, rootDepth) =>
+  (track['%path%'] ?? '').split('\\').slice(rootDepth).join('/')
+
+export function libraryItemsOf(tracks) {
+  const rootDepth = libraryRoot(tracks).length
+  return tracks.map((track) => ({
+    track,
+    path: libraryPathOf(track, rootDepth),
+    // The capture holds no cue sheets or disc images, so every track is its own
+    // file. A fixture that needs a non-zero subsong has to be captured, not
+    // invented -- the whole point of `subsong` is that one file holds several
+    // tracks, which cannot be faked by relabelling one.
+    subsong: 0,
+  }))
+}
+
 const DEFAULT_PLAYLISTS = () => [
   { id: 'p1', title: 'Default Playlist', isCurrent: false, items: tracksOf('jar-of-flies').slice(0, 4) },
   { id: 'p7', title: 'Library', isCurrent: true, items: allTracks() },
@@ -81,6 +122,12 @@ export function createState({
   // no component provides -- so `withoutFields: ['%lastfm_play_count%']` is an
   // install with no playback-statistics component, not a mock of one.
   withoutFields = [],
+  // The media library, as beefweb 0.11+ exposes it. `supported: false` is
+  // DeaDBeeF, where every library endpoint answers 501 -- which is how a client
+  // is supposed to discover it has to fall back. `enabled: false` is
+  // foobar2000 with no media library configured, a different state with a
+  // different fix, and the two must not be collapsed.
+  library = {},
   // Tag values the capture does not happen to carry, keyed by track title. One
   // person's library is not every library: this one has no featured artist and
   // no compilation on it, and neither is worth a sixth album of invented
@@ -128,6 +175,7 @@ export function createState({
       ...player,
     },
     playQueue: [],
+    library: { supported: true, enabled: true, ...library },
     // Milliseconds to hold a write before answering. Zero by default, because
     // the fake is otherwise faster than a pointer can move -- which hides
     // exactly the behaviour that matters about a coalesced write. See
@@ -186,6 +234,7 @@ export function createState({
     player: state.player,
     playQueue: state.playQueue,
     requests: state.requests,
+    library: state.library,
     get playlists() {
       return state.playlists
     },
@@ -370,6 +419,118 @@ export function createState({
     // asks for it here, rather than having every copyItems pretend.
     notifyPlaylists() {
       notify({ playlists: true })
+    },
+
+    // ---- media library ---------------------------------------------------
+
+    libraryInfo() {
+      const { supported, enabled } = state.library
+      return {
+        library: {
+          supported,
+          enabled,
+          itemCount: supported && enabled ? libraryItemsOf(allTracks()).length : 0,
+        },
+      }
+    },
+
+    libraryItemsPayload({ offset, count, expressions, sort, desc }) {
+      const items = libraryItemsOf(allTracks())
+
+      // Default order is file path, per the spec. Sorting matters here because
+      // the spec warns library items are "produced by applying search criteria
+      // rather than naturally ordered", so a client paging without a sort is
+      // relying on something it was told not to.
+      const key = sort ? (entry) => evaluate(entry.track, sort) : (entry) => entry.path
+      items.sort((a, b) => String(key(a)).localeCompare(String(key(b))))
+      if (desc) items.reverse()
+
+      const page = count === null ? items.slice(offset) : items.slice(offset, offset + count)
+      return {
+        libraryItems: {
+          offset,
+          totalCount: items.length,
+          items: page.map((entry) => ({
+            path: entry.path,
+            subsong: entry.subsong,
+            columns: columnsFor(entry.track, expressions),
+          })),
+        },
+      }
+    },
+
+    // One level of the tree, folders first with a recursive count, then tracks.
+    libraryNodesPayload({ path, offset, count, expressions }) {
+      const prefix = path ? `${path}/` : ''
+      const under = libraryItemsOf(allTracks()).filter((entry) => entry.path.startsWith(prefix))
+      if (path && under.length === 0) return null
+
+      const folders = new Map()
+      const tracks = []
+
+      for (const entry of under) {
+        const rest = entry.path.slice(prefix.length)
+        const cut = rest.indexOf('/')
+        if (cut < 0) {
+          tracks.push({ entry, name: rest })
+        } else {
+          const name = rest.slice(0, cut)
+          folders.set(name, (folders.get(name) ?? 0) + 1)
+        }
+      }
+
+      // Byte-wise and case-sensitive, which is what the player does -- so
+      // 'Zappa' sorts before 'abba'. Stated here because it looks like a bug.
+      const byName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+      const items = [
+        ...[...folders].map(([name, itemCount]) => ({
+          type: 'D',
+          name,
+          path: `${prefix}${name}`,
+          itemCount,
+        })).sort(byName),
+        ...tracks.map(({ entry, name }) => ({
+          type: 'F',
+          name,
+          path: entry.path,
+          subsong: entry.subsong,
+          columns: columnsFor(entry.track, expressions),
+        })).sort(byName),
+      ]
+
+      const page = count === null ? items.slice(offset) : items.slice(offset, offset + count)
+      const payload = { offset, totalCount: items.length, path: path ?? '', items: page }
+      // Absent at the top level, present everywhere else -- the client uses its
+      // absence to know it cannot navigate up.
+      if (path) payload.parentPath = path.split('/').slice(0, -1).join('/')
+      return { libraryNodes: payload }
+    },
+
+    addFromLibrary(playlistId, { items, index, replace, play }) {
+      const playlist = byId(playlistId)
+      if (!playlist) return false
+
+      const known = new Map(libraryItemsOf(allTracks()).map((entry) => [entry.path, entry]))
+      // Omitting `items` adds the whole library, per the spec.
+      const chosen = (items ?? [...known.values()].map((entry) => ({ path: entry.path })))
+        .map((ref) => known.get(ref.path))
+        .filter(Boolean)
+        .map((entry) => entry.track)
+
+      if (replace) playlist.items = []
+      const at = Number.isInteger(index) ? index : playlist.items.length
+      playlist.items.splice(at, 0, ...chosen)
+
+      notify({ playlists: true })
+      if (play && chosen.length > 0) setActive(playlist, at, 'playing')
+      return true
+    },
+
+    libraryArtworkFor(path) {
+      const entry = libraryItemsOf(allTracks()).find((item) => item.path === path)
+      if (!entry) return null
+      const album = LIBRARY.albums.find((a) => a.tracks.includes(entry.track))
+      return album ? `${album.slug}.jpg` : null
     },
 
     queueAdd(entry) {

@@ -19,7 +19,7 @@ const sameList = (a, b) => a.length === b.length && a.every((entry, at) => entry
 // Returns the JSX as well as the props, the way usePanel does inside ActionMenu
 // -- the alternative is lifting two pieces of state into a component that is
 // already holding fifteen.
-export function useTrackContextMenu({ rows, indices, playlistId, selection, onSelectOnly }) {
+export function useTrackContextMenu({ rows, indices, source, selection, onSelectOnly }) {
   const { data: playlists = [] } = usePlaylists()
   const permissions = usePermissions()
   const addTracks = useAddTracks()
@@ -77,7 +77,7 @@ export function useTrackContextMenu({ rows, indices, playlistId, selection, onSe
     // that is a place results are put to be played, not a playlist anyone
     // should be able to file tracks into. It would be emptied by the next
     // search anyway.
-    const targets = withoutScratchPlaylists(playlists).filter((entry) => entry.id !== playlistId)
+    const targets = withoutScratchPlaylists(playlists).filter((entry) => entry.id !== source.playlistId)
 
     return [
       {
@@ -90,11 +90,11 @@ export function useTrackContextMenu({ rows, indices, playlistId, selection, onSe
           id: target.id,
           label: target.title,
           icon: ListMusic,
-          onSelect: () => addTracks({ sourceId: playlistId, target, itemIndices }),
+          onSelect: () => addTracks({ source, target, itemIndices }),
         })),
       },
     ]
-  }, [count, positions, indices, playlists, playlistId, canEdit, addTracks])
+  }, [count, positions, indices, playlists, source, canEdit, addTracks])
 
   const header = useMemo(() => {
     if (count === 0) return null

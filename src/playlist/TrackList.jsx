@@ -37,7 +37,7 @@ export const TrackList = forwardRef(function TrackList(
     rows,
     groups,
     indices,
-    playlistId,
+    source,
     scrollRef,
     layout,
     columns,
@@ -286,7 +286,7 @@ export const TrackList = forwardRef(function TrackList(
               group={groups[virtualRow.index]}
               rows={rows}
               indices={indices}
-              playlistId={playlistId}
+              source={source}
               columns={columns}
               template={albumTemplate}
               heat={heat}
@@ -304,7 +304,7 @@ export const TrackList = forwardRef(function TrackList(
               row={rows[virtualRow.index]}
               index={virtualRow.index}
               itemIndex={indices ? indices[virtualRow.index] : virtualRow.index}
-              playlistId={playlistId}
+              source={source}
               columns={columns}
               template={template}
               showArtwork={showArtwork}

@@ -58,7 +58,32 @@ testing without a build either.
 Deploying is therefore only for making it permanent, or for using the UI when the
 Mac is off.
 
+### The development player runs a pre-release beefweb
+
+`0.11~git.dc0fdfc` — CI's merge of
+[PR #382](https://github.com/hyperblast/beefweb/pull/382), which adds the media
+library API, into master. Taken from the GitHub Actions artifact for that run rather
+than built locally; the foobar2000 component is an MSVC target and cannot be built
+from macOS.
+
+Jean is developed against it as though it had shipped, **and still has to work
+without it** — released beefweb is 0.10, DeaDBeeF will never have it, and both are
+covered by the same `supported` / `enabled` / 404 detection. See `CLAUDE.md`, "The
+library API".
+
+To install it on a portable foobar2000: close the player, replace
+`profile\user-components-x64\foo_beefweb\` with the contents of the
+`.fb2k-component` (it is a zip — `x64/foo_beefweb.dll` plus `beefweb.root/`), and
+restart. Back up that folder and `profile\beefweb\` first; the latter holds
+beefweb's `config.json` and Jean's own `clientconfig`, which is where server-side
+settings live.
+
 ## Pointing Jean at your library
+
+> **This step disappears on beefweb 0.11+**, which adds a real media library API.
+> Jean asks the player first and only falls back to the autoplaylist below when the
+> answer is no — on DeaDBeeF, or on any beefweb up to and including 0.10, which is
+> the current release. Nothing here is wasted; it is just no longer the only route.
 
 beefweb has no library API — it can see **playlists and the filesystem, and nothing else**.
 foobar2000's Media Library is invisible to it. So Jean needs a playlist that mirrors your
@@ -240,6 +265,7 @@ if it is not there — a bare beefweb install still gets a complete app.
 | | Component | What it gives you |
 |---|---|---|
 | **Required** | [`foo_beefweb`](https://github.com/hyperblast/beefweb) | Everything core: playback, playlists, play queue, outputs, artwork, filesystem browsing, search |
+| **Recommended** | `foo_beefweb` **0.11+** | The media library, read directly instead of through an autoplaylist. Unreleased at the time of writing; Jean detects it and falls back cleanly |
 | **Optional** | `foo_enhanced_playcount` *or* `foo_playcount` | Play counts and first/last played, which drive the Most Played, Recently Played and "haven't heard since" shelves |
 | **Optional** | any component publishing title-formatting fields | Auto-detected. Jean probes the fields it knows about and enables whatever resolves |
 

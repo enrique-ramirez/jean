@@ -1,13 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import {
-  copyPlaylistItems,
-  createPlaylist,
-  fetchPlaylists,
-  removePlaylistItems,
-  renamePlaylist,
-} from '../api/beefweb.js'
+import { createPlaylist, fetchPlaylists, renamePlaylist } from '../api/beefweb.js'
 import { useStoredState } from '../hooks/useStoredState.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
 import { isScratchPlaylist, queryOfScratchPlaylist, scratchTitle } from './scratchPlaylist.js'
@@ -43,8 +37,8 @@ export function useScratchPlaylist({ playlists, query, count, canEdit }) {
   const pending = useRef(null)
 
   const ensure = useCallback(
-    async ({ sourceId, indices }) => {
-      if (!canEdit || !sourceId || indices.length === 0) return null
+    async ({ source, indices }) => {
+      if (!canEdit || indices.length === 0) return null
       if (holdsCurrentView) return playlist.id
 
       const build = async () => {
@@ -77,11 +71,14 @@ export function useScratchPlaylist({ playlists, query, count, canEdit }) {
         // live player, removing every item leaves the current track playing but
         // detached -- activeItem.index goes to -1 -- which is harmless here
         // because a play always follows immediately.
-        const held = (await fetchPlaylists()).find((entry) => entry.id === target.id)?.itemCount ?? 0
-        if (held > 0) {
-          await removePlaylistItems(target.id, Array.from({ length: held }, (_, at) => at))
-        }
-        await copyPlaylistItems(sourceId, target.id, indices)
+        // The library source replaces in a single request and needs no count at
+        // all. The playlist source has to empty by range first, and the range
+        // has to be read from the player -- item changes are never pushed, so a
+        // cached itemCount is stale from the first write onwards.
+        const held = source.needsHeldCount
+          ? ((await fetchPlaylists()).find((entry) => entry.id === target.id)?.itemCount ?? 0)
+          : 0
+        await source.fill(target.id, indices, held)
 
         // And put the true count back in the cache, for the same reason:
         // nothing else will. `holdsCurrentView` is derived from it, so without

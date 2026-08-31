@@ -38,7 +38,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
   {
     rows,
     indices = null,
-    playlistId,
+    source,
     viewKey,
     heat,
     patina,
@@ -135,7 +135,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
   const trackMenu = useTrackContextMenu({
     rows,
     indices,
-    playlistId,
+    source,
     selection: selection.selection,
     onSelectOnly: moveCursorTo,
   })
@@ -143,7 +143,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
   const trackDrag = useTrackDragSource({
     rows,
     indices,
-    playlistId,
+    source,
     selection: selection.selection,
   })
 
@@ -394,7 +394,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
             rows={rows}
             groups={groups}
             indices={indices}
-            playlistId={playlistId}
+            source={source}
             scrollRef={scrollRef}
             layout={layout}
             columns={optional}

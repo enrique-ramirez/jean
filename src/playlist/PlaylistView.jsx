@@ -6,6 +6,7 @@ import { useActiveItem, usePlaybackOrder, usePlayer } from '../player/usePlayer.
 import { Button } from '../ui/Button.jsx'
 import { PlayIcon } from '../ui/icons.jsx'
 import { Finder } from './Finder.jsx'
+import { librarySourceOf } from '../library/librarySource.js'
 import { Mosaic } from './Mosaic.jsx'
 import { TrackBrowser } from './TrackBrowser.jsx'
 import { ViewHeader } from './ViewHeader.jsx'
@@ -19,6 +20,14 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
   const { rows, loaded, total, isLoading, error, heat, patina, playedCount } = usePlaylistItems(
     playlist?.id,
     playlist?.itemCount,
+  )
+
+  // A playlist is addressed by index whatever the media library situation is:
+  // playlists are playlists, and the library source only ever stands in for
+  // the *library*.
+  const source = useMemo(
+    () => librarySourceOf({ kind: 'playlist', playlistId: playlist?.id }),
+    [playlist?.id],
   )
 
   const browserRef = useRef(null)
@@ -76,7 +85,7 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
     <TrackBrowser
       ref={browserRef}
       rows={rows}
-      playlistId={playlist.id}
+      source={source}
       viewKey={`playlist:${playlist.id}`}
       heat={heat}
       patina={patina}
@@ -99,7 +108,7 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
           title={playlist.title}
           stats={stats}
           hasPlayCounts={hasPlayCounts}
-          aside={<Mosaic playlistId={playlist.id} trackCount={stats.trackCount} />}
+          aside={<Mosaic source={source} trackCount={stats.trackCount} seed={playlist.id} />}
           actions={
             <>
               <Button

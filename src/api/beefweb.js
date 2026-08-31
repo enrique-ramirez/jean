@@ -7,7 +7,14 @@ import { TRACK_EXPRESSIONS } from '../playlist/fields.js'
 // Multi-argument functions are unusable: the list is split on commas before the
 // player evaluates it, so $if(a,b,c) arrives as three columns. Single-argument
 // functions do nest -- $len($meta(unsynced lyrics)) works. See API.md.
-export const TRACK_COLUMNS = ['%artist%', '%title%']
+// `%path%` and `%subsong%` are here for identity, not for display. Playlist
+// items have no id, so "is this row the track that is playing" was only
+// answerable when the player happened to be inside a playlist Jean could map.
+// A path answers it from anywhere.
+//
+// One string per player update, not per row -- this is the active item only,
+// which is why the "never hold per-track-unique strings" rule does not apply.
+export const TRACK_COLUMNS = ['%artist%', '%title%', '%path%', '%subsong%']
 
 const encode = (expressions) => encodeURIComponent(expressions.join(','))
 
@@ -62,6 +69,45 @@ export async function fetchPlaylistItems(playlistId, offset, count, { signal } =
 }
 
 export const artworkUrl = (playlistId, index) => `/api/artwork/${playlistId}/${index}`
+
+// ---- media library (beefweb 0.11+) ---------------------------------------
+//
+// Absent before 0.11 and on DeaDBeeF, where every endpoint below answers 501.
+// `fetchLibraryInfo` is the one that always answers, because it is how a client
+// finds out which of those it is talking to.
+
+export async function fetchLibraryInfo() {
+  const response = await fetch('/api/library/info')
+  // A released beefweb has no such route at all. Same answer as 501: there is
+  // no library here, fall back to the autoplaylist.
+  if (response.status === 404 || response.status === 501) {
+    return { supported: false, enabled: false, itemCount: 0 }
+  }
+  if (!response.ok) throw new Error(`GET /api/library/info failed: ${response.status}`)
+  const { library } = await response.json()
+  return library
+}
+
+export async function fetchLibraryItems({ offset, count, signal }) {
+  const range = count == null ? '' : `&range=${offset}:${count}`
+  const response = await request(`/api/library/items?columns=${encode(TRACK_EXPRESSIONS)}${range}`, {
+    signal,
+  })
+  const { libraryItems } = await response.json()
+  return libraryItems
+}
+
+export const libraryArtworkUrl = (path, subsong) =>
+  `/api/artwork/library?path=${encodeURIComponent(path)}` +
+  (subsong ? `&subsong=${subsong}` : '')
+
+// The whole rebuild in one request: no rename, no remove-by-range, no copy and
+// no separate play, so there is no client-side count arithmetic left to be
+// stale. `items` rather than `query` -- the player's query syntax and Jean's
+// fold()-based matching do not return the same set, and adding by query would
+// add tracks that are not the ones on screen.
+export const addFromLibrary = (playlistId, body) =>
+  post(`/api/playlists/${playlistId}/items/add-from-library`, body)
 
 export const playPause = () => post('/api/player/play-pause')
 export const nextTrack = () => post('/api/player/next')
@@ -119,6 +165,22 @@ export const removePlaylistItems = (playlistId, items) =>
 export function readTrack(player) {
   const values = player?.activeItem?.columns
   if (!values?.length) return null
-  const [artist, title] = values
-  return { artist: artist || 'Unknown artist', title: title || 'Unknown title' }
+  const [artist, title, path, subsong] = values
+  return {
+    artist: artist || 'Unknown artist',
+    title: title || 'Unknown title',
+    path: path || null,
+    subsong: Number(subsong) || 0,
+  }
+}
+
+// The player reports an absolute path (`F:\Musica\K\Korn\…`); the media
+// library reports one relative to the library folders, forward-slashed
+// (`K/Korn/…`). Jean is never told where the library folders are, so the two
+// are matched by suffix rather than by reconstructing the root -- a relative
+// path is unique within the library, so a suffix match cannot collide.
+export function pathMatchesLibraryPath(absolute, relative) {
+  if (!absolute || !relative) return false
+  const flat = absolute.replaceAll('\\', '/')
+  return flat === relative || flat.endsWith(`/${relative}`)
 }

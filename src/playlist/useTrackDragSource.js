@@ -7,7 +7,7 @@ import { useAddTracks } from './useAddTracks.js'
 // Dragging tracks out of the list and onto a playlist in the sidebar. The drop
 // runs the same useAddTracks the menu does, so both routes copy by index, both
 // leave duplicates alone, and both leave an undo behind.
-export function useTrackDragSource({ rows, indices, playlistId, selection }) {
+export function useTrackDragSource({ rows, indices, source, selection }) {
   const { data: playlists = [] } = usePlaylists()
   const permissions = usePermissions()
   const addTracks = useAddTracks()
@@ -33,11 +33,11 @@ export function useTrackDragSource({ rows, indices, playlistId, selection }) {
 
     // You are already in it, and the library playlist is where the source
     // usually is anyway -- an autoplaylist would refuse the write.
-    canDrop: (id) => id !== playlistId,
+    canDrop: (id) => id !== source.playlistId,
 
     onDrop: (id, payload) => {
       const target = playlists.find((entry) => entry.id === id)
-      if (target) addTracks({ sourceId: playlistId, target, itemIndices: payload.items })
+      if (target) addTracks({ source, target, itemIndices: payload.items })
     },
   })
 }

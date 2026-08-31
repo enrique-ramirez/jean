@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { copyPlaylistItems, fetchPlaylists, removePlaylistItems } from '../api/beefweb.js'
+import { fetchPlaylists, removePlaylistItems } from '../api/beefweb.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
 import { pushToast } from '../ui/toasts.js'
 
@@ -20,7 +20,7 @@ export function useAddTracks() {
   const queryClient = useQueryClient()
 
   return useCallback(
-    async ({ sourceId, target, itemIndices }) => {
+    async ({ source, target, itemIndices }) => {
       const count = itemIndices.length
       if (count === 0) return
 
@@ -34,7 +34,7 @@ export function useAddTracks() {
           ?.itemCount ?? target.itemCount
 
       try {
-        await copyPlaylistItems(sourceId, target.id, itemIndices)
+        await source.addTo(target.id, itemIndices)
         await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY })
       } catch {
         // Smart playlists reject every write and say nothing about it in their

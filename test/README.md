@@ -33,6 +33,50 @@ setup that exists only on the machine it was written on.
 app uses, holds real playlists, and pushes SSE the way beefweb does -- a full
 snapshot on connect, then only what changed, and **never on a timer**.
 
+### Measuring the library API
+
+`test/measure-library.mjs` times the media library endpoints against a real player
+and a real library, because the questions it answers are about server-side cost and
+the fake has none:
+
+```sh
+PLAYER=home.local:8880 node test/measure-library.mjs
+```
+
+It compares the library read against the playlist read Jean uses today, sweeps range
+sizes to separate the per-call cost from the per-item one, and tries the chunking
+strategies. The answers are recorded in CLAUDE.md; re-run it when the endpoint
+changes, since caching is on the PR's list of things it does not do yet.
+
+### The media library
+
+The fake serves the beefweb 0.11+ library API — `/library/info`, `/library/items`,
+`/library/items/by-path`, `/artwork/library` and
+`/playlists/{id}/items/add-from-library` — checked against shapes measured on a live
+player running `0.11~git.dc0fdfc`. `fake-library.spec.js` is that check; `API.md`
+records the measurements.
+
+The library is **derived from the captured tracks rather than invented**: the
+capture's `%path%` values are absolute (`F:\Musica\B\Babasónicos\…`), the deepest
+shared directory is treated as the media library folder, and what is left is the
+library-relative, forward-slashed path the real API returns. So the fixture stays
+captured and the paths stay real.
+
+`test.use({ library: { supported: false } })` is **DeaDBeeF**: `/library/info` still
+answers, because that is how a client discovers it has no library, and everything
+else is **501**. `{ enabled: false }` is foobar2000 with no media library configured
+— supported, empty, and a different problem with a different fix. Both send Jean back
+to the autoplaylist and they must not collapse into one state.
+
+Two things the fake deliberately **refuses** rather than approximating, because a
+filter that silently disagreed with the real one is worse than no filter: the
+player's `query` syntax, and `sort` by anything but a bare `%field%`. Both answer
+**400**. Jean should be addressing adds by explicit `items` anyway.
+
+Not covered, and not fakeable: **`subsong` is always 0**. Every captured file is one
+track, and the whole point of a subsong is that one file holds several — that needs a
+cue sheet or a disc image in the capture, not a relabelled fixture.
+
 It is named for the API shape rather than for beefweb, deliberately. The plugin
 is the swappable part; the request and response shapes are what would survive
 swapping it, and those are what this is a copy of. Comments inside still name

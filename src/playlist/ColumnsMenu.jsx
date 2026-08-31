@@ -1,4 +1,4 @@
-import { Check, Columns3 } from 'lucide-react'
+import { Check, Columns3, Flame } from 'lucide-react'
 
 import { Button } from '../ui/Button.jsx'
 import { Menu, MenuItem, MenuSeparator } from '../ui/Menu.jsx'
@@ -24,6 +24,7 @@ export function ColumnsMenu({
   showArtwork,
   onToggleArtwork,
   isAvailable,
+  onExplainHeat,
 }) {
   return (
     <Menu
@@ -33,12 +34,24 @@ export function ColumnsMenu({
       trigger={
         <Button
           icon={Columns3}
-          aria-label="Choose columns"
+          aria-label="View options"
+          title="View options"
           aria-expanded={isOpen}
           onClick={() => onOpenChange(!isOpen)}
         />
       }
     >
+      {/* The permanent way back to the explanation. The flame teaches once, on
+          first sight, and after that this is where someone goes looking. */}
+      {onExplainHeat ? (
+        <>
+          <MenuItem icon={Flame} onClick={onExplainHeat}>
+            What the shading means
+          </MenuItem>
+          <MenuSeparator />
+        </>
+      ) : null}
+
       <Option label="Artwork" checked={showArtwork} onToggle={onToggleArtwork} />
       <MenuSeparator />
       {OPTIONAL_COLUMNS.map((column) => {

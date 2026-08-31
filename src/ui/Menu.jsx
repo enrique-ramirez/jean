@@ -1,7 +1,7 @@
 import { useDismissable } from '../hooks/useDismissable.js'
 import styles from './Menu.module.css'
 
-export function Menu({ isOpen, onDismiss, children, trigger, align = 'end', className }) {
+export function Menu({ isOpen, onDismiss, children, trigger, align = 'end', className, role = 'menu' }) {
   const ref = useDismissable(isOpen, onDismiss)
 
   return (
@@ -11,7 +11,7 @@ export function Menu({ isOpen, onDismiss, children, trigger, align = 'end', clas
         <div
           className={[styles.menu, className].filter(Boolean).join(' ')}
           data-align={align}
-          role="menu"
+          role={role}
         >
           {children}
         </div>

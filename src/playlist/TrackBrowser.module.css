@@ -93,3 +93,10 @@
 .rows {
   display: contents;
 }
+
+/* The legend sets its own width; the menu's default min-width would only fight
+   it, and its padding is the legend's to spend. */
+.heatInfo {
+  min-width: 0;
+  padding: 6px;
+}

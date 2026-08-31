@@ -5,9 +5,11 @@ import { useStoredState } from '../hooks/useStoredState.js'
 import { SCOPE } from '../keyboard/keymap.js'
 import { useKeymap } from '../keyboard/useKeymap.js'
 import { Button } from '../ui/Button.jsx'
+import { Menu } from '../ui/Menu.jsx'
 import { mergeHandlers } from '../ui/mergeHandlers.js'
 import { Segmented } from '../ui/Segmented.jsx'
 import { ColumnsMenu } from './ColumnsMenu.jsx'
+import { HeatLegend } from './HeatLegend.jsx'
 import { TrackList } from './TrackList.jsx'
 import { DEFAULT_COLUMN_IDS, resolveColumns } from './columns.js'
 import { useAvailableFields } from './useAvailableFields.js'
@@ -62,11 +64,26 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
   const [showArtwork, setShowArtwork] = useStoredState('jean.artwork', true)
   const [enabledIds, setEnabledIds] = useStoredState('jean.columns', DEFAULT_COLUMN_IDS)
   const [isColumnsOpen, setIsColumnsOpen] = useState(false)
+  const [isHeatInfoOpen, setIsHeatInfoOpen] = useState(false)
+  const [heatIntroSeen, setHeatIntroSeen] = useStoredState('jean.heatIntroSeen', false)
   const [activeDirection, setActiveDirection] = useState(null)
   const lastDirection = useRef('down')
 
   const selection = useTrackSelection(rows.length, viewKey)
   const { isAvailable, hasPlayCounts } = useAvailableFields(rows)
+
+  const dismissHeatInfo = useCallback(() => {
+    setIsHeatInfoOpen(false)
+    setHeatIntroSeen(true)
+  }, [setHeatIntroSeen])
+
+  // Explained once, the first time the shading is actually on screen -- which
+  // is the only moment the question occurs to anyone. After that it lives in
+  // the columns menu and this never fires again.
+  useEffect(() => {
+    if (heatIntroSeen || !hasPlayCounts || !showHeat) return
+    setIsHeatInfoOpen(true)
+  }, [heatIntroSeen, hasPlayCounts, showHeat])
 
   const { optional, template, albumTemplate } = useMemo(
     () => resolveColumns({ enabledIds, showArtwork, isCompactViewport, isAvailable }),
@@ -206,13 +223,27 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
         <span className={styles.spacer} />
 
         {hasPlayCounts ? (
-          <Button
-            icon={Flame}
-            aria-pressed={showHeat}
-            aria-label="Show play-count heat"
-            title="Play-count heat"
-            onClick={() => setShowHeat((current) => !current)}
-          />
+          <Menu
+            isOpen={isHeatInfoOpen}
+            onDismiss={dismissHeatInfo}
+            role="dialog"
+            className={styles.heatInfo}
+            trigger={
+              <Button
+                icon={Flame}
+                aria-pressed={showHeat}
+                aria-label="Show play-count heat"
+                title="Play-count heat"
+                onClick={() => {
+                  setShowHeat((current) => !current)
+                  // Reaching for the control counts as having met it.
+                  if (isHeatInfoOpen) dismissHeatInfo()
+                }}
+              />
+            }
+          >
+            <HeatLegend onDismiss={dismissHeatInfo} />
+          </Menu>
         ) : null}
 
         <Segmented value={layout} onChange={setLayout} options={LAYOUTS} label="Track layout" />
@@ -222,6 +253,14 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
           onOpenChange={setIsColumnsOpen}
           enabledIds={enabledIds}
           isAvailable={isAvailable}
+          onExplainHeat={
+            hasPlayCounts
+              ? () => {
+                  setIsColumnsOpen(false)
+                  setIsHeatInfoOpen(true)
+                }
+              : undefined
+          }
           showArtwork={showArtwork}
           onToggleArtwork={() => setShowArtwork((current) => !current)}
           onToggleColumn={(id) =>

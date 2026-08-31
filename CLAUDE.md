@@ -98,6 +98,14 @@ rows is far worse than not offering the undo.
 are not looking at does, and that is what a toast is for; it is also where the undo
 lives. A message about something already on screen is noise.
 
+**Anything ambient enough to need explaining gets explained once, where it happens.**
+The play-count shading is the case in point: it is legible only if you already know what
+it means, so it introduces itself the first time it is actually on screen, in a popover
+anchored to its own control, and any click at all dismisses it for good. What it must not
+be is a modal on first run -- that teaches things before there is anything to attach them
+to. It also needs a permanent home for whoever meets it later or forgets, which is the
+columns menu; a thing you can only be told once is a thing most people never learn.
+
 Icons come from **`lucide-react`**, imported per-icon so they tree-shake.
 
 ## Architecture decisions already made

@@ -22,7 +22,12 @@ const openFinder = async (page) => {
   await expect(finder(page)).toBeVisible()
 }
 
-test.describe('opening the finder', () => {
+// Both layouts: the results dropdown is the same either way, but what it marks
+// is rows, and album mode renders those inside groups.
+for (const layout of ['compact', 'album']) {
+test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
+
+test.describe(`opening the finder (${layout})`, () => {
   test.beforeEach(({ page }) => openLibrary(page))
 
   test('the button opens it with the field already focused', async ({ page }) => {
@@ -77,7 +82,7 @@ test.describe('opening the finder', () => {
   })
 })
 
-test.describe('finding', () => {
+test.describe(`finding (${layout})`, () => {
   test.beforeEach(async ({ page }) => {
     await openLibrary(page)
     await openFinder(page)
@@ -134,7 +139,7 @@ test.describe('finding', () => {
   })
 })
 
-test.describe('moving through results', () => {
+test.describe(`moving through results (${layout})`, () => {
   test.skip(({ isMobile }) => isMobile, 'these are keyboard gestures')
 
   test.beforeEach(async ({ page }) => {
@@ -215,7 +220,7 @@ test.describe('moving through results', () => {
   })
 })
 
-test.describe('leaving the finder', () => {
+test.describe(`leaving the finder (${layout})`, () => {
   test.beforeEach(async ({ page }) => {
     await openLibrary(page)
     await openFinder(page)
@@ -276,7 +281,7 @@ test.describe('leaving the finder', () => {
   })
 })
 
-test.describe('at library scale', () => {
+test.describe(`at library scale (${layout})`, () => {
   test.use({ librarySize: 30441 })
 
   test('marks every match but renders only a page of them', async ({ page }) => {
@@ -296,3 +301,4 @@ test.describe('at library scale', () => {
     await expect(page.getByRole('grid')).toHaveAttribute('aria-rowcount', '30441')
   })
 })
+}

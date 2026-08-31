@@ -24,7 +24,7 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
   const browserRef = useRef(null)
   const { data: playerSnapshot } = usePlayer()
   const activeItem = useActiveItem(playlist?.id)
-  const shuffle = usePlaybackOrder()
+  const order = usePlaybackOrder()
   const { hasPlayCounts } = useAvailableFields(rows)
 
   const [isFinding, setIsFinding] = useState(false)
@@ -41,6 +41,23 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
   const { matches, results } = useMemo(() => search(haystacks, query), [haystacks, query])
 
   const play = useCallback((index) => playItem(playlist.id, index), [playlist?.id])
+
+  // Start somewhere at random and let the player take it from there.
+  //
+  // Measured against the live player: POST /player/play/{plref}/{index} makes
+  // that playlist the active one, and Shuffle (tracks) then draws its next
+  // track from it -- p5 index 3, then 953, 540, 218, never leaving p5. So the
+  // mode is the shuffling, and this only has to open the door for it.
+  //
+  // The queue was the other candidate and is worse: beefweb takes one request
+  // per item with no bulk form, so a playlist of any size means hundreds of
+  // calls and a lookahead cap nobody can see the edge of, and it would have to
+  // clobber whatever the user had queued to mean anything.
+  const shufflePlay = useCallback(() => {
+    if (rows.length === 0) return
+    order.enableShuffle()
+    browserRef.current?.play(Math.floor(Math.random() * rows.length))
+  }, [order, rows.length])
 
   const closeFinder = useCallback(() => {
     setIsFinding(false)
@@ -93,12 +110,14 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
               >
                 Play
               </Button>
+              {/* An action, not the mode -- the mode moved to the status bar,
+                  where global player state belongs. Next to Play this reads as
+                  "play these, shuffled", so that is what it does: a random
+                  track now, and shuffle on for everything after it. */}
               <Button
                 icon={Shuffle}
-                onClick={shuffle.toggleShuffle}
-                disabled={!shuffle.canShuffle}
-                aria-pressed={shuffle.isShuffle}
-                title={shuffle.orderName ? `Playback order: ${shuffle.orderName}` : 'Shuffle'}
+                onClick={shufflePlay}
+                disabled={rows.length === 0 || !order.canShuffle}
               >
                 Shuffle
               </Button>

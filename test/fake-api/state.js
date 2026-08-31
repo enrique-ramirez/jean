@@ -335,6 +335,11 @@ export function createState({
       state.playQueue.push(entry)
       notify({ player: true })
     },
+
+    queueClear() {
+      state.playQueue.length = 0
+      notify({ player: true })
+    },
   }
 }
 

@@ -7,7 +7,14 @@ const THIRD_TRACK = { title: 'Deléctrico', artist: 'Babasónicos', index: 2 }
 
 const statusBar = (page) => page.locator('footer')
 
-test.describe('playing a track', () => {
+// Both layouts. Album mode renders its rows through AlbumGroup rather than
+// TrackList directly -- the same file the per-row play handler was removed from
+// when tap-to-play moved onto the container -- so the one path these gestures
+// were changed for is the one they were never tested on.
+for (const layout of ['compact', 'album']) {
+test.describe(`playing a track (${layout} layout)`, () => {
+  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
     // Opening with no hash lands on whichever playlist the player is on, so
@@ -88,8 +95,9 @@ test.describe('playing a track', () => {
   })
 })
 
-test.describe('playing on touch', () => {
+test.describe(`playing on touch (${layout} layout)`, () => {
   test.skip(({ isMobile }) => !isMobile, 'these are touch gestures')
+  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
@@ -125,7 +133,10 @@ test.describe('playing on touch', () => {
   })
 })
 
-test('on a pointer, a single click selects and does not play', async ({ page, player }) => {
+test(`on a pointer, a single click selects and does not play (${layout} layout)`, async ({
+  page,
+  player,
+}) => {
   // The other half of the same gate. Tap-to-play is decided by pointerType, so
   // a regression there does not break the phone -- it silently turns every
   // desktop click into playback, which nothing else here would catch.
@@ -141,3 +152,4 @@ test('on a pointer, a single click selects and does not play', async ({ page, pl
   expect(requestsTo(player, '/player/play/')).toEqual([])
   await expect(statusBar(page)).toContainText('Nothing playing')
 })
+}

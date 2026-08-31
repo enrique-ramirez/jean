@@ -208,8 +208,22 @@ async function handleApi({ state, method, path, url, body, response }) {
   }
 
   if (method === 'POST' && head === 'playqueue' && rest[0] === 'add') {
+    // One item per request, and no bulk form -- measured against the live
+    // player, both {items:[...]} and an array itemIndex come back 400. The fake
+    // refuses them too, so a caller that tries to batch fails here rather than
+    // on someone's machine.
+    if (!Number.isInteger(body?.itemIndex)) return json(response, { error: 'itemIndex' }, 400)
     state.queueAdd(body)
     return empty(response)
+  }
+
+  if (method === 'POST' && head === 'playqueue' && rest[0] === 'clear') {
+    state.queueClear()
+    return empty(response)
+  }
+
+  if (method === 'GET' && head === 'playqueue') {
+    return json(response, { playQueue: state.playQueue })
   }
 
   // ---- artwork ---------------------------------------------------------

@@ -35,10 +35,15 @@ export const test = base.extend({
   // play counts should disappear rather than break.
   withoutFields: [[], { option: true }],
 
+  // Overrides merged onto the captured player state, for the things that vary
+  // between installs and are not in the fixture: permissions, the volume range,
+  // which playback orders the player actually offers.
+  playerState: [null, { option: true }],
+
   // A fresh player per test. The previous test's page is closed by now, so no
   // stream is left subscribed to the state being discarded.
-  player: async ({ fakeServer, librarySize, withoutFields }, use) => {
-    await use(fakeServer.reset(createState({ librarySize, withoutFields })))
+  player: async ({ fakeServer, librarySize, withoutFields, playerState }, use) => {
+    await use(fakeServer.reset(createState({ librarySize, withoutFields, player: playerState })))
   },
 
   baseURL: async ({ fakeServer }, use) => {

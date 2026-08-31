@@ -331,11 +331,19 @@ export function usePlaybackOrder() {
     mutation.mutate(isShuffle ? previousOrder.current : shuffleIndex)
   }, [isShuffle, shuffleIndex, mutation])
 
+  // For "play this shuffled", which turns shuffle on rather than flipping it --
+  // pressing it twice must not walk back out of the mode it just asked for.
+  const enableShuffle = useCallback(() => {
+    if (shuffleIndex < 0 || isShuffle) return
+    mutation.mutate(shuffleIndex)
+  }, [isShuffle, shuffleIndex, mutation])
+
   return {
     isShuffle,
     canShuffle: shuffleIndex >= 0,
     orderName: names[value] ?? null,
     toggleShuffle,
+    enableShuffle,
   }
 }
 

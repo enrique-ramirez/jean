@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { Shuffle } from 'lucide-react'
+
 import { readTrack } from '../api/beefweb.js'
 import { useIsCompactViewport } from '../hooks/useMediaQuery.js'
 import { Artwork } from '../ui/Artwork.jsx'
@@ -7,7 +9,14 @@ import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from '../ui/icons.
 import { SeekBar, useElapsedLabel } from './SeekBar.jsx'
 import { formatTime } from './position.js'
 import { Volume, VolumePopover } from './Volume.jsx'
-import { usePlayPause, usePlayer, useSeek, useTransport, useVolume } from './usePlayer.js'
+import {
+  usePlaybackOrder,
+  usePlayPause,
+  usePlayer,
+  useSeek,
+  useTransport,
+  useVolume,
+} from './usePlayer.js'
 import styles from './StatusBar.module.css'
 
 // Times are their own leaf so the animation frame loop repaints two spans
@@ -56,6 +65,7 @@ export function StatusBar() {
   const playPause = usePlayPause()
   const seek = useSeek()
   const transport = useTransport()
+  const order = usePlaybackOrder()
 
   if (isPending || isError) {
     return (
@@ -94,6 +104,23 @@ export function StatusBar() {
         </div>
 
         <div className={styles.transport}>
+          {/* Playback order is global player state, so it belongs with the
+              other global controls rather than in a view header, where sitting
+              next to Play made it read as "shuffle these tracks" -- which is
+              not what it does. Left of the transport, not among it: this is the
+              mode the buttons to its right operate in, not a fourth button. */}
+          <button
+            type="button"
+            className={styles.order}
+            aria-label="Shuffle"
+            aria-pressed={order.isShuffle}
+            disabled={!order.canShuffle}
+            title={order.orderName ? `Playback order: ${order.orderName}` : 'Shuffle'}
+            onClick={order.toggleShuffle}
+          >
+            <Shuffle size={16} strokeWidth={2} />
+          </button>
+
           <button
             type="button"
             className={styles.skip}

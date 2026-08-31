@@ -82,6 +82,9 @@ export const volumeDown = () => post('/api/player/volume/down')
 // playbackMode is deprecated in the spec; the options array is the current form.
 export const setPlaybackOrder = (value) =>
   post('/api/player', { options: [{ id: 'playbackOrder', value }] })
+// One item per request, and there is no bulk form: measured against the live
+// player, both {items:[...]} and an array itemIndex come back 400. That is what
+// rules the play queue out as a way to say "play these forty tracks".
 export const addToPlayQueue = (playlistId, itemIndex) =>
   post('/api/playqueue/add', { plref: playlistId, itemIndex })
 

@@ -98,6 +98,28 @@ rows is far worse than not offering the undo.
 are not looking at does, and that is what a toast is for; it is also where the undo
 lives. A message about something already on screen is noise.
 
+**Shuffle is two controls, not one.** The *mode* is global player state and lives
+in the status bar, left of the transport -- quiet until it is on, and one of it
+rather than one per view. The *action* lives in a playlist header next to Play,
+where it reads as "play these, shuffled", and that is all it does: start a random
+track and turn the mode on. Two requests. Verified against the live player:
+`POST /player/play/{plref}/{index}` makes that playlist the active one, and
+Shuffle (tracks) then draws from it -- p5 index 3, then 953, 540, 218, never
+leaving p5. So the mode does the shuffling and the action only opens the door.
+
+The play queue was the other candidate and is worse. `/playqueue/add` takes one
+item per request with no bulk form -- measured, both `{items:[…]}` and an array
+`itemIndex` return 400 -- so any set means hundreds of calls behind a lookahead
+cap nobody can see the edge of, and it has to clobber whatever the user had
+queued to mean anything.
+
+**Search results have no Shuffle, deliberately.** The order draws from the active
+playlist, and results are a view over one rather than a playlist of their own, so
+turning it on would start inside the results and then wander the whole library --
+which is not what a button sitting above 21 matches appears to promise.
+Confining it would need a real playlist to exist. `Save as playlist` is the
+honest route to that today.
+
 **The list follows playback, and only when the track actually changes.** Scrolling
 away from the playing track does not change which track is playing, so nothing
 re-fires and the view stays where it was put; the "Now playing" pill and `n` are

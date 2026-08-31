@@ -140,6 +140,14 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
               >
                 Play
               </Button>
+              {/* No Shuffle here, deliberately. Shuffle is the player's
+                  playback order and it draws from the active playlist -- and
+                  these results are a view over one, not a playlist of their
+                  own. Turning it on would start inside the results and then
+                  wander the whole library, which is not what a button sitting
+                  above 21 matches appears to promise. Confining it needs a real
+                  playlist to exist, which is a separate decision.
+                  "Save as playlist" is the honest route to it today. */}
               {canSavePlaylists ? (
                 <SavePlaylistButton
                   search={search}

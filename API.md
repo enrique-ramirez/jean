@@ -247,6 +247,29 @@ Notes that cost time to rediscover:
 - **`/playqueue/add` takes one item per request.** Queueing forty tracks is forty
   POSTs. `queueIndex` exists but is DeaDBeeF-only. For "shuffle this playlist", set
   `playbackOrder` instead — one request, no queue involved.
+- **There is no bulk form, and asking for one is an error, not a no-op.** *Measured*:
+  `{ plref, items: [1,2,3] }` and `{ plref, itemIndex: [1,2] }` both return **400**. That
+  rules the play queue out as a way to express "play this set of tracks" — a playlist is
+  the only mechanism the API has for it.
+- **Playback order applies to the active playlist, and playing a track sets it.**
+  *Measured*: `POST /player/play/p5/3` made `p5` current, and `Shuffle (tracks)` then drew
+  3 → 953 → 540 → 218, never leaving `p5`. So confining playback to a set of tracks means
+  getting those tracks into a playlist; there is no selection concept to shuffle within.
+- **Emptying or deleting the playing playlist does not stop playback.** *Measured*: with
+  either, the current track keeps playing but is orphaned — `activeItem.playlistId` goes
+  to `""` and `index` to `-1`. Emptying is harmless if a play follows immediately.
+  Deleting is not: when the track ends the player falls back to another playlist and
+  carries on, so "delete it and playback will stop at the end" is false.
+- **Renaming a playlist while it is playing is seamless.** *Measured*: same track, same
+  position, uninterrupted — 1.8s → 2.5s → 5.0s across the rename. Useful, because it turns
+  "save these results as a playlist" into a rename rather than a copy.
+- **`items/copy` is fast enough to build playlists on demand.** *Measured*: 500 indices in
+  17 ms, 5,000 in 33 ms, 20,000 in 166 ms. Emptying and refilling a playlist round-trips
+  in ~47 ms.
+- **There is no way to reach another component.** *Measured*: `/api/commands`,
+  `/api/command`, `/api/mainmenu`, `/api/contextmenu`, `/api/plugins`, `/api/components`
+  all 404. `foo_quicksearch` builds a real playlist you can read like any other, but
+  nothing triggers it from here.
 - **`playbackMode` on `POST /player` is deprecated.** Use the `options` array.
 - **Sorting is whole-playlist and destructive.** There is no sort-a-selection, and no
   view-level sort — the player owns playback order, so a client-side sort would

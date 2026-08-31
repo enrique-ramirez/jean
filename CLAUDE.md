@@ -184,10 +184,13 @@ The library being a real playlist makes this easy to hold:
 
 - **Play a track** — `POST /player/play/{playlistId}/{index}` plays it in place. Nothing is
   written.
-- **Play or queue a selection** — `/playqueue/add` takes playlist+index, so an arbitrary
-  set of tracks drawn from anywhere can be queued without touching a playlist. The play
-  queue is ephemeral by design and is the correct home for "play these 40 results". Do not
-  build a scratch playlist for this; it is the one case where the temptation is real.
+- **Play a *set* — a search, a selection — and a playlist is the only mechanism.** This
+  used to say to use the play queue and specifically not to build a scratch playlist.
+  That was wrong on the measurement: `/playqueue/add` takes one item per request with no
+  bulk form, so any real set is hundreds of calls, and the player has no other way to say
+  "these tracks, in this order". Search results therefore materialise into a playlist —
+  see *Search results are a view until you play them*. It is not a side effect: browsing
+  and typing still write nothing, and it happens only when someone asks to hear something.
 - **Never `POST /playlists/{id}/items/sort` to browse.** It mutates. It is a tool for
   building derived playlists on explicit request only.
 
@@ -825,8 +828,18 @@ on secondary-click or press-and-hold, inline renaming in the row, delete behind 
 confirmation page, and drag-to-reorder through `/playlists/move/{id}/{index}`. Results can
 also be saved as a real playlist — `/playlists/add` returns the new id and
 `/playlists/{src}/{dst}/items/copy` copies by index, so no `%path%` is ever fetched — gated
-on `permissions.changePlaylists` and on the library having finished loading. The
-play-count shading explains itself once, on first sight, and lives in the view-options
-menu after that.
+on `permissions.changePlaylists` and on the library having finished loading, and skipping
+the copy entirely when the results are already playing from a playlist that is exactly
+them. The play-count shading explains itself once, on first sight, and lives in the
+view-options menu after that.
+
+Playing from search results confines playback to them, by materialising them into a
+`#Jean [query]` playlist on the player — which is also what carries a search across a
+reload and onto another device. Both shuffles exist: the playback-order mode in the status
+bar, and the action beside Play that starts a random track and turns it on.
+
+There is an end-to-end suite in `test/e2e`, run against a fake player in `test/fake-api`
+whose fixture was captured off a real one. It covers both layouts and both surfaces; see
+`test/README.md` for why there are no unit tests and none of it uses jsdom.
 
 The home screen, the Web Worker and IndexedDB persistence are not built yet.

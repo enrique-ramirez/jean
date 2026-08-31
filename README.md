@@ -13,8 +13,10 @@ with a seekable progress bar. If your player reports play counts, tracks are sha
 how often you have played them and faded by how long it has been; the flame in the
 toolbar turns that off, and explains itself the first time you see it.
 
-Search results can be saved as a real playlist in one click, copied by index so nothing
-is uploaded but a list of numbers.
+Playing from search results confines playback to them — shuffle shuffles your matches, and
+the end of the results ends playback rather than wandering off into the library. The search
+survives a reload and shows up on your other devices. Results can be kept as a real
+playlist in one click, copied by index so nothing is uploaded but a list of numbers.
 
 Playlists in the sidebar can be created, renamed, deleted and dragged into whatever
 order you want them in. The `+` on the Playlists heading makes an empty one and puts
@@ -180,11 +182,29 @@ objects, and play-count "heat" is precomputed into typed arrays alongside them. 
 is shared by everything that needs it, so opening the library playlist and searching it do
 not fetch it twice.
 
-Search is a **view, not a playlist**: a filter over the rows already in memory, matching
-every word of the query against title, artist and album in any order. Nothing is written to
-the player, no playlist is created, and playing a result plays it where it already lives.
+Searching is a **view, not a playlist**: a filter over the rows already in memory, matching
+every word of the query against title, artist and album in any order. Typing writes nothing
+to the player.
 
-Turning results *into* a playlist is the one write, and it takes an explicit click.
+**Playing does**, and it has to. beefweb plays from playlists and knows nothing else, so
+playing a result in place would leave the player carrying on from *there* — the next track
+would be the library's next track, and with shuffle on a random one out of everything.
+Neither is what a list of matches promises. So the first time you play from a set of
+results they become a real playlist named `#Jean [your query]`, and playback happens inside
+it: shuffle shuffles your matches, and the end of the results is the end of playback.
+
+**You will see that playlist in foobar2000**, sitting next to its own `#Quicksearch [...]`
+ones. There is no hidden-playlist concept in the API and beefweb cannot fake one, so Jean
+hides it from its own sidebar and leaves it visible in yours. It is reused rather than
+piling up: one playlist, renamed and refilled per search. Dismissing the search deletes it,
+unless it is what you are currently listening to.
+
+It is also how a search survives a reload and reaches your phone — the query is in the
+title, and every client can see the player's playlists.
+
+Keeping results takes an explicit click, and when they are already playing it costs no copy
+at all: the playlist they are playing from *is* what you are saving, so it is renamed and
+stops being Jean's. Playback carries straight on through it. Otherwise
 `POST /playlists/add` returns the new playlist id, and
 `POST /playlists/{src}/{dst}/items/copy` copies by **index** — no `%path%` lookup, no
 upload beyond a list of numbers. Measured: 15,000 indices in a single request, 323 ms. The

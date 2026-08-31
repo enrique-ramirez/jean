@@ -3,6 +3,7 @@ import {
   GripVertical,
   ListMusic,
   Pencil,
+  Plus,
   Search,
   Trash2,
   TriangleAlert,
@@ -13,7 +14,11 @@ import {
 
 import { SCOPE } from '../keyboard/keymap.js'
 import { useKeymap } from '../keyboard/useKeymap.js'
-import { usePermissions, usePlaylistActions } from '../player/usePlayer.js'
+import {
+  untitledPlaylistName,
+  usePermissions,
+  usePlaylistActions,
+} from '../player/usePlayer.js'
 import { ActionMenu } from '../ui/ActionMenu.jsx'
 import { useContextMenu } from '../ui/useContextMenu.js'
 import { mergeHandlers } from '../ui/mergeHandlers.js'
@@ -32,7 +37,7 @@ export function Sidebar({
   onDismiss,
 }) {
   const permissions = usePermissions()
-  const { rename, remove, move } = usePlaylistActions()
+  const { create, rename, remove, move } = usePlaylistActions()
   // Undefined until the player has answered. Assume yes and let a refusal
   // correct us, rather than showing a read-only sidebar to everybody for the
   // first few hundred milliseconds.
@@ -68,6 +73,15 @@ export function Sidebar({
     },
     { enabled: canEdit && focusedIndex >= 0 },
   )
+
+  // Created empty and dropped straight into rename, rather than asking for a
+  // name first: one click gets you a playlist, and naming it is optional. The
+  // view does not change -- a new playlist is somewhere to put things, so
+  // throwing you out of the list you were looking at is the wrong reflex.
+  const newPlaylist = () =>
+    create.mutate(untitledPlaylistName(playlists), {
+      onSuccess: (playlist) => setRenamingId(playlist.id),
+    })
 
   const deletePlaylist = (playlist) => {
     // Step onto the neighbour before it goes, so deleting what you are looking
@@ -114,8 +128,9 @@ export function Sidebar({
     ]
   }, [target, playlists, selectedId])
 
-  const failure = move.error ?? rename.error ?? remove.error
+  const failure = create.error ?? move.error ?? rename.error ?? remove.error
   const clearFailure = () => {
+    create.reset()
     move.reset()
     rename.reset()
     remove.reset()
@@ -156,7 +171,20 @@ export function Sidebar({
           </>
         ) : null}
 
-        <p className={styles.heading}>Playlists</p>
+        <div className={styles.sectionHeader}>
+          <p className={styles.heading}>Playlists</p>
+          {canEdit ? (
+            <button
+              type="button"
+              className={styles.add}
+              aria-label="New playlist"
+              disabled={create.isPending}
+              onClick={newPlaylist}
+            >
+              <Plus size={15} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
         {playlists.map((playlist, index) => (
           <PlaylistRow
             key={playlist.id}

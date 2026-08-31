@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   UPDATES_URL,
+  createPlaylist,
   fetchPlayer,
   fetchPlaylists,
   movePlaylist,
@@ -108,6 +109,21 @@ function usePlaylistPatch(mutationFn, patch) {
 }
 
 export function usePlaylistActions() {
+  const queryClient = useQueryClient()
+
+  // The one playlist mutation that cannot be optimistic: only the player can
+  // say what id the new playlist got, and everything that happens next --
+  // selecting it, renaming it, dropping tracks on it -- is addressed by that id.
+  const create = useMutation({
+    mutationFn: async (title) => {
+      const playlist = await createPlaylist(title)
+      // Refetched rather than invalidated. What follows resolves against this
+      // list, and a row that is not in it yet cannot be put into rename mode.
+      await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY })
+      return playlist
+    },
+  })
+
   const rename = usePlaylistPatch(
     ({ id, title }) => renamePlaylist(id, title),
     (playlists, { id, title }) =>
@@ -131,7 +147,19 @@ export function usePlaylistActions() {
     },
   )
 
-  return { rename, remove, move }
+  return { create, rename, remove, move }
+}
+
+// foobar allows two playlists with the same name, but the sidebar gives you
+// nothing else to tell them apart by. Numbered like a file manager does it.
+export function untitledPlaylistName(playlists) {
+  const base = 'New playlist'
+  const taken = new Set(playlists.map((entry) => entry.title))
+  if (!taken.has(base)) return base
+
+  let suffix = 2
+  while (taken.has(`${base} ${suffix}`)) suffix += 1
+  return `${base} ${suffix}`
 }
 
 // The track the player is on, only when it belongs to the playlist being viewed.

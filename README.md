@@ -14,8 +14,9 @@ how often you have played them and faded by how long it has been.
 Search results can be saved as a real playlist in one click, copied by index so nothing
 is uploaded but a list of numbers.
 
-Playlists in the sidebar can be renamed, deleted and dragged into whatever order you
-want them in. Right-click a playlist for the menu, or press and hold it on a phone,
+Playlists in the sidebar can be created, renamed, deleted and dragged into whatever
+order you want them in. The `+` on the Playlists heading makes an empty one and puts
+the cursor straight in its name. Right-click a playlist for the menu, or press and hold it on a phone,
 where the same menu arrives as a sheet you can flick away. `Alt` with the arrow keys
 moves a playlist without touching the mouse.
 

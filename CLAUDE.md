@@ -80,6 +80,24 @@ alone as a complete home screen**, not a leftover.
 Not a keyboard shortcut with an icon added later — mobile has no keyboard, and an invisible
 affordance means the feature does not exist there. On mobile it belongs within thumb reach.
 
+**Adding tracks to a playlist does not check for duplicates.** foobar2000 playlists are
+ordered lists, not sets; the player appends without comment, and Jean inventing a
+uniqueness rule the player does not have would be Jean lying about the data. There is no
+cheap check available either -- items have no id, so identity is `%path%`, and reading
+it is a request of its own before the drop could land.
+
+**Undo instead, as the general rule for anything that writes.** Because tracks are
+appended, the indices just created are exactly `[itemCount, itemCount + n)`, and
+`itemCount` is already in `PlaylistInfo` -- so undo costs no extra request and needs no
+path matching. Re-read `itemCount` before undoing and abandon it if it no longer
+matches: the desktop may have changed the playlist underneath, and removing the wrong
+rows is far worse than not offering the undo.
+
+**Confirm only what is not already visible.** Creating a playlist needs no notification
+-- the row appears, named, waiting to be renamed. Adding forty tracks to a playlist you
+are not looking at does, and that is what a toast is for; it is also where the undo
+lives. A message about something already on screen is noise.
+
 Icons come from **`lucide-react`**, imported per-icon so they tree-shake.
 
 ## Architecture decisions already made
@@ -301,6 +319,13 @@ load-bearing:
   navigate. The gesture has to swallow its own click, exactly as the long press does --
   and the flag is cleared on the next pointer-down rather than on a timer, so a gesture
   that produced no click leaves nothing armed.
+- **`setPointerCapture` moves the click, not just the pointer events.** It retargets the
+  compatibility `mousedown` and `mouseup` too, and `click` is dispatched at the common
+  ancestor of those two -- so capturing on a row makes every click land on the row
+  instead of on the button inside it, and plain navigation silently stops working with
+  no error anywhere. Capture only once the gesture is definitely a drag. A small handle
+  is the exception and has to claim the pointer up front, because it can be left behind
+  inside the threshold distance; a full-width row cannot.
 - **Two behaviours on one element share their handler names.** A row that both
   press-and-holds and drags wants `onPointerDown/Move/Up/Cancel` twice over, and
   spreading one props object after the other drops the first silently. Compose them
@@ -494,9 +519,11 @@ own `#/search` route with a sidebar entry, and per-view scroll and cursor memory
 leaving a result set and coming back returns you to where you were. The shared list
 machinery both views render through is `playlist/TrackBrowser.jsx`, and `indices` is how
 a filtered view maps a row back to the playlist index the player addresses.
-Playlists themselves can be renamed, deleted and reordered from the sidebar: an action
-menu on secondary-click or press-and-hold, inline renaming in the row itself, delete
-behind a confirmation page, and drag-to-reorder through `/playlists/move/{id}/{index}`.
+Playlists themselves can be created, renamed, deleted and reordered from the sidebar: a
+`+` on the section heading that makes an empty one and drops it straight into rename, an
+action menu on secondary-click or press-and-hold, inline renaming in the row itself,
+delete behind a confirmation page, and drag-to-reorder through
+`/playlists/move/{id}/{index}`.
 Results can also be saved as a real playlist -- `/playlists/add` returns the new id and
 `/playlists/{src}/{dst}/items/copy` copies by index, so no `%path%` is ever fetched -- gated
 on `permissions.changePlaylists` and on the library having finished loading. The home

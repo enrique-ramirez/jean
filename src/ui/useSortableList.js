@@ -143,6 +143,10 @@ export function useSortableList({ keys, onReorder, disabled = false }) {
     if (!current.active) {
       if (Math.abs(travelled) < current.threshold) return
       current.active = true
+      if (!current.captured) {
+        event.currentTarget.setPointerCapture(current.pointerId)
+        current.captured = true
+      }
       current.tops = itemRefs.current.slice(0, keys.length).map((element) => {
         const rect = element.getBoundingClientRect()
         return { top: rect.top, height: rect.height }
@@ -185,20 +189,28 @@ export function useSortableList({ keys, onReorder, disabled = false }) {
     onReorder(current.from, to)
   }
 
-  const onPointerDown = (index, event) => {
+  // `captureNow` is the difference between the two ways in. A handle is small
+  // enough that a pointer can leave it inside the threshold distance and never
+  // report the move that starts the drag, so it claims the pointer up front.
+  //
+  // The row must NOT. Capturing retargets the compatibility mousedown and
+  // mouseup to the capturing element, so `click` fires on the row rather than
+  // on the link inside it -- and clicking a playlist silently stops working.
+  // It captures once the gesture is definitely a drag, by which point the click
+  // is being swallowed anyway.
+  const begin = (index, event, captureNow) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     // Cleared here rather than on a timer: a gesture that produced no click
     // must not leave the guard armed for the next one.
     justDragged.current = false
-    // Captured up front rather than at the threshold: a pointer that leaves the
-    // element in the first few pixels would otherwise never report the move
-    // that starts the drag.
-    event.currentTarget.setPointerCapture(event.pointerId)
+    if (captureNow) event.currentTarget.setPointerCapture(event.pointerId)
     drag.current = {
       from: index,
       to: index,
       startY: event.clientY,
       threshold: THRESHOLD_PX[event.pointerType] ?? THRESHOLD_PX.touch,
+      pointerId: event.pointerId,
+      captured: captureNow,
       offset: 0,
       scrolled: 0,
       step: 0,
@@ -217,7 +229,7 @@ export function useSortableList({ keys, onReorder, disabled = false }) {
       : {
           onPointerDown: (event) => {
             if (event.pointerType !== 'mouse') return
-            onPointerDown(index, event)
+            begin(index, event, false)
           },
           onPointerMove,
           onPointerUp: finish,
@@ -234,7 +246,7 @@ export function useSortableList({ keys, onReorder, disabled = false }) {
   // starts the gesture -- the move and release are tracked by dragProps on the
   // row, which the events bubble to.
   const handleProps = (index) =>
-    disabled ? {} : { onPointerDown: (event) => onPointerDown(index, event) }
+    disabled ? {} : { onPointerDown: (event) => begin(index, event, true) }
 
   // What each row is doing right now, as a transform the caller can apply. The
   // dragged row follows the pointer; every row between where it started and

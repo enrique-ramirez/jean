@@ -1,7 +1,7 @@
 // Pulls fixture data off a real player, so the fake serves bytes foobar2000
 // actually produced rather than what someone imagined it produces.
 //
-//   node test/fake-beefweb/capture.mjs --url http://home.local:8880
+//   node test/fake-api/capture.mjs --url http://home.local:8880
 //
 // Re-run it when a fixture needs a field the current capture does not have.
 // Everything it writes is committed, so the tests themselves never touch a

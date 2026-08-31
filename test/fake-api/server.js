@@ -5,6 +5,13 @@ import { fileURLToPath } from 'node:url'
 
 import { createState } from './state.js'
 
+// Named for the shape rather than the implementation. What Jean talks to today
+// is beefweb, and the comments here name it wherever its actual behaviour is
+// the reason for something -- the '?' for an unresolved column, the stream that
+// never ticks, the static server with no SPA fallback. But the plugin is the
+// part that could be swapped; the request/response shape is the part that would
+// survive it, and that is what this file is a copy of.
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 const MIME = {

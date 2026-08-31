@@ -29,9 +29,17 @@ setup that exists only on the machine it was written on.
 
 ## The fake player
 
-`test/fake-beefweb/` is a small in-memory foobar2000. It implements the routes
-the app uses, holds real playlists, and pushes SSE the way beefweb does -- a
-full snapshot on connect, then only what changed, and **never on a timer**.
+`test/fake-api/` is a small in-memory foobar2000. It implements the routes the
+app uses, holds real playlists, and pushes SSE the way beefweb does -- a full
+snapshot on connect, then only what changed, and **never on a timer**.
+
+It is named for the API shape rather than for beefweb, deliberately. The plugin
+is the swappable part; the request and response shapes are what would survive
+swapping it, and those are what this is a copy of. Comments inside still name
+beefweb wherever its real behaviour is the reason for something -- the `?` an
+unresolved column returns, the stream that never ticks, the static server with
+no SPA fallback. Those are the notes you would want in front of you if the
+provider ever did change.
 Position advances in the app's own interpolation, so a test that depended on the
 fake ticking would be testing behaviour the real player does not have.
 
@@ -41,13 +49,13 @@ Run it on its own to develop with no foobar2000 in reach:
 pnpm fake                                   # API only, on :8880
 BEEFWEB_URL=http://localhost:8880 pnpm dev  # in another shell
 
-pnpm build && node test/fake-beefweb/main.js --serve dist   # as beefweb serves it
+pnpm build && node test/fake-api/main.js --serve dist   # as beefweb serves it
 ```
 
 ### The fixture is captured, not invented
 
 `library.json` and `player.json` came off a real player via
-`node test/fake-beefweb/capture.mjs --url http://your-player:8880`, so the fake
+`node test/fake-api/capture.mjs --url http://your-player:8880`, so the fake
 replays bytes foobar2000 actually produced. Five albums, 54 tracks, chosen for
 the branches the UI has rather than to be a representative library:
 

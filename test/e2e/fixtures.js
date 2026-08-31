@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url'
 
 import { test as base, expect } from '@playwright/test'
 
-import { createServer } from '../fake-beefweb/server.js'
-import { createState } from '../fake-beefweb/state.js'
+import { createServer } from '../fake-api/server.js'
+import { createState } from '../fake-api/state.js'
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '../../dist')
 

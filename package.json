@@ -8,7 +8,7 @@
     "preview": "vite preview",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
-    "fake": "node test/fake-beefweb/main.js --port 8880"
+    "fake": "node test/fake-api/main.js --port 8880"
   },
   "dependencies": {
     "@tanstack/react-hotkeys": "^0.10.0",

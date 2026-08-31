@@ -6,10 +6,12 @@ network. Namely affectively for the feelings it evoked on me when the idea came.
 
 **Where it is:** the playlist view and library search work. Compact and album layouts
 over a virtualised list that stays smooth at 30,000 tracks, search across the whole
-library from the bar at the top, find-within-playlist that jumps rather than filters,
+library from the bar at the top — accents optional, `babasonicos` finds `Babasónicos` —
+find-within-playlist that jumps rather than filters,
 toggleable columns, full keyboard navigation, light and dark themes, and a transport
 with a seekable progress bar. If your player reports play counts, tracks are shaded by
-how often you have played them and faded by how long it has been.
+how often you have played them and faded by how long it has been; the flame in the
+toolbar turns that off, and explains itself the first time you see it.
 
 Search results can be saved as a real playlist in one click, copied by index so nothing
 is uploaded but a list of numbers.

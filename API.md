@@ -236,6 +236,9 @@ Request bodies, from `docs/player-api.yml` and verified against the live player.
 | Copy / move items | `POST /playlists/{src}/{dst}/items/copy` \| `move` | `{ items: [indices], targetIndex }` |
 | Reorder within a playlist | `POST /playlists/{id}/items/move` | `{ items: [indices], targetIndex }` |
 | Sort a playlist | `POST /playlists/{id}/items/sort` | `{ by: "expression", desc, random }` |
+| Rename a playlist | `POST /playlists/{id}` | `{ title }` |
+| Reorder a playlist | `POST /playlists/move/{id}/{index}` | none — both in the path |
+| Delete a playlist | `POST /playlists/remove/{id}` | none |
 | Add files or folders | `POST /playlists/{id}/items/add` | `{ items: [paths], index, replace, play, async }` |
 | Queue an item | `POST /playqueue/add` | `{ plref, itemIndex }` |
 
@@ -250,6 +253,11 @@ Notes that cost time to rediscover:
   desync from what plays next.
 - **`items/sort` takes a title-format expression**, so it inherits the comma
   limitation. Concatenation works: `%album artist%%album%%tracknumber%`.
+- **`/playlists/move/{id}/{index}` takes a negative index to mean "last"**, so appending
+  needs no count. Verified against `player-api.yml` and the live player.
+- **Rename is `POST /playlists/{id}`, not a `rename` route.** `UpdatePlaylistRequest` has
+  exactly one field, `title`, and it is nullable — so the same endpoint is the whole of
+  "change something about the playlist itself".
 - **There is no tag-writing endpoint.** All 27 POST routes are playback, playlists,
   queue, outputs and clientconfig. Ratings and lyrics can be *read* through title
   formatting but cannot be written back through beefweb at all.

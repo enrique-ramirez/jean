@@ -404,12 +404,54 @@ footer on desktop, a compact strip that expands to a full-screen sheet on mobile
 Model **what is playing** separately from **where it is playing**. Output is a named
 target, not an assumption that audio comes from the remote player.
 
+### Two breakpoints, and they are not the same one
+
+**CSS switches at 720px. JavaScript switches at 860px.** `useIsCompactViewport()` drives
+the things that are a different *component* below it — the sidebar becoming a drawer, the
+action sheet instead of a popover, the album cover stacking above its tracks, how many
+columns are worth showing. The media queries drive the things that are the same component
+at a different *size*: gutters, type, row heights.
+
+That split is defensible, but the band between them is real and easy to forget. An album
+group once took its horizontal gutter from `data-compact` — a JS-driven attribute — while
+the toolbar above it took its own from a media query, so between 720 and 860 the list
+indented itself to the phone gutter and nothing lined up with anything. **Anything
+spatial belongs to the media query.** If a JS flag is setting padding, that is the bug.
+
+### One gutter per row, and the wash follows it
+
+`TrackRow` exposes `--row-gutter`, and the play-count wash is derived from it
+(`inset: 2px max(0px, calc(var(--row-gutter) - var(--heat-lead)))`) rather than stated
+again. Hardcoded, the two drift the moment a layout sets its own padding: album rows did,
+and the wash kept the list layout's inset, so it began *inside* the content and left the
+track number stranded outside the tint.
+
+The rule the numbers encode: **the wash's edge sits on the view's content line, and the
+row's content sits `--heat-lead` inside it.** Three things want that line — the number,
+the wash, and a gap between them — and only two can have it. The wash takes it, because
+it is the larger shape and because a number touching the edge of its own highlight reads
+as a mistake.
+
 ### Keyboard
 
 Virtualization and keyboard navigation collide: the virtualizer unmounts the focused row
 when it scrolls out of view, and DOM focus evaporates. So **the active row is an index in
 state**, and the virtualizer is told to scroll that index into view. A roving `tabindex`
 alone will not survive. Every list component must be built knowing this.
+
+**A hotkey that has stopped working in dev is probably a stale registration, not a bug.**
+`useKeymap` registers into a module-level manager that resolves conflicts when two
+registrations claim the same key. HMR remounts a component and re-registers while the
+previous module instance's registration may still be in the registry; the survivor can be
+holding a callback from the dead closure, so the binding looks bound and does nothing.
+Full reload before debugging.
+
+**`=` and `-` are only reachable on layouts where they are unshifted.** The matcher
+compares modifier state strictly, so on Spanish, French and German layouts — where `=` is
+`Shift+0` — volume up is simply unreachable, with no error. It falls back to `event.code`
+only when `event.key` does not match, and the code there is `Digit0`, not `Equal`. Known,
+unfixed: the fix is to declare both spellings in the keymap, or to pick keys that are
+unshifted everywhere.
 
 Position updates arrive only on change events, so the progress display **interpolates**
 locally (`src/player/position.js`). `<SeekBar>` runs the animation-frame loop and is
@@ -481,6 +523,7 @@ Things that vary between installs and must never be assumed:
 | Library size | Anywhere from empty to 200k+. |
 | Components | Detect, never require. |
 | Player | foobar2000 or DeaDBeeF. |
+| Keyboard layout | A binding written as an unshifted key is not unshifted everywhere. See the keyboard section. |
 
 CORS is off in beefweb by default, so Jean must be served same-origin — either by beefweb
 itself, or through a dev proxy. See `README.md`.
@@ -596,18 +639,22 @@ lucide-react · CSS Modules · pnpm. No test setup yet.
 layouts, heat/patina, the finder, column picker, keyboard navigation, transport with a
 seekable progress bar), and library-wide search — a persistent field bound to `⌘K`, its
 own `#/search` route with a sidebar entry, and per-view scroll and cursor memory so
-leaving a result set and coming back returns you to where you were. The shared list
-machinery both views render through is `playlist/TrackBrowser.jsx`, and `indices` is how
-a filtered view maps a row back to the playlist index the player addresses.
-Tracks can be added to another playlist by dragging them onto it in the sidebar, or from
-a context menu on the rows -- both selection aware, so a multi-track selection copies in
-one `items/copy` request, and both leaving an undo in the toast that follows. Playlists themselves can be created, renamed, deleted and
-reordered from the sidebar: a
-`+` on the section heading that makes an empty one and drops it straight into rename, an
-action menu on secondary-click or press-and-hold, inline renaming in the row itself,
-delete behind a confirmation page, and drag-to-reorder through
-`/playlists/move/{id}/{index}`.
-Results can also be saved as a real playlist -- `/playlists/add` returns the new id and
-`/playlists/{src}/{dst}/items/copy` copies by index, so no `%path%` is ever fetched -- gated
-on `permissions.changePlaylists` and on the library having finished loading. The home
-screen, the Web Worker and IndexedDB persistence are not built yet.
+leaving a result set and coming back returns you to where you were. Search is
+accent-insensitive both ways, through `fold()` in `ui/text.js`. The shared list machinery
+both views render through is `playlist/TrackBrowser.jsx`, and `indices` is how a filtered
+view maps a row back to the playlist index the player addresses.
+
+Tracks can be added to another playlist by dragging them onto it in the sidebar, or from a
+context menu on the rows — both selection aware, so a multi-track selection copies in one
+`items/copy` request, and both leaving an undo in the toast that follows. Playlists
+themselves can be created, renamed, deleted and reordered from the sidebar: a `+` on the
+section heading that makes an empty one and drops it straight into rename, an action menu
+on secondary-click or press-and-hold, inline renaming in the row, delete behind a
+confirmation page, and drag-to-reorder through `/playlists/move/{id}/{index}`. Results can
+also be saved as a real playlist — `/playlists/add` returns the new id and
+`/playlists/{src}/{dst}/items/copy` copies by index, so no `%path%` is ever fetched — gated
+on `permissions.changePlaylists` and on the library having finished loading. The
+play-count shading explains itself once, on first sight, and lives in the view-options
+menu after that.
+
+The home screen, the Web Worker and IndexedDB persistence are not built yet.

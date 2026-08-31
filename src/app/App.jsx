@@ -21,6 +21,8 @@ import {
 } from '../player/usePlayer.js'
 import { PlaylistView } from '../playlist/PlaylistView.jsx'
 import { Button } from '../ui/Button.jsx'
+import { DragGhost } from '../ui/DragGhost.jsx'
+import { Toasts } from '../ui/Toasts.jsx'
 import { CommandPalette } from './CommandPalette.jsx'
 import { Sidebar } from './Sidebar.jsx'
 import { useHashRoute } from './useHashRoute.js'
@@ -194,7 +196,14 @@ export function App() {
         </main>
       </div>
 
+      {/* A sibling of the body, not a child of it -- it shares the body's cell
+          in the app grid, which is what puts it above the status bar without
+          anyone having to know how tall the status bar is. */}
+      <Toasts />
+
       <StatusBar />
+
+      <DragGhost />
 
       {isPaletteOpen ? (
         <CommandPalette

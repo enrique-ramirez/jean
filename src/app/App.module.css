@@ -9,6 +9,11 @@
 }
 
 .body {
+  /* Placed explicitly because the toast layer shares this cell. Left to
+     auto-placement, an explicitly positioned sibling in row 2 pushes the body
+     into row 3 and the status bar off the grid entirely. */
+  grid-row: 2;
+  grid-column: 1;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 0;

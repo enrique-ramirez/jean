@@ -1,16 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import {
-  GripVertical,
-  ListMusic,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-  TriangleAlert,
-  Undo2,
-  Volume2,
-  X,
-} from 'lucide-react'
+import { GripVertical, ListMusic, Pencil, Plus, Search, Trash2, Undo2, Volume2 } from 'lucide-react'
 
 import { SCOPE } from '../keyboard/keymap.js'
 import { useKeymap } from '../keyboard/useKeymap.js'
@@ -22,6 +11,8 @@ import {
 import { ActionMenu } from '../ui/ActionMenu.jsx'
 import { useContextMenu } from '../ui/useContextMenu.js'
 import { mergeHandlers } from '../ui/mergeHandlers.js'
+import { useDragState } from '../ui/dnd.js'
+import { pushToast } from '../ui/toasts.js'
 import { useSortableList } from '../ui/useSortableList.js'
 import styles from './Sidebar.module.css'
 
@@ -38,6 +29,9 @@ export function Sidebar({
 }) {
   const permissions = usePermissions()
   const { create, rename, remove, move } = usePlaylistActions()
+  // Only the coarse facts, and only here -- the rows read `isDropTarget` as a
+  // plain prop rather than each subscribing to the drag.
+  const drag = useDragState()
   // Undefined until the player has answered. Assume yes and let a refusal
   // correct us, rather than showing a read-only sidebar to everybody for the
   // first few hundred milliseconds.
@@ -54,13 +48,20 @@ export function Sidebar({
   const sortable = useSortableList({
     keys: playlists.map((entry) => entry.id),
     disabled: !canEdit,
-    onReorder: (from, to) => move.mutate({ id: playlists[from].id, index: to }),
+    onReorder: (from, to) =>
+      move.mutate(
+        { id: playlists[from].id, index: to },
+        { onError: refused('The player would not reorder that.') },
+      ),
   })
 
   const moveFocused = (delta) => {
     const to = focusedIndex + delta
     if (focusedIndex < 0 || to < 0 || to >= playlists.length) return
-    move.mutate({ id: playlists[focusedIndex].id, index: to })
+    move.mutate(
+      { id: playlists[focusedIndex].id, index: to },
+      { onError: refused('The player would not reorder that.') },
+    )
   }
 
   // Only while a playlist row holds focus. These are ordinary arrow keys with a
@@ -78,9 +79,12 @@ export function Sidebar({
   // name first: one click gets you a playlist, and naming it is optional. The
   // view does not change -- a new playlist is somewhere to put things, so
   // throwing you out of the list you were looking at is the wrong reflex.
+  const refused = (message) => () => pushToast({ tone: 'error', message })
+
   const newPlaylist = () =>
     create.mutate(untitledPlaylistName(playlists), {
       onSuccess: (playlist) => setRenamingId(playlist.id),
+      onError: refused('The player would not create a playlist.'),
     })
 
   const deletePlaylist = (playlist) => {
@@ -91,7 +95,9 @@ export function Sidebar({
       const next = playlists[at + 1] ?? playlists[at - 1]
       if (next) onSelect(next.id)
     }
-    remove.mutate(playlist.id)
+    remove.mutate(playlist.id, {
+      onError: refused(`${playlist.title} could not be deleted.`),
+    })
   }
 
   const actions = useMemo(() => {
@@ -128,14 +134,6 @@ export function Sidebar({
     ]
   }, [target, playlists, selectedId])
 
-  const failure = create.error ?? move.error ?? rename.error ?? remove.error
-  const clearFailure = () => {
-    create.reset()
-    move.reset()
-    rename.reset()
-    remove.reset()
-  }
-
   return (
     <>
       {isOpen ? (
@@ -147,6 +145,8 @@ export function Sidebar({
         data-open={isOpen}
         data-collapsed={isCollapsed}
         data-reordering={sortable.isDragging ? 'true' : undefined}
+        data-drop-scroller=""
+        data-receiving={drag.isDragging ? 'true' : undefined}
         aria-label="Playlists"
         aria-hidden={isCollapsed}
       >
@@ -191,6 +191,8 @@ export function Sidebar({
             playlist={playlist}
             isSelected={playlist.id === selectedId}
             isRenaming={playlist.id === renamingId}
+            isDropTarget={canEdit && drag.isDragging}
+            isDropOver={drag.over === playlist.id}
             canEdit={canEdit}
             rowProps={sortable.itemProps(index)}
             dragProps={sortable.dragProps(index)}
@@ -211,26 +213,15 @@ export function Sidebar({
             onBlur={() => setFocusedId((current) => (current === playlist.id ? null : current))}
             onRename={(title) => {
               setRenamingId(null)
-              if (title && title !== playlist.title) rename.mutate({ id: playlist.id, title })
+              if (title && title !== playlist.title) {
+                rename.mutate(
+                  { id: playlist.id, title },
+                  { onError: refused(`${playlist.title} could not be renamed.`) },
+                )
+              }
             }}
           />
         ))}
-
-        {/* The player refusing an edit is a real outcome, not a bug -- smart
-            playlists reject every one of these and say nothing about it in
-            their metadata. Say what happened rather than silently reverting. */}
-        {failure ? (
-          <button
-            type="button"
-            className={styles.notice}
-            title={failure.message}
-            onClick={clearFailure}
-          >
-            <TriangleAlert size={14} strokeWidth={2} aria-hidden="true" />
-            The player would not do that
-            <X size={13} strokeWidth={2.2} aria-hidden="true" />
-          </button>
-        ) : null}
       </nav>
 
       <ActionMenu
@@ -256,6 +247,8 @@ function PlaylistRow({
   playlist,
   isSelected,
   isRenaming,
+  isDropTarget,
+  isDropOver,
   canEdit,
   rowProps,
   dragProps,
@@ -286,6 +279,8 @@ function PlaylistRow({
       className={styles.row}
       ref={ref}
       style={{ ...pressableStyle, ...dragStyle }}
+      data-drop-target={isDropTarget ? playlist.id : undefined}
+      data-drop-over={isDropOver ? 'true' : undefined}
       {...rowState}
       {...mergeHandlers(gestures, dragProps)}
     >

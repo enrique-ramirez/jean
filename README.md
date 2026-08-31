@@ -20,7 +20,11 @@ the cursor straight in its name. Right-click a playlist for the menu, or press a
 where the same menu arrives as a sheet you can flick away. `Alt` with the arrow keys
 moves a playlist without touching the mouse.
 
-**Not built yet:** the home screen, and editing the contents of a playlist.
+Drag tracks onto a playlist in the sidebar to add them, or right-click -- press and hold,
+on a phone -- and pick one from the menu. Select several first and they all go in one go.
+Whatever it does, it tells you, and gives you an undo.
+
+**Not built yet:** the home screen.
 
 ## Development
 

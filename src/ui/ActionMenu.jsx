@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 
 import { useDismissable } from '../hooks/useDismissable.js'
 import { useIsCompactViewport } from '../hooks/useMediaQuery.js'
+import { fold } from './text.js'
+import { useVisualViewport } from './useVisualViewport.js'
 import styles from './ActionMenu.module.css'
 
 // One menu, two shapes -- a popover at the pointer on desktop, a floating tray
@@ -13,7 +15,7 @@ import styles from './ActionMenu.module.css'
 //
 // A node is one of:
 //   { id, label, icon, shortcut, danger, disabled, onSelect, keepOpen }
-//   { id, label, icon, danger, items: [...] }   -- opens a nested page
+//   { id, label, icon, danger, items: [...], filter }   -- opens a nested page
 //   { type: 'separator' }
 //   { type: 'message', text }
 //
@@ -26,16 +28,15 @@ const SHEET_EXIT_MS = 220
 // Far enough that it cannot be reached by the wobble of a hold, close enough
 // that it feels like a flick rather than a haul.
 const SHEET_DISMISS_PX = 92
-const NAVIGATION_KEYS = new Set([
-  'ArrowDown',
-  'ArrowUp',
-  'ArrowLeft',
-  'ArrowRight',
-  'Home',
-  'End',
-  'Escape',
-  ' ',
-])
+
+// Every token has to appear somewhere in the label, in any order, as substrings
+// -- the same rule, and the same fold(), the library search uses, so typing at a
+// menu behaves like typing at the search field rather than like a different
+// product that happens to be in the same window.
+const matchesQuery = (label, tokens) => {
+  const haystack = fold(label)
+  return tokens.every((token) => haystack.includes(token))
+}
 
 export function ActionMenu({ isOpen, anchor, header, actions, onDismiss }) {
   const isCompact = useIsCompactViewport()
@@ -120,10 +121,16 @@ function usePages(actions) {
   return { pages, depth: pages.length - 1, push, pop }
 }
 
-function usePanel({ actions, onDismiss }) {
+// `focusFilter` is on for the popover and off for the sheet. A field that takes
+// focus the instant a menu opens is right where a keyboard is already there and
+// wrong where opening one costs half the screen: on touch the field waits to be
+// tapped, so scrolling and tapping an entry -- what most opens of this menu are
+// -- never summon a keyboard at all.
+function usePanel({ actions, onDismiss, canFilter = false, focusFilter = false }) {
   const { pages, depth, push, pop } = usePages(actions)
   const pageRefs = useRef([])
   const [height, setHeight] = useState(null)
+  const [query, setQuery] = useState('')
 
   // The surface follows the page it is showing. Observed rather than measured
   // once: a nested page's content can settle after it mounts.
@@ -139,11 +146,15 @@ function usePanel({ actions, onDismiss }) {
     return () => observer.disconnect()
   }, [depth, pages])
 
-  const back = useCallback(() => (depth > 0 ? pop() : onDismiss()), [depth, pop, onDismiss])
+  const back = useCallback(() => {
+    setQuery('')
+    return depth > 0 ? pop() : onDismiss()
+  }, [depth, pop, onDismiss])
 
   const select = useCallback(
     (node) => {
       if (node.items) {
+        setQuery('')
         push(node.id)
         return
       }
@@ -153,26 +164,70 @@ function usePanel({ actions, onDismiss }) {
     [push, onDismiss],
   )
 
+  const active = pages[depth]
+  const isFiltered = canFilter && Boolean(active?.filter)
+
+  // A page whose whole point is to be typed at should put the caret there.
+  useEffect(() => {
+    if (!isFiltered || !focusFilter) return
+    pageRefs.current[depth]?.querySelector('input')?.focus({ preventScroll: true })
+  }, [isFiltered, focusFilter, depth])
+
   const onKeyDown = (event) => {
-    const page = pageRefs.current[depth]
-    const items = page ? [...page.querySelectorAll('[role="menuitem"]:not(:disabled)')] : []
+    // Nothing typed at an open menu belongs to the app behind it: without this
+    // the arrow keys seek the player while you are picking an action, and the
+    // space bar toggles playback while you are typing a playlist name.
+    event.stopPropagation()
+    if (event.key === 'Tab') return
+
+    const element = pageRefs.current[depth]
+    const items = element ? [...element.querySelectorAll('[role="menuitem"]:not(:disabled)')] : []
     const at = items.indexOf(document.activeElement)
     const focus = (index) => items[(index + items.length) % items.length]?.focus()
+    const inField = event.target instanceof HTMLInputElement
 
-    if (event.key === 'ArrowDown') focus(at + 1)
-    else if (event.key === 'ArrowUp') focus(at < 0 ? -1 : at - 1)
-    else if (event.key === 'Home') focus(0)
-    else if (event.key === 'End') focus(-1)
-    else if (event.key === 'ArrowRight' && items[at]?.dataset.submenu) items[at].click()
-    else if (event.key === 'ArrowLeft' || event.key === 'Escape') back()
-    else if (event.key === 'Tab') return
+    switch (event.key) {
+      case 'ArrowDown':
+        focus(at + 1)
+        break
+      case 'ArrowUp':
+        focus(at < 0 ? -1 : at - 1)
+        break
+      case 'Escape':
+        back()
+        break
+      case 'Enter':
+        // Type three letters and commit, without reaching for the arrows.
+        if (!inField) return
+        items[0]?.click()
+        break
+      default:
+        // Everything else belongs to the field while the field has focus --
+        // Home, End and the horizontal arrows are caret keys there, not menu
+        // keys, and every printable character is just typing.
+        if (inField) return
+        if (event.key === 'Home') focus(0)
+        else if (event.key === 'End') focus(-1)
+        else if (event.key === 'ArrowLeft') back()
+        else if (event.key === 'ArrowRight' && items[at]?.dataset.submenu) items[at].click()
+        // Enter and Space on a focused item are left alone on purpose: it is a
+        // real button, and preventing the default is what stops it being
+        // pressed. The stopPropagation above already shields the app from them.
+        else return
+    }
 
-    // Nothing typed at an open menu belongs to the app behind it. Without this
-    // the arrow keys seek the player while you are picking an action.
-    event.stopPropagation()
-    // Enter and Space are deliberately left alone: the focused item is a real
-    // button, and preventing the default is what stops it being pressed.
-    if (NAVIGATION_KEYS.has(event.key)) event.preventDefault()
+    event.preventDefault()
+  }
+
+  // Only the page on screen is filtered. The others are inert and sliding, and
+  // narrowing them would make the panel resize behind the animation.
+  const visibleItems = (page, isActive) => {
+    const tokens = fold(query.trim()).split(/\s+/).filter(Boolean)
+    if (!isActive || !isFiltered || tokens.length === 0) return page.items
+
+    // Separators and prose describe a list that is no longer the list.
+    const matched = page.items.filter((node) => !node.type && matchesQuery(node.label, tokens))
+    return matched.length > 0 ? matched : [{ type: 'message', text: 'Nothing matches that.' }]
   }
 
   const body = (
@@ -189,7 +244,22 @@ function usePanel({ actions, onDismiss }) {
             aria-label={page.label}
             inert={index === depth ? undefined : true}
           >
-            {page.items.map((node, position) => (
+            {index === depth && isFiltered ? (
+              <div className={styles.filter}>
+                <Search size={14} strokeWidth={2} aria-hidden="true" />
+                <input
+                  className={styles.filterInput}
+                  value={query}
+                  placeholder={page.filter}
+                  aria-label={page.filter}
+                  spellCheck="false"
+                  autoComplete="off"
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </div>
+            ) : null}
+
+            {visibleItems(page, index === depth).map((node, position) => (
               <Node key={node.id ?? `${node.type}-${position}`} node={node} onSelect={select} />
             ))}
           </div>
@@ -198,7 +268,7 @@ function usePanel({ actions, onDismiss }) {
     </div>
   )
 
-  return { body, onKeyDown, page: pages[depth], depth, back }
+  return { body, onKeyDown, page: active, depth, back }
 }
 
 function Node({ node, onSelect }) {
@@ -279,7 +349,12 @@ function useFocusCapture(ref) {
 }
 
 function ActionPopover({ anchor, header, actions, onDismiss }) {
-  const { body, onKeyDown, page, depth, back } = usePanel({ actions, onDismiss })
+  const { body, onKeyDown, page, depth, back } = usePanel({
+    actions,
+    onDismiss,
+    canFilter: true,
+    focusFilter: true,
+  })
   // Clicking away closes the menu outright rather than stepping back a page:
   // the pointer went somewhere else entirely, which is not a request to go up.
   const ref = useDismissable(true, onDismiss)
@@ -334,12 +409,16 @@ function ActionPopover({ anchor, header, actions, onDismiss }) {
 }
 
 function ActionSheet({ header, actions, isLeaving, onDismiss }) {
-  const { body, onKeyDown, page, depth, back } = usePanel({ actions, onDismiss })
+  const { body, onKeyDown, page, depth, back } = usePanel({ actions, onDismiss, canFilter: true })
   const ref = useRef(null)
+  const scrimRef = useRef(null)
   const [dragY, setDragY] = useState(0)
   const from = useRef(null)
 
   useFocusCapture(ref)
+  // The scrim is the sheet's containing block, so tracking the visual viewport
+  // here is what lifts the sheet clear of the keyboard.
+  useVisualViewport(scrimRef)
 
   // Pull down to put it away. Only downward travel counts, so the gesture never
   // fights the sheet's own content.
@@ -367,6 +446,7 @@ function ActionSheet({ header, actions, isLeaving, onDismiss }) {
 
   return (
     <div
+      ref={scrimRef}
       className={styles.scrim}
       data-state={isLeaving ? 'closed' : 'open'}
       onPointerDown={onDismiss}

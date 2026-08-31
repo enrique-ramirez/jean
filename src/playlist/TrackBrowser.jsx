@@ -5,11 +5,14 @@ import { useStoredState } from '../hooks/useStoredState.js'
 import { SCOPE } from '../keyboard/keymap.js'
 import { useKeymap } from '../keyboard/useKeymap.js'
 import { Button } from '../ui/Button.jsx'
+import { mergeHandlers } from '../ui/mergeHandlers.js'
 import { Segmented } from '../ui/Segmented.jsx'
 import { ColumnsMenu } from './ColumnsMenu.jsx'
 import { TrackList } from './TrackList.jsx'
 import { DEFAULT_COLUMN_IDS, resolveColumns } from './columns.js'
 import { useAvailableFields } from './useAvailableFields.js'
+import { useTrackContextMenu } from './useTrackContextMenu.jsx'
+import { useTrackDragSource } from './useTrackDragSource.js'
 import { useTrackSelection } from './useTrackSelection.js'
 import styles from './TrackBrowser.module.css'
 
@@ -93,6 +96,47 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
   )
 
   useImperativeHandle(ref, () => ({ play, preview, scrollToTrack }), [play, preview, scrollToTrack])
+
+  const trackMenu = useTrackContextMenu({
+    rows,
+    indices,
+    playlistId,
+    selection: selection.selection,
+    onSelectOnly: moveCursorTo,
+  })
+
+  const trackDrag = useTrackDragSource({
+    rows,
+    indices,
+    playlistId,
+    selection: selection.selection,
+  })
+
+  // Pressing inside a multi-track selection must not collapse it on the way
+  // down: this could be the start of a drag of all of them, and Finder, Explorer
+  // and every file manager since defer that decision to the release. Without it
+  // a multi-track drag is impossible -- the selection is gone before the pointer
+  // has moved a pixel.
+  const pendingCollapse = useRef(null)
+
+  const selectFromPointer = useCallback(
+    (index, event) => {
+      const plain = !event.shiftKey && !event.metaKey && !event.ctrlKey
+      if (plain && selection.selection.has(index) && selection.selection.size > 1) {
+        pendingCollapse.current = index
+        return
+      }
+      selection.selectFromEvent(index, event)
+    },
+    [selection],
+  )
+
+  const resolveCollapse = useCallback(() => {
+    const pending = pendingCollapse.current
+    pendingCollapse.current = null
+    // A drag used the selection, so it stands. A click did not, so it collapses.
+    if (pending !== null && !trackDrag.didDrag()) moveCursorTo(pending)
+  }, [moveCursorTo, trackDrag])
 
   // Scrolling follows the cursor only when the keyboard moved it. Chunks
   // arriving can clamp the cursor too, and reacting to that would drag the view
@@ -195,32 +239,41 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
       {rows.length === 0 ? (
         isLoading ? null : <p className={styles.notice}>{emptyNotice}</p>
       ) : (
-        <TrackList
-          ref={listRef}
-          rows={rows}
-          indices={indices}
-          viewKey={viewKey}
-          playlistId={playlistId}
-          scrollRef={scrollRef}
-          layout={layout}
-          columns={optional}
-          template={template}
-          albumTemplate={albumTemplate}
-          showArtwork={showArtwork}
-          heat={heat}
-          patina={patina}
-          showHeat={showHeat}
-          activeIndex={activeIndex}
-          isPlaying={isPlaying}
-          cursor={selection.cursor}
-          selection={selection.selection}
-          matches={matches}
-          onSelect={selection.selectFromEvent}
-          onPlay={play}
-          onActiveDirectionChange={setActiveDirection}
-          isCompactViewport={isCompactViewport}
-        />
+        <div
+          className={styles.rows}
+          {...mergeHandlers(trackMenu.triggerProps, trackDrag.dragProps, {
+            onPointerUp: resolveCollapse,
+          })}
+        >
+          <TrackList
+            ref={listRef}
+            rows={rows}
+            indices={indices}
+            viewKey={viewKey}
+            playlistId={playlistId}
+            scrollRef={scrollRef}
+            layout={layout}
+            columns={optional}
+            template={template}
+            albumTemplate={albumTemplate}
+            showArtwork={showArtwork}
+            heat={heat}
+            patina={patina}
+            showHeat={showHeat}
+            activeIndex={activeIndex}
+            isPlaying={isPlaying}
+            cursor={selection.cursor}
+            selection={selection.selection}
+            matches={matches}
+            onSelect={selectFromPointer}
+            onPlay={play}
+            onActiveDirectionChange={setActiveDirection}
+            isCompactViewport={isCompactViewport}
+          />
+        </div>
       )}
+
+      {trackMenu.element}
 
       {/* Stays mounted so it can animate out as well as in. The slot has no
           height, so nothing is reserved at the end of the list while hidden. */}

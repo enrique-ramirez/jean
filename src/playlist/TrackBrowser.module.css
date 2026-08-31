@@ -84,3 +84,10 @@
     padding: 8px 12px;
   }
 }
+
+/* Wraps the virtualised list so one element can carry the context-menu
+   gestures for every row in it. Nothing else -- it must not become a
+   containing block or the virtualiser's absolute positioning moves. */
+.rows {
+  display: contents;
+}

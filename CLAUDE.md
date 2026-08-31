@@ -274,6 +274,24 @@ an array, not another component.
   and one drill-in implementation beats two half-tested ones. **Destructive actions
   confirm on a nested page** -- same machinery, no dialog component, identical on both
   surfaces.
+- **A nested page can be typed at.** `filter: '<placeholder>'` on a submenu node puts a
+  field at the top of its page, pinned rather than scrolling away with the list it
+  filters; Enter takes the first match. It matches through the same `fold()` the library
+  search uses, so typing at a menu behaves like typing at the search field.
+- **A sheet with a field in it has to follow the visual viewport.** A `position: fixed`
+  element is laid out against the *layout* viewport, which neither platform shrinks for
+  the keyboard -- iOS does not resize it at all and Chrome defaults to
+  `interactive-widget=resizes-visual` -- so a bottom-anchored sheet puts its own field
+  under the keyboard the moment you tap it. `ui/useVisualViewport.js` sizes the scrim to
+  `visualViewport`, which makes "above the keyboard" fall out of the existing
+  `align-items: flex-end`, and follows `offsetTop` as well, because iOS scrolls the page
+  to reveal a focused field. It writes to the element, not to state: iOS fires a stream
+  of these while the keyboard animates.
+- **The field takes focus on the popover and waits to be tapped on the sheet.** Most opens
+  of a menu are scroll-and-tap, and those should never cost half the screen.
+- **`touch-action: none` intersects down the tree.** It was on the sheet's scrim and would
+  have left a long list unscrollable on touch. It was never needed either: the scrim
+  portals to `<body>`, which has nothing to scroll.
 - **The accent budget of a menu is the two-pixel rail on the item under the cursor.**
   Scaled, not faded, so it grows out of its own centre.
 - **`useContextMenu` unifies the three ways of asking for one**: right-click,
@@ -331,6 +349,35 @@ load-bearing:
   spreading one props object after the other drops the first silently. Compose them
   through `ui/mergeHandlers.js`.
 - `Alt+Arrow` does the same from the keyboard, registered only while a row has focus.
+
+### Dragging across containers
+
+`ui/dnd.js` is the other drag primitive, and it is deliberately *not* built on
+`useSortableList`. That one reorders a single list, where the dragged element stays
+mounted and the drop position is arithmetic. Dragging tracks onto a sidebar playlist is a
+different problem: the source row can be unmounted by the virtualiser mid-gesture, and
+the target is elsewhere in the tree entirely. So the drop is decided by hit-testing the
+document (`elementFromPoint` up to a `[data-drop-target]`), and what follows the pointer
+is a ghost rather than the row.
+
+- **No pointer capture, here of all places.** Capture retargets every later event to the
+  capturing element, so a handler on a *descendant* of it never fires again -- and the
+  natural capture element is the scroll container, which is an ancestor of the rows.
+  Window listeners for the length of the gesture have none of that ambiguity.
+- **The store carries only coarse facts** -- dragging or not, which target is armed.
+  Those change rarely, so subscribing is free, and the track list does not subscribe at
+  all. It must never re-render during a drag.
+- **The ghost is moved imperatively**, because position is the one thing that changes
+  every frame. It is two elements: a CSS animation beats an inline style, so an entrance
+  touching `transform` would override the position and the ghost would fly in from the
+  top-left. Outer element owns position, inner owns anything that animates.
+- **Pressing inside a multi-track selection must not collapse it on pointer-down.** That
+  decision waits for the release -- otherwise the selection is gone before the pointer has
+  moved a pixel and a multi-track drag cannot exist. Every file manager does this.
+- Hit-testing runs on a frame rather than on the move event, so a target that autoscrolls
+  under a stationary pointer still arms.
+- Drag is mouse-only, and the mobile path is the menu. There is nothing to drag onto on a
+  phone: the sidebar is a drawer that covers the list it would be dragged from.
 
 ### Layout
 
@@ -451,16 +498,32 @@ someone re-theming Jean should only ever need to edit ~30 lines of custom proper
 with no build step and no knowledge of our class names. Do not add global classes for
 component styling.
 
-**Menus come from `ui/ActionMenu.jsx`, as an array of actions.** Never hand-roll a
-popover, an action sheet or a confirmation dialog -- the gestures, the keyboard
+**Context menus come from `ui/ActionMenu.jsx`, as an array of actions.** Never hand-roll
+a popover, an action sheet or a confirmation dialog -- the gestures, the keyboard
 handling, the nested pages and both surfaces already exist there, and a second
-implementation of any of them will be the one that is wrong on a phone.
+implementation of any of them will be the one that is wrong on a phone. `ui/Menu.jsx` is
+a different thing and stays: a dropdown anchored under a button you can see, which needs
+none of that. Menu *you asked for* against menu *you summoned*.
+
+**Notifications come from `ui/toasts.js`, and only for things you cannot see.** Pushing
+one is a bare function call from anywhere, deliberately -- it is a module-level store
+rather than a context because a provider holding the list would re-render the virtualised
+track list every time a toast appeared or expired.
 
 **Keyboard bindings are declared in `keyboard/keymap.js` and nowhere else.**
 `useKeymap(scope, handlers)` registers whatever that scope declares and has a handler
 for, and `ShortcutSheet` renders the help overlay from the same array — so the
 documented shortcuts cannot drift from the real ones. Adding a binding means adding a
 row there and a handler; never call `useHotkey` directly in a component.
+
+**Anything the user types at a list is matched through `fold()` in `ui/text.js`**, which
+lowercases and strips diacritics, so `babasonicos` finds `Babasónicos`. Requiring people
+to type the accents in their own library taxes exactly the tracks they are most likely
+to be hunting for, and from outside it does not look strict, it looks broken. Fold when
+the haystack is *built*, never per keystroke: measured over 30,441 rows, folding the
+whole index costs ~6 ms against the ~0.6 ms a plain lowercase took, and a search is still
+one `includes()`. Both sides have to go through it -- fold the query too, or an accented
+query stops matching the folded index.
 
 **Compare tag values loosely, display them exactly.** Tags drift in case and spacing
 between files in the same album -- `5 Seconds Of Summer` and `5 Seconds of Summer` are
@@ -519,7 +582,10 @@ own `#/search` route with a sidebar entry, and per-view scroll and cursor memory
 leaving a result set and coming back returns you to where you were. The shared list
 machinery both views render through is `playlist/TrackBrowser.jsx`, and `indices` is how
 a filtered view maps a row back to the playlist index the player addresses.
-Playlists themselves can be created, renamed, deleted and reordered from the sidebar: a
+Tracks can be added to another playlist by dragging them onto it in the sidebar, or from
+a context menu on the rows -- both selection aware, so a multi-track selection copies in
+one `items/copy` request, and both leaving an undo in the toast that follows. Playlists themselves can be created, renamed, deleted and
+reordered from the sidebar: a
 `+` on the section heading that makes an empty one and drops it straight into rename, an
 action menu on secondary-click or press-and-hold, inline renaming in the row itself,
 delete behind a confirmation page, and drag-to-reorder through
@@ -527,4 +593,4 @@ delete behind a confirmation page, and drag-to-reorder through
 Results can also be saved as a real playlist -- `/playlists/add` returns the new id and
 `/playlists/{src}/{dst}/items/copy` copies by index, so no `%path%` is ever fetched -- gated
 on `permissions.changePlaylists` and on the library having finished loading. The home
-screen, selection actions, the Web Worker and IndexedDB persistence are not built yet.
+screen, the Web Worker and IndexedDB persistence are not built yet.

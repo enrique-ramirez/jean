@@ -189,6 +189,25 @@
   background: none;
 }
 
+/* Receiving a drop ----------------------------------------------------------
+
+   Only the row under the pointer says anything. Lighting up every droppable row
+   the moment a drag begins turns the sidebar into a wall of boxes and answers a
+   question nobody asked; the ghost already says a drag is happening. */
+.row[data-drop-over='true'] {
+  background: var(--accent-quiet);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+.row[data-drop-over='true'] .item,
+.row[data-drop-over='true'] .count {
+  color: var(--text);
+}
+
+.row[data-drop-over='true'] .item svg {
+  color: var(--accent);
+}
+
 /* Renaming ---------------------------------------------------------------- */
 
 .renameForm {
@@ -206,25 +225,6 @@
   font-size: 0.875rem;
   color: var(--text);
   outline: none;
-}
-
-.notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 8px 10px;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: none;
-  font-size: 0.75rem;
-  text-align: left;
-  color: var(--danger);
-}
-
-.notice svg:last-child {
-  margin-left: auto;
-  color: var(--faint);
 }
 
 /* A second section needs room above it; the first one sits under the top bar. */

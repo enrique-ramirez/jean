@@ -1,0 +1,67 @@
+/* Anchored at the origin and moved by transform alone -- left/top would lay out
+   every frame, and this element exists to be cheap. Nothing else may touch its
+   transform: see the note in DragGhost.jsx. */
+.ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 80;
+  /* It sits under the cursor, and the cursor is what is being hit-tested. */
+  pointer-events: none;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 7px 10px 7px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  font-size: 0.75rem;
+  color: var(--muted);
+  transition: border-color 0.12s var(--ease), color 0.12s var(--ease);
+  animation: lift 0.14s var(--ease) backwards;
+}
+
+@keyframes lift {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* Armed over a target: the same accent the drop row picks up, so the two read
+   as one thing rather than two independent highlights. */
+.pill[data-armed='true'] {
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+
+.pill svg {
+  flex: 0 0 auto;
+  color: var(--faint);
+}
+
+.pill[data-armed='true'] svg {
+  color: var(--accent);
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  color: var(--on-accent);
+  font-variant-numeric: tabular-nums;
+}

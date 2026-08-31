@@ -107,6 +107,11 @@ export const movePlaylist = (playlistId, index) =>
 export const copyPlaylistItems = (sourceId, targetId, items) =>
   post(`/api/playlists/${sourceId}/${targetId}/items/copy`, { items: Array.from(items) })
 
+// Index is identity, so this only means anything against a list nobody has
+// touched since the indices were worked out. See useAddTracks for the check.
+export const removePlaylistItems = (playlistId, items) =>
+  post(`/api/playlists/${playlistId}/items/remove`, { items: Array.from(items) })
+
 // Maps the positional columns array back onto names.
 export function readTrack(player) {
   const values = player?.activeItem?.columns

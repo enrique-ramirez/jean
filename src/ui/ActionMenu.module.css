@@ -47,14 +47,19 @@
    four corners rounded. It sits on the page rather than growing out of it. */
 .scrim {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Only the fallback. useVisualViewport overwrites top and height with the
+     visual viewport's, which is what keeps the sheet above the keyboard --
+     `align-items: flex-end` then means "above the keyboard" for free. */
+  height: 100dvh;
   z-index: 70;
   display: flex;
   align-items: flex-end;
   padding: 10px;
   padding-bottom: max(10px, env(safe-area-inset-bottom));
   background: oklch(0 0 0 / 0.5);
-  touch-action: none;
 }
 
 .scrim[data-state='open'] {
@@ -91,7 +96,9 @@
   --menu-icon: 19px;
 
   width: 100%;
-  max-height: 76dvh;
+  /* 100% is of the scrim, which is the visual viewport -- so with a keyboard up
+     the sheet shrinks to what is left rather than running off the top. */
+  max-height: min(76dvh, 100%);
   border-radius: calc(var(--radius) + 8px);
 }
 
@@ -240,6 +247,11 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  /* The scrim deliberately does not set touch-action: none. It would intersect
+     with this subtree's and leave a long list unscrollable on touch, and it was
+     never needed -- the scrim portals to <body>, which has nothing to scroll. */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
   transition: height 0.26s var(--ease);
 }
 
@@ -252,6 +264,36 @@
 .page {
   flex: 0 0 100%;
   padding: var(--menu-pad);
+}
+
+/* Pinned rather than scrolling away with the list it filters. Bled out to the
+   page edges, because the page's padding is for the items, not for this. */
+.filter {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: calc(var(--menu-pad) * -1) calc(var(--menu-pad) * -1) 4px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--faint);
+}
+
+.filterInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  font-size: var(--menu-item-font);
+  color: var(--text);
+  outline: none;
+}
+
+.filterInput::placeholder {
+  color: var(--faint);
 }
 
 /* Items ------------------------------------------------------------------- */

@@ -105,13 +105,19 @@ function TrackRowComponent({
     <div
       className={styles.track}
       style={{ gridTemplateColumns: template, '--heat': heat, '--patina': patina }}
+      data-row={index}
       data-active={isActive}
       data-selected={isSelected}
       data-cursor={isCursor}
       data-match={isMatch}
       role="row"
       aria-selected={isSelected}
-      onPointerDown={(event) => onSelect(index, event)}
+      onPointerDown={(event) => {
+        // Secondary click must leave the selection alone -- collapsing it here
+        // would empty a multi-track selection before the context menu that is
+        // about to act on it has even opened.
+        if (event.button === 0) onSelect(index, event)
+      }}
       onDoubleClick={() => onPlay(index)}
     >
       <span className={`${styles.index} tabular`}>

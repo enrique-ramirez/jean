@@ -108,9 +108,17 @@ export function createServer({ state = createState(), serveDir = null } = {}) {
   return server
 }
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 async function handleApi({ state, method, path, url, body, response }) {
   const segments = path.split('/').filter(Boolean).slice(1)
   const [head, ...rest] = segments
+
+  // Writes only, and only when a test asks for it. On localhost against an
+  // in-memory player every request settles before the next pointer event, so a
+  // control that coalesces forty moves into three looks identical to one that
+  // sends forty. A real player on a real network does not answer that fast.
+  if (method === 'POST' && state.latency > 0) await delay(state.latency)
 
   // ---- streaming -------------------------------------------------------
   if (method === 'GET' && head === 'query' && rest[0] === 'updates') {
@@ -292,6 +300,22 @@ function handleControl({ state, path, body, response }) {
   // to survive and which is impossible to provoke reliably against a real one.
   if (action === 'play') {
     state.playItem(body.playlistId, body.index)
+    return empty(response)
+  }
+
+  // The desktop reaching into a playlist while Jean is looking at it. Undo
+  // holds a range of indices that is only correct while nothing else has
+  // touched the playlist, so this is the only way to test that it notices --
+  // and it is the case that makes undo safe rather than the case that makes it
+  // work.
+  if (action === 'append') {
+    return state.copyItems(body.sourceId, body.targetId, body.items)
+      ? empty(response)
+      : empty(response, 404)
+  }
+
+  if (action === 'latency') {
+    state.latency = Number(body?.ms) || 0
     return empty(response)
   }
 

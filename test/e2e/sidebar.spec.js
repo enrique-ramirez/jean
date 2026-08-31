@@ -188,6 +188,23 @@ test.describe('deleting a playlist', () => {
   })
 })
 
+test.describe('the drawer', () => {
+  test.skip(({ isMobile }) => !isMobile, 'the sidebar is a drawer only on a phone')
+
+  test('the scrim closes it', async ({ page }) => {
+    await openApp(page)
+    await expect(link(page, LIBRARY)).toBeVisible()
+
+    // Clicked near the edge rather than at its centre: the scrim covers the
+    // whole viewport and sits *under* the drawer, so its middle is behind the
+    // thing it dismisses.
+    const scrim = page.getByRole('button', { name: 'Close menu' })
+    const box = await scrim.boundingBox()
+    await scrim.click({ position: { x: box.width - 8, y: box.height / 2 } })
+    await expect(link(page, LIBRARY)).toBeHidden()
+  })
+})
+
 test.describe('the search entry', () => {
   test('it is not a permanent shelf -- it appears when there is a search', async ({ page }) => {
     await openApp(page)

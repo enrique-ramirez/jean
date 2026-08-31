@@ -128,6 +128,11 @@ export function createState({
       ...player,
     },
     playQueue: [],
+    // Milliseconds to hold a write before answering. Zero by default, because
+    // the fake is otherwise faster than a pointer can move -- which hides
+    // exactly the behaviour that matters about a coalesced write. See
+    // POST /__control/latency.
+    latency: 0,
     // Every request the app made, in order. Lets a test assert what went over
     // the wire -- that a drag sent one items/copy and not forty, that a
     // coalesced write sent the last value rather than every value.

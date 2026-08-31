@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { test as base, expect } from '@playwright/test'
 
 import { createServer } from '../fake-api/server.js'
-import { createState } from '../fake-api/state.js'
+import { DEFAULT_PLAYLISTS, createState } from '../fake-api/state.js'
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '../../dist')
 
@@ -35,6 +35,12 @@ export const test = base.extend({
   // play counts should disappear rather than break.
   withoutFields: [[], { option: true }],
 
+  // Renames the playlist Jean would otherwise resolve as the library, so the
+  // first-run path is reachable. Nothing else can get there: an install that
+  // already has a Library playlist never sees the setup screen, and the capture
+  // always has one.
+  withoutLibraryPlaylist: [false, { option: true }],
+
   // Tag values the capture does not carry, keyed by track title:
   // test.use({ retagged: { Bloodhail: { '%artist%': 'Have a Nice Life feat. X' } } }).
   // The captured library has no featured artist and no compilation on it, and
@@ -49,9 +55,21 @@ export const test = base.extend({
 
   // A fresh player per test. The previous test's page is closed by now, so no
   // stream is left subscribed to the state being discarded.
-  player: async ({ fakeServer, librarySize, withoutFields, retagged, playerState }, use) => {
+  player: async (
+    { fakeServer, librarySize, withoutFields, retagged, withoutLibraryPlaylist, playerState },
+    use,
+  ) => {
+    const playlists = DEFAULT_PLAYLISTS()
+    if (withoutLibraryPlaylist) {
+      for (const playlist of playlists) {
+        if (playlist.title === 'Library') playlist.title = 'Everything'
+      }
+    }
+
     await use(
-      fakeServer.reset(createState({ librarySize, withoutFields, retagged, player: playerState })),
+      fakeServer.reset(
+        createState({ playlists, librarySize, withoutFields, retagged, player: playerState }),
+      ),
     )
   },
 

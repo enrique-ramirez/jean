@@ -110,7 +110,14 @@ test('does the thing', async ({ page, player }) => {
   tests seeing each other's playlists.
 - **`POST /__control/play`** drives the player the way the desktop would --
   the case Jean has to survive and which cannot be provoked reliably against a
-  real one.
+  real one. **`/__control/append`** is the same idea for playlists: the desktop
+  adding tracks while Jean is holding a range of indices, which is what undo
+  has to notice before it removes anything.
+- **`POST /__control/latency`** holds writes for N milliseconds. On localhost
+  against an in-memory player every request settles before the next pointer
+  event, so a control that coalesces forty moves into three looks identical to
+  one that sends forty. A real player on a real network does not answer that
+  fast, and `useCoalescedWrite` is untestable without this.
 - **`librarySize`** swaps the 54 captured tracks for that many generated ones.
   `test.use({ librarySize: 30441 })` gets a library that loads in chunks rather
   than one response, over a list 1.4 million pixels tall. Scroll arithmetic that
@@ -127,6 +134,9 @@ test('does the thing', async ({ page, player }) => {
   artist on it and no compilation, and an album row draws those two differently.
   Stating the tag a test needs beats growing an invented sixth album, and
   everything else about the track stays captured.
+- **`withoutLibraryPlaylist`** renames the playlist Jean resolves as the
+  library, which is the only way to reach the first-run setup screen: an install
+  that already has one never sees it, and the capture always has one.
 - **`settings`** seeds localStorage. It defaults to marking the play-count
   shading as already introduced, since that popover otherwise opens over the
   toolbar in every test that never asked about it. Override it with

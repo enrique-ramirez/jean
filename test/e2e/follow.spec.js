@@ -92,6 +92,9 @@ test.describe('following playback', () => {
     // loads. Appending one track is that same event with one chunk instead of
     // sixteen, and it is the only way to provoke it against a 54-track fixture.
     player.copyItems('p5', 'p7', [0])
+    // Item changes are not pushed by a real player, so the growth has to be
+    // announced the way a landing chunk announces itself. See state.js.
+    player.notifyPlaylists()
     await expect(page.getByRole('grid')).toHaveAttribute('aria-rowcount', '55')
 
     expect(await scrollTop(page)).toBe(0)

@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { copyPlaylistItems, removePlaylistItems } from '../api/beefweb.js'
+import { copyPlaylistItems, fetchPlaylists, removePlaylistItems } from '../api/beefweb.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
 import { pushToast } from '../ui/toasts.js'
 
@@ -48,9 +48,12 @@ export function useAddTracks() {
       }
 
       const undo = async () => {
-        const current = queryClient
-          .getQueryData(PLAYLISTS_KEY)
-          ?.find((entry) => entry.id === target.id)
+        // Read from the player, not from the cache. Item changes are not
+        // pushed -- beefweb sends `playlists` when the set of playlists
+        // changes and nothing at all when their contents do -- so the cached
+        // itemCount cannot see the desktop, which is the one writer this
+        // check exists to catch. One request, on an explicit user action.
+        const current = (await fetchPlaylists()).find((entry) => entry.id === target.id)
 
         // Those indices are only ours while nothing else has touched the
         // playlist. If the count has moved, the desktop got there first and

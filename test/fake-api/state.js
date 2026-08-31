@@ -332,6 +332,17 @@ export function createState({
       return true
     },
 
+    // Item changes push `player` and NOT `playlists`. That is what beefweb
+    // does -- verified against the live player by watching the stream while
+    // mutating: an add, a rename and a delete each produced a `playlists`
+    // message, while a copy of five items and a remove of two produced only
+    // `player`. So `itemCount` in PlaylistInfo goes stale from the first write
+    // onwards and anything that depends on it has to re-read it.
+    //
+    // The fake used to push `playlists` here, which quietly made the cache
+    // self-healing and hid a bug that emptied the wrong number of rows out of
+    // the search scratch playlist and then played whatever had drifted into
+    // the position that was clicked.
     copyItems(sourceId, targetId, indices) {
       const source = byId(sourceId)
       const target = byId(targetId)
@@ -339,7 +350,7 @@ export function createState({
       // Appended without a duplicate check, because the player appends without
       // one. Undo is what makes that safe, and undo is what the tests exercise.
       target.items.push(...indices.map((index) => source.items[index]).filter(Boolean))
-      notify({ playlists: true })
+      notify({ player: true })
       return true
     },
 
@@ -348,8 +359,17 @@ export function createState({
       if (!playlist) return false
       const drop = new Set(indices)
       playlist.items = playlist.items.filter((_, index) => !drop.has(index))
-      notify({ playlists: true })
+      // See copyItems: item changes do not push `playlists` on a real player.
+      notify({ player: true })
       return true
+    },
+
+    // The playlists push a real player sends only when the *set* of playlists
+    // changes. A test that needs the app to re-read a playlist's contents --
+    // which from the app's side is what a chunk of rows arriving looks like --
+    // asks for it here, rather than having every copyItems pretend.
+    notifyPlaylists() {
+      notify({ playlists: true })
     },
 
     queueAdd(entry) {

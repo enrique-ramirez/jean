@@ -37,7 +37,6 @@ export const TrackList = forwardRef(function TrackList(
     rows,
     groups,
     indices,
-    viewKey,
     playlistId,
     scrollRef,
     layout,
@@ -119,6 +118,18 @@ export const TrackList = forwardRef(function TrackList(
     estimateSize: (index) =>
       isAlbumLayout ? estimateGroupHeight(groups[index], isCompactViewport) : ROW_HEIGHT,
     overscan: isAlbumLayout ? 3 : 12,
+    // Measurements are cached by *item key*, and the default key is the index --
+    // so group 0 of one search inherits the measured height of group 0 of the
+    // last one. Two albums of the same length measure the same and nothing is
+    // wrong; an album of nineteen two-line rows landing where a shorter one was
+    // is 133px taller than the virtualiser thinks, and it lays the next group
+    // over the end of it. It stayed wrong, too: measureElement reports on mount
+    // and on resize, and a group that was already there did neither.
+    //
+    // Keying by the album gives a new result set new items, which are measured
+    // when they mount like any other. `measure()` below still covers the case
+    // this cannot: switching layout, where the same key means a different shape.
+    getItemKey: isAlbumLayout ? (index) => groups[index]?.key ?? index : undefined,
     // Compact rows are genuinely a fixed height, so they skip measurement
     // entirely and cost nothing per row.
     measureElement: isAlbumLayout ? (element) => element.getBoundingClientRect().height : undefined,
@@ -191,18 +202,25 @@ export const TrackList = forwardRef(function TrackList(
 
   useEffect(() => () => cancelScroll.current?.(), [])
 
-  // Measurements are cached by index, and an index means different things in
-  // different layouts -- row 4 in list mode is not album 4. Without this reset,
-  // switching layouts reuses the other one's heights. `viewKey` covers the same
-  // trap from the other side: a new set of search results reuses the previous
-  // set's indices for a completely different set of rows. Chunks arriving do
-  // not change the key, so a load in progress is left alone.
+  // Two different traps, and only one of them is this reset's.
+  //
+  // Keys handle *different data at the same index* -- a new set of search
+  // results, where group 0 is a different album. getItemKey above does that,
+  // and it has to, because measure() cannot: it runs after the refs have
+  // already measured the new elements, and it throws those measurements away.
+  // Nothing re-measures afterwards, since measureElement reports on mount and
+  // on resize and a mounted group does neither. That is what left the first
+  // album of a search lying 133px under the second.
+  //
+  // This reset handles the other one: *the same data in a different shape*.
+  // Row 4 in list mode is not album 4, and a compact album group is not a wide
+  // one, so the cached heights are meaningless across either switch.
   const virtualizerRef = useRef(virtualizer)
   virtualizerRef.current = virtualizer
 
   useEffect(() => {
     virtualizerRef.current.measure()
-  }, [isAlbumLayout, isCompactViewport, viewKey])
+  }, [isAlbumLayout, isCompactViewport])
 
   const virtualItems = virtualizer.getVirtualItems()
 

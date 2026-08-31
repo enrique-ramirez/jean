@@ -394,7 +394,6 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
             rows={rows}
             groups={groups}
             indices={indices}
-            viewKey={viewKey}
             playlistId={playlistId}
             scrollRef={scrollRef}
             layout={layout}

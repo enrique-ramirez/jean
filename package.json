@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "fake": "node test/fake-beefweb/main.js --port 8880"
   },
   "dependencies": {
     "@tanstack/react-hotkeys": "^0.10.0",
@@ -16,6 +19,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@vitejs/plugin-react": "^6.1.1",
     "vite": "^8.2.2"
   }

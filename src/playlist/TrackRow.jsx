@@ -95,7 +95,6 @@ function TrackRowComponent({
   isMatch,
   showArtist = true,
   onSelect,
-  onPlay,
 }) {
   const title = value(row, FIELD.title) ?? 'Unknown title'
   const artist = value(row, FIELD.artist) ?? 'Unknown artist'
@@ -118,7 +117,6 @@ function TrackRowComponent({
         // about to act on it has even opened.
         if (event.button === 0) onSelect(index, event)
       }}
-      onDoubleClick={() => onPlay(index)}
     >
       <span className={`${styles.index} tabular`}>
         {isActive && isPlaying ? <NowPlayingBars /> : (trackNumber ?? index + 1)}

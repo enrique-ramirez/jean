@@ -302,6 +302,18 @@ an array, not another component.
   portals to `<body>`, which has nothing to scroll.
 - **The accent budget of a menu is the two-pixel rail on the item under the cursor.**
   Scaled, not faded, so it grows out of its own centre.
+- **A tap plays; a click selects and a double-click plays.** The split is the
+  pointer, not the viewport -- the same rule `useSortableList` uses to decide
+  that only a mouse drags a row. On a pointer a selection is worth having,
+  because the modifier keys exist to build one and every file manager separates
+  choosing from opening. Touch has neither, and a tap that only highlighted left
+  the phone with no way to play an individual track at all: the header Play
+  button was the entire surface. Bound to `click` rather than `pointerup`,
+  because the browser withholds it when the gesture turns out to be a scroll --
+  which is most of what a finger does in a list -- and because `useLongPress`
+  already swallows the one that follows a hold. Both handlers sit on the rows
+  container and find their row through `targetsFrom`; 30,000 rows must not each
+  carry a closure.
 - **`useContextMenu` unifies the three ways of asking for one**: right-click,
   press-and-hold, and the Menu key -- which reports no coordinates, so a keyboard
   invocation has to anchor to the element rather than to `0,0`.
@@ -633,7 +645,9 @@ load it directly for real-device testing.
 Deploying is only for making it permanent — see `README.md`.
 
 **Stack:** React 19 · Vite 8 · TanStack Query 5 · TanStack Virtual · TanStack Hotkeys ·
-lucide-react · CSS Modules · pnpm. No test setup yet.
+lucide-react · CSS Modules · pnpm · Playwright. No unit tests and no jsdom, on
+purpose: the things that break here need real layout, real pointers and a real
+viewport. See `test/README.md`.
 
 **Built so far:** the app shell, both themes, the playlist view (compact and album
 layouts, heat/patina, the finder, column picker, keyboard navigation, transport with a

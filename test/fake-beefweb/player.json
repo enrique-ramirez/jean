@@ -1,0 +1,65 @@
+{
+  "activeItem": {
+    "columns": [
+      "Post Malone",
+      "Go Flex"
+    ],
+    "duration": 179.61333333333334,
+    "index": 23618,
+    "playlistId": "p7",
+    "playlistIndex": 1,
+    "position": 88.71245028524856
+  },
+  "info": {
+    "name": "foobar2000",
+    "pluginVersion": "0.10",
+    "title": "foobar2000",
+    "version": "2.25.3"
+  },
+  "options": [
+    {
+      "enumNames": [
+        "Default",
+        "Repeat (playlist)",
+        "Repeat (track)",
+        "Random",
+        "Shuffle (tracks)",
+        "Shuffle (albums)",
+        "Shuffle (folders)"
+      ],
+      "id": "playbackOrder",
+      "name": "Playback order",
+      "type": "enum",
+      "value": 0
+    },
+    {
+      "id": "stopAfterCurrentTrack",
+      "name": "Stop after current track",
+      "type": "bool",
+      "value": false
+    }
+  ],
+  "permissions": {
+    "changeClientConfig": true,
+    "changeOutput": true,
+    "changePlaylists": true
+  },
+  "playbackMode": 0,
+  "playbackModes": [
+    "Default",
+    "Repeat (playlist)",
+    "Repeat (track)",
+    "Random",
+    "Shuffle (tracks)",
+    "Shuffle (albums)",
+    "Shuffle (folders)"
+  ],
+  "playbackState": "paused",
+  "volume": {
+    "isMuted": false,
+    "max": 0,
+    "min": -100,
+    "type": "db",
+    "value": -23.324508666992188
+  }
+}

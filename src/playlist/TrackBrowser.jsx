@@ -12,6 +12,7 @@ import { ColumnsMenu } from './ColumnsMenu.jsx'
 import { HeatLegend } from './HeatLegend.jsx'
 import { TrackList } from './TrackList.jsx'
 import { DEFAULT_COLUMN_IDS, resolveColumns } from './columns.js'
+import { targetsFrom } from './trackTargets.js'
 import { useAvailableFields } from './useAvailableFields.js'
 import { useTrackContextMenu } from './useTrackContextMenu.jsx'
 import { useTrackDragSource } from './useTrackDragSource.js'
@@ -155,6 +156,52 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     if (pending !== null && !trackDrag.didDrag()) moveCursorTo(pending)
   }, [moveCursorTo, trackDrag])
 
+  // What plays a track depends on the device driving, not on the viewport --
+  // the same rule useSortableList uses to decide that only a mouse drags a row.
+  //
+  // Recorded on the way down rather than read off the click, because `click` is
+  // a PointerEvent in Chromium and Safari but a plain MouseEvent in Firefox,
+  // where pointerType is undefined and every desktop click would read as a tap.
+  const pointerType = useRef('mouse')
+
+  const playFromPointer = useCallback(
+    (event) => {
+      const aimed = targetsFrom(event, rows, selection.selection)
+      if (aimed) play(aimed.index)
+    },
+    [rows, selection.selection, play],
+  )
+
+  // Single-click-to-play would be wrong on a pointer: a selection is worth
+  // having there, the modifier keys exist to build one, and every file manager
+  // since the first one separates choosing a thing from opening it. Touch has
+  // neither modifiers nor that tradition, and a tap that only highlighted left
+  // the phone with no way to play an individual track at all -- the header Play
+  // button was the whole surface. Apple Music, Plexamp and Poweramp all play on
+  // the first tap, and the verbs that would need a selection live in the action
+  // sheet behind the long press instead.
+  //
+  // `click` rather than `pointerup`: the browser withholds it entirely when the
+  // gesture turned out to be a scroll, which is most of what a finger does in a
+  // list, and useLongPress already swallows the one that follows a hold.
+  const onRowsClick = useCallback(
+    (event) => {
+      // detail counts clicks in a rapid sequence. A double-tap otherwise plays
+      // twice, restarting the track under the finger that just started it.
+      if (pointerType.current === 'mouse' || event.detail > 1) return
+      playFromPointer(event)
+    },
+    [playFromPointer],
+  )
+
+  const onRowsDoubleClick = useCallback(
+    (event) => {
+      if (pointerType.current !== 'mouse') return
+      playFromPointer(event)
+    },
+    [playFromPointer],
+  )
+
   // Scrolling follows the cursor only when the keyboard moved it. Chunks
   // arriving can clamp the cursor too, and reacting to that would drag the view
   // back to the top every time a chunk lands mid-scroll.
@@ -281,7 +328,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
         <div
           className={styles.rows}
           {...mergeHandlers(trackMenu.triggerProps, trackDrag.dragProps, {
+            onPointerDown: (event) => {
+              pointerType.current = event.pointerType
+            },
             onPointerUp: resolveCollapse,
+            onClick: onRowsClick,
+            onDoubleClick: onRowsDoubleClick,
           })}
         >
           <TrackList
@@ -305,7 +357,6 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
             selection={selection.selection}
             matches={matches}
             onSelect={selectFromPointer}
-            onPlay={play}
             onActiveDirectionChange={setActiveDirection}
             isCompactViewport={isCompactViewport}
           />

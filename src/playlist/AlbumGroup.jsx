@@ -26,7 +26,6 @@ export function AlbumGroup({
   selection,
   matches,
   onSelect,
-  onPlay,
   isCompactViewport,
 }) {
   const positions = Array.from({ length: group.count }, (_, offset) => group.start + offset)
@@ -72,7 +71,6 @@ export function AlbumGroup({
             isMatch={matches?.has(index) ?? false}
             showArtist={!sameTagValue(value(rows[index], FIELD.artist), group.albumArtist)}
             onSelect={onSelect}
-            onPlay={onPlay}
           />
         ))}
       </div>

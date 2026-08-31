@@ -9,3 +9,5 @@ dist
 # Personal deploy scripts -- how you copy a build to your player is your own
 # setup, not something the project should prescribe.
 scripts/*.local.sh
+test-results/
+playwright-report/

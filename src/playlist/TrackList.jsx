@@ -44,7 +44,6 @@ export const TrackList = forwardRef(function TrackList(
     selection,
     matches,
     onSelect,
-    onPlay,
     onActiveDirectionChange,
     isCompactViewport,
   },
@@ -187,7 +186,6 @@ export const TrackList = forwardRef(function TrackList(
               selection={selection}
               matches={matches}
               onSelect={onSelect}
-              onPlay={onPlay}
               isCompactViewport={isCompactViewport}
             />
           ) : (
@@ -207,7 +205,6 @@ export const TrackList = forwardRef(function TrackList(
               isCursor={virtualRow.index === cursor}
               isMatch={matches?.has(virtualRow.index) ?? false}
               onSelect={onSelect}
-              onPlay={onPlay}
             />
           )}
         </div>

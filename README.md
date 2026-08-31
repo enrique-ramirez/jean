@@ -260,7 +260,9 @@ stale. The short version:
 ## Stack
 
 React 19 · Vite 8 · TanStack Query 5 · TanStack Virtual · TanStack Hotkeys ·
-lucide-react · CSS Modules · pnpm. No test setup yet.
+lucide-react · CSS Modules · pnpm · Playwright. No unit tests and no jsdom, on
+purpose: the things that break here need real layout, real pointers and a real
+viewport. See `test/README.md`.
 
 Styling is CSS Modules per component, with the palette in `src/styles/tokens.css` as
 custom properties — re-theming Jean means editing about thirty values there, with no

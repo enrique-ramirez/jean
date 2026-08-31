@@ -67,11 +67,18 @@
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Duration alone does not stop an infinite animation -- it runs it ~100,000
+   times a frame, which for the continuously-animating controls here (the
+   play/pause toggle layers scale and rotate for as long as something is
+   playing) samples a different phase every frame. The result is a flicker,
+   which is worse for the people this rule exists for than the motion it
+   replaced. The iteration count is what actually brings it to rest. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

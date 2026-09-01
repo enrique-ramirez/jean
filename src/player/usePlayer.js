@@ -67,7 +67,19 @@ export function usePlaylists() {
     queryKey: PLAYLISTS_KEY,
     queryFn: fetchPlaylists,
     staleTime: Infinity,
-    refetchOnWindowFocus: false,
+    // The one thing the stream cannot tell us. `playlists` fires when the *set*
+    // of playlists changes -- added, renamed, deleted -- and stays silent when
+    // their contents change: measured against the live player, five items
+    // copied in and two removed both produced a `player` message and nothing
+    // else. So every `itemCount` here is stale from the first edit onwards, and
+    // the views keyed on it (`playlistKey(id, itemCount)`) go on showing a list
+    // the player no longer has.
+    //
+    // Coming back to the tab is when that is worth correcting, and it is the
+    // one moment we know the desktop has had time to be used. Cheap, and it
+    // costs nothing when nothing changed: an unchanged count is an unchanged
+    // key, so no view reloads.
+    refetchOnWindowFocus: true,
   })
 }
 

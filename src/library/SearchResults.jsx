@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { Search, Shuffle } from 'lucide-react'
 
-import { playItem } from '../api/beefweb.js'
+import { playItem, readTrack } from '../api/beefweb.js'
 import { SCOPE } from '../keyboard/keymap.js'
 import { useKeymap } from '../keyboard/useKeymap.js'
 import { useActiveItem, usePlaybackOrder, usePlayer } from '../player/usePlayer.js'
@@ -14,7 +14,6 @@ import { Button } from '../ui/Button.jsx'
 import { PlayIcon } from '../ui/icons.jsx'
 import { LibraryPicker, LibrarySetup } from './LibrarySetup.jsx'
 import { SavePlaylistButton } from './SavePlaylistButton.jsx'
-import { positionOf } from './libraryIndex.js'
 import { useScratchPlaylist } from './useScratchPlaylist.js'
 import styles from './SearchResults.module.css'
 
@@ -44,16 +43,49 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
     canEdit: canSavePlaylists,
   })
 
-  // Two playlists are in play at once and they must not be confused. Reading
-  // stays with the library -- the rows, their artwork, their heat all come from
-  // it -- while playback moves into the scratch playlist, whose contents are
-  // these results in this order. So a position is a position there, and the
-  // indices mapping is only needed for the library side.
+  // Which row is playing. Two playlists are in play at once and they must not
+  // be confused: reading stays with the library -- the rows, their artwork,
+  // their heat all come from it -- while playback moves into the scratch
+  // playlist, whose contents are these results in this order.
+  //
+  // So the scratch is asked first, and it answers for free: a position there is
+  // a position here. Everything else goes through the source, which is the only
+  // thing that knows what identifies a row. That is what makes the mark exact
+  // rather than best-effort -- the library source matches on `(path, subsong)`,
+  // so a track playing from some *other* playlist is still found here. Asking
+  // by playlist index could only ever answer while the player happened to be
+  // inside the one playlist being read, and on a player with a library API
+  // there is no such playlist at all, so nothing was ever marked.
   const scratchItem = useActiveItem(scratch.playlist?.id)
-  const libraryItem = useActiveItem(search.playlist?.id)
-  const activePosition = scratch.holdsCurrentView
-    ? (scratchItem?.index ?? -1)
-    : positionOf(indices, libraryItem?.index)
+  const activeItem = playerSnapshot?.player?.activeItem
+  const playingTrack = readTrack(playerSnapshot?.player)
+
+  // Depended on by value, not by object: a player message arrives for every
+  // volume nudge and pause, and each one is a new `activeItem`. The library
+  // source's answer is a sweep of up to 30,000 refs, and it should be paid when
+  // the track changes rather than whenever the player says anything at all.
+  const playingPath = playingTrack?.path ?? null
+  const playingSubsong = playingTrack?.subsong ?? 0
+  const activePlaylistId = activeItem?.playlistId ?? null
+  const activeItemIndex = activeItem?.index ?? -1
+
+  const activePosition = useMemo(() => {
+    if (scratch.holdsCurrentView) return scratchItem?.index ?? -1
+    return search.source.playingPosition(
+      indices,
+      { path: playingPath, subsong: playingSubsong },
+      { playlistId: activePlaylistId, index: activeItemIndex },
+    )
+  }, [
+    scratch.holdsCurrentView,
+    scratchItem?.index,
+    search.source,
+    indices,
+    playingPath,
+    playingSubsong,
+    activePlaylistId,
+    activeItemIndex,
+  ])
 
   useKeymap(
     SCOPE.search,

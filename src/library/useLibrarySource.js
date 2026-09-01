@@ -31,7 +31,16 @@ export function useLibraryInfo() {
     // The library does not appear or disappear while the app is open, and
     // there is no `library` event on the update stream to tell us if it did.
     staleTime: Infinity,
-    refetchOnWindowFocus: false,
+    // Its *size* does change, though, and there is no event for that either --
+    // `/api/query` has no `library` key, so drift can only be noticed by
+    // asking. Three fields and 8 ms is cheap enough to ask on every return to
+    // the tab, and it is the whole reconciliation: the rows are keyed
+    // `library:{itemCount}`, so a changed count is a new key, a fresh load and
+    // a fresh index, while an unchanged one touches nothing.
+    //
+    // Not a poll. A library grows when its owner adds music on the desktop,
+    // which is exactly the trip away from this tab that this fires on.
+    refetchOnWindowFocus: true,
     retry: false,
   })
 

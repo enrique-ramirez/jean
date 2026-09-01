@@ -2,15 +2,25 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ListPlus } from 'lucide-react'
 
-import { copyPlaylistItems, createPlaylist } from '../api/beefweb.js'
+import { createPlaylist } from '../api/beefweb.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
 import { Button } from '../ui/Button.jsx'
 import { Menu } from '../ui/Menu.jsx'
 import styles from './SavePlaylistButton.module.css'
 
 // The one place Jean writes a playlist, and it takes an explicit click to get
-// here: browsing and searching never do. Copying is by index -- the player
-// already holds these tracks -- so nothing is uploaded but a list of numbers.
+// here: browsing and searching never do. How the tracks get across is the
+// source's business: an autoplaylist copies by index, so nothing is uploaded
+// but a list of numbers, and the media library adds by `(path, subsong)`
+// because there is no playlist to copy *from*.
+//
+// Reaching past the source for a playlist id was not untidy, it was wrong, and
+// silently. A ref is only an index *into its own source*: on a player with a
+// media library those refs address the library's own path-ordered array, and
+// copying them out of the `Library` autoplaylist instead took whatever happened
+// to sit at those positions in a differently ordered list. Measured, saving
+// twelve unplayed Babasónicos matches wrote a playlist beginning "Jaws Theme
+// Swimming". It never threw, which is what made it worth a test.
 export function SavePlaylistButton({ search, scratch, isOpen, onOpenChange, onOpenPlaylist }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState(search.query)
@@ -46,7 +56,7 @@ export function SavePlaylistButton({ search, scratch, isOpen, onOpenChange, onOp
       }
 
       const playlist = await createPlaylist(name)
-      await copyPlaylistItems(search.playlist.id, playlist.id, indices)
+      await search.source.addTo(playlist.id, indices)
       // Refetched rather than invalidated: the route that follows resolves
       // against this list, and navigating to an id it has not seen yet would
       // land on the old view until the stream caught up.

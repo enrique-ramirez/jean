@@ -179,8 +179,12 @@ export function readTrack(player) {
 // (`K/Korn/…`). Jean is never told where the library folders are, so the two
 // are matched by suffix rather than by reconstructing the root -- a relative
 // path is unique within the library, so a suffix match cannot collide.
-export function pathMatchesLibraryPath(absolute, relative) {
-  if (!absolute || !relative) return false
+//
+// A matcher rather than a two-argument predicate, because the only caller asks
+// the same question of up to 30,000 library paths in a row: the player's path
+// is normalised once here instead of on every comparison.
+export function libraryPathMatcher(absolute) {
+  if (!absolute) return () => false
   const flat = absolute.replaceAll('\\', '/')
-  return flat === relative || flat.endsWith(`/${relative}`)
+  return (relative) => Boolean(relative) && (flat === relative || flat.endsWith(`/${relative}`))
 }

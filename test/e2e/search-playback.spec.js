@@ -296,6 +296,42 @@ test.describe('saving results as a playlist', () => {
     await expect(page.locator('footer')).toContainText('Los Calientes')
   })
 
+  // Every other test here plays first, so the scratch already holds exactly
+  // these results and saving is a rename. This is the other branch: results
+  // that were never played have no playlist behind them, so one is made and
+  // filled.
+  //
+  // It used to copy those refs out of the `Library` autoplaylist by index. A
+  // ref is only an index into its own source, and on a player with a media
+  // library it addresses the library's path-ordered array instead -- so the
+  // saved playlist got whatever sat at those positions in a differently ordered
+  // list. Measured against the fallback it was right and against the library it
+  // began "Jaws Theme Swimming". No error either way, which is why the title is
+  // asserted and not just the count.
+  test('saving results that were never played builds the playlist', async ({ page, player }) => {
+    await search(page, QUERY.text)
+    expect(scratchOf(player)).toBeUndefined()
+    const playlistsBefore = player.playlists.length
+
+    await page.getByRole('button', { name: 'Save as playlist' }).click()
+    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Unplayed')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Unplayed' })).toBeVisible()
+
+    const saved = player.playlists.find((entry) => entry.title === 'Unplayed')
+    expect(saved.items).toHaveLength(QUERY.matches)
+    expect(player.playlists).toHaveLength(playlistsBefore + 1)
+
+    // Made from the results rather than from whatever happened to be at those
+    // indices: the twelve Jessico tracks, in order. Items are the player's own
+    // title-formatting rows, so the key is the expression.
+    expect(saved.items[0]['%title%']).toBe('Los Calientes')
+
+    // And nothing was played to get here.
+    expect(playedFrom(player)).toBeNull()
+    expect(scratchOf(player)).toBeUndefined()
+  })
+
   test('and takes the search out of the sidebar with it', async ({ page, player }) => {
     await search(page, QUERY.text)
     await page.locator('[role="row"][data-row="0"]').dblclick()
@@ -406,5 +442,43 @@ test.describe('a player that will not let Jean make playlists', () => {
     await expect.poll(() => playedFrom(player)?.plref).toBe('p7')
     expect(playedFrom(player).index).toBe(2)
     expect(scratchOf(player)).toBeUndefined()
+  })
+})
+
+test.describe('marking the row that is playing', () => {
+  // The library source identifies a row by `(path, subsong)`, which playlist
+  // items do not have. So it can answer "is this the track that is playing"
+  // from wherever the player happens to be -- including a playlist Jean is not
+  // looking at. The autoplaylist fallback cannot: index is identity there, and
+  // an index only means anything inside its own playlist.
+  test('a track playing from another playlist is still marked in the results', async ({
+    page,
+    player,
+  }) => {
+    const noLibraryApi = Boolean(process.env.JEAN_NO_LIBRARY_API)
+
+    // Rock en Español holds Los Calientes too, and it is not the library and
+    // not the scratch. Playing it there is the case that used to go unmarked.
+    await page.goto('/#/p5')
+    await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
+    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await expect(page.locator('footer')).toContainText('Los Calientes')
+    expect(player.player.activeItem.playlistId).toBe('p5')
+
+    await search(page, QUERY.text)
+
+    // Nothing was played from the results, so no scratch playlist exists and
+    // there is no position to read off one.
+    expect(scratchOf(player)).toBeUndefined()
+
+    const marked = page.locator('[role="row"][data-active="true"]')
+    if (noLibraryApi) {
+      // Honest degradation rather than a wrong answer: without paths there is
+      // nothing to match on, so the row is left unmarked.
+      await expect(marked).toHaveCount(0)
+    } else {
+      await expect(marked).toHaveCount(1)
+      await expect(marked).toContainText('Los Calientes')
+    }
   })
 })

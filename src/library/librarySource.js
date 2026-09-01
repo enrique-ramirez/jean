@@ -3,9 +3,10 @@ import {
   artworkUrl,
   copyPlaylistItems,
   libraryArtworkUrl,
-  pathMatchesLibraryPath,
+  libraryPathMatcher,
   removePlaylistItems,
 } from '../api/beefweb.js'
+import { positionOf } from './libraryIndex.js'
 
 // Where "the library" comes from, behind one interface, because there are two
 // answers and both have to keep working.
@@ -71,14 +72,23 @@ export function librarySourceOf({ kind, playlistId, paths, subsongs }) {
         addFromLibrary(targetId, { items: itemsFor(paths, subsongs, refs) }),
 
       // `(path, subsong)` is a real identity, which playlist items do not have,
-      // so the playing row can be marked from whichever playlist the player
-      // happens to be inside. Matched by suffix because the player reports an
-      // absolute path and the library a relative one, and Jean is never told
-      // where the library folders are -- see pathMatchesLibraryPath.
-      isPlaying: (ref, track) =>
-        Boolean(track) &&
-        (track.subsong ?? 0) === subsongs[ref] &&
-        pathMatchesLibraryPath(track.path, paths[ref]),
+      // so the playing row is found from whichever playlist the player happens
+      // to be inside -- including one Jean is not looking at.
+      //
+      // Linear, where the playlist source bisects, because path order is not ref
+      // order. Paid once per track change rather than per player message, and
+      // the matcher normalises the player's path once for the whole sweep.
+      playingPosition: (refs, track) => {
+        if (!track?.path) return -1
+        const matches = libraryPathMatcher(track.path)
+        const subsong = track.subsong ?? 0
+
+        for (let position = 0; position < refs.length; position += 1) {
+          const ref = refs[position]
+          if (subsongs[ref] === subsong && matches(paths[ref])) return position
+        }
+        return -1
+      },
     }
   }
 
@@ -97,7 +107,11 @@ export function librarySourceOf({ kind, playlistId, paths, subsongs }) {
     // inside the very playlist being browsed. The same file playing from
     // somewhere else is invisible, which is the limitation the library source
     // does not have.
-    isPlaying: (ref, track, activeItem) =>
-      activeItem?.playlistId === playlistId && activeItem?.index === ref,
+    //
+    // A bisection rather than a scan: refs arrive ascending, and this is the
+    // fallback that runs on players where the library is a 30,000-row
+    // autoplaylist.
+    playingPosition: (refs, track, activeItem) =>
+      activeItem?.playlistId === playlistId ? positionOf(refs, activeItem.index) : -1,
   }
 }

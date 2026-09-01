@@ -1,4 +1,4 @@
-import { expect, requestsTo, test, trackRow } from './fixtures.js'
+import { expect, openLibrary, pressAndHold, requestsTo, test, trackRow } from './fixtures.js'
 
 // Undo is the app's answer to everything that writes, so this is about the
 // promise rather than the mechanism: what was added comes back off, and when it
@@ -15,34 +15,12 @@ const toast = (page) => page.getByRole('status')
 const titlesIn = (player, id) =>
   player.playlists.find((entry) => entry.id === id).items.map((track) => track['%title%'])
 
-const openLibrary = async (page) => {
-  await page.goto('/#/p7')
-  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
-  await expect(trackRow(page, 0)).toBeAttached()
-}
-
 // Right-click on a pointer, press-and-hold on touch: the same menu, asked for
 // the way each surface asks for it.
 const openRowMenu = async (page, index, isMobile) => {
   const target = trackRow(page, index)
-
-  if (!isMobile) {
-    await target.click({ button: 'right' })
-  } else {
-    const box = await target.boundingBox()
-    const touch = {
-      pointerType: 'touch',
-      isPrimary: true,
-      button: 0,
-      clientX: box.x + box.width / 2,
-      clientY: box.y + box.height / 2,
-    }
-    await target.dispatchEvent('pointerdown', touch)
-    await page.waitForTimeout(520) // past the 420ms hold
-    await target.dispatchEvent('pointerup', touch)
-    await target.dispatchEvent('click', { ...touch, detail: 1 })
-  }
-
+  if (isMobile) await pressAndHold(page, target)
+  else await target.click({ button: 'right' })
   await expect(page.getByRole('menuitem', { name: 'Add to playlist' })).toBeVisible()
 }
 

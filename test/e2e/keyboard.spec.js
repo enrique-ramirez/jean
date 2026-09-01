@@ -1,4 +1,4 @@
-import { expect, requestsTo, test, trackRow } from './fixtures.js'
+import { expect, inSequence, openLibrary, requestsTo, sidebar, test, trackRow } from './fixtures.js'
 
 // One test per binding in keymap.js, because a binding that stops firing does
 // so silently: `useKeymap` registers only the ids a scope both declares and has
@@ -20,14 +20,7 @@ import { expect, requestsTo, test, trackRow } from './fixtures.js'
 // here and fail the moment the suite runs on Linux.
 
 const searchField = (page) => page.getByLabel('Search your library')
-const sidebarLink = (page, title) =>
-  page.getByRole('navigation', { name: 'Playlists' }).getByRole('button').filter({ hasText: title })
-
-const openLibrary = async (page) => {
-  await page.goto('/#/p7')
-  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
-  await expect(trackRow(page, 0)).toBeAttached()
-}
+const sidebarLink = (page, title) => sidebar(page).getByRole('button').filter({ hasText: title })
 
 const paths = (player, fragment) => requestsTo(player, fragment).map((entry) => entry.path)
 
@@ -131,9 +124,9 @@ test.describe('navigation and appearance', () => {
     // Rendered from the same array the bindings are registered from, so the
     // help cannot drift from what actually fires -- which is only true while it
     // keeps listing every group.
-    for (const group of ['Playback', 'Navigation', 'In a playlist', 'While finding']) {
-      await expect(sheet.getByRole('heading', { name: group })).toBeVisible()
-    }
+    await inSequence(['Playback', 'Navigation', 'In a playlist', 'While finding'], (group) =>
+      expect(sheet.getByRole('heading', { name: group })).toBeVisible(),
+    )
   })
 
   test('t switches the theme', async ({ page }) => {
@@ -188,7 +181,7 @@ test.describe('moving the cursor in a playlist', () => {
     await cursorAt(page, 0)
 
     // Clamped rather than wrapped: paging up from the top is a no-op, not a
-    // jump to the bottom of a 30,000-row library.
+    // jump to the bottom of the library.
     await page.keyboard.press('PageUp')
     await cursorAt(page, 0)
   })

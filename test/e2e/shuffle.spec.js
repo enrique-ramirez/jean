@@ -1,4 +1,4 @@
-import { expect, requestsTo, test } from './fixtures.js'
+import { expect, playedFrom, requestsTo, statusBar, test, times, viewHeader } from './fixtures.js'
 
 // The captured player's own list, so this is the player's answer rather than a
 // number picked here. foobar2000 offers several shuffle flavours and 'tracks'
@@ -12,10 +12,7 @@ const ALBUM = { route: '/#/p5', title: 'Rock en Español', count: 12 }
 // control here lives in the view header or the status bar, and neither of those
 // changes between compact and album. Doubling it would double the runtime for
 // no new coverage.
-const header = (page) => page.locator('main header')
-const statusBar = (page) => page.locator('footer')
-
-const headerShuffle = (page) => header(page).getByRole('button', { name: 'Shuffle' })
+const headerShuffle = (page) => viewHeader(page).getByRole('button', { name: 'Shuffle' })
 const modeShuffle = (page) => statusBar(page).getByRole('button', { name: 'Shuffle' })
 
 const orderRequests = (player) =>
@@ -25,10 +22,7 @@ const orderRequests = (player) =>
       .map((option) => option.value),
   )
 
-const playedIndex = (player) => {
-  const play = requestsTo(player, '/player/play/').at(-1)
-  return play ? Number(play.path.split('/').pop()) : null
-}
+const playedIndex = (player) => playedFrom(player)?.index ?? null
 
 test.describe('the header shuffle starts a shuffled run', () => {
   test.beforeEach(async ({ page }) => {
@@ -37,10 +31,9 @@ test.describe('the header shuffle starts a shuffled run', () => {
   })
 
   test('it plays a track from this playlist and turns the mode on', async ({ page, player }) => {
-    // Two requests and no bookkeeping. Verified against the live player:
-    // play/{plref}/{index} makes that playlist active, and Shuffle (tracks)
-    // then draws from it -- p5 index 3, then 953, 540, 218, never leaving p5.
-    // So the mode does the shuffling and this only has to open the door.
+    // Two requests and no bookkeeping: play/{plref}/{index} makes that playlist
+    // active and the mode draws its next track from it, so the mode does the
+    // shuffling and this only has to open the door.
     await headerShuffle(page).click()
 
     await expect.poll(() => playedIndex(player)).not.toBeNull()
@@ -59,10 +52,10 @@ test.describe('the header shuffle starts a shuffled run', () => {
     // Guards the difference between "shuffle" and "play", which is otherwise
     // invisible: replacing the random pick with 0 would leave every other
     // assertion here passing.
-    for (let press = 0; press < 6; press += 1) {
+    await times(6, async (press) => {
       await headerShuffle(page).click()
       await expect.poll(() => requestsTo(player, '/player/play/').length).toBe(press + 1)
-    }
+    })
 
     const picked = new Set(
       requestsTo(player, '/player/play/').map((entry) => Number(entry.path.split('/').pop())),
@@ -101,7 +94,7 @@ test.describe('search results have shuffle again', () => {
     await page.getByLabel('Search your library').fill('babasonicos')
     await expect(page.getByRole('heading', { level: 1, name: 'babasonicos' })).toBeVisible()
 
-    const labels = await header(page)
+    const labels = await viewHeader(page)
       .getByRole('button')
       .evaluateAll((buttons) => buttons.map((button) => button.textContent.trim()))
 

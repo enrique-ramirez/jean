@@ -1,4 +1,15 @@
-import { expect, requestsTo, test } from './fixtures.js'
+import {
+  expect,
+  openSidebar,
+  playedFrom,
+  requestsTo,
+  scratchOf,
+  sidebar,
+  statusBar,
+  test,
+  trackRow,
+  viewHeader,
+} from './fixtures.js'
 
 // 'babasonicos' matches the twelve Jessico tracks, library indices 0-11.
 // The scratch says which kind of view filled it: 'Most played' is both a
@@ -6,22 +17,26 @@ import { expect, requestsTo, test } from './fixtures.js'
 const QUERY = { text: 'babasonicos', matches: 12, title: '#Jean [search: babasonicos]' }
 const NARROWER = { text: 'delectrico', matches: 1, title: '#Jean [search: delectrico]' }
 
-const header = (page) => page.locator('main header')
-const scratchOf = (player) => player.playlists.find((entry) => entry.title.startsWith('#Jean ['))
-
 const search = async (page, text) => {
   await page.goto('/#/search')
   await page.getByLabel('Search your library').fill(text)
   await expect(page.getByRole('heading', { level: 1, name: text })).toBeVisible()
-  await expect(page.locator('[role="row"][data-row="0"]')).toBeAttached()
+  await expect(trackRow(page, 0)).toBeAttached()
 }
 
-const playedFrom = (player) => {
-  const play = requestsTo(player, '/player/play/').at(-1)
-  if (!play) return null
-  // '' / api / player / play / {plref} / {index}
-  const [, , , , plref, index] = play.path.split('/')
-  return { plref, index: Number(index) }
+// Search, then play a result -- which is the moment the results stop being a
+// view and become a playlist on the player. Most of this file starts here.
+const searchAndPlay = async (page, player, query = QUERY, row = 0) => {
+  await search(page, query.text)
+  await trackRow(page, row).dblclick()
+  await expect.poll(() => scratchOf(player)?.items.length).toBe(query.matches)
+}
+
+const saveAs = async (page, name) => {
+  await page.getByRole('button', { name: 'Save as playlist' }).click()
+  await page.getByRole('textbox', { name: 'Playlist name' }).fill(name)
+  await page.getByRole('button', { name: 'Create' }).click()
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
 }
 
 test.describe('playing from search results', () => {
@@ -35,7 +50,7 @@ test.describe('playing from search results', () => {
     // refining stay entirely client-side.
     expect(scratchOf(player)).toBeUndefined()
 
-    await page.locator('[role="row"][data-row="2"]').dblclick()
+    await trackRow(page, 2).dblclick()
 
     await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
     const scratch = scratchOf(player)
@@ -49,9 +64,7 @@ test.describe('playing from search results', () => {
   })
 
   test('it holds exactly the matches, in the order shown', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     const library = player.playlists.find((entry) => entry.title === 'Library')
     const titleOf = (track) => track['%title%']
@@ -64,14 +77,12 @@ test.describe('playing from search results', () => {
   })
 
   test('refining the query rebuilds it rather than making another', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
     const firstId = scratchOf(player).id
 
     await page.getByLabel('Search your library').fill(NARROWER.text)
     await expect(page.getByRole('heading', { level: 1, name: NARROWER.text })).toBeVisible()
-    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await trackRow(page, 0).dblclick()
 
     await expect.poll(() => scratchOf(player)?.items.length).toBe(NARROWER.matches)
     // One playlist, reused. Creating one per search would churn ids and litter
@@ -85,12 +96,10 @@ test.describe('playing from search results', () => {
     page,
     player,
   }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     const copiesBefore = requestsTo(player, '/items/copy').length
-    await page.locator('[role="row"][data-row="5"]').dblclick()
+    await trackRow(page, 5).dblclick()
 
     await expect.poll(() => playedFrom(player)?.index).toBe(5)
     // Already holds this set, so the second play is one request.
@@ -100,7 +109,7 @@ test.describe('playing from search results', () => {
   test('shuffle shuffles the results and nothing else', async ({ page, player }) => {
     await search(page, QUERY.text)
 
-    await header(page).getByRole('button', { name: 'Shuffle' }).click()
+    await viewHeader(page).getByRole('button', { name: 'Shuffle' }).click()
 
     await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
     await expect.poll(() => playedFrom(player)?.plref).toBe(scratchOf(player).id)
@@ -111,9 +120,7 @@ test.describe('playing from search results', () => {
   })
 
   test('Jean does not show its own scratch playlist anywhere', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     // It exists on the player and it will show up in foobar -- there is no
     // hidden playlist to be had -- but it is Jean's workspace, not one of the
@@ -121,28 +128,20 @@ test.describe('playing from search results', () => {
     await page.goto('/#/p5')
     await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
 
-    // Opened first on a phone, where the sidebar is a drawer -- asserting
-    // against a closed one would pass without having looked at anything. On a
-    // desktop it is already there, and the same button would collapse it.
-    const sidebar = page.getByRole('navigation')
-    if (test.info().project.name === 'mobile') {
-      await page.getByRole('button', { name: 'Show playlists' }).click()
-    }
-    await expect(sidebar.getByText('Rock en Español')).toBeVisible()
-    await expect(sidebar.getByText(QUERY.title)).toHaveCount(0)
+    await openSidebar(page)
+    await expect(sidebar(page).getByText('Rock en Español')).toBeVisible()
+    await expect(sidebar(page).getByText(QUERY.title)).toHaveCount(0)
   })
 
   test('and does not offer it as somewhere to file tracks', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     await page.goto('/#/p5')
     await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
 
     // Filing a track into the scratch playlist would put it somewhere the next
     // search silently empties.
-    await page.locator('[role="row"][data-row="0"]').click({ button: 'right' })
+    await trackRow(page, 0).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Add to playlist' }).click()
 
     await expect(page.getByRole('menuitem', { name: 'Favorites' })).toBeVisible()
@@ -152,9 +151,7 @@ test.describe('playing from search results', () => {
   test('and does not offer it as somewhere to go', async ({ page, player }) => {
     test.skip(test.info().project.name === 'mobile', 'the palette is a keyboard shortcut')
 
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     await page.keyboard.press('Meta+Shift+p')
     // Scoped to the palette: the sidebar names these playlists too.
@@ -166,14 +163,8 @@ test.describe('playing from search results', () => {
 })
 
 test.describe('a search outlives the tab it was typed in', () => {
-  const playFirstResult = async (page) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-  }
-
   test('a reload comes back to the same results', async ({ page, player }) => {
-    await playFirstResult(page)
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     await page.reload()
 
@@ -185,26 +176,22 @@ test.describe('a search outlives the tab it was typed in', () => {
   })
 
   test('another device finds it, and can see it is what is playing', async ({ page, player }) => {
-    await playFirstResult(page)
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     // A different device: nothing of Jean's own kept, landing on the root
     // rather than on the search route.
     await page.goto('/#/p7')
     await page.evaluate(() => localStorage.clear())
     await page.goto('/#/p7')
-    await expect(page.locator('footer')).toContainText('Los Calientes')
+    await expect(statusBar(page)).toContainText('Los Calientes')
 
-    const sidebar = page.getByRole('navigation')
-    if (test.info().project.name === 'mobile') {
-      await page.getByRole('button', { name: 'Show playlists' }).click()
-    }
-    await expect(sidebar.getByText(QUERY.text)).toBeVisible()
+    await openSidebar(page)
+    await expect(sidebar(page).getByText(QUERY.text)).toBeVisible()
     // The scratch playlist is hidden, so without this the status bar would name
     // a track with nothing on screen saying where it came from.
-    await expect(sidebar.getByLabel('Playing from here')).toBeVisible()
+    await expect(sidebar(page).getByLabel('Playing from here')).toBeVisible()
 
-    await sidebar.getByText(QUERY.text).click()
+    await sidebar(page).getByText(QUERY.text).click()
 
     await expect(page.getByRole('heading', { level: 1, name: QUERY.text })).toBeVisible()
     await expect(page.locator('[role="row"]').first()).toContainText('Los Calientes')
@@ -214,24 +201,19 @@ test.describe('a search outlives the tab it was typed in', () => {
     await page.goto('/#/p7')
     await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
 
-    const sidebar = page.getByRole('navigation')
-    if (test.info().project.name === 'mobile') {
-      await page.getByRole('button', { name: 'Show playlists' }).click()
-    }
+    await openSidebar(page)
     // An entry that means nothing most of the time is a dead shelf.
-    await expect(sidebar.getByText('Search', { exact: true })).toHaveCount(0)
+    await expect(sidebar(page).getByText('Search', { exact: true })).toHaveCount(0)
   })
 })
 
 test.describe('clearing the search', () => {
   test('takes the scratch playlist with it', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     // Stop first, so the player is not on it. Nobody asked for a playlist named
     // after a search they closed.
-    await page.locator('footer').getByRole('button', { name: 'Pause' }).click()
+    await statusBar(page).getByRole('button', { name: 'Pause' }).click()
     await page.goto('/#/p5')
     await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
 
@@ -241,9 +223,9 @@ test.describe('clearing the search', () => {
     // Playing is two requests -- build the playlist, then play from it -- and
     // the poll above only waits for the first. Stopping between them would land
     // before playback had started and the play would undo it.
-    await expect(page.locator('footer')).toContainText('Los Calientes')
+    await expect(statusBar(page)).toContainText('Los Calientes')
     player.stop()
-    await expect(page.locator('footer')).toContainText('Nothing playing')
+    await expect(statusBar(page)).toContainText('Nothing playing')
 
     await page.getByRole('button', { name: 'Clear search' }).click()
 
@@ -251,17 +233,21 @@ test.describe('clearing the search', () => {
   })
 
   test('but not while the player is still on it', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     await page.getByRole('button', { name: 'Clear search' }).click()
-    await page.waitForTimeout(400)
 
-    // Measured: deleting the playing playlist does not stop at the end of the
-    // track. The player falls back to another playlist and keeps going, which
-    // is the wandering out of the results this arrangement exists to stop. So
-    // it outlives the search for as long as it is being listened to.
+    // Ordered rather than timed: the field emptying says the handler ran, and a
+    // navigation after it says anything it sent has reached the player. A bare
+    // wait would pass just as happily against a delete that was merely slow.
+    await expect(page.getByLabel('Search your library')).toHaveValue('')
+    await page.goto('/#/p5')
+    await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
+
+    // Deleting the playing playlist does not stop at the end of the track: the
+    // player falls back to another playlist and keeps going, which is the
+    // wandering out of the results this arrangement exists to stop. So it
+    // outlives the search for as long as it is being listened to.
     expect(scratchOf(player)).toBeDefined()
     expect(scratchOf(player).items).toHaveLength(QUERY.matches)
   })
@@ -272,17 +258,12 @@ test.describe('saving results as a playlist', () => {
     page,
     player,
   }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
     const scratchId = scratchOf(player).id
     const playlistsBefore = player.playlists.length
-    await expect(page.locator('footer')).toContainText('Los Calientes')
+    await expect(statusBar(page)).toContainText('Los Calientes')
 
-    await page.getByRole('button', { name: 'Save as playlist' }).click()
-    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Keepers')
-    await page.getByRole('button', { name: 'Create' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Keepers' })).toBeVisible()
+    await saveAs(page, 'Keepers')
 
     // The same playlist, renamed -- not a second copy of it beside the first.
     // Counted rather than matched on length: two unrelated playlists can hold
@@ -295,7 +276,7 @@ test.describe('saving results as a playlist', () => {
 
     // And playback never moved, because it never had to.
     expect(player.player.activeItem.playlistId).toBe(scratchId)
-    await expect(page.locator('footer')).toContainText('Los Calientes')
+    await expect(statusBar(page)).toContainText('Los Calientes')
   })
 
   // Every other test here plays first, so the scratch already holds exactly
@@ -304,21 +285,17 @@ test.describe('saving results as a playlist', () => {
   // filled.
   //
   // It used to copy those refs out of the `Library` autoplaylist by index. A
-  // ref is only an index into its own source, and on a player with a media
-  // library it addresses the library's path-ordered array instead -- so the
-  // saved playlist got whatever sat at those positions in a differently ordered
-  // list. Measured against the fallback it was right and against the library it
-  // began "Jaws Theme Swimming". No error either way, which is why the title is
-  // asserted and not just the count.
+  // ref is only an index into its own source, so with a media library it
+  // addresses that library's path-ordered array instead and the saved playlist
+  // gets whatever sits at those positions in a differently ordered list. No
+  // error either way, which is why the title is asserted and not just the
+  // count.
   test('saving results that were never played builds the playlist', async ({ page, player }) => {
     await search(page, QUERY.text)
     expect(scratchOf(player)).toBeUndefined()
     const playlistsBefore = player.playlists.length
 
-    await page.getByRole('button', { name: 'Save as playlist' }).click()
-    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Unplayed')
-    await page.getByRole('button', { name: 'Create' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Unplayed' })).toBeVisible()
+    await saveAs(page, 'Unplayed')
 
     const saved = player.playlists.find((entry) => entry.title === 'Unplayed')
     expect(saved.items).toHaveLength(QUERY.matches)
@@ -335,36 +312,23 @@ test.describe('saving results as a playlist', () => {
   })
 
   test('and takes the search out of the sidebar with it', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
-    await expect(page.locator('footer')).toContainText('Los Calientes')
+    await searchAndPlay(page, player)
+    await expect(statusBar(page)).toContainText('Los Calientes')
 
-    await page.getByRole('button', { name: 'Save as playlist' }).click()
-    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Keepers')
-    await page.getByRole('button', { name: 'Create' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Keepers' })).toBeVisible()
+    await saveAs(page, 'Keepers')
 
-    const sidebar = page.getByRole('navigation')
-    if (test.info().project.name === 'mobile') {
-      await page.getByRole('button', { name: 'Show playlists' }).click()
-    }
+    await openSidebar(page)
     // The search is over: it has become a playlist, which is right there.
-    await expect(sidebar.getByText('Keepers')).toBeVisible()
-    await expect(sidebar.getByText(QUERY.text)).toHaveCount(0)
+    await expect(sidebar(page).getByText('Keepers')).toBeVisible()
+    await expect(sidebar(page).getByText(QUERY.text)).toHaveCount(0)
     await expect(page.getByLabel('Search your library')).toHaveValue('')
   })
 
   test('a later search does not reclaim the playlist that was saved', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
-    await expect(page.locator('footer')).toContainText('Los Calientes')
+    await searchAndPlay(page, player)
+    await expect(statusBar(page)).toContainText('Los Calientes')
 
-    await page.getByRole('button', { name: 'Save as playlist' }).click()
-    await page.getByRole('textbox', { name: 'Playlist name' }).fill('Keepers')
-    await page.getByRole('button', { name: 'Create' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Keepers' })).toBeVisible()
+    await saveAs(page, 'Keepers')
     const keepersId = player.playlists.find((entry) => entry.title === 'Keepers').id
 
     // Adopting leaves the stored id pointing at a playlist that is now the
@@ -373,7 +337,7 @@ test.describe('saving results as a playlist', () => {
     // finds before refilling it -- so the failure here is not a wrong view, it
     // is their playlist gone.
     await search(page, NARROWER.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
+    await trackRow(page, 0).dblclick()
     await expect.poll(() => scratchOf(player)?.items.length).toBe(NARROWER.matches)
 
     const keepers = player.playlists.find((entry) => entry.id === keepersId)
@@ -383,16 +347,14 @@ test.describe('saving results as a playlist', () => {
   })
 
   test('saving finishes the search off', async ({ page, player }) => {
-    await search(page, QUERY.text)
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect.poll(() => scratchOf(player)?.items.length).toBe(QUERY.matches)
+    await searchAndPlay(page, player)
 
     // Playing is two requests -- build the playlist, then play from it -- and
     // the poll above only waits for the first. Stopping between them would land
     // before playback had started and the play would undo it.
-    await expect(page.locator('footer')).toContainText('Los Calientes')
+    await expect(statusBar(page)).toContainText('Los Calientes')
     player.stop()
-    await expect(page.locator('footer')).toContainText('Nothing playing')
+    await expect(statusBar(page)).toContainText('Nothing playing')
 
     await page.getByRole('button', { name: 'Save as playlist' }).click()
     await page.getByRole('textbox', { name: 'Playlist name' }).fill('Keepers')
@@ -414,11 +376,9 @@ test.describe('saving results as a playlist', () => {
     await page.getByRole('button', { name: 'Save as playlist' }).click()
     await expect(page.getByRole('textbox', { name: 'Playlist name' })).toBeFocused()
 
-    // The header was a scroll container -- `overflow: hidden` still is one --
-    // so focusing a field the popover put past its bottom edge had the browser
-    // scroll the header inside itself, taking the title and the mosaic with it
-    // while the page never moved.
-    expect(await page.evaluate(() => document.querySelector('main header').scrollTop)).toBe(0)
+    // Focusing a field the popover puts past the header's bottom edge had the
+    // browser scroll the header inside itself, carrying the title and the mosaic
+    // off the top while the page never moved.
     expect(await titleTop()).toBe(before)
 
     // And the form is whole: clipping the header instead of letting it scroll
@@ -437,9 +397,9 @@ test.describe('a player that will not let Jean make playlists', () => {
 
     // No scratch playlist is possible, so the old behaviour is the honest
     // fallback: the track plays, and what follows it is the library's business.
-    await expect(header(page).getByRole('button', { name: 'Shuffle' })).toHaveCount(0)
+    await expect(viewHeader(page).getByRole('button', { name: 'Shuffle' })).toHaveCount(0)
 
-    await page.locator('[role="row"][data-row="2"]').dblclick()
+    await trackRow(page, 2).dblclick()
 
     // The `#Jean Library` autoplaylist, looked up rather than hardcoded: it is
     // whichever playlist carries the name, and the name is the identity.
@@ -459,15 +419,14 @@ test.describe('marking the row that is playing', () => {
   test('a track playing from another playlist is still marked in the results', async ({
     page,
     player,
+    hasLibraryApi,
   }) => {
-    const noLibraryApi = Boolean(process.env.JEAN_NO_LIBRARY_API)
-
     // Rock en Español holds Los Calientes too, and it is not the library and
     // not the scratch. Playing it there is the case that used to go unmarked.
     await page.goto('/#/p5')
     await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
-    await page.locator('[role="row"][data-row="0"]').dblclick()
-    await expect(page.locator('footer')).toContainText('Los Calientes')
+    await trackRow(page, 0).dblclick()
+    await expect(statusBar(page)).toContainText('Los Calientes')
     expect(player.player.activeItem.playlistId).toBe('p5')
 
     await search(page, QUERY.text)
@@ -477,13 +436,13 @@ test.describe('marking the row that is playing', () => {
     expect(scratchOf(player)).toBeUndefined()
 
     const marked = page.locator('[role="row"][data-active="true"]')
-    if (noLibraryApi) {
+    if (!hasLibraryApi) {
       // Honest degradation rather than a wrong answer: without paths there is
       // nothing to match on, so the row is left unmarked.
       await expect(marked).toHaveCount(0)
-    } else {
-      await expect(marked).toHaveCount(1)
-      await expect(marked).toContainText('Los Calientes')
+      return
     }
+    await expect(marked).toHaveCount(1)
+    await expect(marked).toContainText('Los Calientes')
   })
 })

@@ -8,6 +8,14 @@ import { DEFAULT_PLAYLISTS, createState, libraryOfShape } from '../fake-api/stat
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '../../dist')
 
+// Settings live in localStorage until they move to /api/clientconfig, and one of
+// them changes what is on screen everywhere: the play-count shading introduces
+// itself on first sight and would otherwise cover the toolbar in every test that
+// never asked about it. Seeded by default and merged with whatever a spec adds,
+// so a spec states only the setting it cares about. `firstRun` opts out of the
+// seed entirely, for the tests that are about meeting Jean for the first time.
+const SEEDED_SETTINGS = { 'jean.heatIntroSeen': true }
+
 export const test = base.extend({
   // One fake player per worker, on a port the OS picks. Workers never share a
   // player, so the suite stays parallel without tests seeing each other's
@@ -26,7 +34,6 @@ export const test = base.extend({
   // anything about one screen of rows; past a few thousand the app behaves
   // differently -- rows arrive in chunks rather than one response, and scroll
   // offsets are computed over a list taller than any hand-written fixture.
-  // test.use({ librarySize: 30441 }) to ask for that.
   librarySize: [null, { option: true }],
 
   // How big the *media library* is, which is what `#/all` and search read on a
@@ -71,15 +78,20 @@ export const test = base.extend({
   // library endpoint answers 501; { enabled: false } is foobar2000 with no
   // media library configured. Both send Jean back to the autoplaylist, but for
   // different reasons and with different fixes.
+  //
   // JEAN_NO_LIBRARY_API=1 runs the whole suite against the autoplaylist
   // fallback instead. The app is supposed to behave identically either way --
   // that is what the source seam is for -- so the same assertions should hold
-  // with the data coming from somewhere else entirely. Where they cannot, the
-  // spec says so and skips.
-  library: [
-    process.env.JEAN_NO_LIBRARY_API ? { supported: false } : {},
-    { option: true },
-  ],
+  // with the data coming from somewhere else entirely.
+  library: [process.env.JEAN_NO_LIBRARY_API ? { supported: false } : {}, { option: true }],
+
+  // Whether this run has the media library API, for the handful of specs that
+  // genuinely cannot assert the same thing both ways. Asked of the fixture
+  // rather than of the environment, so there is one answer to the question and
+  // a spec that pins `library` gets the right one.
+  hasLibraryApi: async ({ library }, use) => {
+    await use(library.supported !== false && library.enabled !== false)
+  },
 
   // Tag values the capture does not carry, keyed by track title:
   // test.use({ retagged: { Bloodhail: { '%artist%': 'Have a Nice Life feat. X' } } }).
@@ -140,19 +152,18 @@ export const test = base.extend({
     await use(`http://localhost:${fakeServer.address().port}`)
   },
 
-  // Settings live in localStorage until they move to /api/clientconfig, and
-  // several of them change what is on screen -- the play-count shading
-  // introduces itself on first sight, and would otherwise be covering the
-  // toolbar in every test that never asked about it. Seeded per test so a test
-  // about first-run behaviour can ask for the unseeded version.
-  settings: [{ 'jean.heatIntroSeen': true }, { option: true }],
+  // Merged over SEEDED_SETTINGS above, so a spec names only what it changes.
+  settings: [{}, { option: true }],
+
+  // Nothing seeded at all, for the tests about a first run.
+  firstRun: [false, { option: true }],
 
   // The app animates deliberately and without stopping: the play/pause toggle
   // layers scale and rotate on coprime durations for as long as something is
   // playing. Neither moves it, but both change its bounding box every frame,
-  // and Playwright waits for a box that holds still across two frames before
-  // it will click. Against a permanently moving target that wait can only time
-  // out -- so the suite asks for the preference the app already honours in
+  // and Playwright waits for a box that holds still across two frames before it
+  // will click. Against a permanently moving target that wait can only time out
+  // -- so the suite asks for the preference the app already honours in
   // tokens.css rather than forcing clicks past the checks that catch genuinely
   // unclickable elements.
   //
@@ -160,19 +171,21 @@ export const test = base.extend({
   // that wants to assert on it opts out with test.use({ motion: 'allow' }).
   motion: ['reduce', { option: true }],
 
-  page: async ({ page, settings, player, motion }, use) => {
+  page: async ({ page, settings, firstRun, player, motion }, use) => {
     void player
     if (motion === 'reduce') await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.addInitScript((values) => {
-      for (const [key, value] of Object.entries(values)) {
-        window.localStorage.setItem(key, JSON.stringify(value))
-      }
-    }, settings)
+      Object.entries(values).forEach(([key, value]) =>
+        window.localStorage.setItem(key, JSON.stringify(value)),
+      )
+    }, firstRun ? settings : { ...SEEDED_SETTINGS, ...settings })
     await use(page)
   },
 })
 
 export { expect }
+
+// ---- finding things on screen ----------------------------------------------
 
 // The row the virtualiser has mounted for a given position in the view. Rows
 // carry data-row, which is their index in the view rather than in the playlist
@@ -181,6 +194,88 @@ export const trackRow = (page, index) => page.locator(`[role="row"][data-row="${
 
 export const rowByTitle = (page, title) =>
   page.locator('[role="row"]').filter({ hasText: title }).first()
+
+export const statusBar = (page) => page.locator('footer')
+
+export const viewHeader = (page) => page.locator('main header').first()
+
+export const sidebar = (page) => page.getByRole('navigation', { name: 'Playlists' })
+
+// On a phone the sidebar is a drawer -- display:none until asked for, and every
+// route change closes it again. On a desktop it is simply there. The toggle's
+// label cannot tell the two apart: it reads 'Show playlists' on a desktop as
+// well, because `isSidebarOpen` is only the drawer's business and is false there
+// too, so asking for it by name collapses a sidebar that was already open. Ask
+// the sidebar itself instead.
+export const openSidebar = async (page) => {
+  const home = sidebar(page).getByRole('button', { name: 'Home' })
+  if (await home.isVisible()) return
+  await page.getByRole('button', { name: 'Show playlists' }).click()
+  await expect(home).toBeVisible()
+}
+
+// The captured `Library` playlist, which most specs use simply as a list long
+// enough to scroll. Not `#Jean Library`, which is Jean's own.
+export const openLibrary = async (page) => {
+  await page.goto('/#/p7')
+  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
+  await expect(trackRow(page, 0)).toBeAttached()
+}
+
+// ---- reading the player -----------------------------------------------------
+
+// What the app sent, so a test can assert on the wire rather than only on the
+// screen. Reads the fake's own log, not the browser's.
+export const requestsTo = (player, pattern) =>
+  player.requests.filter((entry) => entry.path.includes(pattern))
+
+// The playlist Jean materialises to play a set from. Found by the prefix rather
+// than by a title, because the title is named for whichever set filled it.
+export const scratchOf = (player) =>
+  player.playlists.find((entry) => entry.title.startsWith('#Jean ['))
+
+// The last thing the player was told to play.
+// '' / api / player / play / {plref} / {index}
+export const playedFrom = (player) => {
+  const play = requestsTo(player, '/player/play/').at(-1)
+  if (!play) return null
+  const [, , , , plref, index] = play.path.split('/')
+  return { plref, index: Number(index) }
+}
+
+// The track that request actually names, resolved through the playlist it names
+// it in. The whole class of bug here is that a position and a track agree on a
+// number and disagree on a song, so nothing short of resolving it says anything.
+export const trackPlayed = (player) => {
+  const at = playedFrom(player)
+  if (!at) return null
+  const playlist = player.playlists.find((entry) => entry.id === at.plref)
+  return playlist?.items[at.index]?.['%title%'] ?? null
+}
+
+// ---- gestures ---------------------------------------------------------------
+
+// Press-and-hold, which is touch's right-click. Dispatched rather than driven by
+// page.touchscreen, which has no way to hold -- and the synthetic click at the
+// end is part of the gesture rather than scaffolding: a hold that stopped
+// swallowing it would also activate whatever it opened the menu over.
+export const pressAndHold = async (page, target) => {
+  const box = await target.boundingBox()
+  const touch = {
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: box.x + box.width / 2,
+    clientY: box.y + box.height / 2,
+  }
+
+  await target.dispatchEvent('pointerdown', touch)
+  await page.waitForTimeout(520) // past the 420ms hold
+  await target.dispatchEvent('pointerup', touch)
+  await target.dispatchEvent('click', { ...touch, detail: 1 })
+}
+
+// ---- scrolling --------------------------------------------------------------
 
 // Whether a row is actually on screen, which is not the same question as
 // whether it rendered: overscan deliberately mounts rows past the fold, and an
@@ -238,7 +333,15 @@ export const scrollTop = (page) => page.evaluate(() => document.querySelector('m
 export const scrollTo = (page, offset) =>
   page.evaluate((to) => document.querySelector('main').scrollTo(0, to), offset)
 
-// What the app sent, so a test can assert on the wire rather than only on the
-// screen. Reads the fake's own log, not the browser's.
-export const requestsTo = (player, pattern) =>
-  player.requests.filter((entry) => entry.path.includes(pattern))
+// ---- running steps one after the next ---------------------------------------
+
+// Playwright assertions share one page, so a list of steps has to be awaited in
+// order rather than mapped into Promise.all.
+export const inSequence = (items, run) =>
+  items.reduce((done, item, index) => done.then(() => run(item, index)), Promise.resolve())
+
+export const times = (count, run) =>
+  inSequence(
+    Array.from({ length: count }, (_, index) => index),
+    run,
+  )

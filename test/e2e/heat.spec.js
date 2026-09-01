@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures.js'
+import { expect, inSequence, test } from './fixtures.js'
 
 // Facts about the captured library, which is why the fixture is what it is.
 // Play counts run 0-186, so the scale has real range; Deja Entendu carries a
@@ -49,8 +49,8 @@ test.describe('play-count shading', () => {
 
     // Logarithmic, not linear: play counts are skewed hard enough that on a
     // linear scale one outlier takes the whole range and everything else sits
-    // at the bottom. 107 plays against a 186-play ceiling is most of the way up
-    // the scale, not 57% of it.
+    // at the bottom, so a well-played track is most of the way up the scale
+    // rather than the fraction of the ceiling it happens to be.
     expect(warm.heat).toBeGreaterThan(0.8)
   })
 
@@ -74,8 +74,8 @@ test.describe('play-count shading', () => {
   test('the scale is per list, not per library', async ({ page }) => {
     // The legend promises this in so many words: measured against the most
     // played track in *this* list, so it rescales when you open another one.
-    // Los Calientes is 108 plays either way. In the library it is under a
-    // 186-play ceiling; in Rock en Español it is the ceiling.
+    // Los Calientes is the same track either way -- one of many in the library,
+    // and the most played in Rock en Español.
     const inLibrary = await shading(page, RECENT)
 
     await page.goto('/#/p5')
@@ -132,7 +132,7 @@ test.describe('the shading introduces itself', () => {
   // Unseeded, so this is genuinely a first run. Every other spec marks it as
   // already met, because otherwise the popover opens over the toolbar in tests
   // that never asked about it.
-  test.use({ settings: {} })
+  test.use({ firstRun: true })
 
   const legend = (page) => page.getByRole('dialog').filter({ hasText: 'Play-count shading' })
 
@@ -152,10 +152,10 @@ test.describe('the shading introduces itself', () => {
     await expect(legend(page)).toBeHidden()
   })
 
-  // Measured on a Pixel 7: the legend is 288px hanging left from a flame button
-  // whose right edge sits ~262px into a 412px window, so `right: 0` put its own
-  // left edge at about -26px. The title read "LAY-COUNT SHADING" and the cool
-  // end of the scale it exists to explain was off screen entirely.
+  // On a phone the legend is wider than the room to the left of the flame it
+  // hangs from, so `right: 0` put its own left edge outside the window: the
+  // title lost its first characters and the cool end of the scale it exists to
+  // explain was off screen entirely.
   test('and fits inside the window it opens on', async ({ page }) => {
     await openLibrary(page)
     await expect(legend(page)).toBeVisible()
@@ -169,12 +169,11 @@ test.describe('the shading introduces itself', () => {
     // Inside the window and still whole: a legend clipped to fit would satisfy
     // the arithmetic above and explain nothing. Both ends of the scale are the
     // two things a swatch cannot say, so both have to be readable.
-    for (const end of ['never played', 'played most']) {
-      const label = legend(page).getByText(end, { exact: true })
-      const labelBox = await label.boundingBox()
-      expect(labelBox.x).toBeGreaterThanOrEqual(0)
-      expect(labelBox.x + labelBox.width).toBeLessThanOrEqual(width)
-    }
+    await inSequence(['never played', 'played most'], async (end) => {
+      const label = await legend(page).getByText(end, { exact: true }).boundingBox()
+      expect(label.x).toBeGreaterThanOrEqual(0)
+      expect(label.x + label.width).toBeLessThanOrEqual(width)
+    })
   })
 
   test('any click at all dismisses it for good', async ({ page }) => {
@@ -213,7 +212,7 @@ test.describe('an install with no play counts', () => {
   // app, not a dead control.
   test.use({
     withoutFields: ['%lastfm_play_count%', '%lastfm_last_played%'],
-    settings: {},
+    firstRun: true,
   })
 
   test('has no flame, no legend, and no shading', async ({ page }) => {
@@ -243,13 +242,12 @@ test.describe('an install with no play counts', () => {
 })
 
 // The wash is inset from the row's own gutter rather than from a number stated
-// twice: `inset: 2px max(0px, calc(var(--row-gutter) - var(--heat-lead)))`.
-// Hardcoded, the two drift the moment a layout sets its own padding -- album
-// rows did, and the wash kept the list layout's inset, so it began inside the
-// content and left the track number stranded outside the tint.
-for (const layout of ['compact', 'album']) {
+// twice. Hardcoded, the two drift the moment a layout sets its own padding --
+// album rows did, and the wash kept the list layout's inset, so it began inside
+// the content and left the track number stranded outside the tint.
+;['compact', 'album'].forEach((layout) => {
   test.describe(`the wash follows the row gutter in ${layout} layout`, () => {
-    test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
+    test.use({ settings: { 'jean.layout': layout } })
 
     test('its edge sits on the content line, whatever the gutter is', async ({ page }) => {
       await openLibrary(page)
@@ -283,4 +281,4 @@ for (const layout of ['compact', 'album']) {
       expect(geometry.washLeft).toBeLessThan(geometry.gutter)
     })
   })
-}
+})

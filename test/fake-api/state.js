@@ -27,7 +27,7 @@ const allTracks = () => LIBRARY.albums.flatMap((album) => album.tracks)
 // and anything in the app that quietly assumes otherwise should fail here
 // rather than on someone's machine.
 // A library-sized playlist, synthesised from the captured tracks. The point is
-// not the metadata -- it is that 30,000 rows arrive in chunks rather than in one
+// not the metadata -- it is that a library arrives in chunks rather than in one
 // response, that the virtualiser is never holding more than a screenful, and
 // that scroll offsets are computed over a list far taller than anything a
 // hand-written fixture produces. Bugs that only appear past a few thousand rows
@@ -119,7 +119,7 @@ export function libraryOfShape({
 // from the captured `%path%` rather than invented: strip the root and flip the
 // separators.
 //
-// *Measured* against the live player: paths come back `/`-separated even on
+// Against the live player, paths come back `/`-separated even on
 // Windows, where `pathSeparator` is `\`. A track under `F:\Musica` is
 // `B/Babasónicos/(2001) Jessico/01. Los Calientes.mp3`.
 
@@ -186,8 +186,8 @@ export const evaluate = (track, expression) => track[expression] ?? '?'
 const columnsFor = (track, expressions) => expressions.map((expression) => evaluate(track, expression))
 
 // The player pages the library by path and sorts a playlist by `%path%`, and
-// the two agree -- verified against the live player, `sort=%path%` and no sort
-// at all return byte-identical lists over 30,441 tracks. They only agree here
+// the two agree: the endpoint's own default is file path, so `sort=%path%` and
+// no sort at all return the same list. They only agree here
 // if the separator does, because the library reports a relative `/`-joined path
 // and the player reports an absolute Windows one. The root is common to every
 // track, so it cancels; the separator does not.
@@ -371,7 +371,8 @@ export function createState({
 
     // The six fields PlaylistInfo actually has -- no more, so that anything
     // reaching for an autoplaylist flag finds nothing here either.
-    // totalTime is 0 because the real player returns 0: measured, not guessed.
+    // totalTime is 0 because the real player returns 0, however long a playlist
+    // actually runs. Copied rather than corrected.
     playlistsPayload: () =>
       state.playlists.map((entry, index) => ({
         id: entry.id,
@@ -501,7 +502,7 @@ export function createState({
     },
 
     // Item changes push `player` and NOT `playlists`. That is what beefweb
-    // does -- verified against the live player by watching the stream while
+    // does -- checked against the live player by watching the stream while
     // mutating: an add, a rename and a delete each produced a `playlists`
     // message, while a copy of five items and a remove of two produced only
     // `player`. So `itemCount` in PlaylistInfo goes stale from the first write
@@ -518,11 +519,9 @@ export function createState({
       // Appended without a duplicate check, because the player appends without
       // one. Undo is what makes that safe, and undo is what the tests exercise.
       //
-      // And in the *source's* order, not the caller's. *Measured against the
-      // live player*: copying p7 indices [0, 20000, 10000, 30000] returns them
-      // as 0, 10000, 20000, 30000. `add-from-library` behaves the same way, so
-      // this is a property of the player rather than of one endpoint -- a set
-      // arrives sorted however you ask for it.
+      // And in the *source's* order, not the caller's: a set arrives sorted
+      // however it was asked for. `add-from-library` behaves the same way, so
+      // this is a property of the player rather than of one endpoint.
       const ordered = [...indices].sort((a, b) => a - b)
       target.items.push(...ordered.map((index) => source.items[index]).filter(Boolean))
       notify({ player: true })
@@ -640,11 +639,10 @@ export function createState({
       const known = new Map(libraryItemsOf(libraryTracks).map((entry) => [entry.path, entry]))
       // Omitting `items` adds the whole library, per the spec.
       //
-      // *Measured against the live player*: the order asked for is ignored, and
-      // so is the library's own path order -- a set arrives in the media
-      // library's **browse** order, which is album artist, then album, then
-      // track number. Of 100 tracks handed over in path order, 10 landed
-      // somewhere else; of 8,000, 3,945 did.
+      // The live player ignores both the order asked for and the library's own
+      // path order: a set arrives in the media library's **browse** order,
+      // which is album artist, then album, then track number, and the larger
+      // the set the more of it lands somewhere Jean did not put it.
       //
       // The fake sorted by path, which is a different thing that agrees often
       // enough to look right: it made every "play this set, starting here"

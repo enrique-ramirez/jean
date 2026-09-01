@@ -1,23 +1,22 @@
-import { expect, requestsTo, test } from './fixtures.js'
+import {
+  expect,
+  inSequence,
+  openSidebar,
+  playedFrom,
+  requestsTo,
+  scratchOf,
+  sidebar,
+  statusBar,
+  test,
+  viewHeader,
+} from './fixtures.js'
 
-const nav = (page) => page.getByRole('navigation', { name: 'Playlists' })
 const shelf = (page, title) => page.getByRole('heading', { level: 2, name: title })
-const scratchOf = (player) => player.playlists.find((entry) => entry.title.startsWith('#Jean ['))
 
-const playedFrom = (player) => {
-  const play = requestsTo(player, '/player/play/').at(-1)
-  if (!play) return null
-  const [, , , , plref, index] = play.path.split('/')
-  return { plref, index: Number(index) }
-}
-
-const openSidebar = async (page) => {
-  if (await nav(page).getByRole('button', { name: 'Home' }).isVisible()) return
-  await page.getByRole('button', { name: 'Show playlists' }).click()
-}
+const albumOnShelf = (page, title, album) =>
+  page.getByRole('region', { name: title }).getByRole('button', { name: album })
 
 test.describe('the home screen', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
   test('it is where the root lands, not a playlist', async ({ page }) => {
     // Jean used to open on whichever playlist the player was on, which meant
@@ -32,7 +31,7 @@ test.describe('the home screen', () => {
     await page.goto('/')
     await openSidebar(page)
 
-    const labels = await nav(page).getByRole('button').allInnerTexts()
+    const labels = await sidebar(page).getByRole('button').allInnerTexts()
     const home = labels.findIndex((entry) => entry.startsWith('Home'))
     const all = labels.findIndex((entry) => entry.startsWith('All music'))
     const firstPlaylist = labels.findIndex((entry) => entry.startsWith('Default Playlist'))
@@ -53,26 +52,25 @@ test.describe('the home screen', () => {
 })
 
 test.describe('the library header', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
   test('it leads with the time, and counts underneath', async ({ page }) => {
     await page.goto('/')
 
-    // The claim, then its evidence. 30,441 is a number; "85 days of music" is
-    // a feeling, and the feeling is what a front door is for.
-    const header = page.locator('main header').first()
+    // The claim, then its evidence. A track count is a number; "85 days of
+    // music" is a feeling, and the feeling is what a front door is for.
+    const header = viewHeader(page)
     await expect(header.getByRole('heading', { level: 1 })).toContainText('of music')
     // Uppercased in CSS, so the text itself is still sentence case.
     await expect(header).toContainText('Your library')
 
-    for (const label of ['tracks', 'albums', 'artists', 'genres', 'playlists']) {
-      await expect(header.getByText(label, { exact: true })).toBeVisible()
-    }
+    await inSequence(['tracks', 'albums', 'artists', 'genres', 'playlists'], (label) =>
+      expect(header.getByText(label, { exact: true })).toBeVisible(),
+    )
   })
 
   test('the counts are of the user\'s music, not of Jean\'s plumbing', async ({ page, player }) => {
     await page.goto('/')
-    const header = page.locator('main header').first()
+    const header = viewHeader(page)
     await expect(header.getByRole('heading', { level: 1 })).toBeVisible()
 
     // `#Jean Library` is Jean's, and so is any scratch. Counting them here
@@ -85,16 +83,16 @@ test.describe('the library header', () => {
 
   test('a figure the player cannot answer for is not drawn', async ({ page }) => {
     await page.goto('/')
-    await expect(page.locator('main header').first().getByText('genres', { exact: true })).toBeVisible()
+    await expect(viewHeader(page).getByText('genres', { exact: true })).toBeVisible()
   })
 })
 
 test.describe('a library with no genre tag', () => {
-  test.use({ withoutFields: ['%genre%'], settings: { 'jean.heatIntroSeen': true } })
+  test.use({ withoutFields: ['%genre%'] })
 
   test('says nothing about genres rather than saying zero', async ({ page }) => {
     await page.goto('/')
-    const header = page.locator('main header').first()
+    const header = viewHeader(page)
     await expect(header.getByRole('heading', { level: 1 })).toBeVisible()
 
     // The rule the shelves already follow: a claim needs the data behind it, and
@@ -105,10 +103,8 @@ test.describe('a library with no genre tag', () => {
 })
 
 test.describe('starting the library from the front door', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
-  const headerButton = (page, name) =>
-    page.locator('main header').first().getByRole('button', { name, exact: true })
+  const headerButton = (page, name) => viewHeader(page).getByRole('button', { name, exact: true })
 
   const orderRequests = (player) =>
     requestsTo(player, '/api/player').flatMap((entry) =>
@@ -144,9 +140,9 @@ test.describe('starting the library from the front door', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
     await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(54)
 
-    // The mode does the shuffling; this only opens the door. Verified against
-    // the live player -- playing a track makes that playlist the active one and
-    // shuffle then draws from it, so two requests are the whole of it.
+    // The mode does the shuffling; this only opens the door. Playing a track
+    // makes that playlist the active one and shuffle draws from it, so two
+    // requests are the whole of it.
     await expect.poll(() => orderRequests(player).length).toBeGreaterThan(0)
     await expect.poll(() => playedFrom(player)?.plref).toBe(scratchOf(player).id)
   })
@@ -156,17 +152,16 @@ test.describe('starting the library from the front door', () => {
     await headerButton(page, 'Shuffle').click()
     await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
 
-    await expect(page.locator('footer')).toContainText('All music')
+    await expect(statusBar(page)).toContainText('All music')
     await openSidebar(page)
     await expect(
-      nav(page).getByRole('button', { name: /All music/ }).getByLabel('Playing from here'),
+      sidebar(page).getByRole('button', { name: /All music/ }).getByLabel('Playing from here'),
     ).toBeVisible()
   })
 })
 
 test.describe('a front door on a player that offers no shuffle', () => {
   test.use({
-    settings: { 'jean.heatIntroSeen': true },
     playerState: {
       playbackModes: ['Default', 'Repeat (playlist)'],
       options: [
@@ -183,14 +178,13 @@ test.describe('a front door on a player that offers no shuffle', () => {
 
   test('Shuffle goes and Play stays', async ({ page }) => {
     await page.goto('/')
-    const head = page.locator('main header').first()
+    const head = viewHeader(page)
     await expect(head.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
     await expect(head.getByRole('button', { name: 'Shuffle', exact: true })).toHaveCount(0)
   })
 })
 
 test.describe('all music', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
   test('it is the library with no filter on it', async ({ page }) => {
     await page.goto('/#/all')
@@ -201,7 +195,6 @@ test.describe('all music', () => {
 })
 
 test.describe('opening a shelf from its heading', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
   test('the title opens the shelf and starts nothing', async ({ page, player }) => {
     await page.goto('/')
@@ -222,10 +215,7 @@ test.describe('opening a shelf from its heading', () => {
   test('it leaves what is already playing alone', async ({ page, player }) => {
     await page.goto('/')
     await expect(shelf(page, 'Most played')).toBeVisible()
-    await page
-      .getByRole('region', { name: 'Most played' })
-      .getByRole('button', { name: /^Jessico/ })
-      .click()
+    await albumOnShelf(page, 'Most played', /^Jessico/).click()
     // Polled on playback, not on the fill: the playlist is written first and
     // played a round trip later, so reading the active item the moment the
     // items land reads -1 and compares nothing to nothing.
@@ -253,7 +243,6 @@ test.describe('opening a shelf from its heading', () => {
 })
 
 test.describe('playing from a shelf', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
   test('it plays the whole row, starting at the album you clicked', async ({ page, player }) => {
     await page.goto('/')
@@ -262,10 +251,7 @@ test.describe('playing from a shelf', () => {
 
     // Jessico is not first on this shelf, so this also proves the click starts
     // where it was aimed rather than at the top of the row.
-    await page
-      .getByRole('region', { name: 'Most played' })
-      .getByRole('button', { name: /^Jessico/ })
-      .click()
+    await albumOnShelf(page, 'Most played', /^Jessico/).click()
 
     // Polled on the contents, not the title: the playlist is named when it is
     // created and filled a round trip later, so a title assertion passes while
@@ -290,7 +276,7 @@ test.describe('an install with no play counts', () => {
   // Most shelves are built out of play data. On a player without it they must
   // disappear rather than render empty -- a bare install gets a coherent app,
   // never a dead shelf.
-  test.use({ withoutFields: ['%lastfm_play_count%', '%lastfm_last_played%'], settings: {} })
+  test.use({ withoutFields: ['%lastfm_play_count%', '%lastfm_last_played%'], firstRun: true })
 
   test('the shelves that need them are simply not there', async ({ page }) => {
     await page.goto('/')
@@ -316,9 +302,8 @@ test.describe('an install with no play counts', () => {
 })
 
 test.describe('where you are, in the sidebar', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
-  const current = (page) => nav(page).locator('[aria-current="true"]')
+  const current = (page) => sidebar(page).locator('[aria-current="true"]')
 
   test('a library route does not also light up a playlist', async ({ page }) => {
     // `selectedId` falls back to the remembered or current playlist so that
@@ -330,7 +315,7 @@ test.describe('where you are, in the sidebar', () => {
     await expect(current(page)).toHaveCount(1)
     await expect(current(page)).toContainText('Home')
 
-    await nav(page).getByRole('button', { name: 'All music' }).click()
+    await sidebar(page).getByRole('button', { name: 'All music' }).click()
     await openSidebar(page)
     await expect(current(page)).toHaveCount(1)
     await expect(current(page)).toContainText('All music')
@@ -344,7 +329,6 @@ test.describe('where you are, in the sidebar', () => {
 })
 
 test.describe('a shelf says it is playing', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
   test('it appears in the sidebar and in the status bar, and survives leaving it', async ({
     page,
@@ -355,19 +339,16 @@ test.describe('a shelf says it is playing', () => {
     // Nothing before it is played: the row only exists while the shelf is the
     // thing playing. Checked without opening the drawer -- on a phone that
     // would cover the very card the next line clicks.
-    await expect(nav(page).getByRole('button', { name: 'Most played' })).toHaveCount(0)
+    await expect(sidebar(page).getByRole('button', { name: 'Most played' })).toHaveCount(0)
 
-    await page
-      .getByRole('region', { name: 'Most played' })
-      .getByRole('button', { name: /^Jessico/ })
-      .click()
+    await albumOnShelf(page, 'Most played', /^Jessico/).click()
 
     await openSidebar(page)
-    const row = nav(page).getByRole('button', { name: /Most played/ })
+    const row = sidebar(page).getByRole('button', { name: /Most played/ })
     await expect(row).toBeVisible()
     await expect(row.getByLabel('Playing from here')).toBeVisible()
-    await expect(page.locator('footer')).toContainText('from')
-    await expect(page.locator('footer')).toContainText('Most played')
+    await expect(statusBar(page)).toContainText('from')
+    await expect(statusBar(page)).toContainText('Most played')
 
     // Browsing away does not move playback, so the row and the status line stay
     // -- that is the whole point of separating what you are looking at from what
@@ -375,7 +356,7 @@ test.describe('a shelf says it is playing', () => {
     await page.goto('/#/p5')
     await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
     await openSidebar(page)
-    await expect(nav(page).getByRole('button', { name: /Most played/ })).toBeVisible()
-    await expect(page.locator('footer')).toContainText('Most played')
+    await expect(sidebar(page).getByRole('button', { name: /Most played/ })).toBeVisible()
+    await expect(statusBar(page)).toContainText('Most played')
   })
 })

@@ -1,4 +1,13 @@
-import { expect, requestsTo, scrollUntilMounted, test, trackRow } from './fixtures.js'
+import {
+  expect,
+  openSidebar,
+  pressAndHold,
+  requestsTo,
+  scrollUntilMounted,
+  sidebar,
+  test,
+  trackRow,
+} from './fixtures.js'
 
 // The captured playlists, in the order the fake serves them. Ids are not
 // contiguous and not in index order, which is what the real install looks like
@@ -9,27 +18,13 @@ const LIBRARY = 'Library'
 const FAVORITES = 'Favorites'
 const SPANISH = 'Rock en Español'
 
-const nav = (page) => page.getByRole('navigation', { name: 'Playlists' })
-
 // Rows are direct children of the nav; so is the section header, hence the
 // filter. The row rather than the button inside it, because the drop target,
 // the drag gesture and the grip all live on the row.
-const row = (page, title) => nav(page).locator('> div').filter({ hasText: title })
+const row = (page, title) => sidebar(page).locator('> div').filter({ hasText: title })
 const link = (page, title) => row(page, title).getByRole('button').first()
 
 const titlesInOrder = (player) => player.playlists.map((entry) => entry.title)
-
-// On a phone the sidebar is a drawer -- display:none until asked for, and every
-// route change closes it again. On a desktop it is simply there. The toggle's
-// label cannot tell the two apart: it reads 'Show playlists' on a desktop as
-// well, because `isSidebarOpen` is only the drawer's business and is false
-// there too, so asking for it by name collapses a sidebar that was already
-// open. Ask the sidebar instead.
-const openSidebar = async (page) => {
-  if (await link(page, LIBRARY).isVisible()) return
-  await page.getByRole('button', { name: 'Show playlists' }).click()
-  await expect(link(page, LIBRARY)).toBeVisible()
-}
 
 const openApp = async (page) => {
   await page.goto('/#/p7')
@@ -38,35 +33,14 @@ const openApp = async (page) => {
 }
 
 // Right-click on a pointer, press-and-hold on touch. They are two ways of
-// asking for the same menu and `useContextMenu` unifies them, but only one of
-// them has an echo to swallow -- so driving the desktop gesture on the mobile
-// viewport would leave the hold, and the action sheet it opens, uncovered on
-// the surface they exist for.
+// asking for the same menu and `useContextMenu` unifies them, but only one has
+// an echo to swallow -- so driving the desktop gesture on the mobile viewport
+// would leave the hold, and the action sheet it opens, uncovered on the surface
+// they exist for.
 const menuFor = async (page, title, isMobile) => {
   const target = row(page, title)
-
-  if (!isMobile) {
-    await target.click({ button: 'right' })
-  } else {
-    const box = await target.boundingBox()
-    const touch = {
-      pointerType: 'touch',
-      isPrimary: true,
-      button: 0,
-      clientX: box.x + box.width / 2,
-      clientY: box.y + box.height / 2,
-    }
-
-    await target.dispatchEvent('pointerdown', touch)
-    await page.waitForTimeout(520) // past the 420ms hold
-    await target.dispatchEvent('pointerup', touch)
-    // The whole gesture, echo included: a hold ends in a synthetic click, and
-    // if useLongPress ever stops swallowing it every press also opens the
-    // playlist underneath. Dispatched rather than driven by page.touchscreen,
-    // which has no way to hold.
-    await target.dispatchEvent('click', { ...touch, detail: 1 })
-  }
-
+  if (isMobile) await pressAndHold(page, target)
+  else await target.click({ button: 'right' })
   await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible()
 }
 
@@ -208,13 +182,13 @@ test.describe('the drawer', () => {
 test.describe('the search entry', () => {
   test('it is not a permanent shelf -- it appears when there is a search', async ({ page }) => {
     await openApp(page)
-    await expect(nav(page).getByText('Search', { exact: true })).toHaveCount(0)
+    await expect(sidebar(page).getByText('Search', { exact: true })).toHaveCount(0)
 
     await page.getByLabel('Search your library').fill('babasonicos')
     await expect(page.getByRole('heading', { level: 1, name: 'babasonicos' })).toBeVisible()
 
     await openSidebar(page)
-    await expect(nav(page).getByText('Search', { exact: true })).toBeVisible()
+    await expect(sidebar(page).getByText('Search', { exact: true })).toBeVisible()
 
     // The query is the label and the match count is the count, exactly as a
     // playlist row states its own -- because that is what it is standing in for.
@@ -304,7 +278,7 @@ test.describe('reordering playlists', () => {
     // click to the row rather than the button inside it -- so removing either
     // one alone leaves this green. It goes red with both gone, which is what
     // makes it a guard on the behaviour rather than on one implementation of
-    // it. Verified by removing them.
+    // it, checked by removing them.
     await expect(page.getByRole('heading', { level: 1, name: LIBRARY })).toBeVisible()
   })
 

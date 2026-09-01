@@ -1,18 +1,22 @@
-import { expect, requestsTo, scrollTo, scrollTop, test, trackRow } from './fixtures.js'
+import {
+  expect,
+  openLibrary,
+  openSidebar,
+  requestsTo,
+  scrollTo,
+  scrollTop,
+  sidebar,
+  test,
+  trackRow,
+} from './fixtures.js'
 
-// The ways around the app that had no coverage: the palette, the first-run
-// library screen, and the view memory that decides where you land when you come
-// back to a list you had scrolled.
+// The ways around the app: the palette, the first-run library screen, and the
+// view memory that decides where you land when you come back to a list you had
+// scrolled.
 
 const palette = (page) => page.getByRole('dialog', { name: 'Go to playlist' })
 const paletteField = (page) => page.getByRole('textbox', { name: 'Go to playlist' })
 const results = (page) => palette(page).getByRole('option')
-
-const openLibrary = async (page) => {
-  await page.goto('/#/p7')
-  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
-  await expect(trackRow(page, 0)).toBeAttached()
-}
 
 test.describe('the command palette', () => {
   test.skip(({ isMobile }) => isMobile, 'it is opened and driven entirely by keys')
@@ -52,13 +56,25 @@ test.describe('the command palette', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
   })
 
-  // Nothing here types an accent on purpose. The palette filters with a plain
-  // toLowerCase().includes(), so 'espanol' does NOT find 'Rock en Español' --
-  // which is the one rule CLAUDE.md states about anything typed at a list, and
-  // the reason fold() exists in ui/text.js. The finder folds, the library
-  // search folds, ActionMenu's own filter folds; this one does not. Asserting
-  // the current behaviour would make it look intended, so this note stands in
-  // for the test until the palette goes through fold() too.
+  // The one rule that holds for anything typed at a list in this app: it goes
+  // through fold(), so the accents in somebody's own library are never a tax on
+  // finding it. The palette used to filter with a plain toLowerCase().includes()
+  // and was the single place where they were.
+  test('typing without the accents still finds the playlist', async ({ page }) => {
+    await paletteField(page).fill('espanol')
+
+    await expect(results(page)).toHaveCount(1)
+    await expect(results(page).first()).toContainText('Rock en Español')
+  })
+
+  // Every token has to match, in any order, as a substring -- the same rule the
+  // library search and the finder use, so typing at one behaves like typing at
+  // the others.
+  test('the words can arrive in any order', async ({ page }) => {
+    await paletteField(page).fill('espanol rock')
+    await expect(results(page)).toHaveCount(1)
+  })
+
   test('it says so when nothing matches, rather than showing an empty box', async ({ page }) => {
     await paletteField(page).fill('zzzz')
     await expect(results(page)).toHaveCount(0)
@@ -149,13 +165,10 @@ test.describe('the library playlist is Jean\'s, not furniture', () => {
     expect(player.playlists.some((entry) => entry.title === '#Jean Library')).toBe(true)
 
     await page.goto('/#/p7')
-    const sidebar = page.getByRole('navigation', { name: 'Playlists' })
-    if (!(await sidebar.isVisible())) {
-      await page.getByRole('button', { name: 'Show playlists' }).click()
-    }
-    await expect(sidebar.getByText('#Jean Library')).toHaveCount(0)
+    await openSidebar(page)
+    await expect(sidebar(page).getByText('#Jean Library')).toHaveCount(0)
     // The ordinary playlist that merely shares the word is still right there.
-    await expect(sidebar.getByRole('button').filter({ hasText: /^Library/ })).toHaveCount(1)
+    await expect(sidebar(page).getByRole('button').filter({ hasText: /^Library/ })).toHaveCount(1)
 
     // Routing to it lands somewhere else instead: browsing the library is a
     // feature Jean has not built, and it must not back into one by accident.
@@ -170,20 +183,15 @@ test.describe('where a view puts you when you come back to it', () => {
     await scrollTo(page, 900)
     await expect.poll(() => scrollTop(page)).toBe(900)
 
-    const sidebar = page.getByRole('navigation', { name: 'Playlists' })
-    if (!(await sidebar.isVisible())) {
-      await page.getByRole('button', { name: 'Show playlists' }).click()
-    }
-    await sidebar.getByRole('button').filter({ hasText: 'Favorites' }).click()
+    await openSidebar(page)
+    await sidebar(page).getByRole('button').filter({ hasText: 'Favorites' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Favorites' })).toBeVisible()
 
     // A different view starts at the top rather than inheriting the offset.
     await expect.poll(() => scrollTop(page)).toBe(0)
 
-    if (!(await sidebar.isVisible())) {
-      await page.getByRole('button', { name: 'Show playlists' }).click()
-    }
-    await sidebar.getByRole('button').filter({ hasText: 'Library' }).click()
+    await openSidebar(page)
+    await sidebar(page).getByRole('button').filter({ hasText: 'Library' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
 
     // Rows arrive a chunk at a time, so the content is often too short to hold

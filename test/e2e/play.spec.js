@@ -1,19 +1,17 @@
-import { expect, requestsTo, test, trackRow } from './fixtures.js'
+import { expect, playedFrom, pressAndHold, requestsTo, statusBar, test, trackRow } from './fixtures.js'
 
 // The first three tracks of the Library fixture, which is Jessico in playlist
 // order. Named here rather than inline so a recapture that reorders the album
 // breaks in one place.
 const THIRD_TRACK = { title: 'Deléctrico', artist: 'Babasónicos', index: 2 }
 
-const statusBar = (page) => page.locator('footer')
-
 // Both layouts. Album mode renders its rows through AlbumGroup rather than
 // TrackList directly -- the same file the per-row play handler was removed from
 // when tap-to-play moved onto the container -- so the one path these gestures
 // were changed for is the one they were never tested on.
-for (const layout of ['compact', 'album']) {
+;['compact', 'album'].forEach((layout) => {
 test.describe(`playing a track (${layout} layout)`, () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
+  test.use({ settings: { 'jean.layout': layout } })
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/#/p7')
@@ -34,11 +32,9 @@ test.describe(`playing a track (${layout} layout)`, () => {
     await row.dblclick()
 
     // What went over the wire. Index is identity in this API, so the assertion
-    // is on the exact path -- an off-by-one here plays the wrong song, and
+    // is on the exact position -- an off-by-one here plays the wrong song, and
     // looks fine on screen because the row would still light up.
-    await expect
-      .poll(() => requestsTo(player, '/player/play/').map((entry) => entry.path))
-      .toEqual([`/api/player/play/p7/${THIRD_TRACK.index}`])
+    await expect.poll(() => playedFrom(player)).toEqual({ plref: 'p7', index: THIRD_TRACK.index })
 
     // And what came back. Nothing below is written by the click: the app
     // learns it played from the SSE snapshot the fake pushes afterwards, so
@@ -66,9 +62,7 @@ test.describe(`playing a track (${layout} layout)`, () => {
 
     await page.keyboard.press('Enter')
 
-    await expect
-      .poll(() => requestsTo(player, '/player/play/').map((entry) => entry.path))
-      .toEqual(['/api/player/play/p7/1'])
+    await expect.poll(() => playedFrom(player)).toEqual({ plref: 'p7', index: 1 })
     await expect(statusBar(page)).toContainText('Fizz')
   })
 
@@ -77,9 +71,7 @@ test.describe(`playing a track (${layout} layout)`, () => {
     // mobile coverage for playback reaching the status bar.
     await page.getByRole('main').getByRole('button', { name: 'Play', exact: true }).click()
 
-    await expect
-      .poll(() => requestsTo(player, '/player/play/').map((entry) => entry.path))
-      .toEqual(['/api/player/play/p7/0'])
+    await expect.poll(() => playedFrom(player)).toEqual({ plref: 'p7', index: 0 })
     await expect(statusBar(page)).toContainText('Los Calientes')
   })
 
@@ -97,7 +89,7 @@ test.describe(`playing a track (${layout} layout)`, () => {
 
 test.describe(`playing on touch (${layout} layout)`, () => {
   test.skip(({ isMobile }) => !isMobile, 'these are touch gestures')
-  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
+  test.use({ settings: { 'jean.layout': layout } })
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/#/p7')
@@ -107,25 +99,16 @@ test.describe(`playing on touch (${layout} layout)`, () => {
   test('a tap plays the track', async ({ page, player }) => {
     await trackRow(page, THIRD_TRACK.index).tap()
 
-    await expect
-      .poll(() => requestsTo(player, '/player/play/').map((entry) => entry.path))
-      .toEqual([`/api/player/play/p7/${THIRD_TRACK.index}`])
+    await expect.poll(() => playedFrom(player)).toEqual({ plref: 'p7', index: THIRD_TRACK.index })
     await expect(statusBar(page)).toContainText(THIRD_TRACK.title)
     await expect(trackRow(page, THIRD_TRACK.index)).toHaveAttribute('data-active', 'true')
   })
 
   test('a press-and-hold opens the menu and plays nothing', async ({ page, player }) => {
-    // The whole gesture, echo included. A hold ends in a synthetic click that
-    // useLongPress swallows in its capture phase; if it ever stops doing that,
-    // every long press also starts a track. Dispatched rather than driven by
-    // page.touchscreen, which has no way to hold.
-    const row = trackRow(page, THIRD_TRACK.index)
-    const touch = { pointerType: 'touch', isPrimary: true, button: 0, clientX: 120, clientY: 300 }
-
-    await row.dispatchEvent('pointerdown', touch)
-    await page.waitForTimeout(520) // past the 420ms hold
-    await row.dispatchEvent('pointerup', touch)
-    await row.dispatchEvent('click', { ...touch, detail: 1 })
+    // The whole gesture, echo included: a hold ends in a synthetic click that
+    // useLongPress swallows in its capture phase, and if it ever stops doing
+    // that every long press also starts a track.
+    await pressAndHold(page, trackRow(page, THIRD_TRACK.index))
 
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.waitForTimeout(150)
@@ -152,4 +135,4 @@ test(`on a pointer, a single click selects and does not play (${layout} layout)`
   expect(requestsTo(player, '/player/play/')).toEqual([])
   await expect(statusBar(page)).toContainText('Nothing playing')
 })
-}
+})

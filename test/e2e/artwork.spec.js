@@ -1,4 +1,4 @@
-import { expect, requestsTo, scrollTop, test } from './fixtures.js'
+import { expect, requestsTo, scrollTop, test, times } from './fixtures.js'
 
 // Far enough down a library-sized playlist that getting there crosses thousands
 // of rows. The view has never been near it, so nothing about these covers is
@@ -29,9 +29,9 @@ test.describe('artwork loading', () => {
 
     // Following playback flies the list there, mounting and unmounting every row
     // in between. Native lazy loading counted each of those as visible and
-    // started a request for it -- measured, ~500 covers for a screen that comes
-    // to rest showing forty, and a play/pause pressed a second and a half later
-    // waiting 122ms for a connection while they drained for another eighteen.
+    // started a request for it, so the covers for a screenful arrived behind
+    // hundreds for rows nobody saw -- and so did everything else Jean asked the
+    // player for, on the same handful of connections.
     await page.evaluate((index) => fetch(`/api/player/play/p7/${index}`, { method: 'POST' }), FAR)
     await expect.poll(() => scrollTop(page)).toBeGreaterThan(1_000_000)
 
@@ -70,12 +70,11 @@ test.describe('artwork loading', () => {
 // The other half of the traffic, and a different question from the one above.
 // That one is about *when* a cover is asked for; this is about how many covers
 // there are. Artwork is addressed per row -- a playlist by index, the library by
-// path -- so a record's twelve tracks are twelve URLs for one picture and the
-// browser has no way to know. *Measured* against the live player, the first
-// twelve rows of the library: twelve requests, identical ETag on every one,
-// 633 KB each, to draw one cover twelve times at 34px.
+// path -- so a record's tracks are one URL each for one picture and the browser
+// has no way to know. There is no thumbnail to ask for either: the full image
+// comes back whatever size it is drawn at.
 test.describe('one cover per album, not per track', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'compact' } })
+  test.use({ settings: { 'jean.layout': 'compact' } })
 
   // The captured fixture is 54 tracks in 12 albums, so the two numbers are far
   // enough apart that nothing ambiguous sits between them.
@@ -83,11 +82,11 @@ test.describe('one cover per album, not per track', () => {
   const ALBUMS = 12
 
   const walkTheList = async (page) => {
-    for (let step = 0; step < 12; step += 1) {
+    await times(12, async () => {
       await page.evaluate(() => document.querySelector('main').scrollBy(0, 300))
       // Past the queue's settle gate, or the rows go by without ever asking.
       await page.waitForTimeout(400)
-    }
+    })
     await page.waitForTimeout(1500)
   }
 
@@ -97,9 +96,9 @@ test.describe('one cover per album, not per track', () => {
     await walkTheList(page)
 
     const asked = requestsTo(player, 'artwork').length
-    // Measured: 54 before this, one per row, and 12 after. The bound is nearer
-    // the album count than the track count on purpose -- anything that drifts
-    // back towards one-per-row should fail here rather than merely look worse.
+    // The bound is nearer the album count than the track count on purpose:
+    // anything that drifts back towards one-per-row should fail here rather
+    // than merely look worse.
     expect(asked, `${asked} requests for ${TRACKS} tracks in ${ALBUMS} albums`).toBeLessThanOrEqual(
       ALBUMS + 3,
     )

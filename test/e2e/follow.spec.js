@@ -1,4 +1,14 @@
-import { expect, isRowOnScreen, requestsTo, scrollTo, scrollTop, test } from './fixtures.js'
+import {
+  expect,
+  isRowOnScreen,
+  requestsTo,
+  scrollTo,
+  scrollTop,
+  statusBar,
+  test,
+  times,
+  trackRow,
+} from './fixtures.js'
 
 // Far enough down the 54-track fixture to be well past the fold on both the
 // desktop and the phone viewport.
@@ -48,6 +58,8 @@ const expectCentredOrClamped = async (page, index) => {
   expect(distance, `track ${index} settled ${Math.round(distance)}px off centre`).toBeLessThan(2)
 }
 
+// Not the shared openLibrary: this one waits for row 0 to be on *screen* rather
+// than merely attached, because everything below measures where the view is.
 const openLibrary = async (page) => {
   await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
@@ -66,10 +78,7 @@ test.describe('following playback', () => {
     player.playItem('p7', FAR.index)
 
     await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true)
-    await expect(page.locator(`[role="row"][data-row="${FAR.index}"]`)).toHaveAttribute(
-      'data-active',
-      'true',
-    )
+    await expect(trackRow(page, FAR.index)).toHaveAttribute('data-active', 'true')
     // Nothing was played from here -- the scroll is a reaction, not a request.
     expect(requestsTo(player, '/player/play/')).toEqual([])
   })
@@ -104,7 +113,7 @@ test.describe('following playback', () => {
 })
 
 test.describe('with following turned off', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.followPlayback': false } })
+  test.use({ settings: { 'jean.followPlayback': false } })
 
   test('the view stays where it was', async ({ page, player }) => {
     await openLibrary(page)
@@ -113,7 +122,7 @@ test.describe('with following turned off', () => {
     // The track really did change -- the status bar proves the push landed. So
     // the view staying put is the setting working, not the update never
     // arriving, which is the way this test would otherwise pass for free.
-    await expect(page.locator('footer')).toContainText(FAR.title)
+    await expect(statusBar(page)).toContainText(FAR.title)
     await page.waitForTimeout(400)
 
     expect(await scrollTop(page)).toBe(0)
@@ -122,7 +131,7 @@ test.describe('with following turned off', () => {
 })
 
 test.describe('the jump survives a coasting list', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.followPlayback': false } })
+  test.use({ settings: { 'jean.followPlayback': false } })
   test.skip(({ isMobile }) => isMobile, 'wheel is a pointer input')
 
   // Both the key and the wheel are dispatched from inside the page, one frame
@@ -147,7 +156,7 @@ test.describe('the jump survives a coasting list', () => {
   test('a stray wheel tick does not strand it', async ({ page, player }) => {
     await openLibrary(page)
     player.playItem('p7', FAR.index)
-    await expect(page.locator('footer')).toContainText(FAR.title)
+    await expect(statusBar(page)).toContainText(FAR.title)
     await scrollTo(page, 0)
     await expect.poll(() => scrollTop(page)).toBe(0)
 
@@ -164,7 +173,7 @@ test.describe('the jump survives a coasting list', () => {
   test('a real scroll still takes it back', async ({ page, player }) => {
     await openLibrary(page)
     player.playItem('p7', FAR.index)
-    await expect(page.locator('footer')).toContainText(FAR.title)
+    await expect(statusBar(page)).toContainText(FAR.title)
 
     // What an uninterrupted jump settles on, measured rather than assumed, so
     // the interrupted one can be compared against something real.
@@ -186,7 +195,7 @@ test.describe('the jump survives a coasting list', () => {
 })
 
 test.describe('at library scale', () => {
-  test.use({ librarySize: 30441, settings: { 'jean.heatIntroSeen': true } })
+  test.use({ librarySize: 30441 })
 
   test('the jump lands on a track 23,000 rows down', async ({ page, player }) => {
     // The whole point of the chunked load and the virtualiser is this size, and
@@ -208,9 +217,9 @@ test.describe('at library scale', () => {
 // instead of sitting beside them, which changes every group's height; and the
 // row heights differ between them. Both projects run every spec, so each
 // assertion below is made four times -- list and album, desktop and phone.
-for (const layout of ['compact', 'album']) {
+;['compact', 'album'].forEach((layout) => {
   test.describe(`following playback in ${layout} layout`, () => {
-    test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
+    test.use({ settings: { 'jean.layout': layout } })
 
     test('centres the playing track, whichever direction it came from', async ({
       page,
@@ -238,11 +247,11 @@ for (const layout of ['compact', 'album']) {
       player.playItem('p7', 8)
       await expect.poll(() => isRowOnScreen(page, 8)).toBe(true)
 
-      for (let step = 0; step < 6; step += 1) {
+      await times(6, async (step) => {
         player.next()
         await page.waitForTimeout(600)
         await expectCentredOrClamped(page, 9 + step)
-      }
+      })
     })
 
     test('the last track is reachable even though it cannot be centred', async ({
@@ -267,7 +276,7 @@ for (const layout of ['compact', 'album']) {
     // With it on, the follow animation is still in flight when the test scrolls
     // away and the two fight over the scroll position.
     test.use({
-      settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout, 'jean.followPlayback': false },
+      settings: { 'jean.layout': layout, 'jean.followPlayback': false },
     })
 
     // The bug this covers: the virtualiser was told nothing about the view
@@ -281,7 +290,7 @@ for (const layout of ['compact', 'album']) {
 
       await openLibrary(page)
       player.playItem('p7', FAR.index)
-      await expect(page.locator('footer')).toContainText(FAR.title)
+      await expect(statusBar(page)).toContainText(FAR.title)
 
       await scrollTo(page, 0)
       await expect.poll(() => scrollTop(page)).toBe(0)
@@ -295,7 +304,7 @@ for (const layout of ['compact', 'album']) {
     test('the now-playing pill takes you back', async ({ page, player }) => {
       await openLibrary(page)
       player.playItem('p7', FAR.index)
-      await expect(page.locator('footer')).toContainText(FAR.title)
+      await expect(statusBar(page)).toContainText(FAR.title)
 
       await scrollTo(page, 0)
       await expect.poll(() => scrollTop(page)).toBe(0)
@@ -312,4 +321,4 @@ for (const layout of ['compact', 'album']) {
       await expect(pill).toBeHidden()
     })
   })
-}
+})

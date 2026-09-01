@@ -67,8 +67,9 @@ PLAYER=home.local:8880 node test/measure-library.mjs
 
 It compares the library read against the playlist read Jean uses today, sweeps range
 sizes to separate the per-call cost from the per-item one, and tries the chunking
-strategies. The answers are recorded in CLAUDE.md; re-run it when the endpoint
-changes, since caching is on the PR's list of things it does not do yet.
+strategies. The answers are recorded in CLAUDE.md, which is where measurements
+live -- not in comments, here or in `src`. Re-run it when the endpoint changes,
+since caching is on the PR's list of things it does not do yet.
 
 ### The media library
 
@@ -151,7 +152,12 @@ but the fake.
 
 ## Writing a test
 
-`test/e2e/fixtures.js` gives every test its own player, on its own port:
+`test/e2e/fixtures.js` gives every test its own player, on its own port, and
+carries the helpers every spec would otherwise write for itself -- `openLibrary`,
+`openSidebar`, `trackRow`, `scratchOf`, `playedFrom`, `trackPlayed`,
+`pressAndHold`, `statusBar`, `viewHeader`. Anything more than one spec needs
+belongs there: five files with five slightly different ways of opening the
+sidebar drawer is five chances for one of them to be the wrong one.
 
 ```js
 import { expect, requestsTo, test, trackRow } from './fixtures.js'
@@ -203,10 +209,15 @@ test('does the thing', async ({ page, player }) => {
 - **`withoutLibraryPlaylist`** renames the playlist Jean resolves as the
   library, which is the only way to reach the first-run setup screen: an install
   that already has one never sees it, and the capture always has one.
-- **`settings`** seeds localStorage. It defaults to marking the play-count
-  shading as already introduced, since that popover otherwise opens over the
-  toolbar in every test that never asked about it. Override it with
-  `test.use({ settings: {} })` to test first-run behaviour.
+- **`settings`** is merged over a default seed, so a spec names only the setting
+  it cares about: `test.use({ settings: { 'jean.layout': 'album' } })`. The seed
+  marks the play-count shading as already introduced, since that popover
+  otherwise opens over the toolbar in every test that never asked about it.
+  **`firstRun: true`** drops the seed entirely, for the tests that are about
+  meeting Jean for the first time.
+- **`hasLibraryApi`** answers whether this run has the media library API. Ask the
+  fixture rather than reading `process.env` in a spec: a spec that pins `library`
+  gets the right answer, and there is one implementation of the question.
 - **Motion is reduced by default.** The play/pause toggle animates for as long
   as something is playing, and Playwright will not click a target whose bounding
   box never holds still. `test.use({ motion: 'allow' })` opts out.
@@ -221,9 +232,19 @@ to, and on a phone the cover stacks above its tracks instead of beside them.
 Looping a describe over `['compact', 'album']` and seeding `jean.layout` costs
 one line and doubles into four cases, since both projects run everything.
 
+**`test.use` goes *inside* a describe, never beside one.** At file scope it
+applies to the whole file however many times it is called, so a loop that writes
+it once per layout runs every case under whichever layout it wrote last. That
+had `finder.spec.js` running its five `(compact)` describes in album mode --
+green, correctly named, and covering the same thing twice.
+
 Both projects -- `desktop` and `mobile` (Pixel 7, touch on) -- run every spec.
 Skip explicitly when a gesture has no equivalent on the other surface, and say
 why.
+
+**`inSequence` and `times` rather than a loop.** Playwright assertions share one
+page, so a list of steps has to be awaited in order; both are one `reduce` in
+`fixtures.js` so no spec writes that plumbing itself.
 
 **Drive timing-sensitive input from inside the page.** Anything racing an
 animation -- interrupting a 240ms scroll, say -- cannot be driven over the wire:

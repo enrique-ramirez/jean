@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures.js'
+import { expect, inSequence, test } from './fixtures.js'
 
 // The fake's media library, checked against the shapes measured on a live
 // foobar2000 running beefweb 0.11~git.dc0fdfc. Nothing in Jean uses these
@@ -37,14 +37,14 @@ test.describe('the library the fake serves', () => {
     expect(libraryItems.items).toHaveLength(3)
 
     // Relative to the media library folder and '/'-separated, even though the
-    // captured paths are absolute Windows ones under F:\Musica. Measured on the
-    // live player, where pathSeparator is '\' and library paths still are not.
-    for (const item of libraryItems.items) {
+    // captured paths are absolute Windows ones. The live player reports
+    // pathSeparator as '\' and library paths still are not separated that way.
+    libraryItems.items.forEach((item) => {
       expect(item.path).not.toContain('\\')
       expect(item.path).not.toMatch(/^[A-Z]:/)
       expect(item.subsong).toBe(0)
       expect(item.columns).toHaveLength(2)
-    }
+    })
 
     expect(libraryItems.items[0].path).toBe(
       'A/Alice in Chains/(1994) Jar Of Flies/01. Rotten Apple.flac',
@@ -69,11 +69,11 @@ test.describe('the library the fake serves', () => {
     expect(libraryNodes).not.toHaveProperty('parentPath')
     expect(Object.keys(libraryNodes).sort()).toEqual(['items', 'offset', 'path', 'totalCount'])
 
-    for (const node of libraryNodes.items) {
+    libraryNodes.items.forEach((node) => {
       expect(node.type).toBe('D')
       expect(node.itemCount).toBeGreaterThan(0)
       expect(node).not.toHaveProperty('columns')
-    }
+    })
 
     // 54 captured tracks across three first-letter folders.
     expect(libraryNodes.items.map((node) => node.name)).toEqual(['A', 'B', 'H'])
@@ -98,12 +98,12 @@ test.describe('the library the fake serves', () => {
     ).json()
 
     expect(libraryNodes.items).toHaveLength(12)
-    for (const node of libraryNodes.items) {
+    libraryNodes.items.forEach((node) => {
       expect(node.type).toBe('F')
       expect(node.subsong).toBe(0)
       expect(node.columns).toHaveLength(1)
       expect(node).not.toHaveProperty('itemCount')
-    }
+    })
     expect(libraryNodes.items[0].name).toBe('01. Los Calientes.mp3')
   })
 
@@ -168,13 +168,14 @@ test.describe('a player with no media library', () => {
   })
 
   test('everything else is 501', async ({ request, player }) => {
-    for (const path of [
-      '/library/items?columns=%25title%25',
-      '/library/items/by-path?columns=%25title%25',
-      '/artwork/library?path=whatever',
-    ]) {
-      expect((await api(request, path)).status(), path).toBe(501)
-    }
+    await inSequence(
+      [
+        '/library/items?columns=%25title%25',
+        '/library/items/by-path?columns=%25title%25',
+        '/artwork/library?path=whatever',
+      ],
+      async (path) => expect((await api(request, path)).status(), path).toBe(501),
+    )
 
     const add = await request.post('/api/playlists/p2/items/add-from-library', { data: {} })
     expect(add.status()).toBe(501)

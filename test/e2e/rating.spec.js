@@ -1,10 +1,9 @@
-import { expect, test, trackRow } from './fixtures.js'
+import { expect, inSequence, openLibrary, test, trackRow } from './fixtures.js'
 
-// What a rating tag holds, on one real library, every rating on it: 375 tracks
-// at `5`, 39 at `100`, 40 at `-1` and 27 at `0`, 14 at `2.5` and 3 at `3.5`,
-// spread over MP3, FLAC, Vorbis, AAC and WMA. Four taggers' conventions in one
-// folder tree, and the field declares no scale -- so this is the shape the
-// column has to survive rather than a tidy 0-5 someone designed for.
+// Every convention a rating tag turns up in, together, because that is what one
+// folder tree holds: the field declares no scale, and four taggers disagree
+// about what its numbers mean. This is the shape the column has to survive
+// rather than a tidy 0-5 somebody designed for.
 //
 // No playback-statistics component, which is also what puts Rating on screen on
 // a phone: the compact layout shows two optional columns and Rating is third in
@@ -28,11 +27,6 @@ const RATED = {
 
 const stars = (page, row) => trackRow(page, row).getByRole('img')
 
-const openLibrary = async (page) => {
-  await page.goto('/#/p7')
-  await expect(trackRow(page, 0)).toBeAttached()
-}
-
 test.describe('reading a rating', () => {
   test.use(RATED)
   test.beforeEach(({ page }) => openLibrary(page))
@@ -49,9 +43,9 @@ test.describe('reading a rating', () => {
     await expect(stars(page, 2)).toHaveAccessibleName('3.5 of 5 stars')
   })
 
-  // The scale is read off the magnitude, because the field declares none. 39
-  // tracks on the measured library are `100`, and calling those unrated is not
-  // "Jean cannot tell" -- it is Jean ignoring a rating that is plainly there.
+  // The scale is read off the magnitude, because the field declares none.
+  // Calling a `100` unrated is not "Jean cannot tell", it is Jean ignoring a
+  // rating that is plainly there.
   test('a 0-100 rating is rescaled rather than ignored', async ({ page }) => {
     await expect(stars(page, 4)).toHaveAccessibleName('5 of 5 stars')
     await expect(stars(page, 5)).toHaveAccessibleName('4 of 5 stars')
@@ -68,9 +62,9 @@ test.describe('reading a rating', () => {
   // clamped to full marks: the field is being used for something else, and
   // inventing five stars would be the loudest possible way to be wrong.
   test('sentinels and nonsense read as unrated, not as a score', async ({ page }) => {
-    for (const row of [7, 8, 9, 10]) {
-      await expect(stars(page, row)).toHaveAccessibleName('Unrated')
-    }
+    await inSequence([7, 8, 9, 10], (row) =>
+      expect(stars(page, row)).toHaveAccessibleName('Unrated'),
+    )
   })
 })
 

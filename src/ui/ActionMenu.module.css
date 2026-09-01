@@ -26,13 +26,19 @@
   min-width: 216px;
   max-width: 300px;
   /* Placement is measured from the rendered box, so the first frame has to
-     exist before it can be positioned. Hidden, not transparent -- a menu that
-     fades in from the wrong corner is worse than one that appears. */
-  visibility: hidden;
+     exist before it can be positioned. Invisible for that frame -- a menu that
+     fades in from the wrong corner is worse than one that appears.
+     *Transparent* rather than `visibility: hidden`, because a hidden element
+     cannot take focus and this one has to: focusing it on the frame it is
+     placed in silently did nothing, which left the arrow keys navigating
+     nothing and every key still belonging to the app behind the menu. */
+  opacity: 0;
+  pointer-events: none;
 }
 
 .popover[data-placed='true'] {
-  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
   animation: emerge 0.13s var(--ease) backwards;
 }
 

@@ -1,4 +1,4 @@
-import { expect, requestsTo, test, trackRow } from './fixtures.js'
+import { expect, inSequence, openLibrary, requestsTo, test, trackRow } from './fixtures.js'
 
 // Every optional column is fetched whether or not it is shown, so toggling one
 // is a layout change and nothing else. That is the claim this file is here to
@@ -8,12 +8,6 @@ const LEADING = 3 // the number, the artwork, the names cell
 
 const menu = (page) => page.getByRole('button', { name: 'View options' })
 const option = (page, name) => page.getByRole('menuitemcheckbox', { name })
-
-const openLibrary = async (page) => {
-  await page.goto('/#/p7')
-  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
-  await expect(trackRow(page, 0)).toBeAttached()
-}
 
 // Closed by clicking away rather than with Escape, which does not close this
 // menu at all. Found while writing this file and left unfixed here on purpose:
@@ -83,11 +77,11 @@ test.describe('showing and hiding columns', () => {
       expect.objectContaining({ tracks: await cellCount(page) }),
     )
 
-    for (const name of ['Year', 'Genre', 'Codec']) {
+    await inSequence(['Year', 'Genre', 'Codec'], async (name) => {
       await toggle(page, name)
       const measured = await templateMatchesCells(page)
       expect(measured.tracks, `after turning on ${name}`).toBe(measured.cells)
-    }
+    })
 
     // And with the artwork track removed, which is the case that first got this
     // wrong: album rows sit beside a cover and carry no artwork cell, so a
@@ -153,9 +147,9 @@ test.describe('on a phone', () => {
     await openLibrary(page)
 
     await menu(page).click()
-    for (const name of ['Album', 'Year', 'Genre', 'Codec', 'Rate', 'Last played']) {
-      await option(page, name).click()
-    }
+    await inSequence(['Album', 'Year', 'Genre', 'Codec', 'Rate', 'Last played'], (name) =>
+      option(page, name).click(),
+    )
     await page.keyboard.press('Escape')
 
     // Every fixed column comes straight out of the title, and once the fixed

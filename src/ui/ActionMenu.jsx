@@ -325,10 +325,16 @@ function Header({ header, page, depth, onBack }) {
 // somewhere deliberately (Rename opens a field in the row behind the menu) and
 // must not have it taken back when the menu finally goes.
 //
+// `isReady` is not a nicety: the popover is invisible for the frame it is
+// measured in, so focusing on mount put focus nowhere and left the arrow keys
+// navigating nothing and every key still belonging to the app behind the menu.
+//
 // Layout effects, so the cleanup still runs while the panel is in the DOM and
 // can be asked whether it has focus.
-function useFocusCapture(ref) {
+function useFocusCapture(ref, isReady = true) {
   useLayoutEffect(() => {
+    if (!isReady) return undefined
+
     const panel = ref.current
     const previous = document.activeElement
     panel.focus({ preventScroll: true })
@@ -336,7 +342,7 @@ function useFocusCapture(ref) {
     return () => {
       if (panel.contains(document.activeElement)) previous?.focus?.({ preventScroll: true })
     }
-  }, [ref])
+  }, [ref, isReady])
 }
 
 function ActionPopover({ anchor, header, actions, onDismiss }) {
@@ -373,7 +379,7 @@ function ActionPopover({ anchor, header, actions, onDismiss }) {
     })
   }, [anchor, ref])
 
-  useFocusCapture(ref)
+  useFocusCapture(ref, placement !== null)
 
   return (
     <div

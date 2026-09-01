@@ -1,4 +1,4 @@
-import { expect, requestsTo, test, trackRow } from './fixtures.js'
+import { expect, openLibrary, requestsTo, test, times, trackRow } from './fixtures.js'
 
 // The two drag controls. Both go through useDragFraction and both write through
 // something that refuses to send one request per pointer event -- which is the
@@ -7,12 +7,6 @@ import { expect, requestsTo, test, trackRow } from './fixtures.js'
 
 const volume = (page) => page.getByRole('slider', { name: 'Volume' })
 const seekBar = (page) => page.getByRole('slider', { name: 'Playback position' })
-
-const openApp = async (page) => {
-  await page.goto('/#/p7')
-  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
-  await expect(trackRow(page, 0)).toBeAttached()
-}
 
 // On a phone the volume slider is a column inside a popover rather than a row
 // in the status bar, so it has to be opened before it exists.
@@ -51,7 +45,7 @@ test.describe('the volume slider', () => {
   test.skip(({ isMobile }) => isMobile, 'dragging a fader is a mouse gesture')
 
   test.beforeEach(async ({ page }) => {
-    await openApp(page)
+    await openLibrary(page)
     await showVolume(page)
   })
 
@@ -166,12 +160,12 @@ test.describe('the seek bar', () => {
   test.skip(({ isMobile }) => isMobile, 'scrubbing is a mouse gesture')
 
   test('it is not seekable until something is playing', async ({ page }) => {
-    await openApp(page)
+    await openLibrary(page)
     await expect(seekBar(page)).toHaveAttribute('data-seekable', 'false')
   })
 
   test('scrubbing commits once, on release', async ({ page, player }) => {
-    await openApp(page)
+    await openLibrary(page)
     await trackRow(page, 0).dblclick()
     await expect(seekBar(page)).toHaveAttribute('data-seekable', 'true')
 
@@ -192,7 +186,7 @@ test.describe('the seek bar', () => {
   })
 
   test('it cannot be selected either', async ({ page }) => {
-    await openApp(page)
+    await openLibrary(page)
     const style = await seekBar(page).evaluate((element) => {
       const computed = getComputedStyle(element)
       return { userSelect: computed.userSelect, webkitUserSelect: computed.webkitUserSelect }
@@ -230,15 +224,13 @@ test.describe('dragging the fader with a finger', () => {
       })
 
     await send('touchStart', at(from))
-    for (let step = 1; step <= 12; step += 1) {
-      await send('touchMove', at(from + ((to - from) * step) / 12))
-    }
+    await times(12, (step) => send('touchMove', at(from + ((to - from) * (step + 1)) / 12)))
     await send('touchEnd', at(to))
     await cdp.detach()
   }
 
   test('the target is big enough to aim at', async ({ page }) => {
-    await openApp(page)
+    await openLibrary(page)
     await showVolume(page)
 
     // A thumb is about 44px of contact, and the column was 26px wide. What
@@ -250,7 +242,7 @@ test.describe('dragging the fader with a finger', () => {
   })
 
   test('the value follows the finger the whole way', async ({ page, player }) => {
-    await openApp(page)
+    await openLibrary(page)
     await showVolume(page)
 
     const box = await volume(page).boundingBox()

@@ -1,9 +1,9 @@
-import { expect, requestsTo, test } from './fixtures.js'
+import { expect, openLibrary, requestsTo, statusBar, test } from './fixtures.js'
 
-// Counts verified against the captured library rather than guessed. Jessico is
-// twelve Babasónicos tracks at the top of the list, Lafcadio eleven further
-// down -- so a query can match a block that is entirely off screen, which is
-// the case that matters for a finder that does not filter.
+// Counts taken from the captured library rather than guessed. Jessico is twelve
+// Babasónicos tracks at the top of the list, Lafcadio eleven further down -- so
+// a query can match a block that is entirely off screen, which is the case that
+// matters for a finder that does not filter.
 const ACCENTED = { query: 'babasonicos', matches: 12, firstTitle: 'Los Calientes' }
 const ONE_HIT = { query: 'delectrico', row: 2, title: 'Deléctrico' }
 const OFF_SCREEN = { query: 'lafcadio', matches: 11, firstRow: 30 }
@@ -12,11 +12,6 @@ const finder = (page) => page.getByRole('textbox', { name: 'Find in this playlis
 const results = (page) => page.getByRole('listbox').getByRole('option')
 const matchedRows = (page) => page.locator('[role="row"][data-match="true"]')
 
-const openLibrary = async (page) => {
-  await page.goto('/#/p7')
-  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
-}
-
 const openFinder = async (page) => {
   await page.getByRole('button', { name: /Find in this playlist/ }).click()
   await expect(finder(page)).toBeVisible()
@@ -24,10 +19,16 @@ const openFinder = async (page) => {
 
 // Both layouts: the results dropdown is the same either way, but what it marks
 // is rows, and album mode renders those inside groups.
-for (const layout of ['compact', 'album']) {
-test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
+//
+// `test.use` goes inside a describe, not beside one. At file scope it applies to
+// the whole file however many times it is called, so a loop that wrote it once
+// per layout ran every case under whichever layout it wrote last -- and the
+// describes named `(compact)` were quietly running in album mode.
+;['compact', 'album'].forEach((layout) => {
+test.describe(`the finder in ${layout} layout`, () => {
+test.use({ settings: { 'jean.layout': layout } })
 
-test.describe(`opening the finder (${layout})`, () => {
+test.describe('opening the finder', () => {
   test.beforeEach(({ page }) => openLibrary(page))
 
   test('the button opens it with the field already focused', async ({ page }) => {
@@ -41,9 +42,8 @@ test.describe(`opening the finder (${layout})`, () => {
   test('the first result is the active one, wherever the pointer is', async ({ page }) => {
     // The results render exactly where the button that opened them was, so the
     // pointer is left sitting on top of them without having gone anywhere. A
-    // mouseenter earned that way used to hand the active result to whatever
-    // landed under the cursor -- measured, the fifth -- and Enter then plays
-    // that instead of the first match.
+    // mouseenter earned that way handed the active result to whatever landed
+    // under the cursor, and Enter then played that instead of the first match.
     await openFinder(page)
     await finder(page).fill(OFF_SCREEN.query)
     await expect(results(page)).toHaveCount(OFF_SCREEN.matches)
@@ -92,7 +92,7 @@ test.describe(`opening the finder (${layout})`, () => {
   })
 })
 
-test.describe(`finding (${layout})`, () => {
+test.describe('finding', () => {
   test.beforeEach(async ({ page }) => {
     await openLibrary(page)
     await openFinder(page)
@@ -149,7 +149,7 @@ test.describe(`finding (${layout})`, () => {
   })
 })
 
-test.describe(`moving through results (${layout})`, () => {
+test.describe('moving through results', () => {
   test.skip(({ isMobile }) => isMobile, 'these are keyboard gestures')
 
   test.beforeEach(async ({ page }) => {
@@ -170,7 +170,7 @@ test.describe(`moving through results (${layout})`, () => {
     // The preview is debounced, so give it time to be wrong.
     await page.waitForTimeout(400)
     expect(requestsTo(player, '/player/play/')).toEqual([])
-    await expect(page.locator('footer')).toContainText('Nothing playing')
+    await expect(statusBar(page)).toContainText('Nothing playing')
 
     // It did move the list, though: the block being previewed starts well below
     // the fold and the cursor is now inside it.
@@ -230,7 +230,7 @@ test.describe(`moving through results (${layout})`, () => {
   })
 })
 
-test.describe(`leaving the finder (${layout})`, () => {
+test.describe('leaving the finder', () => {
   test.beforeEach(async ({ page }) => {
     await openLibrary(page)
     await openFinder(page)
@@ -248,7 +248,7 @@ test.describe(`leaving the finder (${layout})`, () => {
       .poll(() => requestsTo(player, '/player/play/').map((entry) => entry.path))
       .toEqual([`/api/player/play/p7/${ONE_HIT.row}`])
     await expect(finder(page)).toHaveCount(0)
-    await expect(page.locator('footer')).toContainText(ONE_HIT.title)
+    await expect(statusBar(page)).toContainText(ONE_HIT.title)
   })
 
   test('clicking a result plays it', async ({ page, player }) => {
@@ -260,7 +260,7 @@ test.describe(`leaving the finder (${layout})`, () => {
     await expect
       .poll(() => requestsTo(player, '/player/play/').map((entry) => entry.path))
       .toEqual([`/api/player/play/p7/${ONE_HIT.row}`])
-    await expect(page.locator('footer')).toContainText(ONE_HIT.title)
+    await expect(statusBar(page)).toContainText(ONE_HIT.title)
   })
 
   test('Escape closes it without playing', async ({ page, player }) => {
@@ -273,7 +273,7 @@ test.describe(`leaving the finder (${layout})`, () => {
 
     await expect(finder(page)).toHaveCount(0)
     expect(requestsTo(player, '/player/play/')).toEqual([])
-    await expect(page.locator('footer')).toContainText('Nothing playing')
+    await expect(statusBar(page)).toContainText('Nothing playing')
   })
 
   test('closing clears the query and the marks with it', async ({ page }) => {
@@ -291,7 +291,7 @@ test.describe(`leaving the finder (${layout})`, () => {
   })
 })
 
-test.describe(`at library scale (${layout})`, () => {
+test.describe('at library scale', () => {
   test.use({ librarySize: 30441 })
 
   test('marks every match but renders only a page of them', async ({ page }) => {
@@ -311,10 +311,10 @@ test.describe(`at library scale (${layout})`, () => {
     await expect(page.getByRole('grid')).toHaveAttribute('aria-rowcount', '30441')
   })
 })
-}
+})
+})
 
 test.describe('the field is one field', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
   test('the focus ring goes round the field, not round a box inside it', async ({ page }) => {
     await openLibrary(page)
@@ -340,7 +340,7 @@ test.describe('the field is one field', () => {
 })
 
 test.describe('typing does not drag the list around', () => {
-  test.use({ librarySize: 30441, settings: { 'jean.heatIntroSeen': true } })
+  test.use({ librarySize: 30441 })
 
   const scrollTop = (page) => page.locator('main').evaluate((element) => element.scrollTop)
 
@@ -354,7 +354,7 @@ test.describe('typing does not drag the list around', () => {
     const parked = await scrollTop(page)
 
     // Every one of these narrows to a different leading match, so the old
-    // preview fired on all of them. "gus" alone jumped the list 11,751 rows --
+    // preview fired on all of them, and each jump was thousands of rows --
     // a full unmount and remount of the virtualised window, plus a scroll of
     // the container the sticky finder is inside. Android's keyboard lost its
     // composition to exactly that, and typed "Guster" came back scrambled.
@@ -368,7 +368,6 @@ test.describe('typing does not drag the list around', () => {
 })
 
 test.describe('the field has room to type in', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true } })
 
   test('it takes the space the toolbar has, rather than halving it', async ({ page }) => {
     await openLibrary(page)
@@ -388,7 +387,7 @@ test.describe('the field has room to type in', () => {
     // measure the field caps itself at, and leftover room there is deliberate.
     if (width < 396) {
       // The toolbar's spacer also grows, so the field used to split the free
-      // space with it -- measured on a phone, 195px of field beside 180px of
+      // space with it, leaving the field and the button roughly equal --
       // nothing.
       expect(gap).toBeLessThan(40)
     } else {
@@ -398,11 +397,10 @@ test.describe('the field has room to type in', () => {
 })
 
 // The finder used to live inside `PlaylistView`, so the two longest lists in
-// the app -- All Music and a shelf -- did not have one. All Music is the whole
-// library, and 30,441 rows is not something anybody scrolls through looking for
-// a record.
+// the app -- All music and a shelf -- did not have one, and a whole library is
+// not something anybody scrolls through looking for a record.
 test.describe('finding in the library views', () => {
-  test.use({ mediaLibrarySize: 4000, settings: { 'jean.heatIntroSeen': true } })
+  test.use({ mediaLibrarySize: 4000 })
 
   // The button and the field it opens have to say the same thing. They did not:
   // the button was named for the list and the field said "Find in this

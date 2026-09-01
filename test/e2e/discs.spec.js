@@ -16,7 +16,7 @@ const trackNumberOf = (row) => row.locator(':scope > span').first()
 const heading = (page, name) => page.getByRole('heading', { level: 3, name })
 
 test.describe('a multi-disc album in the album layout', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'album' } })
+  test.use({ settings: { 'jean.layout': 'album' } })
 
   test('the discs are headed inside one album, not split into two', async ({ page }) => {
     await page.goto('/#/p7')
@@ -50,7 +50,7 @@ test.describe('a multi-disc album in the album layout', () => {
 })
 
 test.describe('a multi-disc album in the list layout', () => {
-  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'compact' } })
+  test.use({ settings: { 'jean.layout': 'compact' } })
 
   test('the track number carries the disc, since nothing else can', async ({ page }) => {
     await page.goto('/#/p7')
@@ -85,11 +85,11 @@ test.describe('a multi-disc album in the list layout', () => {
 // %discnumber% is a tag like any other, and a library that never wrote it is
 // the ordinary case rather than a broken one. Nothing may appear when it is
 // absent -- not a heading, not a '?.01' where a number used to be.
-for (const layout of ['compact', 'album']) {
+;['compact', 'album'].forEach((layout) => {
   test.describe(`a library with no disc tags (${layout})`, () => {
     test.use({
       withoutFields: ['%discnumber%'],
-      settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout },
+      settings: { 'jean.layout': layout },
     })
 
     test('nothing is drawn for a disc that was never tagged', async ({ page }) => {
@@ -100,4 +100,4 @@ for (const layout of ['compact', 'album']) {
       await expect(trackNumberOf(rowByTitle(page, DISC_TWO))).toHaveText('01')
     })
   })
-}
+})

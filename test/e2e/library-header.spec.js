@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures.js'
+import { expect, test, viewHeader } from './fixtures.js'
 
 // Jean is for anybody's library, and the captured fixture is one tidy,
 // mid-sized, thoroughly tagged collection. Every bug this file is about lives
@@ -10,27 +10,25 @@ import { expect, test } from './fixtures.js'
 // The autoplaylist fallback reads the same synthesised library -- the fixture
 // replaces both sources -- so every one of these holds either way.
 
-const header = (page) => page.locator('main header').first()
-const heading = (page) => header(page).getByRole('heading', { level: 1 })
+const heading = (page) => viewHeader(page).getByRole('heading', { level: 1 })
 
 // The figure drawn under a given noun, or null when the header does not draw
 // one. Read off the pair rather than off the rail's text, so "1 album" cannot
 // be satisfied by "1" appearing anywhere near the word.
 const figure = async (page, noun) => {
-  const label = header(page).getByText(new RegExp(`^${noun}s?$`))
+  const label = viewHeader(page).getByText(new RegExp(`^${noun}s?$`))
   if ((await label.count()) === 0) return null
   return (await label.locator('xpath=preceding-sibling::dd').innerText()).trim()
 }
 
 const settled = async (page) => {
   await expect(heading(page)).toBeVisible()
-  await expect(header(page).getByText('still counting')).toHaveCount(0)
+  await expect(viewHeader(page).getByText('still counting')).toHaveCount(0)
 }
 
 test.describe('a folder of four songs', () => {
   test.use({
     libraryShape: { tracks: 4, albums: 1, artists: 1, genres: 1, seconds: 200 },
-    settings: { 'jean.heatIntroSeen': true },
   })
 
   test('counts in the singular where the count is one', async ({ page }) => {
@@ -43,8 +41,8 @@ test.describe('a folder of four songs', () => {
     expect(await figure(page, 'album')).toBe('1')
     expect(await figure(page, 'artist')).toBe('1')
     expect(await figure(page, 'genre')).toBe('1')
-    await expect(header(page).getByText('album', { exact: true })).toBeVisible()
-    await expect(header(page).getByText('albums', { exact: true })).toHaveCount(0)
+    await expect(viewHeader(page).getByText('album', { exact: true })).toBeVisible()
+    await expect(viewHeader(page).getByText('albums', { exact: true })).toHaveCount(0)
   })
 
   test('measures 13 minutes in minutes, not in days', async ({ page }) => {
@@ -61,7 +59,6 @@ test.describe('a folder of four songs', () => {
 test.describe('one artist on repeat', () => {
   test.use({
     libraryShape: { tracks: 400, albums: 12, artists: 1, genres: 1, seconds: 210 },
-    settings: { 'jean.heatIntroSeen': true },
   })
 
   test('a library with no variety in it still describes itself', async ({ page }) => {
@@ -76,7 +73,7 @@ test.describe('one artist on repeat', () => {
     // library, and saying it is better than a bare row of numbers. Counted
     // rather than seen, because on a phone the chips are deliberately not
     // drawn -- see below.
-    await expect(header(page).getByText('100%')).toHaveCount(1)
+    await expect(viewHeader(page).getByText('100%')).toHaveCount(1)
   })
 })
 
@@ -90,7 +87,6 @@ test.describe('a wide, varied library', () => {
       seconds: 250,
       years: [1961, 2024],
     },
-    settings: { 'jean.heatIntroSeen': true },
   })
 
   test('big numbers are grouped, and the span covers the whole range', async ({ page }) => {
@@ -102,8 +98,8 @@ test.describe('a wide, varied library', () => {
     expect(await figure(page, 'album')).toBe('500')
     expect(await figure(page, 'artist')).toBe('300')
     expect(await figure(page, 'genre')).toBe('40')
-    await expect(header(page)).toContainText('1961')
-    await expect(header(page)).toContainText('2024')
+    await expect(viewHeader(page)).toContainText('1961')
+    await expect(viewHeader(page)).toContainText('2024')
   })
 
   test('the characterisation goes on a phone, the counts stay', async ({ page }, testInfo) => {
@@ -114,10 +110,10 @@ test.describe('a wide, varied library', () => {
     // them turns the screen into more reading than looking -- the same call the
     // shelf blurbs make. The counts stay, because they are why this header
     // exists; the genre chips go.
-    const chips = header(page).getByText(/^\d+%$/).first()
+    const chips = viewHeader(page).getByText(/^\d+%$/).first()
     const onPhone = testInfo.project.name === 'mobile'
     await expect(chips).toBeVisible({ visible: !onPhone })
-    await expect(header(page).getByText('tracks', { exact: true })).toBeVisible()
+    await expect(viewHeader(page).getByText('tracks', { exact: true })).toBeVisible()
   })
 
   // The rail is one line at every width, and below the breakpoint it scrolls
@@ -130,7 +126,7 @@ test.describe('a wide, varied library', () => {
     await page.goto('/')
     await settled(page)
 
-    const rail = header(page).locator('dl')
+    const rail = viewHeader(page).locator('dl')
     const shape = await rail.evaluate((el) => ({
       lines: new Set([...el.children].map((c) => Math.round(c.getBoundingClientRect().top))).size,
       overflows: el.scrollWidth > el.clientWidth,
@@ -159,21 +155,20 @@ test.describe('a wide, varied library', () => {
     // the chips say which ones you would recognise.
     // One share per chip. Counted by what a chip *is* rather than by a hashed
     // class name -- `[class*="chip"]` also matches the container they sit in.
-    await expect(header(page).getByText(/^\d+%$/)).toHaveCount(4)
+    await expect(viewHeader(page).getByText(/^\d+%$/)).toHaveCount(4)
   })
 })
 
 test.describe('a rip with no year tags', () => {
   test.use({
     libraryShape: { tracks: 60, albums: 6, omit: ['%year%'] },
-    settings: { 'jean.heatIntroSeen': true },
   })
 
   test('says nothing about years rather than inventing a span', async ({ page }) => {
     await page.goto('/')
     await settled(page)
 
-    await expect(header(page)).not.toContainText('–')
+    await expect(viewHeader(page)).not.toContainText('–')
     expect(await figure(page, 'album')).toBe('6')
   })
 })
@@ -181,7 +176,6 @@ test.describe('a rip with no year tags', () => {
 test.describe('a library the player reports no durations for', () => {
   test.use({
     libraryShape: { tracks: 60, albums: 6, omit: ['%length_seconds%'] },
-    settings: { 'jean.heatIntroSeen': true },
   })
 
   test('falls back to naming itself rather than claiming zero', async ({ page }) => {
@@ -199,7 +193,6 @@ test.describe('a library the player reports no durations for', () => {
 test.describe('a library with no album or genre tags at all', () => {
   test.use({
     libraryShape: { tracks: 40, omit: ['%album%', '%genre%'] },
-    settings: { 'jean.heatIntroSeen': true },
   })
 
   test('draws the figures it can fill and no others', async ({ page }) => {
@@ -212,7 +205,7 @@ test.describe('a library with no album or genre tags at all', () => {
     expect(await figure(page, 'album')).toBeNull()
     expect(await figure(page, 'genre')).toBeNull()
     expect(await figure(page, 'artist')).toBeNull()
-    await expect(header(page).getByText(/^\d+%$/)).toHaveCount(0)
+    await expect(viewHeader(page).getByText(/^\d+%$/)).toHaveCount(0)
   })
 })
 
@@ -220,7 +213,6 @@ test.describe('a fresh install with no playlists', () => {
   test.use({
     withoutPlaylists: true,
     libraryShape: { tracks: 40, albums: 4 },
-    settings: { 'jean.heatIntroSeen': true },
   })
 
   test('the playlists figure goes rather than reading nought', async ({ page }) => {
@@ -239,7 +231,6 @@ test.describe('a fresh install with no playlists', () => {
 test.describe('a library two people tagged', () => {
   test.use({
     libraryShape: { tracks: 20, albums: 2, artists: 1, mixedCase: true },
-    settings: { 'jean.heatIntroSeen': true },
   })
 
   test('one artist spelled two ways is counted once', async ({ page }) => {

@@ -42,12 +42,11 @@ const empty = (response, status = 204) => {
 }
 
 // beefweb refuses a request body over 1 MiB, and it refuses it by hanging up
-// rather than answering: *measured* against foobar2000 with beefweb 0.11,
-// 1,018,757 bytes were accepted and 1,049,652 got the socket closed mid-upload,
+// rather than answering: past the cap the socket is closed mid-upload,
 // which arrives at the client as a network error and not as a status code.
 //
 // The fake does the same, because the alternative is what already happened
-// once: naming all 30,441 tracks to play All Music is a 2.9 MB body, the fake
+// once: naming a whole library to play All music outgrows the cap, the fake
 // swallowed it happily, every test passed, and the feature did not work on a
 // real player at all.
 const MAX_BODY_BYTES = 1024 * 1024
@@ -309,7 +308,7 @@ async function handleApi({ state, method, path, url, body, headers, response }) 
   }
 
   if (method === 'POST' && head === 'playqueue' && rest[0] === 'add') {
-    // One item per request, and no bulk form -- measured against the live
+    // One item per request, and no bulk form -- checked against the live
     // player, both {items:[...]} and an array itemIndex come back 400. The fake
     // refuses them too, so a caller that tries to batch fails here rather than
     // on someone's machine.
@@ -446,7 +445,7 @@ function serveFile(file, response) {
 }
 
 // Artwork is cached, and the exact terms are the player's rather than something
-// convenient: *measured* against foobar2000, `Cache-Control: max-age=3,
+// convenient: foobar2000 answers with `Cache-Control: max-age=3,
 // must-revalidate` with a **content**-derived ETag, and a 304 for a conditional
 // request that matches.
 //

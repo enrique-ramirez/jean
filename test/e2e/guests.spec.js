@@ -24,7 +24,7 @@ const names = (row) => row.locator('[data-inline]')
 const inlineNames = (row) => row.locator('[data-inline="true"]')
 
 test.describe('guests on an album row', () => {
-  test.use({ retagged: RETAGGED, settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'album' } })
+  test.use({ retagged: RETAGGED, settings: { 'jean.layout': 'album' } })
 
   test('the guests sit beside the title and the album artist is not repeated', async ({ page }) => {
     await page.goto('/#/p7')
@@ -91,7 +91,7 @@ test.describe('guests on an album row', () => {
 test.describe('the same track in the list layout', () => {
   test.use({
     retagged: RETAGGED,
-    settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'compact' },
+    settings: { 'jean.layout': 'compact' },
   })
 
   test('the artist is stated in full, under the title', async ({ page }) => {
@@ -112,14 +112,14 @@ test.describe('the same track in the list layout', () => {
   })
 })
 
-// A compilation gives every row a second line, and two lines of 14px and 12.5px
-// type in a 34px album row left about half a pixel above and below -- the text
-// of one row all but touching the next. Measured rather than looked at: it is
+// A compilation gives every row a second line, and two lines of type in an album
+// row that was sized for one left the text of one row all but touching the next.
+// Measured rather than looked at, because it is
 // half a pixel, and it reads as "cluttered" rather than as anything nameable.
 test.describe('an album row with two lines has room for them', () => {
   test.use({
     retagged: { [SOMEONE_ELSE]: { '%artist%': 'Mad Season' } },
-    settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'album' },
+    settings: { 'jean.layout': 'album' },
   })
 
   test('it grows rather than crushing the two lines together', async ({ page }) => {

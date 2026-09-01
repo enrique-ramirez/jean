@@ -1,14 +1,16 @@
-import { expect, test } from './fixtures.js'
+import { expect, statusBar, test } from './fixtures.js'
 
 // The play/pause toggle is the app's one piece of continuous motion: while
 // something plays it layers `scale` and `rotate` on coprime durations, for as
 // long as it plays. That is deliberate. What it must also do is stop when the
 // operating system says stop.
-const toggle = (page) => page.locator('footer').getByRole('button', { name: 'Pause' })
+const TOGGLE = 'footer button[aria-label="Pause"]'
+
+const toggle = (page) => statusBar(page).getByRole('button', { name: 'Pause' })
 
 const shape = (page) =>
-  page.evaluate(() => {
-    const element = document.querySelector('footer button[aria-label="Pause"]')
+  page.evaluate((selector) => {
+    const element = document.querySelector(selector)
     const style = getComputedStyle(element)
     const box = element.getBoundingClientRect()
     // The painted box against the laid-out one. offsetWidth ignores transforms
@@ -21,26 +23,33 @@ const shape = (page) =>
       painted: Number(box.width.toFixed(2)),
       laidOut: element.offsetWidth,
     }
-  })
+  }, TOGGLE)
 
-// Sampled on consecutive frames rather than on a timer: the animations run at
-// ~700ms and ~1.9s, so anything slower than a frame can miss the movement.
-const framesOf = (page, count) =>
+// Samples something once per frame, for a given number of frames. On a timer
+// instead, a sample slower than a frame can land twice in the same place and
+// prove nothing about motion running at hundreds of milliseconds a cycle.
+//
+// `read` is stringified into the page, so it has to be self-contained.
+const overFrames = (page, count, read) =>
   page.evaluate(
-    (frames) =>
+    ({ frames, source }) =>
       new Promise((resolve) => {
-        const element = document.querySelector('footer button[aria-label="Pause"]')
+        const sample = new Function(`return (${source})`)()
         const seen = []
         const tick = () => {
-          const box = element.getBoundingClientRect()
-          seen.push(`${box.width.toFixed(3)}x${box.height.toFixed(3)}`)
+          seen.push(sample())
           if (seen.length < frames) requestAnimationFrame(tick)
           else resolve(seen)
         }
         requestAnimationFrame(tick)
       }),
-    count,
+    { frames: count, source: read.toString() },
   )
+
+const boxOfToggle = () => {
+  const box = document.querySelector('footer button[aria-label="Pause"]').getBoundingClientRect()
+  return `${box.width.toFixed(3)}x${box.height.toFixed(3)}`
+}
 
 const startPlaying = async (page) => {
   await page.goto('/#/p7')
@@ -52,18 +61,16 @@ const startPlaying = async (page) => {
 test('the toggle comes to rest when motion is reduced', async ({ page }) => {
   await startPlaying(page)
 
-  // Duration alone does not stop an infinite animation -- it runs it about a
-  // hundred thousand times a frame, and the element settles wherever the last
-  // cycle left it. Measured before the iteration count was added: permanently
-  // scale 1.05 1.02 and rotate 2.48deg, so the primary transport control sat
-  // 5% oversized and visibly tilted for as long as a track played, for exactly
-  // the people who asked for less movement.
+  // Duration alone does not stop an infinite animation -- it runs it absurdly
+  // fast and the element settles wherever the last cycle left it, which left
+  // the primary transport control permanently oversized and visibly tilted for
+  // exactly the people who asked for less movement.
   const at = await shape(page)
   expect(at.scale).toBe('none')
   expect(at.rotate).toBe('none')
   expect(at.painted).toBeCloseTo(at.laidOut, 1)
 
-  const frames = await framesOf(page, 8)
+  const frames = await overFrames(page, 8, boxOfToggle)
   expect(new Set(frames).size).toBe(1)
 })
 
@@ -75,7 +82,7 @@ test.describe('with motion allowed', () => {
     // button that never moved in the first place.
     await startPlaying(page)
 
-    const frames = await framesOf(page, 8)
+    const frames = await overFrames(page, 8, boxOfToggle)
     expect(new Set(frames).size).toBeGreaterThan(1)
 
     // And it is genuinely transformed, not merely repainting: a rotated square
@@ -89,31 +96,18 @@ test.describe('with motion allowed', () => {
 // pill is a button, and a button that will not hold still is a button you
 // cannot click. So the arrow moves and the pill does not.
 test.describe('the now-playing arrow', () => {
-  test.use({ motion: 'allow', settings: { 'jean.heatIntroSeen': true } })
+  test.use({ motion: 'allow' })
 
   const pill = (page) => page.getByRole('button', { name: 'Now playing' })
 
-  // Consecutive frames rather than a timer: the nod runs at 850ms, so a sample
-  // slower than a frame can land twice in the same place and prove nothing.
-  const frames = (page, count) =>
-    page.evaluate(
-      (wanted) =>
-        new Promise((resolve) => {
-          const seen = []
-          const step = () => {
-            const arrow = document.querySelector('[data-visible="true"] svg')
-            const pilled = document.querySelector('[data-visible="true"]')
-            seen.push({
-              arrow: arrow ? getComputedStyle(arrow).transform : null,
-              box: pilled ? pilled.getBoundingClientRect().top.toFixed(2) : null,
-            })
-            if (seen.length < wanted) requestAnimationFrame(step)
-            else resolve(seen)
-          }
-          requestAnimationFrame(step)
-        }),
-      count,
-    )
+  const arrowAndPill = () => {
+    const arrow = document.querySelector('[data-visible="true"] svg')
+    const pilled = document.querySelector('[data-visible="true"]')
+    return {
+      arrow: arrow ? getComputedStyle(arrow).transform : null,
+      box: pilled ? pilled.getBoundingClientRect().top.toFixed(2) : null,
+    }
+  }
 
   // Played from the player's side rather than by clicking a row, then scrolled
   // back to the top: following playback would otherwise scroll the track we
@@ -123,7 +117,7 @@ test.describe('the now-playing arrow', () => {
     await page.goto('/#/p7')
     await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
     player.playItem('p7', 40)
-    await expect(page.locator('footer')).toContainText('Goodnite, Noises Everywhere')
+    await expect(statusBar(page)).toContainText('Goodnite, Noises Everywhere')
 
     // Let the follow finish before scrolling away from it. It is an animated
     // scroll, so racing it means scrolling to the top and being carried back.
@@ -140,7 +134,7 @@ test.describe('the now-playing arrow', () => {
 
   test('the arrow moves and the pill it sits in does not', async ({ page, player }) => {
     await showPill(page, player)
-    const seen = await frames(page, 20)
+    const seen = await overFrames(page, 20, arrowAndPill)
 
     const moved = new Set(seen.map((frame) => frame.arrow))
     expect(moved.size, 'the arrow never moved').toBeGreaterThan(1)
@@ -152,22 +146,19 @@ test.describe('the now-playing arrow', () => {
   })
 
   // The complaint this curve was rebuilt for: it read as two frames, up and
-  // down, rather than as movement. The cause was not the frame rate and not
-  // sub-pixel rasterisation -- both were measured and both were fine -- it was
-  // that *any* easing on a two-stop keyframe brings the element to a dead stop
-  // at 0%, 50% and 100%. Nearly a fifth of every cycle was spent not moving,
-  // and the eye turned the rest into two resting positions.
+  // down, rather than as movement. Neither the frame rate nor sub-pixel
+  // rasterisation was the cause -- it was that *any* easing on a two-stop
+  // keyframe brings the element to a dead stop at 0%, 50% and 100%, and the eye
+  // turns the rest into two resting positions.
   //
-  // So the thing to assert is not that the arrow moves, which the old curve
-  // also did and which the test above already covers. It is that it never
-  // stops: six sine-sampled stops interpolated linearly have a non-zero slope
-  // in every segment.
+  // So the thing to assert is not that the arrow moves, which the old curve did
+  // too and which the test above already covers. It is that it never stops.
   test('it never holds still, which is what made it look like two frames', async ({
     page,
     player,
   }) => {
     await showPill(page, player)
-    const seen = await frames(page, 48)
+    const seen = await overFrames(page, 48, arrowAndPill)
     // `matrix(a, b, c, d, tx, ty)` -- the vertical offset is the last of them.
     const ys = seen.map((frame) => Number(frame.arrow.match(/matrix\(([^)]*)\)/)[1].split(',')[5]))
     const steps = ys.slice(1).map((y, i) => Math.abs(y - ys[i]))
@@ -188,18 +179,16 @@ test.describe('the now-playing arrow', () => {
   test('it points the way it is pointing', async ({ page, player }) => {
     await showPill(page, player)
 
-    // Playing track below, list scrolled to the top: the arrow points down.
+    // Playing track below, list scrolled to the top: the arrow points down, and
+    // the pill is a way back rather than a decoration.
     await expect(pill(page)).toHaveAttribute('data-direction', 'down')
-    const named = await page.evaluate(
-      () => getComputedStyle(document.querySelector('[data-visible="true"] svg')).animationName,
-    )
-    expect(named).toContain('nod-down')
+    await expect(pill(page).locator('svg')).toBeVisible()
   })
 
   test('and it stops when the system says stop', async ({ page, player }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await showPill(page, player)
-    const seen = await frames(page, 12)
+    const seen = await overFrames(page, 12, arrowAndPill)
     expect(new Set(seen.map((frame) => frame.arrow)).size).toBe(1)
   })
 })

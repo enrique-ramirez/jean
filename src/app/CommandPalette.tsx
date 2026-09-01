@@ -5,9 +5,9 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { PlaylistInfo } from "../api/types";
+import type { PlaylistInfo } from "@/shared/api/types";
 
-import { fold, matchesTokens, tokenize } from "../ui/text";
+import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./CommandPalette.module.css";
 
 // Jumping between playlists, not searching them: tracks are the library

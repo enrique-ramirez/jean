@@ -1,5 +1,5 @@
-import { SHELVES, type Shelf } from "../home/shelves";
-import { SCRATCH_KIND } from "../library/jeanPlaylists";
+import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
+import { SHELVES, type Shelf } from "@/features/home/shelves";
 
 // What the scratch playlist is holding, as the sidebar and status bar read it.
 export interface PlayingSet {

@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import type { LibraryItem } from "../../src/api/types.ts";
+import type { LibraryItem } from "../../src/shared/api/types.ts";
 
 // A node of `/library/items/by-path`: a folder with a recursive count, or a
 // track with its columns. Documented in API.md; nothing in the app reads it

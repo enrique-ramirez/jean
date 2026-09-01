@@ -19,23 +19,23 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { PlaylistInfo } from "../api/types";
-import { SCOPE } from "../keyboard/keymap";
-import { useKeymap } from "../keyboard/useKeymap";
-import { ALL_MUSIC, withoutJeanPlaylists } from "../library/jeanPlaylists";
-import type { LibrarySearch } from "../library/useLibrarySearch";
+import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import {
 	untitledPlaylistName,
 	usePermissions,
 	usePlaylistActions,
-} from "../player/usePlayer";
-import { ActionMenu, type ActionNode } from "../ui/ActionMenu";
-import { useDragState } from "../ui/dnd";
-import { mergeHandlers, type PropBag } from "../ui/mergeHandlers";
-import { plural } from "../ui/text";
-import { pushToast } from "../ui/toastStore";
-import { useContextMenu } from "../ui/useContextMenu";
-import { useSortableList } from "../ui/useSortableList";
+} from "@/domain/player/usePlayer";
+import { ALL_MUSIC, withoutJeanPlaylists } from "@/domain/track/jeanPlaylists";
+import type { PlaylistInfo } from "@/shared/api/types";
+import { useContextMenu } from "@/shared/hooks/useContextMenu";
+import { useSortableList } from "@/shared/hooks/useSortableList";
+import { SCOPE } from "@/shared/keyboard/keymap";
+import { useKeymap } from "@/shared/keyboard/useKeymap";
+import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
+import { plural } from "@/shared/lib/text";
+import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
+import { useDragState } from "@/shared/ui/dnd";
+import { pushToast } from "@/shared/ui/toastStore";
 import type { PlayingRoute } from "./routes";
 import styles from "./Sidebar.module.css";
 

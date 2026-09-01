@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { useStoredState } from "../hooks/useStoredState";
+import { useStoredState } from "@/shared/hooks/useStoredState";
 
 const systemPreference = (): "light" | "dark" =>
 	typeof window !== "undefined" &&

@@ -1,4 +1,4 @@
-import type { PlayerOption } from "../../src/api/types.ts";
+import type { PlayerOption } from "../../src/shared/api/types.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,

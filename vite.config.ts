@@ -1,3 +1,5 @@
+import { fileURLToPath, URL } from "node:url";
+
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
@@ -11,6 +13,12 @@ export default defineConfig(({ mode }) => {
 
 	return {
 		plugins: [react()],
+
+		resolve: {
+			alias: {
+				"@": fileURLToPath(new URL("./src", import.meta.url)),
+			},
+		},
 
 		// Relative asset paths, so a build works under whatever prefix beefweb
 		// serves it from -- /, /jean, anything -- without rebuilding.

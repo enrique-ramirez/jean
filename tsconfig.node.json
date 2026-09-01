@@ -19,5 +19,9 @@
 	// The API types come along because the fake is checked against them: a
 	// response shape that drifts from what the app expects is the bug this whole
 	// suite exists to catch.
-	"include": ["vite.config.ts", "test/fake-api/**/*.ts", "src/api/types.ts"]
+	"include": [
+		"vite.config.ts",
+		"test/fake-api/**/*.ts",
+		"src/shared/api/types.ts"
+	]
 }

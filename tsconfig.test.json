@@ -23,8 +23,8 @@
 		"test/e2e",
 		"test/*.ts",
 		"test/fake-api/**/*.ts",
-		"src/api/types.ts",
-		"src/playlist/fields.ts",
+		"src/shared/api/types.ts",
+		"src/domain/track/fields.ts",
 		"playwright.config.ts"
 	]
 }

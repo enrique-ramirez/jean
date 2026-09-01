@@ -58,6 +58,66 @@
 	},
 	"overrides": [
 		{
+			"includes": ["src/shared/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["@/domain/**", "@/features/**", "@/app/**"],
+										"message": "shared/ knows nothing about the rest of the app. Invert the dependency: take what you need as an argument."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["src/domain/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["@/features/**", "@/app/**"],
+										"message": "domain/ is below features/. A domain slice that needs a view belongs in features/."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["src/features/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["@/app/**"],
+										"message": "features/ is below app/. The shell composes features, never the other way round."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
 			"includes": ["test/**", "scripts/**", "vite.config.ts"],
 			"linter": {
 				"rules": {

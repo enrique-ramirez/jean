@@ -1,29 +1,8 @@
 import { Keyboard, Moon, PanelLeft, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import { nextTrack, previousTrack, stop } from "../api/beefweb";
-import { albumsOf } from "../home/albums";
-import { HomeView } from "../home/HomeView";
-import { buildShelves, refsOfShelf } from "../home/shelves";
-import { useHomePlayback } from "../home/useHomePlayback";
-import { useIsCompactViewport } from "../hooks/useMediaQuery";
-import { useStoredState } from "../hooks/useStoredState";
-import { SCOPE } from "../keyboard/keymap";
-import { ShortcutSheet } from "../keyboard/ShortcutSheet";
-import { useKeymap } from "../keyboard/useKeymap";
-import {
-	ALL_MUSIC,
-	SCRATCH_KIND,
-	withoutJeanPlaylists,
-} from "../library/jeanPlaylists";
-import { LibraryListView } from "../library/LibraryListView";
-import { LibrarySearchField } from "../library/LibrarySearchField";
-import { EMPTY_VIEW, project, wholeLibrary } from "../library/project";
-import { SearchResults } from "../library/SearchResults";
-import { useLibrary } from "../library/useLibrary";
-import { useLibrarySearch } from "../library/useLibrarySearch";
-import { usePlayingFrom } from "../library/usePlayingFrom";
-import { StatusBar } from "../player/StatusBar";
+import { useLibrary } from "@/domain/library/useLibrary";
+import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
+import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import {
 	useIsPlaying,
 	usePlayerStream,
@@ -31,11 +10,31 @@ import {
 	usePlayPause,
 	useSeekBy,
 	useVolume,
-} from "../player/usePlayer";
-import { PlaylistView } from "../playlist/PlaylistView";
-import { Button } from "../ui/Button";
-import { DragGhost } from "../ui/DragGhost";
-import { Toasts } from "../ui/Toasts";
+} from "@/domain/player/usePlayer";
+import {
+	ALL_MUSIC,
+	SCRATCH_KIND,
+	withoutJeanPlaylists,
+} from "@/domain/track/jeanPlaylists";
+import { EMPTY_VIEW, project, wholeLibrary } from "@/domain/track/project";
+import { albumsOf } from "@/features/home/albums";
+import { HomeView } from "@/features/home/HomeView";
+import { buildShelves, refsOfShelf } from "@/features/home/shelves";
+import { useHomePlayback } from "@/features/home/useHomePlayback";
+import { LibraryListView } from "@/features/library/LibraryListView";
+import { StatusBar } from "@/features/now-playing/StatusBar";
+import { PlaylistView } from "@/features/playlist/PlaylistView";
+import { LibrarySearchField } from "@/features/search/LibrarySearchField";
+import { SearchResults } from "@/features/search/SearchResults";
+import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
+import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
+import { useStoredState } from "@/shared/hooks/useStoredState";
+import { SCOPE } from "@/shared/keyboard/keymap";
+import { ShortcutSheet } from "@/shared/keyboard/ShortcutSheet";
+import { useKeymap } from "@/shared/keyboard/useKeymap";
+import { Button } from "@/shared/ui/Button";
+import { DragGhost } from "@/shared/ui/DragGhost";
+import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
 import { CommandPalette } from "./CommandPalette";
 import { ROUTE, resolveRoute, routeOfPlayingSet } from "./routes";

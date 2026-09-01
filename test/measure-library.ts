@@ -19,8 +19,8 @@
 // It needs a real player with a real library; the fake cannot answer questions
 // about a server-side cost it does not have.
 
-import type { LibraryInfo, PlaylistInfo } from "../src/api/types.ts";
-import { TRACK_EXPRESSIONS } from "../src/playlist/fields.ts";
+import { TRACK_EXPRESSIONS } from "../src/domain/track/fields.ts";
+import type { LibraryInfo, PlaylistInfo } from "../src/shared/api/types.ts";
 
 const HOST = process.env.PLAYER ?? "home.local:8880";
 const COLUMNS = encodeURIComponent(TRACK_EXPRESSIONS.join(","));

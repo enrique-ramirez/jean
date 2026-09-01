@@ -302,7 +302,7 @@ whole answer.
 - Columns are foobar2000 title-formatting expressions evaluated by the player, so
   `%codec%`, `%bitrate%`, `%rating%` and single-argument functions like
   `$upper(...)` all work. Adding a field is one line — `TRACK_COLUMNS` in
-  `src/api/beefweb.ts` for the playing track, `src/playlist/fields.ts` for the list.
+  `src/shared/api/beefweb.ts` for the playing track, `src/domain/track/fields.ts` for the list.
   Multi-argument functions do **not** work — the list is split on commas before the
   expressions are evaluated, so `$if(a,b,c)` becomes three columns. Single-argument
   functions *do* nest, though: `$len($meta(unsynced lyrics))` is fine.
@@ -368,6 +368,6 @@ TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright. 
 tests and no jsdom, on purpose: the things that break here need real layout, real
 pointers and a real viewport. See `test/README.md`.
 
-Styling is CSS Modules per component, with the palette in `src/styles/tokens.css` as
+Styling is CSS Modules per component, with the palette in `src/shared/styles/tokens.css` as
 custom properties — re-theming Jean means editing about thirty values there, with no
 build step required to know what they do.

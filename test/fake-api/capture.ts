@@ -15,7 +15,7 @@ import type {
 	PlayerState,
 	PlaylistInfo,
 	PlaylistItemsResponse,
-} from "../../src/api/types.ts";
+} from "../../src/shared/api/types.ts";
 
 // One captured track: its position in the playlist, and every expression this
 // script asked for keyed by name rather than positionally -- which is what

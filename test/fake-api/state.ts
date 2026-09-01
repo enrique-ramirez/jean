@@ -6,7 +6,7 @@ import type {
 	LibraryInfo,
 	PlayerState,
 	PlaylistInfo,
-} from "../../src/api/types.ts";
+} from "../../src/shared/api/types.ts";
 
 // A captured track: a title-formatting expression to the value the player
 // answered with. A *missing* key is a field this player cannot resolve, which

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { Locator, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
 
-import type { LibraryInfo, PlayerState } from "../../src/api/types.ts";
+import type { LibraryInfo, PlayerState } from "../../src/shared/api/types.ts";
 import { createServer, type FakeServer } from "../fake-api/server.ts";
 import {
 	createState,

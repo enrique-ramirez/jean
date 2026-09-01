@@ -123,7 +123,7 @@ across the gap on the right, which is the room a header with no mosaic has spare
 and on a phone they drop to the two edges at their own size -- stretched to half a
 screen each they read as a dialog asking a question.
 
-Filling the scratch and playing a position in it is `library/usePlaySet.ts`, one
+Filling the scratch and playing a position in it is `domain/library/usePlaySet.ts`, one
 implementation for the shelves, the front door and All Music: a set filled in the
 wrong order plays the wrong track and a player that refuses playlist writes has to
 degrade rather than do nothing, and neither is worth getting right twice.
@@ -134,7 +134,7 @@ the scale.** *Measured* over one real 30,441-track library, every rating on it:
 `3.5`, spread over MP3, FLAC, Vorbis, AAC and WMA. Four taggers' conventions in
 one folder tree, and the field says which one it is using nowhere. Reading only
 0-5 would call 39 of those unrated, and that is not "Jean cannot tell" -- it is
-Jean ignoring a rating that is plainly there. So `playlist/rating.ts` bands it:
+Jean ignoring a rating that is plainly there. So `domain/track/rating.ts` bands it:
 `<= 0` unrated, `<= 5` the native scale, `<= 10` the 0-10 one, `<= 100` the
 0-100 one FLAC's `RATING` has converged on, `<= 255` a POPM byte written out as
 text. Anything larger is not read as a rating and specifically is **not clamped
@@ -253,7 +253,7 @@ chose to play*, not the thing you are looking at -- so you can start a shelf and
 into All music without touching it. That freedom is only tolerable with the affordances
 that account for it: a temporary sidebar row named after the shelf, and `from <label>`
 in the status bar. Both read the scratch playlist's own title through
-`library/usePlayingFrom.ts`, so they cannot disagree and neither needs state of Jean's
+`domain/library/usePlayingFrom.ts`, so they cannot disagree and neither needs state of Jean's
 own. **The accent on a sidebar icon means "this is playing" and nothing else** --
 tinting it by selection made the row you were looking at and the row you were listening
 to identical, which is precisely the pair this design exists to separate.
@@ -265,7 +265,7 @@ nor their order. Both exist because they answer different questions, and the but
 says which list it is searching -- "Find in all music", "Find in this shelf" -- so
 the two are never mistaken for each other. It lived inside `PlaylistView` and so
 existed only for playlists, which left the two longest lists in the app without it;
-`playlist/useFinder.tsx` owns the whole of it now -- state, deferred scan, button
+`domain/track/useFinder.tsx` owns the whole of it now -- state, deferred scan, button
 and field -- and returns the node rather than the pieces, because a caller that
 assembles its own is the one that will assemble it wrongly.
 
@@ -382,7 +382,7 @@ Three rules follow, all of them load-bearing:
   guess rather than guarding it, so the `itemCount` sanity-check that ladder needed is not
   required and was never built.
 - **It is Jean's, so it is not furniture.** Anything titled `#Jean…` is filtered out of the
-  sidebar, the command palette and the routing fallback — see `library/jeanPlaylists.ts`,
+  sidebar, the command palette and the routing fallback — see `domain/track/jeanPlaylists.ts`,
   which owns the namespace for both this and the search scratch.
 
 Fallback for users who won't create an autoplaylist: Jean can build its own playlist from
@@ -408,7 +408,7 @@ is not. Released beefweb is 0.10 and has none of it; DeaDBeeF never will.
 
 Full shapes and measurements in `API.md`.
 
-#### `library/librarySource.ts` is the seam, and the only place that knows
+#### `domain/track/librarySource.ts` is the seam, and the only place that knows
 
 Two sources, one interface: `{ kind, playlistId, needsHeldCount, artworkUrl(ref),
 fill(targetId, refs, heldCount), addTo(targetId, refs), playingPosition(refs, track,
@@ -697,7 +697,7 @@ which are required, not optional:
   ~1.5 s. Chunk for **time to first paint**, then go wide, and never issue many small
   sequential requests.
 - **One load, shared.** The library has more than one consumer — the playlist view and
-  search — and neither may fetch its own copy. `playlist/playlistStore.ts` owns it.
+  search — and neither may fetch its own copy. `domain/track/playlistStore.ts` owns it.
 - **Parse and index in a Web Worker.** A 46 ms parse at 30k is a ~300 ms main-thread
   freeze at 200k.
 - **Dictionary-encode into columns.** Parallel `Uint32Array`s of indices into shared string
@@ -732,7 +732,7 @@ forever, and everything Jean asks for afterwards queues behind covers for rows t
 long gone. Against a player taking 200 ms a cover, a play/pause pressed a second and a
 half after the jump waited **122 ms** for a socket, and the queue drained for **19.8 s**.
 
-`ui/artworkQueue.ts` is the answer, and the load-bearing part of it is **time, not
+`shared/ui/artworkQueue.ts` is the answer, and the load-bearing part of it is **time, not
 capacity**: a row has to still be mounted 100 ms after it appeared before it is even
 queued. A queue on its own is worse than nothing -- against a player that answers
 instantly it drains as fast as the rows churn and lets every one of them through,
@@ -748,7 +748,7 @@ record's twelve tracks are twelve URLs for one picture and the browser cannot
 know they are the same. *Measured* against the live player, the first twelve
 rows of the library: twelve requests, **identical ETag on every one**, 633 KB
 each -- 7.6 MB fetched to draw one cover twelve times at 34px. `albumCoverRows`
-in `playlist/grouping.ts` points every row at its album run's first row, off the
+in `domain/track/grouping.ts` points every row at its album run's first row, off the
 same runs the album layout is already grouping for, so it costs nothing new.
 *Measured* on the fixture: walking a 54-track, 12-album playlist went from **54
 requests to 12**.
@@ -821,7 +821,7 @@ groups.
 
 ### Menus, gestures and other shared behaviour
 
-`ui/ActionMenu.tsx` is the only menu surface in the app. Actions are declared as **data**
+`shared/ui/ActionMenu.tsx` is the only menu surface in the app. Actions are declared as **data**
 and the surface decides how to draw them -- a popover at the pointer on a desktop
 viewport, a floating action sheet on a compact one. Adding a menu anywhere means writing
 an array, not another component.
@@ -842,7 +842,7 @@ an array, not another component.
   element is laid out against the *layout* viewport, which neither platform shrinks for
   the keyboard -- iOS does not resize it at all and Chrome defaults to
   `interactive-widget=resizes-visual` -- so a bottom-anchored sheet puts its own field
-  under the keyboard the moment you tap it. `ui/useVisualViewport.ts` sizes the scrim to
+  under the keyboard the moment you tap it. `shared/hooks/useVisualViewport.ts` sizes the scrim to
   `visualViewport`, which makes "above the keyboard" fall out of the existing
   `align-items: flex-end`, and follows `offsetTop` as well, because iOS scrolls the page
   to reveal a focused field. It writes to the element, not to state: iOS fires a stream
@@ -903,7 +903,7 @@ an array, not another component.
 - **A menu returns focus only if it still has it.** An action is allowed to send focus
   somewhere on purpose; restoring blindly on close undoes that.
 
-`ui/useSortableList.ts` is drag-to-reorder for lists short enough to see at once. Rows
+`shared/hooks/useSortableList.ts` is drag-to-reorder for lists short enough to see at once. Rows
 are measured on drag start, so variable heights need no special case. What is
 load-bearing:
 
@@ -935,12 +935,12 @@ load-bearing:
 - **Two behaviours on one element share their handler names.** A row that both
   press-and-holds and drags wants `onPointerDown/Move/Up/Cancel` twice over, and
   spreading one props object after the other drops the first silently. Compose them
-  through `ui/mergeHandlers.ts`.
+  through `shared/lib/mergeHandlers.ts`.
 - `Alt+Arrow` does the same from the keyboard, registered only while a row has focus.
 
 ### Dragging across containers
 
-`ui/dnd.ts` is the other drag primitive, and it is deliberately *not* built on
+`shared/ui/dnd.ts` is the other drag primitive, and it is deliberately *not* built on
 `useSortableList`. That one reorders a single list, where the dragged element stays
 mounted and the drop position is arithmetic. Dragging tracks onto a sidebar playlist is a
 different problem: the source row can be unmounted by the virtualiser mid-gesture, and
@@ -1034,7 +1034,7 @@ unfixed: the fix is to declare both spellings in the keymap, or to pick keys tha
 unshifted everywhere.
 
 Position updates arrive only on change events, so the progress display **interpolates**
-locally (`src/player/position.ts`). `<SeekBar>` runs the animation-frame loop and is
+locally (`src/domain/player/position.ts`). `<SeekBar>` runs the animation-frame loop and is
 deliberately a leaf — that state must never be lifted, or it will one day repaint a
 virtualised 30k-row list sixty times a second.
 
@@ -1086,7 +1086,7 @@ without a real report.
 `foo_jean` is optional and always will be. Jean must work with it absent, and light up
 tag writing when it is there.
 
-Nothing of this is built yet. The plan is a `library/tagWriter.ts` seam in the shape of
+Nothing of this is built yet. The plan is a `domain/library/tagWriter.ts` seam in the shape of
 the existing `librarySource.ts` — `{ kind, canWrite, allowedFields, write(track, fields) }`
 with implementations for *none* (nothing reachable; rating renders read-only and every
 install still works), *agent* (`foo_jean`), and *beefweb* if [#384](https://github.com/hyperblast/beefweb/issues/384)
@@ -1166,7 +1166,7 @@ One paste, stored the same way Jean stores its own settings.
 - **`GET /api/player` ignores `trcolumns`** and returns `"columns": []`. Use
   `GET /api/query?player=true&trcolumns=…`.
 - **Volume is decibels** (`-100..0`), not a percentage, and `volume.type` says so --
-  another player may report a linear range. `src/player/volumeScale.ts` maps the fader
+  another player may report a linear range. `src/domain/player/volumeScale.ts` maps the fader
   **linearly in perceived loudness**: +10 dB is about twice as loud, so the
   fraction becomes `max + 10 * log2(f)` and half the slider is half as loud, a
   quarter is a quarter as loud. Equal distances are equal *ratios* of loudness
@@ -1224,17 +1224,36 @@ itself, or through a dev proxy. See `README.md`.
 
 ```
 src/
-  api/        beefweb client -- every fetch to the player lives here
-  app/        shell: App, Sidebar, CommandPalette, theme, hash routing
-  home/       the home screen: the library's own stats, album aggregation, shelves
-  library/    the library as one array, its source seam, and the views over it
-  hooks/      shared, generic (useDebounced, useMediaQuery, useStoredState, ...)
-  keyboard/   keymap.ts, useKeymap, ShortcutSheet
-  player/     transport, seek bar, player state and mutations
-  playlist/   the playlist view and everything it needs
-  ui/         shared presentational pieces and DOM helpers
-  styles/     tokens.css and base.css -- the only global CSS
+  shared/     knows nothing about Jean. api/ (beefweb client + the hand-written
+              wire types), ui/, lib/, hooks/, keyboard/, styles/
+  domain/     what Jean is about, as data and behaviour with no route of its own
+    track/    rows, refs, the source seam, and the whole virtualised list machinery
+    library/  the library as one array, its search, and what plays a set
+    player/   player state, position interpolation, the volume curve
+  features/   one folder per thing a user can do: home, search, library, playlist,
+              now-playing
+  app/        the shell: App, Sidebar, CommandPalette, theme, hash routing
 ```
+
+**Imports run one way: `app -> features -> domain -> shared`**, and Biome
+enforces it -- `noRestrictedImports` per tier in `biome.json`, so a violation is
+an error at `pnpm lint` rather than a code review. Within `domain` the slices
+form a DAG (`library -> track -> player`) rather than a hierarchy: sideways is
+allowed there, a cycle is not.
+
+Everything outside its own folder is imported through the `@/` alias
+(`@/domain/track/fields`), so a file can move without touching the imports of
+everything that reads it. Same-folder imports stay relative.
+
+**The tiers came out of a cycle, not a diagram.** `playlist/` used to be two
+folders under one name -- the generic list machinery and the playlist view --
+so `library` and `playlist` each imported nineteen and fifteen things from the
+other, and `api` imported the column list from `playlist`. Splitting the
+machinery out as `domain/track` broke all three cycles. The files that would
+not sit still afterwards were the ones in the wrong tier: `keymap` is shared
+infrastructure rather than a feature, `LibrarySetup` belongs to the library
+domain rather than to one view of it, and `fetchPlaylistItems` had no business
+knowing Jean's columns -- it takes them as an argument now.
 
 **TypeScript, strict, in three scopes.** `tsconfig.app.json` is the browser,
 `tsconfig.node.json` the fake player (which `node` runs by stripping types, so
@@ -1249,7 +1268,7 @@ on each one and teach nothing. `noUnusedParameters` is off for the specs alone,
 because in Playwright *naming* a fixture is how a test depends on it -- several
 take `player` purely to get a fresh fake and never touch it.
 
-**`api/types.ts` is hand-written and is the contract.** Not generated: beefweb
+**`shared/api/types.ts` is hand-written and is the contract.** Not generated: beefweb
 ships an OpenAPI document, but it describes 0.10, and the parts Jean leans on
 hardest -- the media library API, and the fields that are *absent* rather than
 empty -- are either newer than it or not expressible in it. The fake player is
@@ -1259,17 +1278,19 @@ It has already earned it twice -- the captured player sends `info.title` and
 `options[].name`, neither of which API.md's summaries mention.
 
 **A ref is an integer, and now the compiler says so.** `Refs` is
-`Int32Array | number[]` in `library/project.ts`, and `LibrarySource` in
-`library/librarySource.ts` is the seam written down. Anything outside that file
+`Int32Array | number[]` in `domain/track/project.ts`, and `LibrarySource` in
+`domain/track/librarySource.ts` is the seam written down. Anything outside that file
 reaching for `playlistId` to do something other than identify a playlist is now
 a type error rather than a code review.
 
-**Two files were renamed because a case-insensitive filesystem cannot tell them
-apart.** `ui/toastStore.ts` became `ui/toastStore.ts` and `player/volumeScale.ts` became
-`player/volumeScale.ts`, because `ui/Toasts.tsx` and `player/Volume.tsx` sit
-beside them: TypeScript resolves `'./Toasts'` by probing `Toasts.ts` first, macOS
-answers yes, and the import silently landed on the *store*. The compiler caught
-it; nothing else would have.
+**A store is never named after the component beside it, because a
+case-insensitive filesystem cannot tell the two apart.** `shared/ui/toastStore.ts`
+sits next to `shared/ui/Toasts.tsx`, and had it been `toasts.ts` TypeScript would
+resolve `'./Toasts'` by probing `Toasts.ts` first, macOS would answer yes, and the
+import would land silently on the *store*. The compiler caught that one; nothing
+else would have. `domain/player/volumeScale.ts` was the same fix, and the tiers
+have since put it in a different folder from `features/now-playing/Volume.tsx`
+anyway -- which is luck, not a reason to relax the rule.
 
 **Biome is the linter and the formatter**, on its own defaults -- tabs, double
 quotes, semicolons, 80 columns. It does not reflow comments, so the prose the
@@ -1289,38 +1310,68 @@ it is `.group .tracks > *`, so the rule wins on specificity and the module graph
 stops being load-bearing. **Anything in one module that overrides another's must
 outrank it, not merely follow it.**
 
+**An exhaustive dependency array can be exhaustive and useless, and Biome only
+checks the first half.** `useLibrary` returns an object literal, so `library` is
+a new identity every render and a `useMemo` keyed on it never hits. Three were:
+`wholeLibrary` allocating a fresh 30,441-element `Int32Array`, `project`
+rebuilding a search's rows, and `albumsOf` re-aggregating every row into albums
+-- all on every render of `App`, which subscribes to the player stream and so
+re-renders on each SSE message and each coalesced volume write. Dragging the
+volume fader on a shelf route re-aggregated the library once per write. The
+linter was silent on all three, because `[library]` is precisely what the rule
+asks for, and loud on eleven hooks that were correct. **Depend on
+`library.snapshot`** -- the store's own object, replaced only when a load
+publishes -- and read a green dependency array as saying nothing whatever about
+whether the memo works.
+
+The corollary is a signature rule: `albumsOf` takes rows rather than the
+snapshot they came from, because **a caller's dependency array can only be as
+narrow as the function it calls.** Handed a whole object it has to depend on the
+whole object, and the narrowing has to happen at the parameter to be available
+at the call.
+
+**The eight `useExhaustiveDependencies` suppressions are deliberate and all one
+shape**: a dependency that exists to *fire* the effect rather than to be read
+inside it -- `[query]` resetting a cursor, `[results]` re-arming the finder's
+hover guard, `[isAlbumLayout, isCompactViewport]` invalidating cached row
+heights. The rule cannot model that, so `--write` would remove every one and
+break the feature silently. `Sidebar`'s is the other half of the same blind
+spot, reported twice on one hook: it lists what `deletePlaylist` captures
+instead of `deletePlaylist`, which is re-created every render and would defeat
+the memo entirely.
+
 **Styling is CSS Modules, colocated with the component.** The only global stylesheets
-are `styles/tokens.css` (the palette and scale, as custom properties) and
-`styles/base.css` (reset and a couple of utilities). That split is deliberate:
+are `shared/styles/tokens.css` (the palette and scale, as custom properties) and
+`shared/styles/base.css` (reset and a couple of utilities). That split is deliberate:
 someone re-theming Jean should only ever need to edit ~30 lines of custom properties,
 with no build step and no knowledge of our class names. Do not add global classes for
 component styling.
 
-**Context menus come from `ui/ActionMenu.tsx`, as an array of actions.** Never hand-roll
+**Context menus come from `shared/ui/ActionMenu.tsx`, as an array of actions.** Never hand-roll
 a popover, an action sheet or a confirmation dialog -- the gestures, the keyboard
 handling, the nested pages and both surfaces already exist there, and a second
-implementation of any of them will be the one that is wrong on a phone. `ui/Menu.tsx` is
+implementation of any of them will be the one that is wrong on a phone. `shared/ui/Menu.tsx` is
 a different thing and stays: a dropdown anchored under a button you can see, with no
 gestures and no pages. Menu *you asked for* against menu *you summoned*.
 
 **What the two do share is the keyboard, and they share the implementation of it**
-(`ui/menuKeys.ts`): focus into the panel on open, roving arrows over the items, and
+(`shared/ui/menuKeys.ts`): focus into the panel on open, roving arrows over the items, and
 every key taken from the app behind. They did not, and the difference was invisible
 until it was written down -- Escape closed the dropdown *and* cleared the track
 selection behind it, in one keystroke.
 
-**Notifications come from `ui/toastStore.ts`, and only for things you cannot see.** Pushing
+**Notifications come from `shared/ui/toastStore.ts`, and only for things you cannot see.** Pushing
 one is a bare function call from anywhere, deliberately -- it is a module-level store
 rather than a context because a provider holding the list would re-render the virtualised
 track list every time a toast appeared or expired.
 
-**Keyboard bindings are declared in `keyboard/keymap.ts` and nowhere else.**
+**Keyboard bindings are declared in `shared/keyboard/keymap.ts` and nowhere else.**
 `useKeymap(scope, handlers)` registers whatever that scope declares and has a handler
 for, and `ShortcutSheet` renders the help overlay from the same array — so the
 documented shortcuts cannot drift from the real ones. Adding a binding means adding a
 row there and a handler; never call `useHotkey` directly in a component.
 
-**Anything the user types at a list is matched through `fold()` in `ui/text.ts`**, which
+**Anything the user types at a list is matched through `fold()` in `shared/lib/text.ts`**, which
 lowercases and strips diacritics, so `babasonicos` finds `Babasónicos`. Requiring people
 to type the accents in their own library taxes exactly the tracks they are most likely
 to be hunting for, and from outside it does not look strict, it looks broken. Fold when
@@ -1340,7 +1391,7 @@ over. The corollary is the rule below, and it is the whole of Jean's involvement
 **Compare tag values loosely, display them exactly.** Tags drift in case and spacing
 between files in the same album -- `5 Seconds Of Summer` and `5 Seconds of Summer` are
 one artist. Anything comparing tags to decide what the user sees goes through
-`sameTagValue()` in `playlist/fields.ts`; anything rendering a value still shows the
+`sameTagValue()` in `domain/track/fields.ts`; anything rendering a value still shows the
 original spelling. A strict `===` here makes a track look like a guest on its own
 album, and splits one album into two groups mid-run.
 
@@ -1487,8 +1538,8 @@ layouts, heat/patina, the finder, column picker, keyboard navigation, transport 
 seekable progress bar), and library-wide search — a persistent field bound to `⌘K`, its
 own `#/search` route with a sidebar entry, and per-view scroll and cursor memory so
 leaving a result set and coming back returns you to where you were. Search is
-accent-insensitive both ways, through `fold()` in `ui/text.ts`. The shared list machinery
-both views render through is `playlist/TrackBrowser.tsx`, and `indices` is how a filtered
+accent-insensitive both ways, through `fold()` in `shared/lib/text.ts`. The shared list machinery
+both views render through is `domain/track/TrackBrowser.tsx`, and `indices` is how a filtered
 view maps a row back to the playlist index the player addresses.
 
 Tracks can be added to another playlist by dragging them onto it in the sidebar, or from a
@@ -1518,12 +1569,12 @@ whose fixture was captured off a real one. It covers both layouts and both surfa
 
 Search reads the **media library API** when the player has one (beefweb 0.11+,
 foobar2000), and the autoplaylist otherwise; both go through the source seam in
-`library/librarySource.ts`, and the whole test suite passes against either --
+`domain/track/librarySource.ts`, and the whole test suite passes against either --
 `JEAN_NO_LIBRARY_API=1 pnpm test` runs it against the fallback. Playlist routes are
 always read as playlists.
 
 The **home screen** is built: `#/home` (where `/` lands), shelves of albums in
-`home/shelves.ts`, and `#/all` for the whole library. Clicking an album plays the
+`features/home/shelves.ts`, and `#/all` for the whole library. Clicking an album plays the
 *shelf* it is on, starting at that album, and opens it as a view of its own -- a filter
 over the library array, never a playlist. The Web Worker and IndexedDB persistence are
 not built yet. A library

@@ -666,6 +666,35 @@ time, so the API always has connections left over, and both outcomes are remembe
 a track with no embedded cover 404s, and on a library that is mostly uncovered that was
 most of the traffic on every scroll back over ground already covered.
 
+**A cover belongs to an album, but it is addressed per row -- so ask once.** A
+playlist addresses artwork by index and the media library by path, which means a
+record's twelve tracks are twelve URLs for one picture and the browser cannot
+know they are the same. *Measured* against the live player, the first twelve
+rows of the library: twelve requests, **identical ETag on every one**, 633 KB
+each -- 7.6 MB fetched to draw one cover twelve times at 34px. `albumCoverRows`
+in `playlist/grouping.js` points every row at its album run's first row, off the
+same runs the album layout is already grouping for, so it costs nothing new.
+*Measured* on the fixture: walking a 54-track, 12-album playlist went from **54
+requests to 12**.
+
+That an album has one cover is not a new assumption -- the album layout has only
+ever drawn one -- but it was checked rather than asserted: 35 random albums and
+then the 14 most compilation-shaped runs on the player, Various Artists
+collections with fifteen different track artists in them. Every track of every
+one returned the same ETag. Across the 35, 462 requests became 35 and 328 MB
+became 24 MB.
+
+Two related facts. **The player's ETag is content-derived** -- two indices off
+one album carry the same one -- and that is worth knowing and never worth relying
+on, because an HTTP cache is keyed by URL and so never matches across two rows
+unless the URL is shared too. And **`Cache-Control: max-age=3, must-revalidate`**
+is all the player gives, so a cover redrawn more than three seconds later costs a
+revalidation; the fake models both, because a fake sending no headers at all
+reproduces the bug permanently and unfixably from the client, which is how it
+went unnoticed. There is **no way to ask for a thumbnail**: every query parameter
+is ignored and the full-size image is what you get, which is why the request
+count is the only thing there is to reduce.
+
 Two traps, both of which have already shipped bugs:
 
 - **Measurements are cached by *item key*, and the default key is the index.** Two

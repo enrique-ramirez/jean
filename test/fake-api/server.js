@@ -1,4 +1,5 @@
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -97,7 +98,15 @@ export function createServer({ state = createState(), serveDir = null } = {}) {
     if (path.startsWith('/api/')) {
       const body = method === 'POST' ? await readBody(request) : null
       state.record(method, path + url.search, body)
-      const handled = await handleApi({ state, method, path, url, body, response })
+      const handled = await handleApi({
+        state,
+        method,
+        path,
+        url,
+        body,
+        headers: request.headers,
+        response,
+      })
       if (handled) return
       return json(response, { error: `no fake route for ${method} ${path}` }, 404)
     }
@@ -129,7 +138,7 @@ export function createServer({ state = createState(), serveDir = null } = {}) {
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function handleApi({ state, method, path, url, body, response }) {
+async function handleApi({ state, method, path, url, body, headers, response }) {
   const segments = path.split('/').filter(Boolean).slice(1)
   const [head, ...rest] = segments
 
@@ -323,7 +332,7 @@ async function handleApi({ state, method, path, url, body, response }) {
     if (!state.library.supported) return empty(response, 501)
     const file = state.libraryArtworkFor(url.searchParams.get('path'))
     if (!file) return empty(response, 404)
-    return serveFile(join(HERE, 'artwork', file), response)
+    return serveArtwork(join(HERE, 'artwork', file), headers, response)
   }
 
   if (method === 'GET' && head === 'artwork' && rest.length === 2) {
@@ -331,7 +340,7 @@ async function handleApi({ state, method, path, url, body, response }) {
     // 404 is the normal answer for a track with no embedded cover, not an
     // error. The fallback disc icon is a real state the UI has to handle.
     if (!file) return empty(response, 404)
-    return serveFile(join(HERE, 'artwork', file), response)
+    return serveArtwork(join(HERE, 'artwork', file), headers, response)
   }
 
   return false
@@ -432,6 +441,49 @@ function serveStatic(root, path, response) {
 function serveFile(file, response) {
   if (!existsSync(file)) return empty(response, 404)
   response.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream' })
+  createReadStream(file).pipe(response)
+  return true
+}
+
+// Artwork is cached, and the exact terms are the player's rather than something
+// convenient: *measured* against foobar2000, `Cache-Control: max-age=3,
+// must-revalidate` with a **content**-derived ETag, and a 304 for a conditional
+// request that matches.
+//
+// Modelling it is not decoration. Without headers the browser refetches a cover
+// it drew a moment ago, so a fake that sends none makes twelve rows of one album
+// look like twelve requests whatever the app does -- which is exactly the bug
+// under test, permanently reproduced, and unfixable from the client. With them,
+// the rows after the first are cache hits and the count means something.
+//
+// The ETag being content-based is worth knowing and is *not* worth relying on:
+// two indices off the same album carry the same one, but an HTTP cache is keyed
+// by URL, so it never matches across two rows unless the URL is shared too.
+// That is the whole reason `albumCoverRows` exists.
+const etags = new Map()
+
+function serveArtwork(file, requestHeaders, response) {
+  if (!existsSync(file)) return empty(response, 404)
+
+  let etag = etags.get(file)
+  if (!etag) {
+    etag = `"${createHash('sha1').update(readFileSync(file)).digest('hex').slice(0, 16)}"`
+    etags.set(file, etag)
+  }
+
+  const headers = {
+    'Cache-Control': 'max-age=3, must-revalidate',
+    ETag: etag,
+    'Content-Type': MIME[extname(file)] ?? 'application/octet-stream',
+  }
+
+  if (requestHeaders['if-none-match'] === etag) {
+    response.writeHead(304, headers)
+    response.end()
+    return true
+  }
+
+  response.writeHead(200, headers)
   createReadStream(file).pipe(response)
   return true
 }

@@ -74,6 +74,34 @@ export function groupByAlbum(rows) {
   return groups
 }
 
+// Which row's cover every row wears. The album layout draws one cover per group
+// already -- `AlbumGroup` asks for `group.start`'s -- and this is the same
+// answer shaped for a list, where every row draws its own.
+//
+// It exists because artwork is addressed per row and not per album: a playlist
+// by index, the media library by path. So twelve tracks off one record are
+// twelve URLs for one picture, and the browser cannot know they are the same.
+// *Measured* against the live player, the first twelve rows of the library:
+// twelve requests, the same ETag on all of them, 633 KB each -- 7.6 MB fetched
+// to draw one cover twelve times at 34px.
+//
+// Pointing them all at the run's first row makes it one URL, which the browser
+// then coalesces on its own. Across 35 sampled albums that took 462 requests
+// down to 35, and 328 MB to 24 MB.
+//
+// The assumption is that an album has one cover, and it is not a new one: the
+// album layout has always drawn exactly one, so this makes the two layouts
+// agree rather than introducing a claim. It was checked anyway, because it is
+// the kind of thing that is true in one library and false in the next -- 35
+// random albums and then the 14 most compilation-shaped ones on the player,
+// Various Artists collections with fifteen different track artists in them.
+// Every track of every one of them returned the same ETag.
+export function albumCoverRows(groups, length) {
+  const cover = new Int32Array(length)
+  for (const group of groups) cover.fill(group.start, group.start, group.start + group.count)
+  return cover
+}
+
 // One byte per row: is this row part of an album that spans more than one disc?
 // The list layout draws no album header to hang a disc heading from, so there
 // the disc travels with the track number instead -- and only where there is

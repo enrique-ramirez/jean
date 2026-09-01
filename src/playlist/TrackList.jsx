@@ -12,7 +12,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { ALBUM_COVER, ALBUM_COVER_COMPACT, AlbumGroup } from './AlbumGroup.jsx'
 import { animateScrollTo } from '../ui/animateScroll.js'
 import { TrackRow } from './TrackRow.jsx'
-import { multiDiscRows } from './grouping.js'
+import { albumCoverRows, multiDiscRows } from './grouping.js'
 import styles from './TrackList.module.css'
 
 const ROW_HEIGHT = 46
@@ -67,6 +67,22 @@ export const TrackList = forwardRef(function TrackList(
     () => (isAlbumLayout ? null : multiDiscRows(groups, rows.length)),
     [isAlbumLayout, groups, rows.length],
   )
+
+  // Off the same runs, and only where rows draw their own covers. The album
+  // layout asks `AlbumGroup` for one cover per group and never gets here.
+  const coverRows = useMemo(
+    () => (isAlbumLayout || !showArtwork ? null : albumCoverRows(groups, rows.length)),
+    [isAlbumLayout, showArtwork, groups, rows.length],
+  )
+
+  // A row position becomes the ref the source addresses that cover by: first to
+  // the album run's opening row, then through `indices`, because a filtered view
+  // renumbers everything. Doing it in the other order would look up a playlist
+  // index in a table of row positions.
+  const coverIndexOf = (position) => {
+    const row = coverRows ? coverRows[position] : position
+    return indices ? indices[row] : row
+  }
 
   // How far down the scroll container the list actually begins. The view header
   // and the toolbar sit above it, so row 0 is not at scroll offset 0 -- and
@@ -304,6 +320,7 @@ export const TrackList = forwardRef(function TrackList(
               row={rows[virtualRow.index]}
               index={virtualRow.index}
               itemIndex={indices ? indices[virtualRow.index] : virtualRow.index}
+              coverIndex={coverIndexOf(virtualRow.index)}
               source={source}
               columns={columns}
               template={template}

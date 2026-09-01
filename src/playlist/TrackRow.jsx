@@ -83,6 +83,10 @@ function TrackRowComponent({
   row,
   index,
   itemIndex,
+  // The ref whose cover this row draws -- its album's first row, so a record's
+  // worth of rows share one URL and therefore one request. Its own, when the
+  // caller has no grouping to hand.
+  coverIndex = itemIndex,
   source,
   columns,
   template,
@@ -140,7 +144,7 @@ function TrackRowComponent({
 
       {/* index is the row's place in the view; itemIndex is the ref the source
           addresses it by. They differ in a filtered view. */}
-      {showArtwork ? <Artwork src={source.artworkUrl(itemIndex)} size={34} /> : null}
+      {showArtwork ? <Artwork src={source.artworkUrl(coverIndex)} size={34} /> : null}
 
       <span className={styles.names} data-inline={note !== null}>
         <span className={styles.title}>{title}</span>

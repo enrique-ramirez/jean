@@ -66,3 +66,59 @@ test.describe('artwork loading', () => {
     expect(again, `${seen} covers on the way down, ${again} on the way back`).toBe(0)
   })
 })
+
+// The other half of the traffic, and a different question from the one above.
+// That one is about *when* a cover is asked for; this is about how many covers
+// there are. Artwork is addressed per row -- a playlist by index, the library by
+// path -- so a record's twelve tracks are twelve URLs for one picture and the
+// browser has no way to know. *Measured* against the live player, the first
+// twelve rows of the library: twelve requests, identical ETag on every one,
+// 633 KB each, to draw one cover twelve times at 34px.
+test.describe('one cover per album, not per track', () => {
+  test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'compact' } })
+
+  // The captured fixture is 54 tracks in 12 albums, so the two numbers are far
+  // enough apart that nothing ambiguous sits between them.
+  const TRACKS = 54
+  const ALBUMS = 12
+
+  const walkTheList = async (page) => {
+    for (let step = 0; step < 12; step += 1) {
+      await page.evaluate(() => document.querySelector('main').scrollBy(0, 300))
+      // Past the queue's settle gate, or the rows go by without ever asking.
+      await page.waitForTimeout(400)
+    }
+    await page.waitForTimeout(1500)
+  }
+
+  test('walking the whole list costs one request an album', async ({ page, player }) => {
+    await page.goto('/#/p7')
+    await expect(page.locator('[role="row"]').first()).toBeAttached()
+    await walkTheList(page)
+
+    const asked = requestsTo(player, 'artwork').length
+    // Measured: 54 before this, one per row, and 12 after. The bound is nearer
+    // the album count than the track count on purpose -- anything that drifts
+    // back towards one-per-row should fail here rather than merely look worse.
+    expect(asked, `${asked} requests for ${TRACKS} tracks in ${ALBUMS} albums`).toBeLessThanOrEqual(
+      ALBUMS + 3,
+    )
+  })
+
+  test('the rows of one album point at one URL', async ({ page }) => {
+    await page.goto('/#/p7')
+    await expect(page.locator('[role="row"]').first()).toBeAttached()
+    await walkTheList(page)
+
+    // The property rather than the count: covers on screen are far fewer than
+    // rows on screen, because rows off the same record share a src. A count
+    // alone would also pass if the covers simply had not loaded.
+    const { rows, covers } = await page.evaluate(() => {
+      const drawn = [...document.querySelectorAll('main [role="row"] img')]
+      return { rows: drawn.length, covers: new Set(drawn.map((img) => img.src)).size }
+    })
+
+    expect(rows).toBeGreaterThan(8)
+    expect(covers, `${covers} covers across ${rows} rows`).toBeLessThan(rows / 2)
+  })
+})

@@ -1193,15 +1193,28 @@ you are looking at does not. It runs only while the pill is on screen -- the pil
 stays mounted so it can animate out, and an animation ticking behind an invisible
 element for a whole session costs something and shows nothing.
 
-**Slow is not the same as smooth, and the unit is pixels per second.** That arrow
-first moved 2.1px over a 2.3s cycle -- about **1.8px a second** -- and read as
-stuttering: the transform changed every frame, but by so little the screen had
-nothing to draw in between, so it held still, jumped, held still. It is now 1.6px
-over 850ms, ~3.8px a second. Do not reach for a per-frame figure to judge this:
-the same animation moves half as far per frame on a 120Hz display, so it measures
-the monitor rather than the motion -- and a sample shorter than one cycle lands
-mostly on the slow ends of an ease-in-out, which is how the first measurement here
-looked conclusive while being wrong.
+**Slow is not the same as smooth, and speed is not the whole of it either.** That
+arrow first moved 2.1px over a 2.3s cycle -- about **1.8px a second** -- and read
+as stuttering; raising it to 1.6px over 850ms, ~3.8px a second, was necessary and
+not sufficient. It still read as *two frames*, up and down, and the cause was the
+curve's shape rather than its speed: **any easing on a two-stop keyframe brings
+the element to a dead stop at 0%, 50% and 100%.** *Measured*, 18% of frames moved
+less than 0.02px -- visually nothing -- so the eye integrated the rest into two
+resting positions with a flick between them. It is now a sine sampled into six
+stops and interpolated `linear`, which has a non-zero slope in every segment: 2%
+still frames, 2.4px over the same 850ms. `linear` there is load-bearing, not a
+default -- an easing would turn the six stops into six little ease-in-outs and
+reintroduce the stop six times over.
+
+Two things were ruled out before the curve was, and both are worth ruling out
+first next time. **Sub-pixel rasterisation**: pausing the animation at 34 phases
+and hashing the rendered icon gave 31 distinct images at 1x DPR, so the browser
+was drawing the in-between positions perfectly well -- there was nothing there to
+draw. And **a per-frame figure judges the monitor, not the motion**: the same
+animation moves half as far per frame at 120Hz, which is how the first
+measurement here looked conclusive while being wrong. Per-frame numbers are only
+good for comparing two curves on one display; state the speed in px/s and the
+still-frame fraction, which are both display-independent.
 
 ## Development
 

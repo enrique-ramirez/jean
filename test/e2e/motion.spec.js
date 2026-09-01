@@ -93,7 +93,7 @@ test.describe('the now-playing arrow', () => {
 
   const pill = (page) => page.getByRole('button', { name: 'Now playing' })
 
-  // Consecutive frames rather than a timer: the nod runs at 2.3s, so a sample
+  // Consecutive frames rather than a timer: the nod runs at 850ms, so a sample
   // slower than a frame can land twice in the same place and prove nothing.
   const frames = (page, count) =>
     page.evaluate(
@@ -149,6 +149,40 @@ test.describe('the now-playing arrow', () => {
     // will not click a box that is still moving, and neither will a thumb.
     const boxes = new Set(seen.map((frame) => frame.box))
     expect(boxes.size, `the pill moved through ${boxes.size} positions`).toBe(1)
+  })
+
+  // The complaint this curve was rebuilt for: it read as two frames, up and
+  // down, rather than as movement. The cause was not the frame rate and not
+  // sub-pixel rasterisation -- both were measured and both were fine -- it was
+  // that *any* easing on a two-stop keyframe brings the element to a dead stop
+  // at 0%, 50% and 100%. Nearly a fifth of every cycle was spent not moving,
+  // and the eye turned the rest into two resting positions.
+  //
+  // So the thing to assert is not that the arrow moves, which the old curve
+  // also did and which the test above already covers. It is that it never
+  // stops: six sine-sampled stops interpolated linearly have a non-zero slope
+  // in every segment.
+  test('it never holds still, which is what made it look like two frames', async ({
+    page,
+    player,
+  }) => {
+    await showPill(page, player)
+    const seen = await frames(page, 48)
+    // `matrix(a, b, c, d, tx, ty)` -- the vertical offset is the last of them.
+    const ys = seen.map((frame) => Number(frame.arrow.match(/matrix\(([^)]*)\)/)[1].split(',')[5]))
+    const steps = ys.slice(1).map((y, i) => Math.abs(y - ys[i]))
+
+    // A frame that moved less than this is a frame that drew nothing new.
+    // Allowing a few covers the one frame that straddles each turnaround, where
+    // the arrow genuinely does reverse, and a stray long frame from the runner.
+    const still = steps.filter((step) => step < 0.02).length
+    expect(still / steps.length, `${still} of ${steps.length} frames were still`).toBeLessThan(0.1)
+
+    // And it is a lean, not a bounce. Asserted because the cheap way to make
+    // small motion read as motion is to make it bigger, and that is the one
+    // direction this must not go: the arrow is 14px.
+    const travel = Math.max(...ys) - Math.min(...ys)
+    expect(travel).toBeLessThan(3)
   })
 
   test('it points the way it is pointing', async ({ page, player }) => {

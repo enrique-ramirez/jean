@@ -110,11 +110,11 @@
    make five unrelated readings out of it. */
 .rail {
   display: flex;
-  /* Never wraps here. Five figures come to about 550px and the narrowest this
-     layout ever gets is the 720px breakpoint, below which it becomes a grid --
-     a wrapped flex row would put a hairline at the *start* of the second line,
-     where it separates a figure from the edge of the screen rather than from
-     another figure. */
+  /* Never wraps, at any width. A wrapped row puts a hairline at the *start* of
+     its second line, where it separates a figure from the edge of the screen
+     rather than from another figure -- and two lines of figures stop reading as
+     one sentence about one library. Five come to about 550px, so this only
+     matters below the breakpoint, where the rail scrolls instead. */
   flex-wrap: nowrap;
   gap: 0;
   margin: 6px 0 0;
@@ -193,14 +193,35 @@
     font-size: 1.75rem;
   }
 
-  /* A grid rather than a wrapping row, so "first in its line" is a column
-     position the CSS can actually name. Three columns puts tracks, albums and
-     artists on one line and the rest on the next, and the rule is dropped from
-     whichever figure opens each line. */
+  /* One line, always, and it scrolls if it has to. Two lines of figures read
+     as two separate statements about the library rather than one sentence, and
+     the second line -- two figures and three columns of nothing -- looks like
+     the row failed to fill rather than like it ended.
+
+     Full-bleed, so the cut lands on the screen edge. That is the whole reason
+     for the negative margin: a rail clipped at the 16px gutter reads as
+     something drawn too wide, while the same rail clipped at the edge of the
+     glass reads as something that continues. The partial figure hanging off it
+     is the affordance -- App Store and Apple Music both peek the next item
+     rather than fading it out, and a fade here would sit on top of a hairline
+     and make the separator look like the edge of the screen. No snapping
+     either: these are five parts of one sentence, not five pages. */
   .rail {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    row-gap: 12px;
+    /* `.said` aligns its children to flex-start, so without this the rail sizes
+       to its own content and overflows the header instead of scrolling inside
+       it -- a scroll container with nothing to scroll against. */
+    align-self: stretch;
+    margin: 6px -16px 0;
+    padding: 0 16px;
+    overflow-x: auto;
+    /* The header sits inside the app's only scroll container, and a fling that
+       runs out of rail should stop there rather than chain outward. */
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .rail::-webkit-scrollbar {
+    display: none;
   }
 
   /* One column on a phone, and the button goes full width underneath. There is
@@ -222,19 +243,16 @@
     justify-content: space-between;
   }
 
-  .figure {
-    padding: 2px 12px;
-  }
-
-  .figure:nth-child(3n + 1) {
-    padding-left: 0;
-    border-left: 0;
-  }
-
+  /* Never shrink: a figure squeezed until "30,441" wraps under its own
+     hairline is worse than one you have to scroll to. */
+  .figure,
   .counting {
-    grid-column: 1 / -1;
-    align-self: start;
-    padding-left: 0;
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .figure {
+    padding: 2px 14px;
   }
 
   /* Same call the shelf blurbs make one component over: on a phone the shelves

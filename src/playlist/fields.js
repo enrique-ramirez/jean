@@ -12,7 +12,7 @@ const FIELDS = [
   ['duration', '%length_seconds%'],
   ['playCount', '%lastfm_play_count%'],
   ['lastPlayed', '%lastfm_last_played%'],
-  ['rating', '$meta(rating)'],
+  ['rating', '%rating%'],
   ['year', '%year%'],
   ['genre', '%genre%'],
   ['codec', '%codec%'],

@@ -122,30 +122,67 @@ implementation for the shelves, the front door and All Music: a set filled in th
 wrong order plays the wrong track and a player that refuses playlist writes has to
 degrade rather than do nothing, and neither is worth getting right twice.
 
-**A rating tag is not one scale, so Jean reads (0, 5] and calls everything else
-unrated.** *Measured* on one real library: 375 tracks at `5`, 39 at `100`, 40 at
-`-1` and 27 at `0` standing in for unrated, and 17 carrying half stars -- four
-tools' conventions in one folder tree, and every install has its own mix. Per-value
-rescaling looks tempting until the mixed case: on that library `5` is five stars
-under one reading and one star under the other, and nothing in the tag says which.
-Per-library scale detection is worse, because the library holds both at once. So
-`0` and `-1` are absences rather than bad reviews, `100` is not a rating Jean can
-read, and the owner's tag cleanup is where the rest belongs -- `playlist/rating.js`
-is the one place that decides, and the home shelves and the column both ask it.
+**A rating tag is a bare number with no declared scale, so the magnitude picks
+the scale.** *Measured* over one real 30,441-track library, every rating on it:
+375 tracks at `5`, 39 at `100`, 40 at `-1` and 27 at `0`, 14 at `2.5` and 3 at
+`3.5`, spread over MP3, FLAC, Vorbis, AAC and WMA. Four taggers' conventions in
+one folder tree, and the field says which one it is using nowhere. Reading only
+0-5 would call 39 of those unrated, and that is not "Jean cannot tell" -- it is
+Jean ignoring a rating that is plainly there. So `playlist/rating.js` bands it:
+`<= 0` unrated, `<= 5` the native scale, `<= 10` the 0-10 one, `<= 100` the
+0-100 one FLAC's `RATING` has converged on, `<= 255` a POPM byte written out as
+text. Anything larger is not read as a rating and specifically is **not clamped
+to five stars** -- a number that big means the field is being used for something
+else, and inventing full marks out of it is the loudest possible way to be wrong.
+
+Two boundaries are genuinely ambiguous: `5` is full marks on the native scale and
+half marks on a 0-10 one, `10` is full marks on 0-10 and a twentieth of a 0-100
+one. Both go to the lower, more common scale. **Detecting one scale per library
+is worse than banding, not better** -- the library above holds `5` and `100` at
+the same time, so there is no single answer for it, and picking one would misread
+375 tracks to rescue 39.
+
+**POPM never arrives through this field, which is what makes the bands safe.**
+POPM is a binary ID3 frame, not text, and *measured* against the live player
+`%popm%` and `%rating wmp%` both return `?` -- foobar2000 has no such field
+without a component. Every MP3 rating on that library arrives as `5`, `3` or `0`,
+i.e. from `TXXX:RATING`. That matters because a 0-255 byte and a 0-100 percentage
+overlap on 1-100 and cannot be told apart by value: Windows Media Player's `64`
+is two stars as POPM and three as a percentage. Since only one of the two can
+reach a text field, there is nothing to disambiguate. If a POPM field ever does
+surface it needs its own column and its own scale, never this one's bands.
+
+**The rating field is `%rating%`, not `$meta(rating)`, and the difference is
+whose ratings Jean can see.** `foo_playcount` -- the standard way to rate in
+foobar2000 -- takes over `%RATING%` and answers from its own database rather than
+from the files, so a user who rates in foobar's own UI has nothing in their tags
+at all and `$meta(rating)` shows Jean an empty column. *Measured* on a player
+without it, the two return byte-identical values, so nothing is lost by
+preferring the one that also works with the component. It fixes the capability
+probe as a side effect: **`$meta()` returns `''` for a field that does not exist,
+never `'?'`**, so it can never be feature-detected, while `%rating%` answers `?`
+per track and behaves like every other column.
 
 **Halves are displayed, never invented.** A file that says `3.5` gets three and a
 half stars, because rounding it to 4 would be Jean disagreeing with the player
-about what the library contains. Rounding to the nearest *half* is only so an
-arbitrary decimal has a star to land on. The corollary is for the rating control
+about what the library contains. Rounding to the nearest *half* is only so a
+rescaled value has a star to land on. The corollary is for the rating control
 that does not exist yet: its increment is whole stars unless the library already
-contains halves -- `hasHalfStars()` samples for that the way `fieldIsAvailable`
-does -- because introducing halves into a library that has none is a change to
-somebody's tags they did not ask for. Five stars are always drawn and only the
-fill varies, which is Letterboxd's and Plex's shape rather than drawing three
-stars for a three-star record: the count is legible at a glance only against a
-track, and a row whose stars end somewhere different each time cannot be scanned
-down. The empty star is drawn at `--border-strong`, because it is the one that
-gets drawn thirty thousand times.
+contains halves -- `hasHalfStars()` samples for that -- because introducing
+halves into a library that has none is a change to somebody's tags they did not
+ask for.
+
+**A library nobody has rated does not get the column.** Every other column
+answers `--` per track and is quiet about it; five empty stars on thirty thousand
+rows is not, and it states "unrated" thirty thousand times about a question the
+player was never asked. So Rating's probe is not "does the field resolve" but
+"is there a rating anywhere", and it is a **full scan rather than a sample** --
+ratings are sparse, 500 in 30,441, and a 200-row sample misses them outright
+about one library in twenty-five. One array index over 30k rows is well under a
+millisecond, once. Five stars are always drawn and only the fill varies, which is
+Letterboxd's and Plex's shape rather than drawing three stars for a three-star
+record: a row whose stars end somewhere different each time cannot be scanned
+down. The empty star is `--border-strong`, because it is the one drawn most.
 
 **A figure at nothing is not drawn, and nouns are pluralised only when the count
 earns it.** Somebody trying Jean against a folder of four songs is looking hardest
@@ -1011,8 +1048,14 @@ and `%replaygain_*%` do not. **Ratings exist but are sparse**: `$meta(rating)` a
 `%rating%` both answer on exactly 500 of 30,441 tracks — an earlier note here said
 they were empty on every track, which was a five-row sample landing on unrated ones.
 Sparse is its own trap: 375 of those 500 are the value `5`, so anything sorting by
-rating is sorting a flat tie. Those are one install's components, not a rule: detect,
-never assume, and sample properly.
+rating is sorting a flat tie, and a 200-row capability sample misses the field
+entirely about one library in twenty-five. Those are one install's components, not a
+rule: detect, never assume, and sample properly — or, where the field is this sparse,
+do not sample at all. **`$meta(x)` cannot be feature-detected**: it answers `''` for
+a field that does not exist, where `%x%` answers `?`. Verified across `$meta(rating
+wmp)`, `$meta(popularimeter)`, `$meta(rating winamp)`, `$meta(popm)` and
+`$meta(fmps_rating)`, all of which return `''` on every one of 30,441 tracks and none
+of which distinguishes "no such field" from "nothing in it".
 
 `player.info.name` distinguishes foobar2000 from DeaDBeeF. Support DeaDBeeF on a best-effort
 basis — feature detection covers most of it. Do not invest in a second title-format dialect

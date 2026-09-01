@@ -135,9 +135,14 @@ test.describe('a field the player cannot resolve', () => {
     // 'playCount' is in the stored defaults, so this is the case where the
     // setting and the player disagree: the setting says show it, the player
     // cannot supply it, and the row must not gain an empty column for it.
+    //
+    // Rating is out for a different reason and is worth not confusing with this
+    // one: the field resolves fine, but nothing in the captured library carries
+    // a rating, and a column of five empty stars on every row is a claim rather
+    // than an absence. See rating.spec.
     const measured = await templateMatchesCells(page)
     expect(measured.tracks).toBe(measured.cells)
-    expect(measured.cells).toBe(LEADING + 2) // Time and Rating, not Plays
+    expect(measured.cells).toBe(LEADING + 1) // Time only
   })
 })
 

@@ -18,7 +18,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 // metadata, lyrics -- will want fields the track list has no use for.
 const EXPRESSIONS = [
   '%tracknumber%', '%title%', '%artist%', '%album%', '%album artist%', '%length_seconds%',
-  '%lastfm_play_count%', '%lastfm_last_played%', '$meta(rating)', '%year%', '%genre%',
+  '%lastfm_play_count%', '%lastfm_last_played%', '%rating%', '%year%', '%genre%',
   '%codec%', '%bitrate%',
   '%path%', '%length%', '%discnumber%', '%filesize%', '%last_modified%', '%samplerate%',
   '%channels%', '$len($meta(unsynced lyrics))',

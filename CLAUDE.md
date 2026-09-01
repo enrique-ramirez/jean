@@ -315,8 +315,9 @@ a client-side re-sort.
   refetch on window focus, so a count edited on the desktop is corrected on the way back
   and the views keyed on it re-key. The live `playlistItems` tripwire in `API.md` is still
   not wired; the arithmetic that cannot survive being wrong re-reads the count itself.
-- Artwork lazy-loading and `Mosaic` are **on hold at the owner's request** -- changes
-  coming there, do not test or rework them yet.
+- `Mosaic` is **on hold at the owner's request** -- changes coming there, do not test or
+  rework it yet. Artwork loading was on hold with it and no longer is; see the artwork
+  queue under *Rendering*.
 
 ### Never mutate playlists as a side effect
 
@@ -508,9 +509,27 @@ which are required, not optional:
 unbounded. `content-visibility: auto` is not a substitute — it skips paint but still
 builds every node.
 
-Artwork is per-playlist-index (`/api/artwork/{playlistId}/{index}`, ~46 KB each). It
-**must** be lazy-loaded off the virtualizer's visible window. Eagerly fetching a 2,000-album
-grid is ~100 MB of images.
+Artwork is per-playlist-index (`/api/artwork/{playlistId}/{index}`, ~46 KB each), and
+**`loading="lazy"` is not the mechanism.** It asks whether a row is visible, and a
+virtualised list moves rows through the viewport by the hundred: *measured*, one jump to
+the playing track across a 30,441-row playlist started **499 artwork requests** for a
+screen that comes to rest showing 41. What that costs is not frames, it is the rest of
+the app. Nothing blocks the main thread -- zero long tasks for the whole flight -- which
+is exactly why it reads as the player ignoring you rather than as jank: the browser
+gives an origin six HTTP/1.1 connections, the update stream holds one of them open
+forever, and everything Jean asks for afterwards queues behind covers for rows that are
+long gone. Against a player taking 200 ms a cover, a play/pause pressed a second and a
+half after the jump waited **122 ms** for a socket, and the queue drained for **19.8 s**.
+
+`ui/artworkQueue.js` is the answer, and the load-bearing part of it is **time, not
+capacity**: a row has to still be mounted 100 ms after it appeared before it is even
+queued. A queue on its own is worse than nothing -- against a player that answers
+instantly it drains as fast as the rows churn and lets every one of them through,
+measured at 1,115 requests, *more* than the native behaviour it replaced. With the
+settle gate the same jump costs **41 requests, one per row on screen**. Three run at a
+time, so the API always has connections left over, and both outcomes are remembered:
+a track with no embedded cover 404s, and on a library that is mostly uncovered that was
+most of the traffic on every scroll back over ground already covered.
 
 Two traps, both of which have already shipped bugs:
 

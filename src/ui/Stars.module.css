@@ -1,0 +1,40 @@
+.stars {
+  /* Spatial, so the media query owns it and not the JS breakpoint -- otherwise
+     the stars resize at 860px while the column they sit in resizes at 720. */
+  --star-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  /* The empty state, and it is the one that gets drawn thirty thousand times.
+     Quiet enough that a list of unrated tracks reads as texture rather than as
+     a column of rejected records. */
+  color: var(--border-strong);
+}
+
+.star {
+  position: relative;
+  display: block;
+  width: var(--star-size);
+  height: var(--star-size);
+}
+
+.star svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Filled and stroked in the same colour, so a set star is a solid shape rather
+   than a tinted outline -- at 12px the stroke is most of what you see. */
+.fill {
+  color: var(--accent);
+  fill: currentColor;
+}
+
+@media (max-width: 720px) {
+  .stars {
+    --star-size: 11px;
+    gap: 1.5px;
+  }
+}

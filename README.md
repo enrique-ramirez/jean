@@ -190,13 +190,20 @@ uninstall and an instant fallback if something breaks.
 | Setup | Location |
 |---|---|
 | foobar2000, Windows | `%APPDATA%\foobar2000-v2\beefweb\` |
-| foobar2000, macOS | `~/Library/foobar2000-v2/beefweb/` |
 | foobar2000, **portable install** | next to the executable — `<install dir>\profile\beefweb\`, *not* `%APPDATA%` |
 | DeaDBeeF, Linux/BSD | `~/.config/deadbeef/beefweb/` |
 | DeaDBeeF, macOS | `~/Library/Preferences/deadbeef/beefweb/` |
 
 The portable case catches people out: a deploy to `%APPDATA%` there fails silently,
 because the files copy fine and beefweb simply keeps serving the stock UI.
+
+**There is no foobar2000 build of beefweb for macOS.** This table used to claim one,
+at `~/Library/foobar2000-v2/beefweb/`, which looks right because it is where
+foobar2000 keeps its Mac profile — but the released `.fb2k-component` carries
+`foo_beefweb.dll` and `x64/foo_beefweb.dll` and nothing else. Checked by unzipping
+it, after an afternoon spent asking whether the component could be developed
+against a local foobar2000 on a Mac. It cannot: there would be no beefweb there to
+serve it. DeaDBeeF on macOS is a different question and does work.
 
 ### You do not have to tell Jean your port
 

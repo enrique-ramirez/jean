@@ -1,27 +1,21 @@
 import { memo } from 'react'
 
 import { Artwork } from '../ui/Artwork.jsx'
+import { Stars } from '../ui/Stars.jsx'
 import { formatTime } from '../player/position.js'
 import { FIELD, number, timestamp, value } from './fields.js'
 import { discNumber } from './grouping.js'
+import { MAX_STARS, ratingOf, toStars } from './rating.js'
 import styles from './TrackRow.module.css'
 
-const MAX_STARS = 5
-
+// An unreadable rating is drawn as unrated rather than as '--'. The column is
+// already hidden wholesale when the player cannot resolve the field at all, so
+// inside a library that has ratings the only thing an empty tag can mean is
+// that this track has none.
 function Rating({ row }) {
-  const rating = number(row, FIELD.rating)
-  if (rating === null || rating < 0 || rating > MAX_STARS) return <span className={styles.absent}>--</span>
-
-  const filled = Math.round(rating)
-  return (
-    <span className={styles.rating} aria-label={`${filled} of ${MAX_STARS} stars`}>
-      {Array.from({ length: MAX_STARS }, (_, star) => (
-        <span key={star} data-off={star >= filled} aria-hidden="true">
-          *
-        </span>
-      ))}
-    </span>
-  )
+  const rating = ratingOf(row)
+  const stars = rating === null ? 0 : toStars(rating)
+  return <Stars value={stars} label={rating === null ? 'Unrated' : `${stars} of ${MAX_STARS} stars`} />
 }
 
 function shortDate(row) {

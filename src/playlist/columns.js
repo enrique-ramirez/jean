@@ -8,7 +8,9 @@ import { FIELD } from './fields.js'
 // cheaper than the round trip would be.
 export const OPTIONAL_COLUMNS = [
   { id: 'duration', label: 'Time', width: '4rem', compactWidth: '3.25rem', align: 'right', kind: 'duration', field: FIELD.duration },
-  { id: 'rating', label: 'Rating', width: '5.5rem', compactWidth: '4.25rem', kind: 'rating', field: FIELD.rating },
+  // Sized to the stars rather than to the word: five at 12px plus their gaps
+  // is 68px, and the slack is what keeps them off the column that follows.
+  { id: 'rating', label: 'Rating', width: '5rem', compactWidth: '4.5rem', kind: 'rating', field: FIELD.rating },
   { id: 'playCount', label: 'Plays', width: '3.75rem', compactWidth: '2.75rem', align: 'right', kind: 'playCount', field: FIELD.playCount },
   { id: 'album', label: 'Album', width: 'minmax(0, 1.4fr)', kind: 'text', field: FIELD.album },
   { id: 'lastPlayed', label: 'Last played', width: '6.5rem', kind: 'date', field: FIELD.lastPlayed },

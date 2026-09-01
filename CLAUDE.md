@@ -122,6 +122,31 @@ implementation for the shelves, the front door and All Music: a set filled in th
 wrong order plays the wrong track and a player that refuses playlist writes has to
 degrade rather than do nothing, and neither is worth getting right twice.
 
+**A rating tag is not one scale, so Jean reads (0, 5] and calls everything else
+unrated.** *Measured* on one real library: 375 tracks at `5`, 39 at `100`, 40 at
+`-1` and 27 at `0` standing in for unrated, and 17 carrying half stars -- four
+tools' conventions in one folder tree, and every install has its own mix. Per-value
+rescaling looks tempting until the mixed case: on that library `5` is five stars
+under one reading and one star under the other, and nothing in the tag says which.
+Per-library scale detection is worse, because the library holds both at once. So
+`0` and `-1` are absences rather than bad reviews, `100` is not a rating Jean can
+read, and the owner's tag cleanup is where the rest belongs -- `playlist/rating.js`
+is the one place that decides, and the home shelves and the column both ask it.
+
+**Halves are displayed, never invented.** A file that says `3.5` gets three and a
+half stars, because rounding it to 4 would be Jean disagreeing with the player
+about what the library contains. Rounding to the nearest *half* is only so an
+arbitrary decimal has a star to land on. The corollary is for the rating control
+that does not exist yet: its increment is whole stars unless the library already
+contains halves -- `hasHalfStars()` samples for that the way `fieldIsAvailable`
+does -- because introducing halves into a library that has none is a change to
+somebody's tags they did not ask for. Five stars are always drawn and only the
+fill varies, which is Letterboxd's and Plex's shape rather than drawing three
+stars for a three-star record: the count is legible at a glance only against a
+track, and a row whose stars end somewhere different each time cannot be scanned
+down. The empty star is drawn at `--border-strong`, because it is the one that
+gets drawn thirty thousand times.
+
 **A figure at nothing is not drawn, and nouns are pluralised only when the count
 earns it.** Somebody trying Jean against a folder of four songs is looking hardest
 at this screen, and "1 albums" tells them it was written for another library. The

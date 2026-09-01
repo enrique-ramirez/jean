@@ -165,21 +165,6 @@
   opacity: 0.4;
 }
 
-.absent {
-  color: var(--faint);
-  opacity: 0.5;
-}
-
-.rating {
-  display: inline-flex;
-  gap: 1px;
-  color: var(--accent);
-  letter-spacing: 1px;
-}
-
-.rating span[data-off='true'] {
-  color: var(--border-strong);
-}
 
 .equalizer {
   display: inline-flex;

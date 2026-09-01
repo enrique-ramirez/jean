@@ -1,7 +1,12 @@
 .finder {
   position: relative;
   display: flex;
-  flex: 1;
+  /* A 400px basis rather than `flex: 1`. The toolbar's spacer also grows, so
+     two flexible items split the free space evenly and the field settled at
+     about half the room it could have had -- measured on a phone, 195px of
+     field next to 180px of nothing. Asking for its full width up front and
+     letting it shrink leaves the spacer with nothing to claim. */
+  flex: 1 1 400px;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -13,6 +18,14 @@
   color: var(--muted);
 }
 
+/* The ring belongs to the field, not to the box inside it. The input is
+   chromeless by construction, so the global :focus-visible rule drawing a
+   second rounded rectangle around it read as a field nested in a field. */
+.finder:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .input {
   min-width: 0;
   flex: 1;
@@ -20,6 +33,13 @@
   background: none;
   font-size: 0.875rem;
   color: var(--text);
+}
+
+/* :focus, not a bare .input -- a lone class ties with the global :focus-visible
+   on specificity and loses on source order, which is how the inner ring
+   survived an `outline: none` that looked like it had already handled this. */
+.input:focus,
+.input:focus-visible {
   outline: none;
 }
 

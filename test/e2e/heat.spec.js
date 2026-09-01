@@ -152,6 +152,31 @@ test.describe('the shading introduces itself', () => {
     await expect(legend(page)).toBeHidden()
   })
 
+  // Measured on a Pixel 7: the legend is 288px hanging left from a flame button
+  // whose right edge sits ~262px into a 412px window, so `right: 0` put its own
+  // left edge at about -26px. The title read "LAY-COUNT SHADING" and the cool
+  // end of the scale it exists to explain was off screen entirely.
+  test('and fits inside the window it opens on', async ({ page }) => {
+    await openLibrary(page)
+    await expect(legend(page)).toBeVisible()
+
+    const box = await legend(page).boundingBox()
+    const { width } = page.viewportSize()
+
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(width)
+
+    // Inside the window and still whole: a legend clipped to fit would satisfy
+    // the arithmetic above and explain nothing. Both ends of the scale are the
+    // two things a swatch cannot say, so both have to be readable.
+    for (const end of ['never played', 'played most']) {
+      const label = legend(page).getByText(end, { exact: true })
+      const labelBox = await label.boundingBox()
+      expect(labelBox.x).toBeGreaterThanOrEqual(0)
+      expect(labelBox.x + labelBox.width).toBeLessThanOrEqual(width)
+    }
+  })
+
   test('any click at all dismisses it for good', async ({ page }) => {
     await openLibrary(page)
     await expect(legend(page)).toBeVisible()

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { Search, Shuffle } from 'lucide-react'
 
 import { playItem } from '../api/beefweb.js'
@@ -46,8 +46,20 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
     [rows, playedCount, playlist?.itemCount],
   )
 
+  // The field holds `query` and updates instantly; the scan runs off the
+  // deferred copy. Without this a keystroke carried a 30,000-row scan, a new
+  // match set for every mounted row to re-read, and a scroll, all before the
+  // character it typed could paint -- which is what makes a phone keyboard
+  // start dropping and reordering what you type into it.
+  //
+  // The library search has worked this way from the start. The finder is the
+  // same problem over the same number of rows, so it gets the same answer.
+  const deferredQuery = useDeferredValue(query)
   const haystacks = useSearchIndex(rows, isFinding)
-  const { matches, results } = useMemo(() => search(haystacks, query), [haystacks, query])
+  const { matches, results } = useMemo(
+    () => search(haystacks, deferredQuery),
+    [haystacks, deferredQuery],
+  )
 
   const play = useCallback((index) => playItem(playlist.id, index), [playlist?.id])
 

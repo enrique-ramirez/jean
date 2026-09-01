@@ -26,8 +26,13 @@ export function Finder({ rows, results, matches, query, onQueryChange, onPreview
     inputRef.current?.select()
   }, [])
 
+  // Whether the active result is where the user put it, or merely where a new
+  // query reset it. Previewing is for the first; see the effect below.
+  const navigated = useRef(false)
+
   useEffect(() => {
     setActive(0)
+    navigated.current = false
   }, [query])
 
   // Hover only counts if the pointer actually went somewhere.
@@ -77,13 +82,32 @@ export function Finder({ rows, results, matches, query, onQueryChange, onPreview
     return previous !== null && (event.clientX !== previous.x || event.clientY !== previous.y)
   }
 
+  // Preview follows the cursor through the results. It deliberately does not
+  // follow the *query*: while you are typing you are reading the dropdown, and
+  // the list behind it is not what you are looking at.
+  //
+  // Following the query was measured doing real damage on a phone. Each
+  // keystroke narrows the set, so the leading match is a different row every
+  // time -- typing "Gus" against a 30,441-track playlist jumped the list 11,751
+  // rows, which unmounts every rendered row, mounts a new screenful, and
+  // scrolls the container. The finder sits in a `position: sticky` toolbar
+  // *inside* that container, so the box being typed into was relaid out on
+  // every letter, and Android's keyboard lost its composition to it: GBoard's
+  // own suggestion strip came back reading "tersGU" for a typed "Guster".
+  //
+  // Nothing is lost. The dropdown already names every match and its position,
+  // Enter and a tap both scroll to what they play, and arrowing -- which is
+  // what "see each hit in place" was written for -- still previews.
+  const previewIndex = results[debouncedActive]
+
   useEffect(() => {
-    const index = results[debouncedActive]
-    if (index !== undefined) previewRef.current(index)
-  }, [debouncedActive, results])
+    if (!navigated.current) return
+    if (previewIndex !== undefined) previewRef.current(previewIndex)
+  }, [previewIndex])
 
   const step = (delta) => {
     if (results.length === 0) return
+    navigated.current = true
     setActive((current) => (current + delta + results.length) % results.length)
   }
 
@@ -131,7 +155,9 @@ export function Finder({ rows, results, matches, query, onQueryChange, onPreview
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => onConfirm(index)}
                 onMouseEnter={(event) => {
-                  if (aimedAt(event)) setActive(position)
+                  if (!aimedAt(event)) return
+                  navigated.current = true
+                  setActive(position)
                 }}
               >
                 <span className={styles.names}>

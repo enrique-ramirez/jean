@@ -2,7 +2,10 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* A width, not a min-width: the prose wants a measure, and on a narrow phone
+     the menu around it is capped, so this has to be able to give way. */
   width: 274px;
+  max-width: 100%;
   padding: 8px 8px 6px;
 }
 

@@ -65,6 +65,16 @@ test.describe(`opening the finder (${layout})`, () => {
 
     const target = results(page).nth(6)
     const box = await target.boundingBox()
+
+    // Somewhere else first, because that is what a pointer does and what this
+    // is asking about. The first enter after the finder opens is rejected by
+    // design -- there is no earlier position to compare it against -- so a
+    // single synthetic move onto a result proves nothing either way. This test
+    // used to get its movement for free: typing previewed the leading match,
+    // that scrolled the list, and Chrome dispatches a mousemove at the
+    // stationary pointer when content moves under it. Typing no longer scrolls
+    // anything, so the move has to be real.
+    await page.mouse.move(4, 4)
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
 
     await expect(target).toHaveAttribute('aria-selected', 'true')
@@ -302,3 +312,87 @@ test.describe(`at library scale (${layout})`, () => {
   })
 })
 }
+
+test.describe('the field is one field', () => {
+  test.use({ settings: { 'jean.heatIntroSeen': true } })
+
+  test('the focus ring goes round the field, not round a box inside it', async ({ page }) => {
+    await openLibrary(page)
+    await openFinder(page)
+    await expect(finder(page)).toBeFocused()
+
+    const rings = await page.evaluate(() => {
+      const input = document.querySelector('input[aria-label="Find in this playlist"]')
+      const ringOf = (element) => {
+        const style = getComputedStyle(element)
+        return style.outlineStyle === 'none' ? 0 : Number.parseFloat(style.outlineWidth) || 0
+      }
+      return { input: ringOf(input), field: ringOf(input.parentElement) }
+    })
+
+    // The input is chromeless by construction. The global :focus-visible rule
+    // drew a second rounded rectangle around it anyway -- a bare `.input` ties
+    // with `:focus-visible` on specificity and loses on source order -- so the
+    // pill ended up containing a visibly separate box.
+    expect(rings.input).toBe(0)
+    expect(rings.field).toBeGreaterThan(0)
+  })
+})
+
+test.describe('typing does not drag the list around', () => {
+  test.use({ librarySize: 30441, settings: { 'jean.heatIntroSeen': true } })
+
+  const scrollTop = (page) => page.locator('main').evaluate((element) => element.scrollTop)
+
+  test('narrowing a query leaves the view where it is', async ({ page }) => {
+    await page.goto('/')
+    await expect
+      .poll(() => page.getByRole('grid').getAttribute('aria-rowcount'), { timeout: 30000 })
+      .toBe('30441')
+
+    await openFinder(page)
+    const parked = await scrollTop(page)
+
+    // Every one of these narrows to a different leading match, so the old
+    // preview fired on all of them. "gus" alone jumped the list 11,751 rows --
+    // a full unmount and remount of the virtualised window, plus a scroll of
+    // the container the sticky finder is inside. Android's keyboard lost its
+    // composition to exactly that, and typed "Guster" came back scrambled.
+    await finder(page).pressSequentially('guster', { delay: 60 })
+    await page.waitForTimeout(600)
+
+    // You are reading the dropdown while you type, not the list behind it.
+    expect(Math.abs((await scrollTop(page)) - parked)).toBeLessThan(24)
+  })
+
+})
+
+test.describe('the field has room to type in', () => {
+  test.use({ settings: { 'jean.heatIntroSeen': true } })
+
+  test('it takes the space the toolbar has, rather than halving it', async ({ page }) => {
+    await openLibrary(page)
+    await openFinder(page)
+
+    const { gap, width } = await page.evaluate(() => {
+      const input = document.querySelector('input[aria-label="Find in this playlist"]')
+      const field = input.parentElement.getBoundingClientRect()
+      const flame = document
+        .querySelector('button[aria-label="Show play-count heat"]')
+        .getBoundingClientRect()
+      return { gap: flame.left - field.right, width: field.width }
+    })
+
+    // The field is as wide as it is allowed to be. Which limit binds depends on
+    // the viewport: a phone runs out of toolbar, a desktop hits the 400px
+    // measure the field caps itself at, and leftover room there is deliberate.
+    if (width < 396) {
+      // The toolbar's spacer also grows, so the field used to split the free
+      // space with it -- measured on a phone, 195px of field beside 180px of
+      // nothing.
+      expect(gap).toBeLessThan(40)
+    } else {
+      expect(width).toBeGreaterThanOrEqual(396)
+    }
+  })
+})

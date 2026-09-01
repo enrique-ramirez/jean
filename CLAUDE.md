@@ -128,6 +128,17 @@ own. **The accent on a sidebar icon means "this is playing" and nothing else** -
 tinting it by selection made the row you were looking at and the row you were listening
 to identical, which is precisely the pair this design exists to separate.
 
+**Find-in-list is not the search, and every list has one.** The search in the top
+bar filters the library down to matches and takes you to `#/search`; the finder
+walks you to a track inside the list already on screen, changing neither its rows
+nor their order. Both exist because they answer different questions, and the button
+says which list it is searching -- "Find in all music", "Find in this shelf" -- so
+the two are never mistaken for each other. It lived inside `PlaylistView` and so
+existed only for playlists, which left the two longest lists in the app without it;
+`playlist/useFinder.jsx` owns the whole of it now -- state, deferred scan, button
+and field -- and returns the node rather than the pieces, because a caller that
+assembles its own is the one that will assemble it wrongly.
+
 **Search is a persistent, always-visible control** that is *also* bound to `⌘K` and `/`.
 Not a keyboard shortcut with an icon added later — mobile has no keyboard, and an invisible
 affordance means the feature does not exist there. On mobile it belongs within thumb reach.

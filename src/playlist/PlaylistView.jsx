@@ -1,18 +1,17 @@
-import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
-import { Search, Shuffle } from 'lucide-react'
+import { useCallback, useMemo, useRef } from 'react'
+import { Shuffle } from 'lucide-react'
 
 import { playItem } from '../api/beefweb.js'
 import { useActiveItem, usePlaybackOrder, usePlayer } from '../player/usePlayer.js'
 import { Button } from '../ui/Button.jsx'
 import { PlayIcon } from '../ui/icons.jsx'
-import { Finder } from './Finder.jsx'
 import { librarySourceOf } from '../library/librarySource.js'
 import { Mosaic } from './Mosaic.jsx'
 import { TrackBrowser } from './TrackBrowser.jsx'
 import { ViewHeader } from './ViewHeader.jsx'
 import { summarise } from './stats.js'
-import { search, useSearchIndex } from './useSearchIndex.js'
 import { useAvailableFields } from './useAvailableFields.js'
+import { useFinder } from './useFinder.jsx'
 import { usePlaylistItems } from './usePlaylistItems.js'
 import styles from './PlaylistView.module.css'
 
@@ -36,29 +35,13 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
   const order = usePlaybackOrder()
   const { hasPlayCounts } = useAvailableFields(rows)
 
-  const [isFinding, setIsFinding] = useState(false)
-  const [query, setQuery] = useState('')
+  const finder = useFinder({ rows, browserRef, label: 'Find in playlist' })
 
   const stats = useMemo(
     // itemCount rather than rows.length: the header should state what the
     // playlist holds, not how much of it has arrived.
     () => ({ ...summarise(rows, playedCount), trackCount: playlist?.itemCount ?? rows.length }),
     [rows, playedCount, playlist?.itemCount],
-  )
-
-  // The field holds `query` and updates instantly; the scan runs off the
-  // deferred copy. Without this a keystroke carried a 30,000-row scan, a new
-  // match set for every mounted row to re-read, and a scroll, all before the
-  // character it typed could paint -- which is what makes a phone keyboard
-  // start dropping and reordering what you type into it.
-  //
-  // The library search has worked this way from the start. The finder is the
-  // same problem over the same number of rows, so it gets the same answer.
-  const deferredQuery = useDeferredValue(query)
-  const haystacks = useSearchIndex(rows, isFinding)
-  const { matches, results } = useMemo(
-    () => search(haystacks, deferredQuery),
-    [haystacks, deferredQuery],
   )
 
   const play = useCallback((index) => playItem(playlist.id, index), [playlist?.id])
@@ -80,11 +63,6 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
     browserRef.current?.play(Math.floor(Math.random() * rows.length))
   }, [order, rows.length])
 
-  const closeFinder = useCallback(() => {
-    setIsFinding(false)
-    setQuery('')
-  }, [])
-
   if (!playlist) {
     return <p className={styles.notice}>Select a playlist to begin.</p>
   }
@@ -103,16 +81,16 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
       patina={patina}
       activeIndex={activeItem?.index ?? -1}
       isPlaying={playerSnapshot?.player?.playbackState === 'playing'}
-      matches={matches}
+      matches={finder.matches}
       isLoading={isLoading}
       loaded={loaded}
       total={total}
       scrollRef={scrollRef}
       isCompactViewport={isCompactViewport}
-      keysEnabled={!isFinding}
+      keysEnabled={!finder.isFinding}
       canFollowPlayback
       onPlay={play}
-      onOpenFinder={() => setIsFinding(true)}
+      onOpenFinder={finder.open}
       emptyNotice="This playlist is empty."
       header={
         <ViewHeader
@@ -146,29 +124,7 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
           }
         />
       }
-      toolbarLeading={
-        isFinding ? (
-          <Finder
-            rows={rows}
-            results={results}
-            matches={matches}
-            query={query}
-            onQueryChange={setQuery}
-            onPreview={(index) => browserRef.current?.preview(index)}
-            onConfirm={(index) => {
-              browserRef.current?.play(index)
-              browserRef.current?.scrollToTrack(index, { align: 'center' })
-              closeFinder()
-            }}
-            onClose={closeFinder}
-          />
-        ) : (
-          <Button icon={Search} onClick={() => setIsFinding(true)}>
-            Find in playlist
-            <kbd className={styles.hint}>/</kbd>
-          </Button>
-        )
-      }
+      toolbarLeading={finder.toolbarLeading}
     />
   )
 }

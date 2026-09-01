@@ -396,3 +396,75 @@ test.describe('the field has room to type in', () => {
     }
   })
 })
+
+// The finder used to live inside `PlaylistView`, so the two longest lists in
+// the app -- All Music and a shelf -- did not have one. All Music is the whole
+// library, and 30,441 rows is not something anybody scrolls through looking for
+// a record.
+test.describe('finding in the library views', () => {
+  test.use({ mediaLibrarySize: 4000, settings: { 'jean.heatIntroSeen': true } })
+
+  const field = (page) => page.getByRole('textbox', { name: 'Find in this playlist' })
+
+  test('All music has one, named for what it searches', async ({ page }) => {
+    await page.goto('/#/all')
+    await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
+
+    // Not "Find in playlist": All music is not one, and the label is what
+    // separates this from the library search two centimetres above it.
+    await page.getByRole('button', { name: /Find in all music/ }).click()
+    await expect(field(page)).toBeFocused()
+
+    await field(page).fill('nutshell')
+    await expect(page.getByRole('listbox').getByRole('option').first()).toBeVisible()
+
+    // Found, not filtered: every row the view had is still there.
+    await expect(page.getByRole('grid')).toHaveAttribute('aria-rowcount', '4000')
+
+    // And arrowing walks the list to a match rather than pulling matches out of
+    // it -- which is the whole difference between this and the library search.
+    // Asserted after moving, because a match in a 4,000-row list is very
+    // probably nowhere near the rows currently mounted.
+    await page.keyboard.press('ArrowDown')
+    await expect(page.locator('[role="row"][data-match="true"]').first()).toBeVisible()
+  })
+
+  test('a shelf has one too', async ({ page }) => {
+    await page.goto('/#/shelf/recent')
+    await expect(page.getByRole('heading', { level: 1, name: 'Recently played' })).toBeVisible()
+    await page.getByRole('button', { name: /Find in this shelf/ }).click()
+    await expect(field(page)).toBeFocused()
+  })
+
+  test('`/` opens it, and typing into it does not reach the player', async ({ page, player }) => {
+    await page.goto('/#/all')
+    await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
+    await page.locator('[role="row"]').first().click()
+
+    await page.keyboard.press('/')
+    await expect(field(page)).toBeFocused()
+
+    // The list stops answering to the keyboard while a field holds it, or
+    // typing a track name seeks and pauses the player mid-word.
+    await field(page).fill('nutshell')
+    await page.keyboard.press('ArrowRight')
+    expect(requestsTo(player, '/player')).toHaveLength(0)
+  })
+
+  test('a result plays the track it names', async ({ page, player }) => {
+    await page.goto('/#/all')
+    await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
+    await page.getByRole('button', { name: /Find in all music/ }).click()
+    await field(page).fill('nutshell')
+
+    const first = page.getByRole('listbox').getByRole('option').first()
+    const wanted = await first.innerText()
+    await first.click()
+
+    await expect.poll(() => requestsTo(player, '/player/play/').length).toBe(1)
+    const play = requestsTo(player, '/player/play/').at(-1)
+    const [, , , , plref, index] = play.path.split('/')
+    const playlist = player.playlists.find((entry) => entry.id === plref)
+    expect(wanted).toContain(playlist.items[Number(index)]['%title%'])
+  })
+})

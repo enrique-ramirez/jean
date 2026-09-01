@@ -8,8 +8,10 @@ import { TrackBrowser } from '../playlist/TrackBrowser.jsx'
 import { ViewHeader } from '../playlist/ViewHeader.jsx'
 import { summarise } from '../playlist/stats.js'
 import { useAvailableFields } from '../playlist/useAvailableFields.js'
+import { useFinder } from '../playlist/useFinder.jsx'
 import { Button } from '../ui/Button.jsx'
 import { PlayIcon } from '../ui/icons.jsx'
+import { SCRATCH_KIND } from './jeanPlaylists.js'
 import { useScratchPlaylist } from './useScratchPlaylist.js'
 import styles from './LibraryListView.module.css'
 
@@ -36,6 +38,17 @@ export function LibraryListView({
   const { rows, indices, heat, patina, playedCount } = view
   const { hasPlayCounts } = useAvailableFields(rows)
   const stats = useMemo(() => summarise(rows, playedCount), [rows, playedCount])
+
+  // Named for what it is searching, because the top bar has a search of its own
+  // two centimetres above and the two do different things: that one filters the
+  // library down to matches, this one walks you to a track without disturbing a
+  // row. All Music is where it matters most -- 30,441 rows is not something
+  // anyone scrolls looking for a record.
+  const finder = useFinder({
+    rows,
+    browserRef,
+    label: kind === SCRATCH_KIND.all ? 'Find in all music' : 'Find in this shelf',
+  })
 
   const canWrite = playerSnapshot?.player?.permissions?.changePlaylists === true
 
@@ -104,6 +117,8 @@ export function LibraryListView({
       patina={patina}
       activeIndex={activePosition}
       isPlaying={playerSnapshot?.player?.playbackState === 'playing'}
+      matches={finder.matches}
+      keysEnabled={!finder.isFinding}
       isLoading={library.isLoading}
       loaded={library.loaded}
       total={library.total}
@@ -114,6 +129,8 @@ export function LibraryListView({
       // the track it just started.
       canFollowPlayback
       onPlay={play}
+      onOpenFinder={finder.open}
+      toolbarLeading={finder.toolbarLeading}
       emptyNotice={emptyNotice}
       header={
         <ViewHeader

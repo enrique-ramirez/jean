@@ -354,6 +354,14 @@ foobar (query `ALL`), which then appears in `/api/playlists` like any other play
 stays in sync as the library changes. That converts "there is no library API" into "there
 is one, you switch it on once". Jean's first run must guide the user through creating it.
 
+> **`foo_jean` may retire that guided setup**, and it is worth knowing before anyone
+> invests in polishing it. The component being built at `~/Projects/personal/foo_jean`
+> lists autoplaylist creation as one of its three goals, via the SDK's
+> `autoplaylist_manager` — so where it is installed, Jean can create `#Jean Library`
+> itself rather than talking a user through a desktop dialog. **The guided path still has
+> to exist and still has to work**, because beefweb alone remains the minimum and always
+> will; this only means the manual route stops being the only route.
+
 Three rules follow, all of them load-bearing:
 
 - **Never read or write `Default Playlist`.** It is foobar's scratch buffer — selecting an

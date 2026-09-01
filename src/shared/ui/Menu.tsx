@@ -15,11 +15,8 @@ import { handleMenuKeys, useFocusCapture } from "./menuKeys";
 // back in.
 const GUTTER = 8;
 
-// A dropdown anchored under a button you can see, as opposed to a menu you
-// summoned at the pointer -- that one is `ActionMenu`. What the two do share is
-// the keyboard: while either is open it owns every key, or Escape closes the
-// panel *and* clears the selection behind it, and the arrows seek the player
-// while you are choosing a column. See `menuKeys.js`.
+// A dropdown anchored under a button you can see, as opposed to a menu summoned
+// at the pointer -- that one is `ActionMenu`. Both own every key while open.
 export function Menu({
 	isOpen,
 	onDismiss,
@@ -42,14 +39,11 @@ export function Menu({
 
 	useFocusCapture(menuRef, isOpen);
 
-	// A dropdown is anchored to its trigger, and a trigger near an edge puts it
-	// off screen -- on a phone, a wide popover hanging off a button near the right
-	// edge starts outside the window and loses its own first characters. Nothing
-	// in `left: 0` / `right: 0` can know that; only the layout can.
+	// A trigger near an edge puts a wide popover off screen, and nothing in
+	// `left: 0` / `right: 0` can know that -- only the layout can.
 	//
-	// Written to the element rather than into state: this runs on open and on
-	// every resize, and a render per resize event would repaint whatever the menu
-	// is sitting over, including a virtualised list.
+	// Written to the element rather than into state: this runs on every resize, and
+	// a render per event would repaint whatever the menu sits over.
 	const clamp = useCallback(() => {
 		const element = menuRef.current;
 		if (!element) return;

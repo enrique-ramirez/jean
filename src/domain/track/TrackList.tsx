@@ -37,10 +37,9 @@ const ancestorsUpTo = (
 		? [element.parentElement, ...ancestorsUpTo(element.parentElement, stop)]
 		: [];
 
-// Album groups are measured, not computed. Their height depends on how the
-// caption wraps and which breakpoint is active, and getting that arithmetic
-// wrong leaves visible gaps between groups -- so this is only the first guess
-// the virtualiser uses before it measures the real thing.
+// Album group heights depend on caption wrapping and breakpoint, and computing
+// them wrong leaves visible gaps, so this is only the virtualiser's first guess
+// before it measures.
 const estimateGroupHeight = (group: AlbumRun, isCompactViewport: boolean) => {
 	const tracks =
 		group.count * COMPACT_ROW_HEIGHT +
@@ -88,9 +87,8 @@ export const TrackList = forwardRef(function TrackList(
 ) {
 	const isAlbumLayout = layout === "album";
 
-	// The list draws no group headings, so a multi-disc album has to say so in
-	// the track numbers instead -- one byte per row, filled from the same runs
-	// the album layout draws.
+	// The list draws no group headings, so a multi-disc album says so in the track
+	// numbers instead.
 	const discPrefixed = useMemo(
 		() => (isAlbumLayout ? null : multiDiscRows(groups, rows.length)),
 		[isAlbumLayout, groups, rows.length],
@@ -106,23 +104,18 @@ export const TrackList = forwardRef(function TrackList(
 		[isAlbumLayout, showArtwork, groups, rows.length],
 	);
 
-	// A row position becomes the ref the source addresses that cover by: first to
-	// the album run's opening row, then through `indices`, because a filtered view
-	// renumbers everything. Doing it in the other order would look up a playlist
-	// index in a table of row positions.
+	// To the album run's opening row first, then through `indices`: a filtered view
+	// renumbers everything, so the other order looks up a playlist index in a table
+	// of row positions.
 	const coverIndexOf = (position: number) => {
 		const row = coverRows ? coverRows[position] : position;
 		return indices ? indices[row] : row;
 	};
 
-	// How far down the scroll container the list actually begins. The view header
-	// and the toolbar sit above it, so row 0 is not at scroll offset 0 -- and
-	// without telling the virtualiser that, every scrollToIndex lands short by
-	// exactly this much. Rendering still looked right, because the rows are
-	// positioned inside a list that is itself in normal flow; only the scroll
-	// arithmetic was wrong, which is why it read as "jump to playing is a bit
-	// off" rather than as anything obviously broken. On a short viewport that
-	// same error is the whole distance, so the track never came into view at all.
+	// Row 0 is not at scroll offset 0 -- the view header and toolbar sit above it --
+	// and without telling the virtualiser, every scrollToIndex lands short by exactly
+	// this much. Rendering still looks right, because the rows are positioned inside
+	// a list that is itself in normal flow; only the scroll arithmetic is wrong.
 	const listElement = useRef<HTMLDivElement | null>(null);
 	const [scrollMargin, setScrollMargin] = useState(0);
 
@@ -132,10 +125,8 @@ export const TrackList = forwardRef(function TrackList(
 		if (!list || !scroller) return undefined;
 
 		const measure = () => {
-			// Rounded so that `start - scrollMargin` stays the whole number it was
-			// before this existed. A fractional margin would otherwise leak into
-			// every row's transform, and sub-pixel churn would re-render the list
-			// for nothing.
+			// Rounded, or a fractional margin leaks into every row's transform and the
+			// sub-pixel churn re-renders the list for nothing.
 			const next = Math.round(
 				list.getBoundingClientRect().top -
 					scroller.getBoundingClientRect().top +
@@ -146,12 +137,9 @@ export const TrackList = forwardRef(function TrackList(
 
 		measure();
 
-		// The header is what moves the list, and the only boxes that grow when it
-		// does are the list's own ancestors -- so observing the chain up to the
-		// scroller catches a wrapping title, the stats appearing once rows load,
-		// the finder opening, and the loading bar, without knowing about any of
-		// them. `.rows` is display:contents and generates no box, so observing it
-		// costs nothing and reports nothing.
+		// Observing the chain up to the scroller catches a wrapping title, the stats
+		// appearing, the finder opening and the loading bar without knowing about any of
+		// them. `.rows` is display:contents and generates no box.
 		const observer = new ResizeObserver(measure);
 		for (const node of [scroller, ...ancestorsUpTo(list, scroller)])
 			observer.observe(node);
@@ -167,13 +155,10 @@ export const TrackList = forwardRef(function TrackList(
 				? estimateGroupHeight(groups[index], isCompactViewport)
 				: ROW_HEIGHT,
 		overscan: isAlbumLayout ? 3 : 12,
-		// Measurements are cached by *item key*, and the default key is the index --
-		// so group 0 of one search inherits the height of group 0 of the last one,
-		// which left the first album of a search overlapping the second. It stayed
-		// wrong, too: measureElement reports on mount and on resize, and a group
-		// that was already there did neither. Keying by the album makes a new result
-		// set new items, measured when they mount. `measure()` below covers the case
-		// this cannot -- see there.
+		// Measurements are cached by item key, and the default key is the index -- so
+		// group 0 of one search inherited the height of group 0 of the last. It stayed
+		// wrong, because measureElement reports on mount and resize and an existing
+		// group does neither. `measure()` below covers what this cannot.
 		getItemKey: isAlbumLayout
 			? (index) => groups[index]?.key ?? index
 			: undefined,
@@ -206,17 +191,12 @@ export const TrackList = forwardRef(function TrackList(
 				const element = scrollRef.current;
 				if (!element) return;
 
-				// Centring is measured off the row, not computed from the index. In
-				// album mode the virtualiser's items are groups, so asking it to centre
-				// gets the *album* centred and the track left wherever it falls inside
-				// it -- off screen entirely once an album is longer than the window. In
-				// list mode a row and its index are the same thing, so the two agree and
-				// this is one path rather than a special case.
+				// Measured off the row rather than computed from the index: in album mode the
+				// virtualiser's items are groups, so centring an index centres the *album* and
+				// leaves the track wherever it falls inside it.
 				//
-				// Null until the row is mounted, which is what the fallback is for: the
-				// first frames aim at the group, that brings the row into existence, and
-				// the target refines to the track. It converges rather than oscillating,
-				// because the offset is absolute.
+				// Null until the row is mounted, which is what the fallback is for -- the first
+				// frames aim at the group, that mounts the row, and the target refines.
 				const centreOnRow = () => {
 					const row = element.querySelector(`[data-row="${index}"]`);
 					if (!row) return null;
@@ -255,11 +235,10 @@ export const TrackList = forwardRef(function TrackList(
 
 	useEffect(() => () => cancelScroll.current?.(), []);
 
-	// The other trap, and the one `getItemKey` cannot fix: *the same data in a
-	// different shape*. Row 4 in list mode is not album 4, and a compact group is
-	// not a wide one, so the cached heights are meaningless across either switch.
-	// `measure()` is wrong for new data at the same index -- it runs after the
-	// refs have measured the new elements and throws those measurements away.
+	// The trap `getItemKey` cannot fix: the same data in a different shape. Row 4 in
+	// list mode is not album 4, so cached heights are meaningless across the switch.
+	// `measure()` is wrong for new data at the same index -- it runs after the refs
+	// have measured and throws those measurements away.
 	const virtualizerRef = useRef(virtualizer);
 	virtualizerRef.current = virtualizer;
 
@@ -270,11 +249,9 @@ export const TrackList = forwardRef(function TrackList(
 
 	const virtualItems = virtualizer.getVirtualItems();
 
-	// Where the playing track sits relative to the viewport. Rendered is not the
-	// same as visible -- overscan mounts rows beyond the fold, and an album group
-	// is tall enough that its rows can be mounted well below the screen -- so a
-	// row that exists is measured against the scroll container, and only one that
-	// is absent entirely has its direction decided by the index range.
+	// Rendered is not visible: overscan mounts rows past the fold, so a row that
+	// exists is measured against the scroll container and only one that is absent
+	// has its direction decided by the index range.
 	const reported = useRef<ActiveDirection | undefined>(undefined);
 
 	useEffect(() => {

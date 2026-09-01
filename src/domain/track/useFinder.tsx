@@ -15,15 +15,12 @@ import { search, useSearchIndex } from "./useSearchIndex";
 
 // Find-in-this-list, for any view that renders a `TrackBrowser`.
 //
-// Not the search in the top bar. That one filters the library down to matches
-// and takes you to `#/search`; this walks you to a track inside the list already
-// on screen, changing neither its rows nor their order. Both exist because they
-// answer different questions, which is why the button names the list it is
-// searching.
+// Not the search in the top bar: that filters the library down to matches and
+// takes you to `#/search`, while this walks you to a track inside the list
+// already on screen. The button names the list, so the two are never confused.
 //
 // Returns the node rather than the pieces: a caller that assembles its own is
-// the one that will assemble it wrongly, and there is nothing here to decide
-// except what to call the list.
+// the one that will assemble it wrongly.
 export function useFinder({
 	rows,
 	browserRef,
@@ -36,11 +33,10 @@ export function useFinder({
 	const [isFinding, setIsFinding] = useState(false);
 	const [query, setQuery] = useState("");
 
-	// The field holds `query` and updates instantly; the scan runs off the
-	// deferred copy. Without this a keystroke carried a scan of the whole list, a
-	// new match set for every mounted row to re-read, and a scroll, all before the
-	// character it typed could paint -- which is how a phone keyboard starts
-	// dropping and reordering what you type into it.
+	// The field updates instantly; the scan runs off the deferred copy. Without it a
+	// keystroke carried a scan of the whole list, a new match set for every mounted
+	// row and a scroll before the character could paint -- which is how a phone
+	// keyboard starts dropping and reordering what you type.
 	const deferredQuery = useDeferredValue(query);
 	const haystacks = useSearchIndex(rows, isFinding);
 	const { matches, results } = useMemo(

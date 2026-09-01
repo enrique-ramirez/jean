@@ -6,14 +6,10 @@ import type { PlaylistInfo } from "@/shared/api/types";
 import type { Library } from "./useLibrary";
 import { useScratchPlaylist } from "./useScratchPlaylist";
 
-// Playing a set of library rows: write the set to the scratch playlist, then
-// play a position in it. What differs between callers is only which set and
-// which position -- a shelf starting at the album you clicked, the whole library
-// starting somewhere at random, a row in a view.
-//
-// One implementation because the failure modes are shared and nasty: a set
-// filled in the wrong order plays the wrong track, and a player that refuses
-// playlist writes has to degrade rather than do nothing.
+// Write the set to the scratch playlist, then play a position in it. One
+// implementation because the failure modes are shared and nasty: a set filled in
+// the wrong order plays the wrong track, and a player that refuses playlist
+// writes has to degrade rather than do nothing.
 export function usePlaySet({
 	library,
 	playlists,
@@ -47,9 +43,8 @@ export function usePlaySet({
 			});
 			if (id) return playItem(id, position);
 
-			// No scratch playlist means a player that will not let Jean make one. The
-			// track still plays, in place, and what follows it is the library's
-			// business rather than this set's -- degraded, and honestly so.
+			// No scratch playlist means a player that will not let Jean make one. The track
+			// still plays in place, and what follows is the library's business.
 			if (library.playlist)
 				return playItem(library.playlist.id, refs[position]);
 			return null;
@@ -57,9 +52,8 @@ export function usePlaySet({
 		[scratch, library.source, library.playlist],
 	);
 
-	// Whether there is anything to play a set *in*. Playing a set always needs a
-	// playlist to hold it, so a player that refuses playlist writes can only do
-	// this if an autoplaylist is already there to play in place.
+	// Playing a set always needs a playlist to hold it, so a player that refuses
+	// writes can only do this with an autoplaylist already there.
 	const canPlaySets =
 		permissions.changePlaylists !== false || Boolean(library.playlist);
 

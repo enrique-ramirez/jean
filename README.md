@@ -4,105 +4,51 @@ Jean (/ʝan/) is a replacement web UI for the [beefweb](https://github.com/hyper
 controlling foobar2000 - and, best-effort, DeaDBeeF - from any browser on your
 network. Namely affectively for the feelings it evoked on me when the idea came.
 
-**Where it is:** the playlist view and library search work. Compact and album layouts
-over a virtualised list that stays smooth at 30,000 tracks, search across the whole
-library from the bar at the top — accents optional, `babasonicos` finds `Babasónicos` —
-find-within-the-list-you-are-looking-at that jumps rather than filters, in every view
-that shows tracks,
-toggleable columns, full keyboard navigation, light and dark themes, and a transport
-with a seekable progress bar. If your player reports play counts, tracks are shaded by
-how often you have played them and faded by how long it has been; the flame in the
-toolbar turns that off, and explains itself the first time you see it.
+Jean shows your playlists and your whole library, in a compact list or grouped by
+album, over a virtualised view that stays smooth at 30,000 tracks. Search the library
+from the bar at the top -- accents optional, `babasonicos` finds `Babasónicos` -- or
+find a track inside the list you are already looking at, which jumps to it rather than
+filtering it away. Columns are yours to pick, everything is reachable from the
+keyboard, and there is a light theme and a dark one.
 
-Playing from search results confines playback to them — shuffle shuffles your matches, and
-the end of the results ends playback rather than wandering off into the library. The search
-survives a reload and shows up on your other devices. Results can be kept as a real
-playlist in one click, copied by index so nothing is uploaded but a list of numbers.
+If your player reports play counts, tracks are shaded by how often you have played
+them and faded by how long it has been. The flame in the toolbar turns that off, and
+explains itself the first time you see it.
 
-Playlists in the sidebar can be created, renamed, deleted and dragged into whatever
-order you want them in. The `+` on the Playlists heading makes an empty one and puts
-the cursor straight in its name. Right-click a playlist for the menu, or press and hold it on a phone,
-where the same menu arrives as a sheet you can flick away. `Alt` with the arrow keys
-moves a playlist without touching the mouse.
-
-Drag tracks onto a playlist in the sidebar to add them, or right-click -- press and hold,
-on a phone -- and pick one from the menu. Select several first and they all go in one go.
-Whatever it does, it tells you, and gives you an undo.
-
-Jean opens on **Home**, which starts by telling you what your library adds up to: how
-long it would take to play it — *85 days 11 hr of music* — over how many tracks,
-records, artists, genres and playlists, and which years it spans. Play it from the top
-or shuffle the lot, from the two buttons beside it.
+Jean opens on **Home**, which starts with what your library adds up to: how long it
+would take to play -- *85 days 11 hr of music* -- over how many tracks, records,
+artists, genres and playlists, and the years it spans. Play it from the top or shuffle
+the lot from the two buttons beside it.
 
 Under that, rows of albums drawn out of your own listening -- what you play most, what
-you played to death and then put down, what you have never opened, and **what you play
-constantly but only own as a bad rip**. Each card says why it is there. Click one and
-the whole row plays, starting from that album; click the row's title to open it without
-starting anything. The sidebar and the status bar both tell you what you are listening
-to, which can be somewhere other than what you are looking at. **All music** is the
-whole library, unfiltered, and plays like any other view.
+you played to death and then put down, what you have never opened, and what you play
+constantly but only own as a bad rip. Each card says why it is there. Click one and
+the whole row plays, starting from that album; click the row's title to open it
+without starting anything. **All music** is the whole library, unfiltered.
 
-Shelves that your library cannot support simply do not appear -- no ratings, no starred
-shelf; no playback statistics, no play-history shelves at all -- and an install with
-none of it still opens on a row of records to press. The same goes for the counts: a
-library with no genre tags is not told it has none, it is simply not asked. Four songs
-in a folder gets *1 album*, not *1 albums*.
+Shelves your library cannot support do not appear -- no ratings, no starred shelf; no
+playback statistics, no play-history shelves at all -- and an install with none of it
+still opens on a row of records to press. The same goes for the counts: a library with
+no genre tags is not told it has none, it is simply not asked. Four songs in a folder
+gets *1 album*, not *1 albums*.
+
+Playing from search results confines playback to them -- shuffle shuffles your matches,
+and the end of the results ends playback rather than wandering off into the library.
+The search survives a reload and shows up on your other devices, and results can be
+kept as a real playlist in one click.
+
+Playlists in the sidebar can be created, renamed, deleted and dragged into whatever
+order you want. The `+` on the Playlists heading makes an empty one and puts the cursor
+straight in its name. Right-click one for the menu, or press and hold it on a phone.
+`Alt` with the arrow keys moves a playlist without touching the mouse.
+
+Drag tracks onto a playlist to add them, or right-click and pick one from the menu.
+Select several first and they all go in one go. Whatever it does, it tells you, and
+gives you an undo.
 
 On a phone the sidebar is a drawer, menus arrive as sheets you can flick away, the
 volume fader is sized for a thumb rather than a mouse, and anything that only means
 something with a keyboard attached is not shown at all.
-
-**Not built yet:** a folder browser.
-
-## Development
-
-**You do not deploy to Windows to develop.** The UI is a static SPA that talks to
-beefweb over HTTP; it does not need to be served *by* beefweb to work. Vite runs on
-the Mac and proxies `/api` to the real player, so the app is same-origin, there is no
-CORS to configure, and nothing changes on the Windows side.
-
-```sh
-pnpm install
-pnpm dev            # http://localhost:5173
-pnpm typecheck      # tsc across app, fake player and specs
-pnpm lint           # biome check
-```
-
-That is the whole loop: edit a file, HMR updates the browser, and it is controlling
-the actual foobar2000 instance with real playlists and real playback the entire time.
-
-Point it somewhere else when needed:
-
-```sh
-BEEFWEB_URL=http://10.100.100.20:8880 pnpm dev
-```
-
-The dev server also binds on the LAN (`host: true`), so a phone can load
-`http://Enriques-MacBook-Pro-2.local:5173` and hit the same proxy — real-device
-testing without a build either.
-
-Deploying is therefore only for making it permanent, or for using the UI when the
-Mac is off.
-
-### The development player runs a pre-release beefweb
-
-`0.11~git.dc0fdfc` — CI's merge of
-[PR #382](https://github.com/hyperblast/beefweb/pull/382), which adds the media
-library API, into master. Taken from the GitHub Actions artifact for that run rather
-than built locally; the foobar2000 component is an MSVC target and cannot be built
-from macOS.
-
-Jean is developed against it as though it had shipped, **and still has to work
-without it** — released beefweb is 0.10, DeaDBeeF will never have it, and both are
-covered by the same `supported` / `enabled` / 404 detection. See `CLAUDE.md`, "The
-library API".
-
-To install it on a portable foobar2000: close the player, replace
-`profile\user-components-x64\foo_beefweb\` with the contents of the
-`.fb2k-component` (it is a zip — `x64/foo_beefweb.dll` plus `beefweb.root/`), and
-restart. Back up that folder and `profile\beefweb\` first; the latter holds
-beefweb's `config.json` and Jean's own `clientconfig`, which is where server-side
-settings live.
 
 ## Pointing Jean at your library
 
@@ -220,101 +166,6 @@ beefweb — a static host, or a separate box. There is no same-origin API then, 
 would need both a configurable base URL and `responseHeaders` set on the beefweb side
 to allow CORS, which is off by default.
 
-## How the data flows
-
-beefweb pushes player state over SSE, and pushes **only when something changes** —
-roughly once per track, not once per second. Measured: one message in eight seconds
-during steady playback.
-
-- `usePlayerStream()` runs one `EventSource` at the app root and writes each message
-  into the TanStack Query cache under `['player']`.
-- Components read that with an ordinary `useQuery`. The `queryFn` only covers first
-  paint and reconnect; the stream owns the key from then on.
-- `usePlayPause()` is a `useMutation` with an optimistic flip, so the button responds
-  immediately and the stream confirms a moment later.
-
-Because position only arrives on change events, the progress bar **interpolates**:
-every snapshot is stamped with `performance.now()` on arrival, and `positionAt()`
-projects forward from that anchor. `<SeekBar>` runs the animation frame loop and is
-deliberately a leaf — that state must never be lifted, or it would repaint a
-30,000-row virtualised track list sixty times a second.
-
-Playlist contents are a separate path. They arrive in chunks, rendered as they land, so
-the list is usable long before the tail arrives. The shape of that chunking is measured
-rather than guessed: a request costs about 270 ms before it returns a single row and only
-30 ms more to return 2,000 rows instead of 500, so what matters is how many requests there
-are, not how big they are. One modest chunk lands first to paint something, then four
-concurrent large ones finish the job — a 30,441-track library shows its first rows at
-~730 ms and is fully loaded in ~1.5 s, where sixteen sequential chunks of 2,000 took 5.5 s.
-
-Rows are kept as the raw positional arrays beefweb returns rather than being turned into
-objects, and play-count "heat" is precomputed into typed arrays alongside them. One load
-is shared by everything that needs it, so opening the library playlist and searching it do
-not fetch it twice.
-
-Searching is a **view, not a playlist**: a filter over the rows already in memory, matching
-every word of the query against title, artist and album in any order. Typing writes nothing
-to the player.
-
-**Playing does**, and it has to. beefweb plays from playlists and knows nothing else, so
-playing a result in place would leave the player carrying on from *there* — the next track
-would be the library's next track, and with shuffle on a random one out of everything.
-Neither is what a list of matches promises. So the first time you play from a set of
-results they become a real playlist named `#Jean [your query]`, and playback happens inside
-it: shuffle shuffles your matches, and the end of the results is the end of playback.
-
-**You will see that playlist in foobar2000**, sitting next to its own `#Quicksearch [...]`
-ones. There is no hidden-playlist concept in the API and beefweb cannot fake one, so Jean
-hides it from its own sidebar and leaves it visible in yours. It is reused rather than
-piling up: one playlist, renamed and refilled per search. Dismissing the search deletes it,
-unless it is what you are currently listening to.
-
-It is also how a search survives a reload and reaches your phone — the query is in the
-title, and every client can see the player's playlists.
-
-Keeping results takes an explicit click, and when they are already playing it costs no copy
-at all: the playlist they are playing from *is* what you are saving, so it is renamed and
-stops being Jean's. Playback carries straight on through it. Otherwise
-`POST /playlists/add` returns the new playlist id, and
-`POST /playlists/{src}/{dst}/items/copy` copies by **index** — no `%path%` lookup, no
-upload beyond a list of numbers. Measured: 15,000 indices in a single request, 323 ms. The
-button is hidden entirely when the player reports `changePlaylists: false`, and disabled
-while the library is still loading, since a partial result set would save as if it were the
-whole answer.
-
-## API notes worth remembering
-
-- **A request body over 1 MiB is refused by hanging up.** Measured: 1,018,757 bytes
-  accepted, 1,049,652 closed the connection mid-upload, which reaches the browser as a
-  network error rather than a status code. Naming 30,441 tracks is a 2.9 MB body, so
-  "play everything" silently did nothing at all until Jean stopped naming them —
-  `add-from-library` with no `items` means *the whole library*, in one request with no
-  body, in 299 ms.
-- **A set comes back in the player's order, not the order you asked for or the order
-  you read it in.** `add-from-library` returns the media library's *browse* order —
-  album artist, album, track — while `GET /library/items` pages by **file path**. Of
-  1,000 tracks sent in path order, 426 land somewhere else. Nothing reproduces that
-  order client-side, so Jean overwrites it instead: fill, then `POST items/sort` by the
-  same expression the library was read with. Every position correct at 100, 1,000,
-  4,000 and 30,441 tracks, for ~340 ms of the player's time and no state of Jean's own.
-- `GET /api/player` **ignores** `trcolumns` and returns an empty `columns` array.
-  Use `GET /api/query?player=true&trcolumns=…` for a one-shot snapshot.
-- Columns are foobar2000 title-formatting expressions evaluated by the player, so
-  `%codec%`, `%bitrate%`, `%rating%` and single-argument functions like
-  `$upper(...)` all work. Adding a field is one line — `TRACK_COLUMNS` in
-  `src/shared/api/beefweb.ts` for the playing track, `src/domain/track/fields.ts` for the list.
-  Multi-argument functions do **not** work — the list is split on commas before the
-  expressions are evaluated, so `$if(a,b,c)` becomes three columns. Single-argument
-  functions *do* nest, though: `$len($meta(unsynced lyrics))` is fine.
-- beefweb serves gzip, and the static server has **no SPA fallback** —
-  `/playlists/p2` would be a 404, which is why Jean routes on the hash.
-- There is **no tag-writing endpoint**. Ratings and lyrics can be read but not
-  written back.
-
-See [API.md](./API.md) for the full API surface, measured response shapes, and what
-is and isn't reachable (short version: there is no library API — only playlists and
-the filesystem).
-
 ## Components
 
 Jean needs **one** component. Everything else is detected at runtime and simply stays hidden
@@ -361,13 +212,8 @@ stale. The short version:
 | `t` | Switch light / dark |
 | `⌘B` | Show / hide the sidebar |
 
-## Stack
+## Working on Jean
 
-React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual ·
-TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright. No unit
-tests and no jsdom, on purpose: the things that break here need real layout, real
-pointers and a real viewport. See `test/README.md`.
-
-Styling is CSS Modules per component, with the palette in `src/shared/styles/tokens.css` as
-custom properties — re-theming Jean means editing about thirty values there, with no
-build step required to know what they do.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development loop, the layout of the
+code and the conventions. [API.md](./API.md) documents the beefweb surface Jean is
+built on -- measured response shapes, and what is and is not reachable.

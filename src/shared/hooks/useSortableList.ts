@@ -30,32 +30,24 @@ interface Drag {
 	tops: RowBox[] | null;
 }
 
-// What the rows are rendering. `settled` marks the window between letting go
-// and the caller's `keys` actually changing, during which the transforms are
-// deliberately held rather than cleared.
+// `settled` marks the window between letting go and `keys` changing, during
+// which the transforms are held rather than cleared.
 interface SortState extends Drag {
 	tops: RowBox[];
 	settled?: boolean;
 }
 
-// Reordering a short list by dragging it. Pointer events rather than HTML5
-// drag-and-drop: one implementation covers mouse and touch, and the dragged row
-// is a real element instead of a screenshot of one.
+// Reordering a short list by dragging it, on pointer events rather than HTML5
+// drag-and-drop. Rows are measured once on drag start, which is why variable
+// heights need no special case.
 //
-// Rows are measured once, on drag start -- a list you can reorder by hand is a
-// list you can see all of -- which is also why variable heights need no special
-// case: an item shifts by the gap between the two rows it swaps with.
-//
-// `keys` is the current order, as stable ids, and it is what tells the drop when
-// it is over. The transforms are **held** at their landing positions until the
-// caller has actually reordered: the reorder goes through the query cache, a
-// microtask away at best, so clearing them on pointerup flicks the row back to
-// where it started for a frame.
+// `keys` is the current order and is what tells the drop it is over. Transforms
+// are held at their landing positions until the caller actually reorders: that
+// goes through the query cache, so clearing them on pointerup flicks the row
+// back to where it started for a frame.
 
-// Far enough that a click is never mistaken for a drag. Generous for a mouse on
-// purpose: the row body is both the drag target and a navigation control, and a
-// click that wanders should not quietly rewrite the order. Touch is stricter
-// again -- a finger moves a few pixels just being lifted.
+// Generous for a mouse on purpose: the row body is both the drag target and a
+// link, so a click that wanders must not quietly rewrite the order.
 const THRESHOLD_PX: Record<string, number> = { mouse: 6, touch: 8 };
 // How close to the edge of the scroller before it starts following the drag.
 const AUTOSCROLL_ZONE_PX = 56;
@@ -64,9 +56,8 @@ const AUTOSCROLL_MAX_PX = 14;
 // transforms rather than freezing the list in place.
 const SETTLE_TIMEOUT_MS = 600;
 
-// Where the dragged row ends up once the list is reordered. Going down it takes
-// the slot the target row vacates, which has to be measured from that row's
-// *bottom*: with rows of different heights the tops do not line up.
+// Going down, the row takes the slot the target vacates, measured from that
+// row's *bottom*: with uneven heights the tops do not line up.
 const landingOffset = ({
 	tops,
 	from,
@@ -97,14 +88,12 @@ export function useSortableList({
 	const drag = useRef<Drag | null>(null);
 	const frame = useRef<number | null>(null);
 	const settledAt = useRef<string | null>(null);
-	// A mouse drag that starts on the row ends with a click on the row, and the
-	// row is a link. Without swallowing it, reordering a playlist also navigates
-	// to it. The grip never had this problem: it is not inside the button.
+	// The row is a link, so without swallowing the click that ends the drag,
+	// reordering a playlist also navigates to it.
 	const justDragged = useRef(false);
 
-	// Position is state, not a ref: the rows have to re-render to follow. It is
-	// one small list, and the alternative -- writing transforms imperatively --
-	// fights React over the same style attribute the drop then has to clear.
+	// State rather than a ref: the rows have to re-render to follow, and writing
+	// transforms imperatively fights React over the same style attribute.
 	const [state, setState] = useState<SortState | null>(null);
 
 	// Cached per index. A fresh closure every render would detach and reattach
@@ -133,9 +122,8 @@ export function useSortableList({
 		return () => clearTimeout(timer);
 	}, [state, order]);
 
-	// Which index the dragged row would land on, compared against the midpoint of
-	// each resting row -- so the swap happens when they visually cross rather
-	// than when they merely touch.
+	// Compared against each resting row's midpoint, so the swap happens when they
+	// visually cross rather than when they merely touch.
 	const targetFor = (
 		{ tops, from }: { tops: RowBox[]; from: number },
 		offset: number,
@@ -180,9 +168,8 @@ export function useSortableList({
 		const tick = () => {
 			const before = scroller.scrollTop;
 			scroller.scrollTop += drag.current?.step ?? 0;
-			// The rows were measured in viewport coordinates, so scrolling moves them
-			// out from under the pointer. Folding the scroll back into the offset
-			// keeps the dragged row where the finger left it.
+			// Rows were measured in viewport coordinates, so scrolling moves them out from
+			// under the pointer.
 			if (drag.current) drag.current.scrolled += scroller.scrollTop - before;
 			const moved = scroller.scrollTop !== before;
 			frame.current = moved ? requestAnimationFrame(tick) : null;
@@ -252,9 +239,8 @@ export function useSortableList({
 			return;
 		}
 
-		// Held at the landing position rather than cleared. The reorder is a round
-		// trip through the query cache, and letting go must not undo the drag for
-		// the frame or two that takes.
+		// Held rather than cleared: the reorder is a round trip through the query
+		// cache, and letting go must not undo the drag while that runs.
 		settledAt.current = order;
 		setState({
 			...(current as SortState),
@@ -265,15 +251,10 @@ export function useSortableList({
 		onReorder(current.from, to);
 	};
 
-	// `captureNow` is the difference between the two ways in. A handle is small
-	// enough that a pointer can leave it inside the threshold distance and never
-	// report the move that starts the drag, so it claims the pointer up front.
-	//
-	// The row must NOT. Capturing retargets the compatibility mousedown and
-	// mouseup to the capturing element, so `click` fires on the row rather than
-	// on the link inside it -- and clicking a playlist silently stops working.
-	// It captures once the gesture is definitely a drag, by which point the click
-	// is being swallowed anyway.
+	// A handle claims the pointer up front, because it is small enough to be left
+	// behind inside the threshold distance. The row must NOT: capture retargets the
+	// compatibility mousedown and mouseup, so `click` fires on the row rather than
+	// the link inside it, and navigation silently stops working.
 	const begin = (
 		index: number,
 		event: ReactPointerEvent,
@@ -300,10 +281,8 @@ export function useSortableList({
 		};
 	};
 
-	// Dragging the row itself, which is the convention for a list of links and
-	// needs no affordance to be found. Mouse only, and that is the whole reason
-	// handleProps also exists: on touch the vertical axis is already the
-	// scroller's, so taking it needs something explicit to grab.
+	// Mouse only, which is why handleProps exists too: on touch the vertical axis
+	// is already the scroller's, so taking it needs something explicit to grab.
 	const dragProps = (index: number) =>
 		disabled
 			? {}
@@ -323,8 +302,7 @@ export function useSortableList({
 					},
 				};
 
-	// An explicit grab target, for pointers that cannot use the row body. Only
-	// starts the gesture -- the move and release are tracked by dragProps on the
+	// Only starts the gesture; the move and release are tracked by dragProps on the
 	// row, which the events bubble to.
 	const handleProps = (index: number) =>
 		disabled
@@ -334,9 +312,8 @@ export function useSortableList({
 						begin(index, event, true),
 				};
 
-	// What each row is doing right now, as a transform the caller can apply. The
-	// dragged row follows the pointer; every row between where it started and
-	// where it would land slides into the slot the one next to it just left.
+	// The dragged row follows the pointer; every row between its start and its
+	// landing slides into the slot the one next to it just left.
 	const offsetFor = (index: number) => {
 		if (!state) return 0;
 		const { from, to, offset, tops } = state;

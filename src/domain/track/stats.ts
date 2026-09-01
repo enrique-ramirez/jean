@@ -7,22 +7,18 @@ const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// Compare loosely, display exactly. `Rock` and `rock` are one genre, and a
-// portrait that reports them as two is measuring the tagging rather than the
-// music -- but the chip still shows the first file's own spelling.
+// Compare loosely, display exactly: a portrait reporting `Rock` and `rock` as
+// two genres is measuring the tagging rather than the music.
 //
-// A genre is whatever the tag says, taken whole: foobar joins multiple values
-// with '; ', so `Rock; Pop` counts as itself rather than as two, because Jean
-// does not get to decide that somebody's tag is really two tags.
+// A genre is the tag taken whole -- foobar joins values with '; ', and Jean does
+// not get to decide somebody's tag is really two tags.
 const genreKey = (name: string) =>
 	name.toLowerCase().replace(/\s+/g, " ").trim();
 
-// What any set of tracks adds up to, from the rows already in memory. One
-// implementation for a playlist header, a set of results and the front door, so
-// the same library cannot be described two ways two centimetres apart.
-//
-// One pass with a mutable accumulator rather than one pass per figure: this
-// runs over the whole library, again for every chunk that lands.
+// One implementation for a playlist header, a set of results and the front door,
+// so the same library cannot be described two ways two centimetres apart. One
+// pass with a mutable accumulator: this runs over the whole library again for
+// every chunk that lands.
 export function summarise(rows: TrackColumns[], playedCount = 0) {
 	const totals = rows.reduce(
 		(into, row) => {
@@ -82,14 +78,9 @@ const breakDown = (seconds: number) =>
 			}
 		: null;
 
-// Human units, biggest first, never more than two. A count of seconds is a
-// number about a computer; "84 days 14 hr" is a number about a life. Days
-// rather than months, because a month is not a fixed length and nobody can
-// picture "2.8 months of music".
-//
-// Two spellings of the same figure: the headline on the home screen says it in
-// full because it is a sentence, and a view header abbreviates because it is
-// sitting in a row of other facts.
+// Human units, biggest first, never more than two. Days rather than months,
+// because a month is not a fixed length and nobody can picture "2.8 months of
+// music".
 export function spellDuration(seconds: number) {
 	const parts = breakDown(seconds);
 	if (!parts) return null;

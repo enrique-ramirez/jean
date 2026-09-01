@@ -21,20 +21,12 @@ import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./ActionMenu.module.css";
 import { handleMenuKeys, useFocusCapture } from "./menuKeys";
 
-// One menu, two shapes -- a popover at the pointer on desktop, a floating tray
-// on touch. Not two components: the actions are declared once, as data, and the
-// surface decides how to draw them. Every menu in the app should come from here
-// so the gestures, the keyboard and the submenu behaviour stay identical.
+// One menu, two shapes -- a popover at the pointer on desktop, a floating tray on
+// touch -- because the actions are declared once, as data, and the surface decides
+// how to draw them. Every menu in the app comes from here.
 //
-// A node is one of:
-//   { id, label, icon, shortcut, danger, disabled, onSelect, keepOpen }
-//   { id, label, icon, danger, items: [...], filter }   -- opens a nested page
-//   { type: 'separator' }
-//   { type: 'message', text }
-//
-// Nested pages slide in place rather than flying out to the side, on desktop
-// too. A flyout that closes when the pointer strays is a poor place to put a
-// confirmation, and one drill-in implementation beats two half-tested ones.
+// Nested pages slide in place rather than flying out, on desktop too: a flyout
+// that closes when the pointer strays is a poor place for a confirmation.
 
 // lucide's icons, and anything shaped like one.
 type MenuIcon = ComponentType<{
@@ -44,10 +36,9 @@ type MenuIcon = ComponentType<{
 	"aria-hidden"?: "true";
 }>;
 
-// A row that does something, or -- with `items` -- opens a nested page. Both
-// live in one interface rather than a union because that is how the callers
-// build them: an array literal with entries spread in conditionally, where
-// splitting the shapes buys precision nobody can use and costs a cast per menu.
+// A row that does something, or -- with `items` -- opens a nested page. One
+// interface rather than a union because callers build these as array literals
+// with entries spread in conditionally, where a union costs a cast per menu.
 export interface ActionEntry {
 	type?: undefined;
 	id: string;
@@ -118,14 +109,13 @@ export function ActionMenu({
 	const shown = useRef({ anchor, header, actions });
 	if (isOpen) shown.current = { anchor, header, actions };
 
-	// Derived during render, deliberately. Set from an effect instead, and there
-	// is one commit in which the menu is neither open nor leaving: it unmounts,
-	// the effect brings it straight back for the exit, and that remount re-runs
-	// the surface's focus effect -- stealing focus from whatever the action just
-	// put it on. That is what made Rename close itself on the phone.
+	// Derived during render, deliberately. From an effect there is one commit in
+	// which the menu is neither open nor leaving: it unmounts, the effect brings it
+	// back for the exit, and that remount re-runs the surface's focus effect --
+	// stealing focus from whatever the action just put it on.
 	//
-	// Only the sheet plays an exit. A popover that lingers after the click feels
-	// broken; every native context menu vanishes on the spot.
+	// Only the sheet plays an exit; a popover that lingers after the click feels
+	// broken.
 	const [isLeaving, setIsLeaving] = useState(false);
 	const [wasOpen, setWasOpen] = useState(isOpen);
 
@@ -201,11 +191,9 @@ function usePages(actions: ActionNode[]) {
 	return { pages, depth: pages.length - 1, push, pop };
 }
 
-// `focusFilter` is on for the popover and off for the sheet. A field that takes
-// focus the instant a menu opens is right where a keyboard is already there and
-// wrong where opening one costs half the screen: on touch the field waits to be
-// tapped, so scrolling and tapping an entry -- what most opens of this menu are
-// -- never summon a keyboard at all.
+// On for the popover, off for the sheet: a field that takes focus the instant a
+// menu opens is right where a keyboard already exists and wrong where summoning
+// one costs half the screen.
 function usePanel({
 	actions,
 	onDismiss,
@@ -266,9 +254,8 @@ function usePanel({
 			?.focus({ preventScroll: true });
 	}, [isFiltered, focusFilter, depth]);
 
-	// What a panel of pages answers beyond the keys every menu does. Escape is
-	// `back` rather than dismiss for the same reason: on a nested page it is a
-	// step out of that page.
+	// Escape is `back` rather than dismiss, because on a nested page it is a step
+	// out of that page.
 	const pageKeys = ({
 		event,
 		items,
@@ -305,11 +292,9 @@ function usePanel({
 			beyond: pageKeys,
 		});
 
-	// Only the page on screen is filtered. The others are inert and sliding, and
-	// narrowing them would make the panel resize behind the animation.
-	// Matched through the same tokenize() the library search uses, so typing at a
-	// menu behaves like typing at the search field rather than like a different
-	// product that happens to be in the same window.
+	// Only the page on screen is filtered: the others are inert and sliding, and
+	// narrowing them would resize the panel behind the animation. Matched through
+	// the same tokenize() the library search uses.
 	const visibleItems = (page: Page, isActive: boolean): ActionNode[] => {
 		const tokens = tokenize(query);
 		if (!isActive || !isFiltered || tokens.length === 0) return page.items;
@@ -493,9 +478,8 @@ function ActionPopover({
 		origin: string;
 	} | null>(null);
 
-	// Measured once, on open. Recomputing as a nested page changes the height
-	// would slide the menu out from under the pointer; the overflow that causes
-	// is absorbed by maxHeight instead.
+	// Measured once, on open: recomputing as a nested page changes height would
+	// slide the menu out from under the pointer. maxHeight absorbs the overflow.
 	useLayoutEffect(() => {
 		const { width, height } = (
 			ref.current as HTMLDivElement

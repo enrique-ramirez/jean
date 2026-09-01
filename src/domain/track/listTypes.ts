@@ -5,13 +5,11 @@ import type { Column } from "./columns";
 import type { LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
-// What every row-drawing component in the list needs, stated once. `TrackList`,
-// `AlbumGroup` and the finder all take the same set, and writing it three times
-// is how they drift.
+// `TrackList`, `AlbumGroup` and the finder all take the same set, and writing it
+// three times is how they drift.
 //
-// `indices` is the seam showing through in the one place it has to: a row's
-// place in the view is not the ref the source addresses it by, and only a
-// filtered view knows the difference. Null means the two are the same.
+// `indices` is the seam showing through where it has to: a row's place in the
+// view is not the ref the source addresses it by. Null means they are the same.
 export interface TrackRenderProps {
 	rows: TrackColumns[];
 	indices: Refs | null;
@@ -46,9 +44,8 @@ export interface TrackListHandle {
 	scrollToTrack: (index: number, options?: ScrollToTrackOptions) => void;
 }
 
-// What `TrackBrowser` exposes to the view above it, which is the list's handle
-// plus the two things only it can do: it owns the cursor, so moving to a track
-// and playing one are its to offer. The finder drives all three.
+// The list's handle plus the two things only it can do: it owns the cursor, so
+// moving to a track and playing one are its to offer.
 export interface TrackBrowserHandle extends TrackListHandle {
 	play: (position: number) => void;
 	preview: (position: number) => void;

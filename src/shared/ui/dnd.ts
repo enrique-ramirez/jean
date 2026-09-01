@@ -6,25 +6,16 @@ import {
 	useSyncExternalStore,
 } from "react";
 
-// Dragging something out of one scroll container and onto a target in another.
+// Dragging out of one scroll container and onto a target in another.
 //
-// Deliberately not built on useSortableList: that reorders one list, where the
-// dragged element stays mounted and the drop position is arithmetic. Here the
-// source row can be unmounted by the virtualiser mid-gesture and the target is
-// elsewhere in the tree entirely, so the drop is hit-tested against the
-// document and what follows the pointer is a ghost rather than the row.
+// Deliberately not built on useSortableList: there the dragged element stays
+// mounted and the drop is arithmetic. Here the source row can be unmounted by
+// the virtualiser mid-gesture and the target is elsewhere in the tree, so the
+// drop is hit-tested against the document and a ghost follows the pointer.
 //
-// Three rules hold it together:
-//
-//  - **No pointer capture.** Capture retargets every later event to the
-//    capturing element, so a handler on a *descendant* never fires again -- and
-//    the natural capture element is the scroll container, an ancestor of the
-//    rows. Window listeners for the length of the gesture have no such ambiguity.
-//  - **The store carries only coarse facts** -- dragging or not, which target is
-//    armed -- so subscribing is free. The track list does not subscribe at all
-//    and must never re-render during a drag.
-//  - **The ghost is moved imperatively**, because position is the one thing that
-//    changes every frame.
+// No pointer capture, here of all places: capture retargets every later event to
+// the capturing element, and the natural one is the scroll container -- an
+// ancestor of the rows, so a handler on a descendant would never fire again.
 
 // What a row hands over when a drag starts on it: the refs being dragged, and
 // what the ghost should say about them.
@@ -94,9 +85,8 @@ export const setGhostElement = (element: HTMLElement | null) => {
 	ghostElement = element;
 };
 
-// The pointer is going to travel over selectable text in another container, and
-// a drag that started somewhere with user-select: none can still select it on
-// the way past. Cheaper to hold the whole document still for the gesture.
+// A drag that started somewhere with user-select: none can still select text it
+// passes over, so the whole document is held still for the gesture.
 const setDocumentDragging = (on: boolean) => {
 	document.body.style.userSelect = on ? "none" : "";
 	document.body.style.cursor = on ? "grabbing" : "";

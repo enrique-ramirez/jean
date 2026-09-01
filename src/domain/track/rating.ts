@@ -11,18 +11,15 @@ const POPM_FLOORS = [224, 160, 96, 32, 1];
 const popmStars = (raw: number) =>
 	MAX_STARS - POPM_FLOORS.findIndex((floor) => raw >= floor);
 
-// A rating tag is a bare number with no declared scale, so the magnitude picks
-// the scale -- it is the only evidence there is. At least four conventions are
-// in circulation and one folder tree can hold several at once, so reading only
-// 0-5 is not "Jean cannot tell", it is Jean ignoring a rating plainly there.
-// Detecting one scale per library is worse rather than better, for the same
-// reason. `5` and `10` are genuinely ambiguous between two scales and both go
-// to the lower, more common one.
+// A bare number with no declared scale, so the magnitude picks it -- the only
+// evidence there is. At least four conventions are in circulation and one folder
+// tree can hold several, so reading only 0-5 is not "Jean cannot tell", it is
+// Jean ignoring a rating plainly there. `5` and `10` are genuinely ambiguous and
+// both go to the lower, more common scale.
 //
 // Above 255 is not a rating in any convention, so it is not read as one and
-// specifically **not clamped to five stars**: a number that large means the
-// field is being used for something else, and inventing full marks out of it is
-// the loudest possible way to be wrong.
+// specifically not clamped to five stars: inventing full marks out of a field
+// being used for something else is the loudest way to be wrong.
 function starsOf(raw: number | null): number | null {
 	if (raw === null || raw <= 0) return null; // `0` and `-1` are two spellings of "unrated"
 	if (raw <= MAX_STARS) return raw; // foobar2000's native scale, halves and all
@@ -35,25 +32,20 @@ function starsOf(raw: number | null): number | null {
 export const ratingOf = (row: TrackColumns) =>
 	starsOf(number(row, FIELD.rating));
 
-// Halves are kept rather than rounded away: a file that says 3.5 says 3.5, and
-// showing 4 would be Jean disagreeing with the player about what the library
-// contains. Rounding to the nearest half is only so a rescaled value has a star
-// to land on -- 85 out of 100 drawn as 4.25 of a star would report a precision
-// the tag does not have.
+// A file that says 3.5 says 3.5; showing 4 would be Jean disagreeing with the
+// player. Rounding to the nearest half is only so a rescaled value has a star to
+// land on.
 export const toStars = (rating: number) => Math.round(rating * 2) / 2;
 
-// Whether this library has any rating Jean can read. Scanned in full rather
-// than sampled, unlike every other capability probe: ratings are sparse enough
-// that a sample misses them outright on a good few libraries, silently, and one
-// array index per row is cheap enough to pay once.
+// Scanned in full rather than sampled, unlike every other capability probe:
+// ratings are sparse enough that a sample misses them outright on a good few
+// libraries, silently.
 export const hasAnyRating = (rows: TrackColumns[]) =>
 	rows.some((row) => ratingOf(row) !== null);
 
-// Whether the library uses half stars. Nothing reads it yet; it is what a
-// future rating control has to ask before choosing an increment of 1 or 0.5,
-// because introducing halves into a library that has none is a change to
-// somebody's tags they did not ask for. Sampled, because getting this wrong
-// picks a default rather than whether a column exists.
+// What a future rating control has to ask before choosing an increment of 1 or
+// 0.5: introducing halves into a library that has none is a change to somebody's
+// tags they did not ask for.
 export const hasHalfStars = (rows: TrackColumns[], sampleSize = 400) =>
 	sampleRows(rows, sampleSize).some((row) => {
 		const rating = ratingOf(row);

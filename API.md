@@ -523,6 +523,13 @@ separate play, and so no client-side count arithmetic to get wrong.
   `/library/info` — three fields, cheap.
 - **No autoplaylist creation.** Still impossible remotely.
 
+## Two that catch people out
+
+- **`GET /api/player` ignores `trcolumns`** and returns an empty `columns` array. Use
+  `GET /api/query?player=true&trcolumns=...` for a one-shot snapshot.
+- **The static server has no SPA fallback.** `/playlists/p2` is a 404, which is why
+  Jean routes on the hash.
+
 ## Reaching other foobar2000 components
 
 beefweb does not proxy other components, and there is no "run this command" endpoint.

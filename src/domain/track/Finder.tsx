@@ -13,10 +13,8 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import styles from "./Finder.module.css";
 import { FIELD, value } from "./fields";
 
-// Finds without filtering. The playlist keeps every track and its order; this
-// only moves you to one. Arrowing through results scrolls the list so you see
-// each hit in place, and only Enter starts playback -- browsing should never
-// hijack what is playing.
+// Finds without filtering: the list keeps every track and its order, and only
+// Enter starts playback -- browsing should never hijack what is playing.
 export function Finder({
 	rows,
 	label,
@@ -62,24 +60,15 @@ export function Finder({
 		navigated.current = false;
 	}, [query]);
 
-	// Hover only counts if the pointer actually went somewhere.
+	// Hover only counts if the pointer actually went somewhere. A list appearing
+	// under a stationary cursor gets a mouseenter it did not earn -- which happens
+	// on every open and every keystroke, and handed the active result to whatever
+	// landed under the mouse.
 	//
-	// A dropdown that appears under a stationary cursor gets a mouseenter it did
-	// not earn: the mouse has not moved, the element beneath it changed. That
-	// happens on every open -- the results render exactly where the button that
-	// opened them was -- and again on every keystroke, as a new set lands under
-	// the same cursor. So hover handed the active result to whatever happened to
-	// land there, and Enter played that instead of the first match.
-	//
-	// Two signals, because one is not enough. `moved` covers the ordinary case,
-	// and is re-armed per result set since each new set is a fresh chance to land
-	// something unaimed-at under the cursor -- in a layout effect, so the reset is
-	// in place before the browser dispatches the mouseenter that follows paint.
-	// The coordinate check covers the first move onto a result, where mouseenter
-	// arrives *before* the mousemove that would have set the flag; there the
-	// pointer is demonstrably somewhere new. With neither -- a mouse that has not
-	// moved all session -- hover stays out of it, which is the safe way to be
-	// wrong.
+	// Two signals: `moved` covers the ordinary case and is re-armed per result set,
+	// in a layout effect so the reset lands before the mouseenter that follows
+	// paint. The coordinate check covers the first move onto a result, where
+	// mouseenter arrives before the mousemove that would have set the flag.
 	const moved = useRef(false);
 	const lastSeen = useRef<{ x: number; y: number } | null>(null);
 
@@ -99,11 +88,8 @@ export function Finder({
 
 	const aimedAt = (event: ReactMouseEvent) => {
 		if (moved.current) return true;
-		// The first enter after the finder opens has no earlier position to be
-		// compared against -- the click that opened it happened before any of this
-		// was listening -- so it is rejected and its coordinates become the
-		// reference. Anything arriving from somewhere else afterwards is a real
-		// move, whether or not a mousemove has been seen yet.
+		// The first enter has no earlier position to compare against, so it is rejected
+		// and its coordinates become the reference.
 		const previous = lastSeen.current;
 		lastSeen.current = { x: event.clientX, y: event.clientY };
 		return (
@@ -112,20 +98,14 @@ export function Finder({
 		);
 	};
 
-	// Preview follows the cursor through the results. It deliberately does not
-	// follow the *query*: while you are typing you are reading the dropdown, and
-	// the list behind it is not what you are looking at.
+	// Follows the cursor, deliberately not the query: while you are typing you are
+	// reading the dropdown, not the list behind it.
 	//
-	// Following the query did real damage on a phone. Each keystroke narrows the
-	// set, so the leading match is a different row every time, and jumping there
-	// unmounts every rendered row, mounts a new screenful and scrolls the
-	// container. The finder sits in a `position: sticky` toolbar *inside* that
-	// container, so the box being typed into was relaid out on every letter and
-	// Android's keyboard lost its composition to it, returning the letters
-	// scrambled.
-	//
-	// Nothing is lost: the dropdown already names every match and its position,
-	// Enter and a tap both scroll to what they play, and arrowing still previews.
+	// Following the query did real damage on a phone. Each keystroke jumps to a
+	// different leading match, which relaid out the sticky toolbar the field lives
+	// in, and Android's keyboard lost its composition and returned the letters
+	// scrambled. Nothing is lost: the dropdown names every match, and arrowing
+	// still previews.
 	const previewIndex = results[debouncedActive];
 
 	useEffect(() => {

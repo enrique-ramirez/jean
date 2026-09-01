@@ -17,11 +17,8 @@ import { removePlaylist } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Library } from "./useLibrary";
 
-// One view over the library, and a very specific one: text the user typed. It
-// owns the query and nothing else -- the rows, the source and the loading all
-// belong to `useLibrary`, because every other view filters the same array.
-//
-// Owned by the shell so it survives navigating away to a playlist and back.
+// Owns the query and nothing else: the rows, the source and the loading belong
+// to `useLibrary`. Held by the shell, so it survives navigating away and back.
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const permissions = usePermissions();
 	const { data: playerSnapshot } = usePlayer();
@@ -29,13 +26,9 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const [isFocused, setIsFocused] = useState(false);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
-	// The last search anyone played from, still on the player: the scratch
-	// playlist's title is the query that built it. Reading it costs nothing --
-	// the playlist list is already here -- and in particular it does not touch
-	// the library, so a session that never searches still never loads it.
-	//
-	// This is what makes a search survive a reload and reach another device. The
-	// player is the shared state; Jean does not need one of its own.
+	// The scratch playlist's title is the query that built it, which is how a
+	// search survives a reload and reaches another device. Reading it does not
+	// touch the library, so a session that never searches never loads it.
 	const remembered = useMemo(
 		() => queryOfScratchPlaylist(playlists.find(isScratchPlaylist)) || null,
 		[playlists],
@@ -45,20 +38,15 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		setQuery((current) => current || remembered || "");
 	}, [remembered]);
 
-	// Dismissing the search takes the playlist with it: it exists to be played,
-	// and nobody asked for a leftover named after a search they closed.
-	//
-	// Except while the player is on it. Deleting the playing playlist does not end
-	// playback at the end of the track: the player falls back to another playlist
-	// and carries on, which is exactly the wandering out of the results this
-	// arrangement exists to stop. So it outlives the search for as long as it is
-	// being listened to, and the next set played from takes it over.
+	// Dismissing the search takes the playlist with it -- except while the player
+	// is on it, because deleting the playing playlist does not stop playback: the
+	// player falls back to another one and carries on, which is the wandering out
+	// of the results this whole arrangement exists to stop.
 	const clear = useCallback(() => {
 		setQuery("");
 
-		// The active item, not `isCurrent`: that stays pointing at the last
-		// playlist played from long after playback stopped, which would have kept
-		// the scratch alive forever once it had been used once.
+		// The active item, not `isCurrent`: that keeps pointing at the last
+		// playlist played from long after playback stopped.
 		const playingFrom = playerSnapshot?.player?.activeItem?.playlistId;
 		const scratch = playlists.find(isScratchPlaylist);
 		if (
@@ -72,10 +60,8 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 	const { request } = library;
 
-	// A query is an ask, whether it was typed or taken back off the player after
-	// a reload. Without this a restored search comes back with its heading, its
-	// field and no rows at all, because nothing ever told the library it was
-	// needed -- focus is the other ask, and a reload does not focus anything.
+	// A query is an ask, however it arrived. Focus is the other one, and a reload
+	// restoring a query focuses nothing -- without this it renders no rows.
 	useEffect(() => {
 		if (query.length > 0) request();
 	}, [query, request]);
@@ -110,9 +96,8 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		focus,
 		remembered,
 		restore,
-		// Meta and Ctrl chords still fire inside a text field by design, so the
-		// list has to stand down while the field has focus or Mod+A selects thirty
-		// thousand rows instead of the word you were fixing.
+		// Mod chords still fire inside a text field, so the list has to stand down
+		// while the field has focus or Mod+A selects the library.
 		isFocused,
 		onFocus: useCallback(() => {
 			setIsFocused(true);
@@ -120,17 +105,13 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		}, [request]),
 		onBlur: useCallback(() => setIsFocused(false), []),
 		hasQuery: query.trim().length > 0,
-		// The rendered results can lag the field by a frame or two; that is the
-		// deferred value doing its job, and it is worth saying so in the UI.
 		isFiltering: query !== deferredQuery,
 		results: results ?? EMPTY_VIEW,
 		matchCount: matched?.length ?? 0,
-		// Distinct per query, which is what makes each result set its own view:
-		// its own remembered scroll offset, cursor and row measurements.
+		// Distinct per query, so each result set is its own view with its own
+		// scroll offset, cursor and row measurements.
 		viewKey: `search:${deferredQuery.trim().toLowerCase()}`,
 	};
 }
 
-// The search as the views over it see it. Inferred, so a field added to the
-// hook reaches them without being declared twice.
 export type LibrarySearch = ReturnType<typeof useLibrarySearch>;

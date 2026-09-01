@@ -1,15 +1,11 @@
-// The single source of truth for keyboard control. Every binding in the app is
-// declared here and nowhere else: `useKeymap` registers them and ShortcutSheet
-// renders the help overlay from the same array, so the two cannot drift.
+// Every binding in the app is declared here and nowhere else: `useKeymap`
+// registers them and ShortcutSheet renders the help from the same array.
 //
-// `/` is contextual — it filters whatever list you are looking at, which on the
-// search page is the library field itself. `Mod+K` always searches the whole
-// library. Keep that distinction; it is the reason both can exist without
-// competing.
+// `/` is contextual -- it filters whatever list you are looking at -- while
+// `Mod+K` always searches the whole library. That distinction is why both exist.
 
 import type { RegisterableHotkey } from "@tanstack/react-hotkeys";
 
-// One declared binding. `options` is passed through to the hotkeys manager;
 // `ignoreInputs: false` is how a binding stays live inside a text field, which
 // only the finder's and the search field's own keys want.
 export interface Binding {
@@ -128,11 +124,9 @@ export const KEYMAP: Binding[] = [
 		group: "Navigation",
 		name: "Keyboard shortcuts",
 		keys: [
-			// Cast because the hotkeys type deliberately excludes Shift+punctuation:
-			// Shift+/ is '?' on a US layout and something else elsewhere, which is
-			// the same layout hazard '=' and '-' carry below. Kept as it is because
-			// '?' is what the sheet is documented under, and narrowing the type is
-			// not the place to change a binding.
+			// The hotkeys type excludes Shift+punctuation, because Shift+/ is '?' on a US
+			// layout and something else elsewhere. Kept because '?' is what the sheet is
+			// documented under.
 			"Shift+/" as RegisterableHotkey,
 		],
 	},

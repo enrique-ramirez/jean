@@ -1218,7 +1218,7 @@ Things that vary between installs and must never be assumed:
 | Keyboard layout | A binding written as an unshifted key is not unshifted everywhere. See the keyboard section. |
 
 CORS is off in beefweb by default, so Jean must be served same-origin — either by beefweb
-itself, or through a dev proxy. See `README.md`.
+itself, or through a dev proxy. See `CONTRIBUTING.md`.
 
 ## Code layout and conventions
 
@@ -1521,7 +1521,8 @@ playback with no deploy step and no CORS. Point it elsewhere with
 `BEEFWEB_URL=http://host:8880 pnpm dev`. The dev server binds on the LAN, so a phone can
 load it directly for real-device testing.
 
-Deploying is only for making it permanent — see `README.md`.
+Deploying is only for making it permanent — see `README.md`. The development loop,
+the layout of the code and the conventions are in `CONTRIBUTING.md`.
 
 **Stack:** React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual ·
 TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright. No unit

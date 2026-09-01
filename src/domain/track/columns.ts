@@ -20,12 +20,9 @@ export interface Column {
 	field: number;
 }
 
-// Columns the user can toggle. Title and artist are not here: they share one
-// cell and are always shown, because a row without them is not a row.
-//
-// Everything is fetched regardless of what is displayed, so toggling a column
-// is instant and never refetches. The fetched set is small enough that this is
-// cheaper than the round trip would be.
+// Title and artist are not here: they share one cell and are always shown.
+// Everything is fetched regardless of what is displayed, so toggling is instant
+// and never refetches.
 export const OPTIONAL_COLUMNS: Column[] = [
 	{
 		id: "duration",
@@ -103,28 +100,22 @@ export const OPTIONAL_COLUMNS: Column[] = [
 
 export const DEFAULT_COLUMN_IDS = ["duration", "rating", "playCount"];
 
-// On a phone the title is the row. Every fixed column steals width from it, and
-// once the fixed widths plus padding exceed the viewport the flexible names
-// cell collapses to nothing -- so the compact layout caps how many can appear
-// and which, rather than trusting the grid to sort it out.
+// On a phone the title is the row, and once the fixed widths plus padding exceed
+// the viewport the flexible names cell collapses to nothing -- so the compact
+// layout caps how many columns appear rather than trusting the grid.
 const COMPACT_PRIORITY = ["duration", "playCount", "rating"];
 const COMPACT_MAX_COLUMNS = 2;
 
 const LEADING = {
-	// Two sizes for one column. The number is left-aligned, so its slack falls on
-	// the right -- and whether that slack is visible depends on what comes next.
-	// With artwork it disappears behind the cover. Without it, in an album group
-	// or a list with artwork switched off, it sits straight against the title and
-	// reads as a hole, so the column tightens to about what the digits need.
-	//
-	// Neither is sized for the longest index there could be. Anything longer runs
-	// into the gap that follows rather than pushing every row across for it.
+	// The number is left-aligned, so its slack falls on the right, and whether that
+	// is visible depends on what follows: with artwork it hides behind the cover,
+	// without it the slack reads as a hole. Neither is sized for the longest index
+	// there could be -- anything longer runs into the gap rather than pushing every
+	// row across.
 	number: { width: "2rem", compactWidth: "1.5rem" },
 	numberBare: { width: "1.5rem", compactWidth: "1.25rem" },
-	// A disc prefix makes the number four characters instead of two, and at that
-	// width the two sizes above stop distinguishing anything -- there is no slack
-	// left to hide behind the artwork, so both would run into the gap. One size,
-	// sized to a disc-prefixed number. Only the list layout asks for it: album
+	// At four characters the two sizes above stop distinguishing anything, so this
+	// is one size fitted to a disc-prefixed number. Only the list layout asks: album
 	// groups head their discs instead of prefixing.
 	numberWithDisc: { width: "2.375rem", compactWidth: "2.25rem" },
 	artwork: { width: "34px", compactWidth: "32px" },
@@ -194,9 +185,8 @@ export function resolveColumns({
 			.filter((width) => width !== null)
 			.join(" ");
 
-	// Album rows sit beside a cover and carry no artwork cell of their own, so
-	// they need a template with that track removed -- reusing the compact one
-	// leaves an empty column and shifts every cell after it.
+	// Album rows sit beside a cover and carry no artwork cell, so reusing the compact
+	// template leaves an empty column and shifts every cell after it.
 	return {
 		optional,
 		template: build(showArtwork, hasDiscs),

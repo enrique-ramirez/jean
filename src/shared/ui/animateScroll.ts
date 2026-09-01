@@ -3,18 +3,15 @@ import { clamp } from "@/shared/lib/math";
 const easeInOutCubic = (t: number) =>
 	t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
 
-// Native `behavior: 'smooth'` is not usable here: its duration is decided by the
-// browser and grows with distance, so a jump across a library-sized list crawls
-// for several seconds. This keeps the duration bounded however far it is.
+// Native `behavior: 'smooth'` has a browser-decided duration that grows with
+// distance, so a jump across a library-sized list crawls for seconds.
 //
-// `getTarget` is re-read every frame rather than captured once, because rows
-// measured during the flight move where the destination actually sits -- most
-// visibly in album mode, where group heights are measured rather than computed.
+// `getTarget` is re-read every frame rather than captured, because rows measured
+// during the flight move where the destination actually sits.
 
-// A wheel event is not by itself a decision. Trackpad and mouse momentum keep
-// emitting for a second or more after the fingers have left, so a jump asked for
-// at the end of a flick was being cancelled by the tail of the gesture before
-// it -- which is the whole of "jump to playing works sometimes". Deliberate
+// A wheel event is not by itself a decision: trackpad and mouse momentum keep
+// emitting for a second after the fingers leave, so a jump asked for at the end
+// of a flick was cancelled by the tail of the gesture before it. Deliberate
 // scrolling passes this in one or two events; a decaying tail never does.
 const CANCEL_DELTA_PX = 40;
 

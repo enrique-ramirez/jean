@@ -14,14 +14,12 @@ import styles from "./Artwork.module.css";
 
 // The artwork endpoint 404s when a track has no embedded cover, which is common
 // enough that it is a normal state rather than an error.
-// Takes a URL, not an address. Where artwork lives is the source's business:
-// a playlist addresses it by index, the media library by path, and the status
-// bar by whatever the player is currently on.
+// Takes a URL, not an address: where artwork lives is the source's business.
 //
-// Loading goes through `artworkQueue.js` rather than `loading="lazy"`, because
-// the browser's answer to "is this visible" is yes for every row a jump scrolls
-// past. Three states rather than two: waiting for a turn is a bare tile, and the
-// disc icon means the player has said there is no cover.
+// Loading goes through the artwork queue rather than `loading="lazy"`, whose
+// answer to "is this visible" is yes for every row a jump scrolls past. Three
+// states rather than two -- waiting for a turn is a bare tile, and the disc icon
+// means the player has said there is no cover.
 export function Artwork({
 	src,
 	size,
@@ -50,9 +48,8 @@ export function Artwork({
 		release.current = requestArtwork(src as string, () => setState("granted"));
 
 		return () => {
-			// Detaching an <img> mid-load does not stop the request -- the socket
-			// stays busy until the response arrives, which is the whole thing this is
-			// avoiding. Clearing the src is what actually abandons it.
+			// Detaching an <img> mid-load does not stop the request -- the socket stays busy
+			// until the response arrives. Clearing the src is what abandons it.
 			if (image.current && !image.current.complete)
 				image.current.removeAttribute("src");
 			release.current?.();
@@ -94,9 +91,8 @@ export function Artwork({
 			style={style}
 			src={src ?? undefined}
 			alt={alt}
-			// The queue governs how many of these Jean starts; this governs where the
-			// browser puts them among everything else on the same six connections. A
-			// cover is never more urgent than a transport command.
+			// The queue governs how many Jean starts; this governs where the browser puts
+			// them among everything else on the same six connections.
 			fetchPriority="low"
 			decoding="async"
 			draggable="false"

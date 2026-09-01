@@ -16,15 +16,12 @@ import {
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
-// The one playlist Jean plays from, holding *the last set you chose to play* --
-// not the thing you are looking at. Browsing writes nothing; playing is the
-// commit. Resolved by stored id, falling back to the title, because ids are
-// neither contiguous nor promised to outlive the player process while the title
-// is ours and recognisable from any device.
+// Holds the last set you chose to play, not the thing you are looking at.
+// Resolved by stored id falling back to the title, because ids are neither
+// contiguous nor promised to outlive the player process.
 //
 // `kind` and `label` arrive per call rather than per hook, because the thing
-// filling it is often not the thing rendering: clicking an album on the home
-// screen fills the scratch with a shelf the current view knows nothing about.
+// filling it is often not the thing rendering it.
 export function useScratchPlaylist({
 	playlists,
 	canEdit,
@@ -42,16 +39,14 @@ export function useScratchPlaylist({
 		const pinned = pinnedId
 			? playlists.find((entry) => entry.id === pinnedId)
 			: null;
-		// The pin is checked, not trusted. Saving a set of results renames this
-		// playlist into the user's, so a stale pin would hand their playlist back
-		// to be emptied by the next thing played.
+		// The pin is checked, not trusted: saving results renames this playlist into the
+		// user's, so a stale pin hands their playlist back to be emptied.
 		const byId = isScratchPlaylist(pinned) ? pinned : null;
 		return byId ?? playlists.find(isScratchPlaylist) ?? null;
 	}, [playlists, pinnedId]);
 
-	// Whether it already holds a given view's set, read off the playlist rather
-	// than remembered here -- so it survives a reload and answers the same on
-	// another device.
+	// Read off the playlist rather than remembered here, so it survives a reload and
+	// answers the same on another device.
 	const held = useMemo(() => scratchContentsOf(playlist), [playlist]);
 
 	const holdsView = useCallback(
@@ -93,21 +88,17 @@ export function useScratchPlaylist({
 					await renamePlaylist(target.id, title);
 				}
 
-				// Read off the player, not off `target`. Item changes are never pushed,
-				// so a cached `itemCount` is stale from the first write onwards, and
-				// this is the one place that cannot survive being wrong -- trusting it
-				// emptied most of a playlist and left every row addressing the wrong
-				// track. The library source replaces in one request and needs no count;
-				// the playlist source has to empty by range first.
+				// Read off the player, not off `target`: item changes are never pushed, so a
+				// cached `itemCount` is stale from the first write on, and this is the one place
+				// that cannot survive being wrong -- trusting it emptied most of a playlist.
 				const heldCount = source.needsHeldCount
 					? ((await fetchPlaylists()).find((entry) => entry.id === target.id)
 							?.itemCount ?? 0)
 					: 0;
 				await source.fill(target.id, refs, heldCount);
 
-				// And put the true count back, because nothing else will. `holdsView`
-				// is derived from it, so without this the playlist is rebuilt on every
-				// play and the playing row is never marked.
+				// Put the true count back, because nothing else will: `holdsView` derives from
+				// it, so otherwise the playlist is rebuilt on every play.
 				await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 				return target.id;
 			};
@@ -121,9 +112,8 @@ export function useScratchPlaylist({
 		[canEdit, holdsView, playlist, setPinnedId, queryClient],
 	);
 
-	// Saving a set as a playlist when the scratch already *is* that set: rename it
-	// and it stops being Jean's. Nothing is copied, and playback carries straight
-	// on through the rename, because it is the same playlist.
+	// When the scratch already is that set, rename it and it stops being Jean's:
+	// nothing is copied and playback carries on, because it is the same playlist.
 	const adopt = useCallback(
 		async (title: string) => {
 			if (!playlist) return null;

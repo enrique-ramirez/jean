@@ -50,13 +50,11 @@ const LAYOUTS: SegmentedOption<Layout>[] = [
 
 const PAGE = 12;
 
-// Everything a list of tracks does regardless of where the tracks came from:
-// layout, columns, heat, selection, keyboard navigation, scrolling to a track.
+// Everything a list of tracks does regardless of where the tracks came from.
 //
-// `rows` is the view; `indices` maps a position in it back to the ref the
-// source addresses, and is null when the two are the same thing. Selection, the
-// cursor and heat are all in view space -- only artwork and playback cross back
-// over.
+// `rows` is the view; `indices` maps a position in it back to the ref the source
+// addresses, and is null when the two are the same. Selection, the cursor and
+// heat are all in view space -- only artwork and playback cross back over.
 export const TrackBrowser = forwardRef(function TrackBrowser(
 	{
 		rows,
@@ -77,9 +75,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		toolbarLeading,
 		emptyNotice,
 		keysEnabled = true,
-		// Off unless a view asks for it. A set of search results changes under every
-		// keystroke, and jumping to the playing track the moment it appears among
-		// them would take the view away from the matches just typed for.
+		// Off unless a view asks: search results change under every keystroke, and
+		// jumping to the playing track would take the view away from the matches.
 		canFollowPlayback = false,
 		onPlay,
 		onOpenFinder,
@@ -135,18 +132,16 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		setHeatIntroSeen(true);
 	}, [setHeatIntroSeen]);
 
-	// Explained once, the first time the shading is actually on screen -- which
-	// is the only moment the question occurs to anyone. After that it lives in
-	// the columns menu and this never fires again.
+	// Explained the first time the shading is actually on screen, which is the only
+	// moment the question occurs to anyone. After that it lives in the columns menu.
 	useEffect(() => {
 		if (heatIntroSeen || !hasPlayCounts || !showHeat) return;
 		setIsHeatInfoOpen(true);
 	}, [heatIntroSeen, hasPlayCounts, showHeat]);
 
-	// Grouped here because both layouts want it and neither owns it. The album
-	// layout draws the groups; the list layout draws none, but a multi-disc album
-	// still grows a disc prefix on the track number, and the column has to be
-	// wide enough for it before a single row is laid out.
+	// Both layouts want it: the album layout draws the groups, and the list layout
+	// still needs a multi-disc album's track-number column wide enough for the
+	// prefix before a single row is laid out.
 	const groups = useMemo(() => groupByAlbum(rows), [rows]);
 	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);
 
@@ -208,10 +203,9 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		selection: selection.selection,
 	});
 
-	// Pressing inside a multi-track selection must not collapse it on the way
-	// down: this could be the start of a drag of all of them, and every file
-	// manager defers that decision to the release. Without it a multi-track drag
-	// is impossible -- the selection is gone before the pointer has moved.
+	// Pressing inside a multi-track selection must not collapse it on the way down:
+	// this could be the start of a drag of all of them, and without deferring to the
+	// release the selection is gone before the pointer has moved.
 	const pendingCollapse = useRef<number | null>(null);
 
 	const selectFromPointer = useCallback(
@@ -237,11 +231,10 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		if (pending !== null && !trackDrag.didDrag()) moveCursorTo(pending);
 	}, [moveCursorTo, trackDrag]);
 
-	// What plays a track depends on the device driving, not on the viewport --
-	// the same rule useSortableList uses to decide that only a mouse drags a row.
-	// Recorded on the way down rather than read off the click, because `click` is
-	// a PointerEvent in Chromium and Safari but a plain MouseEvent in Firefox,
-	// where pointerType is undefined and every desktop click would read as a tap.
+	// What plays a track depends on the device driving, not the viewport. Recorded
+	// on the way down rather than read off the click, because `click` is a
+	// PointerEvent in Chromium and Safari but a plain MouseEvent in Firefox, where
+	// every desktop click would read as a tap.
 	const pointerType = useRef("mouse");
 
 	const playFromPointer = useCallback(
@@ -252,15 +245,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		[rows, selection.selection, play],
 	);
 
-	// A tap plays; a click selects and a double-click plays. On a pointer a
-	// selection is worth having -- the modifier keys exist to build one, and every
-	// file manager separates choosing from opening. Touch has neither, and a tap
-	// that only highlighted left the phone with no way to play an individual track
-	// at all: the header Play button was the entire surface.
+	// A tap plays; a click selects and a double-click plays. On a pointer the
+	// modifier keys exist to build a selection; touch has neither, and a tap that
+	// only highlighted left the phone with no way to play a single track.
 	//
-	// `click` rather than `pointerup`, because the browser withholds it entirely
-	// when the gesture turns out to be a scroll -- which is most of what a finger
-	// does in a list -- and useLongPress already swallows the one after a hold.
+	// `click` rather than `pointerup`, because the browser withholds it when the
+	// gesture turns out to be a scroll.
 	const onRowsClick = useCallback(
 		(event: ReactMouseEvent) => {
 			// detail counts clicks in a rapid sequence. A double-tap otherwise plays
@@ -279,9 +269,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		[playFromPointer],
 	);
 
-	// Scrolling follows the cursor only when the keyboard moved it. Chunks
-	// arriving can clamp the cursor too, and reacting to that would drag the view
-	// back to the top every time a chunk lands mid-scroll.
+	// Only when the keyboard moved it: arriving chunks can clamp the cursor too, and
+	// reacting to that drags the view back to the top mid-scroll.
 	const pendingScroll = useRef(false);
 
 	const keyMove = useCallback(
@@ -306,15 +295,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		scrollToTrack(selection.cursor, { align: "auto" });
 	}, [selection.cursor, scrollToTrack]);
 
-	// Which index was last *followed*, rather than which one was last seen. That
-	// is what keeps this from fighting the user: scrolling away does not change
-	// `activeIndex`, so nothing re-fires and the view stays where it was put --
-	// the "Now playing" pill and `n` are how you get back.
+	// Which index was last followed, rather than last seen, so scrolling away does
+	// not re-fire and drag the view back.
 	//
-	// It also covers a race the naive version loses: at library size the active
-	// index can arrive before the chunk holding that row does, and scrolling to a
-	// row the virtualiser does not have yet is a no-op that never retries. Rows
-	// are a dependency, so the jump happens when the row exists.
+	// It also covers a race: at library size the active index can arrive before the
+	// chunk holding that row, and scrolling to a row the virtualiser does not have
+	// is a no-op that never retries. Rows are a dependency, so the jump waits.
 	const followedIndex = useRef(-1);
 
 	useEffect(() => {
@@ -323,11 +309,9 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		if (followedIndex.current === activeIndex) return;
 
 		followedIndex.current = activeIndex;
-		// Centred every time, in both directions. Minimal scrolling brings a row in
-		// from whichever edge it crossed and leaves it there, so going forwards
-		// parked the track on the status bar and going backwards tucked it under the
-		// sticky toolbar. Centre has no edge to land on, so where the playing track
-		// sits becomes a fact rather than a consequence of how you got there.
+		// Centred in both directions. Minimal scrolling brings a row in from whichever
+		// edge it crossed and leaves it there, parking the track on the status bar going
+		// forwards and under the toolbar going back.
 		scrollToTrack(activeIndex, { align: "center", animate: true });
 	}, [
 		activeIndex,

@@ -9,17 +9,15 @@ import type {
 	TrackRows,
 } from "./types";
 
-// Columns are foobar2000 title-formatting expressions, evaluated by the player,
-// and whatever goes in comes back positionally -- so adding a field needs no
-// support on beefweb's side. Multi-argument functions are unusable: the list is
-// split on commas before evaluation, so $if(a,b,c) arrives as three columns.
-// Single-argument functions do nest. See API.md.
+// Title-formatting expressions, evaluated by the player and returned
+// positionally, so adding a field needs no support on beefweb's side.
+// Multi-argument functions are unusable -- the list is split on commas before
+// evaluation, so $if(a,b,c) arrives as three columns -- but single-argument ones
+// nest.
 //
-// %path% and %subsong% are here for identity, not display: playlist items have
-// no id, so "is this row the track that is playing" was only answerable while
-// the player happened to be inside a playlist Jean could map. This is the
-// active item only -- one string per player update, not per row -- which is why
-// the "never hold per-track-unique strings" rule does not apply.
+// %path% and %subsong% are here for identity rather than display. This is the
+// active item only, one string per player update, which is why the "never hold
+// per-track-unique strings" rule does not apply.
 const TRACK_COLUMNS = ["%artist%", "%title%", "%path%", "%subsong%"];
 
 const encode = (expressions: readonly string[]) =>
@@ -31,9 +29,8 @@ const nowPlayingColumns = encode(TRACK_COLUMNS);
 // playlist edits, not on a timer. Long silences are normal, not a stall.
 export const UPDATES_URL = `/api/query/updates?player=true&playlists=true&trcolumns=${nowPlayingColumns}`;
 
-// Ids come from the player rather than from the user, but they are still
-// interpolated into a URL, and a path that escapes its segment would address a
-// different endpoint entirely.
+// Ids come from the player, but they are still interpolated into a URL, and a
+// path that escapes its segment would address a different endpoint.
 const id = encodeURIComponent;
 
 async function request(path: string, options?: RequestInit) {
@@ -70,9 +67,8 @@ export async function fetchPlaylists(): Promise<PlaylistInfo[]> {
 	return playlists;
 }
 
-// Returns the raw positional column arrays rather than objects: one array of
-// strings per track is markedly lighter at 30k+ rows, and it is the shape
-// dictionary encoding will want later.
+// Raw positional column arrays rather than objects: markedly lighter at 30k+
+// rows, and the shape dictionary encoding will want.
 export async function fetchPlaylistItems(
 	playlistId: string,
 	offset: number,
@@ -100,8 +96,8 @@ export const artworkUrl = (playlistId: string, index: number) =>
 // ---- media library (beefweb 0.11+) ----------------------------------------
 //
 // Absent before 0.11 and on DeaDBeeF, where every endpoint below answers 501.
-// `fetchLibraryInfo` is the one that always answers, because it is how a client
-// finds out which of those it is talking to.
+// `fetchLibraryInfo` always answers, because it is how a client finds out which
+// of those it is talking to.
 
 export async function fetchLibraryInfo(): Promise<LibraryInfo> {
 	const response = await fetch("/api/library/info");
@@ -116,11 +112,10 @@ export async function fetchLibraryInfo(): Promise<LibraryInfo> {
 	return library;
 }
 
-// Both sides of the library have to name the same order, and this is the name.
-// The endpoint's default *is* file path, so passing it changes nothing on its
-// own; it is here so the sort Jean applies to a playlist it has just filled is
-// demonstrably the same expression as the order it read, rather than two
-// defaults that happen to agree today. See `librarySource.js`.
+// The endpoint already defaults to file path, so this changes nothing on its
+// own. It is named so the sort Jean applies to a playlist it just filled is
+// demonstrably the expression it read the library with, rather than two defaults
+// that happen to agree today.
 export const LIBRARY_SORT = "%path%";
 
 export async function fetchLibraryItems({
@@ -149,9 +144,8 @@ export const libraryArtworkUrl = (path: string, subsong?: number) =>
 	`/api/artwork/library?path=${encodeURIComponent(path)}` +
 	(subsong ? `&subsong=${subsong}` : "");
 
-// `items` rather than `query`: the player's query syntax and Jean's fold()-based
-// matching do not return the same set, so adding by query would add tracks that
-// are not the ones on screen.
+// `items` rather than `query`: the player's syntax and Jean's fold()-based
+// matching do not return the same set.
 export const addFromLibrary = (playlistId: string, body: AddFromLibraryBody) =>
 	post(`/api/playlists/${id(playlistId)}/items/add-from-library`, body);
 
@@ -197,9 +191,8 @@ export const removePlaylist = (playlistId: string) =>
 export const movePlaylist = (playlistId: string, index: number) =>
 	post(`/api/playlists/move/${id(playlistId)}/${index}`);
 
-// Copies by index, so a derived playlist costs no %path% lookup and uploads
-// nothing but numbers, at any size. `items` is often a typed array, which
-// JSON.stringify would turn into an object -- hence the copy.
+// By index, so this uploads nothing but numbers at any size. `items` is often a
+// typed array, which JSON.stringify would turn into an object -- hence the copy.
 export const copyPlaylistItems = (
 	sourceId: string,
 	targetId: string,
@@ -234,14 +227,13 @@ export function readTrack(
 	};
 }
 
-// The player reports an absolute path (`F:\Musica\K\Korn\...`); the media
-// library reports one relative to the library folders, forward-slashed
-// (`K/Korn/...`). Jean is never told where those folders are, so the two are
-// matched by suffix rather than by reconstructing the root -- a relative path
-// is unique within the library, so a suffix match cannot collide.
+// The player reports an absolute path; the media library reports one relative to
+// the library folders, forward-slashed. Jean is never told where those folders
+// are, so the two are matched by suffix -- safe, because a relative path is
+// unique within the library.
 //
-// A matcher rather than a two-argument predicate, because the only caller asks
-// the same question of every path in the library in a row.
+// A matcher rather than a predicate, because the caller asks the same question
+// of every path in the library in a row.
 export function libraryPathMatcher(absolute: string | null | undefined) {
 	if (!absolute) return () => false;
 	const flat = absolute.replaceAll("\\", "/");

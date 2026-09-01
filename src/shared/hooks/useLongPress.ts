@@ -16,16 +16,15 @@ const HOLD_MS = 420;
 // this and it fires on the tremor of holding a phone one-handed.
 const SLOP_PX = 10;
 
-// Touch has no second mouse button, so press-and-hold stands in for a
-// right-click. Two things have to be true for it to feel right: a hold that
-// turns into a scroll must not fire, and the tap the browser synthesises when
-// the finger lifts must not reach whatever was underneath.
+// Press-and-hold stands in for a right-click. Two things must be true: a hold
+// that turns into a scroll must not fire, and the tap the browser synthesises on
+// lift must not reach whatever was underneath.
 //
-// The browser is a willing partner on the first -- the moment it decides the
-// gesture is a scroll it claims the pointer and fires pointercancel -- so the
-// slop check only covers the window before it makes up its mind.
+// The browser handles the first -- it claims the pointer and fires pointercancel
+// once it decides the gesture is a scroll -- so the slop check only covers the
+// window before it makes up its mind.
 //
-// Spread `style` onto the pressable element, or iOS puts its own selection
+// Spread `style` onto the pressable element, or iOS draws its own selection
 // callout over the menu.
 const PRESSABLE = Object.freeze({
 	WebkitTouchCallout: "none",
@@ -76,10 +75,9 @@ export function useLongPress(
 			timer.current = null;
 			origin.current = null;
 			justFired.current = true;
-			// Time-boxed rather than cleared by the handlers: which echoes actually
-			// arrive differs by platform -- Android suppresses the click once it has
-			// fired contextmenu, iOS sends the click and no contextmenu -- so waiting
-			// for a specific one to arrive leaves the guard stuck on.
+			// Time-boxed rather than cleared by whichever echo arrives: Android suppresses
+			// the click once it has fired contextmenu, iOS sends the click and no
+			// contextmenu, so waiting for a specific one leaves the guard stuck on.
 			clearTimeout(echoTimer.current ?? undefined);
 			echoTimer.current = setTimeout(() => {
 				justFired.current = false;

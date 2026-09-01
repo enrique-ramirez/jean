@@ -3,11 +3,9 @@ import type { TrackColumns } from "@/shared/api/types";
 import { TRACK_EXPRESSIONS } from "./fields";
 import { deriveIntensity } from "./intensity";
 
-// What a load produces, whichever of the two sources produced it. `paths` and
-// `subsongs` are parallel to `rows` and present only on the media library,
-// where a track has a real identity; null on a playlist rather than empty, so a
-// consumer reaching for them on the wrong source fails loudly instead of
-// quietly matching nothing.
+// `paths` and `subsongs` are parallel to `rows` and present only on the media
+// library, where a track has a real identity. Null on a playlist rather than
+// empty, so reaching for them on the wrong source fails loudly.
 export interface PlaylistSnapshot {
 	rows: TrackColumns[];
 	paths: string[] | null;
@@ -42,26 +40,22 @@ interface Entry {
 	isStarted: boolean;
 }
 
-// Two servers with opposite costs, so two shapes. Count the requests, not the
-// rows: on a playlist almost all the cost is the round trip and hardly any of
-// it is the size, so one modest chunk to paint and then as few large concurrent
-// ones as the browser will run. The media library endpoint has no cache, so
-// every call re-enumerates the whole library and concurrency buys nothing --
-// one small chunk to paint, then a single request for the rest.
+// Two servers with opposite costs. On a playlist almost all the cost is the
+// round trip, so one modest chunk to paint and then as few large concurrent ones
+// as the browser allows. The media library endpoint has no cache and
+// re-enumerates on every call, so concurrency buys nothing there.
 const STRATEGY = {
 	playlist: { firstChunk: 2500, chunkSize: 7500, concurrency: 4 },
 	library: { firstChunk: 500, chunkSize: Infinity, concurrency: 1 },
 };
 
-// One shared load per key, not one per component: the library has several
-// consumers, which would otherwise each fetch their own copy of it.
+// One shared load per key: the library has several consumers and none may fetch
+// its own copy.
 //
 // A load runs to completion even after every consumer unmounts -- the bytes are
-// already paid for, and abandoning a half-loaded library so the next visit
-// starts from zero is the worse trade. But rows are the largest thing Jean
-// holds, so what is kept afterwards is bounded: this many unwatched entries,
-// beyond which the least recently used go. Unbounded, browsing twenty playlists
-// retains twenty copies for the life of the tab.
+// already paid for. What is kept afterwards is bounded, because rows are the
+// largest thing Jean holds and browsing twenty playlists would otherwise retain
+// twenty copies for the life of the tab.
 const MAX_IDLE_ENTRIES = 4;
 
 const entries = new Map<string, Entry>();
@@ -82,9 +76,8 @@ export const EMPTY_PLAYLIST: PlaylistSnapshot = Object.freeze({
 export const playlistKey = (playlistId: string, itemCount: number) =>
 	`${playlistId}:${itemCount}`;
 
-// The media library is not a playlist and has no id, so it gets a key of its
-// own -- still carrying the count, so an edited library loads afresh rather
-// than inheriting rows that have moved.
+// The media library has no playlist id, so it gets a key of its own -- still
+// carrying the count, so an edited library loads afresh.
 export const libraryKey = (itemCount: number) => `library:${itemCount}`;
 
 // One shape for both, so the loading machinery below never asks which it is.
@@ -154,11 +147,9 @@ function emit(entry: Entry, patch: Partial<PlaylistSnapshot>) {
 
 const prefixOf = (key: string) => key.slice(0, key.indexOf(":"));
 
-// Two reasons to let an entry go, and both need nobody watching it. A
-// *superseded* one -- same playlist, different item count -- is a stale copy of
-// the largest thing in memory and can never be wanted again, so it always goes.
-// The rest are merely old, and insertion order is recency. An entry still
-// loading is aborted with it: nobody is waiting for those bytes.
+// A superseded entry -- same playlist, different item count -- is a stale copy
+// of the largest thing in memory and always goes. The rest are merely old, and
+// insertion order is recency. Either way nobody may be watching.
 function evictIdle(currentKey: string) {
 	const idle = [...entries.values()].filter(
 		(entry) => entry.key !== currentKey && entry.listeners.size === 0,
@@ -191,9 +182,8 @@ async function load(entry: Entry, source: LoadSource) {
 		const snapshot = [...rows];
 		emit(entry, {
 			rows: snapshot,
-			// Parallel to rows and only present on the library source, where a track
-			// has a real identity. Null elsewhere rather than empty, so a consumer
-			// reaching for it on the wrong source fails loudly.
+			// Null rather than empty off the library source, so a consumer reaching for it
+			// on the wrong source fails loudly.
 			paths: paths ? [...paths] : null,
 			subsongs: subsongs ? [...subsongs] : null,
 			loaded: snapshot.length,
@@ -227,9 +217,8 @@ async function load(entry: Entry, source: LoadSource) {
 			(_, at) => rows.length + at * step,
 		);
 
-		// Chunks land out of order; rows may only grow in order. A completed chunk
-		// waits here until the gap in front of it is filled, so what consumers see
-		// is always a prefix of the list rather than one with holes in it.
+		// Chunks land out of order but rows may only grow in order, so a chunk waits
+		// here until the gap in front of it is filled.
 		const pending = new Map<number, Chunk>();
 		const queue = [...offsets];
 		let appended = 0;
@@ -255,9 +244,8 @@ async function load(entry: Entry, source: LoadSource) {
 			Array.from({ length: Math.min(concurrency, queue.length) }, worker),
 		);
 
-		// The list can be shorter than it claimed -- it may have been edited
-		// between the first chunk and the last -- so loading ends here, not when
-		// the count is reached.
+		// The list can be shorter than it claimed if it was edited mid-load, so loading
+		// ends here rather than when the count is reached.
 		publish(total, false);
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") return;

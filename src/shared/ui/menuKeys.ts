@@ -4,23 +4,19 @@ import {
 	useLayoutEffect,
 } from "react";
 
-// What a surface adds on top of the shared roving behaviour -- ActionMenu's
-// nested pages answer the horizontal arrows, a dropdown has none. Taking the
-// key means returning true.
+// What a surface adds on top of the shared roving behaviour. Taking the key
+// means returning true.
 type BeyondHandler = (context: {
 	event: ReactKeyboardEvent;
 	items: HTMLElement[];
 	at: number;
 }) => boolean | undefined;
 
-// The keyboard a menu owns while it is open, shared by both menu surfaces --
-// `ActionMenu`'s popover and sheet, and the plain dropdown in `Menu` -- so the
-// two cannot answer the same key differently. They already had: the sheet took
-// the keys from the app and the dropdown did not, so Escape closed one and
-// cleared the track selection behind the other.
+// Shared by both menu surfaces, so the two cannot answer the same key
+// differently. They already had: Escape closed the dropdown *and* cleared the
+// track selection behind it.
 
-// Enabled items in the order they are drawn. Both roles, because a checkbox in
-// a menu is still a row you arrow onto.
+// Both roles, because a checkbox in a menu is still a row you arrow onto.
 const ITEMS =
 	'[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)';
 
@@ -36,18 +32,12 @@ const ROVE: Record<string, (at: number) => number> = {
 	End: () => -1,
 };
 
-// Focus moves into the panel on open and back where it came from on close --
-// but only if the panel still holds it. An action is allowed to send focus
-// somewhere deliberately (Rename opens a field in the row behind the menu) and
-// must not have it taken back when the menu finally goes.
+// Focus returns on close only if the panel still holds it: an action may send
+// focus somewhere deliberately, and must not have it taken back.
 //
-// `isReady` is not a nicety: a popover is invisible for the frame it is
-// measured in, and focusing something invisible puts focus nowhere -- which
-// left the arrow keys navigating nothing and every key still belonging to the
-// app behind the menu.
-//
-// Layout effects, so the cleanup still runs while the panel is in the DOM and
-// can be asked whether it has focus.
+// `isReady` is load-bearing -- a popover is invisible for the frame it is
+// measured in, and focusing an invisible element puts focus nowhere. A layout
+// effect, so the cleanup runs while the panel is still in the DOM.
 export function useFocusCapture(
 	ref: RefObject<HTMLElement | null>,
 	isReady = true,
@@ -69,15 +59,10 @@ export function useFocusCapture(
 	}, [ref, isReady]);
 }
 
-// **Nothing typed at an open menu belongs to the app behind it.** Without the
-// stopPropagation the arrow keys seek the player while you are choosing an
-// action, the space bar toggles playback while you are typing a playlist name,
-// and Escape clears the track selection rather than closing what is on top of
-// it. Tab is the exception: leaving by keyboard is the browser's business.
-//
-// `beyond` is where a surface adds keys of its own -- `ActionMenu`'s nested
-// pages answer the horizontal arrows, a dropdown has none. It takes the key by
-// returning true.
+// Nothing typed at an open menu belongs to the app behind it: without the
+// stopPropagation the arrows seek the player and space toggles playback while
+// you are choosing an action. Tab is the exception -- leaving by keyboard is
+// the browser's business.
 export function handleMenuKeys(
 	event: ReactKeyboardEvent,
 	{

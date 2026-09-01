@@ -7,22 +7,17 @@ import {
 
 import { clamp } from "@/shared/lib/math";
 
-// Spread onto the track with the handlers, covering both ways a browser can
-// decide a drag was meant for it rather than for the control.
+// Covers both ways a browser can decide a drag was meant for it rather than for
+// the control.
 //
-// On a pointer, pressing on a slider and moving starts a *text selection* that
-// runs out across whatever is beside it -- and dragging a selection is a native
-// drag, so the browser paints a translucent snapshot of the control and follows
-// the pointer with that instead of moving the thumb. It looks like the slider
-// has come loose, and reads as intermittent because it depends on where the
-// press landed and what was already selected.
+// On a pointer, pressing and moving starts a text selection, and dragging a
+// selection is a native drag -- so the browser paints a snapshot of the control
+// and follows the pointer with that instead of moving the thumb.
 //
-// On touch, the same symptom with a different cause: without `touch-action` the
-// browser keeps the gesture for panning, and the moment it decides the finger is
-// scrolling it stops sending moves, stranding the thumb wherever it got to.
-// `setPointerCapture` does not save this -- capture routes events that still
-// exist. And `touch-action` intersects down the tree, which is why it belongs on
-// the track rather than on anything containing it.
+// On touch, without `touch-action` the browser keeps the gesture for panning and
+// stops sending moves the moment it decides the finger is scrolling. Capture
+// does not save this -- it routes events that still exist -- and `touch-action`
+// intersects down the tree, so it belongs on the track itself.
 const GRABBABLE = Object.freeze({
 	userSelect: "none",
 	WebkitUserSelect: "none",
@@ -31,12 +26,9 @@ const GRABBABLE = Object.freeze({
 	WebkitTouchCallout: "none",
 });
 
-// Pointer-drag along a horizontal track, reported as 0..1. Shared by the seek
-// bar and the volume slider: both need capture, clamping and rect maths, and
-// neither should reimplement them.
-//
-// While dragging, `fraction` is the pointer's position rather than the incoming
-// value -- otherwise the thumb fights whatever the player last reported.
+// Pointer-drag along a horizontal track, as 0..1. While dragging, `fraction` is
+// the pointer's position rather than the incoming value, or the thumb fights
+// whatever the player last reported.
 export function useDragFraction({
 	onDrag,
 	onCommit,

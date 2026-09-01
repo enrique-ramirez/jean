@@ -7,17 +7,15 @@ const LIBRARY_INFO_KEY = ["library", "info"];
 // Which library Jean is talking to, asked once on connect. Three outcomes, and
 // they are three different sentences to the user:
 //
-//   supported: false   no media library API at all -- DeaDBeeF (501) and every
-//                      beefweb up to 0.10 (404). Use an autoplaylist.
-//   enabled: false     foobar2000 has one and the user has not configured it.
-//                      Fixable in foobar's preferences, not by an autoplaylist.
+//   supported: false   no API at all -- DeaDBeeF (501), beefweb <=0.10 (404)
+//   enabled: false     foobar2000 has one, unconfigured. Fixed in foobar.
 //   both true          use it.
 //
 // Collapsing the first two into "no library" would send someone to build an
 // autoplaylist when the real fix is switching their media library on.
 //
-// Cheap, and the only library call that answers *without* the API -- everything
-// else 501s -- which is what makes it the detector.
+// The only library call that answers without the API, which makes it the
+// detector.
 export function useLibraryInfo() {
 	const { data, isLoading } = useQuery({
 		queryKey: LIBRARY_INFO_KEY,

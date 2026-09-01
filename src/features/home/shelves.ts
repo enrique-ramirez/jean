@@ -11,18 +11,14 @@ export interface Shelf {
 	caption: (album: Album) => string | null;
 }
 
-// A shelf that survived `fill`: the albums it drew, capped for the row, and how
-// many qualified in total. Generic in the album, so a shelf built from covered
-// albums still says so downstream -- the picks only filter and sort, so
-// whatever went in is what comes out.
+// Generic in the album, so a shelf built from covered albums still says so
+// downstream: the picks only filter and sort.
 export interface FilledShelf<A extends Album = Album> extends Shelf {
 	albums: A[];
 	total: number;
 }
 
-// Narrowings the picks below rely on. The filters already guarantee these --
-// an album with two ratings has an average, one with a bitrate has a bitrate --
-// but the aggregate cannot say so, so the predicate does.
+// The filters already guarantee these, but the aggregate type cannot say so.
 type WithBitrate = Album & { bitrate: number };
 type WithRating = Album & { rating: number };
 
@@ -33,17 +29,14 @@ const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 // two covers reads as something failing to load.
 const MINIMUM = 4;
 
-// A shelf is a filter over the albums, a title, and a sentence it can say about
-// each entry. That last part is the point: "437 albums matching a predicate" is
-// a query result, and "you played this 32 times a track and not since 2016" is
-// a reason to press play.
+// A filter over the albums, a title, and a sentence it can say about each entry.
+// That last part is the point: "437 albums matching a predicate" is a query
+// result, "32 plays a track and not since 2016" is a reason to press play.
 //
-// Two rules keep them honest on somebody else's library. **Thresholds are
-// percentiles**, so a shelf fills whether you have three plays a track or three
-// hundred -- but a percentile only promises that *something* qualifies, never
-// that the title is true, so a shelf claiming something about time carries an
-// absolute floor as well. And **a shelf that cannot fill honestly does not
-// render**: no ratings, no starred shelf.
+// Thresholds are percentiles, so a shelf fills whether you have three plays a
+// track or three hundred -- but a percentile only promises something qualifies,
+// never that the title is true, so a shelf claiming something about time carries
+// an absolute floor too. A shelf that cannot fill honestly does not render.
 const shelf = (
 	id: string,
 	title: string,
@@ -56,9 +49,8 @@ const byPlays = (a: Album, b: Album) => b.plays - a.plays;
 const byRecent = (a: Album, b: Album) => b.lastPlayed - a.lastPlayed;
 const plays = (count: number) => plural(Math.round(count), "play");
 
-// Decorate, sort, undecorate. `sort(() => Math.random() - 0.5)` is the obvious
-// one-liner and is biased: the result depends on the comparison order the
-// engine happens to use.
+// Decorate, sort, undecorate. `sort(() => Math.random() - 0.5)` is biased: the
+// result depends on the comparison order the engine happens to use.
 const shuffled = <T>(items: T[]): T[] =>
 	items
 		.map((item) => ({ item, at: Math.random() }))
@@ -82,9 +74,8 @@ export const SHELVES: Shelf[] = [
 		(album) => plays(album.plays),
 	),
 
-	// Selected on plays *per track*, because a long soundtrack would otherwise
-	// win on volume alone -- but captioned with the year, because the title
-	// already says you loved it and the year is the part that stings.
+	// Plays *per track*, or a long soundtrack wins on volume alone -- but captioned
+	// with the year, which is the part that stings.
 	shelf(
 		"loved",
 		"You used to love this",
@@ -146,10 +137,8 @@ export const SHELVES: Shelf[] = [
 			`${Math.round((album as WithBitrate).bitrate)} kbps, ${plays(album.plays)}`,
 	),
 
-	// Ratings are sparse and lopsided -- most of a library's are the same value --
-	// so sorting by average alone is sorting a flat tie. The second key is how
-	// many tracks you actually starred, which is the difference between "you liked
-	// a song on this" and "you went through it".
+	// Ratings are sparse and lopsided, so sorting by average alone sorts a flat tie.
+	// The second key is how many tracks were actually starred.
 	shelf(
 		"rated",
 		"You starred these",
@@ -177,9 +166,8 @@ export const SHELVES: Shelf[] = [
 		"Never opened",
 		"In your library, never played",
 		(albums) =>
-			// On a player with no playback-statistics component every album reads as
-			// zero, so this shelf would offer the whole library and call it untouched
-			// -- absence of *data* wearing the clothes of absence of plays.
+			// With no playback-statistics component every album reads as zero, so this would
+			// offer the whole library and call it untouched.
 			albums.some((album) => album.plays > 0)
 				? albums
 						.filter((album) => album.plays === 0)
@@ -189,9 +177,8 @@ export const SHELVES: Shelf[] = [
 	),
 ];
 
-// The one shelf that needs no history, no ratings and no play counts. It exists
-// so a library Jean knows nothing about yet still opens on something to press
-// rather than on an apology.
+// Needs no history, no ratings and no play counts, so a library Jean knows
+// nothing about still opens on something to press rather than an apology.
 const STARTER = shelf(
 	"starter",
 	"Start somewhere",
@@ -223,12 +210,10 @@ export function buildShelves<A extends Album>(albums: A[]): FilledShelf<A>[] {
 	return [fill(STARTER, albums)].filter((entry) => entry !== null);
 }
 
-// Every track on a shelf, **ascending**, which is not the order the shelf is
-// drawn in and has to be said out loud. `add-from-library` ignores the order of
-// `items` and adds them in the library's own, so a set concatenated in shelf
-// order arrives sorted and every position computed against the shelf order then
-// addresses a different track. Sorting here keeps the three orders identical:
-// what the view renders, what the playlist holds, and what a position means.
+// Ascending, which is not the order the shelf is drawn in and has to be said out
+// loud: `add-from-library` ignores the order of `items` and adds them in the
+// library's own, so a set concatenated in shelf order arrives sorted and every
+// position computed against it addresses a different track.
 export function refsOfShelf(shelf: FilledShelf<Album>) {
 	return Int32Array.from(
 		shelf.albums.flatMap((album) => [...album.refs]),

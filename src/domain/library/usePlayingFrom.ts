@@ -10,12 +10,10 @@ import {
 // Where playback is coming from, when that is a set Jean materialised rather
 // than a playlist the user can see.
 //
-// Browsing and playing are deliberately separate: the scratch holds the last set
-// you *chose to play*, so you can start a shelf and wander into All music
-// without touching it. That freedom is only tolerable if the app can still say
-// where the sound is coming from. Read off the playlist's own title, which
-// already carries the kind and the label, so this needs no state of Jean's own
-// and is true after a reload and on another device.
+// The scratch holds the last set you chose to play, so you can start a shelf and
+// wander into All music without touching it -- which is only tolerable if the app
+// can still say where the sound is coming from. Read off the playlist's own
+// title, so this needs no state of Jean's own.
 export function usePlayingFrom() {
 	const { data: playlists = [] } = usePlaylists();
 	const { data: snapshot } = usePlayer();
@@ -35,9 +33,8 @@ export function usePlayingFrom() {
 		return {
 			...held,
 			name,
-			// The active item's playlist, not `isCurrent`: that keeps pointing at the
-			// last playlist played from long after playback stopped, which would
-			// leave a volume icon burning next to a set nobody is listening to.
+			// The active item's playlist, not `isCurrent`: that keeps pointing at the last
+			// playlist played from long after playback stopped.
 			isPlaying: activePlaylistId === scratch.id,
 		};
 	}, [playlists, activePlaylistId]);

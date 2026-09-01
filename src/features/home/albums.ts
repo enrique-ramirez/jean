@@ -66,30 +66,23 @@ const summed = (album: AlbumDraft) => ({
 			: null,
 });
 
-// Inferred rather than declared, so the shape cannot drift from what `summed`
-// actually builds. `bitrate` and `rating` are null on an album the player could
-// not answer for -- a shelf that leans on either narrows first.
+// `bitrate` and `rating` are null on an album the player could not answer for,
+// so a shelf leaning on either narrows first.
 export type Album = ReturnType<typeof summed>;
 
-// An album with the cover its source addresses it by. `albumsOf` cannot know
-// that -- it walks rows, and where artwork lives is the source's business -- so
-// the home screen attaches it once and the shelves carry it through.
+// `albumsOf` walks rows and cannot know where artwork lives, so the home screen
+// attaches it once and the shelves carry it through.
 export interface CoveredAlbum extends Album {
 	artworkUrl: string;
 }
 
-// Albums across the whole library, which is a different question from
-// `groupByAlbum`. That one groups *contiguous runs*, because a playlist's order
-// is the player's business. A shelf has no such constraint: it picks albums out
-// of the library wherever they sit, so the same record split across two places
-// in path order is one album here.
+// Albums across the whole library, unlike `groupByAlbum`, which groups only
+// contiguous runs: a record split across two places in path order is one album
+// here.
 //
-// One pass with a mutable accumulator: this walks every row in the library.
-//
-// Takes the rows rather than the snapshot they came from, because a caller's
-// `useMemo` can only be as narrow as this signature: handed the whole snapshot
-// it has to depend on the whole snapshot, and the library object is rebuilt
-// every render, so the memo never hits and this pass runs on every one.
+// Takes rows rather than the snapshot, because a caller's `useMemo` can only be
+// as narrow as this signature -- handed the whole snapshot it must depend on the
+// whole snapshot, which is rebuilt every render.
 export function albumsOf(rows: TrackColumns[]): Album[] {
 	const byKey = rows.reduce((into, row, ref) => {
 		const album = value(row, FIELD.album);
@@ -108,10 +101,8 @@ export function albumsOf(rows: TrackColumns[]): Album[] {
 	return [...byKey.values()].map(summed);
 }
 
-// Thresholds are percentiles of *this* library, never constants. A library
-// whose busiest album has three plays still has a top quartile; hardcode a
-// number and the shelf is empty on every library but the one it was written
-// against.
+// Percentiles of this library, never constants: one whose busiest album has
+// three plays still has a top quartile.
 export function percentile(values: number[], fraction: number): number {
 	if (values.length === 0) return 0;
 	const sorted = Float64Array.from(values).sort();

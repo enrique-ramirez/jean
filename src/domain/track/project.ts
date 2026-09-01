@@ -1,10 +1,10 @@
 import type { TrackColumns } from "@/shared/api/types";
 import type { PlaylistSnapshot } from "./playlistStore";
 
-// A ref is an integer -- a playlist index on one source, a position in the
-// library's own paths array on the other -- and that is what keeps the source
-// seam from leaking. The search index produces an Int32Array; a shelf produces
-// an ordinary array. Nothing downstream cares which, so both are a Refs.
+// A ref is an integer -- a playlist index on one source, a position in the paths
+// array on the other -- which is what keeps the seam from leaking. The search
+// index produces an Int32Array and a shelf an ordinary array; nothing downstream
+// cares which.
 export type Refs = Int32Array | number[];
 
 // The shape every list in the app renders: rows to draw, the refs they came
@@ -17,13 +17,10 @@ export interface TrackView {
 	playedCount: number;
 }
 
-// A view of the library is a list of refs into it, projected onto the arrays
-// the track list already speaks. Every view goes through here -- search, all
-// music, a shelf -- so they cannot drift into different shapes.
-//
-// Heat and patina come across from the library-wide pass rather than being
-// recomputed over the subset, so a track's warmth means the same thing in a
-// shelf as it does in the whole library.
+// Every view goes through here -- search, all music, a shelf -- so they cannot
+// drift into different shapes. Heat and patina come across from the
+// library-wide pass rather than being recomputed over the subset, so a track's
+// warmth means the same thing in a shelf as in the whole library.
 export function project(
 	library: PlaylistSnapshot,
 	refs: Refs | null | undefined,
@@ -44,9 +41,8 @@ export function project(
 	};
 }
 
-// The unfiltered view, which is every row in order. Deliberately not projected:
-// the arrays are already exactly right, and copying the library to produce a
-// copy of itself is the one filter that can afford to do nothing.
+// Deliberately not projected: the arrays are already right, and copying the
+// library to produce a copy of itself is the one filter that can do nothing.
 export const wholeLibrary = (library: PlaylistSnapshot): TrackView => ({
 	rows: library.rows,
 	indices: Int32Array.from(

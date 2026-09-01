@@ -12,18 +12,14 @@ import { Button } from "@/shared/ui/Button";
 import { Menu } from "@/shared/ui/Menu";
 import styles from "./SavePlaylistButton.module.css";
 
-// The one place Jean writes a playlist, and it takes an explicit click to get
-// here: browsing and searching never do. How the tracks get across is the
-// source's business: an autoplaylist copies by index, so nothing is uploaded
-// but a list of numbers, and the media library adds by `(path, subsong)`
-// because there is no playlist to copy *from*.
+// The one place Jean writes a playlist, and it takes an explicit click. How the
+// tracks get across is the source's business: an autoplaylist copies by index,
+// the media library adds by `(path, subsong)` because there is no playlist to
+// copy from.
 //
-// Reaching past the source for a playlist id was not untidy, it was wrong, and
-// silently. A ref is only an index *into its own source*: with a media library
-// those refs address its own path-ordered array, and copying them out of the
-// autoplaylist instead takes whatever happens to sit at those positions in a
-// differently ordered list. It never throws, which is what makes it worth a
-// test rather than a comment.
+// Reaching past the source for a playlist id is wrong and silent: a ref only
+// indexes its own source, so copying media-library refs out of the autoplaylist
+// takes whatever sits at those positions in a differently ordered list.
 export function SavePlaylistButton({
 	search,
 	library,
@@ -64,9 +60,8 @@ export function SavePlaylistButton({
 			const name = title.trim();
 
 			// If playing these results already built a playlist of exactly them, that
-			// playlist *is* what is being saved -- so rename it rather than making a
-			// second copy beside it. Playback carries straight on through the rename,
-			// and the scratch stops existing because it stops being Jean's, which is
+			// playlist *is* what is being saved -- so rename rather than copy. Playback
+			// carries on through the rename, and the scratch stops being Jean's, which is
 			// what takes the search out of the sidebar.
 			if (holdsResults) {
 				const id = await scratch.adopt(name);
@@ -76,21 +71,18 @@ export function SavePlaylistButton({
 
 			const playlist = await createPlaylist(name);
 			await library.source.addTo(playlist.id, indices);
-			// Refetched rather than invalidated: the route that follows resolves
-			// against this list, and navigating to an id it has not seen yet would
-			// land on the old view until the stream caught up.
+			// Refetched rather than invalidated: the route that follows resolves against
+			// this list, and an id it has not seen yet lands on the old view.
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			return playlist;
 		},
 		onSuccess: (playlist) => {
-			// The results have somewhere permanent to live now, so the search that
-			// made them is done -- and with it the scratch playlist, which was only
-			// ever the temporary version of what was just saved.
+			// The results have somewhere permanent to live now, so the scratch -- only ever
+			// the temporary version of what was just saved -- is done.
 			search.clear();
 			onOpenChange(false);
-			// `adopt` answers null when there is no scratch to rename, which
-			// `holdsResults` already rules out -- so this is a guard rather than a
-			// branch, and navigating to a null id would be the worse failure.
+			// A guard rather than a branch: `holdsResults` already rules this out, and
+			// navigating to a null id would be the worse failure.
 			if (playlist.id) onOpenPlaylist(playlist.id);
 		},
 	});

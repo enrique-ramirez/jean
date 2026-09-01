@@ -83,13 +83,10 @@ export function usePlaylists() {
 		queryKey: PLAYLISTS_KEY,
 		queryFn: fetchPlaylists,
 		staleTime: Infinity,
-		// The one thing the stream cannot tell us. `playlists` fires when the *set*
-		// of playlists changes and stays silent when their contents change, so every
-		// `itemCount` here is stale from the first edit onwards and the views keyed
-		// on it go on showing a list the player no longer has. Coming back to the
-		// tab is the moment we know the desktop has had time to be used, and it
-		// costs nothing when nothing changed: an unchanged count is an unchanged
-		// key.
+		// The one thing the stream cannot tell us: `playlists` fires when the set of
+		// playlists changes and stays silent when their contents do, so every
+		// `itemCount` is stale from the first edit onwards. An unchanged count is an
+		// unchanged key, so this costs nothing when nothing changed.
 		refetchOnWindowFocus: true,
 	});
 }
@@ -101,11 +98,8 @@ export function usePermissions(): Partial<Permissions> {
 	return data?.player?.permissions ?? {};
 }
 
-// Every write in this file is optimistic, and optimism is all the same shape:
-// patch the cache, send, and put the old value back if the player refuses.
-// Written once because the failure -- a control that shows a state the player
-// is not in -- is the same failure everywhere, and it is not worth getting
-// right five times.
+// Every write here is optimistic and optimism is all the same shape: patch the
+// cache, send, put the old value back if the player refuses.
 //
 // `patch` returns the next value for the key, or null to leave it alone.
 function useOptimisticWrite<TData, TInput>(
@@ -137,9 +131,8 @@ function useOptimisticWrite<TData, TInput>(
 	});
 }
 
-// Rewriting the active item is the commonest patch of all, and it always
-// re-anchors the interpolation: freezing a position without moving `syncedAt`
-// leaves the seek bar carrying on from where the last update put it.
+// Always re-anchors the interpolation: freezing a position without moving
+// `syncedAt` leaves the seek bar carrying on from where the last update put it.
 const usePlayerPatch = <TInput>(
 	mutationFn: (input: TInput) => Promise<unknown>,
 	patchPlayer: (
@@ -179,9 +172,8 @@ const usePlaylistPatch = <TInput>(
 export function usePlaylistActions() {
 	const queryClient = useQueryClient();
 
-	// The one playlist mutation that cannot be optimistic: only the player can
-	// say what id the new playlist got, and everything that happens next --
-	// selecting it, renaming it, dropping tracks on it -- is addressed by it.
+	// The one mutation that cannot be optimistic: only the player can say what id
+	// the new playlist got, and everything after is addressed by it.
 	const create = useMutation({
 		mutationFn: async (title: string) => {
 			const playlist = await createPlaylist(title);
@@ -289,9 +281,8 @@ export const useSeekBy = () =>
 		return { activeItem: { ...item, position } };
 	});
 
-// The order enum differs between players and versions, so the shuffle entry is
-// found by name rather than by a hardcoded index. foobar2000 offers several
-// shuffle flavours; tracks is the one people mean by "shuffle".
+// The order enum differs between players and versions, so shuffle is found by
+// name. foobar2000 offers several flavours; tracks is the one people mean.
 function findShuffleIndex(names: string[]) {
 	const lower = names.map((name) => name.toLowerCase());
 
@@ -304,9 +295,8 @@ function findShuffleIndex(names: string[]) {
 	);
 }
 
-// Playback order is global player state, not a property of the playlist being
-// viewed, and toggling it must not disturb what is currently playing -- it only
-// changes what comes next.
+// Global player state rather than a property of the playlist on screen, so
+// toggling it must not disturb what is playing -- only what comes next.
 export function usePlaybackOrder() {
 	const { data } = usePlayer();
 
@@ -322,9 +312,8 @@ export function usePlaybackOrder() {
 	const shuffleIndex = useMemo(() => findShuffleIndex(names), [names]);
 	const isShuffle = shuffleIndex >= 0 && value === shuffleIndex;
 
-	// Turning shuffle off returns you to the order you had, not to Default, so a
-	// repeat setting survives a shuffle detour. Session-scoped: after a reload the
-	// best guess is the first mode.
+	// Turning shuffle off returns the order you had, so a repeat setting survives a
+	// shuffle detour. Session-scoped: after a reload the best guess is the first.
 	const previousOrder = useRef(0);
 	if (!isShuffle && value !== previousOrder.current)
 		previousOrder.current = value;
@@ -359,10 +348,9 @@ export function usePlaybackOrder() {
 	};
 }
 
-// How long a value we just sent stays authoritative over what the player
-// reports, if the player never confirms it. Long enough to cover a push already
-// in flight describing an older position of the slider, short enough that
-// turning the knob on the PC itself shows up promptly.
+// How long a value just sent outranks what the player reports. Long enough to
+// cover a push already in flight describing an older position of the slider,
+// short enough that turning the knob on the PC shows up promptly.
 const VOLUME_SETTLE_MS = 1000;
 const VOLUME_EPSILON = 0.5;
 
@@ -375,12 +363,9 @@ export function useVolume() {
 	const nudgeUp = useMutation({ mutationFn: volumeUp });
 	const nudgeDown = useMutation({ mutationFn: volumeDown });
 
-	// State, not a ref: a ref would not re-render, so the moment a drag ended the
-	// control would fall back to the last value the player reported and visibly
-	// snap back until the round trip landed.
-	//
-	// Kept here rather than in the query cache on purpose. This re-renders the
-	// status bar; a cache write would re-render every subscriber of player state,
+	// State rather than a ref, or the control would snap back to the player's last
+	// reported value the moment a drag ended. Kept here rather than in the query
+	// cache because a cache write re-renders every subscriber of player state,
 	// including the virtualised track list, for the whole gesture.
 	const [pending, setPending] = useState<number | null>(null);
 

@@ -42,17 +42,10 @@ export function AlbumGroup({
 		{ number: null, start: group.start, count: group.count },
 	];
 
-	// Three states, and the caption to the left is why there are three. It
-	// already names the album artist, so a row whose artist is that name plus a
-	// guest only has to say the guest -- on the title's line, the way a sleeve
-	// prints it and the way every distributor delivers it. A row whose artist is
-	// someone else entirely is a compilation, where the artist is the fact about
-	// the row rather than a footnote to it, and it keeps its own line.
-	//
-	// The second line was previously both cases at once, which is what looked
-	// bad: 'Post Malone' repeated down the column under every other title, and a
-	// rhythm that broke between one-line and two-line rows for a difference of a
-	// few words.
+	// The caption to the left already names the album artist, so a row whose artist
+	// is that name plus a guest only has to say the guest, on the title's line. A
+	// row whose artist is someone else is a compilation, where the artist is the
+	// fact about the row rather than a footnote, and keeps its own line.
 	const track = (index: number) => {
 		const artist = value(rows[index], FIELD.artist);
 		const guest = featuring(artist, group.albumArtist);

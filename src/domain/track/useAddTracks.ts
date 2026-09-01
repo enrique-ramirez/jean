@@ -8,14 +8,11 @@ import { pushToast } from "@/shared/ui/toastStore";
 import type { LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
-// Copying tracks between playlists, which is one request whatever the count --
-// indices go up, nothing else does.
+// One request whatever the count -- indices go up, nothing else does.
 //
-// No duplicate check. foobar2000 playlists are ordered lists, not sets, and the
-// player appends without comment; a uniqueness rule Jean invented would be Jean
-// misrepresenting the data. There is no cheap check to make either -- items have
-// no id, so identity is %path%, and reading it is a request of its own before
-// the drop could land. Undo covers the mistake instead.
+// No duplicate check: foobar2000 playlists are ordered lists, not sets, and a
+// uniqueness rule Jean invented would misrepresent the data. There is no cheap
+// check either, since identity is %path%. Undo covers the mistake instead.
 
 export function useAddTracks() {
 	const queryClient = useQueryClient();
@@ -33,11 +30,8 @@ export function useAddTracks() {
 			const count = itemIndices.length;
 			if (count === 0) return;
 
-			// Read from the cache rather than from the target captured when the menu
-			// was built, and read before the write -- this is what makes undo exact.
-			// Items are appended, so the rows about to exist are precisely
-			// [itemCount, itemCount + count). No paths, no extra request: itemCount
-			// is already in PlaylistInfo.
+			// Read before the write, which is what makes undo exact: items are appended, so
+			// the rows about to exist are precisely [itemCount, itemCount + count).
 			const before =
 				queryClient
 					.getQueryData<PlaylistInfo[]>(PLAYLISTS_KEY)
@@ -48,9 +42,8 @@ export function useAddTracks() {
 				await source.addTo(target.id, itemIndices);
 				await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			} catch {
-				// Smart playlists reject every write and say nothing about it in their
-				// metadata, so there is no way to know before trying. Attempt, and
-				// explain when it comes back refused.
+				// Smart playlists reject every write and their metadata says nothing about it,
+				// so there is no way to know before trying.
 				pushToast({
 					tone: "error",
 					message: `${target.title} would not take those tracks. Smart playlists are built by the player and cannot be added to.`,
@@ -59,18 +52,14 @@ export function useAddTracks() {
 			}
 
 			const undo = async () => {
-				// Read from the player, not from the cache. Item changes are not
-				// pushed -- beefweb sends `playlists` when the set of playlists
-				// changes and nothing at all when their contents do -- so the cached
-				// itemCount cannot see the desktop, which is the one writer this
-				// check exists to catch. One request, on an explicit user action.
+				// Read from the player: item changes are not pushed, so the cached itemCount
+				// cannot see the desktop -- the one writer this check exists to catch.
 				const current = (await fetchPlaylists()).find(
 					(entry) => entry.id === target.id,
 				);
 
-				// Those indices are only ours while nothing else has touched the
-				// playlist. If the count has moved, the desktop got there first and
-				// removing that range would take somebody else's tracks.
+				// Those indices are only ours while nothing else has touched the playlist: if
+				// the count moved, removing that range takes somebody else's tracks.
 				if (!current || current.itemCount !== before + count) {
 					pushToast({
 						tone: "error",

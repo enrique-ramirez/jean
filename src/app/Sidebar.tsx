@@ -39,12 +39,10 @@ import { pushToast } from "@/shared/ui/toastStore";
 import type { PlayingRoute } from "./routes";
 import styles from "./Sidebar.module.css";
 
-// Every row in the sidebar is the same shape: an icon that says whether the
-// music is coming from here, a name, and sometimes a count. **The accent means
-// "this is playing" and nothing else** -- never which row you are looking at,
-// which is what aria-current and the row's own styling are for. Tinting by
-// selection made the row you were looking at and the row you were listening to
-// identical, which is precisely the pair this design exists to separate.
+// The accent means "this is playing" and nothing else -- never which row you are
+// looking at, which is what aria-current and the row's own styling are for.
+// Tinting by selection made the two identical, which is the pair this design
+// exists to separate.
 function NavRow({
 	icon: Icon,
 	label,
@@ -125,9 +123,9 @@ export function Sidebar({
 	// Only the coarse facts, and only here -- the rows read `isDropTarget` as a
 	// plain prop rather than each subscribing to the drag.
 	const drag = useDragState();
-	// Undefined until the player has answered. Assume yes and let a refusal
-	// correct us, rather than showing a read-only sidebar to everybody for the
-	// first few hundred milliseconds.
+	// Undefined until the player answers. Assume yes and let a refusal correct it,
+	// rather than showing everybody a read-only sidebar for the first few hundred
+	// milliseconds.
 	const canEdit = permissions.changePlaylists !== false;
 
 	const menu = useContextMenu({ disabled: !canEdit });
@@ -135,31 +133,26 @@ export function Sidebar({
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [focusedId, setFocusedId] = useState<string | null>(null);
 
-	// Jean's own scratch playlist is not the user's, so it is not in their list.
-	// It still exists on the player, and they will see it in foobar -- there is
-	// no hidden playlist to be had -- but here it would be a row whose name
-	// changed every time they searched.
+	// Jean's scratch playlist is not the user's, so it is not in their list. It
+	// still exists on the player, but here it would be a row whose name changed
+	// every time they searched.
 	const shown = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
 
-	// Which row, if any, the music is coming from -- one answer for every row,
-	// from the same place the status bar reads it. Playing search results makes
-	// Jean's hidden scratch playlist the current one, so without this the status
-	// bar would name a track with nothing on screen accounting for it.
+	// One answer for every row, from the same place the status bar reads it: playing
+	// search results makes the hidden scratch the current playlist, so without this
+	// the status bar names a track nothing on screen accounts for.
 	//
-	// Not `some(isScratchPlaylist && isCurrent)`, which was wrong twice over:
-	// `isCurrent` goes on pointing at the last playlist played from long after
-	// playback stopped, and it never asked what the scratch was *holding*, so a
-	// shelf playing lit the search row up whenever a query happened to be typed.
+	// Not `isScratchPlaylist && isCurrent`, which was wrong twice: `isCurrent`
+	// outlives playback, and it never asked what the scratch was holding, so a shelf
+	// playing lit up the search row.
 	const playingRoute = playingFrom?.isPlaying ? playingFrom.route : null;
 
 	const target = shown.find((entry) => entry.id === targetId) ?? null;
 	const focusedIndex = shown.findIndex((entry) => entry.id === focusedId);
 
-	// Reordering is the one place the hidden row still has to be accounted for.
-	// The player orders the real list and `move` takes a position in it, so a
-	// drop position among the visible rows is translated through the playlist
-	// that currently occupies it -- which lands the dragged one on the correct
-	// side of the hidden entry whichever direction it came from.
+	// The player orders the real list and `move` takes a position in it, so a drop
+	// among the visible rows is translated through the playlist currently occupying
+	// it -- landing on the correct side of the hidden entry either way.
 	const playerIndexOf = (position: number) =>
 		playlists.findIndex((entry) => entry.id === shown[position].id);
 
@@ -195,10 +188,9 @@ export function Sidebar({
 	const refused = (message: string) => () =>
 		pushToast({ tone: "error", message });
 
-	// Created empty and dropped straight into rename rather than asking for a name
-	// first: one click gets you a playlist, and naming it is optional. The view
-	// does not change -- a new playlist is somewhere to put things, so throwing
-	// you out of the list you were looking at is the wrong reflex.
+	// Created empty and dropped into rename: one click gets you a playlist and
+	// naming it is optional. The view does not change, because a new playlist is
+	// somewhere to put things.
 	const newPlaylist = () =>
 		create.mutate(untitledPlaylistName(shown), {
 			onSuccess: (playlist) => setRenamingId(playlist.id),

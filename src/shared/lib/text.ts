@@ -1,11 +1,9 @@
-// Diacritic-insensitive matching, for anything the user types at a list, so
-// `babasonicos` finds `Babasónicos`. Requiring people to type the accents in
-// their own library taxes exactly the tracks they are most likely hunting for,
-// and from outside it does not look strict, it looks broken.
+// Diacritic-insensitive matching, so `babasonicos` finds `Babasónicos`.
+// Requiring the accents taxes exactly the tracks people are most likely hunting
+// for, and from outside it does not look strict, it looks broken.
 //
-// Fold when the haystack is *built*, never per keystroke: the cost is paid once
-// and a search stays a plain includes(). Both sides come through here, or an
-// accented query stops matching the folded index.
+// Fold when the haystack is built, never per keystroke, and fold both sides or
+// an accented query stops matching the folded index.
 const COMBINING_MARKS = /\p{Diacritic}/gu;
 
 export const fold = (text: string) =>

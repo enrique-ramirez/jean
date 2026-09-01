@@ -1,8 +1,7 @@
 import type { TrackColumns } from "@/shared/api/types";
 
-// Everything fetched for every track, kept deliberately small: each entry is a
-// string per row, and per-track-unique values are the expensive ones. %path% is
-// absent on purpose -- the single largest field, and tracks are addressed by
+// One string per row each, so per-track-unique values are the expensive ones.
+// %path% is absent deliberately: the largest field, and tracks are addressed by
 // index, so it is fetched on demand for the one track that needs it.
 const FIELDS = [
 	["trackNumber", "%tracknumber%"],
@@ -27,16 +26,14 @@ export const TRACK_EXPRESSIONS: string[] = FIELDS.map(
 	([, expression]) => expression,
 );
 
-// Cast rather than inferred: Object.fromEntries widens its keys to string, and
-// the whole point of this map is that FIELD.rating is a name the compiler
-// knows and FIELD.ratings is not.
+// Cast because Object.fromEntries widens its keys to string, and the point of
+// this map is that FIELD.rating typechecks and FIELD.ratings does not.
 export const FIELD = Object.fromEntries(
 	FIELDS.map(([name], index) => [name, index]),
 ) as Record<FieldName, number>;
 
-// A field the player cannot resolve comes back as '?'; one that resolves but is
-// empty comes back as '' -- or 'N/A' from the playback-statistics component.
-// That difference is the whole capability-detection mechanism.
+// A field the player cannot resolve returns '?'; one that resolves but is empty
+// returns '' or 'N/A'. That difference is the whole capability detection.
 const UNRESOLVED = "?";
 const ABSENT = new Set([UNRESOLVED, "", "N/A"]);
 
@@ -61,9 +58,8 @@ export function timestamp(row: TrackColumns, field: number): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-// Rows spread evenly across the list. Sampling rather than scanning is only
-// safe where a wrong answer picks a default; where it decides whether a column
-// exists at all, scan -- see hasAnyRating.
+// Sampling is only safe where a wrong answer picks a default. Where it decides
+// whether a column exists at all, scan instead.
 export function sampleRows(
 	rows: TrackColumns[],
 	sampleSize: number,
@@ -75,8 +71,6 @@ export function sampleRows(
 	);
 }
 
-// Whether a field resolved at all, which is how a column that depends on a
-// component this player does not have gets hidden.
 export const fieldIsAvailable = (
 	rows: TrackColumns[],
 	field: number,
@@ -97,14 +91,11 @@ export const sameTagValue = (
 const escapeForRegExp = (text: string) =>
 	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// What a track's artist adds to the album's -- 'feat. Future & Halsey' out of
-// 'Post Malone feat. Future & Halsey' on a Post Malone album. Null when the
-// artist is not the album's plus something, which is the compilation case:
-// there the artist is the fact about the row rather than a footnote to it.
-//
-// Matched loosely and sliced out of the original, never rebuilt from the
-// normalised form: the album artist comes off the group's first row and may be
-// another file's spelling, but what is shown has to be this file's.
+// What a track's artist adds to the album's: 'feat. Future' out of 'Post Malone
+// feat. Future'. Null on compilations, where the artist is the fact about the
+// row rather than a footnote to it. Sliced out of the original rather than
+// rebuilt from the normalised form, because the album artist may be another
+// file's spelling and what is shown has to be this one's.
 export function featuring(
 	artist: string | null | undefined,
 	albumArtist: string | null | undefined,
@@ -117,8 +108,7 @@ export function featuring(
 	const match = new RegExp(`^\\s*${name}(?=$|[\\s,;/&])`, "i").exec(artist);
 	if (!match) return null;
 
-	// A separator the tag happened to choose carries nothing, and a leading comma
-	// is not something to print. A connective word is different: 'feat.' and 'w.'
-	// are how the sleeve says it, and they stay.
+	// The tag's own separator carries nothing, but a connective word does:
+	// 'feat.' and 'w.' are how the sleeve says it, so they stay.
 	return artist.slice(match[0].length).replace(/^[\s,;/&]+/, "") || null;
 }

@@ -70,6 +70,18 @@ const SCRATCH_SUFFIX = ']'
 // the only thing here Jean could not otherwise recover.
 export const SCRATCH_KIND = { search: 'search', shelf: 'shelf', all: 'all music' }
 
+// All Music is the one set with no label: there is only one of it, so the kind
+// is the whole of its name. Everything else is named by the thing the user
+// chose -- the shelf's title, the query they typed. Kept here rather than in
+// the view because the sidebar, the status bar and the view itself all have to
+// call it the same thing, and the scratch playlist is what they read it from.
+export const ALL_MUSIC = 'All music'
+
+// What to call the set on screen. Null when the title carries no name at all,
+// which is not a set anybody chose and is nothing to announce.
+export const scratchName = (held) =>
+  held?.kind === SCRATCH_KIND.all ? ALL_MUSIC : (held?.label || null)
+
 export const scratchTitle = (kind, label) =>
   `${SCRATCH_PREFIX}${label ? `${kind}: ${label}` : kind}${SCRATCH_SUFFIX}`
 

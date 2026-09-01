@@ -71,6 +71,17 @@ follow the user between devices. Fall back to `localStorage` only when
 
 ## Product decisions already made
 
+**A shelf's heading opens it; its covers play it.** Two verbs on one row, and which
+is which has to be legible without trying either. The heading is a link -- hash
+routing, so cmd-click opens it in a tab -- carrying a chevron off the end of the
+words rather than a "Show all" parked at the right of the row. That shape is Apple
+Music's and Disney+'s; the right-aligned one is Spotify's, and it would also be
+promising "all of them" when the route opens the same albums already on screen, as
+tracks. The blurb is not part of the target: it is a sentence about why these
+records qualified, and a sentence that navigates when you brush past it is a trap.
+Opening writes nothing and starts nothing -- the scratch playlist keeps whatever it
+was holding, which is the browsing/playing separation the whole design rests on.
+
 **The home screen is rows of shelves, and a shelf is a filter with a reason.** Most
 played, Recently played, "You used to love this", "Worth a better copy", "You starred
 these", "Never opened". Each carries a caption saying *why this record is here* --
@@ -94,6 +105,17 @@ Three rules hold the shelves honest on somebody else's library:
   opened" is not "you never played these", it is *Jean cannot tell* -- so it says
   nothing. If nothing at all qualifies, Home falls back to **one row drawn at random**,
   because every install has a library and an apology is not a home screen.
+
+**Every set that plays says so on the row it already has; only a shelf gets one
+made for it.** All music and a live search have permanent sidebar entries, so they
+are marked in place; a shelf has none, so it borrows a temporary row for as long as
+it is the thing playing. One answer feeds all of them -- `usePlayingFrom` reads the
+scratch playlist's own title, and the route it belongs to is worked out once in
+`App`. The rows that ask anything else get it wrong: marking the search row from
+`isScratchPlaylist && isCurrent` lit it up for a *shelf* playing, because
+`isCurrent` outlives playback and that test never asked what the scratch was
+holding. A user's own playlist is the exception and keeps `isCurrent`, deliberately
+-- see "Showing playlists".
 
 **Browsing and playback are allowed to point at different things, so the app has to
 say where the sound is coming from.** The scratch playlist holds *the last set you

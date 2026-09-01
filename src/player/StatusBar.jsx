@@ -107,7 +107,7 @@ export function StatusBar() {
             <span className={styles.artist}>{track?.artist ?? '—'}</span>
             {from?.isPlaying ? (
               <span className={styles.from}>
-                from <b>{from.label}</b>
+                from <b>{from.name}</b>
               </span>
             ) : null}
           </div>

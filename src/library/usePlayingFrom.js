@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import { usePlayer, usePlaylists } from '../player/usePlayer.js'
-import { isScratchPlaylist, scratchContentsOf } from './jeanPlaylists.js'
+import { isScratchPlaylist, scratchContentsOf, scratchName } from './jeanPlaylists.js'
 
 // Where playback is coming from, when that is a set Jean materialised rather
 // than a playlist the user can see.
@@ -25,10 +25,15 @@ export function usePlayingFrom() {
     if (!scratch) return null
 
     const held = scratchContentsOf(scratch)
-    if (!held?.label) return null
+    // Named, not labelled. All Music carries no label -- there is one of it and
+    // the kind says so -- and requiring one here is what left the row it plays
+    // from unmarked and the status bar with nothing to say about it.
+    const name = scratchName(held)
+    if (!name) return null
 
     return {
       ...held,
+      name,
       // The active item's playlist, not `isCurrent`: that keeps pointing at the
       // last playlist played from long after playback stopped, which would
       // leave a volume icon burning next to a set nobody is listening to.

@@ -63,6 +63,58 @@ test.describe('all music', () => {
   })
 })
 
+test.describe('opening a shelf from its heading', () => {
+  test.use({ settings: { 'jean.heatIntroSeen': true } })
+
+  test('the title opens the shelf and starts nothing', async ({ page, player }) => {
+    await page.goto('/')
+    await expect(shelf(page, 'Most played')).toBeVisible()
+
+    await page.getByRole('link', { name: 'Most played' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Most played' })).toBeVisible()
+
+    // Browsing writes nothing and plays nothing. Opening a shelf to look at it
+    // must not take the scratch playlist off whatever is already in it, and
+    // must not interrupt what is playing -- that separation is the whole reason
+    // the scratch holds the last set you *chose*.
+    expect(scratchOf(player)).toBeUndefined()
+    expect(requestsTo(player, '/player/play/')).toHaveLength(0)
+    expect(player.player.playbackState).toBe('stopped')
+  })
+
+  test('it leaves what is already playing alone', async ({ page, player }) => {
+    await page.goto('/')
+    await expect(shelf(page, 'Most played')).toBeVisible()
+    await page
+      .getByRole('region', { name: 'Most played' })
+      .getByRole('button', { name: /^Jessico/ })
+      .click()
+    // Polled on playback, not on the fill: the playlist is written first and
+    // played a round trip later, so reading the active item the moment the
+    // items land reads -1 and compares nothing to nothing.
+    await expect.poll(() => player.player.activeItem.index).toBeGreaterThanOrEqual(0)
+
+    const playing = player.player.activeItem.index
+    await page.goto('/')
+    await expect(shelf(page, 'Recently played')).toBeVisible()
+    await page.getByRole('link', { name: 'Recently played' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Recently played' })).toBeVisible()
+
+    // A different shelf, opened. The one being listened to is untouched.
+    expect(scratchOf(player).title).toBe('#Jean [shelf: Most played]')
+    expect(player.player.activeItem.index).toBe(playing)
+  })
+
+  test('the blurb under it is not a target', async ({ page }) => {
+    await page.goto('/')
+    await expect(shelf(page, 'Most played')).toBeVisible()
+    const link = page.getByRole('link', { name: 'Most played' })
+    await expect(link).toBeVisible()
+    // The sentence explains why the records are there. Only the heading opens.
+    await expect(page.getByRole('link', { name: /Where you have been lately/ })).toHaveCount(0)
+  })
+})
+
 test.describe('playing from a shelf', () => {
   test.use({ settings: { 'jean.heatIntroSeen': true } })
 

@@ -13,7 +13,7 @@ import { albumsOf } from '../home/albums.js'
 import { LibraryListView } from '../library/LibraryListView.jsx'
 import { LibrarySearchField } from '../library/LibrarySearchField.jsx'
 import { SearchResults } from '../library/SearchResults.jsx'
-import { SCRATCH_KIND } from '../library/jeanPlaylists.js'
+import { ALL_MUSIC, SCRATCH_KIND } from '../library/jeanPlaylists.js'
 import { project, wholeLibrary } from '../library/project.js'
 import { useLibrary } from '../library/useLibrary.js'
 import { useLibrarySearch } from '../library/useLibrarySearch.js'
@@ -82,14 +82,19 @@ export function App() {
   const search = useLibrarySearch(library, playlists)
   const playShelf = usePlayShelf({ library, playlists, navigate })
 
-  // The scratch carries a human label; the route it belongs to is Jean's to
-  // work out. Only shelves get a temporary row -- All music and the search
-  // already have permanent entries of their own to mark.
+  // The scratch carries a name; the route it belongs to is Jean's to work out,
+  // and so is whether the sidebar already draws a row for it. All music and the
+  // search have permanent entries and are marked in place. A shelf has none --
+  // it is the one set that needs a row conjured for as long as it is playing.
   const playing = usePlayingFrom()
   const playingFrom = useMemo(() => {
-    if (playing?.kind !== SCRATCH_KIND.shelf) return null
+    if (!playing) return null
+    if (playing.kind === SCRATCH_KIND.all) return { ...playing, route: ALL_ROUTE }
+    if (playing.kind === SCRATCH_KIND.search) return { ...playing, route: SEARCH_ROUTE }
+    if (playing.kind !== SCRATCH_KIND.shelf) return null
+
     const entry = SHELVES.find((item) => item.title === playing.label)
-    return entry ? { ...playing, route: `shelf/${entry.id}` } : null
+    return entry ? { ...playing, route: `${SHELF_PREFIX}${entry.id}`, temporaryRow: true } : null
   }, [playing])
 
   // All music is the library itself, unprojected -- copying 30,000 rows to
@@ -281,7 +286,7 @@ export function App() {
               kind={shelf ? SCRATCH_KIND.shelf : SCRATCH_KIND.all}
               label={shelf ? shelf.title : ''}
               eyebrow={shelf ? 'Shelf' : 'Your library'}
-              title={shelf ? shelf.title : 'All music'}
+              title={shelf ? shelf.title : ALL_MUSIC}
               playlists={playlists}
               scrollRef={scrollRef}
               isCompactViewport={isCompactViewport}

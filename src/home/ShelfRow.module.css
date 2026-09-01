@@ -30,6 +30,40 @@
   color: var(--text);
 }
 
+/* Hover turns the words accent, which is what an album's name already does on
+   the card below it -- one rule for "this piece of text goes somewhere",
+   learned once. No underline: it would be the only one on the screen, and the
+   chevron is doing the work. */
+.open {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: inherit;
+  text-decoration: none;
+  transition: color 140ms var(--ease);
+}
+
+.open:hover,
+.open:focus-visible {
+  color: var(--accent);
+}
+
+/* Present rather than revealed. A chevron that only appears under the pointer
+   is invisible on a phone, which is half of where this is used, and a row of
+   headings that each grow a mark on approach is busier than one that simply
+   has them. Quiet enough at --faint that six of them down the page read as
+   punctuation. */
+.chevron {
+  color: var(--faint);
+  transition: color 140ms var(--ease), transform 140ms var(--ease);
+}
+
+.open:hover .chevron,
+.open:focus-visible .chevron {
+  color: inherit;
+  transform: translateX(2px);
+}
+
 .blurb {
   margin: 0;
   font-size: 0.8125rem;

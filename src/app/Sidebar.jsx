@@ -9,7 +9,7 @@ import {
   usePlaylistActions,
 } from '../player/usePlayer.js'
 import { ActionMenu } from '../ui/ActionMenu.jsx'
-import { isScratchPlaylist, withoutJeanPlaylists } from '../library/jeanPlaylists.js'
+import { ALL_MUSIC, withoutJeanPlaylists } from '../library/jeanPlaylists.js'
 import { useContextMenu } from '../ui/useContextMenu.js'
 import { mergeHandlers } from '../ui/mergeHandlers.js'
 import { useDragState } from '../ui/dnd.js'
@@ -55,7 +55,15 @@ export function Sidebar({
   // Playing from a set of search results makes Jean's scratch playlist the
   // current one -- and it is hidden, so without this the status bar would name
   // a track with nothing on screen saying where it came from.
-  const isPlayingSearch = playlists.some((entry) => isScratchPlaylist(entry) && entry.isCurrent)
+  // Which row, if any, the music is coming from. One answer for every row, from
+  // the same place the status bar reads it.
+  //
+  // This used to be `some(isScratchPlaylist && isCurrent)`, which was wrong
+  // twice over: `isCurrent` goes on pointing at the last playlist played from
+  // long after playback stopped, and it never asked what the scratch was
+  // holding -- so a shelf playing lit the search row up, as long as a query
+  // happened to be typed.
+  const playingRoute = playingFrom?.isPlaying ? playingFrom.route : null
 
   const target = shown.find((entry) => entry.id === targetId) ?? null
   const focusedIndex = shown.findIndex((entry) => entry.id === focusedId)
@@ -193,7 +201,7 @@ export function Sidebar({
                   onOpenSearch()
                 }}
               >
-                {isPlayingSearch ? (
+                {playingRoute === 'search' ? (
                   <Volume2
                   size={15}
                   strokeWidth={2}
@@ -234,8 +242,20 @@ export function Sidebar({
             aria-current={route === 'all'}
             onClick={() => onOpenRoute('all')}
           >
-            <Disc3 size={15} strokeWidth={2} aria-hidden="true" />
-            <span className={styles.label}>All music</span>
+            {/* The accent means "this is playing" and nothing else -- never
+                which row you are looking at, which is what `aria-current` and
+                the row's own styling are for. */}
+            {playingRoute === 'all' ? (
+              <Volume2
+                size={15}
+                strokeWidth={2}
+                className={styles.playing}
+                aria-label="Playing from here"
+              />
+            ) : (
+              <Disc3 size={15} strokeWidth={2} aria-hidden="true" />
+            )}
+            <span className={styles.label}>{ALL_MUSIC}</span>
           </button>
         </div>
 
@@ -244,7 +264,7 @@ export function Sidebar({
             a track with nothing on screen accounting for where it came from --
             and unlike a playlist, a shelf has no permanent row to point at. It
             leaves on its own when the next set takes the scratch over. */}
-        {playingFrom?.route ? (
+        {playingFrom?.temporaryRow ? (
           <div className={styles.row}>
             <button
               type="button"
@@ -262,7 +282,7 @@ export function Sidebar({
               ) : (
                 <Disc3 size={15} strokeWidth={2} aria-hidden="true" />
               )}
-              <span className={styles.label}>{playingFrom.label}</span>
+              <span className={styles.label}>{playingFrom.name}</span>
             </button>
           </div>
         ) : null}

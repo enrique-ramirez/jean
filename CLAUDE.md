@@ -360,18 +360,20 @@ user made it to stand in for the library, and reading it through the library API
 would be lying about which object is on screen. The two are not even the same set
 once the autoplaylist's query drifts from `ALL`.
 
-Consequence: there is **no library browse view, on purpose.** On a 0.11 player the
-autoplaylist is not read at all -- it is only resolved when there is no library API, or
-when `changePlaylists` is false and playing in place is the only way to play anything
--- and on every player it is hidden from the sidebar. So neither source can browse the
-whole library, which is **parity, chosen over a feature**: the visible autoplaylist was
-an accident of it being a real playlist, and letting people browse through it would have
-made a contract out of something a 0.11 install cannot honour.
+Consequence: the autoplaylist is **not** the browse view. On a 0.11 player it is not
+read at all -- it is only resolved when there is no library API, or when
+`changePlaylists` is false and playing in place is the only way to play anything --
+and on every player it is hidden from the sidebar. That was **parity, chosen over a
+feature**: the visible autoplaylist was an accident of it being a real playlist, and
+letting people browse through it would have made a contract out of something a 0.11
+install cannot honour.
 
-The library stays a hidden concept, reachable only through search, until the home
-screen gives it a real one. `/library/items/by-path` is measured and documented in
-`API.md` for when that happens -- one request per level, 32-175 ms, ordering that needs
-a client-side re-sort.
+The library is browsable now, and it took the home screen to make that honest.
+`#/all` is a *view over the library array*, projected through the source seam like a
+shelf or a set of results, so both sources produce it identically and neither is
+pretending to be a playlist. What is still not built is a **folder tree**:
+`/library/items/by-path` is measured and documented in `API.md` for when that happens
+-- one request per level, 32-175 ms, ordering that needs a client-side re-sort.
 
 #### Rules that are not obvious
 
@@ -442,7 +444,8 @@ and both halves of that were wrong on a real player while every test passed.
 
 #### Still open
 
-- No library browse view; no folder tree. **Deferred deliberately** -- see above.
+- No folder tree. `#/all` browses the library as one flat list; walking it by folder
+  is a separate feature and `/library/items/by-path` is measured for it.
 - Reconciling a stale `itemCount` is **partly** built: `usePlaylists` and `useLibraryInfo`
   refetch on window focus, so a count edited on the desktop is corrected on the way back
   and the views keyed on it re-key. The live `playlistItems` tripwire in `API.md` is still
@@ -1039,7 +1042,7 @@ itself, or through a dev proxy. See `README.md`.
 src/
   api/        beefweb client -- every fetch to the player lives here
   app/        shell: App, Sidebar, CommandPalette, theme, hash routing
-  home/       the home screen: album aggregation, shelves, the card and the row
+  home/       the home screen: the library's own stats, album aggregation, shelves
   library/    the library as one array, its source seam, and the views over it
   hooks/      shared, generic (useDebounced, useMediaQuery, useStoredState, ...)
   keyboard/   keymap.js, useKeymap, ShortcutSheet
@@ -1172,6 +1175,24 @@ acceptable for a single small element and not for anything in a list. Continuous
 motion should layer animations with coprime durations rather than repeat a single
 short loop, and must never move an element's position on screen.
 
+That last rule is about the thing being *aimed at*, not about the pixels. The "Now
+playing" pill's arrow nods, and it is on the icon rather than on the pill
+precisely because the pill is a button: a transform on a child leaves the parent's
+laid-out box exactly where it was, so what you are clicking holds still while what
+you are looking at does not. It runs only while the pill is on screen -- the pill
+stays mounted so it can animate out, and an animation ticking behind an invisible
+element for a whole session costs something and shows nothing.
+
+**Slow is not the same as smooth, and the unit is pixels per second.** That arrow
+first moved 2.1px over a 2.3s cycle -- about **1.8px a second** -- and read as
+stuttering: the transform changed every frame, but by so little the screen had
+nothing to draw in between, so it held still, jumped, held still. It is now 1.6px
+over 850ms, ~3.8px a second. Do not reach for a per-frame figure to judge this:
+the same animation moves half as far per frame on a 120Hz display, so it measures
+the monitor rather than the motion -- and a sample shorter than one cycle lands
+mostly on the slow ends of an ease-in-out, which is how the first measurement here
+looked conclusive while being wrong.
+
 ## Development
 
 ```sh
@@ -1195,7 +1216,8 @@ Playing from All music, a shelf or a set of search results goes through the same
 `fill`, and what makes the position it then plays mean anything is the sort that
 follows -- see "Filling a playlist from the library".
 
-**Built so far:** the app shell, both themes, the playlist view (compact and album
+**Built so far:** the app shell, both themes, a home screen that opens with what the
+library adds up to and two buttons to start it, the playlist view (compact and album
 layouts, heat/patina, the finder, column picker, keyboard navigation, transport with a
 seekable progress bar), and library-wide search — a persistent field bound to `⌘K`, its
 own `#/search` route with a sidebar entry, and per-view scroll and cursor memory so

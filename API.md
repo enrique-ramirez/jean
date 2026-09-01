@@ -402,6 +402,12 @@ sheets and disc images, so it is not decoration.
 > **Items are not naturally ordered.** The spec says they are produced by applying
 > search criteria, so paging without an explicit `sort` may not be stable across
 > requests.
+>
+> Jean passes **`sort=%path%`** rather than relying on the default, which is the same
+> order -- *measured*, `sort=%path%` and no sort return byte-identical lists over
+> 30,441 tracks. It is stated so that the expression a filled playlist is sorted by is
+> demonstrably the same one the rows on screen are in. Change one and you change the
+> other; see `LIBRARY_SORT` in `src/api/beefweb.js`.
 
 > **There is no caching (stated in the PR), and it is measurable.** Every call
 > enumerates the library and computes a relative path per item. *Measured* at 30,441

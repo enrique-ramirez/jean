@@ -287,3 +287,39 @@ three ways to ask for a different one:
   entirely, and whether the same artist is spelled two ways. A description rather
   than built tracks, because an option's top level does not survive the trip to the
   worker as an array.
+
+`withoutPlaylists` empties everything but Jean's own, which is the only way to
+reach a player a fresh install would find.
+
+## What the fake has to get wrong on purpose
+
+A fake that is kinder than the player it stands in for is a fake that makes the
+suite agree with itself and disagree with reality. Two of these were found the
+expensive way -- by a feature working here and not working at all on a real
+foobar2000 -- and both are now modelled:
+
+- **A request body over 1 MiB is refused by hanging up**, not answered with a
+  status. The fake destroys the socket at the same threshold. Before it did,
+  naming all 30,441 tracks to play All Music passed every test and reached the
+  player never.
+- **A set added from the library comes back in the media library's browse
+  order** -- album artist, album, track -- and not in the order it was given, nor
+  in the file-path order the library endpoint pages in. The fake used to preserve
+  whatever order it was handed, which quietly made every "play this set, starting
+  here" position correct here and wrong on a real player, for search, shelves and
+  All Music alike.
+
+The captured fixture cannot show the second one on its own: its folders match its
+tags, so both orders agree. `mediaLibrarySize` synthesises a library where they
+do not.
+
+## Touch is a gesture, not a narrow mouse
+
+`sliders.spec.js` drove both faders with the mouse and skipped on mobile --
+"dragging a fader is a mouse gesture" -- which quietly encoded the assumption that
+nobody drags the volume with a thumb. The touch tests there go through CDP
+`Input.dispatchTouchEvent` rather than dispatching DOM events, because what is
+under test is the browser's own decision about who the gesture belongs to: without
+`touch-action: none` it decides the finger is panning the page and stops
+delivering moves, and a swipe aimed at 25% lands at 74%. A dispatched
+`pointermove` sails straight past that and passes either way.

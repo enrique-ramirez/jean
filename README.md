@@ -7,7 +7,8 @@ network. Namely affectively for the feelings it evoked on me when the idea came.
 **Where it is:** the playlist view and library search work. Compact and album layouts
 over a virtualised list that stays smooth at 30,000 tracks, search across the whole
 library from the bar at the top — accents optional, `babasonicos` finds `Babasónicos` —
-find-within-playlist that jumps rather than filters,
+find-within-the-list-you-are-looking-at that jumps rather than filters, in every view
+that shows tracks,
 toggleable columns, full keyboard navigation, light and dark themes, and a transport
 with a seekable progress bar. If your player reports play counts, tracks are shaded by
 how often you have played them and faded by how long it has been; the flame in the
@@ -28,16 +29,28 @@ Drag tracks onto a playlist in the sidebar to add them, or right-click -- press 
 on a phone -- and pick one from the menu. Select several first and they all go in one go.
 Whatever it does, it tells you, and gives you an undo.
 
-Jean opens on **Home**: rows of albums drawn out of your own listening -- what you
-play most, what you played to death and then put down, what you have never opened, and
-**what you play constantly but only own as a bad rip**. Each card says why it is there.
-Click one and the whole row plays, starting from that album; the sidebar and the status
-bar both tell you what you are listening to, which can be somewhere other than what you
-are looking at. **All music** is the whole library, unfiltered.
+Jean opens on **Home**, which starts by telling you what your library adds up to: how
+long it would take to play it — *85 days 11 hr of music* — over how many tracks,
+records, artists, genres and playlists, and which years it spans. Play it from the top
+or shuffle the lot, from the two buttons beside it.
+
+Under that, rows of albums drawn out of your own listening -- what you play most, what
+you played to death and then put down, what you have never opened, and **what you play
+constantly but only own as a bad rip**. Each card says why it is there. Click one and
+the whole row plays, starting from that album; click the row's title to open it without
+starting anything. The sidebar and the status bar both tell you what you are listening
+to, which can be somewhere other than what you are looking at. **All music** is the
+whole library, unfiltered, and plays like any other view.
 
 Shelves that your library cannot support simply do not appear -- no ratings, no starred
 shelf; no playback statistics, no play-history shelves at all -- and an install with
-none of it still opens on a row of records to press.
+none of it still opens on a row of records to press. The same goes for the counts: a
+library with no genre tags is not told it has none, it is simply not asked. Four songs
+in a folder gets *1 album*, not *1 albums*.
+
+On a phone the sidebar is a drawer, menus arrive as sheets you can flick away, the
+volume fader is sized for a thumb rather than a mouse, and anything that only means
+something with a keyboard attached is not shown at all.
 
 **Not built yet:** a folder browser.
 
@@ -262,6 +275,19 @@ whole answer.
 
 ## API notes worth remembering
 
+- **A request body over 1 MiB is refused by hanging up.** Measured: 1,018,757 bytes
+  accepted, 1,049,652 closed the connection mid-upload, which reaches the browser as a
+  network error rather than a status code. Naming 30,441 tracks is a 2.9 MB body, so
+  "play everything" silently did nothing at all until Jean stopped naming them —
+  `add-from-library` with no `items` means *the whole library*, in one request with no
+  body, in 299 ms.
+- **A set comes back in the player's order, not the order you asked for or the order
+  you read it in.** `add-from-library` returns the media library's *browse* order —
+  album artist, album, track — while `GET /library/items` pages by **file path**. Of
+  1,000 tracks sent in path order, 426 land somewhere else. Nothing reproduces that
+  order client-side, so Jean overwrites it instead: fill, then `POST items/sort` by the
+  same expression the library was read with. Every position correct at 100, 1,000,
+  4,000 and 30,441 tracks, for ~340 ms of the player's time and no state of Jean's own.
 - `GET /api/player` **ignores** `trcolumns` and returns an empty `columns` array.
   Use `GET /api/query?player=true&trcolumns=…` for a one-shot snapshot.
 - Columns are foobar2000 title-formatting expressions evaluated by the player, so

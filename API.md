@@ -469,16 +469,39 @@ This is the one that matters most: **`replace: true, play: true` is a whole scra
 playlist rebuild in one request** — no rename, no remove-by-range, no copy, no
 separate play, and so no client-side count arithmetic to get wrong.
 
-> **The order of `items` is ignored.** *Measured*: asking for library offsets 0, 20000,
-> 10000, 30000 returned them as 0, 10000, 20000, 30000. The player adds a set in the
-> **library's own order** (file path), whatever order you send. `items/copy` behaves
-> identically -- copying playlist indices `[0, 20000, 10000, 30000]` returns them
-> ascending -- so this is a property of the player, not of one endpoint.
+> **The order of `items` is ignored, and the order you get back is not the order this
+> endpoint pages in.** A set arrives in the **media library's browse order** — album
+> artist, then album, then track — while `GET /library/items` pages by **file path**.
+> *Measured* on a 30,441-track library: of 100 tracks sent in path order, 10 landed
+> somewhere else; of 1,000, 426 did; of 8,000, 3,945 did; over the whole library,
+> 15,539 did.
 >
-> Anything computing "play position N of the set I just wrote" must therefore sort its
-> refs ascending *before* filling, or every position addresses a different track. Search
-> never hit this because its indices are already ascending; a home-screen shelf, ordered
-> by play count, hit it immediately.
+> An earlier note here said the set came back in "the library's own order" and drew the
+> conclusion that sorting refs ascending was enough. That was measured on four
+> well-separated tracks, where the two orders happen to agree — as they do for most
+> small sets, which is why this survived. It is not enough.
+>
+> **The order cannot be predicted or read back cheaply.** No `sort` expression
+> reproduces it: `%album artist%` matches 9 positions out of 30,441, and the path
+> default matches 14,902. Learning it once by reading the filled playlist costs 3.2 MB
+> and 680 ms at 30k (~21 MB at 200k), with nothing to invalidate it against — the
+> player publishes no library-change event, and `library` is not even a valid
+> `/api/query` key.
+>
+> **So overwrite it instead of predicting it**: fill, then `POST items/sort` with the
+> same expression the library was read with. *Measured* — every position correct at
+> 100, 1,000, 4,000 and all 30,441 tracks, for ~340 ms of server-side work and no
+> client state. See CLAUDE.md, "Filling a playlist from the library".
+
+> **A request body over 1 MiB is refused by hanging up.** *Measured*: 1,018,757 bytes
+> accepted, 1,049,652 bytes closed the connection mid-upload — which reaches the client
+> as a network error, not a status code. Naming all 30,441 tracks is a 2.9 MB body, so
+> "play everything" never reached the player at all.
+>
+> Chunk well under it, because the cost is per *item* anyway: the player resolves each
+> path against the library at ~1.2 ms a track — 8,000 items took 10.2 s — so there is
+> nothing to win by going wide. Better still, **omit `items` and `query` entirely to
+> mean the whole library**: one request, no body, **299 ms** for all 30,441.
 
 > **Do not mix the two filters.** `query` is the player's query syntax; Jean's search
 > is `fold()`-based accent-insensitive token matching. They do not return the same

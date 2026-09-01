@@ -29,6 +29,15 @@ export const test = base.extend({
   // test.use({ librarySize: 30441 }) to ask for that.
   librarySize: [null, { option: true }],
 
+  // How big the *media library* is, which is what `#/all` and search read on a
+  // 0.11 player. Separate from `librarySize` above, which inflates an ordinary
+  // playlist. The synthesised tracks deliberately do not sit in tag order:
+  // their track numbers cycle independently of their paths, so the library's
+  // path order and the player's browse order disagree -- which is the whole
+  // point, because the captured fixture's folders match its tags and cannot
+  // tell the two apart.
+  mediaLibrarySize: [null, { option: true }],
+
   // Title-formatting expressions this player cannot resolve, so a spec can ask
   // for a bare install: test.use({ withoutFields: ['%lastfm_play_count%'] }) is
   // foobar2000 with no playback-statistics component, and everything built on
@@ -73,6 +82,7 @@ export const test = base.extend({
     {
       fakeServer,
       librarySize,
+      mediaLibrarySize,
       withoutFields,
       retagged,
       withoutLibraryPlaylist,
@@ -94,6 +104,7 @@ export const test = base.extend({
         createState({
           playlists,
           librarySize,
+          mediaLibrarySize,
           withoutFields,
           retagged,
           library,

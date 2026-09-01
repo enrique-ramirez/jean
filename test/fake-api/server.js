@@ -40,13 +40,32 @@ const empty = (response, status = 204) => {
   return true
 }
 
+// beefweb refuses a request body over 1 MiB, and it refuses it by hanging up
+// rather than answering: *measured* against foobar2000 with beefweb 0.11,
+// 1,018,757 bytes were accepted and 1,049,652 got the socket closed mid-upload,
+// which arrives at the client as a network error and not as a status code.
+//
+// The fake does the same, because the alternative is what already happened
+// once: naming all 30,441 tracks to play All Music is a 2.9 MB body, the fake
+// swallowed it happily, every test passed, and the feature did not work on a
+// real player at all.
+const MAX_BODY_BYTES = 1024 * 1024
+
 const readBody = (request) =>
   new Promise((resolve) => {
     let raw = ''
+    let refused = false
     request.on('data', (chunk) => {
+      if (refused) return
       raw += chunk
+      if (raw.length > MAX_BODY_BYTES) {
+        refused = true
+        request.destroy()
+        resolve(null)
+      }
     })
     request.on('end', () => {
+      if (refused) return
       if (!raw) return resolve(null)
       try {
         resolve(JSON.parse(raw))
@@ -254,6 +273,10 @@ async function handleApi({ state, method, path, url, body, response }) {
 
     if (method === 'POST' && rest[0] === 'move' && rest.length === 3) {
       return state.movePlaylist(rest[1], Number(rest[2])) ? empty(response) : empty(response, 404)
+    }
+
+    if (method === 'POST' && rest.length === 3 && rest[1] === 'items' && rest[2] === 'sort') {
+      return state.sortItems(rest[0], body ?? {}) ? empty(response) : empty(response, 404)
     }
 
     if (method === 'POST' && rest.length === 3 && rest[1] === 'items' && rest[2] === 'add-from-library') {

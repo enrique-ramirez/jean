@@ -295,6 +295,11 @@ a client-side re-sort.
   Address adds by explicit `items: [{path, subsong}]`.
 - **Chunking inverts on this endpoint.** One small chunk to paint, then a **single**
   request for the rest -- never wide. See "Loading it" for the numbers.
+- **The library is read with an explicit `sort=%path%`**, which is what the endpoint
+  defaults to anyway -- verified, `sort=%path%` and no sort return byte-identical lists
+  over 30,441 tracks. It is stated so that the expression a filled playlist is sorted
+  by is demonstrably the same one the rows on screen are in, rather than two defaults
+  that agree today. Change one and you change the other.
 - **Row order is the API's default (file path)**, and that is deliberate. *Measured*
   on a 30,441-track library: path order gives 2,382 contiguous album runs against
   2,386 for a tag sort, for 2,366 albums. A tag sort is fractionally *worse*, because
@@ -307,6 +312,38 @@ a client-side re-sort.
   string per player update, not per row. The player reports an **absolute** path and
   the library a **relative, forward-slashed** one, and Jean is never told where the
   library folders are, so they are matched by suffix: `pathMatchesLibraryPath()`.
+
+#### Filling a playlist from the library
+
+Playing a set means writing it to the scratch playlist and playing a position in it,
+and both halves of that were wrong on a real player while every test passed.
+
+- **Do not name the whole library.** 30,441 tracks as explicit `{path, subsong}` is a
+  2.9 MB body, and **beefweb hangs up over 1 MiB** -- measured, 1,018,757 bytes
+  accepted and 1,049,652 refused mid-upload, which arrives as a network error rather
+  than a status. So `fill` threw and the play waiting on it never happened: that was
+  the whole of "All music will not play". Omitting `items` and `query` means *the whole
+  library*, in one request with no body, in **299 ms**. Anything smaller is named, in
+  chunks well under the cap -- the player resolves paths at ~1.2 ms each, so going wide
+  buys nothing.
+- **Then sort the playlist by `LIBRARY_SORT`, because the fill order is the player's,
+  not Jean's.** A set comes back in the media library's browse order, and the view is
+  in path order; every position Jean computes from a row therefore addressed a
+  different track. Not predictable (no `sort` expression reproduces the browse order --
+  `%album artist%` matches 9 positions out of 30,441) and not worth learning (reading
+  the filled playlist back is 3.2 MB and 680 ms here, ~21 MB at 200k, and there is
+  **no library-change event** to invalidate it against -- `library` is not a valid
+  `/api/query` key). So it is overwritten rather than predicted: one `items/sort` by
+  the same expression the library was read with, ~340 ms, no client state, nothing to
+  go stale. Verified at 100, 1,000, 4,000 and all 30,441 -- every position correct.
+- **`addTo` does not sort.** That playlist is the user's and its order is theirs;
+  re-sorting it to suit Jean would be rearranging somebody's music as a side effect of
+  adding to it. Undo is unaffected either way -- it removes the range that was
+  appended, not particular rows.
+- **The fake models all of it** -- the 1 MiB hang-up, the browse order, `items/sort`.
+  It used to preserve whatever order it was given, which made every position correct in
+  tests and wrong on a real player. A fixture whose folders match its tags cannot tell
+  the two orders apart, so `mediaLibrarySize` synthesises a library where they disagree.
 
 #### Still open
 
@@ -869,13 +906,14 @@ without a real report.
   playlist and then played whatever had drifted into the row that was clicked. A
   one-item `playlistItems` subscription is a cheap tripwire if you need to notice;
   see `API.md`.
-- **A set arrives in the source's order, never the order you asked for.** *Measured*:
-  `add-from-library` given library offsets 0, 20000, 10000, 30000 returns 0, 10000,
-  20000, 30000, and `items/copy` given playlist indices `[0, 20000, 10000, 30000]` does
-  the same. So **sort refs ascending before filling anything you intend to play a
-  position in**. Search was immune -- its indices are already ascending -- which is
-  exactly why this survived until a shelf ordered by play count tried it, and played a
-  different track from the one that was clicked.
+- **A set arrives in an order of the player's choosing, never the order you asked
+  for.** `items/copy` returns playlist indices ascending, so the playlist source is
+  safe once refs are sorted. `add-from-library` is **not**: it returns the
+  media library's *browse* order -- album artist, album, track -- which is not the
+  file-path order `/library/items` pages in. *Measured* on 30,441 tracks: of 100 sent
+  in path order 10 landed elsewhere, of 1,000 426 did, of 8,000 3,945 did. Sorting
+  refs ascending is necessary and **not sufficient**; see "Filling a playlist from the
+  library" below for what is.
 - **Playlist items have no ID.** Index is identity, so any mutation invalidates indices
   you were holding.
 - **SSE is change-driven, not a ticker.** Long silences are normal; `position` alone never
@@ -1041,6 +1079,10 @@ Deploying is only for making it permanent — see `README.md`.
 lucide-react · CSS Modules · pnpm · Playwright. No unit tests and no jsdom, on
 purpose: the things that break here need real layout, real pointers and a real
 viewport. See `test/README.md`.
+
+Playing from All music, a shelf or a set of search results goes through the same
+`fill`, and what makes the position it then plays mean anything is the sort that
+follows -- see "Filling a playlist from the library".
 
 **Built so far:** the app shell, both themes, the playlist view (compact and album
 layouts, heat/patina, the finder, column picker, keyboard navigation, transport with a

@@ -121,10 +121,32 @@ export const evaluate = (track, expression) => track[expression] ?? '?'
 
 const columnsFor = (track, expressions) => expressions.map((expression) => evaluate(track, expression))
 
+// The player pages the library by path and sorts a playlist by `%path%`, and
+// the two agree -- verified against the live player, `sort=%path%` and no sort
+// at all return byte-identical lists over 30,441 tracks. They only agree here
+// if the separator does, because the library reports a relative `/`-joined path
+// and the player reports an absolute Windows one. The root is common to every
+// track, so it cancels; the separator does not.
+const pathKey = (value) => String(value).replace(/\\/g, '/')
+
+// How the media library hands a set back: album artist, album, track number.
+// Not the path order the library endpoint pages in -- the two are different
+// orders and the gap between them is a real bug's worth of wrong tracks.
+const browseOrder = (a, b) =>
+  String(evaluate(a, '%album artist%')).localeCompare(String(evaluate(b, '%album artist%'))) ||
+  String(evaluate(a, '%album%')).localeCompare(String(evaluate(b, '%album%'))) ||
+  String(evaluate(a, '%tracknumber%')).localeCompare(String(evaluate(b, '%tracknumber%')))
+
 export function createState({
   playlists = DEFAULT_PLAYLISTS(),
   player,
   librarySize,
+  // How big the *media library* is -- the thing the 0.11 API serves and the
+  // thing `#/all` is a view of. Separate from `librarySize`, which inflates an
+  // ordinary playlist for the browsing specs. Set here it also replaces the
+  // `#Jean Library` autoplaylist, so both sources still describe the same
+  // library and a spec can assert the same behaviour through either.
+  mediaLibrarySize,
   // Expressions this player cannot resolve. Dropping them from the tracks makes
   // evaluate() answer '?', which is exactly what a real player does for a field
   // no component provides -- so `withoutFields: ['%lastfm_play_count%']` is an
@@ -169,7 +191,16 @@ export function createState({
     for (const playlist of playlists) playlist.items = playlist.items.map(strip)
   }
 
-  const libraryTracks = withoutFields.length > 0 ? allTracks().map(strip) : allTracks()
+  const libraryTracks = mediaLibrarySize
+    ? generateTracks(mediaLibrarySize)
+    : withoutFields.length > 0
+      ? allTracks().map(strip)
+      : allTracks()
+
+  if (mediaLibrarySize) {
+    const autoplaylist = playlists.find((entry) => entry.title === '#Jean Library')
+    if (autoplaylist) autoplaylist.items = libraryTracks
+  }
 
   // Inflates the ordinary playlist the browsing specs open, not the
   // autoplaylist search reads. The media library the API serves is the captured
@@ -467,8 +498,9 @@ export function createState({
       // the spec warns library items are "produced by applying search criteria
       // rather than naturally ordered", so a client paging without a sort is
       // relying on something it was told not to.
-      const key = sort ? (entry) => evaluate(entry.track, sort) : (entry) => entry.path
-      items.sort((a, b) => String(key(a)).localeCompare(String(key(b))))
+      const key =
+        sort && sort !== '%path%' ? (entry) => evaluate(entry.track, sort) : (entry) => entry.path
+      items.sort((a, b) => pathKey(key(a)).localeCompare(pathKey(key(b))))
       if (desc) items.reverse()
 
       const page = count === null ? items.slice(offset) : items.slice(offset, offset + count)
@@ -538,19 +570,22 @@ export function createState({
 
       const known = new Map(libraryItemsOf(libraryTracks).map((entry) => [entry.path, entry]))
       // Omitting `items` adds the whole library, per the spec.
-      // *Measured against the live player*: the order of `items` is ignored --
-      // whatever you ask for arrives in the library's own order. Asking for
-      // library offsets 0, 20000, 10000, 30000 returned 0, 10000, 20000, 30000.
-      // The fake used to preserve the caller's order, which quietly made every
-      // "play this set, starting here" position correct in tests and wrong on a
-      // real player.
-      // Path order, which is the library's default and the same comparison
-      // `libraryItemsPayload` sorts by -- so a ref, which is a position in that
-      // list, means the same thing on both sides.
+      //
+      // *Measured against the live player*: the order asked for is ignored, and
+      // so is the library's own path order -- a set arrives in the media
+      // library's **browse** order, which is album artist, then album, then
+      // track number. Of 100 tracks handed over in path order, 10 landed
+      // somewhere else; of 8,000, 3,945 did.
+      //
+      // The fake sorted by path, which is a different thing that agrees often
+      // enough to look right: it made every "play this set, starting here"
+      // position correct here and wrong on a real player, for search, shelves
+      // and All Music alike. Sorting the way the player actually does is what
+      // makes `items/sort` load-bearing in the tests rather than decorative.
       const chosen = (items ?? [...known.values()].map((entry) => ({ path: entry.path })))
         .map((ref) => known.get(ref.path))
         .filter(Boolean)
-        .sort((a, b) => a.path.localeCompare(b.path))
+        .sort((a, b) => browseOrder(a.track, b.track))
         .map((entry) => entry.track)
 
       if (replace) playlist.items = []
@@ -559,6 +594,26 @@ export function createState({
 
       notify({ playlists: true })
       if (play && chosen.length > 0) setActive(playlist, at, 'playing')
+      return true
+    },
+
+    // `{ by, desc, random }`. The expression is evaluated per track, exactly as
+    // the column list is, so `%path%` sorts by path and nothing here needs to
+    // know that is the order the library endpoint uses.
+    sortItems(playlistId, { by, desc, random }) {
+      const playlist = byId(playlistId)
+      if (!playlist) return false
+
+      if (random) {
+        playlist.items = [...playlist.items].sort(() => 0)
+      } else {
+        playlist.items = [...playlist.items].sort((a, b) =>
+          pathKey(evaluate(a, by)).localeCompare(pathKey(evaluate(b, by))),
+        )
+        if (desc) playlist.items.reverse()
+      }
+
+      notify({ playlists: true })
       return true
     },
 

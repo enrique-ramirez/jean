@@ -88,11 +88,24 @@ export async function fetchLibraryInfo() {
   return library
 }
 
+// Both sides of the library have to name the same order, and this is the name.
+//
+// The endpoint's default *is* file path, so passing it changes nothing on its
+// own -- verified against the live player, `sort=%path%` and no sort at all
+// return byte-identical lists over 30,441 tracks. It is here so that the sort
+// Jean applies to a playlist it has just filled is demonstrably the same
+// expression as the order it is reading, rather than two defaults that happen
+// to agree today. See `librarySource.js` for what depends on that.
+export const LIBRARY_SORT = '%path%'
+
 export async function fetchLibraryItems({ offset, count, signal }) {
   const range = count == null ? '' : `&range=${offset}:${count}`
-  const response = await request(`/api/library/items?columns=${encode(TRACK_EXPRESSIONS)}${range}`, {
-    signal,
-  })
+  const response = await request(
+    `/api/library/items?columns=${encode(TRACK_EXPRESSIONS)}&sort=${encodeURIComponent(LIBRARY_SORT)}${range}`,
+    {
+      signal,
+    },
+  )
   const { libraryItems } = await response.json()
   return libraryItems
 }
@@ -108,6 +121,9 @@ export const libraryArtworkUrl = (path, subsong) =>
 // add tracks that are not the ones on screen.
 export const addFromLibrary = (playlistId, body) =>
   post(`/api/playlists/${playlistId}/items/add-from-library`, body)
+
+export const sortPlaylistItems = (playlistId, by) =>
+  post(`/api/playlists/${playlistId}/items/sort`, { by })
 
 export const playPause = () => post('/api/player/play-pause')
 export const nextTrack = () => post('/api/player/next')

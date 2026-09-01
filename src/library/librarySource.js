@@ -1,10 +1,12 @@
 import {
+  LIBRARY_SORT,
   addFromLibrary,
   artworkUrl,
   copyPlaylistItems,
   libraryArtworkUrl,
   libraryPathMatcher,
   removePlaylistItems,
+  sortPlaylistItems,
 } from '../api/beefweb.js'
 import { positionOf } from './libraryIndex.js'
 
@@ -38,14 +40,78 @@ import { positionOf } from './libraryIndex.js'
 const itemsFor = (paths, subsongs, refs) =>
   Array.from(refs, (ref) => ({ path: paths[ref], subsong: subsongs[ref] }))
 
-const fillByLibrary = (paths, subsongs) => (targetId, refs) =>
-  addFromLibrary(targetId, {
-    items: itemsFor(paths, subsongs, refs),
-    // One request, so there is no count to read first, no range to remove, and
-    // no window where the playlist holds half of two result sets. That window
-    // is what made a click on one row play a different track.
-    replace: true,
-  })
+// The player does not add a set in the order it was asked for. It adds it in
+// the media library's own browse order -- album artist, album, track -- and
+// that is not the order `/library/items` hands back, which is file path.
+// *Measured* on a 30,441-track library: of 100 tracks sent in path order, 10
+// landed somewhere else; of 1,000, 426 did; of 8,000, 3,945 did. Every view
+// here plays by position, so every one of those is a click on one row playing a
+// different track. It survived this long because the fake preserves the order
+// it is given, so nothing in the suite could see it.
+//
+// The order cannot be predicted and it cannot be read: no `sort` expression
+// reproduces it -- `%album artist%` matches 9 positions out of 30,441 -- and
+// learning it once by reading the filled playlist back costs 3.2 MB and 680 ms
+// here, ~21 MB at 200k, with nothing to invalidate it against, because the
+// player publishes no library-change event at all (`library` is not a valid
+// `/api/query` key).
+//
+// So do not predict it. Overwrite it: fill however is cheapest, then sort the
+// playlist by the same expression the library was read with. Verified against
+// the live player at 100, 1,000, 4,000 and all 30,441 tracks -- every position
+// correct, every time, for ~340 ms of server-side work and no client state.
+const sortToLibraryOrder = (targetId) => sortPlaylistItems(targetId, LIBRARY_SORT)
+
+// beefweb closes the connection on a request body over 1 MiB. *Measured*:
+// 1,018,757 bytes accepted, 1,049,652 rejected mid-upload -- so naming all
+// 30,441 tracks, which is a 2.9 MB body, never reached the player at all. That
+// is the whole of "All music will not play": `fill` threw, and the play that
+// was waiting on it never happened.
+//
+// Well under it, because the cost is per *item* rather than per request anyway
+// -- the player resolves each path against the library at ~1.2 ms a track, so
+// there is nothing to win by going wide.
+const MAX_BODY_BYTES = 768 * 1024
+
+const chunkedItems = (items) => {
+  const chunks = []
+  let chunk = []
+  let bytes = 0
+
+  for (const item of items) {
+    const size = JSON.stringify(item).length + 1
+    if (bytes + size > MAX_BODY_BYTES && chunk.length > 0) {
+      chunks.push(chunk)
+      chunk = []
+      bytes = 0
+    }
+    chunk.push(item)
+    bytes += size
+  }
+  if (chunk.length > 0) chunks.push(chunk)
+  return chunks
+}
+
+const fillByLibrary = (paths, subsongs) => async (targetId, refs) => {
+  // Every view here is built from distinct library positions, so covering the
+  // count is covering the library. Naming all of them costs 2.9 MB and ~36
+  // seconds of path resolution; asking for the library by omitting `items`
+  // costs one request with no body and 299 ms, and the sort below makes the two
+  // indistinguishable afterwards.
+  if (refs.length === paths.length) {
+    await addFromLibrary(targetId, { replace: true })
+    return sortToLibraryOrder(targetId)
+  }
+
+  const chunks = chunkedItems(itemsFor(paths, subsongs, refs))
+  // Sequential, and it has to be: only the first may replace, and the rest
+  // append to what it left. Concurrency would race over which one lands first
+  // and the replace could arrive last, emptying the playlist it was filling.
+  for (let at = 0; at < chunks.length; at += 1) {
+    await addFromLibrary(targetId, { items: chunks[at], replace: at === 0 })
+  }
+  return sortToLibraryOrder(targetId)
+}
 
 const fillByCopy = (sourceId) => async (targetId, refs, heldCount) => {
   // The count comes from the caller, who has to have read it from the player:
@@ -68,6 +134,11 @@ export function librarySourceOf({ kind, playlistId, paths, subsongs }) {
 
       artworkUrl: (ref) => libraryArtworkUrl(paths[ref], subsongs[ref]),
       fill: fillByLibrary(paths, subsongs),
+      // No sort here, unlike `fill`. That playlist is the user's, its order is
+      // theirs, and re-sorting it to suit Jean would be Jean rearranging
+      // somebody's music because of how it happened to add to it. Undo is
+      // unaffected either way -- it takes off the range that was appended, not
+      // particular rows.
       addTo: (targetId, refs) =>
         addFromLibrary(targetId, { items: itemsFor(paths, subsongs, refs) }),
 

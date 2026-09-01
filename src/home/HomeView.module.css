@@ -1,8 +1,10 @@
 .home {
   display: flex;
   flex-direction: column;
-  gap: 34px;
-  padding: 28px 0 40px;
+  gap: 30px;
+  /* No top padding: the header carries its own, the way a view header does, so
+     its wash starts at the top of the view rather than a centimetre down it. */
+  padding: 0 0 40px;
 }
 
 .shelves {
@@ -20,8 +22,7 @@
 
 @media (max-width: 720px) {
   .home {
-    padding-top: 18px;
-    gap: 24px;
+    gap: 22px;
   }
 
   .notice {

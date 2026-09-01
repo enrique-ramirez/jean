@@ -44,29 +44,42 @@ export function useHomePlayback({ library, playlists, navigate }) {
     [play, navigate],
   )
 
-  // The front door's own action: everything, shuffled, from here.
-  //
-  // The mode first and then a track, which is the same two requests the Shuffle
-  // beside a playlist's Play button sends -- *measured*, `POST /player/play`
-  // makes that playlist the active one and the mode does the shuffling from
-  // there, so this only has to open the door. Starting somewhere at random
-  // rather than at track one matters more here than anywhere else: track one of
-  // thirty thousand in path order is a numbered file in a folder beginning with
-  // a symbol, which is nobody's idea of putting a record on.
-  const shuffleEverything = useCallback(
-    async (refs) => {
+  // The front door's own two, and they are the same two a playlist header has,
+  // meaning the same two things: Play starts at the beginning, Shuffle starts
+  // anywhere and turns the mode on. Both land you on All Music, because that is
+  // the view of the set they just started -- pressing play should not leave you
+  // looking at the screen you pressed it from.
+  const startEverything = useCallback(
+    async (refs, position) => {
       if (refs.length === 0) return
-      order.enableShuffle()
       navigate('/all')
-      await play({
-        kind: SCRATCH_KIND.all,
-        label: '',
-        refs,
-        position: Math.floor(Math.random() * refs.length),
-      })
+      await play({ kind: SCRATCH_KIND.all, label: '', refs, position })
     },
-    [play, order, navigate],
+    [play, navigate],
   )
 
-  return { playShelf, shuffleEverything, canShuffle: order.canShuffle && canPlaySets }
+  const playEverything = useCallback((refs) => startEverything(refs, 0), [startEverything])
+
+  // The mode first and then a track, which is the same two requests the Shuffle
+  // beside a playlist's Play sends -- *measured*, `POST /player/play` makes that
+  // playlist the active one and the mode does the shuffling from there, so this
+  // only has to open the door. Neither button touches the mode the other way
+  // round: it is global player state, the status bar owns it, and a Play that
+  // quietly turned shuffle off would be reaching across the app to do it.
+  const shuffleEverything = useCallback(
+    (refs) => {
+      if (refs.length === 0) return
+      order.enableShuffle()
+      return startEverything(refs, Math.floor(Math.random() * refs.length))
+    },
+    [startEverything, order],
+  )
+
+  return {
+    playShelf,
+    playEverything,
+    shuffleEverything,
+    canPlay: canPlaySets,
+    canShuffle: order.canShuffle && canPlaySets,
+  }
 }

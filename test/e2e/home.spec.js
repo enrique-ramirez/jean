@@ -104,6 +104,91 @@ test.describe('a library with no genre tag', () => {
   })
 })
 
+test.describe('starting the library from the front door', () => {
+  test.use({ settings: { 'jean.heatIntroSeen': true } })
+
+  const headerButton = (page, name) =>
+    page.locator('main header').first().getByRole('button', { name, exact: true })
+
+  const orderRequests = (player) =>
+    requestsTo(player, '/api/player').flatMap((entry) =>
+      (entry.body?.options ?? [])
+        .filter((option) => option.id === 'playbackOrder')
+        .map((option) => option.value),
+    )
+
+  test('Play opens All music and starts at the beginning', async ({ page, player }) => {
+    await page.goto('/')
+    await expect(headerButton(page, 'Play')).toBeVisible()
+    await headerButton(page, 'Play').click()
+
+    // Where you end up: looking at the set you just started, not at the screen
+    // you pressed it from.
+    await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
+    await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(54)
+    expect(scratchOf(player).title).toBe('#Jean [all music]')
+
+    // From the top, which is what the word means everywhere else in the app.
+    await expect.poll(() => playedFrom(player)?.index).toBe(0)
+
+    // And it leaves the playback order alone. The mode is global player state
+    // and the status bar owns it; a Play that quietly switched shuffle off
+    // would be reaching across the app to do it.
+    expect(orderRequests(player)).toHaveLength(0)
+  })
+
+  test('Shuffle opens All music and turns the mode on', async ({ page, player }) => {
+    await page.goto('/')
+    await headerButton(page, 'Shuffle').click()
+
+    await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
+    await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(54)
+
+    // The mode does the shuffling; this only opens the door. Verified against
+    // the live player -- playing a track makes that playlist the active one and
+    // shuffle then draws from it, so two requests are the whole of it.
+    await expect.poll(() => orderRequests(player).length).toBeGreaterThan(0)
+    await expect.poll(() => playedFrom(player)?.plref).toBe(scratchOf(player).id)
+  })
+
+  test('either one agrees with the sidebar and the status bar', async ({ page }) => {
+    await page.goto('/')
+    await headerButton(page, 'Shuffle').click()
+    await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
+
+    await expect(page.locator('footer')).toContainText('All music')
+    await openSidebar(page)
+    await expect(
+      nav(page).getByRole('button', { name: /All music/ }).getByLabel('Playing from here'),
+    ).toBeVisible()
+  })
+})
+
+test.describe('a front door on a player that offers no shuffle', () => {
+  test.use({
+    settings: { 'jean.heatIntroSeen': true },
+    playerState: {
+      playbackModes: ['Default', 'Repeat (playlist)'],
+      options: [
+        {
+          id: 'playbackOrder',
+          name: 'Playback order',
+          type: 'enum',
+          value: 0,
+          enumNames: ['Default', 'Repeat (playlist)'],
+        },
+      ],
+    },
+  })
+
+  test('Shuffle goes and Play stays', async ({ page }) => {
+    await page.goto('/')
+    const head = page.locator('main header').first()
+    await expect(head.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
+    await expect(head.getByRole('button', { name: 'Shuffle', exact: true })).toHaveCount(0)
+  })
+})
+
 test.describe('all music', () => {
   test.use({ settings: { 'jean.heatIntroSeen': true } })
 

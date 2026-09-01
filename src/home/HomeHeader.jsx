@@ -1,4 +1,8 @@
+import { Shuffle } from 'lucide-react'
+
+import { Button } from '../ui/Button.jsx'
 import { Chip } from '../ui/Chip.jsx'
+import { PlayIcon } from '../ui/icons.jsx'
 import { spellDuration } from './libraryStats.js'
 import styles from './HomeHeader.module.css'
 
@@ -18,11 +22,20 @@ import styles from './HomeHeader.module.css'
 // the thing that makes it a portrait rather than a readout: it names things as
 // well as counting them. That is what the genre chips are doing at the bottom.
 //
-// So the composition is a claim, then its evidence. The headline is the
-// *duration*, because that is the figure that lands: 30,441 is a number, and
-// "84 days of music" is a feeling. The counts are a rail underneath, weighed
-// equally against each other and lightly against the headline.
-export function HomeHeader({ stats, isLoading }) {
+// So the composition is a claim, then its evidence: the headline is the
+// *duration*, because that is the figure that lands -- 30,441 is a number and
+// "85 days of music" is a feeling -- with the counts as a rail underneath.
+// What to do about all of it sits across the gap on the right, which is the
+// asymmetry those references are built on, and the room this header has spare
+// precisely because it has no mosaic in it.
+export function HomeHeader({
+  stats,
+  isLoading,
+  onPlayEverything,
+  onShuffleEverything,
+  canPlay,
+  canShuffle,
+}) {
   const duration = spellDuration(stats.seconds)
   const span =
     stats.earliest && stats.latest && stats.earliest !== stats.latest
@@ -50,50 +63,77 @@ export function HomeHeader({ stats, isLoading }) {
 
   return (
     <header className={styles.header}>
-      <p className={styles.eyebrow}>
-        Your library
-        {span ? <span className={styles.span}>{span}</span> : null}
-      </p>
+      <div className={styles.said}>
+        <p className={styles.eyebrow}>
+          Your library
+          {span ? <span className={styles.span}>{span}</span> : null}
+        </p>
 
-      {/* The library's size is known from `library/info` long before its rows
-          are, so the headline says the honest thing at each stage rather than
-          holding an empty slot open or animating a number up from nothing. */}
-      <h1 className={styles.title}>
-        {duration ? (
-          <>
-            {duration.lead}
-            {duration.trail ? <span className={styles.trail}> {duration.trail}</span> : null}
-            <span className={styles.of}> of music</span>
-          </>
-        ) : (
-          'Your library'
-        )}
-      </h1>
+        {/* The library's size is known from `library/info` long before its rows
+            are, so the headline says the honest thing at each stage rather than
+            holding an empty slot open or animating a number up from nothing. */}
+        <h1 className={styles.title}>
+          {duration ? (
+            <>
+              {duration.lead}
+              {duration.trail ? <span className={styles.trail}> {duration.trail}</span> : null}
+              <span className={styles.of}> of music</span>
+            </>
+          ) : (
+            'Your library'
+          )}
+        </h1>
 
-      {figures.length > 0 ? (
-        <dl className={styles.rail}>
-          {figures.map((figure) => (
-            <div key={figure.key} className={styles.figure}>
-              <dd className={styles.count}>{figure.count.toLocaleString()}</dd>
-              <dt className={styles.label}>
-                {figure.noun}
-                {figure.count === 1 ? '' : 's'}
-              </dt>
-            </div>
-          ))}
-          {isLoading ? <div className={styles.counting}>still counting</div> : null}
-        </dl>
-      ) : null}
+        {figures.length > 0 ? (
+          <dl className={styles.rail}>
+            {figures.map((figure) => (
+              <div key={figure.key} className={styles.figure}>
+                <dd className={styles.count}>{figure.count.toLocaleString()}</dd>
+                <dt className={styles.label}>
+                  {figure.noun}
+                  {figure.count === 1 ? '' : 's'}
+                </dt>
+              </div>
+            ))}
+            {isLoading ? <div className={styles.counting}>still counting</div> : null}
+          </dl>
+        ) : null}
 
-      {/* Named things, not only counted ones -- the difference between a
-          portrait and a readout. Hidden on a phone, where the shelves sit close
-          enough together that another band of text above them turns the screen
-          into more reading than looking; the same call the shelf blurbs make. */}
-      {stats.topGenres.length > 0 ? (
-        <div className={styles.chips}>
-          {stats.topGenres.map((genre) => (
-            <Chip key={genre.name} label={genre.name} value={`${genre.share}%`} />
-          ))}
+        {/* Named things, not only counted ones -- the difference between a
+            portrait and a readout. Hidden on a phone, where the shelves sit
+            close enough together that another band of text above them turns the
+            screen into more reading than looking; the same call the shelf blurbs
+            make. */}
+        {stats.topGenres.length > 0 ? (
+          <div className={styles.chips}>
+            {stats.topGenres.map((genre) => (
+              <Chip key={genre.name} label={genre.name} value={`${genre.share}%`} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {/* The same two a playlist header has, meaning the same two things, and
+          that is the whole reason there are two. A single button here would
+          have had to be Play doing a shuffle's job -- and a Play that starts
+          somewhere random contradicts the header two clicks away, where Play
+          starts at the beginning. With both, each word means what it says: from
+          the top, or from anywhere.
+
+          Shuffle is the one worth pressing on thirty thousand tracks, but Play
+          is the one that has to exist for Shuffle to be honest. */}
+      {canPlay || canShuffle ? (
+        <div className={styles.actions}>
+          {canPlay ? (
+            <Button variant="primary" icon={PlayIcon} onClick={onPlayEverything}>
+              Play
+            </Button>
+          ) : null}
+          {canShuffle ? (
+            <Button icon={Shuffle} onClick={onShuffleEverything}>
+              Shuffle
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </header>

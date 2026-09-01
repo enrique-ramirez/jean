@@ -1,9 +1,52 @@
+/* Two columns, and the gap between them is the point: everything the library
+   says about itself on the left, the one thing to do about it on the right.
+   That right-hand space is what a header with no mosaic in it has going spare,
+   and a lone accent button across a wide gap is a stronger composition than the
+   same button tucked under a paragraph. */
 .header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 32px;
+  padding: 24px 24px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* The same warm cast and the same closing rule the playlist header has, because
+   they are the same *kind* of thing: the band at the top of a view that says
+   what you are looking at. What differs between them is what is in it -- and
+   with the shelves scrolling underneath rather than a list of rows, the rule is
+   doing more work here than there. Without it the header and the first shelf
+   ran together into one wall of text.
+
+   Not clipped, deliberately, for the reason the playlist header records:
+   `overflow: hidden` would make this a scroll container, and anything opening
+   past its bottom edge gets scrolled into view by scrolling the header inside
+   itself. */
+.header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.06),
+    transparent 72%
+  );
+  pointer-events: none;
+}
+
+/* Above the wash, or the gradient paints over the words. */
+.said,
+.actions {
+  position: relative;
+}
+
+.said {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  padding: 0 24px;
 }
 
 .eyebrow {
@@ -123,6 +166,16 @@
   font-style: italic;
 }
 
+/* Centred against the whole block rather than aligned to the headline: it acts
+   on all of it -- the days, the counts, the genres -- so it hangs off the
+   middle of what it acts on. Aligned to the title it would read as a button
+   about the title. */
+.actions {
+  align-self: center;
+  display: flex;
+  gap: 8px;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -132,7 +185,7 @@
 
 @media (max-width: 720px) {
   .header {
-    padding: 0 16px;
+    padding: 16px 16px 18px;
     gap: 8px;
   }
 
@@ -148,6 +201,25 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     row-gap: 12px;
+  }
+
+  /* One column on a phone, and the button goes full width underneath. There is
+     no spare space beside a header that already fills the screen, and the
+     thumb-sized target is worth more here than the composition is -- this is
+     the one control on the screen somebody reaches for without looking. */
+  .header {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 14px;
+  }
+
+  /* Pushed to the two edges at their own size, rather than stretched to fill.
+     Two buttons blown up to half a screen each read as a dialog asking a
+     question; at their normal size with the gutters holding them apart they
+     read as what they are, which is the same pair the desktop has. The reach is
+     the same either way -- both are already at the ends of a thumb's arc. */
+  .actions {
+    align-self: stretch;
+    justify-content: space-between;
   }
 
   .figure {

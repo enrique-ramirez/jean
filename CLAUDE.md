@@ -103,6 +103,25 @@ analogue anywhere, a personal collection counted and characterised -- the move t
 makes it a portrait rather than a readout: it *names* things as well as counting
 them, which is what the genre chips are for.
 
+**Home's header ends in the same two buttons a playlist's does, meaning the same
+two things.** Play starts at the beginning, Shuffle starts anywhere and turns the
+mode on; both then land you on All Music, because that is the view of the set they
+just started and pressing play should not leave you looking at the screen you
+pressed it from. Neither touches the mode the other way round -- it is global
+player state, the status bar owns it, and a Play that quietly switched shuffle off
+would be reaching across the app to do it. There are two rather than one because a
+single button would have had to be Play doing a shuffle's job, which contradicts
+the header two clicks away; **Shuffle is the one worth pressing on thirty thousand
+tracks, and Play is the one that has to exist for Shuffle to be honest.** They sit
+across the gap on the right, which is the room a header with no mosaic has spare,
+and on a phone they drop to the two edges at their own size -- stretched to half a
+screen each they read as a dialog asking a question.
+
+Filling the scratch and playing a position in it is `library/usePlaySet.js`, one
+implementation for the shelves, the front door and All Music: a set filled in the
+wrong order plays the wrong track and a player that refuses playlist writes has to
+degrade rather than do nothing, and neither is worth getting right twice.
+
 **A figure at nothing is not drawn, and nouns are pluralised only when the count
 earns it.** Somebody trying Jean against a folder of four songs is looking hardest
 at this screen, and "1 albums" tells them it was written for another library. The

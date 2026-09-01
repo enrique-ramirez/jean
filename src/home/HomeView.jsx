@@ -13,7 +13,15 @@ import styles from './HomeView.module.css'
 // because it could not browse. Each row here is a *reason* instead: a small set
 // with a sentence attached, which is a thing to press play on rather than a
 // thing to page through.
-export function HomeView({ library, playlists, onPlayAlbum }) {
+export function HomeView({
+  library,
+  playlists,
+  onPlayAlbum,
+  onPlayEverything,
+  onShuffleEverything,
+  canPlay,
+  canShuffle,
+}) {
   // Once per library, not per render: the aggregation is a pass over every row
   // (6.5 ms at 30k, 35 ms at 213k) and the shelves are sorts over the result.
   // The header counts albums and artists off the same pass rather than making
@@ -47,7 +55,14 @@ export function HomeView({ library, playlists, onPlayAlbum }) {
       {/* No wordmark here. It sits two centimetres above in the top bar, and
           repeating it makes the screen about the app rather than about the
           music on it. */}
-      <HomeHeader stats={stats} isLoading={library.isLoading} />
+      <HomeHeader
+        stats={stats}
+        isLoading={library.isLoading}
+        onPlayEverything={onPlayEverything}
+        onShuffleEverything={onShuffleEverything}
+        canPlay={canPlay && library.rows.length > 0}
+        canShuffle={canShuffle && library.rows.length > 0}
+      />
 
       {shelves.length === 0 ? (
         <p className={styles.notice}>

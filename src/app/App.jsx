@@ -278,7 +278,18 @@ export function App() {
 
         <main className={styles.main} ref={scrollRef}>
           {isHomeRoute ? (
-            <HomeView library={library} playlists={playlists} onPlayAlbum={playShelf} />
+            <HomeView
+              library={library}
+              playlists={playlists}
+              onPlayAlbum={home.playShelf}
+              // The whole library, which App already holds for the All music
+              // route -- the front door plays exactly the set that route shows,
+              // so it must be exactly the same refs.
+              onPlayEverything={() => home.playEverything(allMusic.indices)}
+              onShuffleEverything={() => home.shuffleEverything(allMusic.indices)}
+              canPlay={home.canPlay}
+              canShuffle={home.canShuffle}
+            />
           ) : isAllRoute || shelf ? (
             <LibraryListView
               library={library}

@@ -3,6 +3,8 @@ import { useMemo } from 'react'
 import { LibrarySetup } from '../library/LibrarySetup.jsx'
 import { albumsOf } from './albums.js'
 import { buildShelves } from './shelves.js'
+import { HomeHeader } from './HomeHeader.jsx'
+import { libraryStats } from './libraryStats.js'
 import { ShelfRow } from './ShelfRow.jsx'
 import styles from './HomeView.module.css'
 
@@ -14,12 +16,21 @@ import styles from './HomeView.module.css'
 export function HomeView({ library, playlists, onPlayAlbum }) {
   // Once per library, not per render: the aggregation is a pass over every row
   // (6.5 ms at 30k, 35 ms at 213k) and the shelves are sorts over the result.
-  const shelves = useMemo(() => {
+  // The header counts albums and artists off the same pass rather than making
+  // its own -- they are the same question asked twice.
+  const albums = useMemo(() => {
     if (library.rows.length === 0) return []
-    const albums = albumsOf(library)
-    for (const album of albums) album.artworkUrl = library.source.artworkUrl(album.refs[0])
-    return buildShelves(albums)
+    const built = albumsOf(library)
+    for (const album of built) album.artworkUrl = library.source.artworkUrl(album.refs[0])
+    return built
   }, [library.key, library.rows, library.source])
+
+  const shelves = useMemo(() => buildShelves(albums), [albums])
+
+  const stats = useMemo(
+    () => libraryStats({ rows: library.rows, albums, playlists }),
+    [library.rows, albums, playlists],
+  )
 
   if (library.needsSetup) {
     return <LibrarySetup playlists={playlists} />
@@ -36,12 +47,7 @@ export function HomeView({ library, playlists, onPlayAlbum }) {
       {/* No wordmark here. It sits two centimetres above in the top bar, and
           repeating it makes the screen about the app rather than about the
           music on it. */}
-      <header className={styles.head}>
-        <h1 className={styles.title}>Your library</h1>
-        {library.count > 0 ? (
-          <p className={styles.stat}>{library.count.toLocaleString()} tracks</p>
-        ) : null}
-      </header>
+      <HomeHeader stats={stats} isLoading={library.isLoading} />
 
       {shelves.length === 0 ? (
         <p className={styles.notice}>

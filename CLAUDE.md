@@ -82,6 +82,49 @@ records qualified, and a sentence that navigates when you brush past it is a tra
 Opening writes nothing and starts nothing -- the scratch playlist keeps whatever it
 was holding, which is the browsing/playing separation the whole design rests on.
 
+**Home opens with a claim, not a label.** The header leads with the library's total
+*duration* -- "85 days 11 hr of music" -- because 30,441 is a number and 85 days is a
+feeling, and a front door should be the second thing. "Your library" drops to the
+eyebrow, alongside the years the collection spans, so orientation costs a line
+nobody has to read. Under it a **rail** of counts -- tracks, albums, artists,
+genres, playlists -- separated by hairlines rather than boxed into cards, because
+they are one sentence about one library and a card apiece would make five unrelated
+readings of it. Then the top genres as chips.
+
+Reference pass: the dashboards this could have become (Dribbble's music dashboards,
+every KPI grid) put each figure in its own shadowed card, which turns a music
+player's front door into an analytics tool and fights the shelves below -- already a
+grid of boxes. Spotify's library header is chrome and filter chips and its Wrapped
+is gradient panels with enormous sans type; both rejected, the second emphatically.
+Taken from Awwwards' stats elements: the hairline between figures, labels pinned in
+one place relative to the number, tabular figures so the row shares a grid, and an
+asymmetric composition. Taken from Letterboxd's all-time page -- the closest
+analogue anywhere, a personal collection counted and characterised -- the move that
+makes it a portrait rather than a readout: it *names* things as well as counting
+them, which is what the genre chips are for.
+
+**A figure at nothing is not drawn, and nouns are pluralised only when the count
+earns it.** Somebody trying Jean against a folder of four songs is looking hardest
+at this screen, and "1 albums" tells them it was written for another library. The
+same goes for a rail of noughts on a fresh install: zero genres is not a library
+without genres, it is Jean unable to tell, and either way an absence dressed as a
+fact. `test/e2e/library-header.spec.js` holds the shapes -- four songs, one artist
+on repeat, six thousand tracks over three hundred artists, no year tags, no
+durations, no albums, no playlists, and one artist spelled two ways. The fixture
+option is `libraryShape`, and it states a shape rather than passing built tracks
+because **an option's top level does not survive the trip to the Playwright worker
+as an array** -- it arrives as `{0: …, 1: …}` with no `.map` on it. Nested arrays
+are fine, which is why `omit: ['%year%']` inside the object works.
+
+Two rules it inherits. **A figure the player cannot answer for is not drawn** --
+no genre tag means no genres figure, never "0 genres", because zero is a claim and
+this is an absence. And **the counts are the user's music, not Jean's plumbing**:
+`#Jean Library` and the scratch are filtered out, or the header would disagree with
+the sidebar two centimetres to its left. The rail becomes a three-column grid below
+720px, because a wrapping flex row puts a hairline at the *start* of its second
+line, separating a figure from the edge of the screen rather than from another
+figure.
+
 **The home screen is rows of shelves, and a shelf is a filter with a reason.** Most
 played, Recently played, "You used to love this", "Worth a better copy", "You starred
 these", "Never opened". Each carries a caption saying *why this record is here* --

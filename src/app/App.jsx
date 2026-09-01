@@ -17,7 +17,7 @@ import { ALL_MUSIC, SCRATCH_KIND } from '../library/jeanPlaylists.js'
 import { project, wholeLibrary } from '../library/project.js'
 import { useLibrary } from '../library/useLibrary.js'
 import { useLibrarySearch } from '../library/useLibrarySearch.js'
-import { usePlayShelf } from '../home/usePlayShelf.js'
+import { useHomePlayback } from '../home/useHomePlayback.js'
 import { usePlayingFrom } from '../library/usePlayingFrom.js'
 import { StatusBar } from '../player/StatusBar.jsx'
 import {
@@ -80,7 +80,7 @@ export function App() {
     wanted: isHomeRoute || isAllRoute || Boolean(shelf),
   })
   const search = useLibrarySearch(library, playlists)
-  const playShelf = usePlayShelf({ library, playlists, navigate })
+  const home = useHomePlayback({ library, playlists, navigate })
 
   // The scratch carries a name; the route it belongs to is Jean's to work out,
   // and so is whether the sidebar already draws a row for it. All music and the

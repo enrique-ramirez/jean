@@ -270,3 +270,20 @@ than a feature -- "a long press plays nothing", "a desktop click does not
 play" -- delete the guard, watch it go red, and put the guard back. Both of
 those were vacuous when first written: one never dispatched the `pointerup`
 that produces the click it claimed to be about.
+
+## Libraries that are not this one
+
+The capture is one person's collection: tidy, mid-sized, thoroughly tagged. Every
+bug about somebody *else's* library lives in the shapes it is not, so there are
+three ways to ask for a different one:
+
+- `librarySize` inflates the ordinary playlist the browsing specs open, for the
+  things that only appear past a few thousand rows.
+- `mediaLibrarySize` inflates the **media library** -- what `#/all` and search read
+  on a 0.11 player -- and the `#Jean Library` autoplaylist with it, so both sources
+  keep describing the same library.
+- `libraryShape` states one outright: how many tracks, albums, artists and genres,
+  how long the tracks run, which years they span, which tags to leave off
+  entirely, and whether the same artist is spelled two ways. A description rather
+  than built tracks, because an option's top level does not survive the trip to the
+  worker as an array.

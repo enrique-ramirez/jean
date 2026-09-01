@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { test as base, expect } from '@playwright/test'
 
 import { createServer } from '../fake-api/server.js'
-import { DEFAULT_PLAYLISTS, createState } from '../fake-api/state.js'
+import { DEFAULT_PLAYLISTS, createState, libraryOfShape } from '../fake-api/state.js'
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '../../dist')
 
@@ -37,6 +37,23 @@ export const test = base.extend({
   // point, because the captured fixture's folders match its tags and cannot
   // tell the two apart.
   mediaLibrarySize: [null, { option: true }],
+
+  // The *shape* of the media library rather than its size:
+  // test.use({ libraryShape: { tracks: 4, albums: 1, omit: ['%year%'] } }).
+  // The capture is one tidy, mid-sized, thoroughly tagged collection, which is
+  // exactly the library in which a bug about small, one-artist or untagged ones
+  // cannot show up. Replaces the `#Jean Library` autoplaylist too, so both
+  // sources still describe the same library. See `libraryOfShape`.
+  //
+  // A description rather than the built tracks, because an option's *top level*
+  // does not survive the trip to the worker as an array -- it arrives as
+  // `{0: ..., 1: ...}`, with no `.map` on it. Nested arrays are fine, which is
+  // why `omit` inside the object works and a bare array of tracks would not.
+  libraryShape: [null, { option: true }],
+
+  // Everything except Jean's own, dropped. A player with no user playlists on
+  // it at all is a fresh install, and nothing else reaches that state.
+  withoutPlaylists: [false, { option: true }],
 
   // Title-formatting expressions this player cannot resolve, so a spec can ask
   // for a bare install: test.use({ withoutFields: ['%lastfm_play_count%'] }) is
@@ -83,6 +100,8 @@ export const test = base.extend({
       fakeServer,
       librarySize,
       mediaLibrarySize,
+      libraryShape,
+      withoutPlaylists,
       withoutFields,
       retagged,
       withoutLibraryPlaylist,
@@ -96,7 +115,9 @@ export const test = base.extend({
     // this is the first run. The ordinary playlist called 'Library' stays, and
     // must not be mistaken for it.
     const playlists = DEFAULT_PLAYLISTS().filter(
-      (playlist) => !(withoutLibraryPlaylist && playlist.title === '#Jean Library'),
+      (playlist) =>
+        !(withoutLibraryPlaylist && playlist.title === '#Jean Library') &&
+        !(withoutPlaylists && !playlist.title.startsWith('#Jean')),
     )
 
     await use(
@@ -105,6 +126,7 @@ export const test = base.extend({
           playlists,
           librarySize,
           mediaLibrarySize,
+          mediaLibrary: libraryShape ? libraryOfShape(libraryShape) : null,
           withoutFields,
           retagged,
           library,

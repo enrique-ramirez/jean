@@ -24,7 +24,7 @@ test.describe('the home screen', () => {
     // the first thing you saw depended on what the desktop happened to be
     // doing. Home is a place; a playlist is a thing you go to.
     await page.goto('/')
-    await expect(page.getByRole('heading', { level: 1, name: 'Your library' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: /of music/ })).toBeVisible()
     await expect(shelf(page, 'Most played')).toBeVisible()
   })
 
@@ -49,6 +49,58 @@ test.describe('the home screen', () => {
     // The caption is the whole difference between a shelf and a query result:
     // "1,315 plays" is a reason to press play, "matches a predicate" is not.
     await expect(page.getByText(/[\d,]+ plays$/).first()).toBeVisible()
+  })
+})
+
+test.describe('the library header', () => {
+  test.use({ settings: { 'jean.heatIntroSeen': true } })
+
+  test('it leads with the time, and counts underneath', async ({ page }) => {
+    await page.goto('/')
+
+    // The claim, then its evidence. 30,441 is a number; "85 days of music" is
+    // a feeling, and the feeling is what a front door is for.
+    const header = page.locator('main header').first()
+    await expect(header.getByRole('heading', { level: 1 })).toContainText('of music')
+    // Uppercased in CSS, so the text itself is still sentence case.
+    await expect(header).toContainText('Your library')
+
+    for (const label of ['tracks', 'albums', 'artists', 'genres', 'playlists']) {
+      await expect(header.getByText(label, { exact: true })).toBeVisible()
+    }
+  })
+
+  test('the counts are of the user\'s music, not of Jean\'s plumbing', async ({ page, player }) => {
+    await page.goto('/')
+    const header = page.locator('main header').first()
+    await expect(header.getByRole('heading', { level: 1 })).toBeVisible()
+
+    // `#Jean Library` is Jean's, and so is any scratch. Counting them here
+    // would make this header disagree with the sidebar two centimetres to its
+    // left, which lists neither.
+    const mine = player.playlists.filter((entry) => !entry.title.startsWith('#Jean'))
+    await expect(header).toContainText(String(mine.length))
+    expect(player.playlists.length).toBeGreaterThan(mine.length)
+  })
+
+  test('a figure the player cannot answer for is not drawn', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('main header').first().getByText('genres', { exact: true })).toBeVisible()
+  })
+})
+
+test.describe('a library with no genre tag', () => {
+  test.use({ withoutFields: ['%genre%'], settings: { 'jean.heatIntroSeen': true } })
+
+  test('says nothing about genres rather than saying zero', async ({ page }) => {
+    await page.goto('/')
+    const header = page.locator('main header').first()
+    await expect(header.getByRole('heading', { level: 1 })).toBeVisible()
+
+    // The rule the shelves already follow: a claim needs the data behind it, and
+    // "0 genres" is not "this library has no genres", it is "Jean cannot tell".
+    await expect(header.getByText('genres', { exact: true })).toHaveCount(0)
+    await expect(header.getByText('tracks', { exact: true })).toBeVisible()
   })
 })
 
@@ -157,7 +209,7 @@ test.describe('an install with no play counts', () => {
 
   test('the shelves that need them are simply not there', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('heading', { level: 1, name: 'Your library' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: /of music/ })).toBeVisible()
 
     await expect(shelf(page, 'Most played')).toHaveCount(0)
     await expect(shelf(page, 'Recently played')).toHaveCount(0)

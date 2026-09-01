@@ -47,6 +47,70 @@ export function generateTracks(count) {
   return tracks
 }
 
+// A library of a stated *shape*, for the things that vary between one person's
+// collection and the next: how big it is, how many records and artists and
+// genres are in it, how long the tracks run, which years it spans. Jean is
+// meant for anybody's library, and the captured one is tidy, mid-sized and
+// thoroughly tagged -- which is exactly the library a bug about small,
+// one-artist or untagged collections cannot appear in.
+//
+// Built from a real captured track so every field the app reads is present and
+// plausible; only the ones a test is actually about are varied. `omit` drops a
+// tag entirely, which is not the same as blanking it: a field the player cannot
+// resolve answers '?', and that is the difference the whole capability
+// detection rests on.
+export function libraryOfShape({
+  tracks = 12,
+  albums = 1,
+  artists = 1,
+  genres = 1,
+  seconds = 240,
+  years = [2000, 2000],
+  omit = [],
+  // Two people tagged this: the same artist written two ways, differing in case
+  // and in spacing. Real collections look like this the moment more than one
+  // tool has touched them, and a count that reports it as two artists is
+  // measuring the tagging rather than the music.
+  mixedCase = false,
+} = {}) {
+  const template = allTracks()[0]
+  const [first, last] = years
+  const built = new Array(tracks)
+
+  for (let index = 0; index < tracks; index += 1) {
+    // An album belongs to one artist, the way records do. Assigning both from
+    // the track index independently gave "Album 1" three hundred different
+    // artists and so three hundred times as many albums as asked for -- which
+    // the app counted correctly and the fixture had lied about.
+    const album = index % albums
+    const artist = album % artists
+    const year = albums > 1 ? first + Math.round((album * (last - first)) / (albums - 1)) : first
+
+    const named = `Artist ${artist + 1}`
+    const spelling = mixedCase && index % 2 === 1 ? named.toUpperCase().replace(' ', '  ') : named
+
+    const track = {
+      ...template,
+      '%title%': `Track ${index + 1}`,
+      '%tracknumber%': String((index % 99) + 1).padStart(2, '0'),
+      '%album%': `Album ${album + 1}`,
+      '%artist%': spelling,
+      '%album artist%': spelling,
+      '%genre%': `Genre ${(index % genres) + 1}`,
+      '%year%': String(year),
+      '%length_seconds%': String(seconds),
+      // Under the same root the capture uses, so the library-relative paths
+      // still come out the way a real player reports them.
+      '%path%': `F:\\Musica\\S\\Artist ${artist + 1}\\Album ${album + 1}\\${index + 1}.mp3`,
+    }
+
+    for (const field of omit) delete track[field]
+    built[index] = track
+  }
+
+  return built
+}
+
 // ---- media library (beefweb 0.11+) -------------------------------------
 //
 // The library is the same set of files the Library playlist holds -- in the
@@ -147,6 +211,9 @@ export function createState({
   // `#Jean Library` autoplaylist, so both sources still describe the same
   // library and a spec can assert the same behaviour through either.
   mediaLibrarySize,
+  // The media library stated outright, for a spec about a library of a
+  // particular shape. See `libraryOfShape`.
+  mediaLibrary,
   // Expressions this player cannot resolve. Dropping them from the tracks makes
   // evaluate() answer '?', which is exactly what a real player does for a field
   // no component provides -- so `withoutFields: ['%lastfm_play_count%']` is an
@@ -191,13 +258,15 @@ export function createState({
     for (const playlist of playlists) playlist.items = playlist.items.map(strip)
   }
 
-  const libraryTracks = mediaLibrarySize
-    ? generateTracks(mediaLibrarySize)
-    : withoutFields.length > 0
-      ? allTracks().map(strip)
-      : allTracks()
+  const libraryTracks = mediaLibrary
+    ? mediaLibrary
+    : mediaLibrarySize
+      ? generateTracks(mediaLibrarySize)
+      : withoutFields.length > 0
+        ? allTracks().map(strip)
+        : allTracks()
 
-  if (mediaLibrarySize) {
+  if (mediaLibrary || mediaLibrarySize) {
     const autoplaylist = playlists.find((entry) => entry.title === '#Jean Library')
     if (autoplaylist) autoplaylist.items = libraryTracks
   }

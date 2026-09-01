@@ -1,0 +1,175 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0 24px;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* The years are a fact about the collection rather than part of its name, so
+   they ride along in the eyebrow instead of taking a line of their own. The
+   rule in front is the same hairline that separates the figures below, which
+   is what ties the two rows together without a box around either. */
+.span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-numeric);
+  letter-spacing: 0.04em;
+}
+
+.span::before {
+  content: '';
+  width: 18px;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.title {
+  margin: 0;
+  font-size: 2.25rem;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-wrap: balance;
+}
+
+/* The remainder is true and secondary: "84 days" is the claim and "14 hr" is
+   the fine print on it, so it is lighter rather than smaller -- shrinking it
+   would break the single line the whole headline sits on. */
+.trail {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.of {
+  color: var(--muted);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* A rail, not cards. Hairlines between figures rather than boxes around them:
+   the figures are one sentence about one library, and a box per number would
+   make five unrelated readings out of it. */
+.rail {
+  display: flex;
+  /* Never wraps here. Five figures come to about 550px and the narrowest this
+     layout ever gets is the 720px breakpoint, below which it becomes a grid --
+     a wrapped flex row would put a hairline at the *start* of the second line,
+     where it separates a figure from the edge of the screen rather than from
+     another figure. */
+  flex-wrap: nowrap;
+  gap: 0;
+  margin: 6px 0 0;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 18px;
+  border-left: 1px solid var(--border);
+}
+
+.figure:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* dd before dt in the markup, so the number reads first and the label explains
+   it. Reversed here rather than reordered there: a definition list whose term
+   follows its description is still a correct one, and screen readers pair them
+   either way, but visually the number has to be the thing the eye lands on. */
+.count {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* The rows arrive in chunks, so every figure here is provisional until the last
+   one lands. Saying so is cheaper than watching numbers tick upward and
+   wondering whether they have finished. */
+.counting {
+  align-self: center;
+  padding-left: 18px;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  font-style: italic;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .header {
+    padding: 0 16px;
+    gap: 8px;
+  }
+
+  .title {
+    font-size: 1.75rem;
+  }
+
+  /* A grid rather than a wrapping row, so "first in its line" is a column
+     position the CSS can actually name. Three columns puts tracks, albums and
+     artists on one line and the rest on the next, and the rule is dropped from
+     whichever figure opens each line. */
+  .rail {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    row-gap: 12px;
+  }
+
+  .figure {
+    padding: 2px 12px;
+  }
+
+  .figure:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .counting {
+    grid-column: 1 / -1;
+    align-self: start;
+    padding-left: 0;
+  }
+
+  /* Same call the shelf blurbs make one component over: on a phone the shelves
+     stack close enough that another band of text above them turns the screen
+     into more reading than looking. The counts stay, because they are the
+     reason this header exists; the characterisation goes. */
+  .chips {
+    display: none;
+  }
+}

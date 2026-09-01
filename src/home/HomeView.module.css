@@ -5,39 +5,6 @@
   padding: 28px 0 40px;
 }
 
-.head {
-  padding: 0 24px;
-}
-
-.eyebrow {
-  margin: 0;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-
-.title {
-  margin: 0;
-  font-size: 1.75rem;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  color: var(--text);
-}
-
-/* The one place the wordmark's accent letter appears at size. */
-.title span {
-  color: var(--accent);
-}
-
-.stat {
-  margin: 6px 0 0;
-  font-family: var(--font-numeric);
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-
 .shelves {
   display: flex;
   flex-direction: column;
@@ -57,14 +24,9 @@
     gap: 24px;
   }
 
-  .head,
   .notice {
     padding-left: 16px;
     padding-right: 16px;
-  }
-
-  .title {
-    font-size: 1.625rem;
   }
 
   .shelves {

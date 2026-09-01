@@ -30,6 +30,7 @@ export function ShelfRow({
 		});
 	}, []);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: new albums are a new scroll extent to measure
 	useEffect(() => {
 		measure();
 		window.addEventListener("resize", measure);

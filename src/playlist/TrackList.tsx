@@ -263,6 +263,7 @@ export const TrackList = forwardRef(function TrackList(
 	const virtualizerRef = useRef(virtualizer);
 	virtualizerRef.current = virtualizer;
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: both switches invalidate cached heights, see above
 	useEffect(() => {
 		virtualizerRef.current.measure();
 	}, [isAlbumLayout, isCompactViewport]);

@@ -1,6 +1,5 @@
 import type { TrackColumns } from "../api/types";
 import { FIELD, number, timestamp, value } from "../playlist/fields";
-import type { PlaylistSnapshot } from "../playlist/playlistStore";
 import { ratingOf } from "../playlist/rating";
 
 const LOSSLESS = new Set(["FLAC", "ALAC", "WAV", "APE", "WAVPACK", "TAK"]);
@@ -86,8 +85,13 @@ export interface CoveredAlbum extends Album {
 // in path order is one album here.
 //
 // One pass with a mutable accumulator: this walks every row in the library.
-export function albumsOf(library: PlaylistSnapshot): Album[] {
-	const byKey = library.rows.reduce((into, row, ref) => {
+//
+// Takes the rows rather than the snapshot they came from, because a caller's
+// `useMemo` can only be as narrow as this signature: handed the whole snapshot
+// it has to depend on the whole snapshot, and the library object is rebuilt
+// every render, so the memo never hits and this pass runs on every one.
+export function albumsOf(rows: TrackColumns[]): Album[] {
+	const byKey = rows.reduce((into, row, ref) => {
 		const album = value(row, FIELD.album);
 		if (!album) return into;
 

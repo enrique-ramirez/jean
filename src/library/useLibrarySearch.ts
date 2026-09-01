@@ -89,7 +89,10 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		[library.key, library.rows, deferredQuery],
 	);
 
-	const results = useMemo(() => project(library, matched), [library, matched]);
+	const results = useMemo(
+		() => project(library.snapshot, matched),
+		[library.snapshot, matched],
+	);
 
 	const focus = useCallback(() => {
 		request();

@@ -56,6 +56,7 @@ export function Finder({
 	// query reset it. Previewing is for the first; see the effect below.
 	const navigated = useRef(false);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a new query resets the cursor, not a read
 	useEffect(() => {
 		setActive(0);
 		navigated.current = false;
@@ -91,6 +92,7 @@ export function Finder({
 		return () => window.removeEventListener("mousemove", track);
 	}, []);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-armed per result set, see above
 	useLayoutEffect(() => {
 		moved.current = false;
 	}, [results]);

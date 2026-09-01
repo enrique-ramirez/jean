@@ -85,6 +85,13 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 
 	return {
 		...library,
+		// The same rows, as the one object identity they arrive with. The spread
+		// above is for reading a field; this is for depending on one. Everything
+		// returned here is rebuilt every render, so a `useMemo` keyed on the
+		// library never hits and re-runs its pass over every row -- which is a full
+		// aggregation of the library on every SSE message, and silent, because an
+		// exhaustive dependency array is exactly what the linter asks for.
+		snapshot: library,
 		key,
 		source,
 		playlist,

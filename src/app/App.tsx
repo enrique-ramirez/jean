@@ -83,14 +83,19 @@ export function App() {
 
 	// All music is the library itself, unprojected. A shelf is its albums' refs,
 	// in shelf order.
-	const allMusic = useMemo(() => wholeLibrary(library), [library]);
+	//
+	// Both depend on the snapshot rather than on `library`, which is rebuilt every
+	// render: keyed on the latter these never hit, and a full pass over every row
+	// runs on each of App's renders -- one per SSE message and per volume write.
+	const { snapshot } = library;
+	const allMusic = useMemo(() => wholeLibrary(snapshot), [snapshot]);
 	const shelfView = useMemo(() => {
-		if (!shelf || library.rows.length === 0) return null;
-		const built = buildShelves(albumsOf(library)).find(
+		if (!shelf || snapshot.rows.length === 0) return null;
+		const built = buildShelves(albumsOf(snapshot.rows)).find(
 			(entry) => entry.id === shelf.id,
 		);
-		return built ? project(library, refsOfShelf(built)) : null;
-	}, [shelf, library]);
+		return built ? project(snapshot, refsOfShelf(built)) : null;
+	}, [shelf, snapshot]);
 
 	// Jean's own scratch playlist is not somewhere to browse to. Playing a set of
 	// search results makes it the current playlist, and landing there would show

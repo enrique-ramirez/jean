@@ -38,7 +38,7 @@ export function HomeView({
 		() =>
 			library.rows.length === 0
 				? []
-				: albumsOf(library).map((album) => ({
+				: albumsOf(library.rows).map((album) => ({
 						...album,
 						artworkUrl: library.source.artworkUrl(album.refs[0]),
 					})),

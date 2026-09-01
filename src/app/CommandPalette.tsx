@@ -40,6 +40,7 @@ export function CommandPalette({
 		inputRef.current?.focus();
 	}, []);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a new query resets the cursor, not a read
 	useEffect(() => {
 		setActive(0);
 	}, [query]);

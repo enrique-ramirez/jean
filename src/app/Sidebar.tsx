@@ -218,6 +218,7 @@ export function Sidebar({
 		});
 	};
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: deletePlaylist's own captures, listed instead of it, see below
 	const actions = useMemo((): ActionNode[] => {
 		if (!target) return [];
 

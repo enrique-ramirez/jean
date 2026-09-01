@@ -224,6 +224,7 @@ function usePanel({
 
 	// The surface follows the page it is showing. Observed rather than measured
 	// once: a nested page's content can settle after it mounts.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a new page is a new node to observe, see above
 	useLayoutEffect(() => {
 		const element = pageRefs.current[depth];
 		if (!element) return undefined;

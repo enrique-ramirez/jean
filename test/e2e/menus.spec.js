@@ -192,6 +192,60 @@ test.describe('while a menu is open', () => {
   })
 })
 
+// The other menu surface, and the reason `menuKeys.js` exists: a dropdown you
+// opened from a button you can see rather than one you summoned at the pointer.
+// It used to leave every key to the app behind it, so Escape closed the panel
+// and cleared the track selection in the same keystroke.
+test.describe('a dropdown owns the keyboard too', () => {
+  test.skip(({ isMobile }) => isMobile, 'these are keyboard events')
+
+  const viewOptions = (page) => page.getByRole('button', { name: 'View options' })
+  const columnOption = (page, name) => page.getByRole('menuitemcheckbox', { name })
+
+  test('Escape closes it without reaching the list behind it', async ({ page }) => {
+    await openLibrary(page)
+    await page.keyboard.press('ArrowDown')
+    await expect(trackRow(page, 1)).toHaveAttribute('data-cursor', 'true')
+
+    await viewOptions(page).click()
+    await expect(columnOption(page, 'Artwork')).toBeVisible()
+
+    await page.keyboard.press('Escape')
+
+    await expect(columnOption(page, 'Artwork')).toHaveCount(0)
+    // The same key clears the track selection when no menu is open, which is
+    // exactly what it used to do *as well as* closing this.
+    await expect(page.locator('[role="row"][data-selected="true"]')).toHaveCount(1)
+  })
+
+  test('the arrows walk its options rather than seeking the player', async ({ page, player }) => {
+    await openLibrary(page)
+    await viewOptions(page).click()
+    await expect(columnOption(page, 'Artwork')).toBeVisible()
+
+    // Which option is first depends on what this player can supply, so this
+    // asks that the arrows land on options at all and then move between them.
+    const focused = () =>
+      page.evaluate(() => [
+        document.activeElement.getAttribute('role'),
+        document.activeElement.textContent.trim(),
+      ])
+
+    await page.keyboard.press('ArrowDown')
+    const [firstRole, first] = await focused()
+    expect(firstRole).toMatch(/^menuitem/)
+
+    await page.keyboard.press('ArrowDown')
+    const [secondRole, second] = await focused()
+    expect(secondRole).toMatch(/^menuitem/)
+    expect(second).not.toBe(first)
+
+    // And the horizontal pair, which is what seeks the player everywhere else.
+    await page.keyboard.press('ArrowRight')
+    expect(player.requests.filter((entry) => entry.path.startsWith('/api/player'))).toEqual([])
+  })
+})
+
 test.describe('a player that will not let Jean change playlists', () => {
   test.use({
     playerState: {

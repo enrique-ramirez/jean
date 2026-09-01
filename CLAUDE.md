@@ -883,6 +883,12 @@ an array, not another component.
   selection callout over the menu. `useLongPress` returns the style to spread.
 - **While a menu is open, no key belongs to the app behind it.** Without stopping
   propagation, the arrow keys seek the player while you are choosing an action.
+  Tab is the exception: leaving by keyboard is the browser's business.
+- **A panel that cannot take focus cannot take the keyboard**, and an invisible
+  element cannot take focus. The popover renders transparent rather than
+  `visibility: hidden` for the frame it is measured in, precisely so that
+  focusing it then is not silently a no-op -- which is what left every key
+  belonging to the app behind it despite the rule above.
 - **An exit animation's "closing" flag must be derived during render, not set in an
   effect.** An effect leaves one commit in which the menu is neither open nor leaving:
   it unmounts, the effect brings it straight back to play the exit, and that remount
@@ -1178,8 +1184,14 @@ component styling.
 a popover, an action sheet or a confirmation dialog -- the gestures, the keyboard
 handling, the nested pages and both surfaces already exist there, and a second
 implementation of any of them will be the one that is wrong on a phone. `ui/Menu.jsx` is
-a different thing and stays: a dropdown anchored under a button you can see, which needs
-none of that. Menu *you asked for* against menu *you summoned*.
+a different thing and stays: a dropdown anchored under a button you can see, with no
+gestures and no pages. Menu *you asked for* against menu *you summoned*.
+
+**What the two do share is the keyboard, and they share the implementation of it**
+(`ui/menuKeys.js`): focus into the panel on open, roving arrows over the items, and
+every key taken from the app behind. They did not, and the difference was invisible
+until it was written down -- Escape closed the dropdown *and* cleared the track
+selection behind it, in one keystroke.
 
 **Notifications come from `ui/toasts.js`, and only for things you cannot see.** Pushing
 one is a bare function call from anywhere, deliberately -- it is a module-level store

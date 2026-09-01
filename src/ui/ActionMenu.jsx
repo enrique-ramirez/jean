@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 
 import { useDismissable } from '../hooks/useDismissable.js'
 import { useIsCompactViewport } from '../hooks/useMediaQuery.js'
+import { handleMenuKeys, useFocusCapture } from './menuKeys.js'
 import { fold, matchesTokens, tokenize } from './text.js'
 import { useVisualViewport } from './useVisualViewport.js'
 import styles from './ActionMenu.module.css'
@@ -161,51 +162,32 @@ function usePanel({ actions, onDismiss, canFilter = false, focusFilter = false }
     pageRefs.current[depth]?.querySelector('input')?.focus({ preventScroll: true })
   }, [isFiltered, focusFilter, depth])
 
-  const onKeyDown = (event) => {
-    // Nothing typed at an open menu belongs to the app behind it: without this
-    // the arrow keys seek the player while you are picking an action, and the
-    // space bar toggles playback while you are typing a playlist name.
-    event.stopPropagation()
-    if (event.key === 'Tab') return
-
-    const element = pageRefs.current[depth]
-    const items = element ? [...element.querySelectorAll('[role="menuitem"]:not(:disabled)')] : []
-    const at = items.indexOf(document.activeElement)
-    const focus = (index) => items[(index + items.length) % items.length]?.focus()
-    const inField = event.target instanceof HTMLInputElement
-
-    switch (event.key) {
-      case 'ArrowDown':
-        focus(at + 1)
-        break
-      case 'ArrowUp':
-        focus(at < 0 ? -1 : at - 1)
-        break
-      case 'Escape':
-        back()
-        break
-      case 'Enter':
-        // Type three letters and commit, without reaching for the arrows.
-        if (!inField) return
-        items[0]?.click()
-        break
-      default:
-        // Everything else belongs to the field while the field has focus --
-        // Home, End and the horizontal arrows are caret keys there, not menu
-        // keys, and every printable character is just typing.
-        if (inField) return
-        if (event.key === 'Home') focus(0)
-        else if (event.key === 'End') focus(-1)
-        else if (event.key === 'ArrowLeft') back()
-        else if (event.key === 'ArrowRight' && items[at]?.dataset.submenu) items[at].click()
-        // Enter and Space on a focused item are left alone on purpose: it is a
-        // real button, and preventing the default is what stops it being
-        // pressed. The stopPropagation above already shields the app from them.
-        else return
+  // What a panel of pages answers beyond the keys every menu does. Escape is
+  // `back` rather than dismiss for the same reason: on a nested page it is a
+  // step out of that page.
+  const pageKeys = ({ event, items, at }) => {
+    if (event.target instanceof HTMLInputElement) {
+      // Type three letters and commit, without reaching for the arrows.
+      if (event.key !== 'Enter') return false
+      items[0]?.click()
+      return true
     }
 
-    event.preventDefault()
+    if (event.key === 'ArrowLeft') {
+      back()
+      return true
+    }
+
+    if (event.key === 'ArrowRight' && items[at]?.dataset.submenu) {
+      items[at].click()
+      return true
+    }
+
+    return false
   }
+
+  const onKeyDown = (event) =>
+    handleMenuKeys(event, { container: pageRefs.current[depth], onEscape: back, beyond: pageKeys })
 
   // Only the page on screen is filtered. The others are inert and sliding, and
   // narrowing them would make the panel resize behind the animation.
@@ -318,31 +300,6 @@ function Header({ header, page, depth, onBack }) {
       </span>
     </div>
   )
-}
-
-// Focus moves into the panel on open and back where it came from on close --
-// but only if the panel still holds it. An action is allowed to send focus
-// somewhere deliberately (Rename opens a field in the row behind the menu) and
-// must not have it taken back when the menu finally goes.
-//
-// `isReady` is not a nicety: the popover is invisible for the frame it is
-// measured in, so focusing on mount put focus nowhere and left the arrow keys
-// navigating nothing and every key still belonging to the app behind the menu.
-//
-// Layout effects, so the cleanup still runs while the panel is in the DOM and
-// can be asked whether it has focus.
-function useFocusCapture(ref, isReady = true) {
-  useLayoutEffect(() => {
-    if (!isReady) return undefined
-
-    const panel = ref.current
-    const previous = document.activeElement
-    panel.focus({ preventScroll: true })
-
-    return () => {
-      if (panel.contains(document.activeElement)) previous?.focus?.({ preventScroll: true })
-    }
-  }, [ref, isReady])
 }
 
 function ActionPopover({ anchor, header, actions, onDismiss }) {

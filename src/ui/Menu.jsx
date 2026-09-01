@@ -1,15 +1,23 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
 
 import { useDismissable } from '../hooks/useDismissable.js'
+import { handleMenuKeys, useFocusCapture } from './menuKeys.js'
 import styles from './Menu.module.css'
 
 // How close a popover may come to the edge of the window before it is pushed
 // back in.
 const GUTTER = 8
 
+// A dropdown anchored under a button you can see, as opposed to a menu you
+// summoned at the pointer -- that one is `ActionMenu`. What the two do share is
+// the keyboard: while either is open it owns every key, or Escape closes the
+// panel *and* clears the selection behind it, and the arrows seek the player
+// while you are choosing a column. See `menuKeys.js`.
 export function Menu({ isOpen, onDismiss, children, trigger, align = 'end', className, role = 'menu' }) {
   const ref = useDismissable(isOpen, onDismiss)
   const menuRef = useRef(null)
+
+  useFocusCapture(menuRef, isOpen)
 
   // A dropdown is anchored to its trigger, and a trigger near an edge puts it
   // off screen -- on a phone, a wide popover hanging off a button near the right
@@ -56,6 +64,10 @@ export function Menu({ isOpen, onDismiss, children, trigger, align = 'end', clas
           className={[styles.menu, className].filter(Boolean).join(' ')}
           data-align={align}
           role={role}
+          tabIndex={-1}
+          onKeyDown={(event) =>
+            handleMenuKeys(event, { container: menuRef.current, onEscape: onDismiss })
+          }
         >
           {children}
         </div>

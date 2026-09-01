@@ -9,18 +9,10 @@ const LEADING = 3 // the number, the artwork, the names cell
 const menu = (page) => page.getByRole('button', { name: 'View options' })
 const option = (page, name) => page.getByRole('menuitemcheckbox', { name })
 
-// Closed by clicking away rather than with Escape, which does not close this
-// menu at all. Found while writing this file and left unfixed here on purpose:
-// while the dropdown is open, Escape reaches the app behind it and clears the
-// track selection instead. `useDismissable` listens on document in the bubble
-// phase and the hotkey manager gets there first. ActionMenu takes the key from
-// the app while it is open; ui/Menu.jsx does not. Enshrining that in an
-// assertion would make the bug harder to fix, so there is no test for it --
-// only this note and a helper that works around it.
 const toggle = async (page, name) => {
   await menu(page).click()
   await option(page, name).click()
-  await page.getByRole('heading', { level: 1 }).click()
+  await page.keyboard.press('Escape')
   await expect(option(page, name)).toHaveCount(0)
 }
 

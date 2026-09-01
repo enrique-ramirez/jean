@@ -6,15 +6,12 @@ import { isScratchPlaylist, scratchContentsOf, scratchName } from './jeanPlaylis
 // Where playback is coming from, when that is a set Jean materialised rather
 // than a playlist the user can see.
 //
-// Browsing and playing are deliberately separate here: the scratch holds the
-// last set you chose to play, so you can start a shelf and then wander off into
-// All music without touching it. That freedom is only tolerable if the app can
-// still tell you where the music is coming from -- otherwise the one hidden
-// playlist in the design becomes the one thing you cannot account for.
-//
-// Read off the playlist's own title, which already carries the kind and the
-// label, so this needs no state of Jean's own and is true after a reload and on
-// another device.
+// Browsing and playing are deliberately separate: the scratch holds the last set
+// you *chose to play*, so you can start a shelf and wander into All music
+// without touching it. That freedom is only tolerable if the app can still say
+// where the sound is coming from. Read off the playlist's own title, which
+// already carries the kind and the label, so this needs no state of Jean's own
+// and is true after a reload and on another device.
 export function usePlayingFrom() {
   const { data: playlists = [] } = usePlaylists()
   const { data: snapshot } = usePlayer()
@@ -25,9 +22,8 @@ export function usePlayingFrom() {
     if (!scratch) return null
 
     const held = scratchContentsOf(scratch)
-    // Named, not labelled. All Music carries no label -- there is one of it and
-    // the kind says so -- and requiring one here is what left the row it plays
-    // from unmarked and the status bar with nothing to say about it.
+    // Named, not labelled: All music carries no label, and requiring one left
+    // the row it plays from unmarked.
     const name = scratchName(held)
     if (!name) return null
 

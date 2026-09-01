@@ -11,7 +11,9 @@ const iconFor = (percent, isMuted) => {
   return percent < 50 ? Volume1 : Volume2
 }
 
-export function VolumeButton({ volume, onToggleMute, ...props }) {
+// The label and the press are the caller's: on desktop it mutes, on a phone it
+// opens the fader, and the icon says the same thing either way.
+function VolumeButton({ volume, onPress, ...props }) {
   const percent = volumePercent(volume)
   const Icon = iconFor(percent, volume?.isMuted)
 
@@ -19,7 +21,7 @@ export function VolumeButton({ volume, onToggleMute, ...props }) {
     <button
       type="button"
       className={styles.button}
-      onClick={onToggleMute}
+      onClick={onPress}
       aria-pressed={Boolean(volume?.isMuted)}
       aria-label={volume?.isMuted ? 'Unmute' : 'Mute'}
       title={volume?.isMuted ? 'Muted' : `Volume ${percent}%`}
@@ -30,7 +32,7 @@ export function VolumeButton({ volume, onToggleMute, ...props }) {
   )
 }
 
-export function VolumeSlider({ volume, onChange, orientation = 'horizontal', className }) {
+function VolumeSlider({ volume, onChange, orientation = 'horizontal', className }) {
   const { ref, fraction, isDragging, handlers } = useDragFraction({
     onDrag: (next) => onChange(fractionToVolume(volume, next)),
     onCommit: (next) => onChange(fractionToVolume(volume, next)),
@@ -88,7 +90,7 @@ export function VolumePopover({ volume, onChange }) {
 
       <VolumeButton
         volume={volume}
-        onToggleMute={() => setIsOpen((open) => !open)}
+        onPress={() => setIsOpen((open) => !open)}
         aria-label={isOpen ? 'Hide volume' : 'Show volume'}
         aria-expanded={isOpen}
       />
@@ -99,7 +101,7 @@ export function VolumePopover({ volume, onChange }) {
 export function Volume({ volume, onChange, onToggleMute }) {
   return (
     <div className={styles.volume}>
-      <VolumeButton volume={volume} onToggleMute={onToggleMute} />
+      <VolumeButton volume={volume} onPress={onToggleMute} />
       <VolumeSlider volume={volume} onChange={onChange} />
     </div>
   )

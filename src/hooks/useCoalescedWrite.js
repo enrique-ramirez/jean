@@ -1,16 +1,13 @@
 import { useCallback, useRef } from 'react'
 
-// Sends the first value immediately, then keeps only the newest value while a
-// request is in flight and sends that once the current one settles.
+// Sends the first value immediately, then keeps only the newest while a request
+// is in flight and sends that once the current one settles.
 //
-// A debounce is the wrong tool here: it delays the first change, and you want
-// to hear volume move as you drag it. Firing per pointer event is worse -- the
-// requests can complete out of order, so the value that lands last wins rather
-// than the value sent last, and each one comes back as a push that re-renders
-// everything subscribed to player state.
-//
-// This keeps exactly one request in flight and always converges on the final
-// value, because whatever arrived during the last flight is sent after it.
+// One pointer gesture is ~40 moves. A debounce delays the first change, and you
+// want to hear volume move as you drag it; a request per event is worse, since
+// they can complete out of order and the value that *lands* last wins rather
+// than the one sent last. This keeps exactly one in flight and always converges
+// on the final value.
 export function useCoalescedWrite(write) {
   const writeRef = useRef(write)
   writeRef.current = write
@@ -31,11 +28,11 @@ export function useCoalescedWrite(write) {
       // Leave the local value alone; the player's next push corrects it.
     } finally {
       inFlight.current = false
-      // Deliberately not guarded on being mounted. A value queued behind the
-      // last request is the one the user finished on, so it should still land
-      // even if the control has since gone away -- and a mounted flag reset in
-      // an effect cleanup is never restored by StrictMode's remount, which
-      // silently drops every coalesced write.
+      // Deliberately not guarded on being mounted: a value queued behind the
+      // last request is the one the user finished on, so it should land even if
+      // the control has gone away -- and a mounted flag reset in an effect
+      // cleanup is never restored by StrictMode's remount, which would silently
+      // drop every coalesced write in development.
       flush()
     }
   }, [])

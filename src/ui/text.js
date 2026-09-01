@@ -1,19 +1,24 @@
-// Diacritic-insensitive matching, for anything the user types at a list.
+// Diacritic-insensitive matching, for anything the user types at a list, so
+// `babasonicos` finds `Babasónicos`. Requiring people to type the accents in
+// their own library taxes exactly the tracks they are most likely hunting for,
+// and from outside it does not look strict, it looks broken.
 //
-// `babasonicos` has to find `Babasónicos`. Requiring people to type the accents
-// in their own library is a tax on exactly the tracks they are most likely to
-// be looking for, and from the outside it does not look like a strict search --
-// it looks like the search is broken.
-//
-// NFD splits a letter into its base plus its combining marks; dropping the
-// marks leaves the base. Measured over a 30,441-row library: folding the whole
-// index costs ~6 ms against the ~0.6 ms a plain lowercase took. That is paid
-// once, when the index is built, and never per keystroke -- the haystacks and
-// the query both come through here, so a search is still a plain includes().
-//
-// Defined here, once, because two searches use it: the library index in
-// playlist/searchText.js and the filter inside ActionMenu. Two copies of a
-// matching rule is two behaviours waiting to drift apart.
+// Fold when the haystack is *built*, never per keystroke: the cost is paid once
+// and a search stays a plain includes(). Both sides come through here, or an
+// accented query stops matching the folded index.
 const COMBINING_MARKS = /\p{Diacritic}/gu
 
 export const fold = (text) => text.toLowerCase().normalize('NFD').replace(COMBINING_MARKS, '')
+
+// Every token has to appear somewhere, in any order, as a substring: 'wilco
+// yankee' finds a track whose title and artist each supply half the query.
+export const tokenize = (query) => fold(query.trim()).split(/\s+/).filter(Boolean)
+
+export const matchesTokens = (haystack, tokens) => tokens.every((token) => haystack.includes(token))
+
+// '1 album', never '1 albums': somebody trying Jean against a folder of four
+// songs is looking hardest at those counts.
+export const pluralise = (count, one, many = `${one}s`) => (count === 1 ? one : many)
+
+export const plural = (count, one, many) =>
+  `${count.toLocaleString()} ${pluralise(count, one, many)}`

@@ -1,23 +1,22 @@
 import { useCallback, useEffect, useRef } from 'react'
 
 const HOLD_MS = 420
-// How far the finger may wander and still count as a hold. Below ~8px this
-// fires on the tremor of holding a phone one-handed.
+// How far the finger may wander and still count as a hold. Much tighter than
+// this and it fires on the tremor of holding a phone one-handed.
 const SLOP_PX = 10
 
-// Touch has no second mouse button, so press-and-hold is the gesture that
-// stands in for a right-click. Two things have to be true for it to feel right:
-// a hold that turns into a scroll must not fire, and the tap that the browser
-// synthesises when the finger lifts must not reach whatever was underneath.
+// Touch has no second mouse button, so press-and-hold stands in for a
+// right-click. Two things have to be true for it to feel right: a hold that
+// turns into a scroll must not fire, and the tap the browser synthesises when
+// the finger lifts must not reach whatever was underneath.
 //
-// The browser is a willing partner on the first: the moment it decides the
-// gesture is a scroll it claims the pointer and fires pointercancel. The slop
-// check only covers the window before it makes up its mind.
+// The browser is a willing partner on the first -- the moment it decides the
+// gesture is a scroll it claims the pointer and fires pointercancel -- so the
+// slop check only covers the window before it makes up its mind.
 //
-// Spread `style` onto the pressable element -- without it iOS puts its own
-// selection callout on top of the menu, which is the one thing a long press
-// must not do.
-export const PRESSABLE = Object.freeze({
+// Spread `style` onto the pressable element, or iOS puts its own selection
+// callout over the menu.
+const PRESSABLE = Object.freeze({
   WebkitTouchCallout: 'none',
   WebkitUserSelect: 'none',
   userSelect: 'none',

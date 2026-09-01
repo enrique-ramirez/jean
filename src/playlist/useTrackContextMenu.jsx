@@ -4,6 +4,7 @@ import { ListMusic, ListPlus, Music } from 'lucide-react'
 import { withoutJeanPlaylists } from '../library/jeanPlaylists.js'
 import { usePermissions, usePlaylists } from '../player/usePlayer.js'
 import { ActionMenu } from '../ui/ActionMenu.jsx'
+import { plural } from '../ui/text.js'
 import { useContextMenu } from '../ui/useContextMenu.js'
 import { FIELD, value } from './fields.js'
 import { targetsFrom } from './trackTargets.js'
@@ -12,9 +13,9 @@ import { useAddTracks } from './useAddTracks.js'
 const sameList = (a, b) => a.length === b.length && a.every((entry, at) => entry === b[at])
 
 // One menu for a list of any length. The gestures go on the container, not on
-// the rows: 30,000 rows must not each carry a handler, and the virtualiser
-// unmounts them under the pointer anyway. Which row was hit is read back out of
-// the DOM at the moment it is asked for.
+// the rows: a virtualised list must not carry a handler per row, and it unmounts
+// them under the pointer anyway. Which row was hit is read back out of the DOM
+// at the moment it is asked for.
 //
 // Returns the JSX as well as the props, the way usePanel does inside ActionMenu
 // -- the alternative is lifting two pieces of state into a component that is
@@ -99,7 +100,7 @@ export function useTrackContextMenu({ rows, indices, source, selection, onSelect
   const header = useMemo(() => {
     if (count === 0) return null
     if (count > 1) {
-      return { icon: ListMusic, title: `${count.toLocaleString()} tracks`, subtitle: 'Selected' }
+      return { icon: ListMusic, title: plural(count, 'track'), subtitle: 'Selected' }
     }
 
     const row = rows[positions[0]]

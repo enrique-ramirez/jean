@@ -4,6 +4,7 @@ import { Check } from 'lucide-react'
 import { renamePlaylist } from '../api/beefweb.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
 import { Button } from '../ui/Button.jsx'
+import { plural } from '../ui/text.js'
 import { LIBRARY_TITLE, looksLikeLibrary } from './jeanPlaylists.js'
 import styles from './LibrarySetup.module.css'
 
@@ -61,7 +62,7 @@ export function LibrarySetup({ playlists }) {
         <div className={styles.migrate}>
           <p className={styles.migrateBody}>
             You already have a playlist called <b>{candidate.title}</b>
-            {candidate.itemCount > 0 ? ` (${candidate.itemCount.toLocaleString()} tracks)` : null}.
+            {candidate.itemCount > 0 ? ` (${plural(candidate.itemCount, 'track')})` : null}.
             If that is your library, Jean can rename it.
           </p>
           <Button

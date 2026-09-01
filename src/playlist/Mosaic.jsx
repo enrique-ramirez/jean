@@ -4,9 +4,8 @@ import { Disc3 } from 'lucide-react'
 import { Artwork } from '../ui/Artwork.jsx'
 import styles from './Mosaic.module.css'
 
-// Covers are ~46 KB each, so the tile count is capped rather than scaled with
-// the playlist: nine images is the whole cost whether the playlist holds twelve
-// tracks or thirty thousand.
+// The tile count is capped rather than scaled with the playlist: nine images is
+// the whole cost whether it holds twelve tracks or the entire library.
 const tileCountFor = (trackCount) => {
   if (trackCount === 0) return 0
   if (trackCount < 4) return 1

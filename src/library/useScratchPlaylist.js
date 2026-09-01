@@ -6,14 +6,11 @@ import { useStoredState } from '../hooks/useStoredState.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
 import { isScratchPlaylist, scratchContentsOf, scratchTitle } from './jeanPlaylists.js'
 
-// The one playlist Jean plays from, and the set it holds is *the last thing you
-// chose to play* -- not the thing you are currently looking at. Browsing writes
-// nothing; playing is the commit. That is what lets you search Post Malone,
-// start it, wander into All Music, and still have Post Malone playing.
-//
-// Resolved by stored id, falling back to the title. Playlist ids are neither
-// contiguous nor promised to outlive the player process, while the title is
-// ours and recognisable from any device.
+// The one playlist Jean plays from, holding *the last set you chose to play* --
+// not the thing you are looking at. Browsing writes nothing; playing is the
+// commit. Resolved by stored id, falling back to the title, because ids are
+// neither contiguous nor promised to outlive the player process while the title
+// is ours and recognisable from any device.
 //
 // `kind` and `label` arrive per call rather than per hook, because the thing
 // filling it is often not the thing rendering: clicking an album on the home
@@ -31,10 +28,9 @@ export function useScratchPlaylist({ playlists, canEdit }) {
     return byId ?? playlists.find(isScratchPlaylist) ?? null
   }, [playlists, pinnedId])
 
-  // Whether it already holds a given view's set, read off the playlist itself
-  // rather than remembered here: the title carries the kind and the label, and
-  // the count is how many it holds. Derived that way it survives a reload and
-  // gives the same answer on another device.
+  // Whether it already holds a given view's set, read off the playlist rather
+  // than remembered here -- so it survives a reload and answers the same on
+  // another device.
   const held = useMemo(() => scratchContentsOf(playlist), [playlist])
 
   const holdsView = useCallback(
@@ -62,26 +58,20 @@ export function useScratchPlaylist({ playlists, canEdit }) {
           await renamePlaylist(target.id, title)
         }
 
-        // How many are in there is read off the player, not off `target`.
-        //
-        // The update stream pushes `playlists` when the *set* of playlists
-        // changes and says nothing when a playlist's items change -- verified
-        // against the live player. So `itemCount` in the cache is stale from
-        // the first write onwards, and this is the one place that cannot
-        // survive being wrong: trusting it once removed 99 rows out of 113,
-        // left 14 behind, and every row then addressed the wrong track.
-        //
-        // The library source replaces in a single request and needs no count at
-        // all. The playlist source has to empty by range first.
+        // Read off the player, not off `target`. Item changes are never pushed,
+        // so a cached `itemCount` is stale from the first write onwards, and
+        // this is the one place that cannot survive being wrong -- trusting it
+        // emptied most of a playlist and left every row addressing the wrong
+        // track. The library source replaces in one request and needs no count;
+        // the playlist source has to empty by range first.
         const heldCount = source.needsHeldCount
           ? ((await fetchPlaylists()).find((entry) => entry.id === target.id)?.itemCount ?? 0)
           : 0
         await source.fill(target.id, refs, heldCount)
 
-        // And put the true count back in the cache, for the same reason:
-        // nothing else will. `holdsView` is derived from it, so without this the
-        // playlist is rebuilt on every play and the row being played is never
-        // marked as playing.
+        // And put the true count back, because nothing else will. `holdsView`
+        // is derived from it, so without this the playlist is rebuilt on every
+        // play and the playing row is never marked.
         await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY })
         return target.id
       }
@@ -92,10 +82,9 @@ export function useScratchPlaylist({ playlists, canEdit }) {
     [canEdit, holdsView, playlist, setPinnedId, queryClient],
   )
 
-  // Saving a set as a playlist, when the scratch already *is* that set: rename
-  // it and it stops being Jean's. Nothing is copied, no near-duplicate is left
-  // beside the original, and -- measured against the live player -- playback
-  // carries straight on through the rename, because it is the same playlist.
+  // Saving a set as a playlist when the scratch already *is* that set: rename it
+  // and it stops being Jean's. Nothing is copied, and playback carries straight
+  // on through the rename, because it is the same playlist.
   const adopt = useCallback(
     async (title) => {
       if (!playlist) return null

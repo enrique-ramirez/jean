@@ -1,12 +1,10 @@
-import { useCallback, useMemo, useRef } from 'react'
-import { Shuffle } from 'lucide-react'
+import { useMemo, useRef } from 'react'
 
 import { playItem } from '../api/beefweb.js'
-import { useActiveItem, usePlaybackOrder, usePlayer } from '../player/usePlayer.js'
-import { Button } from '../ui/Button.jsx'
-import { PlayIcon } from '../ui/icons.jsx'
 import { librarySourceOf } from '../library/librarySource.js'
+import { useActiveItem, useIsPlaying } from '../player/usePlayer.js'
 import { Mosaic } from './Mosaic.jsx'
+import { PlayActions } from './PlayActions.jsx'
 import { TrackBrowser } from './TrackBrowser.jsx'
 import { ViewHeader } from './ViewHeader.jsx'
 import { summarise } from './stats.js'
@@ -22,20 +20,19 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
   )
 
   // A playlist is addressed by index whatever the media library situation is:
-  // playlists are playlists, and the library source only ever stands in for
-  // the *library*.
+  // playlists are playlists, and the library source only ever stands in for the
+  // *library*.
   const source = useMemo(
     () => librarySourceOf({ kind: 'playlist', playlistId: playlist?.id }),
     [playlist?.id],
   )
 
   const browserRef = useRef(null)
-  const { data: playerSnapshot } = usePlayer()
+  const isPlaying = useIsPlaying()
   const activeItem = useActiveItem(playlist?.id)
-  const order = usePlaybackOrder()
   const { hasPlayCounts } = useAvailableFields(rows)
 
-  const finder = useFinder({ rows, browserRef, label: 'Find in playlist' })
+  const finder = useFinder({ rows, browserRef, label: 'Find in this playlist' })
 
   const stats = useMemo(
     // itemCount rather than rows.length: the header should state what the
@@ -44,28 +41,7 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
     [rows, playedCount, playlist?.itemCount],
   )
 
-  const play = useCallback((index) => playItem(playlist.id, index), [playlist?.id])
-
-  // Start somewhere at random and let the player take it from there.
-  //
-  // Measured against the live player: POST /player/play/{plref}/{index} makes
-  // that playlist the active one, and Shuffle (tracks) then draws its next
-  // track from it -- p5 index 3, then 953, 540, 218, never leaving p5. So the
-  // mode is the shuffling, and this only has to open the door for it.
-  //
-  // The queue was the other candidate and is worse: beefweb takes one request
-  // per item with no bulk form, so a playlist of any size means hundreds of
-  // calls and a lookahead cap nobody can see the edge of, and it would have to
-  // clobber whatever the user had queued to mean anything.
-  const shufflePlay = useCallback(() => {
-    if (rows.length === 0) return
-    order.enableShuffle()
-    browserRef.current?.play(Math.floor(Math.random() * rows.length))
-  }, [order, rows.length])
-
-  if (!playlist) {
-    return <p className={styles.notice}>Select a playlist to begin.</p>
-  }
+  if (!playlist) return <p className={styles.notice}>Select a playlist to begin.</p>
 
   if (error) {
     return <p className={styles.notice}>Could not load this playlist -- {error.message}</p>
@@ -80,7 +56,7 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
       heat={heat}
       patina={patina}
       activeIndex={activeItem?.index ?? -1}
-      isPlaying={playerSnapshot?.player?.playbackState === 'playing'}
+      isPlaying={isPlaying}
       matches={finder.matches}
       isLoading={isLoading}
       loaded={loaded}
@@ -89,7 +65,8 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
       isCompactViewport={isCompactViewport}
       keysEnabled={!finder.isFinding}
       canFollowPlayback
-      onPlay={play}
+      // In place, by index. Nothing is written: the playlist already is the set.
+      onPlay={(index) => playItem(playlist.id, index)}
       onOpenFinder={finder.open}
       emptyNotice="This playlist is empty."
       header={
@@ -99,29 +76,7 @@ export function PlaylistView({ playlist, scrollRef, isCompactViewport }) {
           stats={stats}
           hasPlayCounts={hasPlayCounts}
           aside={<Mosaic source={source} trackCount={stats.trackCount} seed={playlist.id} />}
-          actions={
-            <>
-              <Button
-                variant="primary"
-                icon={PlayIcon}
-                onClick={() => browserRef.current?.play(0)}
-                disabled={rows.length === 0}
-              >
-                Play
-              </Button>
-              {/* An action, not the mode -- the mode moved to the status bar,
-                  where global player state belongs. Next to Play this reads as
-                  "play these, shuffled", so that is what it does: a random
-                  track now, and shuffle on for everything after it. */}
-              <Button
-                icon={Shuffle}
-                onClick={shufflePlay}
-                disabled={rows.length === 0 || !order.canShuffle}
-              >
-                Shuffle
-              </Button>
-            </>
-          }
+          actions={<PlayActions browserRef={browserRef} trackCount={rows.length} />}
         />
       }
       toolbarLeading={finder.toolbarLeading}

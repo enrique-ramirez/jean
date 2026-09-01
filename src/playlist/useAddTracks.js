@@ -3,18 +3,17 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { fetchPlaylists, removePlaylistItems } from '../api/beefweb.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
+import { plural } from '../ui/text.js'
 import { pushToast } from '../ui/toasts.js'
 
 // Copying tracks between playlists, which is one request whatever the count --
-// indices go up, nothing else does. Measured: 15,000 of them in 323 ms.
+// indices go up, nothing else does.
 //
 // No duplicate check. foobar2000 playlists are ordered lists, not sets, and the
 // player appends without comment; a uniqueness rule Jean invented would be Jean
-// misrepresenting the data. There is no cheap check to make either -- items
-// have no id, so identity is %path%, and reading it is a request of its own
-// before the drop could land. Undo covers the mistake instead.
-
-const plural = (count, word) => `${count.toLocaleString()} ${count === 1 ? word : `${word}s`}`
+// misrepresenting the data. There is no cheap check to make either -- items have
+// no id, so identity is %path%, and reading it is a request of its own before
+// the drop could land. Undo covers the mistake instead.
 
 export function useAddTracks() {
   const queryClient = useQueryClient()

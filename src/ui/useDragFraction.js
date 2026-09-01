@@ -1,32 +1,23 @@
 import { useCallback, useRef, useState } from 'react'
 
-const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+import { clamp } from './math.js'
 
-// Spread onto the track along with the handlers, and it has to cover both ways
-// a browser can decide a drag was meant for it rather than for the control.
+// Spread onto the track with the handlers, covering both ways a browser can
+// decide a drag was meant for it rather than for the control.
 //
-// On a pointer: pressing on a slider and moving starts a *text selection* that
-// runs out across whatever is beside it, and dragging a selection is a native
-// drag -- so the browser paints a translucent snapshot of the control and
-// follows the pointer with that instead of moving the thumb. It looks like the
-// slider has come loose, and it reads as intermittent because it depends on
-// where the press landed and what was already selected.
+// On a pointer, pressing on a slider and moving starts a *text selection* that
+// runs out across whatever is beside it -- and dragging a selection is a native
+// drag, so the browser paints a translucent snapshot of the control and follows
+// the pointer with that instead of moving the thumb. It looks like the slider
+// has come loose, and reads as intermittent because it depends on where the
+// press landed and what was already selected.
 //
-// On touch, the same symptom with a different cause: without `touch-action`
-// the browser keeps the gesture for panning and zooming, and the moment it
-// decides the finger is scrolling it takes the stream away -- `pointercancel`,
-// no more moves, thumb stranded wherever it got to. `setPointerCapture` does
-// not save this; capture routes the events that still exist and the browser
-// has stopped sending them. That is the "sometimes it drags the page instead
-// of the slider" of it. Declaring `none` says the element wants every gesture
-// that starts on it, which for a fader is exactly true.
-//
-// It intersects down the tree, which is why it belongs on the track and not on
-// anything containing it -- the same trap that would have left the action
-// sheet's list unscrollable.
-//
-// And iOS puts a callout over a long press, which lands on a fader held still
-// at the end of a drag.
+// On touch, the same symptom with a different cause: without `touch-action` the
+// browser keeps the gesture for panning, and the moment it decides the finger is
+// scrolling it stops sending moves, stranding the thumb wherever it got to.
+// `setPointerCapture` does not save this -- capture routes events that still
+// exist. And `touch-action` intersects down the tree, which is why it belongs on
+// the track rather than on anything containing it.
 const GRABBABLE = Object.freeze({
   userSelect: 'none',
   WebkitUserSelect: 'none',

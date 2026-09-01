@@ -4,9 +4,7 @@ import { removePlaylist } from '../api/beefweb.js'
 import { usePermissions, usePlayer } from '../player/usePlayer.js'
 import { libraryIndex, searchLibrary } from './libraryIndex.js'
 import { isScratchPlaylist, queryOfScratchPlaylist } from './jeanPlaylists.js'
-import { project } from './project.js'
-
-const NO_RESULTS = { rows: [], indices: new Int32Array(0), heat: new Float32Array(0), patina: new Float32Array(0), playedCount: 0 }
+import { EMPTY_VIEW, project } from './project.js'
 
 // One view over the library, and a very specific one: text the user typed. It
 // owns the query and nothing else -- the rows, the source and the loading all
@@ -39,12 +37,11 @@ export function useLibrarySearch(library, playlists) {
   // Dismissing the search takes the playlist with it: it exists to be played,
   // and nobody asked for a leftover named after a search they closed.
   //
-  // Except while the player is on it. Deleting the playing playlist does not
-  // end playback at the end of the track -- measured, the player falls back to
-  // another playlist and carries on, which is exactly the wandering out of the
-  // results that this whole arrangement exists to stop. So it outlives the
-  // search only for as long as it is being listened to, and the next set to be
-  // played from takes it over.
+  // Except while the player is on it. Deleting the playing playlist does not end
+  // playback at the end of the track: the player falls back to another playlist
+  // and carries on, which is exactly the wandering out of the results this
+  // arrangement exists to stop. So it outlives the search for as long as it is
+  // being listened to, and the next set played from takes it over.
   const clear = useCallback(() => {
     setQuery('')
 
@@ -110,7 +107,7 @@ export function useLibrarySearch(library, playlists) {
     // The rendered results can lag the field by a frame or two; that is the
     // deferred value doing its job, and it is worth saying so in the UI.
     isFiltering: query !== deferredQuery,
-    results: results ?? NO_RESULTS,
+    results: results ?? EMPTY_VIEW,
     matchCount: matched?.length ?? 0,
     // Distinct per query, which is what makes each result set its own view:
     // its own remembered scroll offset, cursor and row measurements.

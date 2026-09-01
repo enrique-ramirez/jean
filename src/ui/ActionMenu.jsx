@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 
 import { useDismissable } from '../hooks/useDismissable.js'
 import { useIsCompactViewport } from '../hooks/useMediaQuery.js'
-import { fold } from './text.js'
+import { fold, matchesTokens, tokenize } from './text.js'
 import { useVisualViewport } from './useVisualViewport.js'
 import styles from './ActionMenu.module.css'
 
@@ -28,15 +28,6 @@ const SHEET_EXIT_MS = 220
 // Far enough that it cannot be reached by the wobble of a hold, close enough
 // that it feels like a flick rather than a haul.
 const SHEET_DISMISS_PX = 92
-
-// Every token has to appear somewhere in the label, in any order, as substrings
-// -- the same rule, and the same fold(), the library search uses, so typing at a
-// menu behaves like typing at the search field rather than like a different
-// product that happens to be in the same window.
-const matchesQuery = (label, tokens) => {
-  const haystack = fold(label)
-  return tokens.every((token) => haystack.includes(token))
-}
 
 export function ActionMenu({ isOpen, anchor, header, actions, onDismiss }) {
   const isCompact = useIsCompactViewport()
@@ -95,25 +86,22 @@ export function ActionMenu({ isOpen, anchor, header, actions, onDismiss }) {
   )
 }
 
-// Walks the trail of opened ids into the pages it names, re-resolving against
-// the current actions every render so a page whose parent went away collapses
-// rather than showing a stale copy of it.
+// Stops at the first id that no longer names a page, so a submenu whose parent
+// went away collapses rather than resolving deeper against the wrong list.
+const pagesAlong = (items, [id, ...rest]) => {
+  const node = id === undefined ? null : items?.find((item) => item.id === id)
+  return node?.items ? [node, ...pagesAlong(node.items, rest)] : []
+}
+
+// Walks the trail of opened ids into the pages it names, re-resolved against
+// the current actions every render.
 function usePages(actions) {
   const [trail, setTrail] = useState([])
 
-  const pages = useMemo(() => {
-    const resolved = [{ id: 'root', items: actions }]
-    let current = actions
-
-    for (const id of trail) {
-      const node = current?.find((item) => item.id === id)
-      if (!node?.items) break
-      resolved.push(node)
-      current = node.items
-    }
-
-    return resolved
-  }, [actions, trail])
+  const pages = useMemo(
+    () => [{ id: 'root', items: actions }, ...pagesAlong(actions, trail)],
+    [actions, trail],
+  )
 
   const push = useCallback((id) => setTrail((current) => [...current, id]), [])
   const pop = useCallback(() => setTrail((current) => current.slice(0, -1)), [])
@@ -221,12 +209,15 @@ function usePanel({ actions, onDismiss, canFilter = false, focusFilter = false }
 
   // Only the page on screen is filtered. The others are inert and sliding, and
   // narrowing them would make the panel resize behind the animation.
+  // Matched through the same tokenize() the library search uses, so typing at a
+  // menu behaves like typing at the search field rather than like a different
+  // product that happens to be in the same window.
   const visibleItems = (page, isActive) => {
-    const tokens = fold(query.trim()).split(/\s+/).filter(Boolean)
+    const tokens = tokenize(query)
     if (!isActive || !isFiltered || tokens.length === 0) return page.items
 
     // Separators and prose describe a list that is no longer the list.
-    const matched = page.items.filter((node) => !node.type && matchesQuery(node.label, tokens))
+    const matched = page.items.filter((node) => !node.type && matchesTokens(fold(node.label), tokens))
     return matched.length > 0 ? matched : [{ type: 'message', text: 'Nothing matches that.' }]
   }
 

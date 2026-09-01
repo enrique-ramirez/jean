@@ -1,87 +1,51 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { Search, Shuffle } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { Search } from 'lucide-react'
 
-import { playItem, readTrack } from '../api/beefweb.js'
 import { SCOPE } from '../keyboard/keymap.js'
 import { useKeymap } from '../keyboard/useKeymap.js'
-import { useActiveItem, usePlaybackOrder, usePlayer } from '../player/usePlayer.js'
+import { useIsPlaying, usePermissions } from '../player/usePlayer.js'
 import { Mosaic } from '../playlist/Mosaic.jsx'
+import { PlayActions } from '../playlist/PlayActions.jsx'
 import { TrackBrowser } from '../playlist/TrackBrowser.jsx'
 import { ViewHeader } from '../playlist/ViewHeader.jsx'
 import { summarise } from '../playlist/stats.js'
 import { useAvailableFields } from '../playlist/useAvailableFields.js'
 import { Button } from '../ui/Button.jsx'
-import { PlayIcon } from '../ui/icons.jsx'
+import { plural } from '../ui/text.js'
 import { LibrarySetup } from './LibrarySetup.jsx'
 import { SavePlaylistButton } from './SavePlaylistButton.jsx'
 import { SCRATCH_KIND } from './jeanPlaylists.js'
-import { useScratchPlaylist } from './useScratchPlaylist.js'
+import { useActivePosition } from './useActivePosition.js'
+import { usePlaySet } from './usePlaySet.js'
 import styles from './SearchResults.module.css'
 
-// A view over the library, never a playlist. Nothing here is created, cleared
-// or written: playing a result plays it where it already lives, by index, in
-// the playlist the library is.
+// A view over the library, never a playlist. Typing and refining write nothing:
+// the player only hears about a result set once somebody asks to hear it, and
+// then it is materialised into the scratch so playback stays inside the
+// matches. See jeanPlaylists.js for why that is not optional.
 export function SearchResults({ search, library, playlists, scrollRef, isCompactViewport, onOpenPlaylist }) {
   const browserRef = useRef(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  const { data: playerSnapshot } = usePlayer()
-  const order = usePlaybackOrder()
+  const isPlaying = useIsPlaying()
+  // A read-only instance gets a read-only Jean: no button that would 403, and
+  // no Shuffle, which without a scratch playlist would shuffle the whole
+  // library rather than these results.
+  const canSavePlaylists = usePermissions().changePlaylists === true
 
   const { rows, indices, heat, patina, playedCount } = search.results
   const { hasPlayCounts } = useAvailableFields(rows)
-
   const stats = useMemo(() => summarise(rows, playedCount), [rows, playedCount])
 
-  // A read-only instance gets a read-only Jean: no button that would 403.
-  const canSavePlaylists = playerSnapshot?.player?.permissions?.changePlaylists === true
-
-  const scratch = useScratchPlaylist({ playlists, canEdit: canSavePlaylists })
+  const { play, scratch } = usePlaySet({ library, playlists })
   const holdsThisView = scratch.holdsView(SCRATCH_KIND.search, search.query, indices.length)
 
-  // Which row is playing. Two playlists are in play at once and they must not
-  // be confused: reading stays with the library -- the rows, their artwork,
-  // their heat all come from it -- while playback moves into the scratch
-  // playlist, whose contents are these results in this order.
-  //
-  // So the scratch is asked first, and it answers for free: a position there is
-  // a position here. Everything else goes through the source, which is the only
-  // thing that knows what identifies a row. That is what makes the mark exact
-  // rather than best-effort -- the library source matches on `(path, subsong)`,
-  // so a track playing from some *other* playlist is still found here. Asking
-  // by playlist index could only ever answer while the player happened to be
-  // inside the one playlist being read, and on a player with a library API
-  // there is no such playlist at all, so nothing was ever marked.
-  const scratchItem = useActiveItem(scratch.playlist?.id)
-  const activeItem = playerSnapshot?.player?.activeItem
-  const playingTrack = readTrack(playerSnapshot?.player)
-
-  // Depended on by value, not by object: a player message arrives for every
-  // volume nudge and pause, and each one is a new `activeItem`. The library
-  // source's answer is a sweep of up to 30,000 refs, and it should be paid when
-  // the track changes rather than whenever the player says anything at all.
-  const playingPath = playingTrack?.path ?? null
-  const playingSubsong = playingTrack?.subsong ?? 0
-  const activePlaylistId = activeItem?.playlistId ?? null
-  const activeItemIndex = activeItem?.index ?? -1
-
-  const activePosition = useMemo(() => {
-    if (holdsThisView) return scratchItem?.index ?? -1
-    return library.source.playingPosition(
-      indices,
-      { path: playingPath, subsong: playingSubsong },
-      { playlistId: activePlaylistId, index: activeItemIndex },
-    )
-  }, [
-    holdsThisView,
-    scratchItem?.index,
-    library.source,
+  const activeIndex = useActivePosition({
+    source: library.source,
     indices,
-    playingPath,
-    playingSubsong,
-    activePlaylistId,
-    activeItemIndex,
-  ])
+    scratch,
+    holdsThisView,
+  })
 
   useKeymap(
     SCOPE.search,
@@ -89,38 +53,7 @@ export function SearchResults({ search, library, playlists, scrollRef, isCompact
     { enabled: canSavePlaylists && rows.length > 0 && !library.isLoading },
   )
 
-
-  // Materialised on play, never on typing: browsing and refining stay entirely
-  // client-side, and the player only hears about a result set once someone
-  // actually asks to hear it.
-  const play = useCallback(
-    async (position) => {
-      const scratchId = await scratch.ensure({
-        kind: SCRATCH_KIND.search,
-        label: search.query,
-        refs: indices,
-        source: library.source,
-      })
-      // No scratch playlist means a player that will not let us make one. On
-      // the fallback the track still plays, in place, and what follows it is
-      // the library's business rather than these results'. With the media
-      // library API there is no playlist to play in place *in*, so there is
-      // nothing to fall back to.
-      if (scratchId) playItem(scratchId, position)
-      else if (library.playlist) playItem(library.playlist.id, indices[position])
-    },
-    [library.source, library.playlist, indices, scratch],
-  )
-
-  const shufflePlay = useCallback(() => {
-    if (rows.length === 0) return
-    order.enableShuffle()
-    browserRef.current?.play(Math.floor(Math.random() * rows.length))
-  }, [order, rows.length])
-
-  if (library.needsSetup) {
-    return <LibrarySetup playlists={playlists} />
-  }
+  if (library.needsSetup) return <LibrarySetup playlists={playlists} />
 
   if (library.error) {
     return <p className={styles.notice}>Could not read your library -- {library.error.message}</p>
@@ -133,10 +66,8 @@ export function SearchResults({ search, library, playlists, scrollRef, isCompact
         <h1 className={styles.idleTitle}>Search your library</h1>
         <p className={styles.idleBody}>
           {/* "Your library", never the name of whatever is standing in for it.
-              Which of the two sources answered is Jean's business, and on a
-              player with a media library API there is no playlist to name at
-              all. Saying the autoplaylist's title here was worse than untidy:
-              it named a playlist that was not being read. */}
+              Which source answered is Jean's business, and with a media library
+              API there is no playlist to name at all. */}
           {library.count.toLocaleString()} tracks in your library. Title, artist and album, as you
           type -- every word has to match, in any order.
         </p>
@@ -156,25 +87,23 @@ export function SearchResults({ search, library, playlists, scrollRef, isCompact
       viewKey={search.viewKey}
       heat={heat}
       patina={patina}
-      activeIndex={activePosition}
-      isPlaying={playerSnapshot?.player?.playbackState === 'playing'}
+      activeIndex={activeIndex}
+      isPlaying={isPlaying}
       isLoading={library.isLoading}
       loaded={library.loaded}
       total={library.total}
       scrollRef={scrollRef}
       isCompactViewport={isCompactViewport}
       keysEnabled={!search.isFocused}
-      onPlay={play}
+      onPlay={(position) =>
+        play({ kind: SCRATCH_KIND.search, label: search.query, refs: indices, position })
+      }
       // The library search is this list's filter, so `/` belongs to the field
       // rather than to a second finder nested inside the results.
       onOpenFinder={search.focus}
       emptyNotice="Nothing in your library matches that."
       header={
         <ViewHeader
-          // "your library", never the playlist standing in for it. Which source
-          // answered is Jean's business, and the autoplaylist is named for
-          // Jean rather than by the user -- putting `#Jean Library` in a
-          // heading would be showing them the plumbing.
           eyebrow="Search results in your library"
           title={search.query}
           stats={stats}
@@ -188,29 +117,11 @@ export function SearchResults({ search, library, playlists, scrollRef, isCompact
             />
           }
           actions={
-            <>
-              <Button
-                variant="primary"
-                icon={PlayIcon}
-                onClick={() => browserRef.current?.play(0)}
-                disabled={rows.length === 0}
-              >
-                Play
-              </Button>
-              {/* Shuffle belongs here again now that the results become a real
-                  playlist when they are played: the order draws from that, so
-                  it shuffles these matches and nothing else. Without the
-                  permission to make one it would be back to shuffling the whole
-                  library, so it goes when that goes. */}
-              {canSavePlaylists ? (
-                <Button
-                  icon={Shuffle}
-                  onClick={shufflePlay}
-                  disabled={rows.length === 0 || !order.canShuffle}
-                >
-                  Shuffle
-                </Button>
-              ) : null}
+            <PlayActions
+              browserRef={browserRef}
+              trackCount={rows.length}
+              canShuffle={canSavePlaylists}
+            >
               {canSavePlaylists ? (
                 <SavePlaylistButton
                   search={search}
@@ -222,7 +133,7 @@ export function SearchResults({ search, library, playlists, scrollRef, isCompact
                   onOpenPlaylist={onOpenPlaylist}
                 />
               ) : null}
-            </>
+            </PlayActions>
           }
         />
       }
@@ -230,7 +141,7 @@ export function SearchResults({ search, library, playlists, scrollRef, isCompact
         <p className={styles.summary}>
           {library.isLoading
             ? `Searching ${library.loaded.toLocaleString()} of ${library.total.toLocaleString()}...`
-            : `${search.matchCount.toLocaleString()} ${search.matchCount === 1 ? 'match' : 'matches'}`}
+            : plural(search.matchCount, 'match', 'matches')}
         </p>
       }
     />

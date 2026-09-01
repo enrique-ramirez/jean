@@ -30,10 +30,10 @@ const PAGE = 12
 // Everything a list of tracks does regardless of where the tracks came from:
 // layout, columns, heat, selection, keyboard navigation, scrolling to a track.
 //
-// `rows` is the view; `indices` maps a position in it back to the playlist
-// index the player knows about, and is null when the two are the same thing.
-// Selection, the cursor and heat are all in view space -- only artwork and
-// playback cross back over.
+// `rows` is the view; `indices` maps a position in it back to the ref the
+// source addresses, and is null when the two are the same thing. Selection, the
+// cursor and heat are all in view space -- only artwork and playback cross back
+// over.
 export const TrackBrowser = forwardRef(function TrackBrowser(
   {
     rows,
@@ -54,11 +54,9 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     toolbarLeading,
     emptyNotice,
     keysEnabled = true,
-    // Off unless a view asks for it. A playlist is a place you sit in while
-    // something plays, so following the track is welcome there. A set of search
-    // results is not: the rows change under every keystroke, and jumping to the
-    // playing track the moment it appears in them would take the view away from
-    // the matches that were just typed for.
+    // Off unless a view asks for it. A set of search results changes under every
+    // keystroke, and jumping to the playing track the moment it appears among
+    // them would take the view away from the matches just typed for.
     canFollowPlayback = false,
     onPlay,
     onOpenFinder,
@@ -94,12 +92,10 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     setIsHeatInfoOpen(true)
   }, [heatIntroSeen, hasPlayCounts, showHeat])
 
-  // Grouped here rather than inside the list because both layouts want it and
-  // neither owns it. The album layout draws the groups; the list layout draws
-  // none, but a multi-disc album still changes what it renders -- the track
-  // number grows a disc prefix, and the column has to be wide enough for it
-  // before a single row is laid out. One pass over rows when they change,
-  // shared by the two.
+  // Grouped here because both layouts want it and neither owns it. The album
+  // layout draws the groups; the list layout draws none, but a multi-disc album
+  // still grows a disc prefix on the track number, and the column has to be
+  // wide enough for it before a single row is laid out.
   const groups = useMemo(() => groupByAlbum(rows), [rows])
   const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups])
 
@@ -148,10 +144,9 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
   })
 
   // Pressing inside a multi-track selection must not collapse it on the way
-  // down: this could be the start of a drag of all of them, and Finder, Explorer
-  // and every file manager since defer that decision to the release. Without it
-  // a multi-track drag is impossible -- the selection is gone before the pointer
-  // has moved a pixel.
+  // down: this could be the start of a drag of all of them, and every file
+  // manager defers that decision to the release. Without it a multi-track drag
+  // is impossible -- the selection is gone before the pointer has moved.
   const pendingCollapse = useRef(null)
 
   const selectFromPointer = useCallback(
@@ -175,7 +170,6 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 
   // What plays a track depends on the device driving, not on the viewport --
   // the same rule useSortableList uses to decide that only a mouse drags a row.
-  //
   // Recorded on the way down rather than read off the click, because `click` is
   // a PointerEvent in Chromium and Safari but a plain MouseEvent in Firefox,
   // where pointerType is undefined and every desktop click would read as a tap.
@@ -189,18 +183,15 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     [rows, selection.selection, play],
   )
 
-  // Single-click-to-play would be wrong on a pointer: a selection is worth
-  // having there, the modifier keys exist to build one, and every file manager
-  // since the first one separates choosing a thing from opening it. Touch has
-  // neither modifiers nor that tradition, and a tap that only highlighted left
-  // the phone with no way to play an individual track at all -- the header Play
-  // button was the whole surface. Apple Music, Plexamp and Poweramp all play on
-  // the first tap, and the verbs that would need a selection live in the action
-  // sheet behind the long press instead.
+  // A tap plays; a click selects and a double-click plays. On a pointer a
+  // selection is worth having -- the modifier keys exist to build one, and every
+  // file manager separates choosing from opening. Touch has neither, and a tap
+  // that only highlighted left the phone with no way to play an individual track
+  // at all: the header Play button was the entire surface.
   //
-  // `click` rather than `pointerup`: the browser withholds it entirely when the
-  // gesture turned out to be a scroll, which is most of what a finger does in a
-  // list, and useLongPress already swallows the one that follows a hold.
+  // `click` rather than `pointerup`, because the browser withholds it entirely
+  // when the gesture turns out to be a scroll -- which is most of what a finger
+  // does in a list -- and useLongPress already swallows the one after a hold.
   const onRowsClick = useCallback(
     (event) => {
       // detail counts clicks in a rapid sequence. A double-tap otherwise plays
@@ -246,18 +237,15 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     scrollToTrack(selection.cursor, { align: 'auto' })
   }, [selection.cursor, scrollToTrack])
 
-  // Follow playback: when the track changes, bring it into view.
-  //
-  // Which index was last followed, rather than which one was last seen. The
-  // difference is what keeps this from fighting the user -- scrolling away from
-  // the playing track does not change `activeIndex`, so nothing re-fires and
-  // the view stays where it was put. Getting back is the "Now playing" pill's
-  // job, and `n`'s.
+  // Which index was last *followed*, rather than which one was last seen. That
+  // is what keeps this from fighting the user: scrolling away does not change
+  // `activeIndex`, so nothing re-fires and the view stays where it was put --
+  // the "Now playing" pill and `n` are how you get back.
   //
   // It also covers a race the naive version loses: at library size the active
   // index can arrive before the chunk holding that row does, and scrolling to a
   // row the virtualiser does not have yet is a no-op that never retries. Rows
-  // are a dependency, so the jump happens when the row actually exists.
+  // are a dependency, so the jump happens when the row exists.
   const followedIndex = useRef(-1)
 
   useEffect(() => {
@@ -266,19 +254,11 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
     if (followedIndex.current === activeIndex) return
 
     followedIndex.current = activeIndex
-    // Centred every time, in both directions.
-    //
-    // Minimal scrolling was the obvious choice and the wrong one: it brings a
-    // row in from whichever edge it crossed and leaves it there, so going
-    // forwards parked the track on the status bar and going backwards tucked it
-    // under the sticky toolbar, where it was in view by the letter and needed a
-    // nudge of the wheel to actually be seen. Centring has no edge to land on,
-    // so the direction stops mattering -- and it makes the position of the
-    // playing track a fact rather than a consequence of how you arrived at it.
-    //
-    // Advancing a track now scrolls the list by exactly one row, which is
-    // cheaper than it sounds: the row is already rendered, so this is one
-    // compositor scroll rather than a re-render of the list.
+    // Centred every time, in both directions. Minimal scrolling brings a row in
+    // from whichever edge it crossed and leaves it there, so going forwards
+    // parked the track on the status bar and going backwards tucked it under the
+    // sticky toolbar. Centre has no edge to land on, so where the playing track
+    // sits becomes a fact rather than a consequence of how you got there.
     scrollToTrack(activeIndex, { align: 'center', animate: true })
   }, [activeIndex, rows.length, canFollowPlayback, followPlayback, scrollToTrack])
 

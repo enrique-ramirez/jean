@@ -1,24 +1,20 @@
-const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+import { clamp } from './math.js'
 
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2)
 
 // Native `behavior: 'smooth'` is not usable here: its duration is decided by the
-// browser and grows with distance, so jumping across 30,000 rows would crawl for
-// several seconds. This keeps the duration bounded no matter how far the jump is.
+// browser and grows with distance, so a jump across a library-sized list crawls
+// for several seconds. This keeps the duration bounded however far it is.
 //
-// `getTarget` is re-read on every frame rather than captured once, because rows
-// measured during the flight shift where the destination actually sits -- most
+// `getTarget` is re-read every frame rather than captured once, because rows
+// measured during the flight move where the destination actually sits -- most
 // visibly in album mode, where group heights are measured rather than computed.
+
 // A wheel event is not by itself a decision. Trackpad and mouse momentum keep
-// emitting for a second or more after the fingers have left, so a jump asked
-// for at the end of a flick was being cancelled by the tail of the gesture that
-// came before it -- measured, a single delta of one pixel was enough to strand
-// the scroll partway and leave the track off screen entirely. That is the whole
-// of "jump to playing works sometimes": it depends on whether the list happened
-// to still be coasting.
-//
-// Deliberate scrolling passes this in one or two events. A decaying tail does
-// not, and the jump the user actually asked for gets to finish.
+// emitting for a second or more after the fingers have left, so a jump asked for
+// at the end of a flick was being cancelled by the tail of the gesture before
+// it -- which is the whole of "jump to playing works sometimes". Deliberate
+// scrolling passes this in one or two events; a decaying tail never does.
 const CANCEL_DELTA_PX = 40
 
 export function animateScrollTo(element, getTarget, { minMs = 240, maxMs = 700 } = {}) {

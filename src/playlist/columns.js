@@ -8,8 +8,8 @@ import { FIELD } from './fields.js'
 // cheaper than the round trip would be.
 export const OPTIONAL_COLUMNS = [
   { id: 'duration', label: 'Time', width: '4rem', compactWidth: '3.25rem', align: 'right', kind: 'duration', field: FIELD.duration },
-  // Sized to the stars rather than to the word: five at 12px plus their gaps
-  // is 68px, and the slack is what keeps them off the column that follows.
+  // Sized to the five stars rather than to the word, with enough slack to keep
+  // them off the column that follows.
   { id: 'rating', label: 'Rating', width: '5rem', compactWidth: '4.5rem', kind: 'rating', field: FIELD.rating },
   { id: 'playCount', label: 'Plays', width: '3.75rem', compactWidth: '2.75rem', align: 'right', kind: 'playCount', field: FIELD.playCount },
   { id: 'album', label: 'Album', width: 'minmax(0, 1.4fr)', kind: 'text', field: FIELD.album },
@@ -43,9 +43,8 @@ const LEADING = {
   // A disc prefix makes the number four characters instead of two, and at that
   // width the two sizes above stop distinguishing anything -- there is no slack
   // left to hide behind the artwork, so both would run into the gap. One size,
-  // measured against '1.01' rather than against the artwork. Only the list
-  // layout ever asks for it: album groups head their discs instead of
-  // prefixing, so their numbers stay two characters wide.
+  // sized to a disc-prefixed number. Only the list layout asks for it: album
+  // groups head their discs instead of prefixing.
   numberWithDisc: { width: '2.375rem', compactWidth: '2.25rem' },
   artwork: { width: '34px', compactWidth: '32px' },
   names: { width: 'minmax(0, 2fr)', compactWidth: 'minmax(6rem, 1fr)' },

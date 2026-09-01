@@ -3,31 +3,17 @@ import { Shuffle } from 'lucide-react'
 import { Button } from '../ui/Button.jsx'
 import { Chip } from '../ui/Chip.jsx'
 import { PlayIcon } from '../ui/icons.jsx'
-import { spellDuration } from './libraryStats.js'
+import { pluralise } from '../ui/text.js'
+import { spellDuration } from '../playlist/stats.js'
 import styles from './HomeHeader.module.css'
 
-// Reference pass. Two shapes dominate this problem and both were rejected.
-// Dribbble's music dashboards put every figure in its own shadowed card, which
-// makes the front door of a music player look like an analytics tool -- and
-// cards here would fight the shelves below, which are already a grid of boxes.
-// Spotify's library header is chrome and filter chips, and its Wrapped is
-// full-bleed gradient panels with enormous sans type; the first is nothing and
-// the second is the one look Jean has most to lose by borrowing.
-//
-// Taken instead: from Awwwards' stats elements, the hairline rule between
-// figures, labels pinned in one place relative to the number, tabular figures
-// so the row shares a grid, and an asymmetric composition that puts weight on
-// one side and lets the rest breathe. From Letterboxd's all-time page -- the
-// closest analogue anywhere, a personal collection counted and characterised --
-// the thing that makes it a portrait rather than a readout: it names things as
-// well as counting them. That is what the genre chips are doing at the bottom.
-//
-// So the composition is a claim, then its evidence: the headline is the
-// *duration*, because that is the figure that lands -- 30,441 is a number and
-// "85 days of music" is a feeling -- with the counts as a rail underneath.
-// What to do about all of it sits across the gap on the right, which is the
-// asymmetry those references are built on, and the room this header has spare
-// precisely because it has no mosaic in it.
+// A claim, then its evidence: the headline is the *duration*, because a track
+// count is a number and "85 days of music" is a feeling, with the counts as a
+// hairline rail underneath rather than five shadowed cards -- cards would make a
+// music player's front door an analytics dashboard and fight the shelves below,
+// which are already a grid of boxes. Letterboxd's all-time page is the reference
+// for what makes it a portrait rather than a readout: it names things as well as
+// counting them, which is what the genre chips are for.
 export function HomeHeader({
   stats,
   isLoading,
@@ -42,24 +28,17 @@ export function HomeHeader({
       ? `${stats.earliest}–${stats.latest}`
       : (stats.earliest ?? null)
 
-  // The header states what the library *has*, so a figure at nothing is not
-  // drawn -- whether that is nothing to count or nothing this install can tell
-  // us apart. Zero genres means no genre tag, not a library without genres, and
-  // either way "0 genres" is an absence dressed up as a fact. A brand new
-  // install therefore gets a header that shrinks to the one line it can say
-  // rather than a rail of noughts.
-  //
-  // Singular nouns, pluralised only when the count earns it. Somebody trying
-  // Jean against a folder of four songs is exactly who is looking hardest at
-  // this screen, and "1 albums" is the kind of thing that tells them the app
-  // was written for somebody else's library.
+  // A figure at nothing is not drawn. Zero genres means no genre tag rather than
+  // a library without genres, and either way it is an absence dressed as a
+  // fact -- so a brand new install gets a header that shrinks to the one line
+  // it can honestly say instead of a rail of noughts.
   const figures = [
-    { key: 'tracks', count: stats.trackCount, noun: 'track' },
-    { key: 'albums', count: stats.albumCount, noun: 'album' },
-    { key: 'artists', count: stats.artistCount, noun: 'artist' },
-    { key: 'genres', count: stats.genreCount, noun: 'genre' },
-    { key: 'playlists', count: stats.playlistCount, noun: 'playlist' },
-  ].filter((figure) => figure.count)
+    ['track', stats.trackCount],
+    ['album', stats.albumCount],
+    ['artist', stats.artistCount],
+    ['genre', stats.genreCount],
+    ['playlist', stats.playlistCount],
+  ].filter(([, count]) => count)
 
   return (
     <header className={styles.header}>
@@ -69,9 +48,6 @@ export function HomeHeader({
           {span ? <span className={styles.span}>{span}</span> : null}
         </p>
 
-        {/* The library's size is known from `library/info` long before its rows
-            are, so the headline says the honest thing at each stage rather than
-            holding an empty slot open or animating a number up from nothing. */}
         <h1 className={styles.title}>
           {duration ? (
             <>
@@ -86,24 +62,19 @@ export function HomeHeader({
 
         {figures.length > 0 ? (
           <dl className={styles.rail}>
-            {figures.map((figure) => (
-              <div key={figure.key} className={styles.figure}>
-                <dd className={styles.count}>{figure.count.toLocaleString()}</dd>
-                <dt className={styles.label}>
-                  {figure.noun}
-                  {figure.count === 1 ? '' : 's'}
-                </dt>
+            {figures.map(([noun, count]) => (
+              <div key={noun} className={styles.figure}>
+                <dd className={styles.count}>{count.toLocaleString()}</dd>
+                <dt className={styles.label}>{pluralise(count, noun)}</dt>
               </div>
             ))}
             {isLoading ? <div className={styles.counting}>still counting</div> : null}
           </dl>
         ) : null}
 
-        {/* Named things, not only counted ones -- the difference between a
-            portrait and a readout. Hidden on a phone, where the shelves sit
-            close enough together that another band of text above them turns the
-            screen into more reading than looking; the same call the shelf blurbs
-            make. */}
+        {/* Hidden on a phone, where another band of text above shelves that
+            already sit close together turns the screen into more reading than
+            looking -- the same call the shelf blurbs make. */}
         {stats.topGenres.length > 0 ? (
           <div className={styles.chips}>
             {stats.topGenres.map((genre) => (
@@ -113,15 +84,11 @@ export function HomeHeader({
         ) : null}
       </div>
 
-      {/* The same two a playlist header has, meaning the same two things, and
-          that is the whole reason there are two. A single button here would
-          have had to be Play doing a shuffle's job -- and a Play that starts
-          somewhere random contradicts the header two clicks away, where Play
-          starts at the beginning. With both, each word means what it says: from
-          the top, or from anywhere.
-
-          Shuffle is the one worth pressing on thirty thousand tracks, but Play
-          is the one that has to exist for Shuffle to be honest. */}
+      {/* The same two a playlist header has, meaning the same two things. A
+          single button would have had to be Play doing a shuffle's job, which
+          contradicts the header two clicks away: Shuffle is the one worth
+          pressing on thirty thousand tracks, and Play is the one that has to
+          exist for Shuffle to be honest. */}
       {canPlay || canShuffle ? (
         <div className={styles.actions}>
           {canPlay ? (

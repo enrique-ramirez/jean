@@ -1,4 +1,5 @@
 import { Chip } from '../ui/Chip.jsx'
+import { pluralise } from '../ui/text.js'
 import { formatDuration } from './stats.js'
 import styles from './ViewHeader.module.css'
 
@@ -42,7 +43,7 @@ export function ViewHeader({ eyebrow, title, stats, hasPlayCounts, actions, asid
       <div className={styles.meta}>
         <div className={styles.stats}>
           <span>
-            <b>{stats.trackCount.toLocaleString()}</b> tracks
+            <b>{stats.trackCount.toLocaleString()}</b> {pluralise(stats.trackCount, 'track')}
           </span>
           {duration ? (
             <>

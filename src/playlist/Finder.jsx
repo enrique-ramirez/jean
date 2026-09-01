@@ -11,7 +11,7 @@ import styles from './Finder.module.css'
 // only moves you to one. Arrowing through results scrolls the list so you see
 // each hit in place, and only Enter starts playback -- browsing should never
 // hijack what is playing.
-export function Finder({ rows, results, matches, query, onQueryChange, onPreview, onConfirm, onClose }) {
+export function Finder({ rows, label, results, matches, query, onQueryChange, onPreview, onConfirm, onClose }) {
   const inputRef = useRef(null)
   const [active, setActive] = useState(0)
   const debouncedActive = useDebounced(active, 90)
@@ -41,9 +41,8 @@ export function Finder({ rows, results, matches, query, onQueryChange, onPreview
   // not earn: the mouse has not moved, the element beneath it changed. That
   // happens on every open -- the results render exactly where the button that
   // opened them was -- and again on every keystroke, as a new set lands under
-  // the same cursor. Measured, opening the finder and typing selected the fifth
-  // result purely because that is where the pointer was sitting, and Enter then
-  // plays that one instead of the first match.
+  // the same cursor. So hover handed the active result to whatever happened to
+  // land there, and Enter played that instead of the first match.
   //
   // Two signals, because one is not enough. `moved` covers the ordinary case,
   // and is re-armed per result set since each new set is a fresh chance to land
@@ -86,18 +85,16 @@ export function Finder({ rows, results, matches, query, onQueryChange, onPreview
   // follow the *query*: while you are typing you are reading the dropdown, and
   // the list behind it is not what you are looking at.
   //
-  // Following the query was measured doing real damage on a phone. Each
-  // keystroke narrows the set, so the leading match is a different row every
-  // time -- typing "Gus" against a 30,441-track playlist jumped the list 11,751
-  // rows, which unmounts every rendered row, mounts a new screenful, and
-  // scrolls the container. The finder sits in a `position: sticky` toolbar
-  // *inside* that container, so the box being typed into was relaid out on
-  // every letter, and Android's keyboard lost its composition to it: GBoard's
-  // own suggestion strip came back reading "tersGU" for a typed "Guster".
+  // Following the query did real damage on a phone. Each keystroke narrows the
+  // set, so the leading match is a different row every time, and jumping there
+  // unmounts every rendered row, mounts a new screenful and scrolls the
+  // container. The finder sits in a `position: sticky` toolbar *inside* that
+  // container, so the box being typed into was relaid out on every letter and
+  // Android's keyboard lost its composition to it, returning the letters
+  // scrambled.
   //
-  // Nothing is lost. The dropdown already names every match and its position,
-  // Enter and a tap both scroll to what they play, and arrowing -- which is
-  // what "see each hit in place" was written for -- still previews.
+  // Nothing is lost: the dropdown already names every match and its position,
+  // Enter and a tap both scroll to what they play, and arrowing still previews.
   const previewIndex = results[debouncedActive]
 
   useEffect(() => {
@@ -129,8 +126,8 @@ export function Finder({ rows, results, matches, query, onQueryChange, onPreview
         className={styles.input}
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
-        placeholder="Find in this playlist"
-        aria-label="Find in this playlist"
+        placeholder={label}
+        aria-label={label}
         spellCheck="false"
         autoComplete="off"
       />

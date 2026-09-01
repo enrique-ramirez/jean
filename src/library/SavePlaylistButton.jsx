@@ -6,6 +6,7 @@ import { createPlaylist } from '../api/beefweb.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
 import { Button } from '../ui/Button.jsx'
 import { Menu } from '../ui/Menu.jsx'
+import { plural } from '../ui/text.js'
 import styles from './SavePlaylistButton.module.css'
 
 // The one place Jean writes a playlist, and it takes an explicit click to get
@@ -15,12 +16,11 @@ import styles from './SavePlaylistButton.module.css'
 // because there is no playlist to copy *from*.
 //
 // Reaching past the source for a playlist id was not untidy, it was wrong, and
-// silently. A ref is only an index *into its own source*: on a player with a
-// media library those refs address the library's own path-ordered array, and
-// copying them out of the `Library` autoplaylist instead took whatever happened
-// to sit at those positions in a differently ordered list. Measured, saving
-// twelve unplayed Babasónicos matches wrote a playlist beginning "Jaws Theme
-// Swimming". It never threw, which is what made it worth a test.
+// silently. A ref is only an index *into its own source*: with a media library
+// those refs address its own path-ordered array, and copying them out of the
+// autoplaylist instead takes whatever happens to sit at those positions in a
+// differently ordered list. It never throws, which is what makes it worth a
+// test rather than a comment.
 export function SavePlaylistButton({ search, library, scratch, holdsResults, isOpen, onOpenChange, onOpenPlaylist }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState(search.query)
@@ -99,8 +99,7 @@ export function SavePlaylistButton({ search, library, scratch, holdsResults, isO
     >
       <form className={styles.form} onSubmit={submit}>
         <label className={styles.label} htmlFor="save-search-title">
-          New playlist from {trackCount.toLocaleString()}{' '}
-          {trackCount === 1 ? 'result' : 'results'}
+          New playlist from {plural(trackCount, 'result')}
         </label>
 
         <input

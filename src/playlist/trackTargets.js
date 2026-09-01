@@ -1,10 +1,10 @@
 // Which rows an action applies to, given where the pointer went down.
 //
-// The rule is the file-manager one, and it is shared by the context menu and by
-// dragging because they must never disagree: acting inside a selection acts on
-// all of it, acting outside one acts on just that row. Rows are found through
-// the DOM rather than through per-row handlers -- the list is virtualised, and
-// 30,000 rows must not each carry a closure.
+// The rule is the file-manager one, shared by the context menu and by dragging
+// because they must never disagree: acting inside a selection acts on all of it,
+// acting outside one acts on just that row. Rows are found through the DOM
+// rather than through per-row handlers -- the list is virtualised, and its rows
+// must not each carry a closure.
 export function targetsFrom(event, rows, selection) {
   const element = event.target.closest?.('[data-row]')
   if (!element) return null

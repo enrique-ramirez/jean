@@ -7,7 +7,7 @@ import { useIsCompactViewport } from '../hooks/useMediaQuery.js'
 import { usePlayingFrom } from '../library/usePlayingFrom.js'
 import { Artwork } from '../ui/Artwork.jsx'
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from '../ui/icons.jsx'
-import { SeekBar, useElapsedLabel } from './SeekBar.jsx'
+import { SeekBar, useElapsed } from './SeekBar.jsx'
 import { formatTime } from './position.js'
 import { Volume, VolumePopover } from './Volume.jsx'
 import {
@@ -23,7 +23,7 @@ import styles from './StatusBar.module.css'
 // Times are their own leaf so the animation frame loop repaints two spans
 // rather than the whole bar.
 function Times({ snapshot }) {
-  const elapsed = useElapsedLabel(snapshot)
+  const elapsed = useElapsed(snapshot)
   const duration = snapshot?.player?.activeItem?.duration ?? 0
 
   return (

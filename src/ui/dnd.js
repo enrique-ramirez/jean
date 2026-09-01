@@ -4,24 +4,21 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 //
 // Deliberately not built on useSortableList: that reorders one list, where the
 // dragged element stays mounted and the drop position is arithmetic. Here the
-// source row can be unmounted by the virtualiser mid-gesture, and the target is
-// somewhere else in the tree entirely -- so the drop is decided by hit-testing
-// the document, and the thing following the pointer is a ghost rather than the
-// row itself.
+// source row can be unmounted by the virtualiser mid-gesture and the target is
+// elsewhere in the tree entirely, so the drop is hit-tested against the
+// document and what follows the pointer is a ghost rather than the row.
 //
-// Three rules hold this together:
+// Three rules hold it together:
 //
-//  - **No pointer capture.** Capture retargets every subsequent event to the
-//    capturing element, and a handler on a *descendant* of it then never fires.
-//    Window listeners for the duration of the gesture have none of that
-//    ambiguity and work just as well across containers.
+//  - **No pointer capture.** Capture retargets every later event to the
+//    capturing element, so a handler on a *descendant* never fires again -- and
+//    the natural capture element is the scroll container, an ancestor of the
+//    rows. Window listeners for the length of the gesture have no such ambiguity.
 //  - **The store carries only coarse facts** -- dragging or not, which target is
-//    armed. Those change rarely, so subscribing costs nothing. The track list
-//    does not subscribe at all and never re-renders during a drag, which is the
-//    whole point: a virtualised 30k-row list must not repaint at 60fps because
-//    a pointer moved.
-//  - **The ghost is moved imperatively.** Its position is the one thing that
-//    does change every frame, so it never goes through React.
+//    armed -- so subscribing is free. The track list does not subscribe at all
+//    and must never re-render during a drag.
+//  - **The ghost is moved imperatively**, because position is the one thing that
+//    changes every frame.
 
 const THRESHOLD_PX = 5
 const AUTOSCROLL_ZONE_PX = 52
@@ -38,7 +35,7 @@ const listeners = new Set()
 
 const publish = (next) => {
   state = next
-  for (const listener of listeners) listener()
+  listeners.forEach((listener) => listener())
 }
 
 const subscribe = (listener) => {

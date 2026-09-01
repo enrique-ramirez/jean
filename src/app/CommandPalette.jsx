@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ListMusic, Search } from 'lucide-react'
 
+import { fold, matchesTokens, tokenize } from '../ui/text.js'
 import styles from './CommandPalette.module.css'
 
 // Jumping between playlists, not searching them: tracks are the library
@@ -10,10 +11,14 @@ export function CommandPalette({ playlists, onSelect, onDismiss }) {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
 
-  const needle = query.trim().toLowerCase()
-  const results = needle
-    ? playlists.filter((playlist) => playlist.title.toLowerCase().includes(needle))
-    : playlists
+  // The same rule as every other list you can type at, through the same
+  // fold(): a palette that could not find `Babasónicos` from `babasonicos`
+  // would be the one place in the app where accents suddenly matter.
+  const tokens = tokenize(query)
+  const results =
+    tokens.length === 0
+      ? playlists
+      : playlists.filter((playlist) => matchesTokens(fold(playlist.title), tokens))
 
   useEffect(() => {
     inputRef.current?.focus()

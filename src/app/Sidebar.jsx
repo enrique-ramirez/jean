@@ -13,9 +13,39 @@ import { ALL_MUSIC, withoutJeanPlaylists } from '../library/jeanPlaylists.js'
 import { useContextMenu } from '../ui/useContextMenu.js'
 import { mergeHandlers } from '../ui/mergeHandlers.js'
 import { useDragState } from '../ui/dnd.js'
+import { plural } from '../ui/text.js'
 import { pushToast } from '../ui/toasts.js'
 import { useSortableList } from '../ui/useSortableList.js'
 import styles from './Sidebar.module.css'
+
+// Every row in the sidebar is the same shape: an icon that says whether the
+// music is coming from here, a name, and sometimes a count. **The accent means
+// "this is playing" and nothing else** -- never which row you are looking at,
+// which is what aria-current and the row's own styling are for. Tinting by
+// selection made the row you were looking at and the row you were listening to
+// identical, which is precisely the pair this design exists to separate.
+function NavRow({ icon: Icon, label, count, isPlaying, isCurrent, onClick, rowProps, itemProps, children }) {
+  return (
+    <div className={styles.row} {...rowProps}>
+      <button
+        type="button"
+        className={styles.item}
+        aria-current={isCurrent}
+        onClick={onClick}
+        {...itemProps}
+      >
+        {isPlaying ? (
+          <Volume2 size={15} strokeWidth={2} className={styles.playing} aria-label="Playing from here" />
+        ) : (
+          <Icon size={15} strokeWidth={2} aria-hidden="true" />
+        )}
+        <span className={styles.label}>{label}</span>
+        {count == null ? null : <span className={styles.count}>{count}</span>}
+      </button>
+      {children}
+    </div>
+  )
+}
 
 export function Sidebar({
   playlists,
@@ -52,17 +82,15 @@ export function Sidebar({
   // changed every time they searched.
   const shown = useMemo(() => withoutJeanPlaylists(playlists), [playlists])
 
-  // Playing from a set of search results makes Jean's scratch playlist the
-  // current one -- and it is hidden, so without this the status bar would name
-  // a track with nothing on screen saying where it came from.
-  // Which row, if any, the music is coming from. One answer for every row, from
-  // the same place the status bar reads it.
+  // Which row, if any, the music is coming from -- one answer for every row,
+  // from the same place the status bar reads it. Playing search results makes
+  // Jean's hidden scratch playlist the current one, so without this the status
+  // bar would name a track with nothing on screen accounting for it.
   //
-  // This used to be `some(isScratchPlaylist && isCurrent)`, which was wrong
-  // twice over: `isCurrent` goes on pointing at the last playlist played from
-  // long after playback stopped, and it never asked what the scratch was
-  // holding -- so a shelf playing lit the search row up, as long as a query
-  // happened to be typed.
+  // Not `some(isScratchPlaylist && isCurrent)`, which was wrong twice over:
+  // `isCurrent` goes on pointing at the last playlist played from long after
+  // playback stopped, and it never asked what the scratch was *holding*, so a
+  // shelf playing lit the search row up whenever a query happened to be typed.
   const playingRoute = playingFrom?.isPlaying ? playingFrom.route : null
 
   const target = shown.find((entry) => entry.id === targetId) ?? null
@@ -105,12 +133,12 @@ export function Sidebar({
     { enabled: canEdit && focusedIndex >= 0 },
   )
 
-  // Created empty and dropped straight into rename, rather than asking for a
-  // name first: one click gets you a playlist, and naming it is optional. The
-  // view does not change -- a new playlist is somewhere to put things, so
-  // throwing you out of the list you were looking at is the wrong reflex.
   const refused = (message) => () => pushToast({ tone: 'error', message })
 
+  // Created empty and dropped straight into rename rather than asking for a name
+  // first: one click gets you a playlist, and naming it is optional. The view
+  // does not change -- a new playlist is somewhere to put things, so throwing
+  // you out of the list you were looking at is the wrong reflex.
   const newPlaylist = () =>
     create.mutate(untitledPlaylistName(shown), {
       onSuccess: (playlist) => setRenamingId(playlist.id),
@@ -188,76 +216,40 @@ export function Sidebar({
         {search.hasQuery || search.remembered ? (
           <>
             <p className={styles.heading}>Search</p>
-            <div className={styles.row}>
-              <button
-                type="button"
-                className={styles.item}
-                aria-current={isSearchOpen}
-                onClick={() => {
-                  // Taking back a search the player remembered is what loads
-                  // the library, so it happens on the tap rather than on every
-                  // launch that happens to follow one.
-                  if (!search.hasQuery) search.restore()
-                  onOpenSearch()
-                }}
-              >
-                {playingRoute === 'search' ? (
-                  <Volume2
-                  size={15}
-                  strokeWidth={2}
-                  className={styles.playing}
-                  aria-label="Playing from here"
-                />
-                ) : (
-                  <Search size={15} strokeWidth={2} aria-hidden="true" />
-                )}
-                <span className={styles.label}>{search.query || search.remembered}</span>
-                <span className={styles.count}>
-                  {search.hasQuery ? search.matchCount.toLocaleString() : ''}
-                </span>
-              </button>
-            </div>
+            <NavRow
+              icon={Search}
+              label={search.query || search.remembered}
+              count={search.hasQuery ? search.matchCount.toLocaleString() : ''}
+              isPlaying={playingRoute === 'search'}
+              isCurrent={isSearchOpen}
+              onClick={() => {
+                // Taking back a search the player remembered is what loads the
+                // library, so it happens on the tap rather than on every launch
+                // that happens to follow one.
+                if (!search.hasQuery) search.restore()
+                onOpenSearch()
+              }}
+            />
           </>
         ) : null}
 
         {/* Above the playlists and below the search, which is the order they
             are reached for: search is a thing you are already doing, home is
             where you start, and playlists are what you keep. */}
-        <div className={styles.row}>
-          <button
-            type="button"
-            className={styles.item}
-            aria-current={route === '' || route === 'home'}
-            onClick={() => onOpenRoute('home')}
-          >
-            <Home size={15} strokeWidth={2} aria-hidden="true" />
-            <span className={styles.label}>Home</span>
-          </button>
-        </div>
+        <NavRow
+          icon={Home}
+          label="Home"
+          isCurrent={route === '' || route === 'home'}
+          onClick={() => onOpenRoute('home')}
+        />
 
-        <div className={styles.row}>
-          <button
-            type="button"
-            className={styles.item}
-            aria-current={route === 'all'}
-            onClick={() => onOpenRoute('all')}
-          >
-            {/* The accent means "this is playing" and nothing else -- never
-                which row you are looking at, which is what `aria-current` and
-                the row's own styling are for. */}
-            {playingRoute === 'all' ? (
-              <Volume2
-                size={15}
-                strokeWidth={2}
-                className={styles.playing}
-                aria-label="Playing from here"
-              />
-            ) : (
-              <Disc3 size={15} strokeWidth={2} aria-hidden="true" />
-            )}
-            <span className={styles.label}>{ALL_MUSIC}</span>
-          </button>
-        </div>
+        <NavRow
+          icon={Disc3}
+          label={ALL_MUSIC}
+          isPlaying={playingRoute === 'all'}
+          isCurrent={route === 'all'}
+          onClick={() => onOpenRoute('all')}
+        />
 
         {/* A shelf you played, for as long as it is the thing playing. Jean's
             scratch playlist is hidden, so without this the status bar would name
@@ -265,26 +257,13 @@ export function Sidebar({
             and unlike a playlist, a shelf has no permanent row to point at. It
             leaves on its own when the next set takes the scratch over. */}
         {playingFrom?.temporaryRow ? (
-          <div className={styles.row}>
-            <button
-              type="button"
-              className={styles.item}
-              aria-current={route === playingFrom.route}
-              onClick={() => onOpenRoute(playingFrom.route)}
-            >
-              {playingFrom.isPlaying ? (
-                <Volume2
-                  size={15}
-                  strokeWidth={2}
-                  className={styles.playing}
-                  aria-label="Playing from here"
-                />
-              ) : (
-                <Disc3 size={15} strokeWidth={2} aria-hidden="true" />
-              )}
-              <span className={styles.label}>{playingFrom.name}</span>
-            </button>
-          </div>
+          <NavRow
+            icon={Disc3}
+            label={playingFrom.name}
+            isPlaying={playingFrom.isPlaying}
+            isCurrent={route === playingFrom.route}
+            onClick={() => onOpenRoute(playingFrom.route)}
+          />
         ) : null}
 
         <div className={styles.sectionHeader}>
@@ -348,7 +327,7 @@ export function Sidebar({
             ? {
                 icon: ListMusic,
                 title: target.title,
-                subtitle: `${target.itemCount.toLocaleString()} ${target.itemCount === 1 ? 'track' : 'tracks'}`,
+                subtitle: plural(target.itemCount, 'track'),
               }
             : null
         }
@@ -387,41 +366,29 @@ function PlaylistRow({
   }
 
   return (
-    // Merged, not spread one over the other: the long press and the drag both
-    // want onPointerDown, Move, Up and Cancel, and the second object would
-    // quietly win all four. They sort themselves out by pointer type -- the
-    // hold ignores a mouse, the row drag ignores everything that is not one.
-    <div
-      className={styles.row}
-      ref={ref}
-      style={{ ...pressableStyle, ...dragStyle }}
-      data-drop-target={isDropTarget ? playlist.id : undefined}
-      data-drop-over={isDropOver ? 'true' : undefined}
-      {...rowState}
-      {...mergeHandlers(gestures, dragProps)}
+    <NavRow
+      icon={ListMusic}
+      label={playlist.title}
+      count={playlist.itemCount.toLocaleString()}
+      // A user's own playlist keeps `isCurrent` rather than reading the scratch:
+      // it is a real playlist the player can be inside, so the player's own
+      // answer is the honest one. See "Showing playlists".
+      isPlaying={playlist.isCurrent}
+      isCurrent={isSelected}
+      onClick={onSelect}
+      itemProps={{ onFocus, onBlur }}
+      rowProps={{
+        ref,
+        style: { ...pressableStyle, ...dragStyle },
+        'data-drop-target': isDropTarget ? playlist.id : undefined,
+        'data-drop-over': isDropOver ? 'true' : undefined,
+        ...rowState,
+        // Merged, not spread one over the other: the long press and the drag
+        // both want onPointerDown, Move, Up and Cancel, and the second object
+        // would quietly win all four. They sort themselves out by pointer type.
+        ...mergeHandlers(gestures, dragProps),
+      }}
     >
-      <button
-        type="button"
-        className={styles.item}
-        aria-current={isSelected}
-        onClick={onSelect}
-        onFocus={onFocus}
-        onBlur={onBlur}
-      >
-        {playlist.isCurrent ? (
-          <Volume2
-                  size={15}
-                  strokeWidth={2}
-                  className={styles.playing}
-                  aria-label="Playing from here"
-                />
-        ) : (
-          <ListMusic size={15} strokeWidth={2} aria-hidden="true" />
-        )}
-        <span className={styles.label}>{playlist.title}</span>
-        <span className={styles.count}>{playlist.itemCount.toLocaleString()}</span>
-      </button>
-
       {/* Not focusable: reordering by keyboard is Alt with the arrows, on the
           row itself, which needs no separate stop on the tab route. */}
       {canEdit ? (
@@ -441,7 +408,7 @@ function PlaylistRow({
           <GripVertical size={15} strokeWidth={2} />
         </span>
       ) : null}
-    </div>
+    </NavRow>
   )
 }
 

@@ -1,3 +1,4 @@
+import { clamp } from '../ui/math.js'
 import { FIELD, number, timestamp } from './fields.js'
 
 // How long since a track was last played before it reads as fully faded.
@@ -11,38 +12,25 @@ const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000
 // applies only to tracks that were played at all -- a never-played track is
 // flat, not faded, and dimming it would say something untrue about it.
 export function deriveIntensity(rows) {
-  const count = rows.length
-  const heat = new Float32Array(count)
-  const patina = new Float32Array(count)
-  const playCounts = new Int32Array(count)
+  const playCounts = Int32Array.from(rows, (row) => number(row, FIELD.playCount) ?? 0)
 
-  let maxPlayCount = 0
-  let playedCount = 0
-
-  for (let index = 0; index < count; index += 1) {
-    const plays = number(rows[index], FIELD.playCount) ?? 0
-    playCounts[index] = plays
-    if (plays > 0) {
-      playedCount += 1
-      if (plays > maxPlayCount) maxPlayCount = plays
-    }
-  }
-
+  const maxPlayCount = playCounts.reduce((most, plays) => Math.max(most, plays), 0)
   const ceiling = Math.log1p(maxPlayCount)
   const now = Date.now()
 
-  for (let index = 0; index < count; index += 1) {
-    const plays = playCounts[index]
-    if (plays <= 0) continue
+  const heat = Float32Array.from(playCounts, (plays) =>
+    plays > 0 && ceiling > 0 ? Math.log1p(plays) / ceiling : 0,
+  )
 
-    heat[index] = ceiling > 0 ? Math.log1p(plays) / ceiling : 0
+  const patina = Float32Array.from(rows, (row, index) => {
+    if (playCounts[index] <= 0) return 0
+    const lastPlayed = timestamp(row, FIELD.lastPlayed)
+    return lastPlayed === null ? 0 : clamp((now - lastPlayed) / YEAR_MS / PATINA_YEARS, 0, 1)
+  })
 
-    const lastPlayed = timestamp(rows[index], FIELD.lastPlayed)
-    if (lastPlayed !== null) {
-      const years = (now - lastPlayed) / YEAR_MS
-      patina[index] = Math.min(Math.max(years / PATINA_YEARS, 0), 1)
-    }
+  return {
+    heat,
+    patina,
+    playedCount: playCounts.reduce((played, plays) => played + (plays > 0 ? 1 : 0), 0),
   }
-
-  return { heat, patina, maxPlayCount, playedCount }
 }

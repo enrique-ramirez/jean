@@ -18,7 +18,7 @@ const openLibrary = async (page) => {
 }
 
 const openFinder = async (page) => {
-  await page.getByRole('button', { name: /Find in playlist/ }).click()
+  await page.getByRole('button', { name: /Find in this playlist/ }).click()
   await expect(finder(page)).toBeVisible()
 }
 
@@ -404,18 +404,21 @@ test.describe('the field has room to type in', () => {
 test.describe('finding in the library views', () => {
   test.use({ mediaLibrarySize: 4000, settings: { 'jean.heatIntroSeen': true } })
 
-  const field = (page) => page.getByRole('textbox', { name: 'Find in this playlist' })
+  // The button and the field it opens have to say the same thing. They did not:
+  // the button was named for the list and the field said "Find in this
+  // playlist" on a view that is not one.
+  const field = (page, name) => page.getByRole('textbox', { name })
 
   test('All music has one, named for what it searches', async ({ page }) => {
     await page.goto('/#/all')
     await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
 
-    // Not "Find in playlist": All music is not one, and the label is what
-    // separates this from the library search two centimetres above it.
+    // Named for the list, not for "a playlist": All music is not one, and the
+    // label is what separates this from the library search above it.
     await page.getByRole('button', { name: /Find in all music/ }).click()
-    await expect(field(page)).toBeFocused()
+    await expect(field(page, 'Find in all music')).toBeFocused()
 
-    await field(page).fill('nutshell')
+    await field(page, 'Find in all music').fill('nutshell')
     await expect(page.getByRole('listbox').getByRole('option').first()).toBeVisible()
 
     // Found, not filtered: every row the view had is still there.
@@ -433,7 +436,7 @@ test.describe('finding in the library views', () => {
     await page.goto('/#/shelf/recent')
     await expect(page.getByRole('heading', { level: 1, name: 'Recently played' })).toBeVisible()
     await page.getByRole('button', { name: /Find in this shelf/ }).click()
-    await expect(field(page)).toBeFocused()
+    await expect(field(page, 'Find in this shelf')).toBeFocused()
   })
 
   test('`/` opens it, and typing into it does not reach the player', async ({ page, player }) => {
@@ -442,11 +445,11 @@ test.describe('finding in the library views', () => {
     await page.locator('[role="row"]').first().click()
 
     await page.keyboard.press('/')
-    await expect(field(page)).toBeFocused()
+    await expect(field(page, 'Find in all music')).toBeFocused()
 
     // The list stops answering to the keyboard while a field holds it, or
     // typing a track name seeks and pauses the player mid-word.
-    await field(page).fill('nutshell')
+    await field(page, 'Find in all music').fill('nutshell')
     await page.keyboard.press('ArrowRight')
     expect(requestsTo(player, '/player')).toHaveLength(0)
   })
@@ -455,7 +458,7 @@ test.describe('finding in the library views', () => {
     await page.goto('/#/all')
     await expect(page.getByRole('heading', { level: 1, name: 'All music' })).toBeVisible()
     await page.getByRole('button', { name: /Find in all music/ }).click()
-    await field(page).fill('nutshell')
+    await field(page, 'Find in all music').fill('nutshell')
 
     const first = page.getByRole('listbox').getByRole('option').first()
     const wanted = await first.innerText()

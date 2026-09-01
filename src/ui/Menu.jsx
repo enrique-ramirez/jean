@@ -12,11 +12,9 @@ export function Menu({ isOpen, onDismiss, children, trigger, align = 'end', clas
   const menuRef = useRef(null)
 
   // A dropdown is anchored to its trigger, and a trigger near an edge puts it
-  // off screen. Measured on a phone: the play-count legend is 288px hanging
-  // left from a flame button whose right edge sits ~262px in, so its title read
-  // "LAY-COUNT SHADING" and the cool end of its own scale was cut off. Nothing
-  // in `left: 0` / `right: 0` can know that -- the anchor's offset is what
-  // decides it, and only the layout knows that.
+  // off screen -- on a phone, a wide popover hanging off a button near the right
+  // edge starts outside the window and loses its own first characters. Nothing
+  // in `left: 0` / `right: 0` can know that; only the layout can.
   //
   // Written to the element rather than into state: this runs on open and on
   // every resize, and a render per resize event would repaint whatever the menu
@@ -25,7 +23,7 @@ export function Menu({ isOpen, onDismiss, children, trigger, align = 'end', clas
     const element = menuRef.current
     if (!element) return
 
-    // Measured with no correction in place, or each pass measures the previous
+    // Read with no correction in place, or each pass measures the previous
     // pass's shift and compounds it.
     element.style.setProperty('--menu-shift', '0px')
     const rect = element.getBoundingClientRect()

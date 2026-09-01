@@ -104,6 +104,3 @@ export const KEYMAP = [
 export const KEYMAP_GROUPS = [...new Set(KEYMAP.map((binding) => binding.group))]
 
 export const bindingsIn = (group) => KEYMAP.filter((binding) => binding.group === group)
-
-// For rendering a shortcut next to a menu item without hardcoding it twice.
-export const keysFor = (id) => KEYMAP.find((binding) => binding.id === id)?.keys ?? []

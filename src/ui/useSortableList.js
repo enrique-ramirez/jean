@@ -1,25 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Reordering a short list by dragging it. Pointer events rather than HTML5
-// drag-and-drop: one implementation covers mouse and touch, the dragged row is
-// a real element instead of a screenshot of one, and nothing is left to the
-// browser's idea of a drop shadow.
+// drag-and-drop: one implementation covers mouse and touch, and the dragged row
+// is a real element instead of a screenshot of one.
 //
-// Rows are measured once, on drag start. A list you can reorder by hand is a
-// list you can see all of, so this stays cheap -- and it means variable row
-// heights work without a special case: an item shifts by the gap between the
-// two rows it is swapping with, not by a height assumed to be uniform.
+// Rows are measured once, on drag start -- a list you can reorder by hand is a
+// list you can see all of -- which is also why variable heights need no special
+// case: an item shifts by the gap between the two rows it swaps with.
 //
-// `keys` is the current order, as stable ids. It is what tells the drop when it
-// is over: the transforms are held at their landing positions until the caller
-// has actually reordered the list, so the row never flicks back to where it
-// started for the frame between letting go and the new order arriving.
+// `keys` is the current order, as stable ids, and it is what tells the drop when
+// it is over. The transforms are **held** at their landing positions until the
+// caller has actually reordered: the reorder goes through the query cache, a
+// microtask away at best, so clearing them on pointerup flicks the row back to
+// where it started for a frame.
 
-// Far enough that a click is never mistaken for a drag. The mouse number is
-// generous for its input device on purpose: the row body is both the drag
-// target and a navigation control, and a click that wanders should not quietly
-// rewrite the order. Touch is stricter again -- a finger moves a few pixels
-// just being lifted.
+// Far enough that a click is never mistaken for a drag. Generous for a mouse on
+// purpose: the row body is both the drag target and a navigation control, and a
+// click that wanders should not quietly rewrite the order. Touch is stricter
+// again -- a finger moves a few pixels just being lifted.
 const THRESHOLD_PX = { mouse: 6, touch: 8 }
 // How close to the edge of the scroller before it starts following the drag.
 const AUTOSCROLL_ZONE_PX = 56
@@ -85,15 +83,15 @@ export function useSortableList({ keys, onReorder, disabled = false }) {
   // than when they merely touch.
   const targetFor = ({ tops, from }, offset) => {
     const centre = tops[from].top + offset + tops[from].height / 2
+    const crossed = (index) => tops[index].top + tops[index].height / 2
 
-    let target = from
-    for (let index = 0; index < tops.length; index += 1) {
-      if (index === from) continue
-      const row = tops[index]
-      if (index < from && centre < row.top + row.height / 2) return index
-      if (index > from && centre > row.top + row.height / 2) target = index
-    }
-    return target
+    const above = tops.findIndex((_, index) => index < from && centre < crossed(index))
+    if (above >= 0) return above
+
+    return tops.reduce(
+      (target, _, index) => (index > from && centre > crossed(index) ? index : target),
+      from,
+    )
   }
 
   const autoscroll = (clientY) => {

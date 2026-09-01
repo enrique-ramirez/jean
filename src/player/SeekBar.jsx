@@ -4,24 +4,28 @@ import { useDragFraction } from '../ui/useDragFraction.js'
 import { positionAt } from './position.js'
 import styles from './SeekBar.module.css'
 
-// Re-renders every animation frame, so it is deliberately a leaf holding its own
-// state. Do not lift `elapsed` into a shared store -- that would repaint the
-// virtualised track list sixty times a second.
-export function SeekBar({ snapshot, onSeek }) {
+// The interpolated position, ticking. Deliberately a leaf's own state, never
+// lifted: this re-renders every animation frame, and a shared store would
+// repaint the virtualised track list sixty times a second.
+export function useElapsed(snapshot) {
   const [elapsed, setElapsed] = useState(() => positionAt(snapshot, performance.now()))
+
+  useEffect(() => {
+    let frame = requestAnimationFrame(function tick() {
+      setElapsed(positionAt(snapshot, performance.now()))
+      frame = requestAnimationFrame(tick)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [snapshot])
+
+  return elapsed
+}
+
+export function SeekBar({ snapshot, onSeek }) {
+  const elapsed = useElapsed(snapshot)
 
   const duration = snapshot?.player?.activeItem?.duration ?? 0
   const canSeek = duration > 0
-
-  useEffect(() => {
-    let frame
-    const tick = () => {
-      setElapsed(positionAt(snapshot, performance.now()))
-      frame = requestAnimationFrame(tick)
-    }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [snapshot])
 
   // Seeking commits on release rather than on drag: scrubbing would otherwise
   // fire a request per pointer move and the player would stutter chasing them.
@@ -30,7 +34,7 @@ export function SeekBar({ snapshot, onSeek }) {
     disabled: !canSeek,
   })
 
-  const progress = fraction ?? (duration > 0 ? Math.min(elapsed / duration, 1) : 0)
+  const progress = fraction ?? (canSeek ? Math.min(elapsed / duration, 1) : 0)
 
   return (
     <div
@@ -52,20 +56,4 @@ export function SeekBar({ snapshot, onSeek }) {
       <span className={styles.thumb} style={{ left: `${progress * 100}%` }} />
     </div>
   )
-}
-
-export function useElapsedLabel(snapshot) {
-  const [elapsed, setElapsed] = useState(() => positionAt(snapshot, performance.now()))
-
-  useEffect(() => {
-    let frame
-    const tick = () => {
-      setElapsed(positionAt(snapshot, performance.now()))
-      frame = requestAnimationFrame(tick)
-    }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [snapshot])
-
-  return elapsed
 }

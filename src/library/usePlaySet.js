@@ -4,15 +4,14 @@ import { playItem } from '../api/beefweb.js'
 import { usePermissions } from '../player/usePlayer.js'
 import { useScratchPlaylist } from './useScratchPlaylist.js'
 
-// Playing a set of library rows, which is always the same two moves: write the
-// set to the scratch playlist, then play a position in it. What differs between
-// callers is only which set and which position -- a shelf starting at the album
-// you clicked, the whole library starting somewhere at random, a row in a view.
+// Playing a set of library rows: write the set to the scratch playlist, then
+// play a position in it. What differs between callers is only which set and
+// which position -- a shelf starting at the album you clicked, the whole library
+// starting somewhere at random, a row in a view.
 //
 // One implementation because the failure modes are shared and nasty: a set
 // filled in the wrong order plays the wrong track, and a player that refuses
-// playlist writes has to degrade rather than do nothing. Neither is something
-// to get right twice.
+// playlist writes has to degrade rather than do nothing.
 export function usePlaySet({ library, playlists }) {
   const permissions = usePermissions()
   const scratch = useScratchPlaylist({ playlists, canEdit: permissions.changePlaylists !== false })

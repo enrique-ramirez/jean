@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-const clamp = (value, max) => Math.min(Math.max(value, 0), Math.max(max, 0))
+import { clamp } from '../ui/math.js'
 
 // Where the cursor was, per view. Leaving a playlist for a search and coming
 // back should put you where you left off, and the cursor is half of that -- the
-// other half is the scroll offset, remembered in useScrollMemory. Bounded
-// because a live search mints a new key on every keystroke.
+// other half is the scroll offset, in useScrollMemory. Bounded, because a live
+// search mints a new key on every keystroke.
 const MAX_REMEMBERED = 50
 const cursors = new Map()
 
@@ -15,7 +15,12 @@ function remember(key, cursor) {
   if (cursors.size > MAX_REMEMBERED) cursors.delete(cursors.keys().next().value)
 }
 
-// Cursor and selection live as indices in state, never as DOM focus. The
+const rangeBetween = (from, to) => {
+  const [start, end] = from <= to ? [from, to] : [to, from]
+  return new Set(Array.from({ length: end - start + 1 }, (_, at) => start + at))
+}
+
+// Cursor and selection live as indices in state, never as DOM focus: the
 // virtualiser unmounts the focused row the moment it scrolls out of view, so
 // anything relying on document.activeElement loses its place. Rows are plain
 // divs; the list element owns keyboard focus.
@@ -39,56 +44,48 @@ export function useTrackSelection(total, viewKey) {
   }, [viewKey])
 
   // Clamp only. Rows arrive in chunks, so `total` grows several times during a
-  // load -- resetting here would throw away the user's place on every chunk.
+  // load, and resetting here would throw away the user's place on every chunk.
   useEffect(() => {
-    setCursor((current) => clamp(current, total - 1))
+    setCursor((current) => clamp(current, 0, Math.max(total - 1, 0)))
   }, [total])
 
-  const selectOnly = useCallback((index) => {
-    anchor.current = index
-    setCursor(index)
-    setSelection(new Set([index]))
-  }, [])
-
-  const selectRange = useCallback((from, to) => {
-    const [start, end] = from <= to ? [from, to] : [to, from]
-    const next = new Set()
-    for (let index = start; index <= end; index += 1) next.add(index)
-    setSelection(next)
-    setCursor(to)
-  }, [])
-
-  const toggle = useCallback((index) => {
-    anchor.current = index
-    setCursor(index)
-    setSelection((current) => {
-      const next = new Set(current)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
-  }, [])
-
-  const selectFromEvent = useCallback(
-    (index, event) => {
-      if (event.shiftKey) selectRange(anchor.current, index)
-      else if (event.metaKey || event.ctrlKey) toggle(index)
-      else selectOnly(index)
+  const moveCursorTo = useCallback(
+    (index) => {
+      const next = clamp(index, 0, Math.max(total - 1, 0))
+      anchor.current = next
+      setCursor(next)
+      setSelection(new Set([next]))
     },
-    [selectRange, selectOnly, toggle],
+    [total],
   )
+
+  const selectFromEvent = useCallback((index, event) => {
+    if (event.shiftKey) {
+      setSelection(rangeBetween(anchor.current, index))
+      setCursor(index)
+      return
+    }
+
+    anchor.current = index
+    setCursor(index)
+
+    if (event.metaKey || event.ctrlKey) {
+      setSelection((current) => {
+        const next = new Set(current)
+        if (!next.delete(index)) next.add(index)
+        return next
+      })
+    } else {
+      setSelection(new Set([index]))
+    }
+  }, [])
 
   const moveCursor = useCallback(
     (delta, { extend = false } = {}) => {
       setCursor((current) => {
-        const next = clamp(current + delta, total - 1)
+        const next = clamp(current + delta, 0, Math.max(total - 1, 0))
         if (extend) {
-          setSelection(() => {
-            const [start, end] = anchor.current <= next ? [anchor.current, next] : [next, anchor.current]
-            const range = new Set()
-            for (let index = start; index <= end; index += 1) range.add(index)
-            return range
-          })
+          setSelection(rangeBetween(anchor.current, next))
         } else {
           anchor.current = next
           setSelection(new Set([next]))
@@ -99,21 +96,10 @@ export function useTrackSelection(total, viewKey) {
     [total],
   )
 
-  const moveCursorTo = useCallback(
-    (index) => {
-      const next = clamp(index, total - 1)
-      anchor.current = next
-      setCursor(next)
-      setSelection(new Set([next]))
-    },
+  const selectAll = useCallback(
+    () => setSelection(new Set(Array.from({ length: total }, (_, index) => index))),
     [total],
   )
-
-  const selectAll = useCallback(() => {
-    const next = new Set()
-    for (let index = 0; index < total; index += 1) next.add(index)
-    setSelection(next)
-  }, [total])
 
   const clear = useCallback(() => setSelection(new Set()), [])
 

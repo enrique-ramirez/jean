@@ -5,24 +5,18 @@ import { hasAnyRating } from './rating.js'
 
 // The capability probe: a field the player cannot resolve returns '?' on every
 // row, so what a given install supports is read off the rows themselves rather
-// than from a component list we would have to maintain. Sampled once per row
-// set rather than per column per render.
+// than from a component list we would have to maintain.
 export function useAvailableFields(rows) {
   const available = useMemo(() => {
-    const fields = new Set()
-    for (const field of Object.values(FIELD)) {
-      if (fieldIsAvailable(rows, field)) fields.add(field)
-    }
+    const fields = Object.values(FIELD).filter((field) => fieldIsAvailable(rows, field))
 
     // Rating asks a different question, because the column draws an answer
     // either way. Every other column renders '--' when a track has no value,
     // which is quiet; five empty stars on thirty thousand rows is not, and on a
-    // library that has never been rated it states "unrated" thirty thousand
-    // times about something the player was never asked. A resolvable field is
-    // not enough here -- there has to be a rating in the library somewhere.
-    if (!hasAnyRating(rows)) fields.delete(FIELD.rating)
-
-    return fields
+    // library nobody has rated it states "unrated" thirty thousand times about
+    // something the player was never asked. A resolvable field is not enough --
+    // there has to be a rating in the library somewhere.
+    return new Set(fields.filter((field) => field !== FIELD.rating || hasAnyRating(rows)))
   }, [rows])
 
   const isAvailable = useCallback((field) => available.has(field), [available])

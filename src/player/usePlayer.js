@@ -22,18 +22,18 @@ import {
   volumeUp,
 } from '../api/beefweb.js'
 import { useCoalescedWrite } from '../hooks/useCoalescedWrite.js'
+import { clamp } from '../ui/math.js'
 import { positionAt } from './position.js'
 
-export const PLAYER_KEY = ['player']
+const PLAYER_KEY = ['player']
 export const PLAYLISTS_KEY = ['playlists']
 
 // Player state is pushed, not fetched, so it carries the timestamp it arrived
 // at. Keeping the two together makes the interpolation anchor atomic.
 const snapshot = (player) => ({ player, syncedAt: performance.now() })
 
-// Bridges the SSE stream into the query cache. Mount once, at the root.
-// Everything downstream then reads through an ordinary useQuery, and mutations
-// optimistically write the same keys.
+// Bridges the SSE stream into the query cache. Mount once, at the root;
+// everything downstream then reads through an ordinary useQuery.
 export function usePlayerStream() {
   const queryClient = useQueryClient()
 
@@ -46,8 +46,8 @@ export function usePlayerStream() {
       if (playlists) queryClient.setQueryData(PLAYLISTS_KEY, playlists)
     }
 
-    // EventSource reconnects on its own, and beefweb replays a full snapshot on
-    // connect, so a dropped stream heals without any resync logic here.
+    // EventSource reconnects on its own and beefweb replays a full snapshot on
+    // connect, so a dropped stream heals with no resync logic here.
     return () => source.close()
   }, [queryClient])
 }
@@ -68,17 +68,12 @@ export function usePlaylists() {
     queryFn: fetchPlaylists,
     staleTime: Infinity,
     // The one thing the stream cannot tell us. `playlists` fires when the *set*
-    // of playlists changes -- added, renamed, deleted -- and stays silent when
-    // their contents change: measured against the live player, five items
-    // copied in and two removed both produced a `player` message and nothing
-    // else. So every `itemCount` here is stale from the first edit onwards, and
-    // the views keyed on it (`playlistKey(id, itemCount)`) go on showing a list
-    // the player no longer has.
-    //
-    // Coming back to the tab is when that is worth correcting, and it is the
-    // one moment we know the desktop has had time to be used. Cheap, and it
+    // of playlists changes and stays silent when their contents change, so every
+    // `itemCount` here is stale from the first edit onwards and the views keyed
+    // on it go on showing a list the player no longer has. Coming back to the
+    // tab is the moment we know the desktop has had time to be used, and it
     // costs nothing when nothing changed: an unchanged count is an unchanged
-    // key, so no view reloads.
+    // key.
     refetchOnWindowFocus: true,
   })
 }
@@ -90,42 +85,57 @@ export function usePermissions() {
   return data?.player?.permissions ?? {}
 }
 
-// Rename, delete and reorder, written straight into the cache before the
-// request goes out. The stream echoes the real state a moment later, but the
-// sidebar is the thing being dragged -- it cannot wait a round trip to redraw.
+// Every write in this file is optimistic, and optimism is all the same shape:
+// patch the cache, send, and put the old value back if the player refuses.
+// Written once because the failure -- a control that shows a state the player
+// is not in -- is the same failure everywhere, and it is not worth getting
+// right five times.
 //
-// `index` is rewritten on every one of these because it is positional, and the
-// player renumbers the whole list when any playlist moves or goes away.
-const renumber = (playlists) => playlists.map((entry, index) => ({ ...entry, index }))
-
-function usePlaylistPatch(mutationFn, patch) {
+// `patch` returns the next value for the key, or null to leave it alone.
+function useOptimisticWrite(queryKey, mutationFn, patch) {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn,
 
     onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: PLAYLISTS_KEY })
-      const previous = queryClient.getQueryData(PLAYLISTS_KEY)
-      if (previous) queryClient.setQueryData(PLAYLISTS_KEY, renumber(patch(previous, input)))
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData(queryKey)
+      const next = previous ? patch(previous, input) : null
+      if (next) queryClient.setQueryData(queryKey, next)
       return { previous }
     },
 
-    // Both failure modes land here: the request was refused, or the player
-    // does not allow it at all. Putting the list back is the honest response --
-    // the caller reports it, and the affordance can then be withdrawn.
     onError: (_error, _input, context) => {
-      if (context?.previous) queryClient.setQueryData(PLAYLISTS_KEY, context.previous)
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous)
     },
   })
 }
+
+// Rewriting the active item is the commonest patch of all, and it always
+// re-anchors the interpolation: freezing a position without moving `syncedAt`
+// leaves the seek bar carrying on from where the last update put it.
+const usePlayerPatch = (mutationFn, patchPlayer) =>
+  useOptimisticWrite(PLAYER_KEY, mutationFn, (previous, input) => {
+    const player = previous.player
+    if (!player) return null
+    const next = patchPlayer(player, input, previous)
+    return next && { player: { ...player, ...next }, syncedAt: performance.now() }
+  })
+
+// `index` is rewritten on every playlist mutation because it is positional, and
+// the player renumbers the whole list when any playlist moves or goes away.
+const renumber = (playlists) => playlists.map((entry, index) => ({ ...entry, index }))
+
+const usePlaylistPatch = (mutationFn, patch) =>
+  useOptimisticWrite(PLAYLISTS_KEY, mutationFn, (previous, input) => renumber(patch(previous, input)))
 
 export function usePlaylistActions() {
   const queryClient = useQueryClient()
 
   // The one playlist mutation that cannot be optimistic: only the player can
   // say what id the new playlist got, and everything that happens next --
-  // selecting it, renaming it, dropping tracks on it -- is addressed by that id.
+  // selecting it, renaming it, dropping tracks on it -- is addressed by it.
   const create = useMutation({
     mutationFn: async (title) => {
       const playlist = await createPlaylist(title)
@@ -136,30 +146,30 @@ export function usePlaylistActions() {
     },
   })
 
-  const rename = usePlaylistPatch(
-    ({ id, title }) => renamePlaylist(id, title),
-    (playlists, { id, title }) =>
-      playlists.map((entry) => (entry.id === id ? { ...entry, title } : entry)),
-  )
+  return {
+    create,
 
-  const remove = usePlaylistPatch(
-    (id) => removePlaylist(id),
-    (playlists, id) => playlists.filter((entry) => entry.id !== id),
-  )
+    rename: usePlaylistPatch(
+      ({ id, title }) => renamePlaylist(id, title),
+      (playlists, { id, title }) =>
+        playlists.map((entry) => (entry.id === id ? { ...entry, title } : entry)),
+    ),
 
-  const move = usePlaylistPatch(
-    ({ id, index }) => movePlaylist(id, index),
-    (playlists, { id, index }) => {
-      const from = playlists.findIndex((entry) => entry.id === id)
-      if (from < 0) return playlists
-      const next = [...playlists]
-      const [moved] = next.splice(from, 1)
-      next.splice(index, 0, moved)
-      return next
-    },
-  )
+    remove: usePlaylistPatch(
+      (id) => removePlaylist(id),
+      (playlists, id) => playlists.filter((entry) => entry.id !== id),
+    ),
 
-  return { create, rename, remove, move }
+    move: usePlaylistPatch(
+      ({ id, index }) => movePlaylist(id, index),
+      (playlists, { id, index }) => {
+        const from = playlists.findIndex((entry) => entry.id === id)
+        if (from < 0) return playlists
+        const without = playlists.filter((entry) => entry.id !== id)
+        return [...without.slice(0, index), playlists[from], ...without.slice(index)]
+      },
+    ),
+  }
 }
 
 // foobar allows two playlists with the same name, but the sidebar gives you
@@ -167,11 +177,17 @@ export function usePlaylistActions() {
 export function untitledPlaylistName(playlists) {
   const base = 'New playlist'
   const taken = new Set(playlists.map((entry) => entry.title))
-  if (!taken.has(base)) return base
 
-  let suffix = 2
-  while (taken.has(`${base} ${suffix}`)) suffix += 1
-  return `${base} ${suffix}`
+  return (
+    [base, ...Array.from({ length: playlists.length + 1 }, (_, at) => `${base} ${at + 2}`)].find(
+      (name) => !taken.has(name),
+    ) ?? base
+  )
+}
+
+export function useIsPlaying() {
+  const { data } = usePlayer()
+  return data?.player?.playbackState === 'playing'
 }
 
 // The track the player is on, only when it belongs to the playlist being viewed.
@@ -182,112 +198,40 @@ export function useActiveItem(playlistId) {
   return item
 }
 
-export function usePlayPause() {
-  const queryClient = useQueryClient()
+export const usePlayPause = () =>
+  usePlayerPatch(playPause, (player, _input, previous) => ({
+    playbackState: player.playbackState === 'playing' ? 'paused' : 'playing',
+    // Freeze the interpolated position, not the stale one from the last update,
+    // or pausing snaps the bar back by however long the track has been running.
+    activeItem: { ...player.activeItem, position: positionAt(previous, performance.now()) },
+  }))
 
-  return useMutation({
-    mutationFn: playPause,
+export const useSeek = () =>
+  usePlayerPatch(seekTo, (player, position) =>
+    player.activeItem ? { activeItem: { ...player.activeItem, position } } : null,
+  )
 
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: PLAYER_KEY })
-      const previous = queryClient.getQueryData(PLAYER_KEY)
-      if (!previous?.player) return { previous }
-
-      const { player } = previous
-      queryClient.setQueryData(PLAYER_KEY, {
-        player: {
-          ...player,
-          playbackState: player.playbackState === 'playing' ? 'paused' : 'playing',
-          // Freeze the interpolated position, not the stale one from the last
-          // update -- otherwise pausing snaps the bar back by however long the
-          // track has been running.
-          activeItem: { ...player.activeItem, position: positionAt(previous, performance.now()) },
-        },
-        syncedAt: performance.now(),
-      })
-
-      return { previous }
-    },
-
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(PLAYER_KEY, context.previous)
-    },
+export const useSeekBy = () =>
+  usePlayerPatch(seekBy, (player, offset, previous) => {
+    const item = player.activeItem
+    if (!item) return null
+    // Offset from the interpolated position, not the last pushed one, or a seek
+    // lands wherever the track happened to be at the last update.
+    const position = clamp(positionAt(previous, performance.now()) + offset, 0, item.duration ?? 0)
+    return { activeItem: { ...item, position } }
   })
-}
-
-export function useSeek() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: seekTo,
-
-    onMutate: async (position) => {
-      await queryClient.cancelQueries({ queryKey: PLAYER_KEY })
-      const previous = queryClient.getQueryData(PLAYER_KEY)
-      if (!previous?.player?.activeItem) return { previous }
-
-      queryClient.setQueryData(PLAYER_KEY, {
-        player: {
-          ...previous.player,
-          activeItem: { ...previous.player.activeItem, position },
-        },
-        syncedAt: performance.now(),
-      })
-
-      return { previous }
-    },
-
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(PLAYER_KEY, context.previous)
-    },
-  })
-}
-
-export function useSeekBy() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: seekBy,
-
-    onMutate: async (offset) => {
-      await queryClient.cancelQueries({ queryKey: PLAYER_KEY })
-      const previous = queryClient.getQueryData(PLAYER_KEY)
-      const item = previous?.player?.activeItem
-      if (!item) return { previous }
-
-      // Offset from the interpolated position, not the last pushed one, or a
-      // seek lands wherever the track happened to be at the last update.
-      const next = Math.min(
-        Math.max(positionAt(previous, performance.now()) + offset, 0),
-        item.duration ?? 0,
-      )
-
-      queryClient.setQueryData(PLAYER_KEY, {
-        player: { ...previous.player, activeItem: { ...item, position: next } },
-        syncedAt: performance.now(),
-      })
-
-      return { previous }
-    },
-
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(PLAYER_KEY, context.previous)
-    },
-  })
-}
 
 // The order enum differs between players and versions, so the shuffle entry is
 // found by name rather than by a hardcoded index. foobar2000 offers several
 // shuffle flavours; tracks is the one people mean by "shuffle".
 function findShuffleIndex(names) {
   const lower = names.map((name) => name.toLowerCase())
-  const exact = lower.indexOf('shuffle (tracks)')
-  if (exact >= 0) return exact
 
-  const anyShuffle = lower.findIndex((name) => name.includes('shuffle'))
-  if (anyShuffle >= 0) return anyShuffle
-
-  return lower.findIndex((name) => name.includes('random'))
+  return [
+    lower.indexOf('shuffle (tracks)'),
+    lower.findIndex((name) => name.includes('shuffle')),
+    lower.findIndex((name) => name.includes('random')),
+  ].find((at) => at >= 0) ?? -1
 }
 
 // Playback order is global player state, not a property of the playlist being
@@ -295,7 +239,6 @@ function findShuffleIndex(names) {
 // changes what comes next.
 export function usePlaybackOrder() {
   const { data } = usePlayer()
-  const queryClient = useQueryClient()
 
   const player = data?.player
   const option = player?.options?.find((entry) => entry.id === 'playbackOrder')
@@ -311,44 +254,26 @@ export function usePlaybackOrder() {
   const previousOrder = useRef(0)
   if (!isShuffle && value !== previousOrder.current) previousOrder.current = value
 
-  const mutation = useMutation({
-    mutationFn: setPlaybackOrder,
+  const mutation = usePlayerPatch(setPlaybackOrder, (player, next) => ({
+    playbackMode: next,
+    options: player.options?.map((entry) =>
+      entry.id === 'playbackOrder' ? { ...entry, value: next } : entry,
+    ),
+  }))
 
-    onMutate: async (next) => {
-      await queryClient.cancelQueries({ queryKey: PLAYER_KEY })
-      const previous = queryClient.getQueryData(PLAYER_KEY)
-      if (!previous?.player) return { previous }
-
-      queryClient.setQueryData(PLAYER_KEY, {
-        ...previous,
-        player: {
-          ...previous.player,
-          playbackMode: next,
-          options: previous.player.options?.map((entry) =>
-            entry.id === 'playbackOrder' ? { ...entry, value: next } : entry,
-          ),
-        },
-      })
-
-      return { previous }
-    },
-
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(PLAYER_KEY, context.previous)
-    },
-  })
+  const { mutate } = mutation
 
   const toggleShuffle = useCallback(() => {
     if (shuffleIndex < 0) return
-    mutation.mutate(isShuffle ? previousOrder.current : shuffleIndex)
-  }, [isShuffle, shuffleIndex, mutation])
+    mutate(isShuffle ? previousOrder.current : shuffleIndex)
+  }, [isShuffle, shuffleIndex, mutate])
 
   // For "play this shuffled", which turns shuffle on rather than flipping it --
   // pressing it twice must not walk back out of the mode it just asked for.
   const enableShuffle = useCallback(() => {
     if (shuffleIndex < 0 || isShuffle) return
-    mutation.mutate(shuffleIndex)
-  }, [isShuffle, shuffleIndex, mutation])
+    mutate(shuffleIndex)
+  }, [isShuffle, shuffleIndex, mutate])
 
   return {
     isShuffle,
@@ -359,55 +284,29 @@ export function usePlaybackOrder() {
   }
 }
 
-// Volume changes are written optimistically: the slider has to track the
-// pointer, and waiting for the stream to echo each step would make it lag.
-function usePlayerPatch(mutationFn, patch) {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn,
-
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: PLAYER_KEY })
-      const previous = queryClient.getQueryData(PLAYER_KEY)
-      if (!previous?.player?.volume) return { previous }
-
-      queryClient.setQueryData(PLAYER_KEY, {
-        ...previous,
-        player: { ...previous.player, volume: patch(previous.player.volume, input) },
-      })
-
-      return { previous }
-    },
-
-    onError: (_error, _input, context) => {
-      if (context?.previous) queryClient.setQueryData(PLAYER_KEY, context.previous)
-    },
-  })
-}
-
 // How long a value we just sent stays authoritative over what the player
-// reports, if the player never confirms it. Long enough to cover a push that
-// was already in flight describing an older position of the slider, short
-// enough that turning the knob on the PC itself shows up promptly.
+// reports, if the player never confirms it. Long enough to cover a push already
+// in flight describing an older position of the slider, short enough that
+// turning the knob on the PC itself shows up promptly.
 const VOLUME_SETTLE_MS = 1000
 const VOLUME_EPSILON = 0.5
 
 export function useVolume() {
   const { data } = usePlayer()
   const send = useCoalescedWrite(setVolume)
-  const mute = usePlayerPatch(setMuted, (volume, isMuted) => ({ ...volume, isMuted }))
+  const mute = usePlayerPatch(setMuted, (player, isMuted) => ({
+    volume: { ...player.volume, isMuted },
+  }))
   const nudgeUp = useMutation({ mutationFn: volumeUp })
   const nudgeDown = useMutation({ mutationFn: volumeDown })
 
-  // State, not a ref. A ref would not re-render, so the moment a drag ends and
-  // the control stops showing the pointer position, it would fall back to the
-  // last value the player reported -- visibly snapping to where the volume used
-  // to be until the round trip lands.
+  // State, not a ref: a ref would not re-render, so the moment a drag ended the
+  // control would fall back to the last value the player reported and visibly
+  // snap back until the round trip landed.
   //
-  // Kept here rather than in the query cache on purpose: this re-renders the
-  // status bar, where a cache write would re-render every subscriber of player
-  // state, including the virtualised track list, for the whole gesture.
+  // Kept here rather than in the query cache on purpose. This re-renders the
+  // status bar; a cache write would re-render every subscriber of player state,
+  // including the virtualised track list, for the whole gesture.
   const [pending, setPending] = useState(null)
 
   const reported = data?.player?.volume ?? null
@@ -443,10 +342,8 @@ export function useVolume() {
   }
 }
 
-export function useTransport() {
-  return {
-    next: useMutation({ mutationFn: nextTrack }),
-    previous: useMutation({ mutationFn: previousTrack }),
-    stop: useMutation({ mutationFn: stop }),
-  }
-}
+export const useTransport = () => ({
+  next: useMutation({ mutationFn: nextTrack }),
+  previous: useMutation({ mutationFn: previousTrack }),
+  stop: useMutation({ mutationFn: stop }),
+})

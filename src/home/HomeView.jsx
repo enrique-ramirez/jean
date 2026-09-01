@@ -8,11 +8,10 @@ import { libraryStats } from './libraryStats.js'
 import { ShelfRow } from './ShelfRow.jsx'
 import styles from './HomeView.module.css'
 
-// Rows, not one big carousel. A carousel is lovely for eight albums and useless
-// for two thousand -- it was iTunes' Cover Flow, and Cover Flow was removed
-// because it could not browse. Each row here is a *reason* instead: a small set
-// with a sentence attached, which is a thing to press play on rather than a
-// thing to page through.
+// Rows, not one big carousel. Cover Flow was removed from iTunes because it
+// could not browse: one album at a time across two thousand is a flick-fest.
+// Each row here is a *reason* instead -- a small set with a sentence attached,
+// which is a thing to press play on rather than a thing to page through.
 export function HomeView({
   library,
   playlists,
@@ -23,15 +22,18 @@ export function HomeView({
   canShuffle,
 }) {
   // Once per library, not per render: the aggregation is a pass over every row
-  // (6.5 ms at 30k, 35 ms at 213k) and the shelves are sorts over the result.
-  // The header counts albums and artists off the same pass rather than making
-  // its own -- they are the same question asked twice.
-  const albums = useMemo(() => {
-    if (library.rows.length === 0) return []
-    const built = albumsOf(library)
-    for (const album of built) album.artworkUrl = library.source.artworkUrl(album.refs[0])
-    return built
-  }, [library.key, library.rows, library.source])
+  // and the shelves are sorts over the result. The header counts albums and
+  // artists off the same pass rather than making its own.
+  const albums = useMemo(
+    () =>
+      library.rows.length === 0
+        ? []
+        : albumsOf(library).map((album) => ({
+            ...album,
+            artworkUrl: library.source.artworkUrl(album.refs[0]),
+          })),
+    [library.rows, library.source],
+  )
 
   const shelves = useMemo(() => buildShelves(albums), [albums])
 
@@ -52,9 +54,6 @@ export function HomeView({
   // well under a second and the shelves appear under the heading as they fill.
   return (
     <div className={styles.home}>
-      {/* No wordmark here. It sits two centimetres above in the top bar, and
-          repeating it makes the screen about the app rather than about the
-          music on it. */}
       <HomeHeader
         stats={stats}
         isLoading={library.isLoading}

@@ -1270,8 +1270,14 @@ wants a playlist id for anything other than *identifying a playlist* is a sign t
 seam has been bypassed.
 
 **Comments explain why, not what.** No JSDoc. If a line needs a comment to say what it
-does, rename something instead. The comments worth writing are the ones recording a
-measurement, a trap, or a decision that looks wrong until you know the reason.
+does, rename something instead. The comments worth writing are the ones recording a trap
+or a decision that looks wrong until you know the reason.
+
+**Measurements belong in this file, not in the code.** A number in a comment is useful
+while the thing is being written and noise for everyone who reads it afterwards -- it
+dates, nobody re-runs it, and it is describing a machine that is not the reader's. Record
+the constraint the measurement established ("beefweb hangs up on a body over 1 MiB",
+"there is no way to ask for a thumbnail") and put the figures here.
 
 **An animated scroll must not treat every wheel event as a decision.** Trackpad
 and mouse momentum keep emitting for a second or more after the fingers have

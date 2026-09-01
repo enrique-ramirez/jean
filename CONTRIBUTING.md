@@ -9,7 +9,9 @@ Three other documents, and they do not overlap:
   shapes, what returns `?`, what hangs up, what the endpoints cost.
 - **[CLAUDE.md](./CLAUDE.md)** — why Jean is built the way it is. Design decisions and
   the reasoning behind them, for coding agents and for anyone who wants the argument
-  rather than the rule.
+  rather than the rule. It carries what holds everywhere; anything specific to one
+  part of the app is in a `CLAUDE.md` next to that part (`src/domain/track/`,
+  `src/shared/ui/`, and so on).
 - **[test/README.md](./test/README.md)** — the suite, the fake player, and why there
   are no unit tests.
 

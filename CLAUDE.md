@@ -172,12 +172,17 @@ Three rules follow, all of them load-bearing:
 - **Never read or write `Default Playlist`.** It is foobar's scratch buffer — selecting an
   album in the library view replaces its entire contents. Measured: it went from 30,441
   items to 12 in the space of an hour. Any design that treats it as a library is broken.
-- **Resolve the library playlist by stored ID, falling back to title.** Playlist IDs are
-  neither contiguous nor guaranteed stable — creating one playlist produced `p7`, not `p6`,
-  and the spec only promises stability while the player runs.
-- **Treat it as volatile and sanity-check it.** If `itemCount` swings wildly, the user has
-  probably pointed us at scratch space. Say so rather than silently presenting twelve tracks
-  as their library.
+- **The name is the contract: `#Jean Library`, matched exactly.** Playlist IDs are neither
+  contiguous nor guaranteed stable — creating one produced `p7`, not `p6`, and the spec only
+  promises stability while the player runs — so the title is the identity and there is no id
+  to pin. This replaced a stored-id → remembered-title → *anything loosely called "Library"*
+  ladder, which adopted a handful of production-music cues under that name as someone's whole
+  collection and then reported its size as theirs. A name nobody types by accident removes the
+  guess rather than guarding it, so the `itemCount` sanity-check that ladder needed is not
+  required and was never built.
+- **It is Jean's, so it is not furniture.** Anything titled `#Jean…` is filtered out of the
+  sidebar, the command palette and the routing fallback — see `library/jeanPlaylists.js`,
+  which owns the namespace for both this and the search scratch.
 
 Fallback for users who won't create an autoplaylist: Jean can build its own playlist from
 `/api/browser/roots` via `POST /playlists/add` + `items/add`. That mirrors the *disk* rather
@@ -205,7 +210,7 @@ Full shapes and measurements in `API.md`.
 #### `library/librarySource.js` is the seam, and the only place that knows
 
 Two sources, one interface: `{ kind, playlistId, needsHeldCount, artworkUrl(ref),
-fill(targetId, refs, heldCount), addTo(targetId, refs), isPlaying(ref, track,
+fill(targetId, refs, heldCount), addTo(targetId, refs), playingPosition(refs, track,
 activeItem) }`.
 
 **A ref is an integer.** The playlist source's is a playlist index; the library
@@ -230,10 +235,18 @@ user made it to stand in for the library, and reading it through the library API
 would be lying about which object is on screen. The two are not even the same set
 once the autoplaylist's query drifts from `ALL`.
 
-Consequence: on a 0.11 player the autoplaylist is redundant but still visible, and
-there is **no library browse view yet** -- the "primary browse entry" is still a
-playlist the user had to create. Building one is what would actually retire the setup
-step. `/library/items/by-path` has no playlist equivalent and is the obvious start.
+Consequence: there is **no library browse view, on purpose.** On a 0.11 player the
+autoplaylist is not read at all -- it is only resolved when there is no library API, or
+when `changePlaylists` is false and playing in place is the only way to play anything
+-- and on every player it is hidden from the sidebar. So neither source can browse the
+whole library, which is **parity, chosen over a feature**: the visible autoplaylist was
+an accident of it being a real playlist, and letting people browse through it would have
+made a contract out of something a 0.11 install cannot honour.
+
+The library stays a hidden concept, reachable only through search, until the home
+screen gives it a real one. `/library/items/by-path` is measured and documented in
+`API.md` for when that happens -- one request per level, 32-175 ms, ordering that needs
+a client-side re-sort.
 
 #### Rules that are not obvious
 
@@ -267,12 +280,11 @@ step. `/library/items/by-path` has no playlist equivalent and is the obvious sta
 
 #### Still open
 
-- `isPlaying` is written and **not yet used**: `SearchResults` still computes
-  `activePosition` with `positionOf(indices, …)`. Wiring it is what makes the
-  now-playing mark exact, including while the player is inside some other playlist.
-- `SavePlaylistButton` still copies by index and has not moved onto the source.
-- No library browse view; no folder tree.
-- Reconciling a stale `itemCount` (see the tripwire note in `API.md`) is not built.
+- No library browse view; no folder tree. **Deferred deliberately** -- see above.
+- Reconciling a stale `itemCount` is **partly** built: `usePlaylists` and `useLibraryInfo`
+  refetch on window focus, so a count edited on the desktop is corrected on the way back
+  and the views keyed on it re-key. The live `playlistItems` tripwire in `API.md` is still
+  not wired; the arithmetic that cannot survive being wrong re-reads the count itself.
 - Artwork lazy-loading and `Mosaic` are **on hold at the owner's request** -- changes
   coming there, do not test or rework them yet.
 
@@ -304,7 +316,11 @@ scrobbles and increments play counts, and on some setups rewrites the file's mti
 
 ### Showing playlists
 
-**Show playlists under their real names. Never relabel or reinterpret them.** `Default
+**Show playlists under their real names. Never relabel or reinterpret them.** The one
+exception is the `#Jean…` namespace, and it is not an exception to the *reason*: those
+playlists are Jean's own, either created by it (the search scratch) or handed to it by
+name (`#Jean Library`), so hiding them is not a guess about what a playlist means. Never
+infer that role from a name the user chose. `Default
 Playlist` is a volatile scratch buffer on one install and someone's primary working playlist
 on the next; Jean cannot tell which, and guessing wrong means confidently mislabelling a
 user's own data.
@@ -368,7 +384,7 @@ them.
   playlist climbs and for the same reason.
 - **Hidden from Jean, visible in foobar.** There is no hidden-playlist concept and beefweb
   cannot fake one, so it is filtered out of the sidebar, the command palette, the library
-  picker and the routing fallback — the last of those because playing a set makes it the
+  and the routing fallback — the last of those because playing a set makes it the
   *current* playlist, and landing there on next open would show those results stripped of
   the search that made them. Reordering is where the hidden row still has to be counted:
   the player orders the real list, so a drop position among the visible rows is translated
@@ -744,6 +760,22 @@ empty returns `0`, `''` or `N/A`. That difference is the whole feature-detection
 probe a set of columns against a few sample tracks on connect, and enable features for
 whatever resolves. Users can override in settings when detection guesses wrong.
 
+*Measured* against a real foobar2000 install, probing 50 expressions across both
+sources: **the autoplaylist and the media library API resolve byte-identical values for
+every field**, so a column that works on one works on the other and capability
+detection never has to ask which is in play. What that install resolves, and what it
+does not, is worth knowing before designing a feature on it: `%genre%` (144 distinct),
+`%year%` (69), `%album artist%` (742), `%lastfm_play_count%` (every track),
+`%lastfm_last_played%` (69% of them), `%publisher%`, `%date%`, `%length_seconds%`,
+`%codec%`, `%bitrate%` and `$len($meta(unsynced lyrics))` all answer. `%added%`,
+`%play_count%`, `%last_played%`, `%rating%`, `%composer%`, `%bpm%`, `%totaltracks%`
+and `%replaygain_*%` do not. **Ratings exist but are sparse**: `$meta(rating)` and
+`%rating%` both answer on exactly 500 of 30,441 tracks — an earlier note here said
+they were empty on every track, which was a five-row sample landing on unrated ones.
+Sparse is its own trap: 375 of those 500 are the value `5`, so anything sorting by
+rating is sorting a flat tie. Those are one install's components, not a rule: detect,
+never assume, and sample properly.
+
 `player.info.name` distinguishes foobar2000 from DeaDBeeF. Support DeaDBeeF on a best-effort
 basis — feature detection covers most of it. Do not invest in a second title-format dialect
 without a real report.
@@ -756,8 +788,14 @@ without a real report.
   taking more than one argument is unusable — `$if(a,b,c)` arrives as three columns.
   **Single-argument functions do nest**, though: `$len($meta(unsynced lyrics))` works. Use
   that for cheap server-side computation.
-- **`%date%` and `%added%` are corrupt**, not empty — they return mangled constants. Use
-  `%year%` instead.
+- **`%added%` does not exist** — it returns `?` on every track, so there is no
+  date-added field at any price. `%date%` is a different story and the previous note
+  here was wrong: *measured* over 30,441 tracks it resolves on 30,347 of them —
+  26,891 year-only (`2010`), **3,022 full ISO dates** (`1992-10-13`), and 434 untidy
+  (`1997, 1997-02-10`, `2011-00`, `2010-09-28T07:00:00Z`). It is an ordinary messy
+  user tag, not a mangled constant. **Still sort and group by `%year%`**, which is
+  clean and integer-shaped; reach for `%date%` only where a real release date is worth
+  having, and parse it leniently.
 - **`%last_modified%` is not a date-added field.** Playback can rewrite tags, which bumps
   the file mtime — measured, the mtime moves ~55 s before the scrobble lands, and 21% of
   played tracks have an mtime within ten minutes of their last play. It is
@@ -782,6 +820,13 @@ without a real report.
   playlist and then played whatever had drifted into the row that was clicked. A
   one-item `playlistItems` subscription is a cheap tripwire if you need to notice;
   see `API.md`.
+- **A set arrives in the source's order, never the order you asked for.** *Measured*:
+  `add-from-library` given library offsets 0, 20000, 10000, 30000 returns 0, 10000,
+  20000, 30000, and `items/copy` given playlist indices `[0, 20000, 10000, 30000]` does
+  the same. So **sort refs ascending before filling anything you intend to play a
+  position in**. Search was immune -- its indices are already ascending -- which is
+  exactly why this survived until a shelf ordered by play count tried it, and played a
+  different track from the one that was clicked.
 - **Playlist items have no ID.** Index is identity, so any mutation invalidates indices
   you were holding.
 - **SSE is change-driven, not a ticker.** Long silences are normal; `position` alone never
@@ -794,7 +839,7 @@ Things that vary between installs and must never be assumed:
 
 | | |
 |---|---|
-| Which playlist is "the library" | An autoplaylist the user creates. Guide them through it on first run. Never assume `p1` — that is scratch space. |
+| Which playlist is "the library" | An autoplaylist the user creates and names `#Jean Library`. Guide them through it on first run; match the name exactly and never a title they chose. Never assume `p1` — that is scratch space. |
 | `permissions` | `changePlaylists`, `changeOutput`, `changeClientConfig` come from the player. Gate the UI on them — a read-only instance gets a read-only Jean, not buttons that 403. |
 | `authRequired` | May be on. Support Basic auth and a credentials prompt. |
 | `pathSeparator` | From `/api/browser/roots`. `\` on Windows, `/` elsewhere. |
@@ -853,6 +898,14 @@ the haystack is *built*, never per keystroke: measured over 30,441 rows, folding
 whole index costs ~6 ms against the ~0.6 ms a plain lowercase took, and a search is still
 one `includes()`. Both sides have to go through it -- fold the query too, or an accented
 query stops matching the folded index.
+
+**Tag hygiene is the library owner's business, never Jean's.** Jean reads tags, and
+never writes or normalises them to make its own life easier. A genre spelled two ways
+is two rows in a list, and that is the correct amount of harm: the owner can fix it in
+foobar2000, where genres are actually browsed and where the fix sticks for every other
+client too. Building a normalisation layer to hide it would make Jean disagree with the
+player about what the library contains, which is a worse bug than the one it papers
+over. The corollary is the rule below, and it is the whole of Jean's involvement.
 
 **Compare tag values loosely, display them exactly.** Tags drift in case and spacing
 between files in the same album -- `5 Seconds Of Summer` and `5 Seconds of Summer` are
@@ -954,11 +1007,13 @@ themselves can be created, renamed, deleted and reordered from the sidebar: a `+
 section heading that makes an empty one and drops it straight into rename, an action menu
 on secondary-click or press-and-hold, inline renaming in the row, delete behind a
 confirmation page, and drag-to-reorder through `/playlists/move/{id}/{index}`. Results can
-also be saved as a real playlist — `/playlists/add` returns the new id and
-`/playlists/{src}/{dst}/items/copy` copies by index, so no `%path%` is ever fetched — gated
-on `permissions.changePlaylists` and on the library having finished loading, and skipping
-the copy entirely when the results are already playing from a playlist that is exactly
-them. The play-count shading explains itself once, on first sight, and lives in the
+also be saved as a real playlist — `/playlists/add` returns the new id and the **source**
+fills it, so an autoplaylist copies by index and the media library adds by `(path,
+subsong)` — gated on `permissions.changePlaylists` and on the library having finished
+loading, and skipping the fill entirely when the results are already playing from a
+playlist that is exactly them. Reaching past the source for a playlist id here was wrong
+and silent: a ref only indexes its own source, so on a 0.11 player twelve saved
+Babasónicos matches came back beginning "Jaws Theme Swimming". The play-count shading explains itself once, on first sight, and lives in the
 view-options menu after that.
 
 Playing from search results confines playback to them, by materialising them into a
@@ -976,6 +1031,8 @@ foobar2000), and the autoplaylist otherwise; both go through the source seam in
 `JEAN_NO_LIBRARY_API=1 pnpm test` runs it against the fallback. Playlist routes are
 always read as playlists.
 
-The home screen, the Web Worker and IndexedDB persistence are not built yet. Neither
-is a library *browse* view: with the API in play the autoplaylist is redundant but is
-still the only way to browse the library, which is the next obvious thing to build.
+The home screen, the Web Worker and IndexedDB persistence are not built yet. A library
+*browse* view is not built **and is not next**: the library is deliberately a hidden
+concept, reachable only through search, until the home screen — which is what the play
+history shelves are for — gives it a real home. Both sources are equally unbrowsable,
+which is the parity that keeps a 0.11 install from being second-class.

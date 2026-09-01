@@ -102,6 +102,14 @@ const DEFAULT_PLAYLISTS = () => [
     ],
   },
   { id: 'p5', title: 'Rock en Español', isCurrent: false, items: tracksOf('jessico') },
+  // The autoplaylist a user makes when Jean asks them to, and the only way to
+  // see a library on a player without the media library API. Last, so every
+  // index above it is the one the reorder assertions were written against.
+  //
+  // Note it sits beside an ordinary playlist called 'Library', which is the
+  // point: Jean used to adopt anything loosely titled that as the user's whole
+  // collection. The two together are what keeps that from coming back.
+  { id: 'p8', title: '#Jean Library', isCurrent: false, items: allTracks() },
 ]
 
 // An expression the player cannot resolve comes back as '?'; one that resolves
@@ -145,17 +153,28 @@ export function createState({
     }
   }
 
-  if (withoutFields.length > 0) {
-    const drop = new Set(withoutFields)
-    for (const playlist of playlists) {
-      playlist.items = playlist.items.map((track) => {
-        const kept = { ...track }
-        for (const expression of drop) delete kept[expression]
-        return kept
-      })
-    }
+  // A player without the component that publishes these fields. It has to apply
+  // to the *media library* as well as to playlists: the library API serves its
+  // own copy of the tracks, so stripping only the playlists left the home
+  // screen -- which reads the library -- still seeing play counts on an install
+  // that was supposed to have none.
+  const strip = (track) => {
+    if (withoutFields.length === 0) return track
+    const kept = { ...track }
+    for (const expression of withoutFields) delete kept[expression]
+    return kept
   }
 
+  if (withoutFields.length > 0) {
+    for (const playlist of playlists) playlist.items = playlist.items.map(strip)
+  }
+
+  const libraryTracks = withoutFields.length > 0 ? allTracks().map(strip) : allTracks()
+
+  // Inflates the ordinary playlist the browsing specs open, not the
+  // autoplaylist search reads. The media library the API serves is the captured
+  // one either way, so growing both would make the two sources disagree about
+  // what the library is -- and the whole point of the seam is that they cannot.
   if (librarySize) {
     const library = playlists.find((entry) => entry.title === 'Library')
     if (library) library.items = generateTracks(librarySize)
@@ -398,7 +417,14 @@ export function createState({
       if (!source || !target) return false
       // Appended without a duplicate check, because the player appends without
       // one. Undo is what makes that safe, and undo is what the tests exercise.
-      target.items.push(...indices.map((index) => source.items[index]).filter(Boolean))
+      //
+      // And in the *source's* order, not the caller's. *Measured against the
+      // live player*: copying p7 indices [0, 20000, 10000, 30000] returns them
+      // as 0, 10000, 20000, 30000. `add-from-library` behaves the same way, so
+      // this is a property of the player rather than of one endpoint -- a set
+      // arrives sorted however you ask for it.
+      const ordered = [...indices].sort((a, b) => a - b)
+      target.items.push(...ordered.map((index) => source.items[index]).filter(Boolean))
       notify({ player: true })
       return true
     },
@@ -429,13 +455,13 @@ export function createState({
         library: {
           supported,
           enabled,
-          itemCount: supported && enabled ? libraryItemsOf(allTracks()).length : 0,
+          itemCount: supported && enabled ? libraryItemsOf(libraryTracks).length : 0,
         },
       }
     },
 
     libraryItemsPayload({ offset, count, expressions, sort, desc }) {
-      const items = libraryItemsOf(allTracks())
+      const items = libraryItemsOf(libraryTracks)
 
       // Default order is file path, per the spec. Sorting matters here because
       // the spec warns library items are "produced by applying search criteria
@@ -462,7 +488,7 @@ export function createState({
     // One level of the tree, folders first with a recursive count, then tracks.
     libraryNodesPayload({ path, offset, count, expressions }) {
       const prefix = path ? `${path}/` : ''
-      const under = libraryItemsOf(allTracks()).filter((entry) => entry.path.startsWith(prefix))
+      const under = libraryItemsOf(libraryTracks).filter((entry) => entry.path.startsWith(prefix))
       if (path && under.length === 0) return null
 
       const folders = new Map()
@@ -510,11 +536,21 @@ export function createState({
       const playlist = byId(playlistId)
       if (!playlist) return false
 
-      const known = new Map(libraryItemsOf(allTracks()).map((entry) => [entry.path, entry]))
+      const known = new Map(libraryItemsOf(libraryTracks).map((entry) => [entry.path, entry]))
       // Omitting `items` adds the whole library, per the spec.
+      // *Measured against the live player*: the order of `items` is ignored --
+      // whatever you ask for arrives in the library's own order. Asking for
+      // library offsets 0, 20000, 10000, 30000 returned 0, 10000, 20000, 30000.
+      // The fake used to preserve the caller's order, which quietly made every
+      // "play this set, starting here" position correct in tests and wrong on a
+      // real player.
+      // Path order, which is the library's default and the same comparison
+      // `libraryItemsPayload` sorts by -- so a ref, which is a position in that
+      // list, means the same thing on both sides.
       const chosen = (items ?? [...known.values()].map((entry) => ({ path: entry.path })))
         .map((ref) => known.get(ref.path))
         .filter(Boolean)
+        .sort((a, b) => a.path.localeCompare(b.path))
         .map((entry) => entry.track)
 
       if (replace) playlist.items = []
@@ -527,7 +563,7 @@ export function createState({
     },
 
     libraryArtworkFor(path) {
-      const entry = libraryItemsOf(allTracks()).find((item) => item.path === path)
+      const entry = libraryItemsOf(libraryTracks).find((item) => item.path === path)
       if (!entry) return null
       const album = LIBRARY.albums.find((a) => a.tracks.includes(entry.track))
       return album ? `${album.slug}.jpg` : null

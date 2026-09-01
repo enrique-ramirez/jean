@@ -469,6 +469,17 @@ This is the one that matters most: **`replace: true, play: true` is a whole scra
 playlist rebuild in one request** — no rename, no remove-by-range, no copy, no
 separate play, and so no client-side count arithmetic to get wrong.
 
+> **The order of `items` is ignored.** *Measured*: asking for library offsets 0, 20000,
+> 10000, 30000 returned them as 0, 10000, 20000, 30000. The player adds a set in the
+> **library's own order** (file path), whatever order you send. `items/copy` behaves
+> identically -- copying playlist indices `[0, 20000, 10000, 30000]` returns them
+> ascending -- so this is a property of the player, not of one endpoint.
+>
+> Anything computing "play position N of the set I just wrote" must therefore sort its
+> refs ascending *before* filling, or every position addresses a different track. Search
+> never hit this because its indices are already ascending; a home-screen shelf, ordered
+> by play count, hit it immediately.
+
 > **Do not mix the two filters.** `query` is the player's query syntax; Jean's search
 > is `fold()`-based accent-insensitive token matching. They do not return the same
 > set, so filtering client-side and then adding server-side by `query` adds tracks

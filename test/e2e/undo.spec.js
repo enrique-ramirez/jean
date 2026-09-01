@@ -16,7 +16,7 @@ const titlesIn = (player, id) =>
   player.playlists.find((entry) => entry.id === id).items.map((track) => track['%title%'])
 
 const openLibrary = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   await expect(trackRow(page, 0)).toBeAttached()
 }

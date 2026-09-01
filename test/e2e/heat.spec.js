@@ -26,7 +26,7 @@ const shading = (page, row) =>
   }, row)
 
 const openLibrary = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   // Every row read below is inside the first screenful plus overscan, in both
   // layouts and on both viewports, so none of these tests has to scroll.

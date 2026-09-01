@@ -27,7 +27,7 @@ test.describe('guests on an album row', () => {
   test.use({ retagged: RETAGGED, settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'album' } })
 
   test('the guests sit beside the title and the album artist is not repeated', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, GUESTS))
 
     const row = rowByTitle(page, GUESTS)
@@ -39,7 +39,7 @@ test.describe('guests on an album row', () => {
   })
 
   test('a comma-joined tag loses the comma, not the guest', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, JOINED_BY_COMMA))
 
     await expect(inlineNames(rowByTitle(page, JOINED_BY_COMMA))).toHaveText(
@@ -48,7 +48,7 @@ test.describe('guests on an album row', () => {
   })
 
   test('an artist who is not the album\'s keeps a line of their own', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, SOMEONE_ELSE))
 
     const row = rowByTitle(page, SOMEONE_ELSE)
@@ -61,7 +61,7 @@ test.describe('guests on an album row', () => {
   })
 
   test('a row with nothing to add says nothing', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, 'Rotten Apple'))
 
     const row = rowByTitle(page, 'Rotten Apple')
@@ -70,7 +70,7 @@ test.describe('guests on an album row', () => {
   })
 
   test('the title truncates last', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, GUESTS))
 
     // A short title against a long guest list. Sharing the shrink between them
@@ -95,7 +95,7 @@ test.describe('the same track in the list layout', () => {
   })
 
   test('the artist is stated in full, under the title', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, GUESTS))
 
     const row = rowByTitle(page, GUESTS)
@@ -104,7 +104,7 @@ test.describe('the same track in the list layout', () => {
   })
 
   test('the album group is the only place a row is told about its album', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, SOMEONE_ELSE))
 
     await expect(names(rowByTitle(page, SOMEONE_ELSE))).toContainText('Mad Season')
@@ -123,7 +123,7 @@ test.describe('an album row with two lines has room for them', () => {
   })
 
   test('it grows rather than crushing the two lines together', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, SOMEONE_ELSE))
 
     const slack = await rowByTitle(page, SOMEONE_ELSE).evaluate((row) => {

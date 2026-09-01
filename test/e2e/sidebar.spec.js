@@ -32,7 +32,7 @@ const openSidebar = async (page) => {
 }
 
 const openApp = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: LIBRARY })).toBeVisible()
   await openSidebar(page)
 }

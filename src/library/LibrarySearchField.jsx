@@ -5,8 +5,8 @@ import styles from './LibrarySearchField.module.css'
 // Persistent and always visible, not a shortcut with an icon bolted on: a
 // phone has no keyboard, and an affordance you cannot see is a feature that
 // does not exist there. The bindings are the shortcut, not the interface.
-export function LibrarySearchField({ search, onChange, onDismiss }) {
-  const { query, hasQuery, matchCount, isFiltering, playlist } = search
+export function LibrarySearchField({ search, library, onChange, onDismiss }) {
+  const { query, hasQuery, matchCount, isFiltering } = search
 
   const onKeyDown = (event) => {
     if (event.key === 'Escape') {
@@ -37,7 +37,11 @@ export function LibrarySearchField({ search, onChange, onDismiss }) {
         onFocus={search.onFocus}
         onBlur={search.onBlur}
         onKeyDown={onKeyDown}
-        placeholder={playlist ? 'Search your library' : 'Set up your library'}
+        // Keyed on whether there is a library at all, not on whether a
+        // playlist stands in for one. With the media library API there is no
+        // playlist and nothing to set up, and asking by playlist told a
+        // perfectly working install to go and configure itself.
+        placeholder={library.needsSetup ? 'Set up your library' : 'Search your library'}
         aria-label="Search your library"
         spellCheck="false"
         autoComplete="off"

@@ -1,8 +1,10 @@
 import { expect, requestsTo, test } from './fixtures.js'
 
 // 'babasonicos' matches the twelve Jessico tracks, library indices 0-11.
-const QUERY = { text: 'babasonicos', matches: 12, title: '#Jean [babasonicos]' }
-const NARROWER = { text: 'delectrico', matches: 1, title: '#Jean [delectrico]' }
+// The scratch says which kind of view filled it: 'Most played' is both a
+// plausible search and the name of a shelf, and a reload has to tell them apart.
+const QUERY = { text: 'babasonicos', matches: 12, title: '#Jean [search: babasonicos]' }
+const NARROWER = { text: 'delectrico', matches: 1, title: '#Jean [search: delectrico]' }
 
 const header = (page) => page.locator('main header')
 const scratchOf = (player) => player.playlists.find((entry) => entry.title.startsWith('#Jean ['))
@@ -188,9 +190,9 @@ test.describe('a search outlives the tab it was typed in', () => {
 
     // A different device: nothing of Jean's own kept, landing on the root
     // rather than on the search route.
-    await page.goto('/')
+    await page.goto('/#/p7')
     await page.evaluate(() => localStorage.clear())
-    await page.goto('/')
+    await page.goto('/#/p7')
     await expect(page.locator('footer')).toContainText('Los Calientes')
 
     const sidebar = page.getByRole('navigation')
@@ -209,7 +211,7 @@ test.describe('a search outlives the tab it was typed in', () => {
   })
 
   test('and with no search behind it there is no shelf at all', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
 
     const sidebar = page.getByRole('navigation')
@@ -439,7 +441,10 @@ test.describe('a player that will not let Jean make playlists', () => {
 
     await page.locator('[role="row"][data-row="2"]').dblclick()
 
-    await expect.poll(() => playedFrom(player)?.plref).toBe('p7')
+    // The `#Jean Library` autoplaylist, looked up rather than hardcoded: it is
+    // whichever playlist carries the name, and the name is the identity.
+    const libraryId = player.playlists.find((entry) => entry.title === '#Jean Library').id
+    await expect.poll(() => playedFrom(player)?.plref).toBe(libraryId)
     expect(playedFrom(player).index).toBe(2)
     expect(scratchOf(player)).toBeUndefined()
   })

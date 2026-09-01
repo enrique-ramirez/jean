@@ -19,7 +19,7 @@ test.describe('a multi-disc album in the album layout', () => {
   test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'album' } })
 
   test('the discs are headed inside one album, not split into two', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, DISC_TWO))
 
     await expect(heading(page, 'Disc 1')).toBeVisible()
@@ -33,14 +33,14 @@ test.describe('a multi-disc album in the album layout', () => {
   })
 
   test('the numbers stay bare, because the heading already said it', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, DISC_TWO))
 
     await expect(trackNumberOf(rowByTitle(page, DISC_TWO))).toHaveText('01')
   })
 
   test('an ordinary album is not headed at all', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, SINGLE_DISC_TRACK))
 
     const album = page.locator('section').filter({ hasText: SINGLE_DISC_ALBUM })
@@ -53,7 +53,7 @@ test.describe('a multi-disc album in the list layout', () => {
   test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': 'compact' } })
 
   test('the track number carries the disc, since nothing else can', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, DISC_TWO))
 
     await expect(trackNumberOf(rowByTitle(page, DISC_ONE))).toHaveText('1.01')
@@ -61,7 +61,7 @@ test.describe('a multi-disc album in the list layout', () => {
   })
 
   test('the number fits its column rather than running into what follows', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, DISC_ONE))
 
     // Four characters where the column was drawn for two. Overflow here is
@@ -75,7 +75,7 @@ test.describe('a multi-disc album in the list layout', () => {
   })
 
   test('a single-disc album keeps a plain number', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await scrollUntilMounted(page, rowByTitle(page, SINGLE_DISC_TRACK))
 
     await expect(trackNumberOf(rowByTitle(page, SINGLE_DISC_TRACK))).toHaveText('02')
@@ -93,7 +93,7 @@ for (const layout of ['compact', 'album']) {
     })
 
     test('nothing is drawn for a disc that was never tagged', async ({ page }) => {
-      await page.goto('/')
+      await page.goto('/#/p7')
       await scrollUntilMounted(page, rowByTitle(page, DISC_TWO))
 
       await expect(page.getByRole('heading', { level: 3 })).toHaveCount(0)

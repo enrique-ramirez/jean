@@ -49,7 +49,7 @@ const expectCentredOrClamped = async (page, index) => {
 }
 
 const openLibrary = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   await expect(isRowOnScreen(page, 0)).resolves.toBe(true)
 }
@@ -192,7 +192,7 @@ test.describe('at library scale', () => {
     // The whole point of the chunked load and the virtualiser is this size, and
     // scroll offsets are arithmetic over a list 1.4 million pixels tall. None of
     // the other specs would notice if that arithmetic broke past a few thousand.
-    await page.goto('/')
+    await page.goto('/#/p7')
     await expect
       .poll(() => page.getByRole('grid').getAttribute('aria-rowcount'), { timeout: 30000 })
       .toBe('30441')

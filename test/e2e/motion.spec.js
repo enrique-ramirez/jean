@@ -43,7 +43,7 @@ const framesOf = (page, count) =>
   )
 
 const startPlaying = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await page.getByRole('main').getByRole('button', { name: 'Play', exact: true }).click()
   await toggle(page).waitFor()
   await page.waitForTimeout(400)

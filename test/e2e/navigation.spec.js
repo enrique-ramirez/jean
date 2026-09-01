@@ -9,7 +9,7 @@ const paletteField = (page) => page.getByRole('textbox', { name: 'Go to playlist
 const results = (page) => palette(page).getByRole('option')
 
 const openLibrary = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   await expect(trackRow(page, 0)).toBeAttached()
 }
@@ -82,43 +82,85 @@ test.describe('the first run, with no library playlist', () => {
   // the API is worth having.
   test.use({ withoutLibraryPlaylist: true, library: { supported: false } })
 
-  test('it explains the autoplaylist rather than showing an empty result set', async ({ page }) => {
+  test('it names the playlist exactly, because the name is the whole contract', async ({ page }) => {
     await page.goto('/#/search')
 
     await expect(page.getByRole('heading', { level: 1, name: /Point Jean at your library/ })).toBeVisible()
-    await expect(page.getByText('ALL')).toBeVisible()
+
+    // The two strings the user has to reproduce exactly, asserted on the code
+    // elements that set them apart. `getByText` is a case-insensitive substring
+    // match, so plain 'ALL' also finds the word "called" in the prose below.
+    await expect(page.locator('code').filter({ hasText: /^ALL$/ })).toBeVisible()
+    await expect(page.locator('code').filter({ hasText: /^#Jean Library$/ })).toBeVisible()
 
     // The promise that makes the instruction safe to follow.
     await expect(page.getByText('Nothing here creates, clears or reorders a playlist.')).toBeVisible()
   })
 
-  test('the scratch buffer is offered with a warning on it', async ({ page }) => {
-    await page.goto('/#/search')
+  test('a playlist merely called Library is not adopted as one', async ({ page, player }) => {
+    // The fixture still has an ordinary playlist titled 'Library' -- it is
+    // right there in the sidebar. Jean used to resolve the library by falling
+    // back to anything loosely titled that, with no check on its size, so a
+    // dozen production-music cues under the name silently became someone's
+    // whole collection. Setup is the correct answer here, not that playlist.
+    expect(player.playlists.some((entry) => entry.title === 'Library')).toBe(true)
 
-    // Default Playlist is foobar's scratch buffer -- selecting an album in its
-    // library view replaces the whole thing, measured at 30,441 items and 12 an
-    // hour later. It is listed, because it is the user's to choose, and it is
-    // labelled, because choosing it silently would be the trap.
-    const scratch = page.getByRole('listitem').filter({ hasText: 'Default Playlist' })
-    await expect(scratch).toBeVisible()
-    await expect(scratch).toContainText('foobar clears this one')
+    await page.goto('/#/search')
+    await expect(page.getByRole('heading', { level: 1, name: /Point Jean at your library/ })).toBeVisible()
+
+    // And there is nothing to pick: choosing was the guess, in a nicer coat.
+    await expect(page.getByRole('listitem')).toHaveCount(0)
   })
 
-  test('picking a playlist gets you searching, and it sticks', async ({ page, player }) => {
+  test('it offers to rename the one you probably meant, and then search works', async ({
+    page,
+    player,
+  }) => {
     await page.goto('/#/search')
-    await page.getByRole('listitem').filter({ hasText: 'Everything' }).click()
+
+    // Renaming someone's playlist is theirs to agree to, so it is a button and
+    // never automatic. This is also the upgrade path for installs set up before
+    // the name meant anything.
+    await page.getByRole('button', { name: /Rename it to #Jean Library/ }).click()
 
     await page.getByLabel('Search your library').fill('babasonicos')
     await expect(page.getByRole('heading', { level: 1, name: 'babasonicos' })).toBeVisible()
     await expect(trackRow(page, 0)).toBeAttached()
 
-    // Nothing was written to get here -- the pick is Jean's own setting.
+    // Renamed, not copied: no playlist was created and none was emptied.
     expect(requestsTo(player, '/playlists/add')).toHaveLength(0)
+    expect(player.playlists.some((entry) => entry.title === '#Jean Library')).toBe(true)
+    expect(player.playlists.some((entry) => entry.title === 'Library')).toBe(false)
 
+    // And it sticks, because the name is on the player rather than in this
+    // browser -- which is what makes it true on the next device too.
     await page.reload()
     await page.getByLabel('Search your library').fill('babasonicos')
     await expect(page.getByRole('heading', { level: 1, name: 'babasonicos' })).toBeVisible()
     await expect(page.getByRole('heading', { name: /Point Jean at your library/ })).toHaveCount(0)
+  })
+})
+
+test.describe('the library playlist is Jean\'s, not furniture', () => {
+  test('it is not in the sidebar, not in the palette, and not somewhere a route lands', async ({
+    page,
+    player,
+  }) => {
+    expect(player.playlists.some((entry) => entry.title === '#Jean Library')).toBe(true)
+
+    await page.goto('/#/p7')
+    const sidebar = page.getByRole('navigation', { name: 'Playlists' })
+    if (!(await sidebar.isVisible())) {
+      await page.getByRole('button', { name: 'Show playlists' }).click()
+    }
+    await expect(sidebar.getByText('#Jean Library')).toHaveCount(0)
+    // The ordinary playlist that merely shares the word is still right there.
+    await expect(sidebar.getByRole('button').filter({ hasText: /^Library/ })).toHaveCount(1)
+
+    // Routing to it lands somewhere else instead: browsing the library is a
+    // feature Jean has not built, and it must not back into one by accident.
+    await page.goto('/#/p8')
+    await expect(page.getByRole('heading', { level: 1, name: '#Jean Library' })).toHaveCount(0)
   })
 })
 

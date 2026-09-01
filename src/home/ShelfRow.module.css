@@ -1,0 +1,141 @@
+.shelf {
+  /* Two numbers own the row. The cards, the snap edge, the fade and the arrows
+     all derive from them, so a breakpoint changes a value rather than a rule --
+     and the heading and the first cover cannot drift out of line. */
+  --cover: 160px;
+  --gutter: 24px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--gutter);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.blurb {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.rail {
+  position: relative;
+}
+
+/* Centred on the artwork rather than on the card: the caption under the cover
+   would pull them off the optical centre of the thing they scroll. */
+.arrow {
+  position: absolute;
+  top: calc(4px + var(--cover) / 2);
+  z-index: 2;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(-50%) scale(0.9);
+  transition: opacity 140ms var(--ease), transform 140ms var(--ease);
+  box-shadow: var(--shadow);
+}
+
+.back {
+  left: calc(var(--gutter) - 17px);
+}
+
+.forward {
+  right: calc(var(--gutter) - 17px);
+}
+
+/* Only where there is something to reach. An arrow at the end of a row that
+   cannot move is a control that lies about being available. */
+.shelf:hover .arrow:not(:disabled),
+.arrow:focus-visible {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.arrow:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.scroller {
+  display: flex;
+  gap: 18px;
+  /* The gutter is padding rather than margin so the first and last cards can
+     scroll clear of the edge instead of being clipped against it. */
+  padding: 4px var(--gutter) 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  /* Without this the row opens with its cards jammed against the sidebar,
+     out of line with the heading above them. `scroll-snap-align: start` aligns
+     an item to the *scrollport* edge, which sits inside the padding -- so the
+     browser scrolls the padding away to satisfy the snap before anyone has
+     touched it. `scroll-padding` moves the snap edge back to where the text
+     starts, which is the line the whole row should hang from. */
+  scroll-padding-inline: var(--gutter);
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+
+  /* Fades to transparent rather than to a colour, so it needs no knowledge of
+     the background and is correct in both themes. Only on the side that has
+     something hidden behind it: a permanent fade on a row you have already
+     scrolled to the end of is decoration pretending to be information. */
+  --fade-start: 0px;
+  --fade-end: 0px;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fade-start),
+    #000 calc(100% - var(--fade-end)),
+    transparent 100%
+  );
+}
+
+.scroller[data-more-start='true'] {
+  --fade-start: calc(var(--gutter) + 28px);
+}
+
+.scroller[data-more-end='true'] {
+  --fade-end: calc(var(--gutter) + 28px);
+}
+
+.scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* Touch has the gesture already; the arrows would only cover artwork. */
+@media (hover: none), (pointer: coarse) {
+  .arrow {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .shelf {
+    --cover: 132px;
+    --gutter: 16px;
+  }
+
+  .scroller {
+    gap: 12px;
+  }
+}

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { GripVertical, ListMusic, Pencil, Plus, Search, Trash2, Undo2, Volume2 } from 'lucide-react'
+import { Disc3, GripVertical, Home, ListMusic, Pencil, Plus, Search, Trash2, Undo2, Volume2 } from 'lucide-react'
 
 import { SCOPE } from '../keyboard/keymap.js'
 import { useKeymap } from '../keyboard/useKeymap.js'
@@ -9,7 +9,7 @@ import {
   usePlaylistActions,
 } from '../player/usePlayer.js'
 import { ActionMenu } from '../ui/ActionMenu.jsx'
-import { isScratchPlaylist, withoutScratchPlaylists } from '../library/scratchPlaylist.js'
+import { isScratchPlaylist, withoutJeanPlaylists } from '../library/jeanPlaylists.js'
 import { useContextMenu } from '../ui/useContextMenu.js'
 import { mergeHandlers } from '../ui/mergeHandlers.js'
 import { useDragState } from '../ui/dnd.js'
@@ -24,6 +24,8 @@ export function Sidebar({
   search,
   isSearchOpen,
   onOpenSearch,
+  route,
+  onOpenRoute,
   isOpen,
   isCollapsed,
   onDismiss,
@@ -47,7 +49,7 @@ export function Sidebar({
   // It still exists on the player, and they will see it in foobar -- there is
   // no hidden playlist to be had -- but here it would be a row whose name
   // changed every time they searched.
-  const shown = useMemo(() => withoutScratchPlaylists(playlists), [playlists])
+  const shown = useMemo(() => withoutJeanPlaylists(playlists), [playlists])
 
   // Playing from a set of search results makes Jean's scratch playlist the
   // current one -- and it is hidden, so without this the status bar would name
@@ -203,6 +205,33 @@ export function Sidebar({
             </div>
           </>
         ) : null}
+
+        {/* Above the playlists and below the search, which is the order they
+            are reached for: search is a thing you are already doing, home is
+            where you start, and playlists are what you keep. */}
+        <div className={styles.row}>
+          <button
+            type="button"
+            className={styles.item}
+            aria-current={route === '' || route === 'home'}
+            onClick={() => onOpenRoute('home')}
+          >
+            <Home size={15} strokeWidth={2} aria-hidden="true" />
+            <span className={styles.label}>Home</span>
+          </button>
+        </div>
+
+        <div className={styles.row}>
+          <button
+            type="button"
+            className={styles.item}
+            aria-current={route === 'all'}
+            onClick={() => onOpenRoute('all')}
+          >
+            <Disc3 size={15} strokeWidth={2} aria-hidden="true" />
+            <span className={styles.label}>All music</span>
+          </button>
+        </div>
 
         <div className={styles.sectionHeader}>
           <p className={styles.heading}>Playlists</p>

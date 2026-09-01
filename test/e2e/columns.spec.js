@@ -10,7 +10,7 @@ const menu = (page) => page.getByRole('button', { name: 'View options' })
 const option = (page, name) => page.getByRole('menuitemcheckbox', { name })
 
 const openLibrary = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   await expect(trackRow(page, 0)).toBeAttached()
 }

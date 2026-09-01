@@ -111,7 +111,7 @@ test.describe('search results have shuffle again', () => {
 
 test.describe('the status bar shuffle is the mode', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   })
 

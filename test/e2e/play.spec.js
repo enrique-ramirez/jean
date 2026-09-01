@@ -16,7 +16,7 @@ test.describe(`playing a track (${layout} layout)`, () => {
   test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     // Opening with no hash lands on whichever playlist the player is on, so
     // this also asserts that isCurrent is what decides.
     await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
@@ -100,7 +100,7 @@ test.describe(`playing on touch (${layout} layout)`, () => {
   test.use({ settings: { 'jean.heatIntroSeen': true, 'jean.layout': layout } })
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   })
 
@@ -142,7 +142,7 @@ test(`on a pointer, a single click selects and does not play (${layout} layout)`
   // desktop click into playback, which nothing else here would catch.
   test.skip(test.info().project.name === 'mobile', 'this is the mouse path')
 
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
 
   await trackRow(page, THIRD_TRACK.index).click()

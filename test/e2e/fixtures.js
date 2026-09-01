@@ -35,10 +35,9 @@ export const test = base.extend({
   // play counts should disappear rather than break.
   withoutFields: [[], { option: true }],
 
-  // Renames the playlist Jean would otherwise resolve as the library, so the
-  // first-run path is reachable. Nothing else can get there: an install that
-  // already has a Library playlist never sees the setup screen, and the capture
-  // always has one.
+  // Removes the playlist Jean resolves as the library, so the first-run path is
+  // reachable. Nothing else can get there: an install that already has a
+  // `#Jean Library` never sees the setup screen, and the capture always has one.
   withoutLibraryPlaylist: [false, { option: true }],
 
   // The media library's state, as beefweb 0.11+ reports it.
@@ -82,12 +81,13 @@ export const test = base.extend({
     },
     use,
   ) => {
-    const playlists = DEFAULT_PLAYLISTS()
-    if (withoutLibraryPlaylist) {
-      for (const playlist of playlists) {
-        if (playlist.title === 'Library') playlist.title = 'Everything'
-      }
-    }
+    // Drops the `#Jean Library` autoplaylist, which is the only thing that makes
+    // Jean's library resolve on a player without the media library API -- so
+    // this is the first run. The ordinary playlist called 'Library' stays, and
+    // must not be mistaken for it.
+    const playlists = DEFAULT_PLAYLISTS().filter(
+      (playlist) => !(withoutLibraryPlaylist && playlist.title === '#Jean Library'),
+    )
 
     await use(
       fakeServer.reset(

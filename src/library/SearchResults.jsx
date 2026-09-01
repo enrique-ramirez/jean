@@ -12,17 +12,17 @@ import { summarise } from '../playlist/stats.js'
 import { useAvailableFields } from '../playlist/useAvailableFields.js'
 import { Button } from '../ui/Button.jsx'
 import { PlayIcon } from '../ui/icons.jsx'
-import { LibraryPicker, LibrarySetup } from './LibrarySetup.jsx'
+import { LibrarySetup } from './LibrarySetup.jsx'
 import { SavePlaylistButton } from './SavePlaylistButton.jsx'
+import { SCRATCH_KIND } from './jeanPlaylists.js'
 import { useScratchPlaylist } from './useScratchPlaylist.js'
 import styles from './SearchResults.module.css'
 
 // A view over the library, never a playlist. Nothing here is created, cleared
 // or written: playing a result plays it where it already lives, by index, in
 // the playlist the library is.
-export function SearchResults({ search, playlists, scrollRef, isCompactViewport, onOpenPlaylist }) {
+export function SearchResults({ search, library, playlists, scrollRef, isCompactViewport, onOpenPlaylist }) {
   const browserRef = useRef(null)
-  const [isPicking, setIsPicking] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   const { data: playerSnapshot } = usePlayer()
@@ -36,12 +36,8 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
   // A read-only instance gets a read-only Jean: no button that would 403.
   const canSavePlaylists = playerSnapshot?.player?.permissions?.changePlaylists === true
 
-  const scratch = useScratchPlaylist({
-    playlists,
-    query: search.query,
-    count: indices.length,
-    canEdit: canSavePlaylists,
-  })
+  const scratch = useScratchPlaylist({ playlists, canEdit: canSavePlaylists })
+  const holdsThisView = scratch.holdsView(SCRATCH_KIND.search, search.query, indices.length)
 
   // Which row is playing. Two playlists are in play at once and they must not
   // be confused: reading stays with the library -- the rows, their artwork,
@@ -70,16 +66,16 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
   const activeItemIndex = activeItem?.index ?? -1
 
   const activePosition = useMemo(() => {
-    if (scratch.holdsCurrentView) return scratchItem?.index ?? -1
-    return search.source.playingPosition(
+    if (holdsThisView) return scratchItem?.index ?? -1
+    return library.source.playingPosition(
       indices,
       { path: playingPath, subsong: playingSubsong },
       { playlistId: activePlaylistId, index: activeItemIndex },
     )
   }, [
-    scratch.holdsCurrentView,
+    holdsThisView,
     scratchItem?.index,
-    search.source,
+    library.source,
     indices,
     playingPath,
     playingSubsong,
@@ -90,7 +86,7 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
   useKeymap(
     SCOPE.search,
     { saveSearch: () => setIsSaving(true) },
-    { enabled: canSavePlaylists && rows.length > 0 && !search.isLoading },
+    { enabled: canSavePlaylists && rows.length > 0 && !library.isLoading },
   )
 
 
@@ -99,16 +95,21 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
   // actually asks to hear it.
   const play = useCallback(
     async (position) => {
-      const scratchId = await scratch.ensure({ source: search.source, indices })
+      const scratchId = await scratch.ensure({
+        kind: SCRATCH_KIND.search,
+        label: search.query,
+        refs: indices,
+        source: library.source,
+      })
       // No scratch playlist means a player that will not let us make one. On
       // the fallback the track still plays, in place, and what follows it is
       // the library's business rather than these results'. With the media
       // library API there is no playlist to play in place *in*, so there is
       // nothing to fall back to.
       if (scratchId) playItem(scratchId, position)
-      else if (search.playlist) playItem(search.playlist.id, indices[position])
+      else if (library.playlist) playItem(library.playlist.id, indices[position])
     },
-    [search.source, search.playlist, indices, scratch, search.query],
+    [library.source, library.playlist, indices, scratch],
   )
 
   const shufflePlay = useCallback(() => {
@@ -117,12 +118,12 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
     browserRef.current?.play(Math.floor(Math.random() * rows.length))
   }, [order, rows.length])
 
-  if (search.needsSetup) {
-    return <LibrarySetup playlists={playlists} onChoose={search.choose} />
+  if (library.needsSetup) {
+    return <LibrarySetup playlists={playlists} />
   }
 
-  if (search.error) {
-    return <p className={styles.notice}>Could not read your library -- {search.error.message}</p>
+  if (library.error) {
+    return <p className={styles.notice}>Could not read your library -- {library.error.message}</p>
   }
 
   if (!search.hasQuery) {
@@ -131,40 +132,17 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
         <Search size={26} strokeWidth={1.5} aria-hidden="true" />
         <h1 className={styles.idleTitle}>Search your library</h1>
         <p className={styles.idleBody}>
-          {/* With the media library API there is no playlist standing in for
-              the library, so there is nothing to name and nothing to swap. */}
-          {search.playlist ? (
-            <>
-              {search.playlist.itemCount.toLocaleString()} tracks in <b>{search.playlist.title}</b>.{' '}
-            </>
-          ) : (
-            <>{search.total.toLocaleString()} tracks in your library. </>
-          )}
-          Title, artist and album, as you type -- every word has to match, in any order.
+          {/* "Your library", never the name of whatever is standing in for it.
+              Which of the two sources answered is Jean's business, and on a
+              player with a media library API there is no playlist to name at
+              all. Saying the autoplaylist's title here was worse than untidy:
+              it named a playlist that was not being read. */}
+          {library.count.toLocaleString()} tracks in your library. Title, artist and album, as you
+          type -- every word has to match, in any order.
         </p>
         <Button variant="primary" icon={Search} onClick={search.focus}>
           Start typing
         </Button>
-        {search.playlist ? (
-          <button
-            type="button"
-            className={styles.link}
-            aria-expanded={isPicking}
-            onClick={() => setIsPicking((current) => !current)}
-          >
-            Search a different playlist
-          </button>
-        ) : null}
-        {isPicking && search.playlist ? (
-          <LibraryPicker
-            playlists={playlists}
-            currentId={search.playlist.id}
-            onChoose={(playlist) => {
-              search.choose(playlist)
-              setIsPicking(false)
-            }}
-          />
-        ) : null}
       </div>
     )
   }
@@ -174,15 +152,15 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
       ref={browserRef}
       rows={rows}
       indices={indices}
-      source={search.source}
+      source={library.source}
       viewKey={search.viewKey}
       heat={heat}
       patina={patina}
       activeIndex={activePosition}
       isPlaying={playerSnapshot?.player?.playbackState === 'playing'}
-      isLoading={search.isLoading}
-      loaded={search.loaded}
-      total={search.total}
+      isLoading={library.isLoading}
+      loaded={library.loaded}
+      total={library.total}
       scrollRef={scrollRef}
       isCompactViewport={isCompactViewport}
       keysEnabled={!search.isFocused}
@@ -193,13 +171,17 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
       emptyNotice="Nothing in your library matches that."
       header={
         <ViewHeader
-          eyebrow={`Search results in ${search.playlist?.title ?? 'your library'}`}
+          // "your library", never the playlist standing in for it. Which source
+          // answered is Jean's business, and the autoplaylist is named for
+          // Jean rather than by the user -- putting `#Jean Library` in a
+          // heading would be showing them the plumbing.
+          eyebrow="Search results in your library"
           title={search.query}
           stats={stats}
           hasPlayCounts={hasPlayCounts}
           aside={
             <Mosaic
-              source={search.source}
+              source={library.source}
               trackCount={rows.length}
               indices={indices}
               seed={search.viewKey}
@@ -232,7 +214,9 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
               {canSavePlaylists ? (
                 <SavePlaylistButton
                   search={search}
+                  library={library}
                   scratch={scratch}
+                  holdsResults={holdsThisView}
                   isOpen={isSaving}
                   onOpenChange={setIsSaving}
                   onOpenPlaylist={onOpenPlaylist}
@@ -244,8 +228,8 @@ export function SearchResults({ search, playlists, scrollRef, isCompactViewport,
       }
       toolbarLeading={
         <p className={styles.summary}>
-          {search.isLoading
-            ? `Searching ${search.loaded.toLocaleString()} of ${search.total.toLocaleString()}...`
+          {library.isLoading
+            ? `Searching ${library.loaded.toLocaleString()} of ${library.total.toLocaleString()}...`
             : `${search.matchCount.toLocaleString()} ${search.matchCount === 1 ? 'match' : 'matches'}`}
         </p>
       }

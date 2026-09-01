@@ -7,9 +7,17 @@ import { useStoredState } from '../hooks/useStoredState.js'
 import { SCOPE } from '../keyboard/keymap.js'
 import { ShortcutSheet } from '../keyboard/ShortcutSheet.jsx'
 import { useKeymap } from '../keyboard/useKeymap.js'
+import { HomeView } from '../home/HomeView.jsx'
+import { SHELVES, buildShelves, refsOfShelf } from '../home/shelves.js'
+import { albumsOf } from '../home/albums.js'
+import { LibraryListView } from '../library/LibraryListView.jsx'
 import { LibrarySearchField } from '../library/LibrarySearchField.jsx'
 import { SearchResults } from '../library/SearchResults.jsx'
+import { SCRATCH_KIND } from '../library/jeanPlaylists.js'
+import { project, wholeLibrary } from '../library/project.js'
+import { useLibrary } from '../library/useLibrary.js'
 import { useLibrarySearch } from '../library/useLibrarySearch.js'
+import { usePlayShelf } from '../home/usePlayShelf.js'
 import { StatusBar } from '../player/StatusBar.jsx'
 import {
   usePlayPause,
@@ -23,7 +31,7 @@ import { PlaylistView } from '../playlist/PlaylistView.jsx'
 import { Button } from '../ui/Button.jsx'
 import { DragGhost } from '../ui/DragGhost.jsx'
 import { Toasts } from '../ui/Toasts.jsx'
-import { withoutScratchPlaylists } from '../library/scratchPlaylist.js'
+import { withoutJeanPlaylists } from '../library/jeanPlaylists.js'
 import { CommandPalette } from './CommandPalette.jsx'
 import { Sidebar } from './Sidebar.jsx'
 import { useHashRoute } from './useHashRoute.js'
@@ -33,6 +41,10 @@ import styles from './App.module.css'
 
 const SEEK_STEP = 5
 const SEARCH_ROUTE = 'search'
+const HOME_ROUTE = 'home'
+const ALL_ROUTE = 'all'
+const SHELF_PREFIX = 'shelf/'
+const EMPTY_VIEW = { rows: [], indices: new Int32Array(0), heat: new Float32Array(0), patina: new Float32Array(0), playedCount: 0 }
 
 export function App() {
   usePlayerStream()
@@ -44,8 +56,6 @@ export function App() {
   const volume = useVolume()
   const { theme, toggle: toggleTheme } = useTheme()
   const isCompactViewport = useIsCompactViewport()
-  const search = useLibrarySearch(playlists)
-
   const [route, navigate] = useHashRoute()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useStoredState('jean.sidebarCollapsed', false)
@@ -55,13 +65,40 @@ export function App() {
   const scrollRef = useRef(null)
 
   const isSearchRoute = route === SEARCH_ROUTE
+  const isAllRoute = route === ALL_ROUTE
+  const shelfId = route.startsWith(SHELF_PREFIX) ? route.slice(SHELF_PREFIX.length) : null
+  const shelf = shelfId ? SHELVES.find((entry) => entry.id === shelfId) : null
+  // Home is where `/` lands, so an unrecognised hash falls here rather than
+  // onto whichever playlist happened to be first.
+  const isHomeRoute = route === '' || route === HOME_ROUTE
+
+  // The library is loaded for the views that show it. Search asks for it
+  // separately, on focus, because reaching for the field is the ask and the
+  // route cannot know.
+  const library = useLibrary(playlists, {
+    wanted: isHomeRoute || isAllRoute || Boolean(shelf),
+  })
+  const search = useLibrarySearch(library, playlists)
+  const playShelf = usePlayShelf({ library, playlists, navigate })
+
+  // All music is the library itself, unprojected -- copying 30,000 rows to
+  // produce a copy of themselves is the one filter that can afford to do
+  // nothing. A shelf is its albums' refs, in shelf order.
+  const allMusic = useMemo(() => wholeLibrary(library), [library])
+  const shelfView = useMemo(() => {
+    if (!shelf || library.rows.length === 0) return null
+    const albums = albumsOf(library)
+    const built = buildShelves(albums).find((entry) => entry.id === shelf.id)
+    return built ? project(library, refsOfShelf(built)) : null
+  }, [shelf, library])
 
   // Jean's own scratch playlist is not somewhere to browse to. Playing a set of
   // search results makes it the current playlist, and landing there would show
   // those results stripped of the search that made them, under a name nobody
   // chose.
-  const browsable = useMemo(() => withoutScratchPlaylists(playlists), [playlists])
+  const browsable = useMemo(() => withoutJeanPlaylists(playlists), [playlists])
   const routedId = browsable.some((entry) => entry.id === route) ? route : null
+  const isLibraryRoute = isHomeRoute || isAllRoute || Boolean(shelf) || isSearchRoute
 
   // A reload lands back on #/search with an empty field, and the results gone
   // with it -- the query was only ever in memory. The player still knows what
@@ -99,7 +136,10 @@ export function App() {
 
   // Each result set is its own view, so refining a query starts at the top
   // while stepping back into a playlist returns to the row you left.
-  useScrollMemory(scrollRef, isSearchRoute ? search.viewKey : `playlist:${selectedId}`)
+  useScrollMemory(
+    scrollRef,
+    isSearchRoute ? search.viewKey : isLibraryRoute ? `library:${route}` : `playlist:${selectedId}`,
+  )
 
   const toggleSidebar = () => {
     if (isCompactViewport) setIsSidebarOpen((current) => !current)
@@ -111,6 +151,14 @@ export function App() {
     setIsSidebarOpen(false)
     setIsPaletteOpen(false)
   }
+
+  const openRoute = useCallback(
+    (next) => {
+      navigate(`/${next}`)
+      setIsSidebarOpen(false)
+    },
+    [navigate],
+  )
 
   const openSearch = useCallback(() => {
     navigate(`/${SEARCH_ROUTE}`)
@@ -166,7 +214,12 @@ export function App() {
           </p>
         )}
 
-        <LibrarySearchField search={search} onChange={onQueryChange} onDismiss={dismissSearch} />
+        <LibrarySearchField
+          search={search}
+          library={library}
+          onChange={onQueryChange}
+          onDismiss={dismissSearch}
+        />
 
         <div className={styles.actions}>
           <Button
@@ -187,20 +240,47 @@ export function App() {
       <div className={styles.body} data-collapsed={!isCompactViewport && isSidebarCollapsed}>
         <Sidebar
           playlists={playlists}
-          selectedId={isSearchRoute ? null : selectedId}
+          selectedId={
+            // Only a playlist route selects a playlist. `selectedId` falls back
+            // to the remembered or current one so that leaving the search has
+            // somewhere to return to -- but passing that through here lit a
+            // playlist row while you were on Home, beside the Home row that was
+            // also lit. Two rows cannot both be where you are.
+            isLibraryRoute ? null : selectedId
+          }
           onSelect={openPlaylist}
           search={search}
           isSearchOpen={isSearchRoute}
           onOpenSearch={openSearch}
+          route={route}
+          onOpenRoute={openRoute}
           isOpen={isSidebarOpen}
           isCollapsed={!isCompactViewport && isSidebarCollapsed}
           onDismiss={() => setIsSidebarOpen(false)}
         />
 
         <main className={styles.main} ref={scrollRef}>
-          {isSearchRoute ? (
+          {isHomeRoute ? (
+            <HomeView library={library} playlists={playlists} onPlayAlbum={playShelf} />
+          ) : isAllRoute || shelf ? (
+            <LibraryListView
+              library={library}
+              view={(shelf ? shelfView : allMusic) ?? EMPTY_VIEW}
+              kind={shelf ? SCRATCH_KIND.shelf : SCRATCH_KIND.all}
+              label={shelf ? shelf.title : ''}
+              eyebrow={shelf ? 'Shelf' : 'Your library'}
+              title={shelf ? shelf.title : 'All music'}
+              playlists={playlists}
+              scrollRef={scrollRef}
+              isCompactViewport={isCompactViewport}
+              emptyNotice={
+                library.isLoading ? 'Reading your library...' : 'Nothing in your library yet.'
+              }
+            />
+          ) : isSearchRoute ? (
             <SearchResults
               search={search}
+              library={library}
               playlists={playlists}
               scrollRef={scrollRef}
               isCompactViewport={isCompactViewport}

@@ -9,7 +9,7 @@ const volume = (page) => page.getByRole('slider', { name: 'Volume' })
 const seekBar = (page) => page.getByRole('slider', { name: 'Playback position' })
 
 const openApp = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   await expect(trackRow(page, 0)).toBeAttached()
 }

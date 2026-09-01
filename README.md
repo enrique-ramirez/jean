@@ -96,16 +96,23 @@ library, and the right kind is an **autoplaylist**: a live Media Library query t
 sync on its own.
 
 In foobar2000: **Library → Search**, enter `ALL` as the query, and create an autoplaylist
-from the result. Call it **Library** and Jean finds it by itself; call it anything else and
-the search page will ask you to pick it once, then remember.
+from the result. Name it exactly:
+
+```
+#Jean Library
+```
 
 That playlist then contains every track in your Media Library, updates itself when you add
 or remove music, and costs nothing to keep around.
 
-> **Do not point Jean at `Default Playlist`.** It is foobar's scratch buffer — clicking an
-> album in the library view replaces its entire contents. It can look like a library one
-> minute and hold twelve tracks the next. Jean never chooses it for you, and flags it in
-> the picker if you go looking.
+**The name is how Jean knows the playlist is meant for it**, rather than one of yours — so
+it has to match exactly, and Jean will not adopt a playlist merely called "Library". That
+is deliberate: it used to, and a playlist of that name holding a dozen unrelated tracks
+would quietly become "your library", with every count Jean reported after it wrong. If you
+already have one from an earlier version, the search page offers to rename it for you.
+
+Once it matches, **Jean keeps it out of your sidebar** — it is plumbing, not one of your
+playlists. It stays fully visible in foobar2000, next to its own `#Quicksearch […]`.
 
 If you would rather not create an autoplaylist, Jean can build a playlist from your music
 folders instead. That mirrors what is on disk rather than what is in your library, and needs

@@ -21,7 +21,7 @@ import styles from './SavePlaylistButton.module.css'
 // to sit at those positions in a differently ordered list. Measured, saving
 // twelve unplayed Babasónicos matches wrote a playlist beginning "Jaws Theme
 // Swimming". It never threw, which is what made it worth a test.
-export function SavePlaylistButton({ search, scratch, isOpen, onOpenChange, onOpenPlaylist }) {
+export function SavePlaylistButton({ search, library, scratch, holdsResults, isOpen, onOpenChange, onOpenPlaylist }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState(search.query)
   const inputRef = useRef(null)
@@ -49,14 +49,14 @@ export function SavePlaylistButton({ search, scratch, isOpen, onOpenChange, onOp
       // second copy beside it. Playback carries straight on through the rename,
       // and the scratch stops existing because it stops being Jean's, which is
       // what takes the search out of the sidebar.
-      if (scratch?.holdsCurrentView) {
+      if (holdsResults) {
         const id = await scratch.adopt(name)
         await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY })
         return { id, title: name }
       }
 
       const playlist = await createPlaylist(name)
-      await search.source.addTo(playlist.id, indices)
+      await library.source.addTo(playlist.id, indices)
       // Refetched rather than invalidated: the route that follows resolves
       // against this list, and navigating to an id it has not seen yet would
       // land on the old view until the stream caught up.
@@ -89,8 +89,8 @@ export function SavePlaylistButton({ search, scratch, isOpen, onOpenChange, onOp
           aria-expanded={isOpen}
           // Saving a set that is still filling in would quietly write a
           // fraction of the matches and look like the whole answer.
-          disabled={trackCount === 0 || search.isLoading}
-          title={search.isLoading ? 'Still reading your library' : undefined}
+          disabled={trackCount === 0 || library.isLoading}
+          title={library.isLoading ? 'Still reading your library' : undefined}
           onClick={() => onOpenChange(!isOpen)}
         >
           Save as playlist

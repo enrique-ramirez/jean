@@ -24,7 +24,7 @@ const sidebarLink = (page, title) =>
   page.getByRole('navigation', { name: 'Playlists' }).getByRole('button').filter({ hasText: title })
 
 const openLibrary = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
   await expect(trackRow(page, 0)).toBeAttached()
 }

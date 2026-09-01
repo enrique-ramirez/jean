@@ -13,7 +13,7 @@ const results = (page) => page.getByRole('listbox').getByRole('option')
 const matchedRows = (page) => page.locator('[role="row"][data-match="true"]')
 
 const openLibrary = async (page) => {
-  await page.goto('/')
+  await page.goto('/#/p7')
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
 }
 
@@ -295,7 +295,7 @@ test.describe(`at library scale (${layout})`, () => {
   test.use({ librarySize: 30441 })
 
   test('marks every match but renders only a page of them', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await expect
       .poll(() => page.getByRole('grid').getAttribute('aria-rowcount'), { timeout: 30000 })
       .toBe('30441')
@@ -345,7 +345,7 @@ test.describe('typing does not drag the list around', () => {
   const scrollTop = (page) => page.locator('main').evaluate((element) => element.scrollTop)
 
   test('narrowing a query leaves the view where it is', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/p7')
     await expect
       .poll(() => page.getByRole('grid').getAttribute('aria-rowcount'), { timeout: 30000 })
       .toBe('30441')

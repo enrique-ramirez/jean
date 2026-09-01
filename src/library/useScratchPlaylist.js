@@ -4,13 +4,21 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createPlaylist, fetchPlaylists, renamePlaylist } from '../api/beefweb.js'
 import { useStoredState } from '../hooks/useStoredState.js'
 import { PLAYLISTS_KEY } from '../player/usePlayer.js'
-import { isScratchPlaylist, queryOfScratchPlaylist, scratchTitle } from './scratchPlaylist.js'
+import { isScratchPlaylist, scratchContentsOf, scratchTitle } from './jeanPlaylists.js'
 
-// Resolved by stored id, falling back to the title -- the same ladder
-// useLibraryPlaylist climbs, and for the same reason: playlist ids are neither
+// The one playlist Jean plays from, and the set it holds is *the last thing you
+// chose to play* -- not the thing you are currently looking at. Browsing writes
+// nothing; playing is the commit. That is what lets you search Post Malone,
+// start it, wander into All Music, and still have Post Malone playing.
+//
+// Resolved by stored id, falling back to the title. Playlist ids are neither
 // contiguous nor promised to outlive the player process, while the title is
 // ours and recognisable from any device.
-export function useScratchPlaylist({ playlists, query, count, canEdit }) {
+//
+// `kind` and `label` arrive per call rather than per hook, because the thing
+// filling it is often not the thing rendering: clicking an album on the home
+// screen fills the scratch with a shelf the current view knows nothing about.
+export function useScratchPlaylist({ playlists, canEdit }) {
   const [pinnedId, setPinnedId] = useStoredState('jean.scratchPlaylist', null)
   const queryClient = useQueryClient()
 
@@ -18,72 +26,62 @@ export function useScratchPlaylist({ playlists, query, count, canEdit }) {
     const pinned = pinnedId ? playlists.find((entry) => entry.id === pinnedId) : null
     // The pin is checked, not trusted. Saving a set of results renames this
     // playlist into the user's, so a stale pin would hand their playlist back
-    // to be emptied by the next search.
+    // to be emptied by the next thing played.
     const byId = isScratchPlaylist(pinned) ? pinned : null
     return byId ?? playlists.find(isScratchPlaylist) ?? null
   }, [playlists, pinnedId])
 
-  // Whether it already holds what is on screen, read off the playlist itself
-  // rather than remembered here: the title is the query that built it and the
-  // count is how many matched. Derived that way it survives a reload and gives
-  // the same answer on another device, where local state would give neither.
-  const holdsCurrentView =
-    Boolean(playlist) &&
-    queryOfScratchPlaylist(playlist) === query &&
-    playlist.itemCount === count
+  // Whether it already holds a given view's set, read off the playlist itself
+  // rather than remembered here: the title carries the kind and the label, and
+  // the count is how many it holds. Derived that way it survives a reload and
+  // gives the same answer on another device.
+  const held = useMemo(() => scratchContentsOf(playlist), [playlist])
+
+  const holdsView = useCallback(
+    (kind, label, count) =>
+      Boolean(playlist) && held?.kind === kind && held?.label === label && playlist.itemCount === count,
+    [playlist, held],
+  )
 
   // Serialised: two quick clicks would otherwise interleave a rebuild with a
   // refill and leave the playlist holding half of each.
   const pending = useRef(null)
 
   const ensure = useCallback(
-    async ({ source, indices }) => {
-      if (!canEdit || indices.length === 0) return null
-      if (holdsCurrentView) return playlist.id
+    async ({ kind, label, refs, source }) => {
+      if (!canEdit || refs.length === 0) return null
+      if (holdsView(kind, label, refs.length)) return playlist.id
 
       const build = async () => {
+        const title = scratchTitle(kind, label)
         let target = playlist
         if (!target) {
-          target = await createPlaylist(scratchTitle(query))
+          target = await createPlaylist(title)
           setPinnedId(target.id)
-        } else if (target.title !== scratchTitle(query)) {
-          await renamePlaylist(target.id, scratchTitle(query))
+        } else if (target.title !== title) {
+          await renamePlaylist(target.id, title)
         }
 
         // How many are in there is read off the player, not off `target`.
         //
         // The update stream pushes `playlists` when the *set* of playlists
-        // changes -- one added, removed or renamed -- and says nothing at all
-        // when a playlist's items change. Verified against the live player: a
-        // copy of five items and a remove of two both produced a `player`
-        // message and no `playlists` message. So `itemCount` in the cache is
-        // stale from the first write onwards, and this is the one place that
-        // cannot survive being wrong.
+        // changes and says nothing when a playlist's items change -- verified
+        // against the live player. So `itemCount` in the cache is stale from
+        // the first write onwards, and this is the one place that cannot
+        // survive being wrong: trusting it once removed 99 rows out of 113,
+        // left 14 behind, and every row then addressed the wrong track.
         //
-        // Trusting it removed 99 rows out of 113 -- the count from a search two
-        // queries earlier -- left 14 behind and appended the new results after
-        // them. Every row then addressed the wrong track: clicking row 95 in a
-        // 113-row result set played whatever had drifted into position 95 of a
-        // 127-row playlist.
-        //
-        // Emptied before refilling rather than replaced wholesale: there is no
-        // replace-by-index endpoint, only add-by-path. Measured against the
-        // live player, removing every item leaves the current track playing but
-        // detached -- activeItem.index goes to -1 -- which is harmless here
-        // because a play always follows immediately.
         // The library source replaces in a single request and needs no count at
-        // all. The playlist source has to empty by range first, and the range
-        // has to be read from the player -- item changes are never pushed, so a
-        // cached itemCount is stale from the first write onwards.
-        const held = source.needsHeldCount
+        // all. The playlist source has to empty by range first.
+        const heldCount = source.needsHeldCount
           ? ((await fetchPlaylists()).find((entry) => entry.id === target.id)?.itemCount ?? 0)
           : 0
-        await source.fill(target.id, indices, held)
+        await source.fill(target.id, refs, heldCount)
 
         // And put the true count back in the cache, for the same reason:
-        // nothing else will. `holdsCurrentView` is derived from it, so without
-        // this the playlist is rebuilt on every single play and the row being
-        // played is never marked as playing.
+        // nothing else will. `holdsView` is derived from it, so without this the
+        // playlist is rebuilt on every play and the row being played is never
+        // marked as playing.
         await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY })
         return target.id
       }
@@ -91,14 +89,13 @@ export function useScratchPlaylist({ playlists, query, count, canEdit }) {
       pending.current = (pending.current ?? Promise.resolve()).then(build, build)
       return pending.current
     },
-    [canEdit, holdsCurrentView, playlist, query, setPinnedId, queryClient],
+    [canEdit, holdsView, playlist, setPinnedId, queryClient],
   )
 
-  // Saving these results as a playlist, when the scratch already *is* these
-  // results: rename it and it stops being Jean's. Nothing is copied, the
-  // duplicate that create-and-copy would leave behind never exists, and --
-  // measured against the live player -- playback carries straight on through
-  // the rename, same track, same position, because it is the same playlist.
+  // Saving a set as a playlist, when the scratch already *is* that set: rename
+  // it and it stops being Jean's. Nothing is copied, no near-duplicate is left
+  // beside the original, and -- measured against the live player -- playback
+  // carries straight on through the rename, because it is the same playlist.
   const adopt = useCallback(
     async (title) => {
       if (!playlist) return null
@@ -109,5 +106,5 @@ export function useScratchPlaylist({ playlists, query, count, canEdit }) {
     [playlist, setPinnedId],
   )
 
-  return { playlist, holdsCurrentView, ensure, adopt }
+  return { playlist, held, holdsView, ensure, adopt }
 }

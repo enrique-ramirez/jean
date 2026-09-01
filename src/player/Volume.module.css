@@ -141,6 +141,36 @@
   display: inline-flex;
 }
 
+/* A thumb is not a mouse pointer, and 26px of track is a target it misses. A
+   miss here does nothing at all -- the popover sits in the status bar, outside
+   the only scroll container, so there is nothing for the browser to pan away
+   with either -- and a control that ignores every second attempt is a control
+   that feels broken without ever being wrong.
+
+   The visible rail stays 4px. Only the hit area grows, the same trick the
+   horizontal one already uses to be grabbable without being a thick line. The
+   popover claims the gesture too, so a finger that strays off the track mid-drag
+   is still the fader's. */
+@media (hover: none), (pointer: coarse) {
+  .popover {
+    touch-action: none;
+  }
+
+  .slider[data-orientation='vertical'] {
+    width: 44px;
+  }
+
+  /* Bigger than the pointer's 10px, and always visible: on touch there is no
+     hover to reveal it with, so a thumb that only appears once you are already
+     dragging is a thumb you aimed at from memory. */
+  .thumb {
+    width: 14px;
+    height: 14px;
+    opacity: 1;
+    scale: 1;
+  }
+}
+
 .popover {
   position: absolute;
   bottom: calc(100% + 10px);

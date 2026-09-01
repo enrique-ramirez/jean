@@ -178,3 +178,75 @@ test.describe('the seek bar', () => {
     expect(style.userSelect === 'none' || style.webkitUserSelect === 'none').toBe(true)
   })
 })
+
+// A finger, not a mouse. The rest of this file drives the faders with the
+// pointer and skips on mobile, which quietly encoded the assumption that
+// dragging one is a mouse gesture -- and on a phone the volume column is a
+// thing people drag with a thumb all day.
+//
+// Driven through CDP rather than dispatched as DOM events, because what is
+// under test is the browser's own decision about who the gesture belongs to.
+// Without `touch-action: none` on the track it decides the finger is panning
+// the page, sends `pointercancel`, and stops delivering moves -- so the thumb
+// stops wherever it had got to and the value lands short. A dispatched
+// `pointermove` would sail past that and pass either way.
+test.describe('dragging the fader with a finger', () => {
+  test.skip(({ isMobile }) => !isMobile, 'this is the touch gesture')
+
+  const swipe = async (page, box, from, to) => {
+    const cdp = await page.context().newCDPSession(page)
+    const at = (fraction) => ({
+      x: box.x + box.width / 2,
+      // The column runs bottom-up: the top of the track is the maximum.
+      y: box.y + box.height * (1 - fraction),
+    })
+
+    const send = (type, point) =>
+      cdp.send('Input.dispatchTouchEvent', {
+        type,
+        touchPoints: type === 'touchEnd' ? [] : [{ x: point.x, y: point.y }],
+      })
+
+    await send('touchStart', at(from))
+    for (let step = 1; step <= 12; step += 1) {
+      await send('touchMove', at(from + ((to - from) * step) / 12))
+    }
+    await send('touchEnd', at(to))
+    await cdp.detach()
+  }
+
+  test('the target is big enough to aim at', async ({ page }) => {
+    await openApp(page)
+    await showVolume(page)
+
+    // A thumb is about 44px of contact, and the column was 26px wide. What
+    // makes the miss expensive rather than merely annoying is where it lands:
+    // just off the slider is the popover, which does not claim the gesture, so
+    // the browser reads the same downward drag as a page pan and takes it.
+    const box = await volume(page).boundingBox()
+    expect(box.width, `the fader is ${Math.round(box.width)}px of thumb`).toBeGreaterThanOrEqual(44)
+  })
+
+  test('the value follows the finger the whole way', async ({ page, player }) => {
+    await openApp(page)
+    await showVolume(page)
+
+    const box = await volume(page).boundingBox()
+    await swipe(page, box, 0.9, 0.25)
+
+    // Landed near where the finger let go, not stranded partway. The gesture
+    // crosses most of the track, so a cancelled pointer stream shows up as a
+    // value far from the target rather than as a rounding difference.
+    await expect.poll(() => volume(page).getAttribute('aria-valuenow'), {
+      message: 'the fader did not follow the finger to the end of the swipe',
+    }).toBeTruthy()
+
+    const landed = Number(await volume(page).getAttribute('aria-valuenow'))
+    expect(Math.abs(landed - 25), `fader landed at ${landed}%, aimed at 25%`).toBeLessThan(8)
+
+    // And it reached the player. How the writes are coalesced is the mouse
+    // drag's test above -- the same `useCoalescedWrite` is under both, and
+    // proving it twice would only mean setting the latency up twice.
+    await expect.poll(() => volumesSent(player).length).toBeGreaterThan(0)
+  })
+})

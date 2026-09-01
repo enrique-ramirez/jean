@@ -84,3 +84,88 @@ test.describe('with motion allowed', () => {
     expect(at.painted).toBeGreaterThan(at.laidOut)
   })
 })
+
+// The other piece of continuous motion, and the one with a rule to obey: the
+// pill is a button, and a button that will not hold still is a button you
+// cannot click. So the arrow moves and the pill does not.
+test.describe('the now-playing arrow', () => {
+  test.use({ motion: 'allow', settings: { 'jean.heatIntroSeen': true } })
+
+  const pill = (page) => page.getByRole('button', { name: 'Now playing' })
+
+  // Consecutive frames rather than a timer: the nod runs at 2.3s, so a sample
+  // slower than a frame can land twice in the same place and prove nothing.
+  const frames = (page, count) =>
+    page.evaluate(
+      (wanted) =>
+        new Promise((resolve) => {
+          const seen = []
+          const step = () => {
+            const arrow = document.querySelector('[data-visible="true"] svg')
+            const pilled = document.querySelector('[data-visible="true"]')
+            seen.push({
+              arrow: arrow ? getComputedStyle(arrow).transform : null,
+              box: pilled ? pilled.getBoundingClientRect().top.toFixed(2) : null,
+            })
+            if (seen.length < wanted) requestAnimationFrame(step)
+            else resolve(seen)
+          }
+          requestAnimationFrame(step)
+        }),
+      count,
+    )
+
+  // Played from the player's side rather than by clicking a row, then scrolled
+  // back to the top: following playback would otherwise scroll the track we
+  // just started straight back into view, and the pill only exists while it is
+  // out of it.
+  const showPill = async (page, player) => {
+    await page.goto('/#/p7')
+    await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
+    player.playItem('p7', 40)
+    await expect(page.locator('footer')).toContainText('Goodnite, Noises Everywhere')
+
+    // Let the follow finish before scrolling away from it. It is an animated
+    // scroll, so racing it means scrolling to the top and being carried back.
+    await page.waitForTimeout(1000)
+    await page.evaluate(() => document.querySelector('main').scrollTo(0, 0))
+    await expect.poll(() => page.evaluate(() => document.querySelector('main').scrollTop)).toBe(0)
+    await expect(pill(page)).toBeVisible()
+    // And let it finish arriving. The pill slides in over 240ms, so sampling
+    // straight away measures its entrance rather than the arrow's nod -- which
+    // would make the "the pill does not move" assertion fail on the one bit of
+    // movement it is supposed to allow.
+    await page.waitForTimeout(400)
+  }
+
+  test('the arrow moves and the pill it sits in does not', async ({ page, player }) => {
+    await showPill(page, player)
+    const seen = await frames(page, 20)
+
+    const moved = new Set(seen.map((frame) => frame.arrow))
+    expect(moved.size, 'the arrow never moved').toBeGreaterThan(1)
+
+    // The whole reason this is on the icon rather than on the pill. Playwright
+    // will not click a box that is still moving, and neither will a thumb.
+    const boxes = new Set(seen.map((frame) => frame.box))
+    expect(boxes.size, `the pill moved through ${boxes.size} positions`).toBe(1)
+  })
+
+  test('it points the way it is pointing', async ({ page, player }) => {
+    await showPill(page, player)
+
+    // Playing track below, list scrolled to the top: the arrow points down.
+    await expect(pill(page)).toHaveAttribute('data-direction', 'down')
+    const named = await page.evaluate(
+      () => getComputedStyle(document.querySelector('[data-visible="true"] svg')).animationName,
+    )
+    expect(named).toContain('nod-down')
+  })
+
+  test('and it stops when the system says stop', async ({ page, player }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await showPill(page, player)
+    const seen = await frames(page, 12)
+    expect(new Set(seen.map((frame) => frame.arrow)).size).toBe(1)
+  })
+})

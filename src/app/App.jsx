@@ -240,6 +240,7 @@ export function App() {
         <div className={styles.actions}>
           <Button
             variant="ghost"
+            className={styles.shortcuts}
             icon={Keyboard}
             aria-label="Keyboard shortcuts"
             onClick={() => setIsSheetOpen(true)}

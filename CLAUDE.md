@@ -1106,6 +1106,18 @@ set it true in the effect body as well. Usually it is not needed: work that only
 touches refs and network calls is safe to finish after unmount, and finishing it
 is often the correct behaviour.
 
+**A touch target is not a pointer target, and a fader is where that shows.** The
+mobile volume column was 26px of track -- a thumb is about 44px of contact, so it
+missed often, and a miss there does nothing at all: the popover sits in the status
+bar, outside the only scroll container, so there is not even a page pan to blame
+it on. A control that ignores every second attempt feels broken without ever being
+wrong. The hit area is widened on `(pointer: coarse)` while the visible rail stays
+4px, and the thumb is drawn permanently there, because on touch there is no hover
+to reveal it with and a thumb that appears once you are already dragging is one
+you aimed at from memory. The keyboard-shortcuts button goes on the same query and
+for the same kind of reason -- and nothing is lost where a keyboard exists, since
+the sheet is bound to `?`.
+
 **A control you drag must be unselectable.** Press on a slider without
 `user-select: none` and the browser starts a text selection running out across
 whatever sits beside it; dragging a selection is a native drag, so it paints a
@@ -1113,7 +1125,11 @@ translucent snapshot of the control and follows the pointer with that instead of
 moving the thumb. It looks like the slider has come loose, and it reads as
 intermittent because it depends on where the press landed and what was already
 selected. `useDragFraction` returns the style with its handlers so the two
-cannot be separated.
+cannot be separated. It carries `touch-action: none` as well, which each consumer
+used to declare in its own CSS: without it the browser keeps the gesture for
+panning and cancels the pointer stream mid-drag -- *measured*, a swipe aimed at
+25% lands at 74% -- and a guarantee a primitive depends on should not be one every
+caller has to remember.
 
 **Writes driven by a drag must be coalesced, not fired per event.** One pointer
 gesture is ~40 pointer moves; a request each floods the player, and the responses

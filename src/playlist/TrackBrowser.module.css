@@ -75,8 +75,82 @@
   pointer-events: none;
 }
 
+/* The arrow leans the way it points rather than bobbing evenly about its
+   centre: an even bob is a thing vibrating, and this one is meant to be
+   indicating. Two thirds of the travel go in the direction of travel, which is
+   about two pixels in total -- enough to catch the eye at the edge of it, not
+   enough to look at.
+   Two animations on near-coprime durations rather than one loop, per the rule
+   the play/pause toggle follows: 850ms and 900ms are 17:18, so they come back
+   into phase once every 15 seconds and the motion never quite repeats or reads
+   as a mechanism.
+   `ease-in-out` rather than `--ease`, which is an entrance curve and lands like
+   a stop each time.
+
+   The numbers are the whole of it, and they were arrived at the hard way. The
+   first pass moved 2.1px over a 2.3s cycle -- about **1.8px a second** -- and
+   read as stuttering rather than as motion: the transform changed on every
+   frame, but by so little that the screen had nothing to draw between one and
+   the next, so it held still, jumped, held still. Slow is not the same as
+   smooth, and below roughly two pixels a second nothing is.
+   1.6px over 850ms is ~3.8px a second: half the travel of the version that
+   fixed the stutter, at a bit more than half the speed, which keeps it clear of
+   that floor while reading as a lean rather than a bounce. 1.6px is a ninth of
+   the 14px arrow.
+   Per *second*, not per frame, on purpose: the same animation moves half as far
+   per frame on a 120Hz display, so a per-frame figure describes the monitor
+   rather than the motion -- which is exactly the trap that made the first
+   measurement here look conclusive when it had only sampled a third of a
+   cycle.
+   Compositor only, and -- the part that matters -- it moves the *icon*, not the
+   button. Continuous motion must never move something you are trying to click,
+   and the pill's own box is laid out, so a transform on a child leaves it
+   exactly where it was. */
+@keyframes nod-up {
+  from,
+  to {
+    transform: translateY(0.5px);
+  }
+  50% {
+    transform: translateY(-1.1px);
+  }
+}
+
+@keyframes nod-down {
+  from,
+  to {
+    transform: translateY(-0.5px);
+  }
+  50% {
+    transform: translateY(1.1px);
+  }
+}
+
+@keyframes nod-breath {
+  from,
+  to {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .pill svg {
   color: var(--accent);
+}
+
+/* Only while it is on screen. The pill stays mounted so it can animate out, and
+   a compositor animation ticking away behind an invisible element for the whole
+   session is a cost with nothing to show for it. */
+.pill[data-visible='true'] svg {
+  animation:
+    nod-up 850ms ease-in-out infinite,
+    nod-breath 900ms ease-in-out infinite;
+}
+
+.pill[data-visible='true'][data-direction='down'] svg {
+  animation-name: nod-down, nod-breath;
 }
 
 @media (max-width: 720px) {

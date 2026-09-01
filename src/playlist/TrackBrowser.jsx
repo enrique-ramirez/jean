@@ -426,6 +426,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
             type="button"
             className={styles.pill}
             data-visible={Boolean(activeDirection)}
+            data-direction={shownDirection}
             tabIndex={activeDirection ? 0 : -1}
             onClick={() => scrollToTrack(activeIndex, { align: 'center', animate: true })}
           >

@@ -192,3 +192,16 @@ test.describe('where a view puts you when you come back to it', () => {
     await expect.poll(() => scrollTop(page)).toBe(900)
   })
 })
+
+test.describe('chrome that only means something with a keyboard', () => {
+  test('the shortcuts button is there on a pointer and gone on touch', async ({ page }, info) => {
+    await page.goto('/')
+    const shortcuts = page.getByRole('button', { name: 'Keyboard shortcuts' })
+
+    // Asked as a pointer question rather than a width one, because that is the
+    // actual question -- a narrow desktop window still has a keyboard. Nothing
+    // is lost where one exists either: the sheet is bound to `?`, so the
+    // keyboard opens the list of things the keyboard does.
+    await expect(shortcuts).toBeVisible({ visible: info.project.name !== 'mobile' })
+  })
+})

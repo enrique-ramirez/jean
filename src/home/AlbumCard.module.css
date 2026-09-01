@@ -1,34 +1,34 @@
 .card {
-  position: relative;
-  display: block;
-  flex: 0 0 auto;
-  width: var(--cover);
-  /* The card *is* the sleeve. The words go on it, not under it -- and it is
+	position: relative;
+	display: block;
+	flex: 0 0 auto;
+	width: var(--cover);
+	/* The card *is* the sleeve. The words go on it, not under it -- and it is
      taller than it is wide, so they have somewhere to sit that is mostly
      dissolved picture rather than the middle of the artwork. */
-  height: var(--cover-h);
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  scroll-snap-align: start;
-  transform: translateZ(0);
-  transition: transform 240ms var(--ease);
+	height: var(--cover-h);
+	padding: 0;
+	border: 0;
+	background: none;
+	text-align: left;
+	scroll-snap-align: start;
+	transform: translateZ(0);
+	transition: transform 240ms var(--ease);
 }
 
 .card:hover,
 .card:focus-visible {
-  transform: translateY(-4px);
+	transform: translateY(-4px);
 }
 
 .cover {
-  position: absolute;
-  inset: 0;
-  display: block;
-  border-radius: var(--radius);
-  /* Only ever seen where the sleeve has dissolved, which is exactly where the
+	position: absolute;
+	inset: 0;
+	display: block;
+	border-radius: var(--radius);
+	/* Only ever seen where the sleeve has dissolved, which is exactly where the
      card would otherwise stop existing. */
-  background: var(--album-ground);
+	background: var(--album-ground);
 }
 
 /* The sleeve dissolves rather than stopping. Masked to transparent, not covered
@@ -37,44 +37,44 @@
    it and is therefore correct in both by construction.
    Never cropped -- the fade starts below the middle, so the artwork is whole. */
 .art {
-  width: 100%;
-  height: 100%;
-  border-radius: var(--radius);
-  object-fit: cover;
-  background: var(--surface);
+	width: 100%;
+	height: 100%;
+	border-radius: var(--radius);
+	object-fit: cover;
+	background: var(--surface);
 
-  /* A hairline inside the sleeve, because a pale cover on the light theme is
+	/* A hairline inside the sleeve, because a pale cover on the light theme is
      otherwise a white square on a white page with no edge at all -- measured,
      four of six sleeves on one row simply disappeared. It is drawn *on* the
      image so the mask below fades it out along with everything else, rather
      than leaving a rectangle floating around a dissolved picture. */
-  box-shadow: inset 0 0 0 1px oklch(0.5 0.02 260 / 0.22);
+	box-shadow: inset 0 0 0 1px oklch(0.5 0.02 260 / 0.22);
 
-  /* The sleeve dissolves rather than stopping, which is what makes room for the
+	/* The sleeve dissolves rather than stopping, which is what makes room for the
      words. Masked to transparent, not covered by a scrim: a scrim has to know
      the background colour and would need a second hand-tuned value for the
      light theme, while a mask reveals whatever is behind it and is therefore
      correct in both by construction. */
-  mask-image: linear-gradient(
-    180deg,
-    #000 0%,
-    #000 50%,
-    oklch(0 0 0 / 0.62) 68%,
-    oklch(0 0 0 / 0.18) 83%,
-    transparent 96%
-  );
+	mask-image: linear-gradient(
+		180deg,
+		#000 0%,
+		#000 50%,
+		oklch(0 0 0 / 0.62) 68%,
+		oklch(0 0 0 / 0.18) 83%,
+		transparent 96%
+	);
 }
 
 /* Two lines now that the caption has moved onto the sleeve. Sits in the
    dissolved part, so it reads against the page rather than against whatever the
    artwork happens to be doing down there. */
 .meta {
-  position: absolute;
-  inset: auto 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 0 10px 10px;
+	position: absolute;
+	inset: auto 0 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 0 10px 10px;
 }
 
 /* Belt and braces. The mask alone leaves the artwork around 50% opaque where
@@ -83,41 +83,41 @@
    words in the page colour underneath. `--bg` is a token, so it is still one
    rule for both themes rather than a hand-tuned value each. */
 .meta::before {
-  content: '';
-  position: absolute;
-  inset: -22px 0 0;
-  border-radius: 0 0 var(--radius) var(--radius);
-  background: linear-gradient(180deg, transparent, var(--album-ground) 72%);
+	content: "";
+	position: absolute;
+	inset: -22px 0 0;
+	border-radius: 0 0 var(--radius) var(--radius);
+	background: linear-gradient(180deg, transparent, var(--album-ground) 72%);
 }
 
 .album,
 .artist {
-  position: relative;
+	position: relative;
 }
 
 .album {
-  overflow: hidden;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 160ms var(--ease);
+	overflow: hidden;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	line-height: 1.3;
+	color: var(--text);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	transition: color 160ms var(--ease);
 }
 
 .card:hover .album,
 .card:focus-visible .album {
-  color: var(--accent);
+	color: var(--accent);
 }
 
 .artist {
-  overflow: hidden;
-  font-size: 0.75rem;
-  line-height: 1.3;
-  color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+	overflow: hidden;
+	font-size: 0.75rem;
+	line-height: 1.3;
+	color: var(--muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* The reason this album is on this shelf: the one line here that is about you
@@ -125,35 +125,35 @@
    still fully opaque -- so it carries its own ground rather than relying on the
    picture underneath being quiet. */
 .caption {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  z-index: 1;
-  max-width: calc(100% - 18px);
-  overflow: hidden;
-  padding: 3px 8px;
-  border: 1px solid oklch(1 0 0 / 0.12);
-  border-radius: var(--radius-pill);
-  /* Deliberately the same in both themes. This is the one element on the page
+	position: absolute;
+	top: 9px;
+	right: 9px;
+	z-index: 1;
+	max-width: calc(100% - 18px);
+	overflow: hidden;
+	padding: 3px 8px;
+	border: 1px solid oklch(1 0 0 / 0.12);
+	border-radius: var(--radius-pill);
+	/* Deliberately the same in both themes. This is the one element on the page
      that does not sit on the theme -- it sits on a photograph, and a sleeve has
      no idea whether the app is light or dark. A chip that flipped with the
      theme would be answering the wrong question, and thirty filled accent pills
      turned out to be most of Jean's accent budget spent on captions. Frosted
      rather than flat so it belongs to the artwork instead of being pasted on. */
-  background: oklch(0.16 0.012 260 / 0.58);
-  backdrop-filter: blur(10px) saturate(1.3);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
-  color: oklch(0.97 0.004 250);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+	background: oklch(0.16 0.012 260 / 0.58);
+	backdrop-filter: blur(10px) saturate(1.3);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	line-height: 1.35;
+	font-variant-numeric: tabular-nums;
+	color: oklch(0.97 0.004 250);
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card,
-  .album {
-    transition: none;
-  }
+	.card,
+	.album {
+		transition: none;
+	}
 }

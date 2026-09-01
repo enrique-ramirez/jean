@@ -1,12 +1,12 @@
 .artwork {
-  flex: 0 0 auto;
-  border-radius: 5px;
-  object-fit: cover;
-  background: var(--surface-sunken);
+	flex: 0 0 auto;
+	border-radius: 5px;
+	object-fit: cover;
+	background: var(--surface-sunken);
 }
 
 .fallback {
-  display: grid;
-  place-items: center;
-  color: var(--faint);
+	display: grid;
+	place-items: center;
+	color: var(--faint);
 }

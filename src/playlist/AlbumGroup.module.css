@@ -1,50 +1,50 @@
 .group {
-  display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
-  gap: 20px;
-  padding: 14px 24px;
+	display: grid;
+	grid-template-columns: 160px minmax(0, 1fr);
+	gap: 20px;
+	padding: 14px 24px;
 }
 
 .aside {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .art {
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+	border-radius: var(--radius-sm);
+	box-shadow: var(--shadow);
 }
 
 .caption {
-  min-width: 0;
+	min-width: 0;
 }
 
 /* Clamped so the caption can never grow past the height the virtualiser
    allotted this group and spill into the next one. */
 .title {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.25;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	overflow: hidden;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	line-height: 1.25;
 }
 
 .meta {
-  overflow: hidden;
-  font-size: 0.75rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
+	overflow: hidden;
+	font-size: 0.75rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--muted);
 }
 
 .tracks {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
 }
 
 /* Rows inside a group are tighter and lose the outer gutter -- the cover is
@@ -56,11 +56,18 @@
    every row two -- and two lines of 14px and 12.5px type in 34px left about half
    a pixel above and below, so the text of one row all but touched the next. The
    group is measured by the virtualiser, so letting a row grow costs nothing. */
-.tracks > * {
-  min-height: 34px;
-  height: auto;
-  --row-gutter: 8px;
-  --row-pad-block: 4px;
+/* `.group` on the front is load-bearing, not decoration. These override
+   `.track` in TrackRow.module.css, which has the same specificity -- so
+   without it the winner is whichever stylesheet the bundler happened to put
+   last, and that is decided by import order in the component. Reordering the
+   imports silently took `height: auto` away and left every two-line row
+   crushed back to 34px. One extra class makes it a fact about the CSS rather
+   than about the module graph. */
+.group .tracks > * {
+	min-height: 34px;
+	height: auto;
+	--row-gutter: 8px;
+	--row-pad-block: 4px;
 }
 
 /* The eyebrow the view header already uses, at row scale: uppercase, tracked
@@ -72,22 +79,22 @@
    division of the list. It stops where the rows stop, not where the group does,
    so it sits on the same two lines the tracks do. */
 .disc {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-inline: var(--row-gutter);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--faint);
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding-inline: var(--row-gutter);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--faint);
 }
 
 .disc::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border);
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: var(--border);
 }
 
 /* Overrides the 34px every direct child of .tracks gets. Shorter than a row on
@@ -95,21 +102,21 @@
    Air above every heading but the first -- disc one's boundary is the top of
    the group, which the padding already draws. */
 .tracks > .disc {
-  height: 26px;
-  margin-top: 14px;
+	height: 26px;
+	margin-top: 14px;
 }
 
 .tracks > .disc:first-child {
-  margin-top: 0;
+	margin-top: 0;
 }
 
 /* On a phone the cover moves above the tracks: side-by-side leaves the titles
    about half the screen, which is not enough for real album and track names. */
-.group[data-compact='true'] {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  padding-top: 10px;
-  padding-bottom: 14px;
+.group[data-compact="true"] {
+	grid-template-columns: minmax(0, 1fr);
+	gap: 10px;
+	padding-top: 10px;
+	padding-bottom: 14px;
 }
 
 /* The horizontal gutter is deliberately NOT set by [data-compact]. That comes
@@ -120,25 +127,25 @@
    It goes on the group rather than on the rows so the cover, the album title
    and the track numbers keep one left edge: stacked, they are the same column. */
 @media (max-width: 720px) {
-  .group {
-    padding-inline: 16px;
-  }
+	.group {
+		padding-inline: 16px;
+	}
 }
 
-.group[data-compact='true'] .aside {
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
+.group[data-compact="true"] .aside {
+	flex-direction: row;
+	align-items: center;
+	gap: 10px;
 }
 
-.group[data-compact='true'] .title {
-  -webkit-line-clamp: 1;
-  line-clamp: 1;
-  font-size: 0.875rem;
+.group[data-compact="true"] .title {
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
+	font-size: 0.875rem;
 }
 
 /* Same 8px as the wide layout -- stated rather than inherited, so it does not
    depend on this file happening to come after TrackRow's media query. */
-.group[data-compact='true'] .tracks > * {
-  --row-gutter: 8px;
+.group[data-compact="true"] .tracks > * {
+	--row-gutter: 8px;
 }

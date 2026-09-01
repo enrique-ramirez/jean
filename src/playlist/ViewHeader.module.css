@@ -1,14 +1,14 @@
 .header {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    'naming aside'
-    'meta   aside';
-  align-content: start;
-  gap: 13px 24px;
-  padding: 28px 24px 20px;
-  /* Deliberately not clipped, and it must stay that way.
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas:
+		"naming aside"
+		"meta   aside";
+	align-content: start;
+	gap: 13px 24px;
+	padding: 28px 24px 20px;
+	/* Deliberately not clipped, and it must stay that way.
      This was `overflow: hidden`, which clipped nothing -- the mosaic already
      clips itself and nothing else here reaches an edge -- while making the
      header a scroll container, which `hidden` still is. The save-playlist
@@ -17,171 +17,171 @@
      carrying the title and the mosaic up out of sight while the page had not
      moved at all. `clip` would have stopped the scrolling and then cut the
      popover's buttons off instead. */
-  overflow: visible;
-  border-bottom: 1px solid var(--border);
+	overflow: visible;
+	border-bottom: 1px solid var(--border);
 }
 
 .header::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.06),
-    transparent 72%
-  );
-  pointer-events: none;
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(
+		180deg,
+		oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.06),
+		transparent 72%
+	);
+	pointer-events: none;
 }
 
 /* Wide: naming and meta stack into one column beside the mosaic, which is what
    the single flex column used to be -- the gaps are the same 13px, so nothing
    moves. */
 .naming {
-  position: relative;
-  grid-area: naming;
-  display: flex;
-  flex-direction: column;
-  gap: 13px;
-  min-width: 0;
+	position: relative;
+	grid-area: naming;
+	display: flex;
+	flex-direction: column;
+	gap: 13px;
+	min-width: 0;
 }
 
 .meta {
-  position: relative;
-  grid-area: meta;
-  display: flex;
-  flex-direction: column;
-  gap: 13px;
-  min-width: 0;
+	position: relative;
+	grid-area: meta;
+	display: flex;
+	flex-direction: column;
+	gap: 13px;
+	min-width: 0;
 }
 
 .aside {
-  position: relative;
-  grid-area: aside;
-  align-self: start;
+	position: relative;
+	grid-area: aside;
+	align-self: start;
 }
 
 .eyebrow {
-  margin: 0;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--faint);
+	margin: 0;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--faint);
 }
 
 .title {
-  margin: 0;
-  font-size: clamp(1.75rem, 4.2vw, 3rem);
-  font-weight: 680;
-  line-height: 1.05;
-  letter-spacing: -0.025em;
-  overflow-wrap: anywhere;
+	margin: 0;
+	font-size: clamp(1.75rem, 4.2vw, 3rem);
+	font-weight: 680;
+	line-height: 1.05;
+	letter-spacing: -0.025em;
+	overflow-wrap: anywhere;
 }
 
 .stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  font-size: 0.8125rem;
-  color: var(--muted);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 10px;
+	font-size: 0.8125rem;
+	color: var(--muted);
 }
 
 .stats b {
-  font-weight: 600;
-  color: var(--text);
+	font-weight: 600;
+	color: var(--text);
 }
 
 .separator {
-  color: var(--faint);
+	color: var(--faint);
 }
 
 .chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 }
 
 .actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 2px;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 2px;
 }
 
 .meter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 4px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: 4px;
 }
 
 .meterTrack {
-  width: 104px;
-  height: 5px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-sunken);
+	width: 104px;
+	height: 5px;
+	overflow: hidden;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface-sunken);
 }
 
 .meterFill {
-  height: 100%;
-  background: var(--accent);
-  transform-origin: left;
+	height: 100%;
+	background: var(--accent);
+	transform-origin: left;
 }
 
 @media (max-width: 720px) {
-  /* The mosaic moves up beside the name instead of sitting on a row of its own
+	/* The mosaic moves up beside the name instead of sitting on a row of its own
      with nothing to its right. Everything that wants the full width -- the
      stats, the chips, the buttons -- keeps it. */
-  .header {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas:
-      'aside naming'
-      'meta  meta';
-    gap: 16px 14px;
-    padding: 20px 16px 16px;
-  }
+	.header {
+		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-areas:
+			"aside naming"
+			"meta  meta";
+		gap: 16px 14px;
+		padding: 20px 16px 16px;
+	}
 
-  /* Against a square, a two-line name reads better centred than hung from the
+	/* Against a square, a two-line name reads better centred than hung from the
      top with the space left underneath it. */
-  .aside,
-  .naming {
-    align-self: center;
-  }
+	.aside,
+	.naming {
+		align-self: center;
+	}
 
-  .naming {
-    gap: 6px;
-  }
+	.naming {
+		gap: 6px;
+	}
 
-  /* Two is the gist. Four wrap onto a second row, and a second row of
+	/* Two is the gist. Four wrap onto a second row, and a second row of
      percentages is not worth the height it costs on a phone. */
-  .chips > *:nth-child(n + 3) {
-    display: none;
-  }
+	.chips > *:nth-child(n + 3) {
+		display: none;
+	}
 
-  /* The block had no right edge: every row was some natural length and stopped
+	/* The block had no right edge: every row was some natural length and stopped
      wherever it stopped, so the whole header hung off the left margin. Two rows
      reach the margin now and give the rest something to be ragged against --
      the meter by stretching, since a progress bar is happiest as long as it can
      be, and the buttons by moving apart rather than growing. Bookends, not a
      filled bar: they keep the size they have everywhere else, so the pair still
      reads as one primary action and one secondary rather than as two equals. */
-  .meter {
-    flex-basis: 100%;
-    margin-left: 0;
-  }
+	.meter {
+		flex-basis: 100%;
+		margin-left: 0;
+	}
 
-  .meterTrack {
-    flex: 1;
-    width: auto;
-  }
+	.meterTrack {
+		flex: 1;
+		width: auto;
+	}
 
-  /* Works for whatever a view puts here: two actions land at the two margins,
+	/* Works for whatever a view puts here: two actions land at the two margins,
      and a lone one simply stays at the left. */
-  .actions {
-    justify-content: space-between;
-  }
+	.actions {
+		justify-content: space-between;
+	}
 }

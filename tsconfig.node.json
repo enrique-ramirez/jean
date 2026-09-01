@@ -1,0 +1,23 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"module": "NodeNext",
+		"moduleResolution": "nodenext",
+		"types": ["node"],
+
+		// The fake player is run straight by `node`, which strips types rather
+		// than compiling them: specifiers therefore have to name the real file
+		// (`./server.ts`, not `./server.js`), and anything that is not pure
+		// erasable syntax -- enums, namespaces, parameter properties -- has to be
+		// a compile error here rather than a crash at `pnpm fake`.
+		"allowImportingTsExtensions": true,
+		"erasableSyntaxOnly": true,
+
+		"composite": true,
+		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo"
+	},
+	// The API types come along because the fake is checked against them: a
+	// response shape that drifts from what the app expects is the bug this whole
+	// suite exists to catch.
+	"include": ["vite.config.ts", "test/fake-api/**/*.ts", "src/api/types.ts"]
+}

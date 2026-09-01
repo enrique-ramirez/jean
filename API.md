@@ -51,7 +51,7 @@ during uninterrupted playback. Messages arrive on track change, play/pause, volu
 playlist switch — not on a timer, and `position` alone does not trigger one.
 
 Consequences: a progress display has to interpolate locally from the last message
-(see `src/player/position.js`), and a long silence is normal, not a stall.
+(see `src/player/position.ts`), and a long silence is normal, not a stall.
 
 **`playlists` fires when the *set* of playlists changes -- not when their contents
 do.** *Measured* against the live player, subscribing to `player=true&playlists=true`
@@ -407,7 +407,7 @@ sheets and disc images, so it is not decoration.
 > order -- *measured*, `sort=%path%` and no sort return byte-identical lists over
 > 30,441 tracks. It is stated so that the expression a filled playlist is sorted by is
 > demonstrably the same one the rows on screen are in. Change one and you change the
-> other; see `LIBRARY_SORT` in `src/api/beefweb.js`.
+> other; see `LIBRARY_SORT` in `src/api/beefweb.ts`.
 
 > **There is no caching (stated in the PR), and it is measurable.** Every call
 > enumerates the library and computes a relative path per item. *Measured* at 30,441
@@ -451,7 +451,7 @@ Folder nodes carry `itemCount` and no columns; track nodes carry `subsong` and
 > forward-slashed (`K/Korn/…`). Nothing tells a client where the library folders are,
 > so the two are matched by **suffix** after normalising separators — a relative path
 > is unique within the library, so it cannot collide. `pathMatchesLibraryPath()` in
-> `api/beefweb.js`.
+> `api/beefweb.ts`.
 
 *Measured*: 27 folders at the top level of a 30,441-track library. **Ordering is a
 byte-wise case-sensitive compare**, so `Zappa` sorts before `abba` — re-sort

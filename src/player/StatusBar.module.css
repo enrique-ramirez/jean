@@ -1,138 +1,140 @@
 .statusbar {
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  padding-bottom: env(safe-area-inset-bottom);
+	border-top: 1px solid var(--border);
+	background: var(--surface);
+	padding-bottom: env(safe-area-inset-bottom);
 }
 
 .row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 16px;
-  padding: 10px 20px;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	align-items: center;
+	gap: 16px;
+	padding: 10px 20px;
 }
 
 .now {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
 }
 
 .art {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-sm);
+	flex: 0 0 auto;
+	width: 44px;
+	height: 44px;
+	border-radius: var(--radius-sm);
 }
 
 .names {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
 }
 
 .title {
-  overflow: hidden;
-  font-size: 0.875rem;
-  font-weight: 550;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+	overflow: hidden;
+	font-size: 0.875rem;
+	font-weight: 550;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .artist {
-  overflow: hidden;
-  font-size: 0.78125rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
+	overflow: hidden;
+	font-size: 0.78125rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--muted);
 }
 
 /* Only present when playback is inside a set Jean made -- a shelf, a search --
    which is exactly when the sidebar cannot show you a playlist to point at. */
 .from {
-  overflow: hidden;
-  font-size: 0.6875rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--faint);
+	overflow: hidden;
+	font-size: 0.6875rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--faint);
 }
 
 .from b {
-  font-weight: 550;
-  color: var(--accent);
+	font-weight: 550;
+	color: var(--accent);
 }
 
 .transport {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
 }
 
 /* A mode rather than an action, so it is quieter than the transport until it
    is on -- and then it is the only accent down here besides the play button,
    which is the whole point of a state you need to be able to read at a glance. */
 .order {
-  display: grid;
-  place-items: center;
-  padding: 8px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--faint);
-  transition: color 0.12s var(--ease), background-color 0.12s var(--ease);
+	display: grid;
+	place-items: center;
+	padding: 8px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--faint);
+	transition:
+		color 0.12s var(--ease),
+		background-color 0.12s var(--ease);
 }
 
 .order:hover:not(:disabled) {
-  background: var(--surface-sunken);
-  color: var(--text);
+	background: var(--surface-sunken);
+	color: var(--text);
 }
 
-.order[aria-pressed='true'] {
-  color: var(--accent);
+.order[aria-pressed="true"] {
+	color: var(--accent);
 }
 
 .order:disabled {
-  opacity: 0.35;
+	opacity: 0.35;
 }
 
 .skip {
-  display: grid;
-  place-items: center;
-  padding: 8px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--muted);
+	display: grid;
+	place-items: center;
+	padding: 8px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
 }
 
 .skip:hover {
-  background: var(--surface-sunken);
-  color: var(--text);
+	background: var(--surface-sunken);
+	color: var(--text);
 }
 
 .toggle {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--on-accent);
-  transition: transform 0.12s var(--ease);
+	position: relative;
+	display: grid;
+	place-items: center;
+	width: 42px;
+	height: 42px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: var(--accent);
+	color: var(--on-accent);
+	transition: transform 0.12s var(--ease);
 }
 
 /* `scale` is its own property here so hover and press compose with the
    `transform` the breathing animation owns, instead of overwriting it. */
 .toggle:hover {
-  transform: scale(1.06);
+	transform: scale(1.06);
 }
 
 .toggle:active {
-  transform: scale(0.95);
+	transform: scale(0.95);
 }
 
 /* Playing-state motion.
@@ -149,54 +151,90 @@
 /* --- equalizer -------------------------------------------------------------
    The icon is already two bars, so it dances on its own. Unequal durations
    matter more than the keyframes: matched bars march, drifting bars play. */
-.toggle[data-motion='equalizer'][data-playing='true'] rect {
-  transform-box: fill-box;
-  transform-origin: center;
+.toggle[data-motion="equalizer"][data-playing="true"] rect {
+	transform-box: fill-box;
+	transform-origin: center;
 }
 
-.toggle[data-motion='equalizer'][data-playing='true'] rect:nth-child(1) {
-  animation: dance-a 1091ms ease-in-out infinite;
+.toggle[data-motion="equalizer"][data-playing="true"] rect:nth-child(1) {
+	animation: dance-a 1091ms ease-in-out infinite;
 }
 
-.toggle[data-motion='equalizer'][data-playing='true'] rect:nth-child(2) {
-  animation: dance-b 829ms ease-in-out infinite;
+.toggle[data-motion="equalizer"][data-playing="true"] rect:nth-child(2) {
+	animation: dance-b 829ms ease-in-out infinite;
 }
 
 /* The beat. Nothing here may translate: the button holds its position, so the
    layers are limited to scale (about its own centre) and rotation. Durations
    are coprime, so they only realign after ~23 minutes. */
-.toggle[data-motion='equalizer'][data-playing='true'] {
-  animation:
-    pump 731ms ease-in-out infinite,
-    lean 1873ms ease-in-out infinite;
+.toggle[data-motion="equalizer"][data-playing="true"] {
+	animation:
+		pump 731ms ease-in-out infinite,
+		lean 1873ms ease-in-out infinite;
 }
 
 @keyframes dance-a {
-  0%, 100% { transform: scaleY(1); }
-  17% { transform: scaleY(0.4); }
-  33% { transform: scaleY(0.95); }
-  52% { transform: scaleY(0.32); }
-  71% { transform: scaleY(0.82); }
-  86% { transform: scaleY(0.5); }
+	0%,
+	100% {
+		transform: scaleY(1);
+	}
+	17% {
+		transform: scaleY(0.4);
+	}
+	33% {
+		transform: scaleY(0.95);
+	}
+	52% {
+		transform: scaleY(0.32);
+	}
+	71% {
+		transform: scaleY(0.82);
+	}
+	86% {
+		transform: scaleY(0.5);
+	}
 }
 
 @keyframes dance-b {
-  0%, 100% { transform: scaleY(1); }
-  23% { transform: scaleY(0.36); }
-  41% { transform: scaleY(0.88); }
-  63% { transform: scaleY(0.45); }
-  82% { transform: scaleY(0.7); }
+	0%,
+	100% {
+		transform: scaleY(1);
+	}
+	23% {
+		transform: scaleY(0.36);
+	}
+	41% {
+		transform: scaleY(0.88);
+	}
+	63% {
+		transform: scaleY(0.45);
+	}
+	82% {
+		transform: scaleY(0.7);
+	}
 }
 
 @keyframes pump {
-  0%, 100% { scale: 1 1; }
-  40% { scale: 1.05 1.02; }
+	0%,
+	100% {
+		scale: 1 1;
+	}
+	40% {
+		scale: 1.05 1.02;
+	}
 }
 
 @keyframes lean {
-  0%, 100% { rotate: 0deg; }
-  30% { rotate: 3.5deg; }
-  65% { rotate: -2.5deg; }
+	0%,
+	100% {
+		rotate: 0deg;
+	}
+	30% {
+		rotate: 3.5deg;
+	}
+	65% {
+		rotate: -2.5deg;
+	}
 }
 
 /* --- fluid -----------------------------------------------------------------
@@ -204,106 +242,132 @@
    drags the icon around and reads as a glitch. Border-radius is the one thing
    here that costs paint rather than compositing -- acceptable for a single
    42px element, and the reason this is not the only style. */
-.toggle[data-motion='fluid'][data-playing='true'] {
-  animation:
-    blob 2297ms ease-in-out infinite,
-    wobble 1471ms ease-in-out infinite;
+.toggle[data-motion="fluid"][data-playing="true"] {
+	animation:
+		blob 2297ms ease-in-out infinite,
+		wobble 1471ms ease-in-out infinite;
 }
 
 @keyframes blob {
-  0%, 100% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
-  12% { border-radius: 67% 33% 42% 58% / 38% 64% 36% 62%; }
-  27% { border-radius: 44% 56% 68% 32% / 62% 36% 64% 38%; }
-  41% { border-radius: 36% 64% 45% 55% / 57% 43% 66% 34%; }
-  56% { border-radius: 62% 38% 33% 67% / 35% 68% 32% 65%; }
-  68% { border-radius: 47% 53% 61% 39% / 66% 34% 41% 59%; }
-  83% { border-radius: 58% 42% 48% 52% / 43% 59% 55% 45%; }
+	0%,
+	100% {
+		border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+	}
+	12% {
+		border-radius: 67% 33% 42% 58% / 38% 64% 36% 62%;
+	}
+	27% {
+		border-radius: 44% 56% 68% 32% / 62% 36% 64% 38%;
+	}
+	41% {
+		border-radius: 36% 64% 45% 55% / 57% 43% 66% 34%;
+	}
+	56% {
+		border-radius: 62% 38% 33% 67% / 35% 68% 32% 65%;
+	}
+	68% {
+		border-radius: 47% 53% 61% 39% / 66% 34% 41% 59%;
+	}
+	83% {
+		border-radius: 58% 42% 48% 52% / 43% 59% 55% 45%;
+	}
 }
 
 @keyframes wobble {
-  0%, 100% { scale: 1 1; }
-  22% { scale: 1.06 0.94; }
-  48% { scale: 0.95 1.07; }
-  74% { scale: 1.03 0.98; }
+	0%,
+	100% {
+		scale: 1 1;
+	}
+	22% {
+		scale: 1.06 0.94;
+	}
+	48% {
+		scale: 0.95 1.07;
+	}
+	74% {
+		scale: 1.03 0.98;
+	}
 }
 
 .trailing {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 14px;
 }
 
 .times {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.75rem;
-  color: var(--muted);
-  white-space: nowrap;
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 0.75rem;
+	color: var(--muted);
+	white-space: nowrap;
 }
 
 .separator {
-  color: var(--faint);
+	color: var(--faint);
 }
 
 .notice {
-  margin: 0;
-  padding: 14px 20px;
-  font-size: 0.8125rem;
-  color: var(--muted);
+	margin: 0;
+	padding: 14px 20px;
+	font-size: 0.8125rem;
+	color: var(--muted);
 }
 
 @media (max-width: 860px) {
-  .row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 8px;
-    padding: 8px 12px;
-  }
+	.row {
+		grid-template-columns: minmax(0, 1fr) auto auto;
+		gap: 8px;
+		padding: 8px 12px;
+	}
 
-  .times,
-  .trailing {
-    display: none;
-  }
+	.times,
+	.trailing {
+		display: none;
+	}
 
-  .art {
-    width: 40px;
-    height: 40px;
-  }
+	.art {
+		width: 40px;
+		height: 40px;
+	}
 
-  .toggle {
-    width: 38px;
-    height: 38px;
-  }
+	.toggle {
+		width: 38px;
+		height: 38px;
+	}
 
-  /* A mode rather than an action, so it is quieter than the transport until it
+	/* A mode rather than an action, so it is quieter than the transport until it
    is on -- and then it is the only accent down here besides the play button,
    which is the whole point of a state you need to be able to read at a glance. */
-.order {
-  display: grid;
-  place-items: center;
-  padding: 8px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--faint);
-  transition: color 0.12s var(--ease), background-color 0.12s var(--ease);
-}
+	.order {
+		display: grid;
+		place-items: center;
+		padding: 8px;
+		border: 0;
+		border-radius: var(--radius-pill);
+		background: none;
+		color: var(--faint);
+		transition:
+			color 0.12s var(--ease),
+			background-color 0.12s var(--ease);
+	}
 
-.order:hover:not(:disabled) {
-  background: var(--surface-sunken);
-  color: var(--text);
-}
+	.order:hover:not(:disabled) {
+		background: var(--surface-sunken);
+		color: var(--text);
+	}
 
-.order[aria-pressed='true'] {
-  color: var(--accent);
-}
+	.order[aria-pressed="true"] {
+		color: var(--accent);
+	}
 
-.order:disabled {
-  opacity: 0.35;
-}
+	.order:disabled {
+		opacity: 0.35;
+	}
 
-.skip {
-    padding: 6px;
-  }
+	.skip {
+		padding: 6px;
+	}
 }

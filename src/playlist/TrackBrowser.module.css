@@ -1,78 +1,78 @@
 .view {
-  position: relative;
-  padding-bottom: 32px;
+	position: relative;
+	padding-bottom: 32px;
 }
 
 .toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 24px;
+	border-bottom: 1px solid var(--border);
+	background: var(--bg);
 }
 
 .spacer {
-  flex: 1;
+	flex: 1;
 }
 
 .progress {
-  height: 2px;
-  background: var(--accent);
-  transform-origin: left;
-  transition: transform 160ms var(--ease);
+	height: 2px;
+	background: var(--accent);
+	transform-origin: left;
+	transition: transform 160ms var(--ease);
 }
 
 .notice {
-  padding: 56px 24px;
-  text-align: center;
-  color: var(--muted);
+	padding: 56px 24px;
+	text-align: center;
+	color: var(--muted);
 }
 
 /* Zero height, so an always-mounted pill reserves nothing at the end of the
    list. Sticky still works at height 0. */
 .pillSlot {
-  position: sticky;
-  bottom: 16px;
-  z-index: 12;
-  height: 0;
-  pointer-events: none;
+	position: sticky;
+	bottom: 16px;
+	z-index: 12;
+	height: 0;
+	pointer-events: none;
 }
 
 /* Transitions rather than a keyframe, so it slides both ways: up on the way in,
    back down on the way out. */
 .pill {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow);
-  font-size: 0.8125rem;
-  white-space: nowrap;
-  translate: -50% 0;
-  transition:
-    opacity 170ms var(--ease),
-    translate 240ms var(--ease);
+	position: absolute;
+	bottom: 0;
+	left: 50%;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 7px 14px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-pill);
+	background: var(--surface-raised);
+	box-shadow: var(--shadow);
+	font-size: 0.8125rem;
+	white-space: nowrap;
+	translate: -50% 0;
+	transition:
+		opacity 170ms var(--ease),
+		translate 240ms var(--ease);
 }
 
-.pill[data-visible='true'] {
-  opacity: 1;
-  pointer-events: auto;
+.pill[data-visible="true"] {
+	opacity: 1;
+	pointer-events: auto;
 }
 
-.pill[data-visible='false'] {
-  opacity: 0;
-  translate: -50% 12px;
-  pointer-events: none;
+.pill[data-visible="false"] {
+	opacity: 0;
+	translate: -50% 12px;
+	pointer-events: none;
 }
 
 /* The arrow leans the way it points rather than bobbing evenly about its
@@ -121,48 +121,48 @@
    lands on a child, and the pill's own box is laid out, so a transform on a
    child leaves it exactly where it was. */
 @keyframes nod-up {
-  0%,
-  100% {
-    transform: translateY(0.74px);
-  }
-  16.67% {
-    transform: translateY(0.14px);
-  }
-  33.33% {
-    transform: translateY(-1.06px);
-  }
-  50% {
-    transform: translateY(-1.66px);
-  }
-  66.67% {
-    transform: translateY(-1.06px);
-  }
-  83.33% {
-    transform: translateY(0.14px);
-  }
+	0%,
+	100% {
+		transform: translateY(0.74px);
+	}
+	16.67% {
+		transform: translateY(0.14px);
+	}
+	33.33% {
+		transform: translateY(-1.06px);
+	}
+	50% {
+		transform: translateY(-1.66px);
+	}
+	66.67% {
+		transform: translateY(-1.06px);
+	}
+	83.33% {
+		transform: translateY(0.14px);
+	}
 }
 
 /* The mirror of it, stop for stop. */
 @keyframes nod-down {
-  0%,
-  100% {
-    transform: translateY(-0.74px);
-  }
-  16.67% {
-    transform: translateY(-0.14px);
-  }
-  33.33% {
-    transform: translateY(1.06px);
-  }
-  50% {
-    transform: translateY(1.66px);
-  }
-  66.67% {
-    transform: translateY(1.06px);
-  }
-  83.33% {
-    transform: translateY(-0.14px);
-  }
+	0%,
+	100% {
+		transform: translateY(-0.74px);
+	}
+	16.67% {
+		transform: translateY(-0.14px);
+	}
+	33.33% {
+		transform: translateY(1.06px);
+	}
+	50% {
+		transform: translateY(1.66px);
+	}
+	66.67% {
+		transform: translateY(1.06px);
+	}
+	83.33% {
+		transform: translateY(-0.14px);
+	}
 }
 
 /* Linear here too, and for the same reason: an eased two-stop breath dwells at
@@ -170,50 +170,50 @@
    each other into the stepping this whole block exists to remove. A triangle
    wave in opacity has no visible corner at the turn. */
 @keyframes nod-breath {
-  from,
-  to {
-    opacity: 0.78;
-  }
-  50% {
-    opacity: 1;
-  }
+	from,
+	to {
+		opacity: 0.78;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 .pill svg {
-  color: var(--accent);
+	color: var(--accent);
 }
 
 /* Only while it is on screen. The pill stays mounted so it can animate out, and
    a compositor animation ticking away behind an invisible element for the whole
    session is a cost with nothing to show for it. */
-.pill[data-visible='true'] svg {
-  animation:
-    nod-up 850ms linear infinite,
-    nod-breath 900ms linear infinite;
+.pill[data-visible="true"] svg {
+	animation:
+		nod-up 850ms linear infinite,
+		nod-breath 900ms linear infinite;
 }
 
-.pill[data-visible='true'][data-direction='down'] svg {
-  animation-name: nod-down, nod-breath;
+.pill[data-visible="true"][data-direction="down"] svg {
+	animation-name: nod-down, nod-breath;
 }
 
 @media (max-width: 720px) {
-  .toolbar {
-    /* 16px, matching ViewHeader. The two disagreed, so nothing below them had a
+	.toolbar {
+		/* 16px, matching ViewHeader. The two disagreed, so nothing below them had a
        single line to line up with. */
-    padding: 8px 16px;
-  }
+		padding: 8px 16px;
+	}
 }
 
 /* Wraps the virtualised list so one element can carry the context-menu
    gestures for every row in it. Nothing else -- it must not become a
    containing block or the virtualiser's absolute positioning moves. */
 .rows {
-  display: contents;
+	display: contents;
 }
 
 /* The legend sets its own width; the menu's default min-width would only fight
    it, and its padding is the legend's to spend. */
 .heatInfo {
-  min-width: 0;
-  padding: 6px;
+	min-width: 0;
+	padding: 6px;
 }

@@ -11,3 +11,5 @@ dist
 scripts/*.local.sh
 test-results/
 playwright-report/
+node_modules/.tmp
+*.tsbuildinfo

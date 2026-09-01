@@ -1,21 +1,21 @@
 .menu {
-  width: 244px;
-  max-height: 360px;
-  overflow-y: auto;
+	width: 244px;
+	max-height: 360px;
+	overflow-y: auto;
 }
 
 .check {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 15px;
-  height: 15px;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  color: var(--on-accent);
+	display: grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 15px;
+	height: 15px;
+	border: 1px solid var(--border-strong);
+	border-radius: 4px;
+	color: var(--on-accent);
 }
 
-.check[data-checked='true'] {
-  border-color: var(--accent);
-  background: var(--accent);
+.check[data-checked="true"] {
+	border-color: var(--accent);
+	background: var(--accent);
 }

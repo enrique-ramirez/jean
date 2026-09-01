@@ -1,0 +1,28 @@
+{
+	"compilerOptions": {
+		"target": "ES2023",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ES2023"],
+
+		"strict": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+
+		// Deliberately off. Every read of a dictionary-encoded column, a
+		// Uint32Array of refs or a positional column array is indexed by
+		// construction, so this would demand a guard on each one and teach nothing
+		// -- see the library index and the search index.
+		"noUncheckedIndexedAccess": false,
+
+		// The app is only ever bundled, never emitted by tsc.
+		"noEmit": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true
+	}
+}

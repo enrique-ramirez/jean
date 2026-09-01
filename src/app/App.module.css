@@ -2,59 +2,59 @@
    container in the app -- the virtualiser needs an explicit scrollElement, and
    the status bar is pinned by construction rather than by position: sticky. */
 .app {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100dvh;
-  min-height: 420px;
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	height: 100dvh;
+	min-height: 420px;
 }
 
 .body {
-  /* Placed explicitly because the toast layer shares this cell. Left to
+	/* Placed explicitly because the toast layer shares this cell. Left to
      auto-placement, an explicitly positioned sibling in row 2 pushes the body
      into row 3 and the status bar off the grid entirely. */
-  grid-row: 2;
-  grid-column: 1;
-  display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  min-height: 0;
-  transition: grid-template-columns 0.22s var(--ease);
+	grid-row: 2;
+	grid-column: 1;
+	display: grid;
+	grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+	min-height: 0;
+	transition: grid-template-columns 0.22s var(--ease);
 }
 
-.body[data-collapsed='true'] {
-  grid-template-columns: 0 minmax(0, 1fr);
+.body[data-collapsed="true"] {
+	grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .main {
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-gutter: stable;
+	min-width: 0;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-gutter: stable;
 }
 
 .topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 16px;
-  border-bottom: 1px solid var(--border);
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 9px 16px;
+	border-bottom: 1px solid var(--border);
 }
 
 .brand {
-  margin: 0 6px 0 2px;
-  font-size: 1rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+	margin: 0 6px 0 2px;
+	font-size: 1rem;
+	font-weight: 650;
+	letter-spacing: -0.02em;
 }
 
 .brand span {
-  color: var(--accent);
+	color: var(--accent);
 }
 
 .actions {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
+	display: flex;
+	gap: 2px;
+	margin-left: auto;
 }
 
 /* No keyboard, no keyboard shortcuts. Asked as a pointer question rather than a
@@ -63,18 +63,17 @@
    Nothing is lost on a device that has one, either -- the sheet is bound to `?`,
    so the keyboard opens the list of things the keyboard does. */
 @media (hover: none), (pointer: coarse) {
-  .shortcuts {
-    display: none;
-  }
+	.shortcuts {
+		display: none;
+	}
 }
 
 @media (max-width: 860px) {
-  .body {
-    grid-template-columns: minmax(0, 1fr);
-  }
+	.body {
+		grid-template-columns: minmax(0, 1fr);
+	}
 
-  .brand {
-    width: auto;
-  }
+	.brand {
+		width: auto;
+	}
 }
-

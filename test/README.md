@@ -5,7 +5,7 @@ and no jsdom.
 
 That is a deliberate choice rather than a stage we have not reached yet. The
 things that break in Jean are the things jsdom cannot see: the virtualiser needs
-real layout to render anything at all, `dnd.js` hit-tests with
+real layout to render anything at all, `dnd.ts` hit-tests with
 `elementFromPoint`, `useSortableList` and `useLongPress` are pointer gestures,
 `useVisualViewport` follows a keyboard that only exists on a device, and half
 the design is a *different component* below 860px rather than a narrower one. A
@@ -22,7 +22,7 @@ pnpm test:ui       # pick and watch tests interactively
 pnpm test --project=desktop -g "double-clicking"
 ```
 
-`pnpm test` builds first (`test/e2e/build.js`) and serves the build from the
+`pnpm test` builds first (`test/e2e/build.ts`) and serves the build from the
 fake, because that is beefweb's own arrangement: one origin answering both the
 app and `/api`. Running the dev server behind a proxy instead would test a
 setup that exists only on the machine it was written on.
@@ -45,24 +45,24 @@ JEAN_NO_LIBRARY_API=1 pnpm test    # the autoplaylist fallback
 ```
 
 Both are green at the same count. That is the check that the seam has not leaked: if
-a change makes one pass and the other fail, something outside `librarySource.js` has
+a change makes one pass and the other fail, something outside `librarySource.ts` has
 learned which source it is talking to.
 
-Three specs are source-aware, and only three. `fake-library.spec.js` and one describe
-in `library-source.spec.js` **pin the API on**, because they are about it -- pinned
+Three specs are source-aware, and only three. `fake-library.spec.ts` and one describe
+in `library-source.spec.ts` **pin the API on**, because they are about it -- pinned
 rather than skipped, so they still cover it on a fallback run. And
-`navigation.spec.js`'s first-run block asks for `withoutLibraryPlaylist` *and*
+`navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and*
 `library: { supported: false }`, because the setup screen exists only when there is no
 API **and** no autoplaylist. Give it the API and there is nothing to set up.
 
 ### Measuring the library API
 
-`test/measure-library.mjs` times the media library endpoints against a real player
+`test/measure-library.ts` times the media library endpoints against a real player
 and a real library, because the questions it answers are about server-side cost and
 the fake has none:
 
 ```sh
-PLAYER=home.local:8880 node test/measure-library.mjs
+PLAYER=home.local:8880 node test/measure-library.ts
 ```
 
 It compares the library read against the playlist read Jean uses today, sweeps range
@@ -76,7 +76,7 @@ since caching is on the PR's list of things it does not do yet.
 The fake serves the beefweb 0.11+ library API — `/library/info`, `/library/items`,
 `/library/items/by-path`, `/artwork/library` and
 `/playlists/{id}/items/add-from-library` — checked against shapes measured on a live
-player running `0.11~git.dc0fdfc`. `fake-library.spec.js` is that check; `API.md`
+player running `0.11~git.dc0fdfc`. `fake-library.spec.ts` is that check; `API.md`
 records the measurements.
 
 The library is **derived from the captured tracks rather than invented**: the
@@ -116,13 +116,13 @@ Run it on its own to develop with no foobar2000 in reach:
 pnpm fake                                   # API only, on :8880
 BEEFWEB_URL=http://localhost:8880 pnpm dev  # in another shell
 
-pnpm build && node test/fake-api/main.js --serve dist   # as beefweb serves it
+pnpm build && node test/fake-api/main.ts --serve dist   # as beefweb serves it
 ```
 
 ### The fixture is captured, not invented
 
 `library.json` and `player.json` came off a real player via
-`node test/fake-api/capture.mjs --url http://your-player:8880`, so the fake
+`node test/fake-api/capture.ts --url http://your-player:8880`, so the fake
 replays bytes foobar2000 actually produced. Five albums, 54 tracks, chosen for
 the branches the UI has rather than to be a representative library:
 
@@ -152,7 +152,7 @@ but the fake.
 
 ## Writing a test
 
-`test/e2e/fixtures.js` gives every test its own player, on its own port, and
+`test/e2e/fixtures.ts` gives every test its own player, on its own port, and
 carries the helpers every spec would otherwise write for itself -- `openLibrary`,
 `openSidebar`, `trackRow`, `scratchOf`, `playedFrom`, `trackPlayed`,
 `pressAndHold`, `statusBar`, `viewHeader`. Anything more than one spec needs
@@ -160,7 +160,7 @@ belongs there: five files with five slightly different ways of opening the
 sidebar drawer is five chances for one of them to be the wrong one.
 
 ```js
-import { expect, requestsTo, test, trackRow } from './fixtures.js'
+import { expect, requestsTo, test, trackRow } from './fixtures.ts'
 
 test('does the thing', async ({ page, player }) => {
   await page.goto('/')
@@ -235,7 +235,7 @@ one line and doubles into four cases, since both projects run everything.
 **`test.use` goes *inside* a describe, never beside one.** At file scope it
 applies to the whole file however many times it is called, so a loop that writes
 it once per layout runs every case under whichever layout it wrote last. That
-had `finder.spec.js` running its five `(compact)` describes in album mode --
+had `finder.spec.ts` running its five `(compact)` describes in album mode --
 green, correctly named, and covering the same thing twice.
 
 Both projects -- `desktop` and `mobile` (Pixel 7, touch on) -- run every spec.
@@ -244,7 +244,7 @@ why.
 
 **`inSequence` and `times` rather than a loop.** Playwright assertions share one
 page, so a list of steps has to be awaited in order; both are one `reduce` in
-`fixtures.js` so no spec writes that plumbing itself.
+`fixtures.ts` so no spec writes that plumbing itself.
 
 **Drive timing-sensitive input from inside the page.** Anything racing an
 animation -- interrupting a 240ms scroll, say -- cannot be driven over the wire:
@@ -264,7 +264,7 @@ It has two faces. One is transitions -- `isRowOnScreen` is true as soon as an
 animated scroll brings the row into view, which is several hundred milliseconds
 before it stops moving, so anything that then measures the position or scrolls
 away is fighting the animation still in flight. That is what `settle()` in
-`follow.spec.js` is for: two equal scroll readings, and only then measure.
+`follow.spec.ts` is for: two equal scroll readings, and only then measure.
 
 The other is optimistic state. Mutations write to the query cache before the
 request goes out, so the UI flips immediately -- and if a second request is in
@@ -336,7 +336,7 @@ do not.
 
 ## Touch is a gesture, not a narrow mouse
 
-`sliders.spec.js` drove both faders with the mouse and skipped on mobile --
+`sliders.spec.ts` drove both faders with the mouse and skipped on mobile --
 "dragging a fader is a mouse gesture" -- which quietly encoded the assumption that
 nobody drags the volume with a thumb. The touch tests there go through CDP
 `Input.dispatchTouchEvent` rather than dispatching DOM events, because what is

@@ -1,73 +1,73 @@
 .notice {
-  padding: 56px 24px;
-  text-align: center;
-  color: var(--muted);
+	padding: 56px 24px;
+	text-align: center;
+	color: var(--muted);
 }
 
 .summary {
-  margin: 0;
-  padding-left: 4px;
-  font-size: 0.8125rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+	margin: 0;
+	padding-left: 4px;
+	font-size: 0.8125rem;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
 }
 
 .idle {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  max-width: 520px;
-  margin: 0 auto;
-  padding: 72px 24px 48px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 12px;
+	max-width: 520px;
+	margin: 0 auto;
+	padding: 72px 24px 48px;
 }
 
 .idle > svg {
-  color: var(--accent);
+	color: var(--accent);
 }
 
 .idleTitle {
-  margin: 0;
-  font-size: clamp(1.5rem, 3.4vw, 2.125rem);
-  font-weight: 680;
-  line-height: 1.1;
-  letter-spacing: -0.025em;
+	margin: 0;
+	font-size: clamp(1.5rem, 3.4vw, 2.125rem);
+	font-weight: 680;
+	line-height: 1.1;
+	letter-spacing: -0.025em;
 }
 
 .idleBody {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.6;
-  color: var(--muted);
+	margin: 0;
+	font-size: 0.9375rem;
+	line-height: 1.6;
+	color: var(--muted);
 }
 
 .idleBody b {
-  font-weight: 600;
-  color: var(--text);
+	font-weight: 600;
+	color: var(--text);
 }
 
 .link {
-  padding: 4px 0;
-  border: 0;
-  background: none;
-  font-size: 0.8125rem;
-  color: var(--muted);
-  text-decoration: underline;
-  text-decoration-color: var(--border-strong);
-  text-underline-offset: 3px;
-  transition: color 0.12s var(--ease);
+	padding: 4px 0;
+	border: 0;
+	background: none;
+	font-size: 0.8125rem;
+	color: var(--muted);
+	text-decoration: underline;
+	text-decoration-color: var(--border-strong);
+	text-underline-offset: 3px;
+	transition: color 0.12s var(--ease);
 }
 
 .link:hover {
-  color: var(--text);
+	color: var(--text);
 }
 
-.link[aria-expanded='true'] {
-  color: var(--text);
+.link[aria-expanded="true"] {
+	color: var(--text);
 }
 
 @media (max-width: 720px) {
-  .idle {
-    padding: 40px 16px;
-  }
+	.idle {
+		padding: 40px 16px;
+	}
 }

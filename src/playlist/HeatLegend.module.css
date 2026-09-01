@@ -1,79 +1,79 @@
 .legend {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  /* A width, not a min-width: the prose wants a measure, and on a narrow phone
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	/* A width, not a min-width: the prose wants a measure, and on a narrow phone
      the menu around it is capped, so this has to be able to give way. */
-  width: 274px;
-  max-width: 100%;
-  padding: 8px 8px 6px;
+	width: 274px;
+	max-width: 100%;
+	padding: 8px 8px 6px;
 }
 
 .title {
-  margin: 0;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--faint);
+	margin: 0;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--faint);
 }
 
 /* The same wash the rows carry, at the same strength, laid out left to right.
    Painted over --bg rather than the panel it sits on, or it would be showing a
    colour that appears nowhere in the list. */
 .scale {
-  height: 30px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background:
-    linear-gradient(
-      90deg,
-      oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0),
-      oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.22)
-    ),
-    var(--bg);
+	height: 30px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background:
+		linear-gradient(
+			90deg,
+			oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0),
+			oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.22)
+		),
+		var(--bg);
 }
 
 .ends {
-  display: flex;
-  justify-content: space-between;
-  margin-top: -4px;
-  font-size: 0.6875rem;
-  color: var(--faint);
+	display: flex;
+	justify-content: space-between;
+	margin-top: -4px;
+	font-size: 0.6875rem;
+	color: var(--faint);
 }
 
 .body {
-  margin: 0;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--muted);
-  text-wrap: pretty;
+	margin: 0;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--muted);
+	text-wrap: pretty;
 }
 
 .body em {
-  font-style: normal;
-  color: var(--text);
+	font-style: normal;
+	color: var(--text);
 }
 
 .actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 2px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 2px;
 }
 
 .home {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-size: 0.6875rem;
-  line-height: 1.35;
-  color: var(--faint);
-  text-wrap: pretty;
+	display: flex;
+	flex: 1;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	font-size: 0.6875rem;
+	line-height: 1.35;
+	color: var(--faint);
+	text-wrap: pretty;
 }
 
 .home svg {
-  flex: 0 0 auto;
+	flex: 0 0 auto;
 }

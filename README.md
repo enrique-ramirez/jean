@@ -64,6 +64,8 @@ CORS to configure, and nothing changes on the Windows side.
 ```sh
 pnpm install
 pnpm dev            # http://localhost:5173
+pnpm typecheck      # tsc across app, fake player and specs
+pnpm lint           # biome check
 ```
 
 That is the whole loop: edit a file, HMR updates the browser, and it is controlling
@@ -300,7 +302,7 @@ whole answer.
 - Columns are foobar2000 title-formatting expressions evaluated by the player, so
   `%codec%`, `%bitrate%`, `%rating%` and single-argument functions like
   `$upper(...)` all work. Adding a field is one line — `TRACK_COLUMNS` in
-  `src/api/beefweb.js` for the playing track, `src/playlist/fields.js` for the list.
+  `src/api/beefweb.ts` for the playing track, `src/playlist/fields.ts` for the list.
   Multi-argument functions do **not** work — the list is split on commas before the
   expressions are evaluated, so `$if(a,b,c)` becomes three columns. Single-argument
   functions *do* nest, though: `$len($meta(unsynced lyrics))` is fine.
@@ -361,10 +363,10 @@ stale. The short version:
 
 ## Stack
 
-React 19 · Vite 8 · TanStack Query 5 · TanStack Virtual · TanStack Hotkeys ·
-lucide-react · CSS Modules · pnpm · Playwright. No unit tests and no jsdom, on
-purpose: the things that break here need real layout, real pointers and a real
-viewport. See `test/README.md`.
+React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual ·
+TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright. No unit
+tests and no jsdom, on purpose: the things that break here need real layout, real
+pointers and a real viewport. See `test/README.md`.
 
 Styling is CSS Modules per component, with the palette in `src/styles/tokens.css` as
 custom properties — re-theming Jean means editing about thirty values there, with no

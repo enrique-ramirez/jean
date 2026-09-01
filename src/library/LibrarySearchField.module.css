@@ -1,100 +1,104 @@
 .field {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 8px;
-  max-width: 440px;
-  padding: 6px 8px 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--muted);
-  transition: border-color 0.15s var(--ease), color 0.15s var(--ease);
+	display: flex;
+	flex: 1;
+	align-items: center;
+	gap: 8px;
+	max-width: 440px;
+	padding: 6px 8px 6px 12px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--muted);
+	transition:
+		border-color 0.15s var(--ease),
+		color 0.15s var(--ease);
 }
 
 .field:hover {
-  border-color: var(--border-strong);
+	border-color: var(--border-strong);
 }
 
 .field:focus-within {
-  border-color: var(--accent-line);
-  color: var(--text);
+	border-color: var(--accent-line);
+	color: var(--text);
 }
 
-.field[data-filled='true'] svg {
-  color: var(--accent);
+.field[data-filled="true"] svg {
+	color: var(--accent);
 }
 
 .input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 0.8125rem;
-  color: var(--text);
+	flex: 1;
+	min-width: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	font-size: 0.8125rem;
+	color: var(--text);
 }
 
 .input::placeholder {
-  color: var(--muted);
+	color: var(--muted);
 }
 
 .input:focus {
-  outline: none;
+	outline: none;
 }
 
 /* Safari draws its own clear button on type=search, on top of ours. */
 .input::-webkit-search-cancel-button {
-  display: none;
+	display: none;
 }
 
 .count {
-  font-family: var(--font-numeric);
-  font-size: 0.6875rem;
-  color: var(--faint);
-  transition: opacity 0.12s var(--ease);
+	font-family: var(--font-numeric);
+	font-size: 0.6875rem;
+	color: var(--faint);
+	transition: opacity 0.12s var(--ease);
 }
 
 /* The list can trail the field by a frame while the filter runs. Saying so is
    better than showing a stale number as if it were the answer. */
-.count[data-pending='true'] {
-  opacity: 0.45;
+.count[data-pending="true"] {
+	opacity: 0.45;
 }
 
 .clear {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--muted);
-  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+	transition:
+		background 0.12s var(--ease),
+		color 0.12s var(--ease);
 }
 
 .clear:hover {
-  background: var(--surface-raised);
-  color: var(--text);
+	background: var(--surface-raised);
+	color: var(--text);
 }
 
 .hint {
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  font-family: var(--font-numeric);
-  font-size: 0.6875rem;
-  color: var(--faint);
+	padding: 1px 6px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	font-family: var(--font-numeric);
+	font-size: 0.6875rem;
+	color: var(--faint);
 }
 
 @media (max-width: 560px) {
-  .hint {
-    display: none;
-  }
+	.hint {
+		display: none;
+	}
 
-  .field {
-    max-width: none;
-    padding-left: 10px;
-  }
+	.field {
+		max-width: none;
+		padding-left: 10px;
+	}
 }

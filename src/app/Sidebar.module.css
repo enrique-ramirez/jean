@@ -1,107 +1,109 @@
 .sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  /* min-width:0 lets the grid column actually reach zero -- grid items default
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	/* min-width:0 lets the grid column actually reach zero -- grid items default
      to min-width:auto and would otherwise refuse to shrink past their content. */
-  min-width: 0;
-  padding: 12px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  border-right: 1px solid var(--border);
+	min-width: 0;
+	padding: 12px;
+	overflow-x: hidden;
+	overflow-y: auto;
+	border-right: 1px solid var(--border);
 }
 
 /* Wraps the heading so the section can carry an action. The heading keeps its
    own spacing when it stands alone -- the Search section has no button. */
 .sectionHeader {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 4px 0 6px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin: 4px 0 6px;
 }
 
 .sectionHeader .heading {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
+	flex: 1;
+	min-width: 0;
+	margin: 0;
 }
 
 .add {
-  display: grid;
-  flex: 0 0 auto;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  margin-right: 4px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--faint);
-  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+	display: grid;
+	flex: 0 0 auto;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	margin-right: 4px;
+	border: 0;
+	border-radius: 6px;
+	background: none;
+	color: var(--faint);
+	transition:
+		background 0.12s var(--ease),
+		color 0.12s var(--ease);
 }
 
 .add:hover:not(:disabled) {
-  background: var(--surface);
-  color: var(--accent);
+	background: var(--surface);
+	color: var(--accent);
 }
 
 .add:disabled {
-  opacity: 0.5;
-  cursor: default;
+	opacity: 0.5;
+	cursor: default;
 }
 
 .heading {
-  margin: 4px 0 6px;
-  padding: 0 10px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--faint);
+	margin: 4px 0 6px;
+	padding: 0 10px;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--faint);
 }
 
 /* The row owns the background and the position; the button inside it owns the
    navigation. They had to be separated once the row grew a second control --
    a drag handle cannot live inside a button. */
 .row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-height: 36px;
-  border-radius: var(--radius-sm);
-  transition: background 0.12s var(--ease);
+	position: relative;
+	display: flex;
+	align-items: center;
+	min-height: 36px;
+	border-radius: var(--radius-sm);
+	transition: background 0.12s var(--ease);
 }
 
 .row:hover,
 .row:focus-within,
-.row:has(.item[aria-current='true']) {
-  background: var(--surface);
+.row:has(.item[aria-current="true"]) {
+	background: var(--surface);
 }
 
 .item {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: inherit;
-  background: none;
-  font-size: 0.875rem;
-  text-align: left;
-  color: var(--muted);
-  transition: color 0.12s var(--ease);
+	display: flex;
+	flex: 1;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	padding: 8px 10px;
+	border: 0;
+	border-radius: inherit;
+	background: none;
+	font-size: 0.875rem;
+	text-align: left;
+	color: var(--muted);
+	transition: color 0.12s var(--ease);
 }
 
 .row:hover .item,
 .item:hover,
-.item[aria-current='true'] {
-  color: var(--text);
+.item[aria-current="true"] {
+	color: var(--text);
 }
 
-.item[aria-current='true'] {
-  font-weight: 550;
+.item[aria-current="true"] {
+	font-weight: 550;
 }
 
 /* The icon says exactly one thing: this is what is playing. It used to be
@@ -111,25 +113,25 @@
    at different things. Selection now owns the background and the label; the
    accent belongs to the sound. */
 .item .playing {
-  color: var(--accent);
+	color: var(--accent);
 }
 
 .item svg {
-  flex: 0 0 auto;
+	flex: 0 0 auto;
 }
 
 .label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .count {
-  margin-left: auto;
-  padding-left: 8px;
-  font-size: 0.75rem;
-  color: var(--faint);
-  font-variant-numeric: tabular-nums;
+	margin-left: auto;
+	padding-left: 8px;
+	font-size: 0.75rem;
+	color: var(--faint);
+	font-variant-numeric: tabular-nums;
 }
 
 /* Reordering ---------------------------------------------------------------
@@ -145,54 +147,56 @@
    hold, then drag -- is spent on the menu. So on a coarse pointer there is a
    handle, permanently, because nothing else can claim the axis. */
 .grip {
-  position: absolute;
-  right: 3px;
-  display: none;
-  place-items: center;
-  width: 26px;
-  height: 28px;
-  border-radius: 6px;
-  color: var(--faint);
-  opacity: 0.55;
-  /* The browser must not claim this gesture as a scroll before we do. */
-  touch-action: none;
+	position: absolute;
+	right: 3px;
+	display: none;
+	place-items: center;
+	width: 26px;
+	height: 28px;
+	border-radius: 6px;
+	color: var(--faint);
+	opacity: 0.55;
+	/* The browser must not claim this gesture as a scroll before we do. */
+	touch-action: none;
 }
 
 @media (pointer: coarse) {
-  .grip {
-    display: grid;
-  }
+	.grip {
+		display: grid;
+	}
 
-  .item {
-    padding-right: 34px;
-  }
+	.item {
+		padding-right: 34px;
+	}
 }
 
-.row[data-dragging='true'] {
-  z-index: 2;
-  background: var(--surface-raised);
-  box-shadow: var(--shadow);
+.row[data-dragging="true"] {
+	z-index: 2;
+	background: var(--surface-raised);
+	box-shadow: var(--shadow);
 }
 
-.row[data-dragging='true'] .grip {
-  opacity: 1;
-  color: var(--accent);
+.row[data-dragging="true"] .grip {
+	opacity: 1;
+	color: var(--accent);
 }
 
 /* Only the rows getting out of the way animate. The dragged one is following a
    finger and must not be smoothed, and once the drop lands the attribute is
    gone in the same commit as the new order -- so nothing animates twice. */
-.row[data-settling='true'] {
-  transition: transform 0.2s var(--ease), background 0.12s var(--ease);
+.row[data-settling="true"] {
+	transition:
+		transform 0.2s var(--ease),
+		background 0.12s var(--ease);
 }
 
-.sidebar[data-reordering='true'] {
-  cursor: grabbing;
-  user-select: none;
+.sidebar[data-reordering="true"] {
+	cursor: grabbing;
+	user-select: none;
 }
 
-.sidebar[data-reordering='true'] .row:hover {
-  background: none;
+.sidebar[data-reordering="true"] .row:hover {
+	background: none;
 }
 
 /* Receiving a drop ----------------------------------------------------------
@@ -200,80 +204,80 @@
    Only the row under the pointer says anything. Lighting up every droppable row
    the moment a drag begins turns the sidebar into a wall of boxes and answers a
    question nobody asked; the ghost already says a drag is happening. */
-.row[data-drop-over='true'] {
-  background: var(--accent-quiet);
-  box-shadow: inset 0 0 0 1px var(--accent-line);
+.row[data-drop-over="true"] {
+	background: var(--accent-quiet);
+	box-shadow: inset 0 0 0 1px var(--accent-line);
 }
 
-.row[data-drop-over='true'] .item,
-.row[data-drop-over='true'] .count {
-  color: var(--text);
+.row[data-drop-over="true"] .item,
+.row[data-drop-over="true"] .count {
+	color: var(--text);
 }
 
-.row[data-drop-over='true'] .item svg {
-  color: var(--accent);
+.row[data-drop-over="true"] .item svg {
+	color: var(--accent);
 }
 
 /* Renaming ---------------------------------------------------------------- */
 
 .renameForm {
-  flex: 1;
-  min-width: 0;
-  padding: 0 2px;
+	flex: 1;
+	min-width: 0;
+	padding: 0 2px;
 }
 
 .renameInput {
-  width: 100%;
-  padding: 7px 9px;
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-  font-size: 0.875rem;
-  color: var(--text);
-  outline: none;
+	width: 100%;
+	padding: 7px 9px;
+	border: 1px solid var(--accent-line);
+	border-radius: var(--radius-sm);
+	background: var(--surface-sunken);
+	font-size: 0.875rem;
+	color: var(--text);
+	outline: none;
 }
 
 /* A second section needs room above it; the first one sits under the top bar. */
 .heading:not(:first-child),
 .sectionHeader:not(:first-child) {
-  margin-top: 16px;
+	margin-top: 16px;
 }
 
 /* The grid column goes to zero, but padding and border are not part of that --
    they have to be zeroed here or the nav overflows into the content. */
-.sidebar[data-collapsed='true'] {
-  padding-inline: 0;
-  border-right-width: 0;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.14s var(--ease);
+.sidebar[data-collapsed="true"] {
+	padding-inline: 0;
+	border-right-width: 0;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.14s var(--ease);
 }
 
 .scrim {
-  display: none;
+	display: none;
 }
 
 @media (max-width: 860px) {
-  .sidebar {
-    display: none;
-  }
+	.sidebar {
+		display: none;
+	}
 
-  .sidebar[data-open='true'] {
-    position: fixed;
-    inset: 0 auto 0 0;
-    z-index: 40;
-    display: flex;
-    width: min(320px, 84vw);
-    background: var(--bg);
-    box-shadow: var(--shadow);
-  }
+	.sidebar[data-open="true"] {
+		position: fixed;
+		inset: 0 auto 0 0;
+		z-index: 40;
+		display: flex;
+		width: min(320px, 84vw);
+		background: var(--bg);
+		box-shadow: var(--shadow);
+	}
 
-  .scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 39;
-    display: block;
-    border: 0;
-    background: oklch(0 0 0 / 0.5);
-  }
+	.scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 39;
+		display: block;
+		border: 0;
+		background: oklch(0 0 0 / 0.5);
+	}
 }

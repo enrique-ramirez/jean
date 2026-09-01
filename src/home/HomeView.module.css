@@ -1,36 +1,36 @@
 .home {
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-  /* No top padding: the header carries its own, the way a view header does, so
+	display: flex;
+	flex-direction: column;
+	gap: 30px;
+	/* No top padding: the header carries its own, the way a view header does, so
      its wash starts at the top of the view rather than a centimetre down it. */
-  padding: 0 0 40px;
+	padding: 0 0 40px;
 }
 
 .shelves {
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
+	display: flex;
+	flex-direction: column;
+	gap: 30px;
 }
 
 .notice {
-  margin: 0;
-  padding: 0 24px;
-  font-size: 0.875rem;
-  color: var(--muted);
+	margin: 0;
+	padding: 0 24px;
+	font-size: 0.875rem;
+	color: var(--muted);
 }
 
 @media (max-width: 720px) {
-  .home {
-    gap: 22px;
-  }
+	.home {
+		gap: 22px;
+	}
 
-  .notice {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
+	.notice {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
 
-  .shelves {
-    gap: 26px;
-  }
+	.shelves {
+		gap: 26px;
+	}
 }

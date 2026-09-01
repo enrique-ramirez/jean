@@ -4,13 +4,13 @@
    and a lone accent button across a wide gap is a stronger composition than the
    same button tucked under a paragraph. */
 .header {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 32px;
-  padding: 24px 24px 22px;
-  border-bottom: 1px solid var(--border);
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: 32px;
+	padding: 24px 24px 22px;
+	border-bottom: 1px solid var(--border);
 }
 
 /* The same warm cast and the same closing rule the playlist header has, because
@@ -25,40 +25,40 @@
    past its bottom edge gets scrolled into view by scrolling the header inside
    itself. */
 .header::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.06),
-    transparent 72%
-  );
-  pointer-events: none;
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(
+		180deg,
+		oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.06),
+		transparent 72%
+	);
+	pointer-events: none;
 }
 
 /* Above the wash, or the gradient paints over the words. */
 .said,
 .actions {
-  position: relative;
+	position: relative;
 }
 
 .said {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10px;
 }
 
 .eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--faint);
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--faint);
 }
 
 /* The years are a fact about the collection rather than part of its name, so
@@ -66,71 +66,71 @@
    rule in front is the same hairline that separates the figures below, which
    is what ties the two rows together without a box around either. */
 .span {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: var(--font-numeric);
-  letter-spacing: 0.04em;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-family: var(--font-numeric);
+	letter-spacing: 0.04em;
 }
 
 .span::before {
-  content: '';
-  width: 18px;
-  height: 1px;
-  background: var(--border-strong);
+	content: "";
+	width: 18px;
+	height: 1px;
+	background: var(--border-strong);
 }
 
 .title {
-  margin: 0;
-  font-size: 2.25rem;
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.05;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  text-wrap: balance;
+	margin: 0;
+	font-size: 2.25rem;
+	font-weight: 600;
+	letter-spacing: -0.035em;
+	line-height: 1.05;
+	color: var(--text);
+	font-variant-numeric: tabular-nums;
+	text-wrap: balance;
 }
 
 /* The remainder is true and secondary: "84 days" is the claim and "14 hr" is
    the fine print on it, so it is lighter rather than smaller -- shrinking it
    would break the single line the whole headline sits on. */
 .trail {
-  color: var(--muted);
-  font-weight: 500;
+	color: var(--muted);
+	font-weight: 500;
 }
 
 .of {
-  color: var(--muted);
-  font-weight: 400;
-  letter-spacing: -0.02em;
+	color: var(--muted);
+	font-weight: 400;
+	letter-spacing: -0.02em;
 }
 
 /* A rail, not cards. Hairlines between figures rather than boxes around them:
    the figures are one sentence about one library, and a box per number would
    make five unrelated readings out of it. */
 .rail {
-  display: flex;
-  /* Never wraps, at any width. A wrapped row puts a hairline at the *start* of
+	display: flex;
+	/* Never wraps, at any width. A wrapped row puts a hairline at the *start* of
      its second line, where it separates a figure from the edge of the screen
      rather than from another figure -- and two lines of figures stop reading as
      one sentence about one library. Five come to about 550px, so this only
      matters below the breakpoint, where the rail scrolls instead. */
-  flex-wrap: nowrap;
-  gap: 0;
-  margin: 6px 0 0;
+	flex-wrap: nowrap;
+	gap: 0;
+	margin: 6px 0 0;
 }
 
 .figure {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 2px 18px;
-  border-left: 1px solid var(--border);
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 2px 18px;
+	border-left: 1px solid var(--border);
 }
 
 .figure:first-child {
-  padding-left: 0;
-  border-left: 0;
+	padding-left: 0;
+	border-left: 0;
 }
 
 /* dd before dt in the markup, so the number reads first and the label explains
@@ -138,32 +138,32 @@
    follows its description is still a correct one, and screen readers pair them
    either way, but visually the number has to be the thing the eye lands on. */
 .count {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	font-variant-numeric: tabular-nums;
+	color: var(--text);
 }
 
 .label {
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--faint);
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--faint);
 }
 
 /* The rows arrive in chunks, so every figure here is provisional until the last
    one lands. Saying so is cheaper than watching numbers tick upward and
    wondering whether they have finished. */
 .counting {
-  align-self: center;
-  padding-left: 18px;
-  font-size: 0.6875rem;
-  letter-spacing: 0.04em;
-  color: var(--faint);
-  font-style: italic;
+	align-self: center;
+	padding-left: 18px;
+	font-size: 0.6875rem;
+	letter-spacing: 0.04em;
+	color: var(--faint);
+	font-style: italic;
 }
 
 /* Centred against the whole block rather than aligned to the headline: it acts
@@ -171,29 +171,29 @@
    middle of what it acts on. Aligned to the title it would read as a button
    about the title. */
 .actions {
-  align-self: center;
-  display: flex;
-  gap: 8px;
+	align-self: center;
+	display: flex;
+	gap: 8px;
 }
 
 .chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 4px;
 }
 
 @media (max-width: 720px) {
-  .header {
-    padding: 16px 16px 18px;
-    gap: 8px;
-  }
+	.header {
+		padding: 16px 16px 18px;
+		gap: 8px;
+	}
 
-  .title {
-    font-size: 1.75rem;
-  }
+	.title {
+		font-size: 1.75rem;
+	}
 
-  /* One line, always, and it scrolls if it has to. Two lines of figures read
+	/* One line, always, and it scrolls if it has to. Two lines of figures read
      as two separate statements about the library rather than one sentence, and
      the second line -- two figures and three columns of nothing -- looks like
      the row failed to fill rather than like it ended.
@@ -206,60 +206,60 @@
      rather than fading it out, and a fade here would sit on top of a hairline
      and make the separator look like the edge of the screen. No snapping
      either: these are five parts of one sentence, not five pages. */
-  .rail {
-    /* `.said` aligns its children to flex-start, so without this the rail sizes
+	.rail {
+		/* `.said` aligns its children to flex-start, so without this the rail sizes
        to its own content and overflows the header instead of scrolling inside
        it -- a scroll container with nothing to scroll against. */
-    align-self: stretch;
-    margin: 6px -16px 0;
-    padding: 0 16px;
-    overflow-x: auto;
-    /* The header sits inside the app's only scroll container, and a fling that
+		align-self: stretch;
+		margin: 6px -16px 0;
+		padding: 0 16px;
+		overflow-x: auto;
+		/* The header sits inside the app's only scroll container, and a fling that
        runs out of rail should stop there rather than chain outward. */
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
+		overscroll-behavior-x: contain;
+		scrollbar-width: none;
+	}
 
-  .rail::-webkit-scrollbar {
-    display: none;
-  }
+	.rail::-webkit-scrollbar {
+		display: none;
+	}
 
-  /* One column on a phone, and the button goes full width underneath. There is
+	/* One column on a phone, and the button goes full width underneath. There is
      no spare space beside a header that already fills the screen, and the
      thumb-sized target is worth more here than the composition is -- this is
      the one control on the screen somebody reaches for without looking. */
-  .header {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 14px;
-  }
+	.header {
+		grid-template-columns: minmax(0, 1fr);
+		row-gap: 14px;
+	}
 
-  /* Pushed to the two edges at their own size, rather than stretched to fill.
+	/* Pushed to the two edges at their own size, rather than stretched to fill.
      Two buttons blown up to half a screen each read as a dialog asking a
      question; at their normal size with the gutters holding them apart they
      read as what they are, which is the same pair the desktop has. The reach is
      the same either way -- both are already at the ends of a thumb's arc. */
-  .actions {
-    align-self: stretch;
-    justify-content: space-between;
-  }
+	.actions {
+		align-self: stretch;
+		justify-content: space-between;
+	}
 
-  /* Never shrink: a figure squeezed until "30,441" wraps under its own
+	/* Never shrink: a figure squeezed until "30,441" wraps under its own
      hairline is worse than one you have to scroll to. */
-  .figure,
-  .counting {
-    flex: none;
-    white-space: nowrap;
-  }
+	.figure,
+	.counting {
+		flex: none;
+		white-space: nowrap;
+	}
 
-  .figure {
-    padding: 2px 14px;
-  }
+	.figure {
+		padding: 2px 14px;
+	}
 
-  /* Same call the shelf blurbs make one component over: on a phone the shelves
+	/* Same call the shelf blurbs make one component over: on a phone the shelves
      stack close enough that another band of text above them turns the screen
      into more reading than looking. The counts stay, because they are the
      reason this header exists; the characterisation goes. */
-  .chips {
-    display: none;
-  }
+	.chips {
+		display: none;
+	}
 }

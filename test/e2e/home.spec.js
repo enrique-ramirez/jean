@@ -111,6 +111,19 @@ test.describe('an install with no play counts', () => {
     await expect(shelf(page, 'Recently played')).toHaveCount(0)
     await expect(shelf(page, 'You used to love this')).toHaveCount(0)
   })
+
+  test('and the screen still opens on something to press', async ({ page }) => {
+    await page.goto('/')
+
+    // Every other shelf is built out of listening history, so a player with no
+    // playback statistics would otherwise get a heading and nothing under it.
+    // One row drawn at random needs no history at all, and every install has a
+    // library -- an apology is not a home screen.
+    await expect(shelf(page, 'Start somewhere')).toBeVisible()
+    await expect(
+      page.getByRole('region', { name: 'Start somewhere' }).getByRole('button').first(),
+    ).toBeVisible()
+  })
 })
 
 test.describe('where you are, in the sidebar', () => {
@@ -138,5 +151,42 @@ test.describe('where you are, in the sidebar', () => {
     await openSidebar(page)
     await expect(current(page)).toHaveCount(1)
     await expect(current(page)).toContainText('Rock en Español')
+  })
+})
+
+test.describe('a shelf says it is playing', () => {
+  test.use({ settings: { 'jean.heatIntroSeen': true } })
+
+  test('it appears in the sidebar and in the status bar, and survives leaving it', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    await expect(shelf(page, 'Most played')).toBeVisible()
+
+    // Nothing before it is played: the row only exists while the shelf is the
+    // thing playing. Checked without opening the drawer -- on a phone that
+    // would cover the very card the next line clicks.
+    await expect(nav(page).getByRole('button', { name: 'Most played' })).toHaveCount(0)
+
+    await page
+      .getByRole('region', { name: 'Most played' })
+      .getByRole('button', { name: /^Jessico/ })
+      .click()
+
+    await openSidebar(page)
+    const row = nav(page).getByRole('button', { name: /Most played/ })
+    await expect(row).toBeVisible()
+    await expect(row.getByLabel('Playing from here')).toBeVisible()
+    await expect(page.locator('footer')).toContainText('from')
+    await expect(page.locator('footer')).toContainText('Most played')
+
+    // Browsing away does not move playback, so the row and the status line stay
+    // -- that is the whole point of separating what you are looking at from what
+    // you are listening to.
+    await page.goto('/#/p5')
+    await expect(page.getByRole('heading', { level: 1, name: 'Rock en Español' })).toBeVisible()
+    await openSidebar(page)
+    await expect(nav(page).getByRole('button', { name: /Most played/ })).toBeVisible()
+    await expect(page.locator('footer')).toContainText('Most played')
   })
 })

@@ -16,6 +16,10 @@
   --muted: oklch(0.676 0.0193 253);
   --faint: oklch(0.52 0.015 255);
 
+  /* What a dissolving album sleeve lands on. On dark it is the page itself --
+     a cover fading into black needs no help to keep its shape. */
+  --album-ground: oklch(0.1722 0.007 258);
+
   --on-accent: oklch(0.18 0.01 260);
   /* Destructive actions. Pulled towards the warm end of red so it reads as part
      of the same palette as the accent rather than as a browser default. */
@@ -39,6 +43,14 @@
   --text: oklch(0.26 0.012 260);
   --muted: oklch(0.5 0.014 258);
   --faint: oklch(0.62 0.012 258);
+
+  /* Light needs the opposite of nothing. The page is all but white, so a pale
+     sleeve dissolving into it took the card with it -- no bottom edge, no
+     rounded corners, a row that read as captions floating in space. A warm tint
+     a shade under the page gives the sleeve something to land on, and it is
+     pulled towards the accent hue rather than grey so it reads as part of the
+     palette rather than as dirt. */
+  --album-ground: oklch(0.945 0.014 84);
 
   --on-accent: oklch(1 0 0);
   --danger: oklch(0.53 0.2 27);

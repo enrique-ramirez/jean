@@ -1,4 +1,5 @@
 import { percentile } from './albums.js'
+import { describeWhen, yearOf } from './when.js'
 
 const LIMIT = 24
 const YEAR = 365.25 * 24 * 60 * 60 * 1000
@@ -9,17 +10,25 @@ const YEAR = 365.25 * 24 * 60 * 60 * 1000
 // since 2016" is a reason to press play. A shelf that cannot say why an album is
 // on it probably should not exist.
 //
-// Every threshold is a percentile of the library rather than a number, so these
-// fill on a library of three thousand plays and one of three. A shelf that
-// cannot fill simply does not render -- there is no empty shelf state, because
-// an empty shelf is not information.
+// Two rules keep them honest on somebody else's library.
+//
+// **Thresholds are percentiles**, so a shelf fills whether you have three plays
+// a track or three hundred. But a percentile only promises that *something*
+// qualifies, never that the title is true -- measured on a library played daily,
+// the bottom quartile of recency was still last year, so "played to death, then
+// forgotten" was offering records last heard months ago. Where a shelf makes a
+// claim about time it carries an absolute floor as well.
+//
+// **A shelf that cannot fill honestly does not render.** No empty states and no
+// thin rows: a library with no ratings has no starred shelf, and one too new to
+// have forgotten anything has no forgotten shelf.
 const shelf = (id, title, blurb, pick, caption) => ({ id, title, blurb, pick, caption })
 
 const byPlays = (a, b) => b.plays - a.plays
 const byRecent = (a, b) => b.lastPlayed - a.lastPlayed
-const yearsSince = (at) => (Date.now() - at) / YEAR
 
 const said = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`
+const plays = (n) => said(Math.round(n), 'play', 'plays')
 
 export const SHELVES = [
   shelf(
@@ -27,7 +36,7 @@ export const SHELVES = [
     'Recently played',
     'Where you have been lately',
     (albums) => albums.filter((a) => a.lastPlayed > 0).sort(byRecent),
-    (a) => `Last played ${new Date(a.lastPlayed).getFullYear()}`,
+    (a) => describeWhen(a.lastPlayed),
   ),
 
   shelf(
@@ -35,29 +44,32 @@ export const SHELVES = [
     'Most played',
     'The records you keep coming back to',
     (albums) => albums.filter((a) => a.plays > 0).sort(byPlays),
-    (a) => said(Math.round(a.plays), 'play', 'plays'),
+    (a) => plays(a.plays),
   ),
 
-  // The emotional centre of the screen, and the reason the caption matters.
-  // Loved hard, then dropped: top-quartile plays per track, bottom-quartile
-  // recency. Measured on a 30,441-track library it lands on 31 albums.
+  // Loved hard, then dropped. Selected on plays *per track*, because a long
+  // soundtrack would otherwise win on volume alone -- but captioned with the
+  // album's total, because "1,300 plays" is a thing anyone can read and "43x a
+  // track" turned out not to be.
   shelf(
     'loved',
     'You used to love this',
-    'Played to death, then forgotten',
+    'Played to death, then put down',
     (albums) => {
       const played = albums.filter((a) => a.plays > 0 && a.lastPlayed > 0 && a.trackCount >= 4)
       if (played.length < 8) return []
       const busy = percentile(played.map((a) => a.playsPerTrack), 0.75)
-      const stale = percentile(played.map((a) => a.lastPlayed), 0.25)
+      // The floor is what makes the title true. Without it this shelf offers
+      // records from last year and calls them forgotten.
+      const silent = Date.now() - 1.5 * YEAR
       return played
-        .filter((a) => a.playsPerTrack >= busy && a.lastPlayed <= stale)
-        .sort((a, b) => b.playsPerTrack - a.playsPerTrack)
+        .filter((a) => a.playsPerTrack >= busy && a.lastPlayed <= silent)
+        .sort(byPlays)
     },
-    // Terse on purpose: the caption sits under a 160px cover, and "43 plays a
-    // track, last heard 2016" ellipsised away the year -- which is the half
-    // that makes it a story rather than a statistic.
-    (a) => `${Math.round(a.playsPerTrack)}x a track, ${new Date(a.lastPlayed).getFullYear()}`,
+    // Just the surprising half. The shelf's title already says you loved it, so
+    // repeating the play count in the chip only cost the year to an ellipsis on
+    // a phone -- and the year is the part that stings.
+    (a) => `Not since ${yearOf(a.lastPlayed)}`,
   ),
 
   // Nothing else does this, and it costs nothing: %codec% and %bitrate% are
@@ -74,9 +86,9 @@ export const SHELVES = [
       const poor = percentile(lossy.map((a) => a.bitrate), 0.25)
       return lossy
         .filter((a) => a.playsPerTrack >= busy && a.bitrate <= poor)
-        .sort((a, b) => b.playsPerTrack - a.playsPerTrack)
+        .sort(byPlays)
     },
-    (a) => `${Math.round(a.bitrate)} kbps, ${Math.round(a.playsPerTrack)}x a track`,
+    (a) => `${Math.round(a.bitrate)} kbps, ${plays(a.plays)}`,
   ),
 
   // Ratings are sparse and lopsided -- *measured*, 375 of one library's 500 are
@@ -102,7 +114,15 @@ export const SHELVES = [
     'unopened',
     'Never opened',
     'In your library, never played',
-    (albums) => albums.filter((a) => a.plays === 0).sort((a, b) => b.trackCount - a.trackCount),
+    (albums) => {
+      // "Never played" is a claim about your listening, and on a player with no
+      // playback-statistics component every album reads as zero -- so the shelf
+      // would offer the entire library and call all of it untouched. That is
+      // absence of *data* wearing the clothes of absence of *plays*. If nothing
+      // anywhere has been played, Jean does not know, and says nothing.
+      if (!albums.some((a) => a.plays > 0)) return []
+      return albums.filter((a) => a.plays === 0).sort((a, b) => b.trackCount - a.trackCount)
+    },
     (a) => said(a.trackCount, 'track', 'tracks'),
   ),
 ]
@@ -111,6 +131,26 @@ export const SHELVES = [
 // four albums is dropped rather than shown thin: a row of two covers reads as
 // something failing to load.
 const MINIMUM = 4
+
+// The one shelf that needs no history, no ratings and no play counts: records
+// drawn at random. It exists so a library Jean knows nothing about yet still
+// opens on something to press rather than on an apology.
+const STARTER = shelf(
+  'starter',
+  'Start somewhere',
+  'A few records out of your library',
+  (albums) => {
+    const picked = [...albums]
+    for (let at = 0; at < Math.min(LIMIT, picked.length); at += 1) {
+      const swap = at + Math.floor(Math.random() * (picked.length - at))
+      const held = picked[at]
+      picked[at] = picked[swap]
+      picked[swap] = held
+    }
+    return picked
+  },
+  (a) => said(a.trackCount, 'track', 'tracks'),
+)
 
 export function buildShelves(albums) {
   if (albums.length === 0) return []
@@ -121,7 +161,14 @@ export function buildShelves(albums) {
     if (picked.length < MINIMUM) continue
     built.push({ ...entry, albums: picked.slice(0, LIMIT), total: picked.length })
   }
-  return built
+
+  if (built.length > 0) return built
+
+  // Nothing qualified -- a brand new install, or a player with no playback
+  // statistics at all. One row of the library beats an empty screen.
+  const starter = STARTER.pick(albums)
+  if (starter.length < MINIMUM) return []
+  return [{ ...STARTER, albums: starter.slice(0, LIMIT), total: starter.length }]
 }
 
 // Every track on a shelf, **ascending**, which is not the order the shelf is

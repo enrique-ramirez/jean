@@ -26,6 +26,7 @@ export function Sidebar({
   onOpenSearch,
   route,
   onOpenRoute,
+  playingFrom,
   isOpen,
   isCollapsed,
   onDismiss,
@@ -193,7 +194,12 @@ export function Sidebar({
                 }}
               >
                 {isPlayingSearch ? (
-                  <Volume2 size={15} strokeWidth={2} aria-label="Playing from here" />
+                  <Volume2
+                  size={15}
+                  strokeWidth={2}
+                  className={styles.playing}
+                  aria-label="Playing from here"
+                />
                 ) : (
                   <Search size={15} strokeWidth={2} aria-hidden="true" />
                 )}
@@ -232,6 +238,34 @@ export function Sidebar({
             <span className={styles.label}>All music</span>
           </button>
         </div>
+
+        {/* A shelf you played, for as long as it is the thing playing. Jean's
+            scratch playlist is hidden, so without this the status bar would name
+            a track with nothing on screen accounting for where it came from --
+            and unlike a playlist, a shelf has no permanent row to point at. It
+            leaves on its own when the next set takes the scratch over. */}
+        {playingFrom?.route ? (
+          <div className={styles.row}>
+            <button
+              type="button"
+              className={styles.item}
+              aria-current={route === playingFrom.route}
+              onClick={() => onOpenRoute(playingFrom.route)}
+            >
+              {playingFrom.isPlaying ? (
+                <Volume2
+                  size={15}
+                  strokeWidth={2}
+                  className={styles.playing}
+                  aria-label="Playing from here"
+                />
+              ) : (
+                <Disc3 size={15} strokeWidth={2} aria-hidden="true" />
+              )}
+              <span className={styles.label}>{playingFrom.label}</span>
+            </button>
+          </div>
+        ) : null}
 
         <div className={styles.sectionHeader}>
           <p className={styles.heading}>Playlists</p>
@@ -355,7 +389,12 @@ function PlaylistRow({
         onBlur={onBlur}
       >
         {playlist.isCurrent ? (
-          <Volume2 size={15} strokeWidth={2} aria-label="Playing from here" />
+          <Volume2
+                  size={15}
+                  strokeWidth={2}
+                  className={styles.playing}
+                  aria-label="Playing from here"
+                />
         ) : (
           <ListMusic size={15} strokeWidth={2} aria-hidden="true" />
         )}

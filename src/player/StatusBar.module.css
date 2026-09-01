@@ -49,6 +49,21 @@
   color: var(--muted);
 }
 
+/* Only present when playback is inside a set Jean made -- a shelf, a search --
+   which is exactly when the sidebar cannot show you a playlist to point at. */
+.from {
+  overflow: hidden;
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+}
+
+.from b {
+  font-weight: 550;
+  color: var(--accent);
+}
+
 .transport {
   display: flex;
   align-items: center;

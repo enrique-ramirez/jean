@@ -104,7 +104,13 @@
   font-weight: 550;
 }
 
-.item[aria-current='true'] svg {
+/* The icon says exactly one thing: this is what is playing. It used to be
+   tinted by selection as well, so the row you were *looking at* and the row you
+   were *listening to* were the same colour -- which is precisely the pair this
+   design needs to keep apart, since browsing and playback are allowed to point
+   at different things. Selection now owns the background and the label; the
+   accent belongs to the sound. */
+.item .playing {
   color: var(--accent);
 }
 

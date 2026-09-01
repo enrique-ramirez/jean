@@ -4,6 +4,7 @@ import { Shuffle } from 'lucide-react'
 
 import { artworkUrl, readTrack } from '../api/beefweb.js'
 import { useIsCompactViewport } from '../hooks/useMediaQuery.js'
+import { usePlayingFrom } from '../library/usePlayingFrom.js'
 import { Artwork } from '../ui/Artwork.jsx'
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from '../ui/icons.jsx'
 import { SeekBar, useElapsedLabel } from './SeekBar.jsx'
@@ -67,6 +68,11 @@ export function StatusBar() {
   const transport = useTransport()
   const order = usePlaybackOrder()
 
+  // Above the early return below, or it is a hook that only runs once the
+  // player has answered -- which React counts as rendering more hooks than last
+  // time and refuses outright.
+  const from = usePlayingFrom()
+
   if (isPending || isError) {
     return (
       <footer className={styles.statusbar}>
@@ -99,6 +105,11 @@ export function StatusBar() {
           <div className={styles.names}>
             <span className={styles.title}>{track?.title ?? 'Nothing playing'}</span>
             <span className={styles.artist}>{track?.artist ?? '—'}</span>
+            {from?.isPlaying ? (
+              <span className={styles.from}>
+                from <b>{from.label}</b>
+              </span>
+            ) : null}
           </div>
         </div>
 

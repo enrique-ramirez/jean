@@ -28,7 +28,18 @@ Drag tracks onto a playlist in the sidebar to add them, or right-click -- press 
 on a phone -- and pick one from the menu. Select several first and they all go in one go.
 Whatever it does, it tells you, and gives you an undo.
 
-**Not built yet:** the home screen.
+Jean opens on **Home**: rows of albums drawn out of your own listening -- what you
+play most, what you played to death and then put down, what you have never opened, and
+**what you play constantly but only own as a bad rip**. Each card says why it is there.
+Click one and the whole row plays, starting from that album; the sidebar and the status
+bar both tell you what you are listening to, which can be somewhere other than what you
+are looking at. **All music** is the whole library, unfiltered.
+
+Shelves that your library cannot support simply do not appear -- no ratings, no starred
+shelf; no playback statistics, no play-history shelves at all -- and an install with
+none of it still opens on a row of records to press.
+
+**Not built yet:** a folder browser.
 
 ## Development
 

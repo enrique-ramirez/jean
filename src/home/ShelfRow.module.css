@@ -2,7 +2,12 @@
   /* Two numbers own the row. The cards, the snap edge, the fade and the arrows
      all derive from them, so a breakpoint changes a value rather than a rule --
      and the heading and the first cover cannot drift out of line. */
-  --cover: 160px;
+  /* Width and height are separate because the card is deliberately taller than
+     the sleeve is square. The artwork fills it and loses a little from each
+     side, which costs less than it sounds: the extra height goes to the words,
+     and the bottom of the picture is dissolving there anyway. */
+  --cover: 180px;
+  --cover-h: 192px;
   --gutter: 24px;
   position: relative;
   display: flex;
@@ -40,7 +45,7 @@
    would pull them off the optical centre of the thing they scroll. */
 .arrow {
   position: absolute;
-  top: calc(4px + var(--cover) / 2);
+  top: calc(4px + var(--cover-h) / 2);
   z-index: 2;
   display: grid;
   width: 34px;
@@ -131,8 +136,18 @@
 
 @media (max-width: 720px) {
   .shelf {
-    --cover: 132px;
+    --cover: 152px;
+    --cover-h: 164px;
     --gutter: 16px;
+    gap: 8px;
+  }
+
+  /* The blurb goes. On a phone the shelves are stacked close enough that a
+     second line of grey under every title turns the screen into more reading
+     than looking -- and the titles already say it. "Most played" needs no gloss;
+     "Worth a better copy" earns its one on a desktop, where there is room. */
+  .blurb {
+    display: none;
   }
 
   .scroller {

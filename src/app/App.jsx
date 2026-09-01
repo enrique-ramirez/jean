@@ -18,6 +18,7 @@ import { project, wholeLibrary } from '../library/project.js'
 import { useLibrary } from '../library/useLibrary.js'
 import { useLibrarySearch } from '../library/useLibrarySearch.js'
 import { usePlayShelf } from '../home/usePlayShelf.js'
+import { usePlayingFrom } from '../library/usePlayingFrom.js'
 import { StatusBar } from '../player/StatusBar.jsx'
 import {
   usePlayPause,
@@ -80,6 +81,16 @@ export function App() {
   })
   const search = useLibrarySearch(library, playlists)
   const playShelf = usePlayShelf({ library, playlists, navigate })
+
+  // The scratch carries a human label; the route it belongs to is Jean's to
+  // work out. Only shelves get a temporary row -- All music and the search
+  // already have permanent entries of their own to mark.
+  const playing = usePlayingFrom()
+  const playingFrom = useMemo(() => {
+    if (playing?.kind !== SCRATCH_KIND.shelf) return null
+    const entry = SHELVES.find((item) => item.title === playing.label)
+    return entry ? { ...playing, route: `shelf/${entry.id}` } : null
+  }, [playing])
 
   // All music is the library itself, unprojected -- copying 30,000 rows to
   // produce a copy of themselves is the one filter that can afford to do
@@ -254,6 +265,7 @@ export function App() {
           onOpenSearch={openSearch}
           route={route}
           onOpenRoute={openRoute}
+          playingFrom={playingFrom}
           isOpen={isSidebarOpen}
           isCollapsed={!isCompactViewport && isSidebarCollapsed}
           onDismiss={() => setIsSidebarOpen(false)}

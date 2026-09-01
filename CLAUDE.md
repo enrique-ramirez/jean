@@ -71,10 +71,40 @@ follow the user between devices. Fall back to `localStorage` only when
 
 ## Product decisions already made
 
-**The home screen leads with play-history shelves** — Most Played, Recently Played, and
-"haven't heard since" — with the albums grid below them. These depend on a playcount
-component, so on an install without one they disappear and **the albums grid must stand
-alone as a complete home screen**, not a leftover.
+**The home screen is rows of shelves, and a shelf is a filter with a reason.** Most
+played, Recently played, "You used to love this", "Worth a better copy", "You starred
+these", "Never opened". Each carries a caption saying *why this record is here* --
+"1,300 plays", "Not since 2016", "128 kbps" -- because that sentence is the whole
+difference between a shelf and a query result.
+
+Not a carousel. Cover Flow was removed from iTunes in 2015 because it is a beautiful
+thing that cannot browse: one album at a time across two thousand is a flick-fest. A
+shelf is small on purpose and the browsing lives in All music.
+
+Three rules hold the shelves honest on somebody else's library:
+
+- **Thresholds are percentiles of this library, never constants.** A library whose
+  busiest album has three plays still has a top quartile.
+- **A percentile is not a promise that the title is true.** *Measured* on a library
+  played daily, the bottom quartile of recency was still *last year* -- so "played to
+  death, then forgotten" was offering records from months ago. Where a shelf claims
+  something about time it carries an absolute floor as well.
+- **A shelf that cannot fill honestly does not render**, and a claim needs the data
+  behind it. No ratings, no starred shelf. No playback statistics at all and "Never
+  opened" is not "you never played these", it is *Jean cannot tell* -- so it says
+  nothing. If nothing at all qualifies, Home falls back to **one row drawn at random**,
+  because every install has a library and an apology is not a home screen.
+
+**Browsing and playback are allowed to point at different things, so the app has to
+say where the sound is coming from.** The scratch playlist holds *the last set you
+chose to play*, not the thing you are looking at -- so you can start a shelf and wander
+into All music without touching it. That freedom is only tolerable with the affordances
+that account for it: a temporary sidebar row named after the shelf, and `from <label>`
+in the status bar. Both read the scratch playlist's own title through
+`library/usePlayingFrom.js`, so they cannot disagree and neither needs state of Jean's
+own. **The accent on a sidebar icon means "this is playing" and nothing else** --
+tinting it by selection made the row you were looking at and the row you were listening
+to identical, which is precisely the pair this design exists to separate.
 
 **Search is a persistent, always-visible control** that is *also* bound to `⌘K` and `/`.
 Not a keyboard shortcut with an icon added later — mobile has no keyboard, and an invisible
@@ -857,6 +887,8 @@ itself, or through a dev proxy. See `README.md`.
 src/
   api/        beefweb client -- every fetch to the player lives here
   app/        shell: App, Sidebar, CommandPalette, theme, hash routing
+  home/       the home screen: album aggregation, shelves, the card and the row
+  library/    the library as one array, its source seam, and the views over it
   hooks/      shared, generic (useDebounced, useMediaQuery, useStoredState, ...)
   keyboard/   keymap.js, useKeymap, ShortcutSheet
   player/     transport, seek bar, player state and mutations
@@ -1031,7 +1063,11 @@ foobar2000), and the autoplaylist otherwise; both go through the source seam in
 `JEAN_NO_LIBRARY_API=1 pnpm test` runs it against the fallback. Playlist routes are
 always read as playlists.
 
-The home screen, the Web Worker and IndexedDB persistence are not built yet. A library
+The **home screen** is built: `#/home` (where `/` lands), shelves of albums in
+`home/shelves.js`, and `#/all` for the whole library. Clicking an album plays the
+*shelf* it is on, starting at that album, and opens it as a view of its own -- a filter
+over the library array, never a playlist. The Web Worker and IndexedDB persistence are
+not built yet. A library
 *browse* view is not built **and is not next**: the library is deliberately a hidden
 concept, reachable only through search, until the home screen — which is what the play
 history shelves are for — gives it a real home. Both sources are equally unbrowsable,

@@ -120,6 +120,37 @@ test.describe('a wide, varied library', () => {
     await expect(header(page).getByText('tracks', { exact: true })).toBeVisible()
   })
 
+  // The rail is one line at every width, and below the breakpoint it scrolls
+  // rather than wrapping. Two lines of figures read as two statements about the
+  // library instead of one, and the short second line -- two figures and three
+  // columns of nothing -- looks like the row failed to fill rather than like it
+  // ended. Asserted off the geometry, because that is the only thing that
+  // notices; every count is still correct when the rail is stacked in two.
+  test('the figures stay on one line, and scroll if they must', async ({ page }, testInfo) => {
+    await page.goto('/')
+    await settled(page)
+
+    const rail = header(page).locator('dl')
+    const shape = await rail.evaluate((el) => ({
+      lines: new Set([...el.children].map((c) => Math.round(c.getBoundingClientRect().top))).size,
+      overflows: el.scrollWidth > el.clientWidth,
+      // Full-bleed, so what is cut is cut by the edge of the screen. Clipped at
+      // the gutter it reads as drawn too wide; clipped at the glass it reads as
+      // continuing.
+      spansViewport: el.clientWidth === document.documentElement.clientWidth,
+      // And it must scroll *itself*. A rail that pushes the document sideways
+      // takes the whole app with it.
+      pushesDocument: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }))
+
+    expect(shape.lines).toBe(1)
+    expect(shape.pushesDocument).toBe(false)
+    if (testInfo.project.name === 'mobile') {
+      expect(shape.overflows).toBe(true)
+      expect(shape.spansViewport).toBe(true)
+    }
+  })
+
   test('only the four biggest genres are named, however many there are', async ({ page }) => {
     await page.goto('/')
     await settled(page)

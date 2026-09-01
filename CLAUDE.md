@@ -992,9 +992,19 @@ without a real report.
 - **`GET /api/player` ignores `trcolumns`** and returns `"columns": []`. Use
   `GET /api/query?player=true&trcolumns=…`.
 - **Volume is decibels** (`-100..0`), not a percentage, and `volume.type` says so --
-  another player may report a linear range. `src/player/volume.js` squares the
-  normalised distance from the top, which puts half the slider around -25 dB and
-  three quarters around -6 dB instead of spending most of the travel on silence.
+  another player may report a linear range. `src/player/volume.js` maps the fader
+  **linearly in perceived loudness**: +10 dB is about twice as loud, so the
+  fraction becomes `max + 10 * log2(f)` and half the slider is half as loud, a
+  quarter is a quarter as loud. Equal distances are equal *ratios* of loudness
+  wherever they are taken from, which is the only promise a fader makes.
+  It replaced squaring the distance from the top -- the same instinct applied far
+  too hard, which put the midpoint at -25 dB and 15% at **-72 dB**, silence rather
+  than quietness, so the bottom third of the travel did nothing and the top third
+  did all of it: ten points from 70 to 80 crossed 5 dB while ten from 10 to 20
+  crossed 17 dB of inaudible nothing. Linear in *amplitude* (`20 * log10(f)`,
+  roughly macOS) fails the other way on a range reaching -100 -- the midpoint
+  lands at -6 dB and everything under -26 dB is crammed into the bottom
+  twentieth.
 - **`itemCount` in `PlaylistInfo` goes stale and nothing corrects it.** *Measured*:
   the update stream pushes `playlists` when a playlist is added, renamed or deleted,
   and pushes nothing at all when its *items* change. So a cached count is wrong from

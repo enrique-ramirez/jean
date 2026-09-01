@@ -55,26 +55,48 @@ test.describe('the volume slider', () => {
     await showVolume(page)
   })
 
-  test('half the travel is around -25 dB, not -50', async ({ page, player }) => {
-    // Decibels are logarithmic and everything below about -40 is near-silent,
-    // so a linear fader would spend three quarters of its travel on values
-    // nobody wants. The curve is the feature; a linear one would land at -50
-    // here and pass every other assertion in this file.
-    await dragTo(page, volume(page), 0.5)
+  // Where the fader lands, in dB, after a drag to that fraction of its travel.
+  const landsAt = async (page, player, fraction) => {
+    const before = volumesSent(player).length
+    await dragTo(page, volume(page), fraction)
+    await expect.poll(() => volumesSent(player).length).toBeGreaterThan(before)
+    return volumesSent(player).at(-1)
+  }
 
-    await expect.poll(() => volumesSent(player).length).toBeGreaterThan(0)
-    const landed = volumesSent(player).at(-1)
-    expect(landed).toBeGreaterThan(-30)
-    expect(landed).toBeLessThan(-20)
+  // The curve is the feature, and it is a specific one: linear in *perceived
+  // loudness*, where about +10 dB is twice as loud. A linear-in-dB fader would
+  // land at -50 here and pass every other assertion in this file.
+  test('half the travel is half as loud, which is -10 dB', async ({ page, player }) => {
+    const landed = await landsAt(page, player, 0.5)
+
+    expect(landed).toBeGreaterThan(-13)
+    expect(landed).toBeLessThan(-7.5)
   })
 
-  test('three quarters is around -6 dB', async ({ page, player }) => {
-    await dragTo(page, volume(page), 0.75)
+  // The complaint that produced this curve, and the reason it is asserted in
+  // absolute terms rather than as a ratio: the fader used to reach -72 dB here,
+  // which is not a low volume, it is no volume. A quiet setting has to stay
+  // audible or the bottom third of the control does nothing at all.
+  test('a sixth of the travel is quiet, not silent', async ({ page, player }) => {
+    const landed = await landsAt(page, player, 0.15)
 
-    await expect.poll(() => volumesSent(player).length).toBeGreaterThan(0)
-    const landed = volumesSent(player).at(-1)
-    expect(landed).toBeGreaterThan(-10)
-    expect(landed).toBeLessThan(-3)
+    // Everything below roughly -40 dB is inaudible. This has to clear it
+    // comfortably, not squeak past it.
+    expect(landed).toBeGreaterThan(-32)
+    expect(landed).toBeLessThan(-23)
+  })
+
+  // The property the whole curve exists for, and the one a spot check cannot
+  // see: equal distances along the fader are equal *ratios* of loudness, so ten
+  // points is worth the same amount of volume wherever it is taken from. On the
+  // old curve the same ten points crossed 5 dB up here and 17 dB of inaudible
+  // nothing down at the bottom.
+  test('ten points is worth about the same everywhere, near the top', async ({ page, player }) => {
+    const seventy = await landsAt(page, player, 0.7)
+    const eighty = await landsAt(page, player, 0.8)
+
+    expect(eighty - seventy).toBeGreaterThan(0)
+    expect(eighty - seventy).toBeLessThan(3)
   })
 
   test('the ends are the ends', async ({ page, player }) => {

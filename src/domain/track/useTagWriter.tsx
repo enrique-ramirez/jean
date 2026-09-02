@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import {
 	createContext,
 	type ReactNode,
@@ -10,6 +9,7 @@ import {
 } from "react";
 
 import type { TrackColumns, TrackIdentity } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { pushToast } from "@/shared/ui/toastStore";
@@ -17,18 +17,14 @@ import type { LibrarySource } from "./librarySource";
 import { clearWrittenRating, setWrittenRating } from "./ratingStore";
 import {
 	NO_WRITER,
-	resolveTagWriter,
 	type TagWriter,
 	type TagWriterState,
+	tagWriterOf,
 	withoutField,
 } from "./tagWriter";
 
 // The only field this ships, of whatever the component's allowlist names.
 export const RATING_FIELD = "rating";
-
-// **This one may never move to `/api/clientconfig`**, unlike every other stored
-// setting: beefweb serves that namespace unauthenticated. See the root CLAUDE.md.
-const TOKEN_KEY = "jean.fooJeanToken";
 
 const FIELDS_KEY = "jean.fooJeanFields";
 
@@ -99,7 +95,9 @@ const tagValueOf = (stars: number | null) =>
 	stars === null ? "" : String(stars);
 
 export function TagWriterProvider({ children }: { children: ReactNode }) {
-	const [token, setToken] = useStoredState(TOKEN_KEY, "");
+	// One discovery for the whole app; listening reads the same probe. The token
+	// comes with it, because it is the thing the probe is keyed on.
+	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
 	// Absent means on, so the stored value only records a decision actually made.
 	const [fieldPrefs, setFieldPrefs] = useStoredState<Record<string, boolean>>(
 		FIELDS_KEY,
@@ -107,23 +105,15 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 	);
 	const hasFinePointer = useMediaQuery("(hover: hover) and (pointer: fine)");
 
-	const discovery = useQuery({
-		queryKey: ["fooJean", token],
-		queryFn: () => resolveTagWriter(token || null),
-		// A property of the player rather than of this tab. The settings screen has
-		// an explicit "check again".
-		staleTime: Number.POSITIVE_INFINITY,
-		refetchOnWindowFocus: false,
-		retry: false,
-	});
+	const resolution = useMemo(() => tagWriterOf(discovery), [discovery]);
 
 	// Fields a 403 has taken off the table for this session.
 	const [refused, setRefused] = useState<string[]>([]);
 
-	const permitted = useMemo(() => {
-		const found = discovery.data?.writer ?? NO_WRITER;
-		return refused.reduce(withoutField, found);
-	}, [discovery.data, refused]);
+	const permitted = useMemo(
+		() => refused.reduce(withoutField, resolution.writer ?? NO_WRITER),
+		[resolution, refused],
+	);
 
 	// **Narrowing only.** The component's allowlist is the ceiling; a client able
 	// to widen the list bounding it would not be bounded.
@@ -215,8 +205,8 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 
 	const value = useMemo<TagWriting>(
 		() => ({
-			state: discovery.data?.state ?? { kind: "absent" },
-			isChecking: discovery.isFetching,
+			state: resolution.state,
+			isChecking,
 			canRate: writer.canWrite && writer.allows(RATING_FIELD),
 			canRateInline:
 				writer.canWrite && writer.allows(RATING_FIELD) && hasFinePointer,
@@ -227,12 +217,14 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			allowedFields: permitted.allowedFields,
 			isFieldEnabled,
 			setFieldEnabled,
-			recheck: () => discovery.refetch(),
+			recheck,
 			rate,
 			rateTrack,
 		}),
 		[
-			discovery,
+			resolution,
+			isChecking,
+			recheck,
 			writer,
 			permitted,
 			isFieldEnabled,

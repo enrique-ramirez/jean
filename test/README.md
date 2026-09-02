@@ -208,6 +208,11 @@ test('does the thing', async ({ page, player }) => {
   `{ failWrites: 403 }` and friends for the statuses that cannot be provoked otherwise.
   A write reaches the fake's own tracks, so a reload reads the value back through
   beefweb -- which is what proves the app is not showing its own optimistic cache.
+- **`fooJean` also carries the streaming half**: `canStream: false` is an install
+  with no encoder and an older component both, which must render **no** listen
+  control rather than one that fails. Assert on `player.requests` and
+  `player.streamFormats` -- the latter because `requests` records paths without
+  their query, and the whole codec choice is a claim about the query string.
 - **`retagged`** patches tag values onto captured tracks, keyed by title:
   `test.use({ retagged: { Nutshell: { '%artist%': 'Alice in Chains feat. X' } } })`.
   One person's library is not every library -- this capture has no featured
@@ -347,12 +352,33 @@ foobar2000 -- and both are now modelled:
   `bindAddress` or a firewall produces, and it must never render as "not installed". And **the preflights land in `player.requests`**: both
   servers record into one log, so counting writes means filtering to `POST`. An
   `OPTIONS` the browser sent on its own is not a request the app made.
+- **A stream is a second listener's worth of things going wrong, and the fake
+  does all of them.** `fooJean.streamBehaviour` is `short` (ends after what it has
+  sent, for reconnect) and `quiet` (opens, sends the container header, and then
+  nothing -- the case with **no error to catch**, which is what a stopped player
+  looks like from the stream and what the stall watchdog is the only answer to).
+  `playableFormats` names which of `streamFormats` actually get bytes of the
+  declared type, so the codec fall-through is exercised rather than assumed.
+  `failTickets` with `ticketError` separates a 503 that means "busy" from one that
+  means "not supported" -- the component distinguishes them in the error string
+  alone. `expireTickets` answers 401 at `GET /stream` the way an expired one does.
 - **A set added from the library comes back in the media library's browse
   order** -- album artist, album, track -- and not in the order it was given, nor
   in the file-path order the library endpoint pages in. The fake used to preserve
   whatever order it was handed, which quietly made every "play this set, starting
   here" position correct here and wrong on a real player, for search, shelves and
   All Music alike.
+
+**The one place the fake is deliberately kinder**, and it is worth knowing why.
+The stream serves WAV rather than Ogg Opus -- there is no encoder in a Node fake
+-- and *measured* in Chromium, a non-seekable WAV does not fire `loadedmetadata`
+until roughly twelve **seconds of content** have arrived. Not bytes: raising the
+primed burst from 2s to 15s moved playback start from 12.7 s to 287 ms with the
+byte rate unchanged. That is a property of PCM in a container never meant to be
+streamed, not of live streaming -- Ogg and ADTS are designed for it. So the
+healthy stream hands over 15 s up front and then feeds at 1x, which starts sooner
+than a real one would. What that could hide -- a long gap between asking and
+hearing -- is covered by `quiet` instead, which is that gap with no end to it.
 
 The captured fixture cannot show the second one on its own: its folders match its
 tags, so both orders agree. `mediaLibrarySize` synthesises a library where they

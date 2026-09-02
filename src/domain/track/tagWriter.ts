@@ -1,11 +1,7 @@
 import {
-	type DiscoveryRecord,
-	type FooJeanCapabilities,
-	type FooJeanStatus,
-	fetchCapabilities,
-	fetchDiscoveryRecord,
-	originOfPort,
-	probeStatus,
+	discoverFooJean,
+	type FooJeanDiscovery,
+	type FooJeanState,
 	type WriteResult,
 	writeTags,
 } from "@/shared/api/fooJean";
@@ -88,90 +84,32 @@ export const withoutField = (writer: TagWriter, field: string): TagWriter => {
 	};
 };
 
-// What Jean found, which is not the same as what it can do. Every one of these
-// gets its own message; `features/settings/TagWriting.tsx` is the whole list.
-export type TagWriterState =
-	| { kind: "absent" }
-	| {
-			kind: "not-listening";
-			record: DiscoveryRecord;
-			// The component's own words, safe to show.
-			error: string;
-			portInUse: boolean;
-	  }
-	| { kind: "unreachable"; record: DiscoveryRecord }
-	| { kind: "impostor"; record: DiscoveryRecord }
-	| { kind: "unsupported"; record: DiscoveryRecord; apiVersion: number }
-	| { kind: "no-token"; record: DiscoveryRecord; status: FooJeanStatus }
-	| { kind: "unauthorized"; record: DiscoveryRecord; status: FooJeanStatus }
-	| {
-			kind: "ready";
-			record: DiscoveryRecord;
-			status: FooJeanStatus;
-			capabilities: FooJeanCapabilities;
-	  };
+// The states are `FooJeanState`, in `shared/api/fooJean.ts`: they describe the
+// component rather than this seam, and listening asks the same question of the
+// same probe. Aliased rather than re-declared so the settings pane keeps naming
+// the thing it draws.
+export type TagWriterState = FooJeanState;
 
 export interface TagWriterResolution {
 	state: TagWriterState;
 	writer: TagWriter;
 }
 
-// **The order is the security model**: read the hint, prove the port with an
-// unauthenticated call, and only then attach the token. Skipping the middle step
-// hands a credential to whoever forged the record.
-export async function resolveTagWriter(
-	token: string | null,
-): Promise<TagWriterResolution> {
-	const record = await fetchDiscoveryRecord().catch(() => null);
-	if (!record) return { state: { kind: "absent" }, writer: NO_WRITER };
-
-	if (!record.listening) {
-		return {
-			state: {
-				kind: "not-listening",
-				record,
-				error: record.error ?? "The component could not start.",
-				portInUse: Boolean(record.portInUse),
-			},
-			writer: NO_WRITER,
-		};
-	}
-
-	const origin = originOfPort(record.port);
-	const probe = await probeStatus(origin);
-
-	if (!probe.ok) {
-		const state: TagWriterState =
-			probe.reason === "unsupported"
-				? { kind: "unsupported", record, apiVersion: probe.apiVersion }
-				: probe.reason === "impostor"
-					? { kind: "impostor", record }
-					: { kind: "unreachable", record };
+// The discovery is done -- once, in `shared/api` -- and this only decides what
+// falls out of it for writing. A `ready` component with an empty allowlist is
+// indistinguishable from no component at all, which is correct.
+export function tagWriterOf({
+	state,
+	origin,
+	token,
+}: FooJeanDiscovery): TagWriterResolution {
+	if (state.kind !== "ready" || !origin || !token)
 		return { state, writer: NO_WRITER };
-	}
-
-	const { status } = probe;
-	if (!token)
-		return { state: { kind: "no-token", record, status }, writer: NO_WRITER };
-
-	const capabilities = await fetchCapabilities(origin, token);
-	if (!capabilities.ok) {
-		return {
-			state:
-				capabilities.reason === "unauthorized"
-					? { kind: "unauthorized", record, status }
-					: { kind: "unreachable", record },
-			writer: NO_WRITER,
-		};
-	}
-
 	return {
-		state: {
-			kind: "ready",
-			record,
-			status,
-			capabilities: capabilities.capabilities,
-		},
-		writer: agentWriter(origin, token, capabilities.capabilities.allowedFields),
+		state,
+		writer: agentWriter(origin, token, state.capabilities.allowedFields),
 	};
 }
+
+export const resolveTagWriter = async (token: string | null) =>
+	tagWriterOf(await discoverFooJean(token));

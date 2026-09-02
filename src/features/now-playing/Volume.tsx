@@ -20,10 +20,15 @@ const iconFor = (percent: number, isMuted?: boolean) => {
 function VolumeButton({
 	volume,
 	onPress,
+	label = "Volume",
 	...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
 	volume: VolumeState | null;
 	onPress?: () => void;
+	// Which volume this is. The control retargets to whichever device the sound
+	// is coming out of, and a fader that changed target silently would be the
+	// same drawing meaning two different things.
+	label?: string;
 }) {
 	const percent = volumePercent(volume);
 	const Icon = iconFor(percent, volume?.isMuted);
@@ -35,7 +40,7 @@ function VolumeButton({
 			onClick={onPress}
 			aria-pressed={Boolean(volume?.isMuted)}
 			aria-label={volume?.isMuted ? "Unmute" : "Mute"}
-			title={volume?.isMuted ? "Muted" : `Volume ${percent}%`}
+			title={volume?.isMuted ? "Muted" : `${label} ${percent}%`}
 			{...props}
 		>
 			<Icon size={17} strokeWidth={2} aria-hidden="true" />
@@ -43,16 +48,20 @@ function VolumeButton({
 	);
 }
 
-function VolumeSlider({
+// Exported for the listen picker, which points it at this device's own level
+// rather than the player's. Same law, same gesture, different target.
+export function VolumeSlider({
 	volume,
 	onChange,
 	orientation = "horizontal",
 	className,
+	label = "Volume",
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	orientation?: "horizontal" | "vertical";
 	className?: string;
+	label?: string;
 }) {
 	const { ref, fraction, isDragging, handlers } = useDragFraction({
 		onDrag: (next) => onChange(fractionToVolume(volume as VolumeState, next)),
@@ -73,7 +82,7 @@ function VolumeSlider({
 			data-muted={Boolean(volume?.isMuted)}
 			role="slider"
 			tabIndex={0}
-			aria-label="Volume"
+			aria-label={label}
 			aria-valuemin={0}
 			aria-valuemax={100}
 			aria-valuenow={percent}
@@ -108,9 +117,11 @@ function VolumeSlider({
 export function VolumePopover({
 	volume,
 	onChange,
+	label = "Volume",
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
+	label?: string;
 }) {
 	const [isOpen, setIsOpen] = useState(false);
 	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false));
@@ -123,6 +134,7 @@ export function VolumePopover({
 						volume={volume}
 						onChange={onChange}
 						orientation="vertical"
+						label={label}
 					/>
 					<span className={styles.readout}>{volumePercent(volume)}</span>
 				</div>
@@ -130,6 +142,7 @@ export function VolumePopover({
 
 			<VolumeButton
 				volume={volume}
+				label={label}
 				onPress={() => setIsOpen((open) => !open)}
 				aria-label={isOpen ? "Hide volume" : "Show volume"}
 				aria-expanded={isOpen}
@@ -142,15 +155,17 @@ export function Volume({
 	volume,
 	onChange,
 	onToggleMute,
+	label = "Volume",
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	onToggleMute: () => void;
+	label?: string;
 }) {
 	return (
 		<div className={styles.volume}>
-			<VolumeButton volume={volume} onPress={onToggleMute} />
-			<VolumeSlider volume={volume} onChange={onChange} />
+			<VolumeButton volume={volume} label={label} onPress={onToggleMute} />
+			<VolumeSlider volume={volume} onChange={onChange} label={label} />
 		</div>
 	);
 }

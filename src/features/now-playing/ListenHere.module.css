@@ -1,0 +1,183 @@
+.anchor {
+	position: relative;
+	display: inline-flex;
+}
+
+.button {
+	display: grid;
+	place-items: center;
+	padding: 6px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+	transition:
+		background 0.12s var(--ease),
+		color 0.12s var(--ease);
+}
+
+.button:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+/* Where the sound is, readable without opening anything -- the one idea worth
+   taking from Sonos's room tray. Same accent the shuffle mode uses, and for the
+   same reason: this is a state to read at a glance, not a button to aim at. */
+.button[data-listening="true"] {
+	color: var(--accent-text);
+}
+
+/* A menu rather than the fader's pill: this has rows to pick between, and a
+   pill-shaped panel around a list reads as a chip that grew. Right-aligned to
+   the button, which sits near the edge of the screen. */
+.popover {
+	position: absolute;
+	bottom: calc(100% + 10px);
+	right: -4px;
+	z-index: 30;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	width: 264px;
+	padding: 8px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-md);
+	background: var(--surface-raised);
+	box-shadow: var(--shadow);
+	animation: listen-in 160ms var(--ease);
+}
+
+@keyframes listen-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.popover {
+		animation: none;
+	}
+}
+
+.heading {
+	margin: 0;
+	padding: 4px 8px 6px;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.option {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 8px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	font: inherit;
+	text-align: left;
+	color: var(--text);
+	transition: background 0.12s var(--ease);
+}
+
+.option:hover {
+	background: var(--surface-sunken);
+}
+
+/* A fixed column so the two names line up whether or not either is ticked --
+   a checkmark that shifts the label is the list jumping as you choose. */
+.mark {
+	display: grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 16px;
+	height: 18px;
+	color: var(--accent-text);
+}
+
+.optionText {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.optionName {
+	font-size: 0.8125rem;
+	font-weight: 550;
+}
+
+.optionNote {
+	font-size: 0.6875rem;
+	line-height: 1.35;
+	color: var(--muted);
+}
+
+/* The states where something has gone wrong say so in the colour as well as in
+   the words. `busy` is deliberately not among them: it is a queue, not a fault. */
+.optionNote[data-tone="failed"] {
+	color: var(--danger, var(--accent-text));
+}
+
+.unblock {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	margin: 4px 0 2px;
+	padding: 7px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	font: inherit;
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: var(--text);
+}
+
+.unblock:hover {
+	background: var(--surface-sunken);
+}
+
+.level {
+	margin: 6px 0 0;
+	padding: 8px 8px 4px;
+	border-top: 1px solid var(--border);
+	font-size: 0.6875rem;
+	line-height: 1.35;
+	color: var(--muted);
+}
+
+.spin {
+	animation: listen-spin 900ms linear infinite;
+}
+
+@keyframes listen-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.spin {
+		animation: none;
+	}
+}
+
+@media (hover: none), (pointer: coarse) {
+	/* The panel claims the gesture, so a thumb straying off the track mid-drag is
+     still the fader's. Same rule as the volume popover. */
+	.popover {
+		touch-action: none;
+	}
+
+	.option {
+		padding: 10px 8px;
+	}
+}

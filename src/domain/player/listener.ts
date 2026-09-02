@@ -1,0 +1,164 @@
+import type { FooJeanDiscovery, StreamMark } from "@/shared/api/fooJean";
+import { clamp } from "@/shared/lib/math";
+
+// Where the sound comes out: the player, or this browser. Nothing outside this
+// file and the store beside it may ask which -- a control renders or it does
+// not, and the reason is `canListen`. See the root CLAUDE.md.
+
+// ---- choosing a codec, without ever naming a browser -------------------------
+
+// **Never branch on the user agent.** The question is not "is this Safari", it
+// is "will this element play these bytes", and the platform answers that
+// directly.
+//
+// The codecs parameter is not optional for Ogg: bare `audio/ogg` can answer for
+// Vorbis alone. `audio/aac` is the string browsers actually answer to for ADTS.
+const MIME: Record<string, string[]> = {
+	opus: ['audio/ogg; codecs="opus"'],
+	aac: ["audio/aac", "audio/aacp"],
+};
+
+let probe: HTMLAudioElement | null = null;
+
+// `canPlayType` returns `''`, `'maybe'` or `'probably'`. **Only `''` is a real
+// answer**; everything else is a candidate and none of it is a ranking, so the
+// server's order survives untouched.
+const isPlayable = (format: string) => {
+	probe ??= document.createElement("audio");
+	const types = MIME[format];
+	if (!types) return false;
+	return types.some((type) => probe?.canPlayType(type) !== "");
+};
+
+// **The server's order is the quality order and this only excludes.** Opus first
+// means a Safari that reads Ogg Opus gets the better codec and an older one
+// falls to AAC, without anybody naming a browser. A format the component does
+// not offer is never requested: `?format=` outside `streamFormats` is a 400.
+export const playableFormats = (offered: readonly string[] | undefined) =>
+	(offered ?? []).filter(isPlayable);
+
+// ---- the seam ----------------------------------------------------------------
+
+export interface ListenTarget {
+	origin: string;
+	token: string;
+	// Already intersected with what this browser admits, in the server's order.
+	formats: string[];
+}
+
+export interface Listener {
+	kind: "none" | "agent";
+	canListen: boolean;
+	formats: string[];
+	target: ListenTarget | null;
+}
+
+// `canListen` false and a target of null, so a caller that ignored the flag
+// still cannot connect to anything.
+export const NO_LISTENER: Listener = {
+	kind: "none",
+	canListen: false,
+	formats: [],
+	target: null,
+};
+
+// **`canStream` absent means false.** An older `foo_jean` does not carry the
+// field, and a client that offers a control and then fails is worse than one
+// that never offered it.
+//
+// A component that streams a codec this browser cannot decode resolves to *none*
+// as well: there is nothing the button could do, so there is no button. That is
+// the same rule as an empty write allowlist being indistinguishable from no
+// component at all.
+export function resolveListener({
+	state,
+	origin,
+	token,
+}: FooJeanDiscovery): Listener {
+	if (state.kind !== "ready" || !origin || !token) return NO_LISTENER;
+	if (!state.capabilities.canStream) return NO_LISTENER;
+
+	const formats = playableFormats(state.capabilities.streamFormats);
+	if (formats.length === 0) return NO_LISTENER;
+
+	return {
+		kind: "agent",
+		canListen: true,
+		formats,
+		target: { origin, token, formats },
+	};
+}
+
+// ---- the stream clock --------------------------------------------------------
+
+// `audio.currentTime` counts *rendered* audio, so the only unknown is the stream
+// time of the first sample this element played. `streamTime` is the component's
+// own clock at the moment it answered, and the elapsed wall time takes it back
+// to when the question was asked.
+//
+// **The `currentTime` term is not decoration.** Browsers disagree over whether
+// it starts at zero or at the stream's own granule position, which for a
+// listener joining a long-running stream is a large number; subtracting it here
+// is what makes the arithmetic work either way, and what lets a later poll
+// re-derive the same anchor rather than a drifting one.
+export const anchorOf = (
+	streamTime: number,
+	roundTripMs: number,
+	currentTime: number,
+) => streamTime - roundTripMs / 1000 - currentTime;
+
+// The player reports both of these, so they should be the same string -- but one
+// arrives through beefweb and the other through the component, and a portable
+// install reports `file-relative://..\Musica\...` rather than a drive letter.
+// Compared leniently for separator and case, and **never against an assumed
+// path**.
+export const samePlayerPath = (
+	left: string | null | undefined,
+	right: string | null | undefined,
+) =>
+	Boolean(left) &&
+	Boolean(right) &&
+	left?.replaceAll("\\", "/").toLowerCase() ===
+		right?.replaceAll("\\", "/").toLowerCase();
+
+// Where in the *track* the audible sample sits, or null when the timeline cannot
+// say. Null is not a failure: it means drive the bar from beefweb as usual.
+//
+// `path` is what beefweb says is playing. A mark that names a different track is
+// the ordinary state for the second or two after a track change -- the player
+// has moved on and this device has not heard it yet -- and answering null there
+// is what keeps the bar from reporting one track's position against another's
+// duration.
+export function audiblePosition(
+	anchor: number | null,
+	marks: readonly StreamMark[],
+	currentTime: number,
+	path: string | null | undefined,
+	duration: number,
+): number | null {
+	if (anchor === null) return null;
+
+	const audible = anchor + currentTime;
+	const mark = marks.findLast((entry) => entry.at <= audible);
+	if (!mark || !samePlayerPath(mark.path, path)) return null;
+
+	const position = mark.position + (audible - mark.at);
+	return clamp(position, 0, duration > 0 ? duration : position);
+}
+
+// ---- this device's volume ----------------------------------------------------
+
+// Presented on the same decibel scale the player's fader uses, so the identical
+// gesture in the identical place is the identical change in loudness whichever
+// of the two the control is currently pointed at. `audio.volume` is an amplitude
+// multiplier, which is the other end of this conversion and not a scale to put
+// in front of anyone.
+export const DEVICE_VOLUME_FLOOR_DB = -60;
+
+export const amplitudeOf = (db: number) =>
+	db <= DEVICE_VOLUME_FLOOR_DB ? 0 : clamp(10 ** (db / 20), 0, 1);
+
+export const decibelsOf = (amplitude: number) =>
+	amplitude <= 0
+		? DEVICE_VOLUME_FLOOR_DB
+		: clamp(20 * Math.log10(amplitude), DEVICE_VOLUME_FLOOR_DB, 0);

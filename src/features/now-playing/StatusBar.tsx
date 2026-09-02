@@ -1,5 +1,6 @@
 import { Shuffle } from "lucide-react";
 import { formatTime } from "@/domain/player/position";
+import { useListener } from "@/domain/player/useListener";
 import {
 	usePlaybackOrder,
 	usePlayer,
@@ -15,6 +16,7 @@ import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
+import { ListenHere } from "./ListenHere";
 import { PlayToggle } from "./PlayToggle";
 import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsed } from "./SeekBar";
@@ -74,6 +76,20 @@ export function StatusBar({
 	const { data: snapshot, isPending, isError, error } = usePlayer();
 	const isCompactViewport = useIsCompactViewport();
 	const { volume, setValue, setMuted } = useVolume();
+	const listener = useListener();
+
+	// **One fader, one target at a time.** While the sound is on this device the
+	// player's volume sits *before* the capture, so pointing the control at it
+	// would leave a slider that moves and changes nothing audible. Where the
+	// platform will not give a level at all -- iOS -- there is nothing honest to
+	// draw, so the control goes rather than pretending.
+	const isHere = listener.isOn;
+	const shownVolume = isHere ? listener.volume : volume;
+	const changeVolume = isHere ? listener.setVolume : setValue;
+	const toggleMute = isHere
+		? listener.toggleMute
+		: () => setMuted(!volume?.isMuted);
+	const hasFader = !isHere || Boolean(listener.volume);
 
 	// On the row rather than the whole footer, so it starts below the seek bar:
 	// that is a 4px strip at the very top which owns the vertical axis for
@@ -177,11 +193,22 @@ export function StatusBar({
 					)}
 
 					{/* Left of Play on a phone, so Play stays the rightmost thing in the
-              bar and therefore the closest to a right thumb. It is the player's
-              volume rather than the handset's, so the hardware keys cannot
-              reach it and it has to be here. */}
+              bar and therefore the closest to a right thumb. Where the sound
+              comes out is left of how loud it is there, because the second
+              question only means anything once the first is answered -- and
+              until the sound is on this device, the fader is the *player's*
+              volume, which the handset's own keys cannot reach. */}
 					{isCompactViewport ? (
-						<VolumePopover volume={volume} onChange={setValue} />
+						<>
+							<ListenHere playerName={player.info.title ?? player.info.name} />
+							{hasFader ? (
+								<VolumePopover
+									volume={shownVolume}
+									onChange={changeVolume}
+									label={isHere ? "Volume on this device" : "Volume"}
+								/>
+							) : null}
+						</>
 					) : null}
 
 					<PlayToggle
@@ -211,11 +238,18 @@ export function StatusBar({
 				{isCompactViewport ? null : (
 					<div className={styles.trailing}>
 						<Times snapshot={snapshot} />
-						<Volume
-							volume={volume}
-							onChange={setValue}
-							onToggleMute={() => setMuted(!volume?.isMuted)}
-						/>
+						{/* Between the readout and the fader: where the sound comes out is
+                a property of this device, as the two things either side of it
+                are, and it is read far more often than it is pressed. */}
+						<ListenHere playerName={player.info.title ?? player.info.name} />
+						{hasFader ? (
+							<Volume
+								volume={shownVolume}
+								onChange={changeVolume}
+								onToggleMute={toggleMute}
+								label={isHere ? "Volume on this device" : "Volume"}
+							/>
+						) : null}
 					</div>
 				)}
 			</div>

@@ -537,6 +537,10 @@ export function createState({
 		requests: state.requests,
 		library: state.library,
 		fooJean: fooJeanState(fooJean),
+		// Which `?format=` each stream was opened with, in order. `requests`
+		// records paths without their query, and the whole codec fall-through is a
+		// claim about the query string.
+		streamFormats: [] as string[],
 		// Separate objects from the playlists' whenever `withoutFields` is in play,
 		// so a tag write has to reach both.
 		libraryTracks,

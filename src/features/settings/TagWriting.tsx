@@ -110,6 +110,21 @@ function explain(state: TagWriterState): Explained {
 	}
 }
 
+// Streaming is the component's other half and fails for its own reasons, so it
+// gets its own line rather than being folded into the badge above: an install
+// that writes tags perfectly and has no encoder is connected, working, and
+// missing one feature, which one word cannot say.
+function explainStreaming(state: TagWriterState): string | null {
+	if (state.kind !== "ready") return null;
+	const { canStream, streamFormats } = state.capabilities;
+
+	// Absent means false, which is what an older component looks like from here.
+	if (!canStream)
+		return `This copy of foo_jean does not stream audio, so Jean cannot play it on this device. Either it is older than the feature, or no encoder started -- check ${PANE}.`;
+
+	return `Streaming ${(streamFormats ?? []).join(" and ")}. The control is beside the volume in the status bar.`;
+}
+
 // Masked because it is a credential, revealable because it is pasted from a file
 // and one wrong character is otherwise unexplainable.
 function TokenField({
@@ -179,6 +194,7 @@ export function TagWriting() {
 	} = useTagWriting();
 
 	const explained = explain(state);
+	const streaming = explainStreaming(state);
 	const [isEditingToken, setIsEditingToken] = useState(false);
 
 	// A stored token that works is a setting nobody touches again, so it collapses
@@ -202,6 +218,7 @@ export function TagWriting() {
 
 			<p className={styles.summary}>{explained.summary}</p>
 			{explained.fix ? <p className={styles.fix}>{explained.fix}</p> : null}
+			{streaming ? <p className={styles.fix}>{streaming}</p> : null}
 
 			{wantsToken ? (
 				<TokenField

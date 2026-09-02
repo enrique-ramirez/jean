@@ -14,6 +14,16 @@ export type FooJeanStatus = Schema["Status"];
 export type FooJeanCapabilities = Schema["Capabilities"];
 export type TagWriteRequest = Schema["TagWriteRequest"];
 export type TagWritten = Schema["TagWritten"];
+export type StreamTicket = Schema["StreamTicket"];
+export type StreamTimeline = Schema["StreamTimeline"];
+export type StreamMark = StreamTimeline["marks"][number];
+
+// **The one setting that may never move to `/api/clientconfig`.** beefweb serves
+// that namespace unauthenticated, so syncing this through it would recreate the
+// exact escalation the credential exists to prevent. It lives here rather than
+// beside one of its readers because there are now two, in two tiers that may not
+// import each other: tag writing and listening.
+export const TOKEN_KEY = "jean.fooJeanToken";
 
 // The component owns this clientconfig id and rewrites it on every start, so
 // Jean's own settings may never be stored under it.
@@ -215,4 +225,193 @@ export async function writeTags(
 		return { ok: false, reason: "unavailable", message };
 
 	return { ok: false, reason: "failed", message };
+}
+
+// ---- one discovery, two seams -----------------------------------------------
+
+// What Jean found, which is not the same as what it can do. This is the whole
+// list, and **nothing here is a silent state**: five of these are a component
+// that is installed and running, and in three the user has done everything
+// right. `features/settings/` holds one message and one remedy per state.
+//
+// It lives here rather than beside either seam because there are two of them --
+// tag writing in `domain/track`, listening in `domain/player` -- in tiers that
+// may not import each other, and re-running the probe once per seam would send
+// two requests to answer one question.
+export type FooJeanState =
+	| { kind: "absent" }
+	| {
+			kind: "not-listening";
+			record: DiscoveryRecord;
+			// The component's own words, safe to show.
+			error: string;
+			portInUse: boolean;
+	  }
+	| { kind: "unreachable"; record: DiscoveryRecord }
+	| { kind: "impostor"; record: DiscoveryRecord }
+	| { kind: "unsupported"; record: DiscoveryRecord; apiVersion: number }
+	| { kind: "no-token"; record: DiscoveryRecord; status: FooJeanStatus }
+	| { kind: "unauthorized"; record: DiscoveryRecord; status: FooJeanStatus }
+	| {
+			kind: "ready";
+			record: DiscoveryRecord;
+			status: FooJeanStatus;
+			capabilities: FooJeanCapabilities;
+	  };
+
+export interface FooJeanDiscovery {
+	state: FooJeanState;
+	// Only on `ready`, and carried separately because they are what a seam needs
+	// to build a client and the state is what settings needs to draw a message.
+	origin: string | null;
+	token: string | null;
+}
+
+// **The order is the security model**: read the hint, prove the port with an
+// unauthenticated call, and only then attach the token. Skipping the middle step
+// hands a credential to whoever forged the record.
+export async function discoverFooJean(
+	token: string | null,
+): Promise<FooJeanDiscovery> {
+	const absent = { origin: null, token: null };
+	const record = await fetchDiscoveryRecord().catch(() => null);
+	if (!record) return { state: { kind: "absent" }, ...absent };
+
+	if (!record.listening) {
+		return {
+			state: {
+				kind: "not-listening",
+				record,
+				error: record.error ?? "The component could not start.",
+				portInUse: Boolean(record.portInUse),
+			},
+			...absent,
+		};
+	}
+
+	const origin = originOfPort(record.port);
+	const probe = await probeStatus(origin);
+
+	if (!probe.ok) {
+		const state: FooJeanState =
+			probe.reason === "unsupported"
+				? { kind: "unsupported", record, apiVersion: probe.apiVersion }
+				: probe.reason === "impostor"
+					? { kind: "impostor", record }
+					: { kind: "unreachable", record };
+		return { state, ...absent };
+	}
+
+	const { status } = probe;
+	if (!token) return { state: { kind: "no-token", record, status }, ...absent };
+
+	const capabilities = await fetchCapabilities(origin, token);
+	if (!capabilities.ok) {
+		return {
+			state:
+				capabilities.reason === "unauthorized"
+					? { kind: "unauthorized", record, status }
+					: { kind: "unreachable", record },
+			...absent,
+		};
+	}
+
+	return {
+		state: {
+			kind: "ready",
+			record,
+			status,
+			capabilities: capabilities.capabilities,
+		},
+		origin,
+		token,
+	};
+}
+
+// ---- listening ---------------------------------------------------------------
+
+// Named for what a caller has to decide, as the write failures above are: retry
+// later, try a different codec, or stop offering the control.
+export type TicketFailure =
+	// Serving as many listeners as `maxConcurrentStreams` allows. Retryable, and
+	// it MUST read as "busy" rather than "not supported".
+	| { ok: false; reason: "busy"; message: string }
+	// This install does not stream at all.
+	| { ok: false; reason: "unavailable"; message: string }
+	| { ok: false; reason: "unauthorized"; message: string }
+	| { ok: false; reason: "unreachable"; message: string };
+
+export type TicketResult = { ok: true; ticket: StreamTicket } | TicketFailure;
+
+// The component distinguishes "does not stream" from "too many listeners" in the
+// `error` string alone -- both are 503 -- and the two want opposite responses.
+const isBusy = (message: string) =>
+	/busy|listener|concurrent|too many/i.test(message);
+
+// Asked for immediately before connecting and never stored: it is a capability
+// URL for as long as it lives. **Not single-use** -- Safari sends a
+// `Range: bytes=0-1` probe before fetching for real, so one playback start is
+// two requests -- but a reconnect still takes a fresh one.
+export async function issueStreamTicket(
+	origin: string,
+	token: string,
+): Promise<TicketResult> {
+	let response: Response;
+	try {
+		response = await withTimeout(PROBE_TIMEOUT_MS, (signal) =>
+			fetch(`${origin}/api/stream/ticket`, {
+				method: "POST",
+				headers: bearer(token),
+				signal,
+			}),
+		);
+	} catch {
+		return {
+			ok: false,
+			reason: "unreachable",
+			message: "Could not reach foo_jean.",
+		};
+	}
+
+	if (response.ok)
+		return { ok: true, ticket: (await response.json()) as StreamTicket };
+
+	const { message } = await messageOf(response, `HTTP ${response.status}`);
+	if (response.status === 401)
+		return { ok: false, reason: "unauthorized", message };
+	if (response.status === 503)
+		return {
+			ok: false,
+			reason: isBusy(message) ? "busy" : "unavailable",
+			message,
+		};
+	return { ok: false, reason: "unreachable", message };
+}
+
+// **The ticket travels in the query string and the bearer token never does.** An
+// `<audio>` element cannot send a header, which is the whole reason the ticket
+// exists; putting the token here instead would publish it to every proxy log
+// between here and the player.
+export const streamUrl = (origin: string, ticket: string, format: string) =>
+	`${origin}/api/stream?ticket=${encodeURIComponent(ticket)}&format=${encodeURIComponent(format)}`;
+
+// `null` rather than a failure shape: a timeline that does not answer costs the
+// progress correction and nothing else, and the caller's remedy is to keep the
+// anchor it already has.
+export async function fetchStreamTimeline(
+	origin: string,
+	token: string,
+): Promise<StreamTimeline | null> {
+	try {
+		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
+			const response = await fetch(`${origin}/api/stream/timeline`, {
+				headers: bearer(token),
+				signal,
+			});
+			if (!response.ok) return null;
+			return (await response.json()) as StreamTimeline;
+		});
+	} catch {
+		return null;
+	}
 }

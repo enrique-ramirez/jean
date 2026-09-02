@@ -85,6 +85,27 @@ time:
   `changeClientConfig` defaults to on, which is why a record read from it is a hint and
   never evidence; see the root `CLAUDE.md`.
 
+**One discovery, two seams.** `discoverFooJean()` lives here rather than beside
+either of the things that use it: tag writing is in `domain/track` and listening
+is in `domain/player`, tiers that may not import each other, and each running its
+own probe would send two `status` calls and two `capabilities` calls to answer one
+question. The states are `FooJeanState` for the same reason -- they describe the
+*component*, not either seam. `shared/hooks/useFooJean.ts` is the react-query
+dedupe over it: every caller names one key, so the second to mount reads the
+first one's result. `TOKEN_KEY` moved here with it, and the rule on it is
+unchanged: **it may never move to `/api/clientconfig`**, because beefweb serves
+that namespace unauthenticated.
+
+**`GET /stream` is the one route that takes no bearer token**, because an
+`<audio>` element cannot send a header. The ticket is the credential and it
+travels in the query string, which is exactly why it expires in minutes; the
+token must never go there. All three 401 causes -- no ticket, unknown, expired --
+answer identically on purpose, so a client cannot sort guesses into "wrong" and
+"too late", and cannot tell any of them from an undecodable codec either. A 503
+is *two* conditions distinguished only by the `error` string: this install does
+not stream, or it is already serving as many listeners as it allows. The second
+must read as "busy" and retry.
+
 **`foo_jean`'s types are generated, and not into `fooJean.d.ts`.** The component ships
 an OpenAPI document and it is the contract, so `shared/api/fooJeanSchema.d.ts` comes out
 of `npx openapi-typescript ../foo_jean/docs/openapi.yaml`, committed, with no codegen

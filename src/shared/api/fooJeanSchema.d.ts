@@ -12,7 +12,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Who we are. The only route that needs no credential.
+         * Who we are. The only route that needs no credential at all.
          * @description Exists so a client can tell "foo_jean is here" from "nothing is listening"
          *     without spending a credential on the question, and so the port named in a
          *     discovery record can be checked before the token is sent to it.
@@ -93,6 +93,277 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which playlists are autoplaylists, and which ones we made.
+         * @description **Not a playlist listing.** beefweb answers that at
+         *     `GET http://<player>:8880/api/playlists`, with titles, item counts, total time
+         *     and which one is current. This answers only what beefweb has no way to say, and
+         *     deliberately repeats none of it.
+         *
+         *     One entry per playlist, in playlist order. Join it to beefweb's answer on
+         *     `beefwebId`, falling back to `index`; `title` is there to check a join against
+         *     rather than to display.
+         *
+         *     ### Ask beefweb first
+         *
+         *     beefweb assigns its playlist ids lazily, when it next rebuilds its map. A
+         *     playlist this component has only just created therefore has `beefwebId: null`
+         *     until beefweb looks again — which our creating it is enough to make it do.
+         *     Requesting beefweb's playlists before this one is what makes the join complete.
+         */
+        get: operations["getPlaylists"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/autoplaylists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an autoplaylist.
+         * @description Creates a new playlist and hands it to foobar2000's own autoplaylist client, so
+         *     the core keeps it filled and keeps it after this component is uninstalled.
+         *
+         *     Three things are worth knowing before calling it.
+         *
+         *     **An autoplaylist filters the Media Library and nothing else.** On an install
+         *     with no Media Library configured, every autoplaylist is empty and nothing says
+         *     why. `POST /autoplaylists/preview` reports `libraryEnabled` for exactly this
+         *     reason; call it first.
+         *
+         *     **The playlist is real and visible.** It appears in foobar2000's own playlist
+         *     tabs, where somebody may be sitting looking at them. Prefixing `title` with
+         *     `#Jean ` is the convention this project uses so that person can tell where a
+         *     playlist came from — a message to them rather than a requirement here. Nothing
+         *     in this API reads the title, and the user may rename it freely.
+         *
+         *     **Existing playlists are never converted.** There is no route that turns a
+         *     playlist you already have into an autoplaylist, because the core replaces the
+         *     contents when it takes one over, and a request that can silently empty a
+         *     hand-built playlist is not one this component will offer.
+         */
+        post: operations["createAutoPlaylist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/autoplaylists/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Try a query without creating anything.
+         * @description Compiles the query with foobar2000's own parser and counts what it matches in the
+         *     Media Library. Nothing is created and nothing changes.
+         *
+         *     **A query that does not parse is a `200` here**, carrying `valid: false` and the
+         *     player's own message. This is the route a client calls while somebody is still
+         *     typing, so an unreadable query is the answer rather than an error. Creating with
+         *     the same query is a `400`, because there it is an instruction rather than data.
+         *
+         *     Two things a client should do with this. Debounce it: it runs on foobar2000's
+         *     main thread, and while it is no more expensive than the player's own search box,
+         *     one request per keystroke is still one request per keystroke. And read
+         *     `libraryEnabled` — `matches: 0` with `libraryEnabled: false` means the install
+         *     has no Media Library, which is worth saying out loud before somebody creates a
+         *     folder that cannot fill.
+         */
+        post: operations["previewQuery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/autoplaylists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower
+                 *     case, dashed, no braces. Not beefweb's id, which belongs to beefweb.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Point an autoplaylist at a different query.
+         * @description **Replaces the specification.** `query`, `sort`, `key` and `forceSort` end up
+         *     exactly as this request states them, so send the whole record rather than only
+         *     the parts being changed — omitting `key` clears it. The `managed` object from
+         *     `GET /playlists` is exactly that shape, which makes read-modify-write the natural
+         *     way to call this.
+         *
+         *     `title` is the exception: **omit it to leave the name alone**. Resending a title
+         *     the client happens to remember would silently undo a rename made in the player,
+         *     and renaming is a visible act that deserves to be asked for rather than implied.
+         *
+         *     This keeps the playlist itself, and therefore its id, its position and beefweb's
+         *     id for it. Deleting and recreating would change all three and move it in the
+         *     sidebar.
+         *
+         *     Only playlists this component created can be updated; anything else is a `403`.
+         */
+        post: operations["updateAutoPlaylist"];
+        /**
+         * Delete an autoplaylist this component created.
+         * @description Removes the playlist and the autoplaylist client with it.
+         *
+         *     **Only playlists this component created.** Anything else is a `403`, including
+         *     an autoplaylist somebody made in foobar2000 itself. beefweb will delete any
+         *     playlist for anyone who can reach it, and that is beefweb's decision to have
+         *     made; this component does not borrow it. A client that genuinely wants to delete
+         *     an arbitrary playlist should ask beefweb and say so to the person first.
+         */
+        delete: operations["removeAutoPlaylist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stream/ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get a short-lived credential for one stream connection.
+         * @description An `<audio>` element cannot send an `Authorization` header, so the credential for
+         *     `GET /stream` travels in the query string instead. That makes it a capability URL,
+         *     and this route is what keeps it survivable: a ticket expires in minutes and buys
+         *     nothing but audio that is already being broadcast on the network it came from.
+         *
+         *     **A ticket is not single-use**, and that is measured rather than lax. Safari's
+         *     media element probes a source with a `Range: bytes=0-1` request before fetching it
+         *     for real, so one playback start is two requests; a ticket good once cannot serve
+         *     Safari at all. It is good until it expires, and how many streams one ticket can
+         *     open at a time is bounded by `maxConcurrentStreams` instead.
+         *
+         *     Call this immediately before opening the stream, not at page load, and ask for a
+         *     fresh one when reconnecting. Clients MUST NOT store a ticket, log it, or put it
+         *     anywhere a `foo_jean` bearer token would not go.
+         */
+        post: operations["issueStreamTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stream/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What is audible, in the stream's own clock.
+         * @description The player's reported position is **not** what a listener is hearing: the stream is
+         *     a second or two behind it, so a progress bar or lyrics driven from
+         *     `GET /player` on beefweb will run ahead of the audio. This is how to correct that,
+         *     and the correction is exact rather than an estimate.
+         *
+         *     `audio.currentTime` counts *rendered* audio — it advances only as sound actually
+         *     leaves the speaker. So the only unknown is the stream time of the first sample the
+         *     element played, and that is recoverable:
+         *
+         *     ```js
+         *     // once, when the element starts playing
+         *     const connectedAt = performance.now();
+         *     const { streamTime } = await (await fetch(base + "/stream/timeline", auth)).json();
+         *     const anchor = streamTime - (performance.now() - connectedAt) / 1000;
+         *
+         *     // any time after
+         *     const audible = anchor + player.currentTime;
+         *     const mark = marks.findLast(m => m.at <= audible);
+         *     const position = mark ? mark.position + (audible - mark.at) : null;
+         *     ```
+         *
+         *     Re-anchor after every reconnect: `currentTime` restarts. A client MAY re-poll
+         *     occasionally and re-derive `anchor` to shed clock drift; over a few minutes the
+         *     difference is milliseconds.
+         *
+         *     Note that browsers differ over whether `currentTime` starts at zero or at the
+         *     stream's own granule position, which for a listener joining a long-running stream
+         *     is a large number. Deriving `anchor` as above works either way, and a client can
+         *     tell which it got by checking whether `anchor` came out near zero.
+         */
+        get: operations["getStreamTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listen to what foobar2000 is playing.
+         * @description A single unbounded response carrying the player's own output — the same audio the
+         *     speakers get, with its DSP chain and ReplayGain already applied. There is no
+         *     length, no `Range`, and no seeking: seeking means asking foobar2000 to seek, which
+         *     moves every listener at once.
+         *
+         *     The response is chunked and ends only when the client disconnects, the component
+         *     stops, or the listener falls too far behind to be sent contiguous audio. A client
+         *     MUST reconnect on any of those rather than treat the end as a stop — a dropped
+         *     connection is the ordinary case on a wireless network, and an `<audio>` element
+         *     will not retry by itself.
+         *
+         *     This is the one route that does not take a bearer token, because it cannot. It is
+         *     not unauthenticated: without a valid ticket it answers `401`, and a bearer token is
+         *     not accepted in its place.
+         */
+        get: operations["openStream"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -137,6 +408,80 @@ export interface components {
              *     a second source of truth — it is exactly `allowedFields.length > 0`.
              */
             canWrite: boolean;
+            /**
+             * @description How many autoplaylists this component will keep at once, counting only the
+             *     ones it created. `0` switches creation off.
+             *
+             *     It is a cap because the failure worth guarding against is a client bug: whoever
+             *     holds the token can already rewrite tags, but nobody should open foobar2000 to
+             *     find four hundred playlist tabs they did not make.
+             * @example 100
+             */
+            maxAutoPlaylists: number;
+            /** @description Exactly `maxAutoPlaylists > 0`. The same kind of convenience as `canWrite`. */
+            canCreateAutoPlaylists: boolean;
+            /**
+             * @description Exactly `streamFormats.length > 0`. The same kind of convenience as `canWrite`.
+             *     False on an install where the component loaded but no encoder started, and on
+             *     any version older than this one — a client MUST hide the listen control rather
+             *     than offer it and fail.
+             */
+            canStream: boolean;
+            /**
+             * @description What `GET /stream?format=` accepts, **best first**. `opus` is Ogg Opus and is
+             *     what every current browser except older Safari takes; `aac` is AAC-LC in ADTS
+             *     and exists for Safari, which did not read Ogg Opus before 18.4.
+             *
+             *     A client SHOULD send no `format` and take the first, unless it knows the
+             *     browser needs otherwise. The list is not fixed: an install whose Windows has no
+             *     AAC encoder reports `opus` alone.
+             * @example [
+             *       "opus",
+             *       "aac"
+             *     ]
+             */
+            streamFormats?: string[];
+        };
+        StreamTimeline: {
+            /**
+             * @description Seconds of audio encoded since the component started. Not wall-clock, and not
+             *     the player's position — it is the clock `marks[].at` is expressed in.
+             */
+            streamTime: number;
+            /**
+             * @description Where each of the last few tracks began, oldest first. Bounded, so a player
+             *     left running for a day does not grow this: a client only ever needs the marks
+             *     around what it is currently hearing.
+             */
+            marks: {
+                /** @description Stream time at which this track's audio began. */
+                at: number;
+                /**
+                 * @description As the player reports it. On a portable install this can be a
+                 *     `file-relative://` URL rather than an absolute path, so a client
+                 *     matching these against beefweb's answers MUST compare what beefweb
+                 *     reports rather than assume a drive letter.
+                 */
+                path: string;
+                subsong: number;
+                /**
+                 * @description Where the player was within the track at `at`. Usually zero, but not
+                 *     when a listener connects mid-track or somebody seeks.
+                 */
+                position: number;
+            }[];
+        };
+        StreamTicket: {
+            /**
+             * @description Opaque. Send it as the `ticket` query parameter, use it for as long as the
+             *     connection attempt takes, and then forget it.
+             */
+            ticket: string;
+            /**
+             * @description Seconds from now.
+             * @example 120
+             */
+            expiresIn: number;
         };
         TagWriteRequest: {
             /**
@@ -195,7 +540,12 @@ export interface components {
              * @enum {string}
              */
             error: "malformed request" | "missing path" | "unacceptable path" | "no fields to write" | "field not allowed";
-            /** @description What specifically was wrong. Safe to show a person. */
+            /**
+             * @description What specifically was wrong, and safe to show a person: every one of these
+             *     describes the request the client just sent, never anything on the player's
+             *     disk. For a body that is not JSON it carries the parser's own message,
+             *     which quotes the client's own text back at it.
+             */
             detail: string;
             /**
              * @description Present only when `error` is `field not allowed`, naming the field. A client
@@ -209,6 +559,169 @@ export interface components {
             written: false;
             /** @enum {string} */
             error: "foobar2000 does not know that track" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available";
+        };
+        /**
+         * @description Everything this component knows about one playlist that beefweb does not report,
+         *     and nothing else. Title, item count, total time and which playlist is current all
+         *     come from beefweb.
+         */
+        PlaylistAnnotation: {
+            /**
+             * @description foobar2000's own playlist GUID, lower case and dashed. Stable across renames,
+             *     reordering and restarts, and never reused — so it is what the routes here
+             *     address, and what a client should store when it wants to find a playlist
+             *     again later.
+             * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+             */
+            id: string;
+            /**
+             * @description beefweb's id for the same playlist, read from the property beefweb keeps it
+             *     in. This is the join key between the two APIs: exact, unlike matching on
+             *     titles that foobar2000 permits duplicates of, or on an index that changes
+             *     underneath both of us.
+             *
+             *     `null` when beefweb has not assigned one yet, which is the case for a
+             *     playlist just created here until beefweb next rebuilds its map. Ask beefweb
+             *     for its playlists first and this will be filled in.
+             *
+             *     Read but never written: it is another component's bookkeeping.
+             * @example p3
+             */
+            beefwebId: string | null;
+            /**
+             * @description Position in the player, and the fallback join key when `beefwebId` is null.
+             *     Not identity: creating, deleting or reordering a playlist changes it.
+             */
+            index: number;
+            /**
+             * @description For checking a join against rather than for display — beefweb's answer is the
+             *     one to show, and this one is a snapshot from a different request.
+             */
+            title: string;
+            /**
+             * @description The question beefweb cannot answer, and the reason this endpoint exists. True
+             *     for any autoplaylist, including ones made in foobar2000 long before this
+             *     component was installed.
+             */
+            isAutoPlaylist: boolean;
+            /**
+             * @description What this component stored when it created the playlist, or `null` for every
+             *     playlist it did not create — which includes autoplaylists somebody made in
+             *     the player. That distinction is the one a client needs to tell "a folder I
+             *     manage" from "an autoplaylist that was already here".
+             *
+             *     It is kept as a foobar2000 playlist property, the same mechanism beefweb uses
+             *     for its ids, so it travels with the playlist through renames and restarts and
+             *     is gone when the playlist is.
+             */
+            managed: components["schemas"]["ManagedAutoPlaylist"] | null;
+        };
+        ManagedAutoPlaylist: {
+            /** @description Whatever the client sent, handed back verbatim. Empty when none was given. */
+            key: string;
+            /**
+             * @description The query the playlist was **created with**. If somebody edits the query in
+             *     foobar2000's own dialog this goes stale, and there is no way to detect that:
+             *     the SDK offers no way to read an autoplaylist's current query back.
+             */
+            query: string;
+            sort: string;
+            forceSort: boolean;
+        };
+        AutoPlaylistRequest: {
+            /**
+             * @description What the playlist is called in foobar2000's own tabs. **Required when
+             *     creating, optional when updating** — omitting it on an update leaves the name
+             *     alone, rather than renaming the playlist to whatever the client last knew.
+             *
+             *     Prefix it with `#Jean ` by convention, so that somebody looking at the player
+             *     can see where the playlist came from. That is a message to a person: nothing
+             *     in this API reads the title, and the user may rename it freely without
+             *     anything breaking.
+             *
+             *     No control characters, which would be line breaks in a playlist tab.
+             */
+            title?: string;
+            /**
+             * @description Opaque to this component: stored, handed back, and compared for equality,
+             *     never interpreted. A client puts whatever lets it recognise its own playlists
+             *     later — `folder:genre:Rock` — instead of encoding a convention in the title,
+             *     which the user can edit.
+             *
+             *     Must be unique across the playlists this component created; a second playlist
+             *     with the same key is a `409` rather than a duplicate, which makes "toggle this
+             *     folder on" safe to send twice.
+             * @example folder:genre:Rock
+             */
+            key?: string;
+            /**
+             * @description foobar2000's own query syntax, passed through untouched. This component never
+             *     composes or interprets it: the player owns that language and is the only thing
+             *     that can say whether a query parses.
+             *
+             *     Which means **quoting is the client's job**. A value taken from library data
+             *     and pasted into a query unquoted produces a valid-but-wrong query, and no
+             *     amount of validation here can catch that. Compose carefully, and use
+             *     `POST /autoplaylists/preview` to see what a query actually matches.
+             * @example %genre% IS Rock
+             */
+            query: string;
+            /**
+             * @description A title-formatting pattern to sort by. Optional.
+             * @example %album artist%|%date%|%album%
+             */
+            sort?: string;
+            /**
+             * @description Keep the playlist sorted, and stop the user reordering it by hand. Optional;
+             *     defaults to false.
+             */
+            forceSort?: boolean;
+        };
+        QueryPreview: {
+            /** @description Whether foobar2000 could read the query. Check this before `matches`. */
+            valid: boolean;
+            /**
+             * @description The player's own message when `valid` is false, and empty otherwise. Safe to
+             *     show a person: it describes the query they typed, not anything on the disk.
+             */
+            error: string;
+            /** @description How many tracks in the Media Library the query matches. `0` when invalid. */
+            matches: number;
+            /**
+             * @description Whether this install has a Media Library configured. Autoplaylists filter the
+             *     Media Library and nothing else, so `false` here means every autoplaylist will
+             *     be empty however good the query is — which is worth saying to somebody before
+             *     they create one, and is why this is reported here rather than on
+             *     `/capabilities`.
+             */
+            libraryEnabled: boolean;
+        };
+        /**
+         * @description A refusal the client can act on: the request was understood and declined before
+         *     the player was involved.
+         */
+        PlaylistRefusal: {
+            /** @enum {string} */
+            error: "malformed request" | "unacceptable title" | "unacceptable key" | "unacceptable query" | "unacceptable sort" | "unacceptable playlist id" | "too many requests";
+            /**
+             * @description What specifically was wrong, and safe to show a person: every one of these
+             *     describes the request the client just sent, never anything on the player's
+             *     disk. For a body that is not JSON it carries the parser's own message,
+             *     which quotes the client's own text back at it.
+             */
+            detail: string;
+        };
+        /** @description The request was fine; the attempt was not. */
+        PlaylistFailed: {
+            /** @enum {string} */
+            error: "foobar2000 could not read that query" | "no such playlist" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available";
+            /**
+             * @description Empty for everything except a query foobar2000 could not read, where it
+             *     carries the player's own parse error — which is about text the client sent
+             *     rather than anything on this disk, and is therefore safe to relay and worth
+             *     showing.
+             */
+            detail: string;
         };
         /**
          * @description The shape every failing response carries at least. Deliberately incurious: what
@@ -275,6 +788,124 @@ export interface components {
         };
     };
     responses: {
+        /**
+         * @description The request was understood and declined before the player was involved: a body
+         *     that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, or an
+         *     id that is not one this component issued.
+         */
+        PlaylistRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistRefusal"];
+            };
+        };
+        /**
+         * @description The playlist exists and this component did not create it. Retrying will never
+         *     work; it is not a permission that can be granted, it is a boundary.
+         */
+        NotOurs: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description No playlist has that id. It may have been deleted in the player. */
+        NoSuchPlaylist: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /**
+         * @description The request conflicts with what is already there: another playlist has that
+         *     `key`, or this install is already at `maxAutoPlaylists`.
+         */
+        PlaylistConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /**
+         * @description Playlist changes are arriving faster than this component will make them. It is a
+         *     bound on how fast a mistake can happen rather than a security control: a client
+         *     looping should leave a handful of playlists and a log line, not hundreds of tabs
+         *     in somebody's player.
+         *
+         *     A burst of about thirty is allowed, refilling at roughly one a second, shared
+         *     across creating, updating and deleting. Reading and previewing are not limited.
+         *     `Retry-After` is sent in seconds.
+         */
+        TooManyRequests: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistRefusal"];
+            };
+        };
+        /**
+         * @description foobar2000 would not do it. Nothing is said about why; error text is a reliable
+         *     way to leak filesystem paths.
+         */
+        PlayerRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /**
+         * @description The player did not finish within 30 seconds. The work may still complete
+         *     afterwards, so re-read `GET /playlists` rather than assuming it did not.
+         */
+        PlayerTooSlow: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /**
+         * @description Autoplaylists are not available in this install — either the component could not
+         *     reach that part of the player, or `maxAutoPlaylists` is `0` in `config.json`,
+         *     which switches creation off. `GET /capabilities` says which before you ask.
+         */
+        PlaylistUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /**
+         * @description Either this install does not stream — no encoder started, or `streamingEnabled`
+         *     is false, and `GET /capabilities` says so before you ask — or it is already
+         *     serving as many listeners as `maxConcurrentStreams` allows. The `error` string
+         *     distinguishes them; a client SHOULD show the second as "busy" and retry rather
+         *     than as "not supported".
+         */
+        StreamUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /**
          * @description No token, the wrong token, or the wrong scheme.
          *
@@ -448,6 +1079,292 @@ export interface operations {
                     "application/json": components["schemas"]["TagFailed"];
                 };
             };
+        };
+    };
+    getPlaylists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One annotation per playlist. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        playlists: components["schemas"]["PlaylistAnnotation"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    createAutoPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutoPlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Created. The body is the annotation, as `GET /playlists` would report it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistAnnotation"];
+                };
+            };
+            400: components["responses"]["PlaylistRefused"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["PlaylistConflict"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    previewQuery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description foobar2000 query syntax. Must not be empty: the player reads an empty
+                     *     query as "everything", and "your whole library matches" is a
+                     *     confusing thing to show for a box nobody has typed in yet.
+                     */
+                    query: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The query was tried. Read `valid` before `matches`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryPreview"];
+                };
+            };
+            400: components["responses"]["PlaylistRefused"];
+            401: components["responses"]["Unauthorized"];
+            503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    updateAutoPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower
+                 *     case, dashed, no braces. Not beefweb's id, which belongs to beefweb.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutoPlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated. The body is the annotation as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistAnnotation"];
+                };
+            };
+            400: components["responses"]["PlaylistRefused"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["NotOurs"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["PlaylistConflict"];
+            429: components["responses"]["TooManyRequests"];
+            /**
+             * @description The player refused. One case is worth knowing: if the new query compiles but
+             *     the core then declines to attach it, the playlist is left as an ordinary
+             *     playlist that this component still recognises as its own. Sending the same
+             *     request again with a query the player accepts puts it back.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    removeAutoPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower
+                 *     case, dashed, no braces. Not beefweb's id, which belongs to beefweb.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        removed: true;
+                        id: string;
+                    };
+                };
+            };
+            400: components["responses"]["PlaylistRefused"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["NotOurs"];
+            404: components["responses"]["NoSuchPlaylist"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    issueStreamTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A ticket, good once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamTicket"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            503: components["responses"]["StreamUnavailable"];
+        };
+    };
+    getStreamTimeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stream clock, and where the last few tracks began. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamTimeline"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            503: components["responses"]["StreamUnavailable"];
+        };
+    };
+    openStream: {
+        parameters: {
+            query: {
+                /** @description From `POST /stream/ticket`. Consumed by this request. */
+                ticket: string;
+                /**
+                 * @description One of `GET /capabilities`'s `streamFormats`. Omit it to get the first, which
+                 *     is the best this install has. A format the install does not encode is a `400`
+                 *     rather than a silent substitution — a client that asked for `aac` and got Opus
+                 *     would play silence on the browser it asked for `aac` for.
+                 */
+                format?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Audio, until something ends it. `Cache-Control` is `no-store`, there is no
+             *     `Content-Length`, and `Accept-Ranges` is `none` — a live stream has no length
+             *     to take a range of, and a `Range` request is answered with the stream from the
+             *     live edge like any other.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/ogg": string;
+                    "audio/aac": string;
+                };
+            };
+            /** @description A format this install does not encode. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No ticket, an unknown ticket, or an expired one. All three answer identically
+             *     and deliberately: distinguishing them would let a caller sort guesses into
+             *     "wrong" and "too late".
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["StreamUnavailable"];
         };
     };
 }

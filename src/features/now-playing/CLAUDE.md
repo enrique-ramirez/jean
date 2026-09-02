@@ -73,6 +73,27 @@ something already on the next tab buys nothing.
 The gatefold is untouched: its identity is a sticky column with a leaf to itself
 and nothing to take space from.
 
+**Where the sound comes out sits between the readout and the fader**, on a
+desktop, and left of the fader on a phone. That order is the argument: *where*
+has to be answered before *how loud there* means anything, and the two either
+side of it are properties of this device as it is. It is read far more often than
+it is pressed -- the collapsed icon says where the sound is without being opened
+-- which is why it is quiet until it is on and then carries the same accent
+shuffle does.
+
+**The fader beside it retargets rather than doubling.** While the sound is on
+this device the player's volume sits *before* the capture, so pointing the
+control at it leaves a slider that moves and changes nothing audible. One
+control, one target at a time, and its label says which. On iOS there is no
+target at all -- `audio.volume` is a documented no-op -- so it is not drawn and
+the picker says the hardware keys own it. The reasoning and the probe are in
+`src/domain/player/CLAUDE.md`.
+
+**The picker is not on the now-playing screen**, on either layout. It is a
+property of the device rather than of the track, and the compact screen's
+transport is the five controls that act on the sound -- the same rule that keeps
+the queue button in that screen's header rather than among them.
+
 **"Playing from", not "from".** The bare preposition reads as a fragment of a
 sentence that never arrives, especially next to a name like "All music".
 

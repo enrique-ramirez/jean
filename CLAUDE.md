@@ -69,7 +69,9 @@ Corollary: **Jean's own settings live server-side** in `/api/clientconfig/{id}`,
 follow the user between devices. Fall back to `localStorage` only when
 `permissions.changeClientConfig` is false.
 
-That namespace is shared, and **`foo_jean` is spoken for** — the component publishes its
+`jean.fooJeanToken` and `jean.listenVolume` are the exceptions, and for the same
+reason: a credential and a per-device level must not follow the user between
+devices. That namespace is shared, and **`foo_jean` is spoken for** — the component publishes its
 discovery record under that id, and Jean writing there would clobber it. Ids are
 lowercase alphanumeric plus underscore (`foo-jean` is rejected with a 400). See
 *Detecting `foo_jean`* under *Capability detection*, which also explains why a record
@@ -275,9 +277,9 @@ on each one and teach nothing. `noUnusedParameters` is off for the specs alone,
 because in Playwright *naming* a fixture is how a test depends on it -- several
 take `player` purely to get a fresh fake and never touch it.
 
-**One listener set, five stores.** Toasts, the drag gesture, written ratings, the
-queue clock and the playlist loader are all `useSyncExternalStore` stores, and
-each carried its own `Set<() => void>`, its own `subscribe` returning its own
+**One listener set, six stores.** Toasts, the drag gesture, written ratings, the
+queue clock, the playlist loader and the stream listener are all
+`useSyncExternalStore` stores, and each carried its own `Set<() => void>`, its own `subscribe` returning its own
 deletion, and its own loop to notify -- five chances for one of them to leak a
 listener or forget to fire. `shared/lib/store.ts` is the listener half of that
 and nothing else: what each store *holds* has no shape in common and stays its
@@ -424,6 +426,20 @@ re-sort.
 **No Web Worker and no IndexedDB persistence**, so a cold start re-fetches and
 re-indexes the library. Both appear in the loading rules as requirements for
 100k-200k libraries rather than as things already done.
+
+**Listening on this device is built**, through `foo_jean`'s stream. The control
+is a two-row output picker in the status bar -- the player, or this browser -- and
+it is a *handoff*: the component mutes the player while a listener is attached,
+and releasing hands it back. Jean sends no mute of its own. `domain/player/listener.ts`
+is the seam and `listenerStore.ts` the connection; see that folder's CLAUDE.md
+for the codec choice, the stream clock and the failure states. **`canStream`
+absent means false**, so an older component gets no button rather than one that
+fails.
+
+**No naming of other listening devices**, and it needs a component route rather
+than a guess. "This device" and the player are the only two things Jean can name
+without a label or a user-agent string; the component counts connections for
+`maxConcurrentStreams` and publishes nothing about them.
 
 **Tag writing is one field.** `domain/track/tagWriter.ts` exists and writes **ratings**,
 through `foo_jean`, with a *none* implementation for every install without it. The

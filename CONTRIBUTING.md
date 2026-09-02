@@ -24,7 +24,7 @@ CORS to configure, and nothing changes on the Windows side.
 
 ```sh
 pnpm install
-pnpm dev            # http://localhost:5173
+pnpm dev            # http://localhost:8123
 pnpm typecheck      # tsc across app, fake player and specs
 pnpm lint           # biome check
 ```
@@ -39,7 +39,7 @@ BEEFWEB_URL=http://10.100.100.20:8880 pnpm dev
 ```
 
 The dev server also binds on the LAN (`host: true`), so a phone can load
-`http://Enriques-MacBook-Pro-2.local:5173` and hit the same proxy — real-device
+`http://Enriques-MacBook-Pro-2.local:8123` and hit the same proxy — real-device
 testing without a build either.
 
 Deploying is therefore only for making it permanent, or for using the UI when the
@@ -55,7 +55,7 @@ it from `BEEFWEB_URL` and injects it as `__PLAYER_HOST__`, so there is nothing e
 to configure here — but the request is then genuinely cross-origin in a way it never
 is in a build, and the component has to be told to accept it.
 
-*Measured*: it answers `200` to `Origin: http://localhost:5173` and sends **no**
+*Measured*: it answers `200` to `Origin: http://localhost:8123` and sends **no**
 `Access-Control-Allow-Origin` header at all, so the browser discards a perfectly good
 response and Jean reports the component as unreachable. Left to defaults it only
 reflects an origin whose host matches the host it was addressed to, which is exactly
@@ -64,7 +64,7 @@ the production case and deliberately not this one.
 So add the dev server to `<profile>/foo_jean/config.json` and restart foobar2000:
 
 ```jsonc
-"allowedOrigins": ["http://localhost:5173"]
+"allowedOrigins": ["http://localhost:8123"]
 ```
 
 Add the LAN name too if you test on a phone against the dev server. None of this

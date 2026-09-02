@@ -32,6 +32,11 @@ export default defineConfig(({ command, mode }) => {
 		base: "./",
 
 		server: {
+			port: 8123,
+			// `foo_jean` matches the dev origin against an exact allowlist, so
+			// sliding to the next free port would report the component unreachable
+			// with nothing on screen saying why. Fail instead.
+			strictPort: true,
 			// Bind on the LAN too, so a phone can load the dev server directly.
 			host: true,
 			proxy: {

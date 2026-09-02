@@ -38,6 +38,29 @@ lines and a stray tick. `ListEnd`'s arrow is bottom-right, clear of it. The reus
 across a surface and an action is deliberate: one glyph means *the queue*, and
 what it does is given by where it is.
 
+**The button is a drop target, and it is the only one outside the sidebar.**
+Dragging rows onto it queues them, through the same `useQueueTracks` the menu
+action runs -- the drag machinery in `shared/ui/dnd.ts` hit-tests opaque ids, so
+the queue simply took one (`QUEUE_DROP_TARGET`, in `domain/player/queue.ts`,
+namespaced so it can never collide with a playlist id). Two things about it are
+not the sidebar's rules:
+
+- **It announces itself the moment a drag begins**, where a sidebar row stays
+  quiet until the pointer is on it. That rule exists because there are dozens of
+  rows and lighting them all up is a wall of boxes; here there is exactly one
+  target and it is an 18px glyph that nothing tells you accepts tracks. One
+  target saying "here too" is an answer, not noise.
+- **Its hit area grows to roughly a thumb while a drag is in flight**, via a
+  pseudo-element with a negative inset -- `elementFromPoint` reports the
+  originating element, so the hit test climbs from the button as usual. Only
+  mid-drag, or it would take a strip out of Next for the whole session. A miss
+  on a 34px button costs the entire gesture, not a click.
+
+**A drop past `QUEUE_LIMIT` arms anyway and fails with a sentence.** The menu
+can say why in a disabled label; a drop target cannot, so refusing to light up
+would be a silent no. `useQueueTracks` already carries that message, and it is
+the same one either route produces.
+
 ## Things that will bite
 
 **The countdowns are their own leaf, on a shared clock.** `queueClock.ts` is a

@@ -83,6 +83,105 @@ test.describe("putting things in the queue", () => {
 		for (const add of adds) expect(typeof add.body?.itemIndex).toBe("number");
 	});
 
+	// The other half of the drag that already ends on a sidebar playlist. Tested
+	// here rather than beside that one because what it asserts is the queue: the
+	// gesture is the sidebar's, the destination is this file's.
+	test("a track dropped on the queue button is queued", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "drag is mouse-only; touch has the menu");
+		await openLibrary(page);
+
+		const source = await trackRow(page, 0).boundingBox();
+		const drop = await queueButton(page).boundingBox();
+
+		await page.mouse.move(
+			source!.x + source!.width / 2,
+			source!.y + source!.height / 2,
+		);
+		await page.mouse.down();
+		await page.mouse.move(
+			drop!.x + drop!.width / 2,
+			drop!.y + drop!.height / 2,
+			{ steps: 16 },
+		);
+
+		// Armed on an animation frame rather than on the move event, so this is a
+		// poll and not a read.
+		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
+		await page.mouse.up();
+
+		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
+		expect(requestsTo(player, "/playqueue/add")).toHaveLength(1);
+		// The drop is the same route the menu takes, undo and all, and the queue
+		// panel is shut -- so it has to say something.
+		await expect(page.getByRole("status")).toContainText("Queued 1 track");
+	});
+
+	test("the button announces itself only while a drag is in flight", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "drag is mouse-only; touch has the menu");
+		await openLibrary(page);
+
+		await expect(queueButton(page)).not.toHaveAttribute("data-drop-target");
+
+		const source = await trackRow(page, 0).boundingBox();
+		await page.mouse.move(
+			source!.x + source!.width / 2,
+			source!.y + source!.height / 2,
+		);
+		await page.mouse.down();
+		await page.mouse.move(source!.x + 90, source!.y + 40, { steps: 8 });
+
+		await expect(queueButton(page)).toHaveAttribute("data-drop-target");
+		// Armed is not the same as under the pointer: the button says it takes
+		// tracks without claiming this one is landing on it.
+		await expect(queueButton(page)).not.toHaveAttribute("data-drop-over");
+
+		await page.mouse.up();
+		await expect(queueButton(page)).not.toHaveAttribute("data-drop-target");
+	});
+
+	test("the drop is caught outside the button, but only mid-drag", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "drag is mouse-only; touch has the menu");
+		await openLibrary(page);
+
+		const source = await trackRow(page, 0).boundingBox();
+		const drop = await queueButton(page).boundingBox();
+		// Left of the button is the Next-track button, so a point there arms only
+		// if the grown hit area really is what the document hit test lands on.
+		const beside = { x: drop!.x - 6, y: drop!.y + drop!.height / 2 };
+
+		await page.mouse.move(
+			source!.x + source!.width / 2,
+			source!.y + source!.height / 2,
+		);
+		await page.mouse.down();
+		await page.mouse.move(beside.x, beside.y, { steps: 16 });
+		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
+		await page.mouse.up();
+
+		// And it goes with the drag: at rest that point is not the button's, so
+		// nothing beside it has quietly lost a strip of itself for the session.
+		const stillCaught = await page.evaluate(
+			(point) =>
+				Boolean(
+					document
+						.elementFromPoint(point.x, point.y)
+						?.closest('button[aria-label^="Queue"]'),
+				),
+			beside,
+		);
+		expect(stillCaught).toBe(false);
+	});
+
 	test("the button sits with the transport, after Next", async ({
 		page,
 		isMobile,

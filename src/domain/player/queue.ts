@@ -6,6 +6,7 @@ import {
 import type { PlayQueueItem } from "@/shared/api/types";
 
 export const QUEUE_KEY = ["playQueue"];
+export const QUEUE_DROP_TARGET = "jean:queue";
 
 // Here rather than in `useQueue` so that `usePlayer` can consult it without the
 // two importing each other. A counter, because two mutations can overlap.

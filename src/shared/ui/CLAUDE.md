@@ -165,6 +165,12 @@ is a ghost rather than the row.
   under a stationary pointer still arms.
 - Drag is mouse-only, and the mobile path is the menu. There is nothing to drag onto on a
   phone: the sidebar is a drawer that covers the list it would be dragged from.
+- **The ids are opaque here and must stay that way.** A target is a string this file
+  hit-tests and hands back; what it means belongs to whoever registered it. Sidebar rows
+  register playlist ids, the status bar's queue button registers
+  `domain/player/queue.ts`'s `QUEUE_DROP_TARGET` -- and `useTrackDragSource` is the one
+  place that tells the two apart, because it is the one place that knows what a drop
+  should do.
 
 **Context menus come from `shared/ui/ActionMenu.tsx`, as an array of actions.** Never hand-roll
 a popover, an action sheet or a confirmation dialog -- the gestures, the keyboard

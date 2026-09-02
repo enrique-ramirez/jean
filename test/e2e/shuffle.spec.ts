@@ -65,6 +65,23 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		expect(requestsTo(player, "/playqueue/")).toEqual([]);
 	});
 
+	test("s does the same thing as the button", async ({ page, player }) => {
+		test.skip(
+			test.info().project.name === "mobile",
+			"no keyboard on the phone",
+		);
+
+		// The same call, not a second implementation: the binding is registered by
+		// the component that draws the button, so there is one answer to what
+		// shuffling this view means.
+		await page.keyboard.press("s");
+
+		await expect.poll(() => playedIndex(player)).not.toBeNull();
+		expect(playedIndex(player)).toBeLessThan(ALBUM.count);
+		await expect.poll(() => orderRequests(player)).toEqual([SHUFFLE_TRACKS]);
+		expect(requestsTo(player, "/player/play/")).toHaveLength(1);
+	});
+
 	test("it starts somewhere different each time", async ({ page, player }) => {
 		// Guards the difference between "shuffle" and "play", which is otherwise
 		// invisible: replacing the random pick with 0 would leave every other

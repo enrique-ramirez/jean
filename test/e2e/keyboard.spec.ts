@@ -139,18 +139,49 @@ test.describe("navigation and appearance", () => {
 	});
 
 	test("? opens the shortcut sheet", async ({ page }) => {
-		await page.keyboard.press("Shift+/");
+		// Shift and the key that types `?`, which is what a person does. Playwright
+		// sends `key: '?'` with shiftKey set, exactly as a browser does on every
+		// layout -- the binding matches that rather than the physical slash key,
+		// which is elsewhere on Dvorak, Spanish and French.
+		await page.keyboard.press("Shift+?");
 		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
 		await expect(sheet).toBeVisible();
 
 		// Rendered from the same array the bindings are registered from, so the
 		// help cannot drift from what actually fires -- which is only true while it
 		// keeps listing every group.
-		await inSequence(
-			["Playback", "Navigation", "In a playlist", "While finding"],
-			(group) =>
-				expect(sheet.getByRole("heading", { name: group })).toBeVisible(),
+		await inSequence(["Playback", "Navigation", "In a playlist"], (group) =>
+			expect(sheet.getByRole("heading", { name: group })).toBeVisible(),
 		);
+
+		// The finder's keys are bound and undocumented: arrows and Enter inside a
+		// dropdown are what anyone tries first, so a row teaching them spends
+		// attention and returns none.
+		await expect(
+			sheet.getByRole("heading", { name: "While finding" }),
+		).toHaveCount(0);
+	});
+
+	test("the sheet draws one keycap per key, not one per chord", async ({
+		page,
+	}) => {
+		await page.keyboard.press("Shift+?");
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+
+		// `formatForDisplay` hands back "⌘ K" in one string; two keys are two caps.
+		const nextTrack = sheet
+			.locator("div")
+			.filter({ hasText: /^Next track/ })
+			.last();
+		await expect(nextTrack.locator("kbd")).toHaveCount(2);
+
+		// And `?` is one, despite being registered under two spellings so that it
+		// works whether or not a layout shifts to reach it.
+		const shortcuts = sheet
+			.locator("div")
+			.filter({ hasText: /^Keyboard shortcuts/ })
+			.last();
+		await expect(shortcuts.locator("kbd")).toHaveText(["?"]);
 	});
 
 	test("t switches the theme", async ({ page }) => {
@@ -175,20 +206,22 @@ test.describe("moving the cursor in a playlist", () => {
 	const cursorAt = async (page: Page, index: number) =>
 		expect(cursorRow(page)).toHaveAttribute("data-row", String(index));
 
-	test("the arrows and their vim spellings do the same thing", async ({
-		page,
-	}) => {
+	test("the arrows move it, and nothing else has to", async ({ page }) => {
 		await cursorAt(page, 0);
 
 		await page.keyboard.press("ArrowDown");
 		await cursorAt(page, 1);
-		await page.keyboard.press("j");
+		await page.keyboard.press("ArrowDown");
 		await cursorAt(page, 2);
 
 		await page.keyboard.press("ArrowUp");
 		await cursorAt(page, 1);
-		await page.keyboard.press("k");
-		await cursorAt(page, 0);
+
+		// j and k were bound here too and are not any more. The sheet documents
+		// every binding, so a binding worth having is one worth a row in it -- and
+		// a second spelling of the arrow keys was not.
+		await page.keyboard.press("j");
+		await cursorAt(page, 1);
 	});
 
 	test("Home and End reach both ends", async ({ page }) => {
@@ -231,6 +264,28 @@ test.describe("selecting in a playlist", () => {
 
 		await page.keyboard.press("Shift+ArrowUp");
 		await expect(selected(page)).toHaveCount(2);
+	});
+
+	test("clicking away from the rows drops the selection", async ({ page }) => {
+		await page.keyboard.press("ControlOrMeta+a");
+		await expect(selected(page).first()).toBeVisible();
+
+		// Background inside the view -- here the title, because with 54 rows the
+		// list is taller than the window and there is no empty space under it.
+		await page.getByRole("heading", { level: 1 }).click();
+		await expect(selected(page)).toHaveCount(0);
+	});
+
+	test("a control in the view does not drop it", async ({ page }) => {
+		await page.keyboard.press("ControlOrMeta+a");
+		const before = await selected(page).count();
+		expect(before).toBeGreaterThan(1);
+
+		// The whole point of building a selection is to act on it, and every
+		// button that acts on one sits inside the same view. A click that used the
+		// selection must not also undo it.
+		await page.getByRole("button", { name: "Play-count heat" }).click();
+		await expect(selected(page)).toHaveCount(before);
 	});
 
 	test("Mod+A takes everything and Escape gives it back", async ({ page }) => {

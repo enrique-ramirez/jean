@@ -29,7 +29,9 @@ test.describe("the command palette", () => {
 
 	test.beforeEach(async ({ page }) => {
 		await openLibrary(page);
-		await page.keyboard.press("ControlOrMeta+Shift+p");
+		// A bare letter: Mod+Shift+P is a private window in Firefox and its
+		// derivatives, and the browser wins that one.
+		await page.keyboard.press("g");
 		await expect(palette(page)).toBeVisible();
 	});
 

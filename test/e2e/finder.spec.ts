@@ -111,6 +111,42 @@ const openFinder = async (page: Page) => {
 				await expect(target).toHaveAttribute("aria-selected", "true");
 			});
 
+			test("arrowing past the fold scrolls the dropdown to follow", async ({
+				page,
+			}) => {
+				test.skip(
+					test.info().project.name === "mobile",
+					"no keyboard on the phone",
+				);
+
+				await openFinder(page);
+				await finder(page).fill(OFF_SCREEN.query);
+				await expect(results(page)).toHaveCount(OFF_SCREEN.matches);
+
+				const list = page.getByRole("listbox");
+				expect(await list.evaluate((node) => node.scrollTop)).toBe(0);
+
+				// The dropdown is 320px over eleven results, so the last of them starts
+				// below the fold. Walking there used to move a cursor nobody could see.
+				const last = results(page).nth(OFF_SCREEN.matches - 1);
+				for (let at = 1; at < OFF_SCREEN.matches; at += 1)
+					await page.keyboard.press("ArrowDown");
+				await expect(last).toHaveAttribute("aria-selected", "true");
+
+				expect(await list.evaluate((node) => node.scrollTop)).toBeGreaterThan(
+					0,
+				);
+
+				// Inside the scroller's own box, not merely inside the page: it is the
+				// dropdown that has to have moved, and nothing outside it may.
+				const listBox = await list.boundingBox();
+				const activeBox = await last.boundingBox();
+				expect(activeBox!.y).toBeGreaterThanOrEqual(listBox!.y - 1);
+				expect(activeBox!.y + activeBox!.height).toBeLessThanOrEqual(
+					listBox!.y + listBox!.height + 1,
+				);
+			});
+
 			test("/ opens it too", async ({ page }) => {
 				test.skip(
 					test.info().project.name === "mobile",

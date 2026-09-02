@@ -2,6 +2,8 @@ import { Shuffle } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 
 import { usePlaybackOrder } from "@/domain/player/usePlayer";
+import { SCOPE } from "@/shared/keyboard/keymap";
+import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
 import { PlayIcon } from "@/shared/ui/icons";
 import type { TrackBrowserHandle } from "./listTypes";
@@ -30,6 +32,15 @@ export function PlayActions({
 
 	const play = (position: number) => browserRef.current?.play(position);
 
+	const shufflePlay = () => {
+		order.enableShuffle();
+		play(Math.floor(Math.random() * trackCount));
+	};
+
+	const canShuffleHere = canShuffle && !isEmpty && order.canShuffle;
+
+	useKeymap(SCOPE.playlist, { shufflePlay }, { enabled: canShuffleHere });
+
 	return (
 		<>
 			<Button
@@ -45,10 +56,7 @@ export function PlayActions({
 				<Button
 					icon={Shuffle}
 					disabled={isEmpty || !order.canShuffle}
-					onClick={() => {
-						order.enableShuffle();
-						play(Math.floor(Math.random() * trackCount));
-					}}
+					onClick={shufflePlay}
 				>
 					Shuffle
 				</Button>

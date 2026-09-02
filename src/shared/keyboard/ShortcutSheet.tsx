@@ -1,7 +1,16 @@
 import { formatForDisplay } from "@tanstack/react-hotkeys";
 
-import { bindingsIn, KEYMAP_GROUPS } from "./keymap";
+import { type Binding, bindingsIn, KEYMAP_GROUPS } from "./keymap";
 import styles from "./ShortcutSheet.module.css";
+
+// `formatForDisplay` returns a whole chord in one string -- "⌘ ⇧ P" -- and a
+// keycap is a key, so the chord is split back into its parts. Space-joined by
+// the formatter, which is why a space is a safe separator here and the Space
+// key comes back as `␣` rather than as a gap.
+const capsOf = (binding: Binding) =>
+	(binding.shown ?? binding.keys.map((key) => formatForDisplay(key))).map(
+		(chord) => chord.split(" ").filter(Boolean),
+	);
 
 export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 	return (
@@ -23,8 +32,18 @@ export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 			>
 				<h2 className={styles.title}>Keyboard shortcuts</h2>
 				<p className={styles.subtitle}>
-					<kbd>/</kbd> filters the list you are looking at.{" "}
-					<kbd>{formatForDisplay("Mod+k")}</kbd> searches everything.
+					<kbd className={styles.cap}>/</kbd> filters the list you are looking
+					at.{" "}
+					<span className={styles.chord}>
+						{formatForDisplay("Mod+k")
+							.split(" ")
+							.map((cap) => (
+								<kbd key={cap} className={styles.cap}>
+									{cap}
+								</kbd>
+							))}
+					</span>{" "}
+					searches everything.
 				</p>
 
 				{KEYMAP_GROUPS.map((group) => (
@@ -36,11 +55,15 @@ export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 								<span className={styles.keys}>
 									{/* A registerable hotkey can be an object rather than a
                       string, so the rendered spelling is what keys the row. */}
-									{binding.keys
-										.map((key) => formatForDisplay(key))
-										.map((shown) => (
-											<kbd key={shown}>{shown}</kbd>
-										))}
+									{capsOf(binding).map((chord) => (
+										<span key={chord.join("+")} className={styles.chord}>
+											{chord.map((cap) => (
+												<kbd key={cap} className={styles.cap}>
+													{cap}
+												</kbd>
+											))}
+										</span>
+									))}
 								</span>
 							</div>
 						))}

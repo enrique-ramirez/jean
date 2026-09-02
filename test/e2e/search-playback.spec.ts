@@ -210,7 +210,7 @@ test.describe("playing from search results", () => {
 
 		await searchAndPlay(page, player);
 
-		await page.keyboard.press("Meta+Shift+p");
+		await page.keyboard.press("g");
 		// Scoped to the palette: the sidebar names these playlists too.
 		const palette = page.getByRole("dialog", { name: "Go to playlist" });
 		await expect(

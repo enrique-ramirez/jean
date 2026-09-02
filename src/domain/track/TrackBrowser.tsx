@@ -270,6 +270,16 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		[playFromPointer],
 	);
 
+	const clearSelection = selection.clear;
+	const onViewClick = useCallback(
+		(event: ReactMouseEvent) => {
+			const target = event.target as HTMLElement | null;
+			if (target?.closest("[data-row], button, a, input, label")) return;
+			clearSelection();
+		},
+		[clearSelection],
+	);
+
 	// Only when the keyboard moved it: arriving chunks can clamp the cursor too, and
 	// reacting to that drags the view back to the top mid-scroll.
 	const pendingScroll = useRef(false);
@@ -366,7 +376,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 	const shownDirection = activeDirection ?? lastDirection.current;
 
 	return (
-		<div className={styles.view}>
+		// Not a control, and deliberately not focusable: this is the background
+		// behind the list, and its only job is to notice that a click missed
+		// everything. The keyboard route to the same thing is Escape.
+		// biome-ignore lint/a11y/noStaticElementInteractions: background, see above
+		// biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard equivalent is Escape, declared in the keymap rather than here -- a keydown on this element would need it focusable, which is the thing it must not be
+		<div className={styles.view} onClick={onViewClick}>
 			{header}
 
 			<div className={styles.toolbar}>

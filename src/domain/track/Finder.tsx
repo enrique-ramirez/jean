@@ -37,6 +37,7 @@ export function Finder({
 	onClose: () => void;
 }) {
 	const inputRef = useRef<HTMLInputElement | null>(null);
+	const listRef = useRef<HTMLDivElement | null>(null);
 	const [active, setActive] = useState(0);
 	const debouncedActive = useDebounced(active, 90);
 
@@ -113,9 +114,31 @@ export function Finder({
 		if (previewIndex !== undefined) previewRef.current(previewIndex);
 	}, [previewIndex]);
 
+	const revealActive = useRef(false);
+
+	useLayoutEffect(() => {
+		if (!revealActive.current) return;
+		revealActive.current = false;
+
+		const list = listRef.current;
+		const option = list?.children[active];
+		if (!list || !(option instanceof HTMLElement)) return;
+
+		const above = option.offsetTop - list.scrollTop;
+		const below = above + option.offsetHeight - list.clientHeight;
+		// One branch each way, and neither when the row is already whole: scrolling
+		// a visible row to an edge is motion that answers nothing.
+		if (above < 0) list.scrollTop += above;
+		else if (below > 0) list.scrollTop += below;
+	}, [active]);
+
 	const step = (delta: number) => {
 		if (results.length === 0) return;
 		navigated.current = true;
+		// Only a key scrolls. A hover already proves the row is on screen, and
+		// scrolling under a stationary pointer moves a different row beneath it --
+		// which fires mouseenter, which moves the cursor, which scrolls again.
+		revealActive.current = true;
 		setActive((current) => (current + delta + results.length) % results.length);
 	};
 
@@ -153,7 +176,7 @@ export function Finder({
 			</button>
 
 			{query.trim().length > 0 ? (
-				<div className={styles.results} role="listbox">
+				<div className={styles.results} role="listbox" ref={listRef}>
 					{results.length === 0 ? (
 						<p className={styles.empty}>Nothing here matches that.</p>
 					) : (

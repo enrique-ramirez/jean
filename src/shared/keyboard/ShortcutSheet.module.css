@@ -27,6 +27,10 @@
 }
 
 .subtitle {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 5px;
 	margin: 0 0 18px;
 	font-size: 0.8125rem;
 	color: var(--muted);
@@ -54,7 +58,9 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 16px;
-	padding: 6px 0;
+	/* Enough that the caps are not touching the rules above and below them: a
+	   22px cap in a 26px row is a box in a box. */
+	padding: 7px 0;
 	border-bottom: 1px solid var(--border);
 	font-size: 0.8125rem;
 }
@@ -63,7 +69,54 @@
 	border-bottom: 0;
 }
 
+/* Keycaps --------------------------------------------------------------------
+
+   The reference is the physical thing, not the `<kbd>` default -- which is
+   monospace at 0.8em and renders `⌘ K` as one run of small grey text, so a
+   column of them read as footnotes rather than as keys. What makes a cap read
+   as a cap is three things and not a bevel: a raised surface against the sheet,
+   a square-ish footprint so one character and two occupy the same shape, and a
+   single darker edge along the bottom. Anything more -- a gradient, an inset
+   highlight, a 3px lip -- is a 2008 skeuomorph and dates the screen instantly.
+
+   A chord is several caps with a small gap; alternative bindings for the same
+   action are separate chords with a larger one, so `↓ ⇧` never reads as a
+   two-key chord it is not. */
 .keys {
 	display: flex;
-	gap: 4px;
+	align-items: center;
+	gap: 10px;
+}
+
+.chord {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+}
+
+.cap {
+	display: inline-grid;
+	place-items: center;
+	/* Square at one character, a capsule at more, because the glyphs are not one
+	   width: ⌘ and ⇧ are wide, 1 and . are narrow, and a cap that hugs its glyph
+	   makes a row of them look broken rather than typeset. */
+	min-width: 22px;
+	height: 22px;
+	padding: 0 6px;
+	box-sizing: border-box;
+	border: 1px solid var(--border-strong);
+	border-radius: 5px;
+	/* The bottom edge is the whole illusion: one line of shadow under a raised
+	   surface. It is a box-shadow rather than a thicker border so the glyph stays
+	   optically centred -- a 3px border-bottom pushes it up by 1px. */
+	box-shadow: 0 1px 0 var(--border-strong);
+	background: var(--surface-raised);
+	color: var(--text);
+	/* Not monospace. The default `<kbd>` face makes ⌘ and ⇧ fall back to some
+	   other family anyway, so the row mixes two fonts to no purpose. */
+	font-family: inherit;
+	font-size: 0.75rem;
+	font-weight: 550;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
 }

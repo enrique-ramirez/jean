@@ -13,13 +13,21 @@ import {
 	viewHeader,
 } from "./fixtures.ts";
 
+// Recently played is a row under its own heading. Every other shelf is inside
+// Explore, whose heading is "Explore" and whose row is whichever tab is active,
+// so a shelf is addressed by its tab rather than by a heading of its own.
 const shelf = (page: Page, title: string) =>
 	page.getByRole("heading", { level: 2, name: title });
 
-const albumOnShelf = (page: Page, title: string, album: string | RegExp) =>
+const explore = (page: Page) => page.getByRole("region", { name: "Explore" });
+
+const tab = (page: Page, title: string) =>
 	page
-		.getByRole("region", { name: title })
-		.getByRole("button", { name: album });
+		.getByRole("navigation", { name: "Shelves" })
+		.getByRole("button", { name: title, exact: true });
+
+const albumInExplore = (page: Page, album: string | RegExp) =>
+	explore(page).getByRole("button", { name: album });
 
 test.describe("the home screen", () => {
 	test("it is where the root lands, not a playlist", async ({ page }) => {
@@ -30,7 +38,7 @@ test.describe("the home screen", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: /of music/ }),
 		).toBeVisible();
-		await expect(shelf(page, "Most played")).toBeVisible();
+		await expect(tab(page, "Most played")).toBeVisible();
 	});
 
 	test("the sidebar reads search, home, all music, then playlists", async ({
@@ -53,7 +61,7 @@ test.describe("the home screen", () => {
 
 	test("a shelf says why each record is on it", async ({ page }) => {
 		await page.goto("/");
-		await expect(shelf(page, "Most played")).toBeVisible();
+		await expect(tab(page, "Most played")).toBeVisible();
 
 		// The caption is the whole difference between a shelf and a query result:
 		// "1,315 plays" is a reason to press play, "matches a predicate" is not.
@@ -74,38 +82,42 @@ test.describe("the library header", () => {
 		// Uppercased in CSS, so the text itself is still sentence case.
 		await expect(header).toContainText("Your library");
 
-		await inSequence(
-			["tracks", "albums", "artists", "genres", "playlists"],
-			(label: string) =>
-				expect(header.getByText(label, { exact: true })).toBeVisible(),
+		// Three cards, not the five hairline-separated figures this replaced.
+		// Genres moved to the bars at the foot of the page and playlists left
+		// altogether -- the sidebar already lists those.
+		await inSequence(["tracks", "albums", "artists"], (label: string) =>
+			expect(header.getByText(label, { exact: true })).toHaveCount(1),
 		);
+		await expect(header.getByText("playlists", { exact: true })).toHaveCount(0);
 	});
 
-	test("the counts are of the user's music, not of Jean's plumbing", async ({
-		page,
-		player,
-	}) => {
+	test("each card ends in something to press", async ({ page }) => {
 		await page.goto("/");
 		const header = viewHeader(page);
 		await expect(header.getByRole("heading", { level: 1 })).toBeVisible();
 
-		// `#Jean Library` is Jean's, and so is any scratch!. Counting them here
-		// would make this header disagree with the sidebar two centimetres to its
-		// left, which lists neither.
-		const mine = player.playlists.filter(
-			(entry) => !entry.title.startsWith("#Jean"),
+		// The whole difference between this and the readout it replaced. A count on
+		// its own is a number; a count that ends in a named record is a door.
+		await expect(header.locator('[data-door="albums"]')).toContainText(
+			"most played",
 		);
-		await expect(header).toContainText(String(mine.length));
-		expect(player.playlists.length).toBeGreaterThan(mine.length);
+		await expect(header.locator('[data-door="artists"]')).toContainText(
+			"most played",
+		);
+
+		// And the tracks card is the one that is only a destination, so it is the
+		// one that is a link -- cmd-click opens All music in a tab, which no button
+		// can do.
+		await expect(
+			header.locator('a[data-door="tracks"][href="#/all"]'),
+		).toHaveCount(1);
 	});
 
 	test("a figure the player cannot answer for is not drawn", async ({
 		page,
 	}) => {
 		await page.goto("/");
-		await expect(
-			viewHeader(page).getByText("genres", { exact: true }),
-		).toBeVisible();
+		await expect(page.getByRole("region", { name: "Genres" })).toBeVisible();
 	});
 });
 
@@ -121,8 +133,67 @@ test.describe("a library with no genre tag", () => {
 
 		// The rule the shelves already follow: a claim needs the data behind it, and
 		// "0 genres" is not "this library has no genres", it is "Jean cannot tell".
-		await expect(header.getByText("genres", { exact: true })).toHaveCount(0);
-		await expect(header.getByText("tracks", { exact: true })).toBeVisible();
+		// So the bars are absent rather than empty, and the ranked track list beside
+		// them -- which needs no genre tag -- carries the band on its own.
+		await expect(page.getByRole("region", { name: "Genres" })).toHaveCount(0);
+		await expect(
+			page.getByRole("region", { name: "Your top tracks" }),
+		).toBeVisible();
+	});
+});
+
+test.describe("the closing band", () => {
+	test("a top track opens All music and starts there", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		const tracks = page.getByRole("region", { name: "Your top tracks" });
+		await expect(tracks).toBeVisible();
+
+		// Off the tooltip rather than off the row's text, which starts with the
+		// rank: `innerText().split()[0]` read "1" and compared it to a song.
+		const first = tracks.getByRole("button").first();
+		const title = (await first.getAttribute("title"))?.split(" — ").pop();
+		await first.click();
+
+		// Not the track on its own: one track played alone is a dead end -- it
+		// finishes and playback falls out into whatever the player finds next --
+		// so it starts the library at that track, and lands on the view of it.
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+		await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(54);
+		expect(scratchOf(player)!.title).toBe("#Jean [all music]");
+		await expect
+			.poll(() => scratchOf(player)!.items[playedFrom(player)?.index ?? -1])
+			.toMatchObject({ "%title%": title });
+	});
+
+	test("a genre bar opens exactly the tracks it counted", async ({ page }) => {
+		await page.goto("/");
+		const bars = page.getByRole("region", { name: "Genres" });
+		await expect(bars).toBeVisible();
+
+		// The bar used to run a search, which was quietly broken: the search index
+		// covers title, artist and album and not genre, so "Indie Rock" looked for
+		// those words in track names.
+		const first = bars.getByRole("link").first();
+		const [genre, count] = (await first.innerText()).split("\n");
+		await first.click();
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: genre.trim() }),
+		).toBeVisible();
+
+		// The figure beside the bar and the rows behind it are the same set, which
+		// is the whole reason `refsOfGenre` matches the tag the way `summarise`
+		// counts it -- whole, and through `tagKey`. Two different ideas of what a
+		// genre is would make the number on the front door a lie.
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			count.trim().replace(/,/g, ""),
+		);
 	});
 });
 
@@ -245,14 +316,18 @@ test.describe("all music", () => {
 });
 
 test.describe("opening a shelf from its heading", () => {
-	test("the title opens the shelf and starts nothing", async ({
+	test("Explore opens whichever tab is showing, and starts nothing", async ({
 		page,
 		player,
 	}) => {
 		await page.goto("/");
-		await expect(shelf(page, "Most played")).toBeVisible();
+		await expect(tab(page, "Most played")).toBeVisible();
 
-		await page.getByRole("link", { name: "Most played" }).click();
+		// The heading is the link and the tabs are the switch, so what "Explore"
+		// opens follows the tab rather than naming a shelf of its own. That is what
+		// keeps the rule the plain row follows -- a shelf's heading opens it --
+		// without a "Show all" parked at the right of the strip.
+		await page.getByRole("link", { name: "Explore" }).click();
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Most played" }),
 		).toBeVisible();
@@ -268,8 +343,8 @@ test.describe("opening a shelf from its heading", () => {
 
 	test("it leaves what is already playing alone", async ({ page, player }) => {
 		await page.goto("/");
-		await expect(shelf(page, "Most played")).toBeVisible();
-		await albumOnShelf(page, "Most played", /^Jessico/).click();
+		await expect(tab(page, "Most played")).toBeVisible();
+		await albumInExplore(page, /^Jessico/).click();
 		// Polled on playback, not on the fill: the playlist is written first and
 		// played a round trip later, so reading the active item the moment the
 		// items land reads -1 and compares nothing to nothing.
@@ -290,15 +365,38 @@ test.describe("opening a shelf from its heading", () => {
 		expect(player.player.activeItem.index).toBe(playing);
 	});
 
-	test("the blurb under it is not a target", async ({ page }) => {
+	test("the blurb under Recently played is not a target", async ({ page }) => {
 		await page.goto("/");
-		await expect(shelf(page, "Most played")).toBeVisible();
-		const link = page.getByRole("link", { name: "Most played" });
-		await expect(link).toBeVisible();
+		await expect(shelf(page, "Recently played")).toBeVisible();
+		await expect(
+			page.getByRole("link", { name: "Recently played" }),
+		).toBeVisible();
 		// The sentence explains why the records are there. Only the heading opens.
 		await expect(
 			page.getByRole("link", { name: /Where you have been lately/ }),
 		).toHaveCount(0);
+	});
+
+	test("Recently played is a row of its own and never also a tab", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await expect(shelf(page, "Recently played")).toBeVisible();
+
+		// The one shelf whose answer changes between one visit and the next, so it
+		// is the one worth finding by scrolling rather than by looking. Listing it
+		// in the strip as well would draw the same six covers twice.
+		await expect(tab(page, "Recently played")).toHaveCount(0);
+
+		// And the strip marks where you are, which is the only thing saying which
+		// of the titles the row underneath belongs to.
+		await expect(tab(page, "Most played")).toHaveAttribute(
+			"aria-current",
+			"true",
+		);
+		await expect(
+			explore(page).getByRole("link", { name: "Explore" }),
+		).toHaveAttribute("href", "#/shelf/top");
 	});
 });
 
@@ -308,12 +406,12 @@ test.describe("playing from a shelf", () => {
 		player,
 	}) => {
 		await page.goto("/");
-		await expect(shelf(page, "Most played")).toBeVisible();
+		await expect(tab(page, "Most played")).toBeVisible();
 		expect(scratchOf(player)).toBeUndefined();
 
 		// Jessico is not first on this shelf, so this also proves the click starts
 		// where it was aimed rather than at the top of the row.
-		await albumOnShelf(page, "Most played", /^Jessico/).click();
+		await albumInExplore(page, /^Jessico/).click();
 
 		// Polled on the contents, not the title: the playlist is named when it is
 		// created and filled a round trip later, so a title assertion passes while
@@ -358,9 +456,9 @@ test.describe("an install with no play counts", () => {
 			page.getByRole("heading", { level: 1, name: /of music/ }),
 		).toBeVisible();
 
-		await expect(shelf(page, "Most played")).toHaveCount(0);
+		await expect(tab(page, "Most played")).toHaveCount(0);
 		await expect(shelf(page, "Recently played")).toHaveCount(0);
-		await expect(shelf(page, "You used to love this")).toHaveCount(0);
+		await expect(tab(page, "Remember these?")).toHaveCount(0);
 	});
 
 	test("and the screen still opens on something to press", async ({ page }) => {
@@ -370,13 +468,8 @@ test.describe("an install with no play counts", () => {
 		// playback statistics would otherwise get a heading and nothing under it.
 		// One row drawn at random needs no history at all, and every install has a
 		// library -- an apology is not a home screen.
-		await expect(shelf(page, "Start somewhere")).toBeVisible();
-		await expect(
-			page
-				.getByRole("region", { name: "Start somewhere" })
-				.getByRole("button")
-				.first(),
-		).toBeVisible();
+		await expect(tab(page, "Start somewhere")).toBeVisible();
+		await expect(explore(page).getByRole("button").first()).toBeVisible();
 	});
 });
 
@@ -414,7 +507,7 @@ test.describe("a shelf says it is playing", () => {
 		page,
 	}) => {
 		await page.goto("/");
-		await expect(shelf(page, "Most played")).toBeVisible();
+		await expect(tab(page, "Most played")).toBeVisible();
 
 		// Nothing before it is played: the row only exists while the shelf is the
 		// thing playing. Checked without opening the drawer -- on a phone that
@@ -423,7 +516,7 @@ test.describe("a shelf says it is playing", () => {
 			sidebar(page).getByRole("button", { name: "Most played" }),
 		).toHaveCount(0);
 
-		await albumOnShelf(page, "Most played", /^Jessico/).click();
+		await albumInExplore(page, /^Jessico/).click();
 
 		await expectPlayingFrom(page, "Most played");
 

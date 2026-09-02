@@ -65,6 +65,19 @@ export function useHomePlayback({
 		[startEverything],
 	);
 
+	// A track pressed on the front door starts All music at that track, rather
+	// than playing it alone: one track played by itself is a dead end -- it
+	// finishes and playback falls out into whatever the player finds next -- and
+	// the set it belongs to is the library, which is the view this opens.
+	// Searched for by value rather than assumed equal to the ref: the whole
+	// library happens to be ascending, and building on that would break the day
+	// anything else is passed here.
+	const playTrack = useCallback(
+		(refs: Refs, ref: number) =>
+			startEverything(refs, Math.max(0, refs.indexOf(ref))),
+		[startEverything],
+	);
+
 	// The mode first, then a track -- the same two requests the Shuffle beside a
 	// playlist's Play sends. Neither button touches the mode the other way round:
 	// it is global player state, the status bar owns it, and a Play that quietly
@@ -80,6 +93,7 @@ export function useHomePlayback({
 
 	return {
 		playShelf,
+		playTrack,
 		playEverything,
 		shuffleEverything,
 		canPlay: canPlaySets,

@@ -27,14 +27,34 @@ export const ROUTE = {
 } as const;
 
 const SHELF_PREFIX = "shelf/";
+const GENRE_PREFIX = "genre/";
 
 const shelfRoute = (id: string) => `${SHELF_PREFIX}${id}`;
+
+// A genre is a tag somebody typed, so it can hold a slash, a hash or an accent.
+// Encoded on the way in and decoded on the way out -- and decoded in a `try`,
+// because a hand-edited hash with a stray `%` throws rather than returning
+// something odd.
+export const genreRoute = (name: string) =>
+	`${GENRE_PREFIX}${encodeURIComponent(name)}`;
+
+const genreOfRoute = (route: string): string | null => {
+	if (!route.startsWith(GENRE_PREFIX)) return null;
+	try {
+		return decodeURIComponent(route.slice(GENRE_PREFIX.length)) || null;
+	} catch {
+		return null;
+	}
+};
 
 // What a hash means, as one answer rather than five booleans read in five
 // places. Home is where `/` lands, so an unrecognised hash falls there rather
 // than onto whichever playlist happened to be first.
 export function resolveRoute(route: string): {
 	shelf: Shelf | null;
+	// The genre tag this route names, decoded. A filter over the library rather
+	// than anything the player holds -- see `refsOfGenre`.
+	genre: string | null;
 	isSearch: boolean;
 	isAll: boolean;
 	isHome: boolean;
@@ -48,8 +68,11 @@ export function resolveRoute(route: string): {
 		? (SHELVES.find((entry) => entry.id === shelfId) ?? null)
 		: null;
 
+	const genre = genreOfRoute(route);
+
 	return {
 		shelf,
+		genre,
 		isSearch: route === ROUTE.search,
 		isAll: route === ROUTE.all,
 		isHome: route === "" || route === ROUTE.home,
@@ -65,7 +88,8 @@ export function resolveRoute(route: string): {
 			route === ROUTE.all ||
 			route === ROUTE.search ||
 			route === ROUTE.playing ||
-			shelf !== null,
+			shelf !== null ||
+			genre !== null,
 	};
 }
 
@@ -81,6 +105,12 @@ export function routeOfPlayingSet(
 		return { ...playing, route: ROUTE.all };
 	if (playing.kind === SCRATCH_KIND.search)
 		return { ...playing, route: ROUTE.search };
+	// A genre has no permanent sidebar row either, and unlike a shelf its route
+	// is recoverable from the label alone -- the label *is* the tag.
+	if (playing.kind === SCRATCH_KIND.genre)
+		return playing.label
+			? { ...playing, route: genreRoute(playing.label), temporaryRow: true }
+			: null;
 	if (playing.kind !== SCRATCH_KIND.shelf) return null;
 
 	const shelf = SHELVES.find((entry) => entry.title === playing.label);

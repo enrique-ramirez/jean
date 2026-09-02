@@ -16,6 +16,15 @@ import { ViewHeader } from "@/domain/track/ViewHeader";
 import type { PlaylistInfo } from "@/shared/api/types";
 import styles from "./LibraryListView.module.css";
 
+// What the finder button calls the list it is searching. Keyed on the kind
+// rather than branched on, because there are three of these now and a genre
+// offered to "find in this shelf".
+const FINDER_LABEL: Record<string, string> = {
+	[SCRATCH_KIND.all]: "Find in all music",
+	[SCRATCH_KIND.shelf]: "Find in this shelf",
+	[SCRATCH_KIND.genre]: "Find in this genre",
+};
+
 // One list, whatever filtered it. All music is the no-filter view; a shelf is
 // the same thing with a preset. Both are shells over the library array and
 // neither is a playlist -- playback is materialised into the scratch only when
@@ -52,10 +61,15 @@ export function LibraryListView({
 	// rather than this view. Better absent until the player has said yes.
 	const canWrite = usePermissions().changePlaylists === true;
 
+	const isGenre = kind === SCRATCH_KIND.genre;
+
 	const { hasPlayCounts } = useAvailableFields(rows);
+	// No genre chips on a genre, where there is exactly one of them and it is at
+	// 100%: the title already says it, and a chip repeating the heading with a
+	// percentage attached looks like a figure until you read it.
 	const stats = useMemo(
-		() => summarise(rows, playedCount),
-		[rows, playedCount],
+		() => summarise(rows, playedCount, isGenre ? { genres: 0 } : undefined),
+		[rows, playedCount, isGenre],
 	);
 
 	// Named for what it is searching, because the top bar has a search of its own
@@ -66,8 +80,7 @@ export function LibraryListView({
 	const finder = useFinder({
 		rows,
 		browserRef,
-		label:
-			kind === SCRATCH_KIND.all ? "Find in all music" : "Find in this shelf",
+		label: FINDER_LABEL[kind] ?? "Find in this list",
 	});
 
 	const { playAt, activeIndex } = useViewPlayback({

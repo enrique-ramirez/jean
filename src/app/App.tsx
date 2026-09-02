@@ -16,7 +16,12 @@ import {
 	SCRATCH_KIND,
 	withoutJeanPlaylists,
 } from "@/domain/track/jeanPlaylists";
-import { EMPTY_VIEW, project, wholeLibrary } from "@/domain/track/project";
+import {
+	EMPTY_VIEW,
+	project,
+	refsOfGenre,
+	wholeLibrary,
+} from "@/domain/track/project";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
 import { albumsOf } from "@/features/home/albums";
@@ -105,14 +110,14 @@ function Shell() {
 	const [openedFrom, setOpenedFrom] = useState("");
 	const shellRoute = isNowPlaying ? openedFrom : route;
 
-	const { shelf, isSearch, isAll, isHome, isLibrary } =
+	const { shelf, genre, isSearch, isAll, isHome, isLibrary } =
 		resolveRoute(shellRoute);
 
 	// The library is loaded for the views that show it. Search asks for it
 	// separately, on focus, because reaching for the field is the ask and the
 	// route cannot know.
 	const library = useLibrary(playlists, {
-		wanted: isHome || isAll || Boolean(shelf),
+		wanted: isHome || isAll || Boolean(shelf) || Boolean(genre),
 	});
 	const search = useLibrarySearch(library, playlists);
 	const home = useHomePlayback({ library, playlists, navigate });
@@ -136,6 +141,42 @@ function Shell() {
 		);
 		return built ? project(snapshot, refsOfShelf(built)) : null;
 	}, [shelf, snapshot]);
+
+	// A genre is a filter over rows Jean already holds, not a playlist and not
+	// anything the player knows about -- so opening one costs a pass and no
+	// request. Depends on `snapshot.rows` rather than the snapshot, for the reason
+	// the two above do.
+	const genreView = useMemo(
+		() => (genre ? project(snapshot, refsOfGenre(snapshot.rows, genre)) : null),
+		[genre, snapshot],
+	);
+
+	// One description of the library view on screen, rather than the same three-way
+	// branch spelled out across five props -- which is how `kind` and `label` come
+	// to disagree, and a set filled under one name is marked against another.
+	const listView = shelf
+		? {
+				view: shelfView,
+				kind: SCRATCH_KIND.shelf,
+				label: shelf.title,
+				eyebrow: "Shelf",
+				title: shelf.title,
+			}
+		: genre
+			? {
+					view: genreView,
+					kind: SCRATCH_KIND.genre,
+					label: genre,
+					eyebrow: "Genre",
+					title: genre,
+				}
+			: {
+					view: allMusic,
+					kind: SCRATCH_KIND.all,
+					label: "",
+					eyebrow: "Your library",
+					title: ALL_MUSIC,
+				};
 
 	// Jean's own scratch playlist is not somewhere to browse to. Playing a set of
 	// search results makes it the current playlist, and landing there would show
@@ -224,6 +265,18 @@ function Shell() {
 	);
 
 	const openSearch = useCallback(() => openRoute(ROUTE.search), [openRoute]);
+
+	// Somewhere other than the field asking for a search: a genre bar, a stat
+	// card naming an artist. The elements that call this are anchors to
+	// `#/search`, so the navigation would happen without this -- what it adds is
+	// the query itself, and closing the drawer on a phone.
+	const searchFor = useCallback(
+		(query: string) => {
+			search.setQuery(query);
+			openSearch();
+		},
+		[search.setQuery, openSearch],
+	);
 
 	// Where dismissing the screen goes, and what the shell draws behind it.
 	// `history.back()` is wrong here: a reload lands directly on `#/playing` with
@@ -387,28 +440,32 @@ function Shell() {
 							// The whole library, which App already holds for the All music
 							// route -- the front door plays exactly the set that route shows,
 							// so it must be exactly the same refs.
+							onPlayTrack={(ref) => home.playTrack(allMusic.indices, ref)}
 							onPlayEverything={() => home.playEverything(allMusic.indices)}
 							onShuffleEverything={() =>
 								home.shuffleEverything(allMusic.indices)
 							}
+							onSearch={searchFor}
 							canPlay={home.canPlay}
 							canShuffle={home.canShuffle}
 						/>
-					) : isAll || shelf ? (
+					) : isAll || shelf || genre ? (
 						<LibraryListView
 							library={library}
-							view={(shelf ? shelfView : allMusic) ?? EMPTY_VIEW}
-							kind={shelf ? SCRATCH_KIND.shelf : SCRATCH_KIND.all}
-							label={shelf ? shelf.title : ""}
-							eyebrow={shelf ? "Shelf" : "Your library"}
-							title={shelf ? shelf.title : ALL_MUSIC}
+							view={listView.view ?? EMPTY_VIEW}
+							kind={listView.kind}
+							label={listView.label}
+							eyebrow={listView.eyebrow}
+							title={listView.title}
 							playlists={playlists}
 							scrollRef={scrollRef}
 							isCompactViewport={isCompactViewport}
 							emptyNotice={
 								library.isLoading
 									? "Reading your library..."
-									: "Nothing in your library yet."
+									: genre
+										? `Nothing tagged ${genre} in your library.`
+										: "Nothing in your library yet."
 							}
 						/>
 					) : isSearch ? (

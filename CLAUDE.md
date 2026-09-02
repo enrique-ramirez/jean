@@ -408,6 +408,14 @@ tag, and a lyrics provider inside Jean would be a second thing phoning the inter
 about your library on top of the artist lookup. The empty state names the component
 rather than offering to do it.
 
+**No listening charts over time, and there never will be without another
+component.** The player reports a lifetime play count and a single last-played
+date per track, so a plays-per-day graph or a month-over-month delta would be
+computed from data that cannot support it -- see `src/shared/api/CLAUDE.md` for
+the field semantics and `src/features/home/CLAUDE.md` for what the front door
+draws instead. The genre bars are the one chart on the screen, because a
+distribution needs no history.
+
 **No folder tree.** `#/all` browses the library as one flat list. Walking it by folder
 is a separate feature, and `/library/items/by-path` is measured in `API.md` for when
 that happens -- one request per level, with an ordering that needs a client-side

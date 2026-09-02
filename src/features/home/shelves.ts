@@ -57,6 +57,11 @@ const shuffled = <T>(items: T[]): T[] =>
 		.sort((a, b) => a.at - b.at)
 		.map(({ item }) => item);
 
+// Order is tab order, and the first two are the two anybody wants: what you play
+// most, then what you marked yourself. The titles are written to be worth
+// pressing rather than to describe a predicate -- "Never opened" was a fact
+// about a file and "Never listened" is a fact about you. **The ids are
+// deliberately not renamed with them**: they are the `#/shelf/<id>` route.
 export const SHELVES: Shelf[] = [
 	shelf(
 		"recent",
@@ -74,11 +79,34 @@ export const SHELVES: Shelf[] = [
 		(album) => plays(album.plays),
 	),
 
+	// Ratings are sparse and lopsided, so sorting by average alone sorts a flat tie.
+	// The second key is how many tracks were actually starred.
+	shelf(
+		"rated",
+		"Your favourites",
+		"Albums you marked up yourself",
+		(albums) => {
+			const rated = albums.filter(
+				(album): album is WithRating => album.ratedCount >= 2,
+			);
+			if (rated.length < 8) return [];
+
+			const good = percentile(
+				rated.map((album) => album.rating),
+				0.5,
+			);
+			return rated
+				.filter((album) => album.rating >= good)
+				.sort((a, b) => b.rating - a.rating || b.ratedCount - a.ratedCount);
+		},
+		(album) =>
+			`${(album as WithRating).rating.toFixed(1)} stars, ${album.ratedCount} rated`,
+	),
 	// Plays *per track*, or a long soundtrack wins on volume alone -- but captioned
 	// with the year, which is the part that stings.
 	shelf(
 		"loved",
-		"You used to love this",
+		"Remember these?",
 		"Played to death, then put down",
 		(albums) => {
 			const played = albums.filter(
@@ -108,7 +136,7 @@ export const SHELVES: Shelf[] = [
 	// album you play constantly and only own as a bad rip is worth knowing about.
 	shelf(
 		"upgrade",
-		"Worth a better copy",
+		"Time for an upgrade",
 		"You play these a lot, and they are low bitrate",
 		(albums) => {
 			const lossy = albums.filter(
@@ -137,33 +165,9 @@ export const SHELVES: Shelf[] = [
 			`${Math.round((album as WithBitrate).bitrate)} kbps, ${plays(album.plays)}`,
 	),
 
-	// Ratings are sparse and lopsided, so sorting by average alone sorts a flat tie.
-	// The second key is how many tracks were actually starred.
-	shelf(
-		"rated",
-		"You starred these",
-		"Albums you marked up yourself",
-		(albums) => {
-			const rated = albums.filter(
-				(album): album is WithRating => album.ratedCount >= 2,
-			);
-			if (rated.length < 8) return [];
-
-			const good = percentile(
-				rated.map((album) => album.rating),
-				0.5,
-			);
-			return rated
-				.filter((album) => album.rating >= good)
-				.sort((a, b) => b.rating - a.rating || b.ratedCount - a.ratedCount);
-		},
-		(album) =>
-			`${(album as WithRating).rating.toFixed(1)} stars, ${album.ratedCount} rated`,
-	),
-
 	shelf(
 		"unopened",
-		"Never opened",
+		"Never listened",
 		"In your library, never played",
 		(albums) =>
 			// With no playback-statistics component every album reads as zero, so this would

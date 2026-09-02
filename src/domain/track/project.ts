@@ -1,4 +1,5 @@
 import type { TrackColumns } from "@/shared/api/types";
+import { FIELD, tagKey, value } from "./fields";
 import type { PlaylistSnapshot } from "./playlistStore";
 
 // A ref is an integer -- a playlist index on one source, a position in the paths
@@ -63,3 +64,27 @@ export const EMPTY_VIEW: TrackView = Object.freeze({
 	patina: new Float32Array(0),
 	playedCount: 0,
 });
+
+// Every track carrying one genre tag, in library order.
+//
+// Matched through `tagKey`, and matched **whole**: foobar joins multiple values
+// with '; ' and Jean does not get to decide somebody's tag is really two tags --
+// which is the same rule `summarise` counts genres by. That is not a detail. The
+// bar on the front door says "Indie Rock, 2,667" and this is what opening it
+// shows, so the two have to agree about what a genre is or the count is a lie.
+//
+// Takes rows rather than the snapshot, so a caller's `useMemo` can be as narrow
+// as this signature.
+export function refsOfGenre(rows: TrackColumns[], genre: string): Int32Array {
+	const wanted = tagKey(genre);
+	// An empty key matches every untagged row, which is the whole library on an
+	// install with no genre tags rather than the nothing it should be.
+	if (!wanted) return new Int32Array(0);
+
+	return Int32Array.from(
+		rows.reduce<number[]>((into, row, ref) => {
+			if (tagKey(value(row, FIELD.genre)) === wanted) into.push(ref);
+			return into;
+		}, []),
+	);
+}

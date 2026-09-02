@@ -14,16 +14,29 @@ import { expect, test, viewHeader } from "./fixtures.ts";
 const heading = (page: Page) =>
 	viewHeader(page).getByRole("heading", { level: 1 });
 
+// One of the three cards under the headline, by the id it was built with.
+const door = (page: Page, id: string) =>
+	viewHeader(page).locator(`[data-door="${id}"]`);
+
 // The figure drawn under a given noun, or null when the header does not draw
-// one. Read off the pair rather than off the rail's text, so "1 album" cannot
+// one. Read off the pair rather than off the card's text, so "1 album" cannot
 // be satisfied by "1" appearing anywhere near the word.
+//
+// `textContent` rather than `innerText`: on a phone the tracks card is hidden
+// by CSS when there is another to take its place, and what the header *decided
+// to draw* is still the thing under test.
 const figure = async (page: Page, noun: string) => {
 	const label = viewHeader(page).getByText(new RegExp(`^${noun}s?$`));
-	if ((await label!.count()) === 0) return null;
-	return (
-		await label!.locator("xpath=preceding-sibling::dd").innerText()
-	).trim();
+	if ((await label.count()) === 0) return null;
+	const count = await label
+		.locator("xpath=preceding-sibling::span")
+		.textContent();
+	return (count ?? "").trim();
 };
+
+// The genre bars, which are where the header's genre chips went. Outside the
+// header on purpose: see `features/home/CLAUDE.md`.
+const genres = (page: Page) => page.getByRole("region", { name: "Genres" });
 
 const settled = async (page: Page) => {
 	await expect(heading(page)).toBeVisible();
@@ -44,10 +57,9 @@ test.describe("a folder of four songs", () => {
 		expect(await figure(page, "track")).toBe("4");
 		expect(await figure(page, "album")).toBe("1");
 		expect(await figure(page, "artist")).toBe("1");
-		expect(await figure(page, "genre")).toBe("1");
 		await expect(
 			viewHeader(page).getByText("album", { exact: true }),
-		).toBeVisible();
+		).toHaveCount(1);
 		await expect(
 			viewHeader(page).getByText("albums", { exact: true }),
 		).toHaveCount(0);
@@ -85,11 +97,12 @@ test.describe("one artist on repeat", () => {
 		expect(await figure(page, "album")).toBe("12");
 		expect(await figure(page, "artist")).toBe("1");
 
-		// One genre at 100% is a true and slightly funny thing to say about a
-		// library, and saying it is better than a bare row of numbers. Counted
-		// rather than seen, because on a phone the chips are deliberately not
-		// drawn -- see below.
-		await expect(viewHeader(page).getByText("100%")).toHaveCount(1);
+		// One genre holding the whole library is a true and slightly funny thing to
+		// say about it, and saying it is better than a bare row of numbers. Drawn
+		// as one full-length bar, because the bars are scaled against the largest
+		// genre rather than against the library.
+		await expect(genres(page).getByRole("link")).toHaveCount(1);
+		await expect(genres(page)).toContainText("400");
 	});
 });
 
@@ -115,79 +128,69 @@ test.describe("a wide, varied library", () => {
 		expect(await figure(page, "track")).toBe("6,000");
 		expect(await figure(page, "album")).toBe("500");
 		expect(await figure(page, "artist")).toBe("300");
-		expect(await figure(page, "genre")).toBe("40");
 		await expect(viewHeader(page)).toContainText("1961");
 		await expect(viewHeader(page)).toContainText("2024");
 	});
 
-	test("the characterisation goes on a phone, the counts stay", async ({
+	test("the tracks card goes on a phone and the other two stay", async ({
 		page,
 	}, testInfo) => {
 		await page.goto("/");
 		await settled(page);
 
-		// The shelves stack close enough on a phone that another band of text above
-		// them turns the screen into more reading than looking -- the same call the
-		// shelf blurbs make. The counts stay, because they are why this header
-		// exists; the genre chips go.
-		const chips = viewHeader(page)
-			.getByText(/^\d+%$/)
-			.first();
+		// The headline already says how big the library is, so on a phone the
+		// tracks figure is the card repeating itself -- and two cards at a readable
+		// size beat three squeezed. The other two carry a name apiece, which is the
+		// half that cannot be read anywhere else on the screen.
 		const onPhone = testInfo.project.name === "mobile";
-		await expect(chips).toBeVisible({ visible: !onPhone });
-		await expect(
-			viewHeader(page).getByText("tracks", { exact: true }),
-		).toBeVisible();
+		await expect(door(page, "tracks")).toBeVisible({ visible: !onPhone });
+		await expect(door(page, "albums")).toBeVisible();
+		await expect(door(page, "artists")).toBeVisible();
 	});
 
-	// The rail is one line at every width, and below the breakpoint it scrolls
-	// rather than wrapping. Two lines of figures read as two statements about the
-	// library instead of one, and the short second line -- two figures and three
-	// columns of nothing -- looks like the row failed to fill rather than like it
-	// ended. Asserted off the geometry, because that is the only thing that
-	// notices; every count is still correct when the rail is stacked in two.
-	test("the figures stay on one line, and scroll if they must", async ({
-		page,
-	}, testInfo) => {
-		await page.goto("/");
-		await settled(page);
-
-		const rail = viewHeader(page).locator("dl");
-		const shape = await rail.evaluate((el) => ({
-			lines: new Set(
-				[...el.children].map((c) => Math.round(c.getBoundingClientRect().top)),
-			).size,
-			overflows: el.scrollWidth > el.clientWidth,
-			// Full-bleed, so what is cut is cut by the edge of the screen. Clipped at
-			// the gutter it reads as drawn too wide; clipped at the glass it reads as
-			// continuing.
-			spansViewport: el.clientWidth === document.documentElement.clientWidth,
-			// And it must scroll *itself*. A rail that pushes the document sideways
-			// takes the whole app with it.
-			pushesDocument:
-				document.documentElement.scrollWidth >
-				document.documentElement.clientWidth,
-		}));
-
-		expect(shape.lines).toBe(1);
-		expect(shape.pushesDocument).toBe(false);
-		if (testInfo.project.name === "mobile") {
-			expect(shape.overflows).toBe(true);
-			expect(shape.spansViewport).toBe(true);
-		}
-	});
-
-	test("only the four biggest genres are named, however many there are", async ({
+	// The rail of five figures this replaced scrolled sideways below the
+	// breakpoint and was cut off mid-figure at the edge of the glass. The cards
+	// do not scroll at any width, and must never push the document sideways --
+	// a row that does takes the whole app with it.
+	test("the cards fit the screen, and never push the page sideways", async ({
 		page,
 	}) => {
 		await page.goto("/");
 		await settled(page);
 
-		// Forty chips would be the whole screen. The rail says how many there are;
-		// the chips say which ones you would recognise.
-		// One share per chip. Counted by what a chip *is* rather than by a hashed
-		// class name -- `[class*="chip"]` also matches the container they sit in.
-		await expect(viewHeader(page).getByText(/^\d+%$/)).toHaveCount(4);
+		const shape = await viewHeader(page)
+			.locator('[data-door="albums"]')
+			.evaluate((card) => {
+				const row = card.parentElement as HTMLElement;
+				const shown = [...row.children].filter(
+					(child) => (child as HTMLElement).offsetParent !== null,
+				);
+				return {
+					lines: new Set(
+						shown.map((child) => Math.round(child.getBoundingClientRect().top)),
+					).size,
+					overflows: row.scrollWidth > row.clientWidth + 1,
+					pushesDocument:
+						document.documentElement.scrollWidth >
+						document.documentElement.clientWidth,
+				};
+			});
+
+		expect(shape.lines).toBe(1);
+		expect(shape.overflows).toBe(false);
+		expect(shape.pushesDocument).toBe(false);
+	});
+
+	test("only the biggest genres are drawn, however many there are", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await settled(page);
+
+		// Forty bars would be the whole screen. Fourteen is what stands beside ten
+		// ranked tracks without either half of the band dragging the other's
+		// length -- and it is a cap, so a library with four genres draws four.
+		await expect(genres(page).getByRole("link")).toHaveCount(14);
 	});
 });
 
@@ -231,17 +234,26 @@ test.describe("a library with no album or genre tags at all", () => {
 		libraryShape: { tracks: 40, omit: ["%album%", "%genre%"] },
 	});
 
-	test("draws the figures it can fill and no others", async ({ page }) => {
+	test("draws the cards it can fill and no others", async ({ page }) => {
 		await page.goto("/");
 		await settled(page);
 
 		// Zero albums is not "a library without albums", it is "Jean cannot tell",
-		// and either way a nought in the rail is an absence dressed as a fact.
+		// and either way a nought on a card is an absence dressed as a fact.
 		expect(await figure(page, "track")).toBe("40");
 		expect(await figure(page, "album")).toBeNull();
-		expect(await figure(page, "genre")).toBeNull();
 		expect(await figure(page, "artist")).toBeNull();
-		await expect(viewHeader(page).getByText(/^\d+%$/)).toHaveCount(0);
+		await expect(genres(page)).toHaveCount(0);
+	});
+
+	test("the last card standing is drawn even on a phone", async ({ page }) => {
+		await page.goto("/");
+		await settled(page);
+
+		// Tracks is the card a phone drops -- but only when there is another to
+		// take its place, which is why that is `:not(:only-child)` rather than a
+		// branch. Here it is the only thing the header can say.
+		await expect(door(page, "tracks")).toBeVisible();
 	});
 });
 
@@ -251,9 +263,7 @@ test.describe("a fresh install with no playlists", () => {
 		libraryShape: { tracks: 40, albums: 4 },
 	});
 
-	test("the playlists figure goes rather than reading nought", async ({
-		page,
-	}) => {
+	test("the header counts music, never playlists", async ({ page }) => {
 		test.skip(
 			Boolean(process.env.JEAN_NO_LIBRARY_API),
 			"without playlists there is no autoplaylist either, so the fallback has no library to read",
@@ -261,6 +271,10 @@ test.describe("a fresh install with no playlists", () => {
 		await page.goto("/");
 		await settled(page);
 
+		// The header used to carry a playlists figure and dropped it at nought.
+		// It now never draws one at all: the sidebar is two centimetres to the left
+		// and already lists them, and a front door counting Jean's own plumbing
+		// alongside somebody's music was the wrong figure either way.
 		expect(await figure(page, "playlist")).toBeNull();
 		expect(await figure(page, "track")).toBe("40");
 	});

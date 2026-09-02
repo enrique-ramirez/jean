@@ -1,0 +1,90 @@
+.block {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.heading {
+	margin: 0;
+	font-size: 1.0625rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	color: var(--text);
+}
+
+.bars {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Three columns on a grid rather than a flex row, so every bar in the block
+   starts and ends at the same two x positions however long the tag names are.
+   A chart whose bars begin in different places is not a chart. */
+.bar {
+	display: grid;
+	grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	padding: 5px 8px;
+	border-radius: var(--radius-sm);
+	color: inherit;
+	text-decoration: none;
+	transition: background-color 140ms var(--ease);
+}
+
+.bar:hover,
+.bar:focus-visible {
+	background: var(--surface);
+}
+
+.name {
+	overflow: hidden;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	color: var(--text);
+}
+
+.track {
+	position: relative;
+	height: 8px;
+	border-radius: var(--radius-pill);
+	background: var(--surface-sunken);
+	overflow: hidden;
+}
+
+/* The wash rather than the ink. These are large areas of flat colour, which is
+   the job `--tint` exists for: on the light theme the accent went charcoal, and
+   seven charcoal bars on a near-white page is a bar chart about nothing. */
+.fill {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: oklch(var(--tint-l) var(--tint-c) var(--tint-h) / 0.55);
+	transition: background-color 140ms var(--ease);
+}
+
+.bar:hover .fill,
+.bar:focus-visible .fill {
+	background: oklch(var(--tint-l) var(--tint-c) var(--tint-h) / 0.8);
+}
+
+.count {
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+	color: var(--faint);
+}
+
+@media (max-width: 720px) {
+	.bar {
+		grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr) auto;
+		gap: 10px;
+		padding: 6px 4px;
+	}
+}

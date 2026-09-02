@@ -15,6 +15,14 @@ time:
   user tag, not a mangled constant. **Still sort and group by `%year%`**, which is
   clean and integer-shaped; reach for `%date%` only where a real release date is worth
   having, and parse it leniently.
+- **There is no play *history*, only a last play.** `%lastfm_play_count%` is the
+  lifetime total and `%lastfm_last_played%` is the most recent play and nothing
+  else, so a track played today and again three weeks ago reports only today. Any
+  per-day or per-week chart built on it undercounts every older bucket and slopes
+  upward whatever the listening actually did, and any "vs. last month" delta
+  compares a full window against a decayed one. A window can honestly report how
+  many *distinct tracks* were touched since a date, and must say so in those words.
+  See `features/home/CLAUDE.md`, which is where this keeps being proposed.
 - **`%last_modified%` is not a date-added field.** Playback can rewrite tags, which bumps
   the file mtime — measured, the mtime moves ~55 s before the scrobble lands, and 21% of
   played tracks have an mtime within ten minutes of their last play. It is

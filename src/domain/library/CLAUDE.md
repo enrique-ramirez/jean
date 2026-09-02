@@ -3,10 +3,13 @@
 Where "the library" comes from, how a set is played, and why search results are a
 view until you play them. General rules are in the root `CLAUDE.md`.
 
-**Every set that plays says so on the row it already has; only a shelf gets one
-made for it.** All music and a live search have permanent sidebar entries, so they
-are marked in place; a shelf has none, so it borrows a temporary row for as long as
-it is the thing playing. One answer feeds all of them -- `usePlayingFrom` reads the
+**Every set that plays says so on the row it already has; a shelf and a genre get
+one made for them.** All music and a live search have permanent sidebar entries, so
+they are marked in place; a shelf and a genre have none, so each borrows a temporary
+row for as long as it is the thing playing. A genre differs from a shelf in one
+way worth knowing: **its route is recoverable from the scratch playlist's label
+alone**, because the label *is* the tag, where a shelf's has to be matched back
+against `SHELVES` by title. One answer feeds all of them -- `usePlayingFrom` reads the
 scratch playlist's own title, and the route it belongs to is worked out once in
 `App`. The rows that ask anything else get it wrong: marking the search row from
 `isScratchPlaylist && isCurrent` lit it up for a *shelf* playing, because
@@ -94,6 +97,20 @@ Full shapes and measurements in `API.md`.
 Two sources, one interface: `{ kind, playlistId, needsHeldCount, artworkUrl(ref),
 fill(targetId, refs, heldCount), addTo(targetId, refs), playingPosition(refs, track,
 activeItem) }`.
+
+**A genre view is a filter over rows Jean already holds -- no request, no
+playlist, and nothing the player knows about.** `refsOfGenre` in
+`domain/track/project.ts` is the whole of it, and it matches the tag **whole and
+through `tagKey`**, which is how `summarise` counts genres: the bar on the front
+door says "Indie Rock, 2,667" and this is what opening it shows, so the two have to
+agree about what a genre is or the count is a lie. An empty key returns nothing
+rather than everything -- `tagKey('')` matches every untagged row, which on an
+install with no genre tags is the whole library.
+
+The route carries a tag somebody typed, so it can hold a slash, a hash or an
+accent: `genreRoute` percent-encodes and `resolveRoute` decodes inside a `try`,
+because a hand-edited hash with a stray `%` throws rather than returning something
+odd.
 
 **A ref is an integer.** The playlist source's is a playlist index; the library
 source's is a position in its own `paths` array. That is what keeps the seam from

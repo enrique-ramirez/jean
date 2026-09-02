@@ -2,6 +2,9 @@ import type { TrackColumns } from "@/shared/api/types";
 import { plural } from "@/shared/lib/text";
 import { FIELD, number, tagKey, value } from "./fields";
 
+// Four is what a header's row of chips has room for. The front door's genre
+// bars ask for more, because a chart of four bars is a list with decoration on
+// it.
 const TOP_GENRES = 4;
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
@@ -16,7 +19,11 @@ const DAY = 24 * HOUR;
 // so the same library cannot be described two ways two centimetres apart. One
 // pass with a mutable accumulator: this runs over the whole library again for
 // every chunk that lands.
-export function summarise(rows: TrackColumns[], playedCount = 0) {
+export function summarise(
+	rows: TrackColumns[],
+	playedCount = 0,
+	{ genres = TOP_GENRES } = {},
+) {
 	const totals = rows.reduce(
 		(into, row) => {
 			into.seconds += number(row, FIELD.duration) ?? 0;
@@ -54,9 +61,10 @@ export function summarise(rows: TrackColumns[], playedCount = 0) {
 		genreCount: totals.genres.size,
 		topGenres: [...totals.genres.values()]
 			.sort((a, b) => b.count - a.count)
-			.slice(0, TOP_GENRES)
+			.slice(0, genres)
 			.map(({ name, count }) => ({
 				name,
+				count,
 				share: Math.round((count / rows.length) * 100),
 			})),
 		playedShare: rows.length > 0 ? playedCount / rows.length : 0,

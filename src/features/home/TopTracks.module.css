@@ -1,0 +1,117 @@
+/* Capped rather than filling its column. The band gives this side the larger
+   share so titles do not truncate on a desktop, and past about this width the
+   extra goes entirely into the space between a title and its play count. */
+.block {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+	max-width: 620px;
+}
+
+.heading {
+	margin: 0;
+	font-size: 1.0625rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	color: var(--text);
+}
+
+/* `list-style: none` on an <ol> takes the list semantics with it in Safari, so
+   the ranks are drawn rather than generated -- which they would have to be
+   anyway to sit in their own tabular column. */
+.list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	counter-reset: none;
+}
+
+/* Every row is its own grid, so the counts line up only because the title column
+   is `1fr` and pushes them all to the same right edge. `max-content` was tried
+   and is wrong for exactly that reason: sized to its own row's title, each count
+   lands somewhere different and ten of them read as scattered rather than as a
+   column. What stops the gap becoming a hand's width is the cap on the block,
+   not the track. */
+.row {
+	display: grid;
+	grid-template-columns: 1.25rem 34px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 4px 8px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 140ms var(--ease);
+}
+
+.row:hover,
+.row:focus-visible {
+	background: var(--surface);
+}
+
+.rank {
+	font-size: 0.75rem;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+	color: var(--faint);
+}
+
+.art {
+	border-radius: 5px;
+}
+
+.meta {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	line-height: 1.25;
+}
+
+.title,
+.artist {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.title {
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--text);
+	transition: color 140ms var(--ease);
+}
+
+/* The same rule the album card teaches: a piece of text that goes somewhere
+   turns accent under the pointer. */
+.row:hover .title,
+.row:focus-visible .title {
+	color: var(--accent-text);
+}
+
+.artist {
+	font-size: 0.75rem;
+	color: var(--muted);
+}
+
+.plays {
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+	color: var(--faint);
+	white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+	.row {
+		padding: 5px 4px;
+	}
+}

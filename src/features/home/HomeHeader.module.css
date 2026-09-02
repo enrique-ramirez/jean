@@ -1,12 +1,16 @@
-/* Two columns, and the gap between them is the point: everything the library
-   says about itself on the left, the one thing to do about it on the right.
-   That right-hand space is what a header with no mosaic in it has going spare,
-   and a lone accent button across a wide gap is a stronger composition than the
-   same button tucked under a paragraph. */
+/* Hero on the left, the one thing to do about it on the right, and the doors
+   across the bottom. The gap between the first two is the point: that
+   right-hand space is what a header with no mosaic in it has going spare, and a
+   lone accent button across a wide gap is a stronger composition than the same
+   button tucked under a paragraph. */
 .header {
 	position: relative;
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas:
+		"said actions"
+		"doors doors"
+		"counting counting";
 	align-items: center;
 	column-gap: 32px;
 	padding: 24px 24px 22px;
@@ -15,10 +19,7 @@
 
 /* The same warm cast and the same closing rule the playlist header has, because
    they are the same *kind* of thing: the band at the top of a view that says
-   what you are looking at. What differs between them is what is in it -- and
-   with the shelves scrolling underneath rather than a list of rows, the rule is
-   doing more work here than there. Without it the header and the first shelf
-   ran together into one wall of text.
+   what you are looking at.
 
    Not clipped, deliberately, for the reason the playlist header records:
    `overflow: hidden` would make this a scroll container, and anything opening
@@ -38,15 +39,18 @@
 
 /* Above the wash, or the gradient paints over the words. */
 .said,
-.actions {
+.actions,
+.doors,
+.counting {
 	position: relative;
 }
 
 .said {
+	grid-area: said;
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
-	gap: 10px;
+	gap: 8px;
 }
 
 .eyebrow {
@@ -62,9 +66,7 @@
 }
 
 /* The years are a fact about the collection rather than part of its name, so
-   they ride along in the eyebrow instead of taking a line of their own. The
-   rule in front is the same hairline that separates the figures below, which
-   is what ties the two rows together without a box around either. */
+   they ride along in the eyebrow instead of taking a line of their own. */
 .span {
 	display: flex;
 	align-items: center;
@@ -105,43 +107,70 @@
 	letter-spacing: -0.02em;
 }
 
-/* A rail, not cards. Hairlines between figures rather than boxes around them:
-   the figures are one sentence about one library, and a box per number would
-   make five unrelated readings out of it. */
-.rail {
+/* Centred against the hero rather than aligned to the headline's baseline: it
+   acts on the whole library, not on the sentence describing it. */
+.actions {
+	grid-area: actions;
+	align-self: center;
 	display: flex;
-	/* Never wraps, at any width. A wrapped row puts a hairline at the *start* of
-     its second line, where it separates a figure from the edge of the screen
-     rather than from another figure -- and two lines of figures stop reading as
-     one sentence about one library. Five come to about 550px, so this only
-     matters below the breakpoint, where the rail scrolls instead. */
-	flex-wrap: nowrap;
-	gap: 0;
-	margin: 6px 0 0;
+	gap: 8px;
+}
+
+/* Capped rather than stretched. Three cards spread across a 1200px header read
+   as a dashboard filling its width; the same three at a readable size, left
+   aligned under the headline they belong to, read as part of the sentence
+   above them. */
+.doors {
+	grid-area: doors;
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 232px));
+	justify-content: start;
+	gap: 10px;
+	margin-top: 18px;
+}
+
+/* A card, but never a KPI tile: no shadow, no coloured glyph, no delta pill.
+   What makes it a door rather than a readout is that the bottom half names a
+   record and the whole thing is a link -- so it lifts and warms on hover the way
+   an album card does, which is the affordance the shelves below already teach. */
+.door {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 12px 14px 11px;
+	/* A `<button>` centres its text and an `<a>` does not, and two of these three
+     are buttons -- so the albums and artists cards were centred and the tracks
+     card was not, which is what made the row look like a mistake. */
+	text-align: left;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+	color: inherit;
+	text-decoration: none;
+	transition:
+		border-color 0.16s var(--ease),
+		background-color 0.16s var(--ease),
+		transform 0.16s var(--ease);
+}
+
+.door:hover,
+.door:focus-visible {
+	border-color: var(--border-strong);
+	background: var(--surface-raised);
+	transform: translateY(-1px);
 }
 
 .figure {
 	display: flex;
 	flex-direction: column;
 	gap: 1px;
-	padding: 2px 18px;
-	border-left: 1px solid var(--border);
 }
 
-.figure:first-child {
-	padding-left: 0;
-	border-left: 0;
-}
-
-/* dd before dt in the markup, so the number reads first and the label explains
-   it. Reversed here rather than reordered there: a definition list whose term
-   follows its description is still a correct one, and screen readers pair them
-   either way, but visually the number has to be the thing the eye lands on. */
 .count {
-	margin: 0;
-	font-size: 1.25rem;
+	font-size: 1.5rem;
 	font-weight: 600;
-	letter-spacing: -0.02em;
+	letter-spacing: -0.025em;
+	line-height: 1.1;
 	font-variant-numeric: tabular-nums;
 	color: var(--text);
 }
@@ -154,112 +183,158 @@
 	color: var(--faint);
 }
 
-/* The rows arrive in chunks, so every figure here is provisional until the last
-   one lands. Saying so is cheaper than watching numbers tick upward and
-   wondering whether they have finished. */
+/* Divided from the figure by a hairline rather than boxed apart from it: they
+   are two halves of one card -- how many, and which one.
+
+   The sleeve makes the bottom half read as a *record* rather than as a link
+   with a label over it, which is the whole difference between this and a
+   dashboard tile. The card that names a destination has none, and the two
+   shapes are deliberately not reconciled: a cover means the thing named is in
+   your library, and "All music" is not. */
+.named {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding-top: 9px;
+	border-top: 1px solid var(--border);
+	min-width: 0;
+}
+
+/* A span around it, matching the album card: `Artwork` draws a div while it is
+   waiting or has failed, and the wrapper is what owns the box so the three
+   states cannot each size themselves. */
+.thumb {
+	flex: none;
+	width: 32px;
+	height: 32px;
+	border-radius: 5px;
+	overflow: hidden;
+	background: var(--album-ground);
+}
+
+.thumb img,
+.thumb div {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.namedText {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.hint {
+	font-size: 0.625rem;
+	font-weight: 500;
+	letter-spacing: 0.07em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+/* The chevron rides the end of the words rather than floating at the right of
+   the card, which is the same call the shelf headings make and for the same
+   reason: it belongs to the name, so it travels with it.
+
+   In `--text` rather than the accent. Three accent-coloured names across the top
+   of the page competed with the one accent control up there that matters, which
+   is Play -- and on a long album title it was a whole line of it. The name turns
+   accent under the pointer instead, which is the rule an album card and a shelf
+   heading already teach: this piece of text goes somewhere. */
+.name {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	min-width: 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	color: var(--text);
+	transition: color 0.16s var(--ease);
+}
+
+.nameText {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.nameChevron {
+	flex: none;
+	color: var(--faint);
+}
+
+.door:hover .name,
+.door:focus-visible .name {
+	color: var(--accent-text);
+}
+
 .counting {
-	align-self: center;
-	padding-left: 18px;
+	grid-area: counting;
+	margin: 12px 0 0;
 	font-size: 0.6875rem;
 	letter-spacing: 0.04em;
 	color: var(--faint);
 	font-style: italic;
 }
 
-/* Centred against the whole block rather than aligned to the headline: it acts
-   on all of it -- the days, the counts, the genres -- so it hangs off the
-   middle of what it acts on. Aligned to the title it would read as a button
-   about the title. */
-.actions {
-	align-self: center;
-	display: flex;
-	gap: 8px;
-}
-
-.chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-	margin-top: 4px;
-}
-
 @media (max-width: 720px) {
 	.header {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"said"
+			"actions"
+			"doors"
+			"counting";
 		padding: 16px 16px 18px;
-		gap: 8px;
+		row-gap: 14px;
 	}
 
 	.title {
 		font-size: 1.75rem;
 	}
 
-	/* One line, always, and it scrolls if it has to. Two lines of figures read
-     as two separate statements about the library rather than one sentence, and
-     the second line -- two figures and three columns of nothing -- looks like
-     the row failed to fill rather than like it ended.
-
-     Full-bleed, so the cut lands on the screen edge. That is the whole reason
-     for the negative margin: a rail clipped at the 16px gutter reads as
-     something drawn too wide, while the same rail clipped at the edge of the
-     glass reads as something that continues. The partial figure hanging off it
-     is the affordance -- App Store and Apple Music both peek the next item
-     rather than fading it out, and a fade here would sit on top of a hairline
-     and make the separator look like the edge of the screen. No snapping
-     either: these are five parts of one sentence, not five pages. */
-	.rail {
-		/* `.said` aligns its children to flex-start, so without this the rail sizes
-       to its own content and overflows the header instead of scrolling inside
-       it -- a scroll container with nothing to scroll against. */
-		align-self: stretch;
-		margin: 6px -16px 0;
-		padding: 0 16px;
-		overflow-x: auto;
-		/* The header sits inside the app's only scroll container, and a fling that
-       runs out of rail should stop there rather than chain outward. */
-		overscroll-behavior-x: contain;
-		scrollbar-width: none;
-	}
-
-	.rail::-webkit-scrollbar {
-		display: none;
-	}
-
-	/* One column on a phone, and the button goes full width underneath. There is
-     no spare space beside a header that already fills the screen, and the
-     thumb-sized target is worth more here than the composition is -- this is
-     the one control on the screen somebody reaches for without looking. */
-	.header {
-		grid-template-columns: minmax(0, 1fr);
-		row-gap: 14px;
-	}
-
 	/* Pushed to the two edges at their own size, rather than stretched to fill.
      Two buttons blown up to half a screen each read as a dialog asking a
      question; at their normal size with the gutters holding them apart they
-     read as what they are, which is the same pair the desktop has. The reach is
-     the same either way -- both are already at the ends of a thumb's arc. */
+     read as what they are, which is the same pair the desktop has. */
 	.actions {
 		align-self: stretch;
 		justify-content: space-between;
 	}
 
-	/* Never shrink: a figure squeezed until "30,441" wraps under its own
-     hairline is worse than one you have to scroll to. */
-	.figure,
-	.counting {
-		flex: none;
-		white-space: nowrap;
+	/* Two, side by side, filling the width -- and never a row that scrolls. The
+     five-figure rail this replaced was cut off mid-figure at the edge of the
+     glass, and a number sliced in half by a hairline reads as broken rather
+     than as continuing. */
+	.doors {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		margin-top: 0;
 	}
 
-	.figure {
-		padding: 2px 14px;
+	/* Half a phone is about 127px of card, and the sleeve, the gap and the
+     chevron were taking a third of it -- "Chrono Cross Original Soundtrack"
+     arrived as "Chrono C...". The chevron is what goes: it says "this is a
+     link", which is a hover affordance on a surface that has no hover, and the
+     whole card is the tap target either way. The sleeve stays, because at this
+     width it identifies the record better than the seven letters of its name
+     that would fit. */
+	.nameChevron {
+		display: none;
 	}
 
-	/* Same call the shelf blurbs make one component over: on a phone the shelves
-     stack close enough that another band of text above them turns the screen
-     into more reading than looking. The counts stay, because they are the
-     reason this header exists; the characterisation goes. */
-	.chips {
+	.thumb {
+		width: 28px;
+		height: 28px;
+	}
+
+	/* The headline already says how big the library is, so on a phone the tracks
+     figure is the card repeating itself. It goes only when there is another to
+     take its place: on a library with no album or artist tags it is the only
+     door there is. */
+	.door[data-minor="true"]:not(:only-child) {
 		display: none;
 	}
 }

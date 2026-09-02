@@ -37,6 +37,7 @@ const SCRATCH_SUFFIX = "]";
 export const SCRATCH_KIND = {
 	search: "search",
 	shelf: "shelf",
+	genre: "genre",
 	all: "all music",
 } as const;
 

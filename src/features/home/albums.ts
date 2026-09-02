@@ -7,9 +7,12 @@ const LOSSLESS = new Set(["FLAC", "ALAC", "WAV", "APE", "WAVPACK", "TAK"]);
 const keyOf = (artist: string, album: string) =>
 	`${artist} ${album}`.toLowerCase().replace(/\s+/g, " ");
 
-const blankAlbum = (key: string, row: TrackColumns) => ({
+// Takes the title rather than reading it back off the row: `albumsOf` has
+// already established it is there -- a row without one is not an album -- and
+// reading it twice is what made `Album['album']` nullable for every consumer.
+const blankAlbum = (key: string, album: string, row: TrackColumns) => ({
 	key,
-	album: value(row, FIELD.album),
+	album,
 	artist:
 		value(row, FIELD.albumArtist) ??
 		value(row, FIELD.artist) ??
@@ -94,7 +97,10 @@ export function albumsOf(rows: TrackColumns[]): Album[] {
 			"Unknown artist";
 		const key = keyOf(artist, album);
 
-		into.set(key, absorb(into.get(key) ?? blankAlbum(key, row), ref, row));
+		into.set(
+			key,
+			absorb(into.get(key) ?? blankAlbum(key, album, row), ref, row),
+		);
 		return into;
 	}, new Map<string, AlbumDraft>());
 

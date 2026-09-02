@@ -44,6 +44,75 @@ const addToFavorites = async (page: Page, index: number, isMobile: boolean) => {
 		.click();
 };
 
+// An autoplaylist, which the API gives no way to recognise: the six fields of
+// PlaylistInfo say nothing about it and the write comes back 204 either way.
+// The fake refuses it exactly as the player does -- by accepting it and doing
+// nothing. See `useAddTracks`.
+const AUTO = { id: "p9", title: "Recently Added", itemCount: 5 };
+
+const addTo = async (
+	page: Page,
+	index: number,
+	isMobile: boolean,
+	title: string,
+) => {
+	await openRowMenu(page, index, isMobile);
+	await page.getByRole("menuitem", { name: "Add to playlist" }).click();
+	await page.getByRole("menuitem", { name: title, exact: true }).click();
+};
+
+test.describe("a playlist that takes the write and ignores it", () => {
+	test.beforeEach(({ page }) => openLibrary(page));
+
+	test("says so, rather than claiming the tracks landed", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await addTo(page, 0, isMobile, AUTO.title);
+
+		// The request really is sent and really does answer 204 -- there is no way
+		// to know beforehand, so trying is the only test there is.
+		await expect
+			.poll(() => requestsTo(player, "/items/").length)
+			.toBeGreaterThan(0);
+
+		await expect(toast(page)).toContainText(AUTO.title);
+		await expect(toast(page)).toContainText("Nothing was added to");
+		expect(titlesIn(player, AUTO.id)).toHaveLength(AUTO.itemCount);
+	});
+
+	test("offers no undo, because there is nothing to take off", async ({
+		page,
+		isMobile,
+	}) => {
+		await addTo(page, 0, isMobile, AUTO.title);
+
+		await expect(toast(page)).toContainText("Nothing was added to");
+		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
+			0,
+		);
+	});
+
+	test("the playlist that does take them still says the true thing", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await addTo(page, 0, isMobile, FAVORITES.title);
+
+		await expect(toast(page)).toContainText(
+			`Added 1 track to ${FAVORITES.title}`,
+		);
+		await expect(
+			toast(page).getByRole("button", { name: "Undo" }),
+		).toBeVisible();
+		await expect
+			.poll(() => titlesIn(player, FAVORITES.id).length)
+			.toBe(FAVORITES.itemCount + 1);
+	});
+});
+
 test.describe("adding tracks to a playlist", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
 

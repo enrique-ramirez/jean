@@ -22,6 +22,10 @@ export interface FakePlaylist {
 	title: string;
 	isCurrent: boolean;
 	items: Track[];
+	// The fake's own field, never served: `PlaylistInfo` has six and none of them
+	// says which kind of playlist this is. It exists so writes behave the way the
+	// real player's do -- accepted with a 204, and ignored. See `useAddTracks`.
+	isAuto?: boolean;
 }
 
 // A track as the media library addresses it -- `(path, subsong)` -- paired with
@@ -250,13 +254,25 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		items: tracksOf("jessico"),
 	},
 	// The autoplaylist a user makes when Jean asks them to, and the only way to
-	// see a library on a player without the media library API. Last, so every
-	// index above it is the one the reorder assertions were written against.
+	// see a library on a player without the media library API. Every index above
+	// it is the one the reorder assertions were written against, and the one
+	// below is hidden from the sidebar like this one is not.
 	//
 	// Note it sits beside an ordinary playlist called 'Library', which is the
 	// point: Jean used to adopt anything loosely titled that as the user's whole
 	// collection. The two together are what keeps that from coming back.
 	{ id: "p8", title: "#Jean Library", isCurrent: false, items: allTracks() },
+	// A *visible* autoplaylist, with an ordinary name, because that is what one
+	// looks like from the API -- `#Jean Library` above is hidden from the sidebar
+	// and from the add-to-playlist menu, so neither route to a refused write
+	// could reach it. Appended rather than inserted so no index above it moves.
+	{
+		id: "p9",
+		title: "Recently Added",
+		isCurrent: false,
+		isAuto: true,
+		items: tracksOf("jar-of-flies").slice(0, 5),
+	},
 ];
 
 // An expression the player cannot resolve comes back as '?'; one that resolves
@@ -736,6 +752,11 @@ export function createState({
 			const source = byId(sourceId);
 			const target = byId(targetId);
 			if (!source || !target) return false;
+			// Accepted and ignored, which is the whole trap: *measured* against
+			// foobar2000 2.25.3, a copy into an autoplaylist answers 204 exactly as a
+			// copy into an ordinary playlist does, and adds nothing. A fake that
+			// returned 404 here would test a failure mode the player does not have.
+			if (target.isAuto) return true;
 			// Appended without a duplicate check, because the player appends without
 			// one. Undo is what makes that safe, and undo is what the tests exercise.
 			//
@@ -915,6 +936,8 @@ export function createState({
 		) {
 			const playlist = byId(playlistId);
 			if (!playlist) return false;
+			// See copyItems: an autoplaylist takes the request and drops it.
+			if (playlist.isAuto) return true;
 
 			const known = new Map(
 				libraryItemsOf(libraryTracks).map((entry) => [entry.path, entry]),

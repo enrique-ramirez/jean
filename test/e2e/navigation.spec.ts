@@ -37,7 +37,11 @@ test.describe("the command palette", () => {
 		page,
 	}) => {
 		await expect(paletteField(page)).toBeFocused();
-		await expect(results(page)).toHaveCount(4);
+		// The fixture's four user playlists plus the autoplaylist, which is not
+		// distinguishable from them here and must not be: `#Jean Library` is the
+		// only one held back, because it is Jean's own plumbing rather than a kind
+		// of playlist.
+		await expect(results(page)).toHaveCount(5);
 		await expect(results(page).first()).toHaveAttribute(
 			"aria-selected",
 			"true",

@@ -18,6 +18,9 @@ const DEFAULT_PLAYLIST = "Default Playlist";
 const LIBRARY = "Library";
 const FAVORITES = "Favorites";
 const SPANISH = "Rock en Español";
+// An autoplaylist, indistinguishable from the rest over the API: it accepts a
+// copy with a 204 and adds nothing. See `useAddTracks`.
+const AUTO = "Recently Added";
 
 // Rows are direct children of the nav; so is the section header, hence the
 // filter. The row rather than the button inside it, because the drop target,
@@ -437,6 +440,28 @@ test.describe("dragging tracks onto a playlist", () => {
 		// You are not looking at Favorites, so the copy needs saying -- and that is
 		// where the undo lives.
 		await expect(page.getByRole("status")).toContainText(FAVORITES);
+	});
+
+	test("a playlist that ignores the write is not reported as a copy", async ({
+		page,
+		player,
+	}) => {
+		await openApp(page);
+		await scrollUntilMounted(page, trackRow(page, 0));
+
+		// An autoplaylist. It arms like any other row, because nothing in the API
+		// distinguishes one -- the refusal is only knowable after the fact, from
+		// the count not having moved.
+		const target = await dragTrackTo(page, 0, AUTO);
+		await expect(target).toHaveAttribute("data-drop-over", "true");
+		await page.mouse.up();
+
+		await expect(page.getByRole("status")).toContainText(
+			"Nothing was added to",
+		);
+		expect(
+			player.playlists.find((entry) => entry.title === AUTO)!.items,
+		).toHaveLength(5);
 	});
 
 	test("the playlist you are dragging out of is not a target", async ({

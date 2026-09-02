@@ -129,8 +129,18 @@ reads 0.0 here; don't rely on it.
 
 **These six fields are the whole schema** — confirmed against both the live API and
 `docs/player-api.yml`. There is **no flag distinguishing an autoplaylist from an
-ordinary one**, and `GET /playlists/{id}` returns the same six. Smart playlists are
-therefore undetectable: they reject edits, but the only way to find out is to try.
+ordinary one**, and `GET /playlists/{id}` returns the same six.
+
+**Autoplaylists do not reject edits — they accept them and do nothing.** *Measured*
+against foobar2000 2.25.3 / beefweb 0.11: `POST /playlists/p2/p7/items/copy` into an
+autoplaylist answered **`204 No Content`** and left `itemCount` at 30,441, while the
+same request into an ordinary playlist answered 204 and moved the count from 4 to 5.
+An earlier note here said they "reject
+edits", which is what makes this worth stating twice: the status code is identical
+in both directions, so **there is no error to catch and no flag to read** — the only
+way to know a copy landed is to read `itemCount` back and check it moved by exactly
+the number sent. `useAddTracks` does, and everything that writes into a playlist a
+user picked has to.
 
 ### `playlistItems`
 
@@ -570,6 +580,20 @@ separate play, and so no client-side count arithmetic to get wrong.
 > *Measured* on a 30,441-track library: of 100 tracks sent in path order, 10 landed
 > somewhere else; of 1,000, 426 did; of 8,000, 3,945 did; over the whole library,
 > 15,539 did.
+>
+> **Open, and it contradicts the paragraph above.** *Measured* 2026-09-01 against
+> foobar2000 2.25.3 / beefweb 0.11, `items` matched nothing: `{items: [{path, subsong}]}`
+> answered 204 and added **zero** tracks to a fresh ordinary playlist, for paths taken
+> straight from `GET /library/items?columns=%path%` — with `subsong` omitted, with
+> `replace: true`, with a `file://` scheme and with forward slashes, all the same. The
+> body *is* parsed rather than ignored: an unrecognised key (`{paths: […]}`) fell through
+> to "neither items nor query" and added the whole 30,441-track library, and
+> `{query: "…"}` added 54. `POST /playlists/{id}/items/add` with the same plain path
+> worked. So this is specific to matching `items` against the media library, and it
+> disagrees with the ordering measurements above, which could only have been taken with
+> `items` working. Do not treat either as settled until one is re-measured — and note
+> that shelf playback, library→playlist adds and queueing a library row all go through
+> this endpoint.
 >
 > An earlier note here said the set came back in "the library's own order" and drew the
 > conclusion that sorting refs ascending was enough. That was measured on four

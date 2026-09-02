@@ -27,19 +27,19 @@ export function useQueueTracks() {
 	const holding = useCallback(async () => {
 		const playlists =
 			queryClient.getQueryData<PlaylistInfo[]>(PLAYLISTS_KEY) ?? [];
-		let target = findQueuePlaylist(playlists);
+		const held = findQueuePlaylist(playlists);
 
-		if (target) {
+		const target = held ?? (await createPlaylist(QUEUE_TITLE));
+
+		if (held) {
 			const queued = await fetchPlayQueue().catch(() => null);
 			// Off the player: item changes are never pushed, so a cached count is
 			// stale from the first append onwards.
 			const live = (await fetchPlaylists()).find(
-				(entry) => entry.id === target?.id,
+				(entry) => entry.id === held.id,
 			);
 			if (queued?.length === 0 && (live?.itemCount ?? 0) > 0)
-				await clearPlaylist(target.id);
-		} else {
-			target = await createPlaylist(QUEUE_TITLE);
+				await clearPlaylist(held.id);
 		}
 
 		await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });

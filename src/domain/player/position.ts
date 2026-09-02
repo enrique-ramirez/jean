@@ -1,12 +1,8 @@
 import type { PlayerSnapshot } from "@/shared/api/types";
 
-/**
- * Playback position, interpolated forward from the last update.
- *
- * beefweb reports a position only when it sends an update, which can be minutes
- * apart. Every snapshot is therefore stamped with the moment it arrived, and the
- * live position is derived from that anchor rather than polled.
- */
+// Playback position, interpolated forward from the last update. beefweb reports
+// one only when it sends an update, which can be minutes apart, so every
+// snapshot is stamped on arrival and the live position derives from that anchor.
 export function positionAt(
 	snapshot: PlayerSnapshot | null | undefined,
 	now: number,

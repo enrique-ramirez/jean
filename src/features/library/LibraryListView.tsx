@@ -1,8 +1,7 @@
 import type { ReactNode, RefObject } from "react";
 import { useMemo, useRef } from "react";
-import { useActivePosition } from "@/domain/library/useActivePosition";
 import type { Library } from "@/domain/library/useLibrary";
-import { usePlaySet } from "@/domain/library/usePlaySet";
+import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { useIsPlaying, usePermissions } from "@/domain/player/usePlayer";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
@@ -71,14 +70,12 @@ export function LibraryListView({
 			kind === SCRATCH_KIND.all ? "Find in all music" : "Find in this shelf",
 	});
 
-	const { play, scratch } = usePlaySet({ library, playlists });
-	const holdsThisView = scratch.holdsView(kind, label, indices.length);
-
-	const activeIndex = useActivePosition({
-		source: library.source,
+	const { playAt, activeIndex } = useViewPlayback({
+		library,
+		playlists,
+		kind,
+		label,
 		indices,
-		scratch,
-		holdsThisView,
 	});
 
 	if (library.error) {
@@ -111,7 +108,7 @@ export function LibraryListView({
 			// following playback is safe -- and it is what makes opening a shelf land
 			// on the track it just started.
 			canFollowPlayback
-			onPlay={(position) => play({ kind, label, refs: indices, position })}
+			onPlay={playAt}
 			onOpenFinder={finder.open}
 			toolbarLeading={finder.toolbarLeading}
 			emptyNotice={emptyNotice}

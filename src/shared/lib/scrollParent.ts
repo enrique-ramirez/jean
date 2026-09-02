@@ -1,16 +1,10 @@
-/**
- * The element that actually scrolls a given node, or null.
- *
- * Jean has surfaces whose scroller is not the same box on every layout -- the
- * now-playing screen scrolls itself on the gatefold and scrolls its panel on a
- * phone -- and anything that has to *drive* a scroll has to find the real one.
- * The alternative is threading a ref down through the layout, which makes every
- * component in between know which shape it is in.
- *
- * Walks up rather than guessing: `offsetParent` answers a different question
- * (the nearest positioned ancestor) and is what made following the active lyric
- * line work on a phone and do nothing at all on a desktop.
- */
+// The element that actually scrolls a given node, or null. Jean has surfaces
+// whose scroller is a different box on each layout, and threading a ref down
+// instead would make every component in between know which shape it is in.
+//
+// `offsetParent` answers a different question -- the nearest *positioned*
+// ancestor -- which is what made following the active lyric line work on a phone
+// and do nothing at all on a desktop.
 export function scrollParentOf(
 	node: Element | null,
 	// Stop here. A surface drawn *over* another one -- the now-playing layer over

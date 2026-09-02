@@ -275,6 +275,46 @@ on each one and teach nothing. `noUnusedParameters` is off for the specs alone,
 because in Playwright *naming* a fixture is how a test depends on it -- several
 take `player` purely to get a fresh fake and never touch it.
 
+**One listener set, five stores.** Toasts, the drag gesture, written ratings, the
+queue clock and the playlist loader are all `useSyncExternalStore` stores, and
+each carried its own `Set<() => void>`, its own `subscribe` returning its own
+deletion, and its own loop to notify -- five chances for one of them to leak a
+listener or forget to fire. `shared/lib/store.ts` is the listener half of that
+and nothing else: what each store *holds* has no shape in common and stays its
+own business. `notify()` iterates a copy, because a listener is free to
+unsubscribe from inside its own notification.
+
+**A stored setting is shared by its key, not copied per caller.**
+`shared/hooks/useStoredState.ts` reads through that same store, so every hook
+naming a key sees one value. It used to hold a `useState` each and read
+`localStorage` once at mount, which made a live pair out of every key with two
+readers. **`jean.scratchPlaylist` is one**: `App`'s home playback and a view's
+`useViewPlayback` both mount `useScratchPlaylist`, so the pin written by one was
+invisible to the other until a reload. What kept that safe was the pinned
+playlist's *title* being re-checked before it is trusted -- a guard that exists
+for a different reason, and not a thing to leave standing between a stale id and
+somebody's playlist being emptied. It also moves the write *out* of the
+`setState` updater, where React is entitled to call it twice and does under
+StrictMode.
+
+**Sequential work goes through `inSequence` in `shared/lib/sequence.ts`.** Jean
+has more of it than you would expect -- the player renumbers the play queue on
+every removal, only the first chunk of a library fill may `replace`, and
+`Promise.all` over either arrives in whatever order the network settles on. That
+was five `for ... await` loops and a `reduce` chain in five files, plus a sixth
+copy in the test fixtures, which now re-exports this one. **The trap when
+touching it is `void`**: `done.then(() => void run(...))` still calls each step in
+turn and then hands `undefined` to `then`, so nothing waits for anything and the
+sequencing is silently gone. The suite caught exactly that -- a shuffled run
+started nothing, because the fill's chunks raced and the `replace` landed last.
+
+**A positional column set is declared once, as pairs.** `shared/api/fieldTable.ts`
+derives both the expression list sent to the player and the index each name
+landed at, because the answer comes back positionally: written out separately --
+as `domain/track/fields.ts` and `features/now-playing/nowPlayingFields.ts` both
+did -- the day somebody inserts an expression in the middle is the day a row
+reports its genre as its artist, silently and everywhere.
+
 **A store is never named after the component beside it, because a
 case-insensitive filesystem cannot tell the two apart.** `shared/ui/toastStore.ts`
 sits next to `shared/ui/Toasts.tsx`, and had it been `toasts.ts` TypeScript would

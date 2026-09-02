@@ -141,8 +141,9 @@ export const TrackList = forwardRef(function TrackList(
 		// appearing, the finder opening and the loading bar without knowing about any of
 		// them. `.rows` is display:contents and generates no box.
 		const observer = new ResizeObserver(measure);
-		for (const node of [scroller, ...ancestorsUpTo(list, scroller)])
+		[scroller, ...ancestorsUpTo(list, scroller)].forEach((node) => {
 			observer.observe(node);
+		});
 		return () => observer.disconnect();
 	}, [scrollRef]);
 

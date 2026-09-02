@@ -280,18 +280,13 @@ export function libraryPathMatcher(absolute: string | null | undefined) {
 		Boolean(relative) && (flat === relative || flat.endsWith(`/${relative}`));
 }
 
-/**
- * The active item, evaluated against an arbitrary expression list.
- *
- * Separate from `fetchPlayer` because the expressions are the caller's rather
- * than this module's: the now-playing screen wants the lyric tag and two dozen
- * detail fields, and none of that belongs in `UPDATES_URL`, which the player
- * re-evaluates on every push.
- *
- * Answers null when nothing is playing. The caller has to verify the identity
- * it gets back -- this endpoint reports whatever is playing *now*, which is not
- * necessarily the track that was being asked about when the request went out.
- */
+// The active item against an arbitrary expression list, separate from
+// `fetchPlayer` because the expressions are the caller's -- none of the
+// now-playing screen's two dozen fields belong in `UPDATES_URL`, which the
+// player re-evaluates on every push.
+//
+// The caller must verify the identity it gets back: this reports whatever is
+// playing *now*, not necessarily the track that was asked about.
 export async function fetchActiveItemColumns(
 	expressions: string[],
 ): Promise<TrackColumns | null> {

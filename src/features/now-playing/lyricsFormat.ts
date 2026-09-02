@@ -148,22 +148,20 @@ export function parseLyrics(raw: string | null | undefined): Lyrics {
 		if (span >= SYNCED_MIN_SPAN) return { kind: "synced", lines };
 	}
 
-	// Trailing blanks are the tagger's, not the writer's; interior ones are a
-	// stanza break and stay.
-	const lines = source.map((line) => line.text);
-	while (lines.length > 0 && !lines[lines.length - 1]) lines.pop();
-	while (lines.length > 0 && !lines[0]) lines.shift();
+	// Blanks at either end are the tagger's, not the writer's; interior ones are
+	// a stanza break and stay, which is why this trims rather than filters.
+	const text = source.map((line) => line.text);
+	const first = text.findIndex(Boolean);
+	const last = text.findLastIndex(Boolean);
 
-	return lines.length === 0 ? NO_LYRICS : { kind: "plain", lines };
+	return first < 0
+		? NO_LYRICS
+		: { kind: "plain", lines: text.slice(first, last + 1) };
 }
 
-/**
- * Which line is current at `position`, as an index into `lines`, or -1 before
- * the first one.
- *
- * A binary search rather than a scan: this is asked on every animation frame
- * the screen is open, and a long lyric is a few hundred lines.
- */
+// Which line is current at `position`, or -1 before the first. A binary search
+// rather than a scan: asked on every animation frame the screen is open, over a
+// lyric that can run to a few hundred lines.
 export function activeLineAt(lines: LyricLine[], position: number): number {
 	let low = 0;
 	let high = lines.length - 1;

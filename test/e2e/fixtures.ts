@@ -3,8 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import type { Locator, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
-
 import type { LibraryInfo, PlayerState } from "../../src/shared/api/types.ts";
+import { inSequence } from "../../src/shared/lib/sequence.ts";
 import type { FooJeanOptions } from "../fake-api/fooJean.ts";
 import { createServer, type FakeServer } from "../fake-api/server.ts";
 import {
@@ -337,6 +337,22 @@ export async function globalControls(page: Page, isCompact: boolean) {
 
 export const viewHeader = (page: Page) => page.locator("main header").first();
 
+// Where the sound is coming from. It used to be a third line in the status bar
+// and is now the now-playing screen's header, which is the only place with room
+// for it. Same claim, asked of the surface that makes it.
+export const expectPlayingFrom = async (page: Page, name: string) => {
+	await openNowPlaying(page);
+	// The header rather than the line: "Playing from" and the set's name are two
+	// elements, so a text query matches the label alone and never the name.
+	const header = nowPlayingScreen(page).locator("header");
+	await expect(header).toContainText("Playing from");
+	await expect(header).toContainText(name);
+	await nowPlayingScreen(page)
+		.getByRole("button", { name: "Close now playing" })
+		.click();
+	await expect(nowPlayingScreen(page)).toBeHidden();
+};
+
 export const sidebar = (page: Page) =>
 	page.getByRole("navigation", { name: "Playlists" });
 
@@ -488,15 +504,10 @@ export const scrollTo = (page: Page, offset: number) =>
 // ---- running steps one after the next ---------------------------------------
 
 // Playwright assertions share one page, so a list of steps has to be awaited in
-// order rather than mapped into Promise.all.
-export const inSequence = <T>(
-	items: T[],
-	run: (item: T, index: number) => unknown,
-) =>
-	items.reduce<Promise<unknown>>(
-		(done, item, index) => done.then(() => run(item, index)),
-		Promise.resolve(),
-	);
+// order rather than mapped into Promise.all. The app has the same need for its
+// own reasons -- see `shared/lib/sequence.ts` -- and there is no version of this
+// worth having two of.
+export { inSequence };
 
 export const times = (count: number, run: (index: number) => unknown) =>
 	inSequence(

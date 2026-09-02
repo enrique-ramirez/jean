@@ -2,6 +2,7 @@ import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	isRowOnScreen,
+	openLibrary,
 	requestsTo,
 	scrollTo,
 	scrollTop,
@@ -70,13 +71,11 @@ const expectCentredOrClamped = async (page: Page, index: number) => {
 	).toBeLessThan(2);
 };
 
-// Not the shared openLibrary: this one waits for row 0 to be on *screen* rather
-// than merely attached, because everything below measures where the view is.
-const openLibrary = async (page: Page) => {
-	await page.goto("/#/p7");
-	await expect(
-		page.getByRole("heading", { level: 1, name: "Library" }),
-	).toBeVisible();
+// The shared openLibrary waits for row 0 to be *attached*, which overscan makes
+// true well above the fold. Everything below measures where the view came to
+// rest, so it has to start from one that has settled at the top.
+const openAtTheTop = async (page: Page) => {
+	await openLibrary(page);
 	await expect(isRowOnScreen(page, 0)).resolves.toBe(true);
 };
 
@@ -85,7 +84,7 @@ test.describe("following playback", () => {
 		page,
 		player,
 	}) => {
-		await openLibrary(page);
+		await openAtTheTop(page);
 		expect(await isRowOnScreen(page, FAR.index)).toBe(false);
 
 		// Driven on the player rather than through the UI, because that is the case
@@ -107,7 +106,7 @@ test.describe("following playback", () => {
 		page,
 		player,
 	}) => {
-		await openLibrary(page);
+		await openAtTheTop(page);
 		player.playItem("p7", FAR.index);
 		await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);
 		// The follow animation is still running at this point -- the row comes into
@@ -138,7 +137,7 @@ test.describe("with following turned off", () => {
 	test.use({ settings: { "jean.followPlayback": false } });
 
 	test("the view stays where it was", async ({ page, player }) => {
-		await openLibrary(page);
+		await openAtTheTop(page);
 
 		player.playItem("p7", FAR.index);
 		// The track really did change -- the status bar proves the push landed. So
@@ -180,7 +179,7 @@ test.describe("the jump survives a coasting list", () => {
 		}, deltaY);
 
 	test("a stray wheel tick does not strand it", async ({ page, player }) => {
-		await openLibrary(page);
+		await openAtTheTop(page);
 		player.playItem("p7", FAR.index);
 		await expect(statusBar(page)).toContainText(FAR.title);
 		await scrollTo(page, 0);
@@ -197,7 +196,7 @@ test.describe("the jump survives a coasting list", () => {
 	});
 
 	test("a real scroll still takes it back", async ({ page, player }) => {
-		await openLibrary(page);
+		await openAtTheTop(page);
 		player.playItem("p7", FAR.index);
 		await expect(statusBar(page)).toContainText(FAR.title);
 
@@ -258,7 +257,7 @@ test.describe("at library scale", () => {
 			page,
 			player,
 		}) => {
-			await openLibrary(page);
+			await openAtTheTop(page);
 
 			player.playItem("p7", FAR.index);
 			await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);
@@ -276,7 +275,7 @@ test.describe("at library scale", () => {
 		});
 
 		test("keeps it centred while tracks advance", async ({ page, player }) => {
-			await openLibrary(page);
+			await openAtTheTop(page);
 			player.playItem("p7", 8);
 			await expect.poll(() => isRowOnScreen(page, 8)).toBe(true);
 
@@ -291,7 +290,7 @@ test.describe("at library scale", () => {
 			page,
 			player,
 		}) => {
-			await openLibrary(page);
+			await openAtTheTop(page);
 
 			// The end of the list is where centring is impossible and the scroll
 			// clamps. That is also where the original offset bug hid: the clamp
@@ -324,7 +323,7 @@ test.describe("at library scale", () => {
 				"n is a keyboard shortcut",
 			);
 
-			await openLibrary(page);
+			await openAtTheTop(page);
 			player.playItem("p7", FAR.index);
 			await expect(statusBar(page)).toContainText(FAR.title);
 
@@ -338,7 +337,7 @@ test.describe("at library scale", () => {
 		});
 
 		test("the now-playing pill takes you back", async ({ page, player }) => {
-			await openLibrary(page);
+			await openAtTheTop(page);
 			player.playItem("p7", FAR.index);
 			await expect(statusBar(page)).toContainText(FAR.title);
 

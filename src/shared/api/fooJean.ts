@@ -53,11 +53,22 @@ const withTimeout = async <T>(
 
 // ---- discovery, through beefweb ---------------------------------------------
 
+// The port is the one field of this record that becomes a URL, and the record is
+// writable by anyone who can reach beefweb -- so it is bounded here, at the only
+// place that decides a record is a record. A number cannot smuggle a `/` or an
+// `@` past `originOfPort`, so this is not what stops a forged host; it is so
+// that a record this file accepts is one the rest of the file can rely on.
+const isPort = (value: unknown) =>
+	typeof value === "number" &&
+	Number.isInteger(value) &&
+	value > 0 &&
+	value <= 65535;
+
 const looksLikeRecord = (value: unknown): value is DiscoveryRecord =>
 	typeof value === "object" &&
 	value !== null &&
 	(value as DiscoveryRecord).name === FOO_JEAN_ID &&
-	typeof (value as DiscoveryRecord).port === "number";
+	isPort((value as DiscoveryRecord).port);
 
 // `null` is "not installed", the common case, and not an error.
 export async function fetchDiscoveryRecord(): Promise<DiscoveryRecord | null> {

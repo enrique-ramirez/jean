@@ -2,10 +2,9 @@ import { Search } from "lucide-react";
 import type { RefObject } from "react";
 import { useMemo, useRef, useState } from "react";
 import { LibrarySetup } from "@/domain/library/LibrarySetup";
-import { useActivePosition } from "@/domain/library/useActivePosition";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
-import { usePlaySet } from "@/domain/library/usePlaySet";
+import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { useIsPlaying, usePermissions } from "@/domain/player/usePlayer";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
@@ -58,18 +57,12 @@ export function SearchResults({
 		[rows, playedCount],
 	);
 
-	const { play, scratch } = usePlaySet({ library, playlists });
-	const holdsThisView = scratch.holdsView(
-		SCRATCH_KIND.search,
-		search.query,
-		indices.length,
-	);
-
-	const activeIndex = useActivePosition({
-		source: library.source,
+	const { playAt, activeIndex, scratch, holdsThisView } = useViewPlayback({
+		library,
+		playlists,
+		kind: SCRATCH_KIND.search,
+		label: search.query,
 		indices,
-		scratch,
-		holdsThisView,
 	});
 
 	useKeymap(
@@ -124,14 +117,7 @@ export function SearchResults({
 			scrollRef={scrollRef}
 			isCompactViewport={isCompactViewport}
 			keysEnabled={!search.isFocused}
-			onPlay={(position) =>
-				play({
-					kind: SCRATCH_KIND.search,
-					label: search.query,
-					refs: indices,
-					position,
-				})
-			}
+			onPlay={playAt}
 			// The library search is this list's filter, so `/` belongs to the field
 			// rather than to a second finder nested inside the results.
 			onOpenFinder={search.focus}

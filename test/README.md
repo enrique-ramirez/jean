@@ -251,8 +251,10 @@ Skip explicitly when a gesture has no equivalent on the other surface, and say
 why.
 
 **`inSequence` and `times` rather than a loop.** Playwright assertions share one
-page, so a list of steps has to be awaited in order; both are one `reduce` in
-`fixtures.ts` so no spec writes that plumbing itself.
+page, so a list of steps has to be awaited in order, and no spec should write
+that plumbing itself. `times` is one `reduce` in `fixtures.ts`; `inSequence` is
+re-exported from `src/shared/lib/sequence.ts`, because the app needs the same
+thing for its own reasons and there is no version of it worth having two of.
 
 **Drive timing-sensitive input from inside the page.** Anything racing an
 animation -- interrupting a 240ms scroll, say -- cannot be driven over the wire:

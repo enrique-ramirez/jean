@@ -24,14 +24,9 @@ export interface NowPlayingDetails {
 	path: string;
 }
 
-/**
- * The playing track's lyric tag and detail fields: one request, on track
- * change, off the update stream.
- *
- * The stream carries four expressions and must keep carrying four -- it is
- * re-evaluated and re-sent on every push, including each write of a volume
- * drag, and the lyric tag alone reaches 8.5 KB.
- */
+// The playing track's lyric tag and detail fields: one request, on track change,
+// and deliberately not off the update stream, which re-evaluates its expressions
+// on every push. See "The one request" in this folder's CLAUDE.md.
 export function useNowPlayingTrack() {
 	const { data: snapshot } = usePlayer();
 	const track = readTrack(snapshot?.player);

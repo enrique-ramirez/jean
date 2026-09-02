@@ -1,3 +1,4 @@
+import { fieldTable } from "@/shared/api/fieldTable";
 import type { TrackColumns } from "@/shared/api/types";
 
 // One string per row each, so per-track-unique values are the expensive ones.
@@ -20,17 +21,8 @@ const FIELDS = [
 	["bitrate", "%bitrate%"],
 ] as const;
 
-export type FieldName = (typeof FIELDS)[number][0];
-
-export const TRACK_EXPRESSIONS: string[] = FIELDS.map(
-	([, expression]) => expression,
-);
-
-// Cast because Object.fromEntries widens its keys to string, and the point of
-// this map is that FIELD.rating typechecks and FIELD.ratings does not.
-export const FIELD = Object.fromEntries(
-	FIELDS.map(([name], index) => [name, index]),
-) as Record<FieldName, number>;
+export const { expressions: TRACK_EXPRESSIONS, index: FIELD } =
+	fieldTable(FIELDS);
 
 // A field the player cannot resolve returns '?'; one that resolves but is empty
 // returns '' or 'N/A'. That difference is the whole capability detection.
@@ -45,12 +37,18 @@ export function value(row: TrackColumns, field: number): string | null {
 	return readValue(row[field]);
 }
 
-export function number(row: TrackColumns, field: number): number | null {
-	const raw = value(row, field);
-	if (raw === null) return null;
-	const parsed = Number(raw);
+// Split out for the same reason as `readValue`: a value Jean holds outside a row
+// -- an optimistic rating, say -- has to read by exactly the same rules, or an
+// optimistic row and a loaded one disagree about what `''` means.
+export function readNumber(raw: string | undefined): number | null {
+	const text = readValue(raw);
+	if (text === null) return null;
+	const parsed = Number(text);
 	return Number.isFinite(parsed) ? parsed : null;
 }
+
+export const number = (row: TrackColumns, field: number): number | null =>
+	readNumber(row[field]);
 
 // 'YYYY-MM-DD HH:MM:SS', with a trailing space from some components. Not every
 // engine parses the space separator, hence the swap for 'T'.
@@ -83,13 +81,13 @@ export const fieldIsAvailable = (
 // Tags drift in case and spacing between files in the same album --
 // '5 Seconds Of Summer' and '5 Seconds of Summer' are one artist. Compare
 // loosely to decide what the user sees; display the file's own spelling.
-const normalise = (text: string | null | undefined) =>
+export const tagKey = (text: string | null | undefined) =>
 	(text ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 export const sameTagValue = (
 	a: string | null | undefined,
 	b: string | null | undefined,
-) => normalise(a) === normalise(b);
+) => tagKey(a) === tagKey(b);
 
 const escapeForRegExp = (text: string) =>
 	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

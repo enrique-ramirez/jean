@@ -1,5 +1,5 @@
 import type { Page } from "./fixtures.ts";
-import { expect, inSequence, test } from "./fixtures.ts";
+import { expect, inSequence, openLibrary, test } from "./fixtures.ts";
 
 // Facts about the captured library, which is why the fixture is what it is.
 // Play counts run 0-186, so the scale has real range; Deja Entendu carries a
@@ -29,13 +29,12 @@ const shading = (page: Page, row: number) =>
 		};
 	}, row);
 
-const openLibrary = async (page: Page) => {
-	await page.goto("/#/p7");
-	await expect(
-		page.getByRole("heading", { level: 1, name: "Library" }),
-	).toBeVisible();
-	// Every row read below is inside the first screenful plus overscan, in both
-	// layouts and on both viewports, so none of these tests has to scroll.
+// Every row read below is inside the first screenful plus overscan, in both
+// layouts and on both viewports, so none of these tests has to scroll -- but
+// they do have to wait for the furthest one down to be mounted before reading
+// it, which is more than opening the playlist promises.
+const openWithEveryRow = async (page: Page) => {
+	await openLibrary(page);
 	await expect(page.locator(`[data-row="${NEVER}"]`)).toBeAttached();
 };
 
@@ -43,7 +42,7 @@ const flame = (page: Page) =>
 	page.getByRole("button", { name: "Show play-count heat" });
 
 test.describe("play-count shading", () => {
-	test.beforeEach(({ page }) => openLibrary(page));
+	test.beforeEach(({ page }) => openWithEveryRow(page));
 
 	test("warmer rows are the ones played more", async ({ page }) => {
 		const [hottest, warm, cool, never] = await Promise.all(
@@ -103,7 +102,7 @@ test.describe("play-count shading", () => {
 });
 
 test.describe("turning the shading off", () => {
-	test.beforeEach(({ page }) => openLibrary(page));
+	test.beforeEach(({ page }) => openWithEveryRow(page));
 
 	test("the flame toggles it, and the rows stop being painted", async ({
 		page,
@@ -165,7 +164,7 @@ test.describe("the shading introduces itself", () => {
 		page.getByRole("dialog").filter({ hasText: "Play-count shading" });
 
 	test("once, on first sight, and then never again", async ({ page }) => {
-		await openLibrary(page);
+		await openWithEveryRow(page);
 
 		// Not a modal on first run: it introduces itself where it happens, anchored
 		// to its own control, the first time the shading is actually on screen.
@@ -187,7 +186,7 @@ test.describe("the shading introduces itself", () => {
 	// title lost its first characters and the cool end of the scale it exists to
 	// explain was off screen entirely.
 	test("and fits inside the window it opens on", async ({ page }) => {
-		await openLibrary(page);
+		await openWithEveryRow(page);
 		await expect(legend(page)).toBeVisible();
 
 		const box = await legend(page).boundingBox();
@@ -209,7 +208,7 @@ test.describe("the shading introduces itself", () => {
 	});
 
 	test("any click at all dismisses it for good", async ({ page }) => {
-		await openLibrary(page);
+		await openWithEveryRow(page);
 		await expect(legend(page)).toBeVisible();
 
 		// Anywhere outside it counts, not just the button -- a thing you have to
@@ -228,7 +227,7 @@ test.describe("the shading introduces itself", () => {
 	});
 
 	test("and keeps a permanent home in view options", async ({ page }) => {
-		await openLibrary(page);
+		await openWithEveryRow(page);
 		await legend(page).getByRole("button", { name: "Got it" }).click();
 		await expect(legend(page)).toBeHidden();
 
@@ -252,7 +251,7 @@ test.describe("an install with no play counts", () => {
 	});
 
 	test("has no flame, no legend, and no shading", async ({ page }) => {
-		await openLibrary(page);
+		await openWithEveryRow(page);
 
 		await expect(flame(page)).toHaveCount(0);
 		await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -270,7 +269,7 @@ test.describe("an install with no play counts", () => {
 	test("view options offers no explanation of a thing that is not there", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithEveryRow(page);
 
 		await page.getByRole("button", { name: "View options" }).click();
 		await expect(
@@ -296,7 +295,7 @@ test.describe("an install with no play counts", () => {
 		test("its edge sits on the content line, whatever the gutter is", async ({
 			page,
 		}) => {
-			await openLibrary(page);
+			await openWithEveryRow(page);
 
 			const geometry = await page.evaluate((index: number) => {
 				const row = document.querySelector(

@@ -2,25 +2,13 @@ import { type TouchEvent as ReactTouchEvent, useRef } from "react";
 
 import { scrollParentOf } from "@/shared/lib/scrollParent";
 
-/**
- * A directional flick, on a surface that also has to scroll.
- *
- * Deliberately not built on `useDragFraction` or `useSortableList`: those track
- * a value or a position for the length of a drag, and this only has to answer
- * one question at the end -- which way, if any. Nothing follows the finger, so
- * there is nothing to render per frame and no pointer capture to take.
- *
- * **Touch events, not pointer events, and that is the whole design.** The
- * browser cancels the pointer stream the moment it claims a gesture for
- * scrolling -- *measured*, a downward flick inside a scrollable panel arrives as
- * `pointercancel` and never a `pointerup`, so a pointer-based version can only
- * ever see gestures on regions that do not scroll. Touch events keep firing
- * through a scroll, which is what lets one handler cover the whole surface.
- *
- * Touch only, for the same reason only a mouse drags a row: a mouse has a wheel
- * and a keyboard beside it, and claiming its drags would take the gesture that
- * selects text.
- */
+// A directional flick on a surface that also has to scroll.
+//
+// **Touch events, not pointer events**, and that is the design rather than an
+// oversight: the browser cancels the pointer stream the moment it claims a
+// gesture for scrolling, so a pointer-based version can only ever see gestures
+// on regions that do not scroll. Touch only, for the same reason only a mouse
+// drags a row. See "A flick is not a drag" in `shared/ui/CLAUDE.md`.
 export function useSwipe({
 	onLeft,
 	onRight,

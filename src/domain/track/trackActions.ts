@@ -32,17 +32,12 @@ export const ratingItems = (
 	},
 ];
 
-/**
- * What can be done to a set of tracks, wherever they were reached from.
- *
- * Shared by the list's context menu and the now-playing screen's ⋯ button, and
- * it exists so those two cannot drift into offering different things: the
- * playing track is the same kind of object as a row, it simply has no row.
- *
- * The rating submenu is passed in rather than built here -- the two callers
- * hold their track's rating in different shapes (a row array against a
- * now-playing column set), and neither shape belongs in the other's file.
- */
+// What can be done to a set of tracks, wherever they were reached from. Shared
+// by the list's context menu and the now-playing screen's ⋯, so the two cannot
+// drift into offering different things.
+//
+// The rating submenu is passed in rather than built here: the two callers hold a
+// rating in different shapes, and neither belongs in the other's file.
 export function trackActions({
 	count,
 	source,

@@ -1,5 +1,6 @@
 import { fetchLibraryItems, fetchPlaylistItems } from "@/shared/api/beefweb";
 import type { TrackColumns } from "@/shared/api/types";
+import { type Subscribers, subscribers } from "@/shared/lib/store";
 import { TRACK_EXPRESSIONS } from "./fields";
 import { deriveIntensity } from "./intensity";
 
@@ -34,7 +35,7 @@ interface Chunk {
 
 interface Entry {
 	key: string;
-	listeners: Set<() => void>;
+	listeners: Subscribers;
 	snapshot: PlaylistSnapshot;
 	controller: AbortController | null;
 	isStarted: boolean;
@@ -131,7 +132,7 @@ function entryFor(key: string): Entry {
 
 	const entry: Entry = {
 		key,
-		listeners: new Set(),
+		listeners: subscribers(),
 		snapshot: EMPTY_PLAYLIST,
 		controller: null,
 		isStarted: false,
@@ -142,7 +143,7 @@ function entryFor(key: string): Entry {
 
 function emit(entry: Entry, patch: Partial<PlaylistSnapshot>) {
 	entry.snapshot = { ...entry.snapshot, ...patch };
-	for (const listener of entry.listeners) listener();
+	entry.listeners.notify();
 }
 
 const prefixOf = (key: string) => key.slice(0, key.indexOf(":"));
@@ -283,9 +284,7 @@ function begin(key: string, itemCount: number, source: LoadSource) {
 }
 
 export function subscribePlaylist(key: string, listener: () => void) {
-	const entry = entryFor(key);
-	entry.listeners.add(listener);
-	return () => entry.listeners.delete(listener);
+	return entryFor(key).listeners.subscribe(listener);
 }
 
 export const playlistSnapshot = (key: string) =>

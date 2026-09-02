@@ -16,6 +16,7 @@ import type {
 	TrackColumns,
 	TrackIdentity,
 } from "@/shared/api/types";
+import { inSequence } from "@/shared/lib/sequence";
 import { FIELD, sameTagValue, value } from "./fields";
 import { positionOf } from "./libraryIndex";
 import type { Refs } from "./project";
@@ -132,14 +133,10 @@ const fillByLibrary =
 
 		// Sequential, and it has to be: only the first may replace. Run
 		// concurrently, that replace could arrive last and empty what it filled.
-		await chunkedItems(itemsFor(paths, subsongs, refs)).reduce<
-			Promise<unknown>
-		>(
-			(done, chunk, at) =>
-				done.then(() =>
-					addFromLibrary(targetId, { items: chunk.items, replace: at === 0 }),
-				),
-			Promise.resolve(),
+		await inSequence(
+			chunkedItems(itemsFor(paths, subsongs, refs)),
+			(chunk, at) =>
+				addFromLibrary(targetId, { items: chunk.items, replace: at === 0 }),
 		);
 
 		return sortToLibraryOrder(targetId);

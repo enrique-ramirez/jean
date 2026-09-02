@@ -99,14 +99,9 @@ async function wikipediaTitle(
 	return link.title ?? null;
 }
 
-/**
- * What the open internet knows about an artist, or null.
- *
- * Null is an ordinary outcome and not an error: the player may have no
- * connection at all, the name in the tag may match nothing, and a great many
- * artists have no article. The panel says which of those happened rather than
- * spinning.
- */
+// What the open internet knows about an artist, or null -- which is an ordinary
+// outcome rather than an error: no connection, no match, and no article are all
+// common, and the panel says which rather than spinning.
 export function useArtistInfo(artist: string | null | undefined) {
 	const [isEnabled] = useArtistInfoEnabled();
 

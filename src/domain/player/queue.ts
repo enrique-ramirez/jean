@@ -4,6 +4,7 @@ import {
 	removeFromPlayQueue,
 } from "@/shared/api/beefweb";
 import type { PlayQueueItem } from "@/shared/api/types";
+import { inSequence } from "@/shared/lib/sequence";
 
 export const QUEUE_KEY = ["playQueue"];
 export const QUEUE_DROP_TARGET = "jean:queue";
@@ -104,7 +105,7 @@ export async function dequeuePlaylist(playlistId: string) {
 		.filter((index) => index >= 0)
 		.reverse();
 
-	for (const index of at) await removeFromPlayQueue(index);
+	await inSequence(at, removeFromPlayQueue);
 
 	const after = await fetchPlayQueue().catch(() => null);
 	return Boolean(after?.every((item) => item.playlistId !== playlistId));

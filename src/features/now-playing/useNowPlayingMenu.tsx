@@ -21,19 +21,12 @@ import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 
-/**
- * The ⋯ menu on the now-playing screen.
- *
- * The same actions a row offers, on the one track that has no row. Built from
- * `trackActions` rather than beside it, so "Add to queue" cannot mean one thing
- * in a list and another here -- and drawn by `ActionMenu`, which is the only
- * menu surface in the app.
- *
- * The playing track's source is the playlist it is playing *from*, which the
- * player reports on every update. That is always a playlist even when the set
- * came out of the media library, because Jean materialises those into its
- * scratch playlist before playing them.
- */
+// The same actions a row offers, on the one track that has no row -- built from
+// `trackActions` rather than beside it, so the two cannot drift.
+//
+// The source is the playlist being played *from*, which is always a playlist
+// even for a set that came out of the media library: Jean materialises those
+// into the scratch before playing them.
 export function useNowPlayingMenu() {
 	const { data: snapshot } = usePlayer();
 	const { data: playlists = [] } = usePlaylists();

@@ -6,6 +6,8 @@ import {
 	useSyncExternalStore,
 } from "react";
 
+import { subscribers } from "@/shared/lib/store";
+
 // Dragging out of one scroll container and onto a target in another.
 //
 // Deliberately not built on useSortableList: there the dragged element stays
@@ -63,22 +65,17 @@ const IDLE: DragState = {
 
 let state = IDLE;
 let ghostElement: HTMLElement | null = null;
-const listeners = new Set<() => void>();
+const listeners = subscribers();
 
 const publish = (next: DragState) => {
 	state = next;
-	for (const listener of listeners) listener();
-};
-
-const subscribe = (listener: () => void) => {
-	listeners.add(listener);
-	return () => listeners.delete(listener);
+	listeners.notify();
 };
 
 const snapshot = () => state;
 
 export const useDragState = () =>
-	useSyncExternalStore(subscribe, snapshot, snapshot);
+	useSyncExternalStore(listeners.subscribe, snapshot, snapshot);
 
 // Held outside React because it is written every frame. See the note above.
 export const setGhostElement = (element: HTMLElement | null) => {

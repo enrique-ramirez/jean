@@ -13,7 +13,9 @@ const indexes = new Map<string, string[]>();
 export function libraryIndex(key: string, rows: TrackColumns[]): string[] {
 	const held = indexes.get(key);
 	if (held) {
-		for (const row of rows.slice(held.length)) held.push(rowHaystack(row));
+		rows.slice(held.length).forEach((row) => {
+			held.push(rowHaystack(row));
+		});
 		return held;
 	}
 

@@ -2,9 +2,8 @@ import type { PlayerOption } from "../../src/shared/api/types.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectPlayingFrom,
 	inSequence,
-	nowPlayingScreen,
-	openNowPlaying,
 	openSidebar,
 	playedFrom,
 	requestsTo,
@@ -126,22 +125,6 @@ test.describe("a library with no genre tag", () => {
 		await expect(header.getByText("tracks", { exact: true })).toBeVisible();
 	});
 });
-
-// Where the sound is coming from. It used to be a third line in the status bar
-// and is now the now-playing screen's header, which is the only place with room
-// for it. Same claim, asked of the surface that makes it.
-const expectPlayingFrom = async (page: Page, name: string) => {
-	await openNowPlaying(page);
-	// The header rather than the line: "Playing from" and the set's name are two
-	// elements, so a text query matches the label alone and never the name.
-	const header = nowPlayingScreen(page).locator("header");
-	await expect(header).toContainText("Playing from");
-	await expect(header).toContainText(name);
-	await nowPlayingScreen(page)
-		.getByRole("button", { name: "Close now playing" })
-		.click();
-	await expect(nowPlayingScreen(page)).toBeHidden();
-};
 
 test.describe("starting the library from the front door", () => {
 	const headerButton = (page: Page, name: string) =>

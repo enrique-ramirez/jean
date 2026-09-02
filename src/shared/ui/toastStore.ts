@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { subscribers } from "@/shared/lib/store";
 
 export interface ToastAction {
 	label: string;
@@ -27,17 +28,13 @@ const MAX_VISIBLE = 3;
 const WITH_ACTION_MS = 9000;
 const PLAIN_MS = 5000;
 
-const listeners = new Set<() => void>();
+const listeners = subscribers();
 const timers = new Map<number, number>();
 
 let toasts: Toast[] = [];
 let nextId = 1;
 
-const emit = () => {
-	for (const listener of listeners) listener();
-};
-
-const stopTimer = (id: number) => {
+const stopTimer = (id: number): void => {
 	clearTimeout(timers.get(id));
 	timers.delete(id);
 };
@@ -47,7 +44,7 @@ export function dismissToast(id: number) {
 	if (next.length === toasts.length) return;
 	stopTimer(id);
 	toasts = next;
-	emit();
+	listeners.notify();
 }
 
 export function pushToast({
@@ -65,8 +62,9 @@ export function pushToast({
 	nextId += 1;
 
 	const shown = [...toasts, { id, message, action, tone }];
-	for (const toast of shown.slice(0, Math.max(0, shown.length - MAX_VISIBLE)))
+	shown.slice(0, Math.max(0, shown.length - MAX_VISIBLE)).forEach((toast) => {
 		stopTimer(toast.id);
+	});
 	toasts = shown.slice(-MAX_VISIBLE);
 
 	const ms = duration ?? (action ? WITH_ACTION_MS : PLAIN_MS);
@@ -76,16 +74,11 @@ export function pushToast({
 			setTimeout(() => dismissToast(id), ms),
 		);
 
-	emit();
+	listeners.notify();
 	return id;
 }
-
-const subscribe = (listener: () => void) => {
-	listeners.add(listener);
-	return () => listeners.delete(listener);
-};
 
 const snapshot = () => toasts;
 
 export const useToasts = () =>
-	useSyncExternalStore(subscribe, snapshot, snapshot);
+	useSyncExternalStore(listeners.subscribe, snapshot, snapshot);

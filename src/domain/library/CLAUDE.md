@@ -212,6 +212,18 @@ and both halves of that were wrong on a real player while every test passed.
   rework it yet. Artwork loading was on hold with it and no longer is; see the artwork
   queue under *Rendering* in `src/domain/track/CLAUDE.md`.
 
+## Playing a view, and marking it
+
+`usePlaySet` fills the scratch and plays a position in it; `useScratchPlaylist.holdsView`
+decides whether the scratch currently *is* a given set; `useActivePosition` needs that
+answer to read the player's index straight off it rather than sweeping every ref. All
+three are keyed on the same `(kind, label, count)`, so a view wiring them up itself can
+pass three different answers to one question and mark the wrong row.
+
+`useViewPlayback` is that triple, bound once. `LibraryListView` and `SearchResults` both
+take it. `useHomePlayback` still uses `usePlaySet` directly, because it plays sets it is
+not showing -- the kind and label arrive per call there rather than per hook.
+
 ## Never mutate playlists as a side effect
 
 **Browsing and playing must never create, clear, reorder or overwrite a user's playlist.**

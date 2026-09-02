@@ -9,23 +9,28 @@
 // biome-ignore lint/suspicious/noExplicitAny: see above
 export type PropBag = Record<string, any>;
 
-type HandlerSet = PropBag;
+type Handler = (event: unknown) => void;
 
-export const mergeHandlers = (...sets: HandlerSet[]): HandlerSet =>
-	sets.reduce(
-		(merged, set) =>
-			Object.entries(set).reduce<HandlerSet>((into, [name, handler]) => {
-				const existing = into[name];
-				return {
-					...into,
-					[name]:
-						typeof existing === "function"
-							? (event: unknown) => {
-									existing(event);
-									(handler as (event: unknown) => void)(event);
-								}
-							: handler,
-				};
-			}, merged),
-		{} as HandlerSet,
+// Functions under one name are called in the order they were given; anything
+// else -- `ref`, `style`, a data attribute -- is last-wins, as a plain spread
+// would be.
+export const mergeHandlers = (...sets: PropBag[]): PropBag =>
+	Object.fromEntries(
+		[...new Set(sets.flatMap((set) => Object.keys(set)))].map((name) => {
+			const values = sets.filter((set) => name in set).map((set) => set[name]);
+			const handlers = values.filter(
+				(value): value is Handler => typeof value === "function",
+			);
+
+			return [
+				name,
+				handlers.length > 1
+					? (event: unknown) => {
+							handlers.forEach((handler) => {
+								handler(event);
+							});
+						}
+					: values[values.length - 1],
+			];
+		}),
 	);

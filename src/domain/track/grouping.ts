@@ -92,8 +92,9 @@ export function groupByAlbum(rows: TrackColumns[]): AlbumRun[] {
 // to reduce.
 export function albumCoverRows(groups: AlbumRun[], length: number) {
 	const cover = new Int32Array(length);
-	for (const group of groups)
+	groups.forEach((group) => {
 		cover.fill(group.start, group.start, group.start + group.count);
+	});
 	return cover;
 }
 

@@ -1,19 +1,16 @@
 import type { TrackColumns } from "@/shared/api/types";
 import { plural } from "@/shared/lib/text";
-import { FIELD, number, value } from "./fields";
+import { FIELD, number, tagKey, value } from "./fields";
 
 const TOP_GENRES = 4;
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// Compare loosely, display exactly: a portrait reporting `Rock` and `rock` as
-// two genres is measuring the tagging rather than the music.
-//
 // A genre is the tag taken whole -- foobar joins values with '; ', and Jean does
-// not get to decide somebody's tag is really two tags.
-const genreKey = (name: string) =>
-	name.toLowerCase().replace(/\s+/g, " ").trim();
+// not get to decide somebody's tag is really two tags. Counted through `tagKey`
+// so a portrait does not report `Rock` and `rock` as two genres, which would be
+// measuring the tagging rather than the music.
 
 // One implementation for a playlist header, a set of results and the front door,
 // so the same library cannot be described two ways two centimetres apart. One
@@ -33,9 +30,10 @@ export function summarise(rows: TrackColumns[], playedCount = 0) {
 
 			const genre = value(row, FIELD.genre);
 			if (genre) {
-				const seen = into.genres.get(genreKey(genre));
+				const key = tagKey(genre);
+				const seen = into.genres.get(key);
 				if (seen) seen.count += 1;
-				else into.genres.set(genreKey(genre), { name: genre, count: 1 });
+				else into.genres.set(key, { name: genre, count: 1 });
 			}
 
 			return into;

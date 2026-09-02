@@ -1,3 +1,5 @@
+import { fieldTable } from "@/shared/api/fieldTable";
+
 // What the now-playing screen asks the player for, over and above the four
 // expressions the update stream already carries.
 //
@@ -49,15 +51,10 @@ const FIELDS = [
 	["bpm", "%bpm%"],
 ] as const;
 
-export type NowPlayingField = (typeof FIELDS)[number][0];
-
-export const NOW_PLAYING_EXPRESSIONS: string[] = FIELDS.map(
-	([, expression]) => expression,
-);
-
-export const NOW_PLAYING_FIELD = Object.fromEntries(
-	FIELDS.map(([name], index) => [name, index]),
-) as Record<NowPlayingField, number>;
+export const {
+	expressions: NOW_PLAYING_EXPRESSIONS,
+	index: NOW_PLAYING_FIELD,
+} = fieldTable(FIELDS);
 
 // `%comment%` is deliberately absent. It resolves on 19.9% of the measured
 // library and most of what it holds is ReplayGain hex written there by an old

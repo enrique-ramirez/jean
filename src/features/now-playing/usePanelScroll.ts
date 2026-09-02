@@ -8,18 +8,10 @@ const MAX_REMEMBERED = 40;
 
 const offsets = new Map<string, number>();
 
-/**
- * Where each panel was left, so switching tabs and coming back does not throw
- * away the paragraph you were reading.
- *
- * Not `app/useScrollMemory`, and the difference is not cosmetic: that one owns
- * the app's single, permanent scroll container and remembers a *route*. Here
- * the scroller is a different element on each layout -- the panel on a phone,
- * the whole screen on the gatefold -- and on the phone it is unmounted and
- * rebuilt on every tab change, which is what the slide animation needs. So this
- * re-resolves the element each time rather than holding one, and its key is a
- * panel *and* a track: a new song's lyrics are not the old song's scrolled down.
- */
+// Where each panel was left. Deliberately not `app/useScrollMemory`, which owns
+// one permanent scroller and keys on a route; here the scroller is a different
+// element per layout and is rebuilt on every tab change, so this re-resolves it
+// each time. See "Coming back to a panel" in this folder's CLAUDE.md.
 export function usePanelScroll(
 	panelRef: RefObject<HTMLElement | null>,
 	key: string,

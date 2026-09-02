@@ -45,7 +45,9 @@ const remember = (url: string, outcome: ArtworkOutcome) => {
 const pump = () => {
 	const starting = waiting.splice(0, MAX_IN_FLIGHT - inFlight);
 	inFlight += starting.length;
-	for (const entry of starting) entry.grant();
+	starting.forEach((entry) => {
+		entry.grant();
+	});
 };
 
 // Returns the release: call it with an outcome once the image settles, or with

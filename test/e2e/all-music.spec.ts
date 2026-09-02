@@ -1,8 +1,7 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
-	nowPlayingScreen,
-	openNowPlaying,
+	expectPlayingFrom,
 	openSidebar,
 	playedFrom,
 	requestsTo,
@@ -128,22 +127,6 @@ test.describe("the order a set is played in", () => {
 		expect(held).toEqual([...held].sort((a, b) => a.localeCompare(b)));
 	});
 });
-
-// Where the sound is coming from. It used to be a third line in the status bar
-// and is now the now-playing screen's header, which is the only place with room
-// for it. Same claim, asked of the surface that makes it.
-const expectPlayingFrom = async (page: Page, name: string) => {
-	await openNowPlaying(page);
-	// The header rather than the line: "Playing from" and the set's name are two
-	// elements, so a text query matches the label alone and never the name.
-	const header = nowPlayingScreen(page).locator("header");
-	await expect(header).toContainText("Playing from");
-	await expect(header).toContainText(name);
-	await nowPlayingScreen(page)
-		.getByRole("button", { name: "Close now playing" })
-		.click();
-	await expect(nowPlayingScreen(page)).toBeHidden();
-};
 
 test.describe("where the music is coming from", () => {
 	test.use({ mediaLibrarySize: 4000 });

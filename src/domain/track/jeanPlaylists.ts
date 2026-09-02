@@ -40,8 +40,6 @@ export const SCRATCH_KIND = {
 	all: "all music",
 } as const;
 
-export type ScratchKind = (typeof SCRATCH_KIND)[keyof typeof SCRATCH_KIND];
-
 export interface ScratchContents {
 	kind: string;
 	label: string;

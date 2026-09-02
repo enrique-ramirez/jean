@@ -1,5 +1,5 @@
 import type { TrackColumns } from "@/shared/api/types";
-import { FIELD, number, readValue, sampleRows } from "./fields";
+import { FIELD, number, readNumber, sampleRows } from "./fields";
 
 export const MAX_STARS = 5;
 
@@ -33,14 +33,8 @@ export function starsOf(raw: number | null): number | null {
 // the stars, which look the same whatever convention produced them.
 export const rawRatingOf = (row: TrackColumns) => number(row, FIELD.rating);
 
-// The same reading for a value Jean wrote, so an optimistic row and a loaded one
-// cannot disagree about what `''` means.
-export const rawRatingOfValue = (text: string) => {
-	const raw = readValue(text);
-	if (raw === null) return null;
-	const parsed = Number(raw);
-	return Number.isFinite(parsed) ? parsed : null;
-};
+// The same reading for a value Jean wrote rather than loaded.
+export const rawRatingOfValue = readNumber;
 
 export const ratingOf = (row: TrackColumns) => starsOf(rawRatingOf(row));
 

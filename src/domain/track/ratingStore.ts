@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 import type { TrackColumns } from "@/shared/api/types";
+import { subscribers } from "@/shared/lib/store";
 
 // What a rating write put on a row, until a fresher load replaces it. beefweb
 // never pushes a tag change, so nothing else will.
@@ -9,29 +10,20 @@ import type { TrackColumns } from "@/shared/api/types";
 // there is no invalidation to get wrong.
 const written = new WeakMap<TrackColumns, string>();
 
-const listeners = new Set<() => void>();
-
-const notify = () => {
-	for (const listener of listeners) listener();
-};
-
-const subscribe = (listener: () => void) => {
-	listeners.add(listener);
-	return () => listeners.delete(listener);
-};
+const listeners = subscribers();
 
 // The raw tag value as sent, so an optimistic row reads through exactly the same
 // path as one off the player. `''` is a cleared rating, not a zero.
 export function setWrittenRating(row: TrackColumns, raw: string) {
 	written.set(row, raw);
-	notify();
+	listeners.notify();
 }
 
 // Only for rolling back a refused write. A write that timed out keeps its value:
 // the player may still be finishing it.
 export function clearWrittenRating(row: TrackColumns) {
 	if (!written.delete(row)) return;
-	notify();
+	listeners.notify();
 }
 
 // The same value the hook below reports, for a caller outside React.
@@ -43,7 +35,7 @@ export function useWrittenRating(
 	row: TrackColumns | undefined,
 ): string | undefined {
 	return useSyncExternalStore(
-		subscribe,
+		listeners.subscribe,
 		useCallback(() => (row ? written.get(row) : undefined), [row]),
 	);
 }

@@ -8,6 +8,7 @@ import {
 	removeFromPlayQueue,
 } from "@/shared/api/beefweb";
 import type { PlayQueueItem } from "@/shared/api/types";
+import { descending, inSequence } from "@/shared/lib/sequence";
 import { plural } from "@/shared/lib/text";
 import { pushToast } from "@/shared/ui/toastStore";
 import {
@@ -83,10 +84,11 @@ export function useQueueActions() {
 
 			const before = (await fetchPlayQueue().catch(() => null))?.length ?? null;
 
-			await write(async () => {
-				for (const pair of pairs)
-					await addToPlayQueue(pair.playlistId, pair.itemIndex);
-			});
+			await write(() =>
+				inSequence(pairs, (pair) =>
+					addToPlayQueue(pair.playlistId, pair.itemIndex),
+				),
+			);
 
 			const undo =
 				before === null
@@ -104,10 +106,12 @@ export function useQueueActions() {
 								return;
 							}
 							// Highest first: every removal renumbers the ones after it.
-							await write(async () => {
-								for (let at = current.length - 1; at >= before; at -= 1)
-									await removeFromPlayQueue(at);
-							});
+							await write(() =>
+								inSequence(
+									descending(current.length - 1, before),
+									removeFromPlayQueue,
+								),
+							);
 						};
 
 			pushToast({
@@ -155,10 +159,13 @@ export function useQueueActions() {
 
 			const at = rebuildFrom(from, to);
 			await write(async () => {
-				for (let index = current.length - 1; index >= at; index -= 1)
-					await removeFromPlayQueue(index);
-				for (const item of next.slice(at))
-					await addToPlayQueue(item.playlistId, item.itemIndex);
+				await inSequence(
+					descending(current.length - 1, at),
+					removeFromPlayQueue,
+				);
+				await inSequence(next.slice(at), (item) =>
+					addToPlayQueue(item.playlistId, item.itemIndex),
+				);
 			});
 		},
 		[canQueue, patch, queryClient, write],

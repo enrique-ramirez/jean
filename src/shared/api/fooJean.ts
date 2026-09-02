@@ -17,6 +17,7 @@ export type TagWritten = Schema["TagWritten"];
 export type StreamTicket = Schema["StreamTicket"];
 export type StreamTimeline = Schema["StreamTimeline"];
 export type StreamMark = StreamTimeline["marks"][number];
+export type Paired = Schema["Paired"];
 
 // **The one setting that may never move to `/api/clientconfig`.** beefweb serves
 // that namespace unauthenticated, so syncing this through it would recreate the
@@ -261,9 +262,12 @@ export type FooJeanState =
 
 export interface FooJeanDiscovery {
 	state: FooJeanState;
-	// Only on `ready`, and carried separately because they are what a seam needs
-	// to build a client and the state is what settings needs to draw a message.
+	// **Non-null exactly when the probe succeeded**, which makes it the proof rather
+	// than a convenience: a caller holding an origin is holding a port that answered
+	// `/api/status` as `foo_jean` at a version this build understands. Pairing needs
+	// that and has no token yet, so it cannot be gated on `ready`.
 	origin: string | null;
+	// Only when there is one, and only when the component accepted it.
 	token: string | null;
 }
 
@@ -303,7 +307,10 @@ export async function discoverFooJean(
 	}
 
 	const { status } = probe;
-	if (!token) return { state: { kind: "no-token", record, status }, ...absent };
+	// The port is proven from here on, so the origin travels with every state below it.
+	const proven = { origin, token: null };
+
+	if (!token) return { state: { kind: "no-token", record, status }, ...proven };
 
 	const capabilities = await fetchCapabilities(origin, token);
 	if (!capabilities.ok) {
@@ -312,7 +319,7 @@ export async function discoverFooJean(
 				capabilities.reason === "unauthorized"
 					? { kind: "unauthorized", record, status }
 					: { kind: "unreachable", record },
-			...absent,
+			...(capabilities.reason === "unauthorized" ? proven : absent),
 		};
 	}
 
@@ -414,4 +421,78 @@ export async function fetchStreamTimeline(
 	} catch {
 		return null;
 	}
+}
+
+// ---- pairing -----------------------------------------------------------------
+
+// Named for what the user has to do about it, which is the whole point: the common
+// failure is a window nobody opened, and that is a button to press rather than an error.
+export type PairFailure =
+	// By far the most common, and the message MUST name the menu path.
+	| { ok: false; reason: "not-open"; message: string }
+	// Reached from outside the LAN. No amount of pressing fixes this one.
+	| { ok: false; reason: "not-local"; message: string }
+	| { ok: false; reason: "busy"; message: string }
+	| { ok: false; reason: "unreachable"; message: string }
+	| { ok: false; reason: "unsupported"; message: string };
+
+export type PairResult = { ok: true; token: string } | PairFailure;
+
+// **Pairing is a write, so it follows the same rule as sending the token**: the caller
+// probes `/api/status` first and confirms this really is `foo_jean` before posting
+// anything to the port a forgeable record named. See the root CLAUDE.md.
+//
+// `Content-Type: application/json` is not decoration -- the component refuses anything
+// else, because a simple POST needs no CORS preflight and could be fired blind by a page
+// to spend the single grant. Sending it is what makes this request preflighted.
+export async function pairWithAgent(
+	origin: string,
+	name: string,
+): Promise<PairResult> {
+	let response: Response;
+	try {
+		response = await withTimeout(PROBE_TIMEOUT_MS, (signal) =>
+			fetch(`${origin}/api/pair`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				// Optional, and it stays optional: requiring a name would put back the
+				// typing this exists to remove.
+				body: JSON.stringify(name ? { name } : {}),
+				signal,
+			}),
+		);
+	} catch {
+		return {
+			ok: false,
+			reason: "unreachable",
+			message: "Could not reach foo_jean.",
+		};
+	}
+
+	if (response.ok) {
+		const body = (await response.json()) as Paired;
+		if (!body?.token)
+			return {
+				ok: false,
+				reason: "unsupported",
+				message: "foo_jean answered without a token.",
+			};
+		return { ok: true, token: body.token };
+	}
+
+	const { message } = await messageOf(response, `HTTP ${response.status}`);
+
+	// The component distinguishes the two 403s in the error string on purpose: one is a
+	// button, the other is a network.
+	if (response.status === 403)
+		return /local network/i.test(message)
+			? { ok: false, reason: "not-local", message }
+			: { ok: false, reason: "not-open", message };
+	if (response.status === 429) return { ok: false, reason: "busy", message };
+	// A component too old to have the route at all. 404 from this port is not "no such
+	// track", it is "this build cannot pair".
+	if (response.status === 404 || response.status === 415)
+		return { ok: false, reason: "unsupported", message };
+
+	return { ok: false, reason: "unreachable", message };
 }

@@ -29,6 +29,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the token, during a window a person opened at the player.
+         * @description The token is 64 hex characters and every device that reads Jean needs it. Typing
+         *     that on a phone is unpleasant and on a television remote it is not reasonable, so
+         *     this is the way out: press **Pair a device** in
+         *     `File → Preferences → Tools → Jean`, then press Pair in the client. Hue's link
+         *     button, and the same trade — before this an attacker needed a credential that is
+         *     never transmitted, after it they need to be probing this port during a window the
+         *     owner opened seconds earlier.
+         *
+         *     Three bounds make that trade acceptable, and none of them is optional:
+         *
+         *     - **Single grant.** The first success closes the window. Two devices means two
+         *       presses, which is cheap and makes a pairing nobody performed visible rather
+         *       than plausible.
+         *     - **Private source addresses only.** RFC1918, loopback and link-local, and their
+         *       IPv6 equivalents. A forwarded port or a tunnel cannot be paired through, which
+         *       is where "local network only" otherwise quietly stops being true. This is
+         *       checked *before* the window, so a caller from outside learns nothing about
+         *       whether one is open and cannot spend a grant the owner opened.
+         *     - **The history is kept and shown in the pane.** A pairing the owner did not
+         *       perform has to be discoverable afterwards.
+         *
+         *     **`Content-Type: application/json` is required**, and that is a security control
+         *     rather than pedantry. A simple `POST` — `text/plain`, no custom headers — needs no
+         *     CORS preflight, so a page on any origin could fire one blind and spend the grant
+         *     without ever reading the answer. Requiring JSON forces every cross-origin caller
+         *     to be preflighted, and this route answers a preflight for far fewer origins than
+         *     the rest of the API does: with no `allowedOrigins` configured, only an origin on
+         *     the host the request was addressed to. That is what stops a page the owner
+         *     happens to be visiting from reading a token out of this response.
+         */
+        post: operations["pair"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/capabilities": {
         parameters: {
             query?: never;
@@ -470,6 +518,18 @@ export interface components {
                  */
                 position: number;
             }[];
+        };
+        Paired: {
+            /**
+             * @description The bearer token, in full. A client MUST store it where it would store one
+             *     pasted by hand and MUST NOT log it or put it in a URL.
+             */
+            token: string;
+            /**
+             * @description The shape of this API, so a client can refuse one it does not know.
+             * @example 1
+             */
+            apiVersion: number;
         };
         StreamTicket: {
             /**
@@ -945,6 +1005,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Status"];
+                };
+            };
+        };
+    };
+    pair: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description What to call this device in the pairing history. Optional, and it
+                     *     MUST stay optional: requiring a name would reintroduce the typing
+                     *     this route exists to remove. Display text only — a value with control
+                     *     characters in it is stored as empty rather than refused, because it
+                     *     is written to a log where a newline would forge a line.
+                     */
+                    name?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The token. This is the only response in the API that carries it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Paired"];
+                };
+            };
+            /** @description A body that is not a JSON object, or a name that is not short text. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No window is open, or the caller is not on the local network. The two are
+             *     distinguishable in the `error` string on purpose: one is a button the owner
+             *     has to press and the message should say which, the other is a fact about the
+             *     network that no amount of pressing will change. A caller from outside is
+             *     answered before the window is consulted, so it cannot infer one from the
+             *     other.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Not `application/json`. See the description: this is what keeps a
+             *     cross-origin caller from reaching the route without a preflight.
+             */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Pairing attempts are rate-limited separately from every other route, because
+             *     this is the only unauthenticated one that does anything.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

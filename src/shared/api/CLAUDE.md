@@ -96,6 +96,19 @@ first one's result. `TOKEN_KEY` moved here with it, and the rule on it is
 unchanged: **it may never move to `/api/clientconfig`**, because beefweb serves
 that namespace unauthenticated.
 
+**`POST /pair` is the other route with no bearer token, and the only one that emits
+one.** It answers during a window opened at the player, to a caller on the local network,
+once. Two failures matter to a client and they are different sentences: a 403 saying
+*pairing is not open* is a button somebody has to press and the message must name the
+menu path, while a 403 saying *local network only* is a fact no pressing will change. A
+404 is a component too old to have the route. **`Content-Type: application/json` is
+mandatory** — the component refuses anything else, because a simple POST needs no CORS
+preflight and could be fired blind by a page to spend the single grant.
+
+`discovery.origin` is non-null exactly when `/api/status` answered as `foo_jean` at a
+supported version, which makes it the proof that a port is safe to post to. Pairing needs
+that before it has a token, so it cannot be gated on `ready`.
+
 **`GET /stream` is the one route that takes no bearer token**, because an
 `<audio>` element cannot send a header. The ticket is the credential and it
 travels in the query string, which is exactly why it expires in minutes; the

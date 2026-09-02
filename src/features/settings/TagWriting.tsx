@@ -1,7 +1,12 @@
 import { useState } from "react";
 import type { TagWriterState } from "@/domain/track/tagWriter";
 import { labelOfField, useTagWriting } from "@/domain/track/useTagWriter";
-import { SUPPORTED_API_VERSION } from "@/shared/api/fooJean";
+import {
+	type PairFailure,
+	pairWithAgent,
+	SUPPORTED_API_VERSION,
+} from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Button } from "@/shared/ui/Button";
 import { HelpHint } from "@/shared/ui/HelpHint";
 import { Switch } from "@/shared/ui/Switch";
@@ -125,6 +130,87 @@ function explainStreaming(state: TagWriterState): string | null {
 	return `Streaming ${(streamFormats ?? []).join(" and ")}. The control is beside the volume in the status bar.`;
 }
 
+// What went wrong, in the user's terms. The common one by far is a window nobody has
+// opened yet, and that is a button to press rather than an error to debug -- so it names
+// the menu path, because somebody reading this on a television is not going to find it
+// by hunting.
+function explainPairing(failure: PairFailure): string {
+	switch (failure.reason) {
+		case "not-open":
+			return `No pairing window is open. On the player, go to ${PANE} and press “Pair a device”, then press Pair here within two minutes.`;
+		case "not-local":
+			return "This device is not on the player’s own network, so it cannot pair. Paste the token instead.";
+		case "busy":
+			return "Too many pairing attempts just now. Wait a few seconds and try again.";
+		case "unsupported":
+			return "This copy of foo_jean is too old to pair. Paste the token instead, or update the component.";
+		case "unreachable":
+			return `Could not reach foo_jean. ${failure.message}`;
+	}
+}
+
+// **The reason this exists**: the token is 64 hex characters, and on a television remote
+// that is not a thing anyone will do. One press here and one on the player replaces it.
+//
+// The paste path stays exactly where it was, underneath. Pairing makes the token cheap
+// to get; it does not become the only way to get one, and an install that has turned the
+// window off still has a way in.
+function PairButton({
+	origin,
+	onPaired,
+}: {
+	// Non-null only once `/api/status` has answered as foo_jean at a version this build
+	// understands -- which is the same rule as sending the token, and for the same
+	// reason: the record naming this port is forgeable.
+	origin: string;
+	onPaired: (token: string) => void;
+}) {
+	const [name, setName] = useState("");
+	const [isPairing, setIsPairing] = useState(false);
+	const [problem, setProblem] = useState<string | null>(null);
+
+	const pair = async () => {
+		setIsPairing(true);
+		setProblem(null);
+
+		const result = await pairWithAgent(origin, name.trim());
+		setIsPairing(false);
+
+		if (result.ok) onPaired(result.token);
+		else setProblem(explainPairing(result));
+	};
+
+	return (
+		<div className={styles.pairing}>
+			<div className={styles.tokenRow}>
+				<label className={styles.field}>
+					<span className={styles.label}>Name</span>
+					<input
+						className={styles.input}
+						value={name}
+						spellCheck={false}
+						autoComplete="off"
+						// Optional, and it has to stay optional: asking for a name before
+						// pairing would put back the typing this removes.
+						placeholder="This device (optional)"
+						maxLength={64}
+						onChange={(event) => setName(event.target.value)}
+					/>
+				</label>
+
+				<Button variant="primary" disabled={isPairing} onClick={pair}>
+					{isPairing ? "Pairing…" : "Pair"}
+				</Button>
+			</div>
+
+			<p className={styles.fix}>
+				{problem ??
+					`Press “Pair a device” under ${PANE} on the player, then press Pair here. No typing on this device.`}
+			</p>
+		</div>
+	);
+}
+
 // Masked because it is a credential, revealable because it is pasted from a file
 // and one wrong character is otherwise unexplainable.
 function TokenField({
@@ -182,16 +268,13 @@ function TokenField({
 // troubleshooting is component-shaped: when a rating will not save, the question
 // is "is foo_jean running".
 export function TagWriting() {
-	const {
-		state,
-		isChecking,
-		token,
-		setToken,
-		allowedFields,
-		isFieldEnabled,
-		setFieldEnabled,
-		recheck,
-	} = useTagWriting();
+	// Discovery comes from the shared hook rather than through the tag-writing context:
+	// this pane is about the *component*, and pairing in particular has nothing to do
+	// with tracks. The context still owns the allowlist switches, which genuinely are
+	// about writing.
+	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
+	const { allowedFields, isFieldEnabled, setFieldEnabled } = useTagWriting();
+	const { state, origin } = discovery;
 
 	const explained = explain(state);
 	const streaming = explainStreaming(state);
@@ -219,6 +302,10 @@ export function TagWriting() {
 			<p className={styles.summary}>{explained.summary}</p>
 			{explained.fix ? <p className={styles.fix}>{explained.fix}</p> : null}
 			{streaming ? <p className={styles.fix}>{streaming}</p> : null}
+
+			{wantsToken && origin ? (
+				<PairButton origin={origin} onPaired={setToken} />
+			) : null}
 
 			{wantsToken ? (
 				<TokenField

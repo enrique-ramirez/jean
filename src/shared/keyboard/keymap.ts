@@ -79,6 +79,55 @@ export const KEYMAP: Binding[] = [
 		keys: ["M"],
 	},
 
+	// Rating ----------------------------------------------------------------
+	//
+	// Global rather than per-list, and resolved rather than scoped: the target is
+	// the cursor row when a list has one and the playing track otherwise, which
+	// is one question with one answer. Declaring these in the list's scope too
+	// would put six keys in two scopes for the manager to arbitrate.
+	{
+		id: "rate0",
+		scope: SCOPE.global,
+		group: "Rating",
+		name: "Remove rating",
+		keys: ["0"],
+	},
+	{
+		id: "rate1",
+		scope: SCOPE.global,
+		group: "Rating",
+		name: "Rate 1 star",
+		keys: ["1"],
+	},
+	{
+		id: "rate2",
+		scope: SCOPE.global,
+		group: "Rating",
+		name: "Rate 2 stars",
+		keys: ["2"],
+	},
+	{
+		id: "rate3",
+		scope: SCOPE.global,
+		group: "Rating",
+		name: "Rate 3 stars",
+		keys: ["3"],
+	},
+	{
+		id: "rate4",
+		scope: SCOPE.global,
+		group: "Rating",
+		name: "Rate 4 stars",
+		keys: ["4"],
+	},
+	{
+		id: "rate5",
+		scope: SCOPE.global,
+		group: "Rating",
+		name: "Rate 5 stars",
+		keys: ["5"],
+	},
+
 	// Only the vertical arrows move the list cursor, so the horizontal pair is
 	// free to seek everywhere. Single keys, so they stay out of text inputs.
 	{

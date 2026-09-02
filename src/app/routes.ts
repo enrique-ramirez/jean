@@ -19,7 +19,12 @@ export interface PlayingRoute extends PlayingSet {
 	temporaryRow?: boolean;
 }
 
-export const ROUTE = { home: "home", all: "all", search: "search" } as const;
+export const ROUTE = {
+	home: "home",
+	all: "all",
+	search: "search",
+	settings: "settings",
+} as const;
 
 const SHELF_PREFIX = "shelf/";
 
@@ -33,6 +38,7 @@ export function resolveRoute(route: string): {
 	isSearch: boolean;
 	isAll: boolean;
 	isHome: boolean;
+	isSettings: boolean;
 	isLibrary: boolean;
 } {
 	const shelfId = route.startsWith(SHELF_PREFIX)
@@ -47,13 +53,16 @@ export function resolveRoute(route: string): {
 		isSearch: route === ROUTE.search,
 		isAll: route === ROUTE.all,
 		isHome: route === "" || route === ROUTE.home,
+		isSettings: route === ROUTE.settings,
 		// Everything the library owns, as opposed to a playlist the player owns.
 		// Only a playlist route selects a playlist in the sidebar.
+		// Settings is here too: not a playlist, so no playlist row lights up.
 		isLibrary:
 			route === "" ||
 			route === ROUTE.home ||
 			route === ROUTE.all ||
 			route === ROUTE.search ||
+			route === ROUTE.settings ||
 			shelf !== null,
 	};
 }

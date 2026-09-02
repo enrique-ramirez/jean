@@ -71,6 +71,20 @@ time:
 - **SSE is change-driven, not a ticker.** Long silences are normal; `position` alone never
   triggers a message.
 - **The static server has no SPA fallback** — `/playlists/p2` is a 404. Use hash routing.
+- **`GET /clientconfig/{id}` answers `200` with a body of `null` for an id nobody has
+  written**, not a 404. That is the "not installed" signal for `foo_jean` and is the
+  common case, so it is not an error path. Nothing on that route is authenticated and
+  `changeClientConfig` defaults to on, which is why a record read from it is a hint and
+  never evidence; see the root `CLAUDE.md`.
+
+**`foo_jean`'s types are generated, and not into `fooJean.d.ts`.** The component ships
+an OpenAPI document and it is the contract, so `shared/api/fooJeanSchema.d.ts` comes out
+of `npx openapi-typescript ../foo_jean/docs/openapi.yaml`, committed, with no codegen
+step in `pnpm build` — that would make the build depend on a sibling repo being checked
+out. The name is the trap: **`fooJean.d.ts` beside `fooJean.ts` is read by TypeScript as
+that file's own declarations**, so every import of it is circular and the error says
+neither of those things. Same family as naming a store after the component beside it.
+The hand-written `types.ts` stays hand-written for beefweb, for the reasons below.
 
 **`shared/api/types.ts` is hand-written and is the contract.** Not generated: beefweb
 ships an OpenAPI document, but it describes 0.10, and the parts Jean leans on

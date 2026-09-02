@@ -1,0 +1,242 @@
+/* Prose with controls in it rather than a form, so it takes the reading measure
+   `LibrarySetup` uses rather than the window's width. */
+
+.view {
+	display: flex;
+	flex-direction: column;
+	gap: 28px;
+	max-width: 620px;
+	margin: 0 auto;
+	padding: 56px 24px 48px;
+}
+
+.header {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.eyebrow {
+	margin: 0;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.title {
+	margin: 0;
+	font-size: clamp(1.5rem, 3.4vw, 2.125rem);
+	font-weight: 680;
+	line-height: 1.1;
+	letter-spacing: -0.025em;
+}
+
+.blurb {
+	margin: 0;
+	font-size: 0.9375rem;
+	line-height: 1.6;
+	color: var(--muted);
+	text-wrap: pretty;
+}
+
+/* ---- one component ---------------------------------------------------------
+
+   A card rather than a run of headings: each is a separate yes-or-no about the
+   player, and the boundary is the useful part. */
+
+.panel {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 18px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.panelHead {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.panelTitle {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 620;
+	letter-spacing: -0.01em;
+}
+
+/* On, off, or absent. Tone and text can disagree -- connected but permitting
+   nothing reads "Connected" in an amber pill, which is exactly the situation. */
+.status {
+	margin-left: auto;
+	padding: 3px 10px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-pill);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.status[data-tone="ok"] {
+	border-color: var(--accent-line);
+	background: var(--accent-quiet);
+	color: var(--accent);
+}
+
+.status[data-tone="warn"] {
+	border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+	color: var(--danger);
+}
+
+.summary {
+	margin: 0;
+	font-size: 0.875rem;
+	line-height: 1.55;
+	color: var(--text);
+	text-wrap: pretty;
+}
+
+/* The instruction, set apart from the statement: somebody who already knows what
+   is wrong stops at the first line. */
+.fix {
+	margin: 0;
+	padding-left: 12px;
+	border-left: 2px solid var(--accent-line);
+	font-size: 0.8125rem;
+	line-height: 1.55;
+	color: var(--muted);
+	text-wrap: pretty;
+	overflow-wrap: anywhere;
+}
+
+.tokenRow {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+.field {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 5px;
+	min-width: 0;
+}
+
+.label {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.input {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface-sunken);
+	font-family: var(--font-numeric);
+	font-size: 0.8125rem;
+	color: var(--text);
+	transition: border-color 0.12s var(--ease);
+}
+
+.input:focus-visible {
+	border-color: var(--accent);
+	outline: none;
+}
+
+.input::placeholder {
+	font-family: var(--font);
+	color: var(--faint);
+}
+
+.detail {
+	margin: 0;
+	font-size: 0.75rem;
+	color: var(--faint);
+}
+
+.detail code {
+	padding: 1px 6px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: var(--surface-sunken);
+	font-family: var(--font-numeric);
+}
+
+/* A rule rather than a heading weight: above is status, below is a decision. */
+.fields {
+	display: flex;
+	flex-direction: column;
+	margin-top: 6px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border);
+}
+
+.fieldsHead {
+	margin: 0 0 2px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.fields .detail {
+	margin-top: 6px;
+	line-height: 1.5;
+	text-wrap: pretty;
+}
+
+.fields code {
+	overflow-wrap: anywhere;
+}
+
+/* A maintenance action, kept at the weight of a footnote: it is one step above
+   the caption it sits under and well below the switches it is not. */
+.quiet {
+	align-self: flex-start;
+	margin-top: 10px;
+	padding: 0;
+	border: 0;
+	background: none;
+	font-size: 0.75rem;
+	color: var(--muted);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	cursor: pointer;
+}
+
+.quiet:hover {
+	color: var(--text);
+}
+
+.panelFoot {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+	.view {
+		padding: 32px 16px 40px;
+	}
+
+	/* Three controls on one line leaves the field about forty pixels wide. */
+	.tokenRow {
+		flex-wrap: wrap;
+	}
+
+	.field {
+		flex-basis: 100%;
+	}
+}

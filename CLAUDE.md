@@ -136,13 +136,19 @@ without a real report.
 `foo_jean` is optional and always will be. Jean must work with it absent, and light up
 tag writing when it is there.
 
-Nothing of this is built yet. The plan is a `domain/library/tagWriter.ts` seam in the shape of
-the existing `librarySource.ts` — `{ kind, canWrite, allowedFields, write(track, fields) }`
-with implementations for *none* (nothing reachable; rating renders read-only and every
-install still works), *agent* (`foo_jean`), and *beefweb* if [#384](https://github.com/hyperblast/beefweb/issues/384)
-ever ships. If anything outside that file has to ask which writer it holds, the seam is
-in the wrong place. What follows is the part of that design that is already settled,
-because it is a contract with a component that exists.
+This is built, for ratings. `domain/track/tagWriter.ts` — beside `librarySource.ts`,
+which lives there and not in `domain/library` — is
+`{ kind, canWrite, allowedFields, allows, write(track, fields) }` with implementations for
+*none* (nothing reachable; rating renders read-only and every install still works) and
+*agent* (`foo_jean`). *beefweb* stays a comment until
+[#384](https://github.com/hyperblast/beefweb/issues/384) ships: a placeholder for a route
+that does not exist is a shape invented before the thing it has to fit. If anything
+outside that file has to ask which writer it holds, the seam is in the wrong place — a
+control renders or it does not, and the reason is `canWrite`.
+
+The **discovery** half is `resolveTagWriter()` in the same file, and the settings screen
+(`features/settings/`) is the only thing that reads its state. What follows is the
+contract it implements.
 
 **The mechanism.** On every start the component writes
 `<profile>/beefweb/clientconfig/foo_jean.json`, which beefweb then serves at
@@ -186,7 +192,40 @@ optional.
 `<profile>/foo_jean/config.json` and is deliberately **not** in the advertisement —
 anyone who can reach beefweb can read that file, and "can reach beefweb" must not become
 "can rewrite my music". So discovery removes the port from setup, not the credential.
-One paste, stored the same way Jean stores its own settings.
+One paste — and **it is the one setting that may never move to `/api/clientconfig`**.
+Everything else in Jean should end up there so it follows the user between devices;
+syncing this through a namespace beefweb serves unauthenticated would recreate the exact
+escalation the credential exists to prevent. `jean.fooJeanToken` stays in `localStorage`,
+and the exclusion is written next to it in `domain/track/useTagWriter.tsx`.
+
+**Seven states, not four, and none of them is silence.** The four in the table above are
+the ones the discovery record can describe. The probe adds two more — something
+answering on that port that is *not* `foo_jean` (which is what a forged record looks
+like from here, and Jean must say it did not send the token), and an `apiVersion` this
+build does not understand — and a token the component refuses is the seventh. Rendering
+ratings read-only without a word is wrong in six of the seven: the component is
+installed and working in five of them, and in three the user has done everything right.
+`features/settings/TagWriting.tsx` holds one message and one remedy per state.
+
+**Unreachable-but-advertised is its own state and always will be**, even though it is
+no longer the common one. `bindAddress` used to default to `127.0.0.1`, which made
+*installed, advertised, healthy and unreachable* the ordinary experience of every device
+that was not the player itself; that default is now `0.0.0.0`, the same as beefweb's,
+because the credential rather than the listener's address is what defends this. What
+remains reachable-in-principle and not in practice — a deliberately hardened install, a
+firewall — still has to be distinguishable from absent, which is why the probe's failure
+to connect is its own state and why the message names both possibilities rather than
+assuming a setting nobody chose.
+
+**Which of the two projects owns a given setting is the line to keep straight.** The
+component's `config.json` holds what the *player owner* decides: the port, the bind
+address, and `allowedFields` — the write allowlist, which is a blast-radius bound. Jean
+never edits that file, and there is no route to it: beefweb's `clientconfig` writes into
+beefweb's own directory, and the one id that looks right is the component's discovery
+record, overwritten on every start. What Jean owns is the token and, per field, whether
+to offer the control at all. **Those switches narrow and never widen** — a credential
+able to widen the list bounding it would not be a bound — so the settings screen lists
+exactly the permitted fields and turns them off, never on.
 
 ## Generality constraints
 
@@ -328,8 +367,12 @@ re-sort.
 re-indexes the library. Both appear in the loading rules as requirements for
 100k-200k libraries rather than as things already done.
 
-**No tag writing.** There is no endpoint for it, and the `tagWriter.ts` seam described
-under *Detecting `foo_jean`* is a plan rather than a file.
+**Tag writing is one field.** `domain/track/tagWriter.ts` exists and writes **ratings**,
+through `foo_jean`, with a *none* implementation for every install without it. The
+allowlist decides whether the control appears, so an install that permits nothing is
+indistinguishable from no component -- which is correct. Genre, comment and the rest of
+what the component could write are deliberately not wired up: the seam should not be
+shaped around a second field before there is one.
 
 **No "play next", and no lookahead of any kind.** Inserting at a queue position is
 impossible on foobar2000 -- `queueIndex` on `/playqueue/add` is accepted and

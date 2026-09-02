@@ -47,20 +47,93 @@ per track and behaves like every other column.
 **Halves are displayed, never invented.** A file that says `3.5` gets three and a
 half stars, because rounding it to 4 would be Jean disagreeing with the player
 about what the library contains. Rounding to the nearest *half* is only so a
-rescaled value has a star to land on. The corollary is for the rating control
-that does not exist yet: its increment is whole stars unless the library already
-contains halves -- `hasHalfStars()` samples for that -- because introducing
-halves into a library that has none is a change to somebody's tags they did not
-ask for.
+rescaled value has a star to land on. The corollary, now that there *is* a rating
+control: its increment is **whole stars**, full stop, because introducing halves
+into a library that has none is a change to somebody's tags they did not ask
+for. `hasHalfStars()` samples for the library that already has them and is the
+hook for offering halves there one day; nothing reads it yet.
 
-**A library nobody has rated does not get the column.** Every other column
-answers `--` per track and is quiet about it; five empty stars on thirty thousand
-rows is not, and it states "unrated" thirty thousand times about a question the
-player was never asked. So Rating's probe is not "does the field resolve" but
-"is there a rating anywhere", and it is a **full scan rather than a sample** --
-ratings are sparse, 500 in 30,441, and a 200-row sample misses them outright
-about one library in twenty-five. One array index over 30k rows is well under a
-millisecond, once. Five stars are always drawn and only the fill varies, which is
+## Writing a rating
+
+**Read on four scales, write on one.** `starsOf` bands a bare number because the tag
+declares no scale; a *write* has no such licence. Jean writes foobar2000's native 0-5
+integers, so a track whose raw value is above 5 is on somebody else's scale and renders
+**read-only rather than rescaled** — turning a `100` into a `5` on the way out is a 4%
+rating becoming four stars, it is not reversible from the five stars on screen, and
+nothing about the row would show it had happened. `isWritableScale()` is that rule and
+it is asked per track, so a library holding both conventions gets a control on the
+tracks it can be right about and none on the rest. Halves stay writable: `3.5` is on the
+native scale, and a whole-star control replacing it is a choice the user made.
+
+**The empty string removes the tag.** `"0"` would be a rating of zero, which some
+taggers write and others read as unrated; `""` is the component's own spelling of "there
+is no rating here" and is what clearing sends.
+
+**Nothing pushes a tag change, so the optimistic value is the only value.** beefweb's
+stream fires when the *set* of playlists changes and says nothing whatever when a
+track's tags do — so a rating that is true in foobar2000's database a millisecond after
+the write is still absent from every row Jean holds, with no update coming to reconcile
+against and no re-reading the library to learn one number. `ratingStore.ts` is that
+overlay, and it is **keyed by the row array itself**: rows are the arrays
+`playlistStore` published, so the entry disappears exactly when a fresher load replaces
+them. The overlay cannot outlive the data it patches and no invalidation has to be
+written. The cost is that one track in two loads is two arrays, so rating it in a
+playlist leaves `#/all` on the player's older value until that load is replaced — the
+staleness every other column already has, not a new one.
+
+**A ref is not a file, and `foo_jean` needs a file.** The component takes a plain
+absolute local path; the media library API reports paths **relative to the library
+folders and forward-slashed**, and a playlist row carries no path at all. So
+`LibrarySource.identify()` resolves a ref back to a real file by asking the player for
+`%path%`, which it renders absolutely on both sources — one round trip, on a deliberate
+action against a single track, which is exactly the budget `%path%` was left out of
+`TRACK_EXPRESSIONS` to protect. It **verifies rather than trusting the index**: the
+library compares the relative path it already holds, the playlist compares the title,
+and either mismatch answers null. Indices move — the desktop can edit a playlist
+mid-session — and the failure mode of getting this wrong is writing a tag to somebody
+else's file.
+
+**Coalesced per row, not globally.** `useCoalescedWrite` holds one pending value, and
+these belong to different tracks: a star clicked on a second row while the first is in
+flight would drop one of the two. Superseding a value on the *same* row is right, since
+the last star clicked is the one meant, and re-tagging is a real disk write on the
+player rather than a UI update.
+
+**A 403 is a bug, not a condition.** It means the install's allowlist does not name the
+field, so the control should never have been offered — Jean logs it and stops offering
+that field for the session rather than failing again on the next click. **A 504 is the
+one failure that is not rolled back**: the player did not answer inside its own thirty
+seconds and the write may still land, so the value is re-read rather than assumed lost.
+
+**The stars in a row are a pointer control, and the menu is the other two devices'.**
+Hovering previews and clicking commits — Letterboxd, Plex and Apple Music all do this,
+because a five-way choice made in a 60px strip has to show its answer before it takes
+it — and clicking the star already set clears the rating, labelled "Clear rating" so the
+way back out is stated rather than discovered. Twelve-pixel targets are not a touch
+target and the list owns keyboard focus, so a row cannot hold five tab stops without
+fighting the virtualiser; touch and keyboard get a Rating page in the track menu
+instead, one track at a time. That is a *device* question, asked as
+`(hover: hover) and (pointer: fine)` rather than a width breakpoint: a mouse on a narrow
+window should keep the stars.
+
+**The rating column is never hidden, and this is a reversal.** It used to be
+gated on there being a rating somewhere in the view -- the argument being that
+every other column answers `--` per track and is quiet about it, while five empty
+stars across thirty thousand rows state "unrated" thirty thousand times about a
+question the player was never asked. Two things killed that rule.
+
+It is a **sample**, and ratings are sparse: 500 in 30,441 on the library this was
+built against, so 200 sampled rows miss them outright about one library in
+twenty-five. *Observed*, not predicted -- the column vanished from a library that
+plainly has ratings, with nothing on screen to explain why, which is a far worse
+failure than a quiet column. And once ratings can be **written**, hiding the
+column is exactly what removes the control that would fill it, so a library with
+none could never acquire a first one.
+
+So Rating behaves like every other column: on when you ask for it, empty where
+there is nothing to say. The original worry is answered by drawing the empty
+state quietly rather than by hiding it, which is why the empty star is
+`--border-strong` -- it is the one drawn most. Five stars are always drawn and only the fill varies, which is
 Letterboxd's and Plex's shape rather than drawing three stars for a three-star
 record: a row whose stars end somewhere different each time cannot be scanned
 down. The empty star is `--border-strong`, because it is the one drawn most.

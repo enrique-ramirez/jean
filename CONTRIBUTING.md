@@ -45,6 +45,31 @@ testing without a build either.
 Deploying is therefore only for making it permanent, or for using the UI when the
 Mac is off.
 
+### `foo_jean` is the one thing the proxy does not cover
+
+Every other request Jean makes is a root-relative `/api` path, which the dev proxy
+forwards to the player. The optional tag-writing component is not: it listens on a
+port of its own, so its address is a *host* and a port rather than a path, and on the
+dev server that host is your machine rather than the player's. `vite.config.ts` takes
+it from `BEEFWEB_URL` and injects it as `__PLAYER_HOST__`, so there is nothing extra
+to configure here — but the request is then genuinely cross-origin in a way it never
+is in a build, and the component has to be told to accept it.
+
+*Measured*: it answers `200` to `Origin: http://localhost:5173` and sends **no**
+`Access-Control-Allow-Origin` header at all, so the browser discards a perfectly good
+response and Jean reports the component as unreachable. Left to defaults it only
+reflects an origin whose host matches the host it was addressed to, which is exactly
+the production case and deliberately not this one.
+
+So add the dev server to `<profile>/foo_jean/config.json` and restart foobar2000:
+
+```jsonc
+"allowedOrigins": ["http://localhost:5173"]
+```
+
+Add the LAN name too if you test on a phone against the dev server. None of this
+applies to a build, where beefweb serves Jean from the player and the hosts match.
+
 ### The development player runs a pre-release beefweb
 
 `0.11~git.dc0fdfc` — CI's merge of

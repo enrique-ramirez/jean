@@ -38,3 +38,50 @@
 		gap: 1.5px;
 	}
 }
+
+/* The glyph stays 12px -- the column is sized to it -- and the button around it
+   takes the row's full height, so the pointer never falls between two stars. */
+
+.stars[data-interactive] {
+	margin-inline: -2px;
+}
+
+.stars[data-interactive] .star {
+	appearance: none;
+	padding: 0 1px;
+	border: 0;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+	width: calc(var(--star-size) + 2px);
+	height: 100%;
+	min-height: var(--star-size);
+}
+
+.stars[data-interactive] .star svg {
+	inset: 0 1px;
+	width: var(--star-size);
+	height: var(--star-size);
+	top: 50%;
+	transform: translateY(-50%);
+}
+
+/* Without this, hovering an unrated row looks identical to a read-only one. */
+.stars[data-interactive]:hover {
+	color: color-mix(in oklab, var(--accent) 35%, var(--border-strong));
+}
+
+/* Hovering the star already set means "click to remove", and this is how loud
+   that may be said. Emptying the stars was the first attempt and was far too
+   loud: sweeping the pointer across a five-star row made it read as unrated,
+   every time, without anything being clicked. Fading them says the same thing
+   about the same click and still looks like a rating. */
+.stars[data-interactive][data-clearing="true"] {
+	opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.stars[data-interactive] .fill {
+		transition: opacity 90ms ease-out;
+	}
+}

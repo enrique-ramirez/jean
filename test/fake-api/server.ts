@@ -10,6 +10,7 @@ import { createServer as createHttpServer } from "node:http";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { createFooJeanServer, discoveryRecord } from "./fooJean.ts";
 import { createState } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
@@ -40,12 +41,17 @@ interface ApiRequest {
 	body: RequestBody;
 	headers: IncomingHttpHeaders;
 	response: ServerResponse;
+	// Known only after `listen`, so it is read per request rather than stored.
+	agentPort: number;
 }
 
 // The server, plus the seam a test run swaps the player through.
 export interface FakeServer extends Server {
 	readonly state: FakeState;
 	reset: (next?: FakeState) => FakeState;
+	// `foo_jean`, on a port of its own. Started and stopped by the fixture that
+	// owns this one; see `fooJean.ts`.
+	agent: Server;
 }
 
 // Named for the shape rather than the implementation. What Jean talks to today
@@ -137,6 +143,7 @@ export function createServer({
 	// whole player out between tests without tearing the server down. One server
 	// per worker, one state per test.
 	const held = { state };
+	const agent = createFooJeanServer(() => held.state);
 
 	const server = createHttpServer(async (request, response) => {
 		const { state } = held;
@@ -155,6 +162,7 @@ export function createServer({
 				body,
 				headers: request.headers,
 				response,
+				agentPort: portOf(agent),
 			});
 			if (handled) return;
 			return json(
@@ -177,6 +185,7 @@ export function createServer({
 
 	const fake = server as FakeServer;
 	Object.defineProperty(fake, "state", { get: () => held.state });
+	fake.agent = agent;
 
 	// Any stream still open belongs to the state being replaced. In a test run
 	// the previous page is already closed by this point, so there is nothing
@@ -192,6 +201,11 @@ export function createServer({
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const portOf = (server: Server) => {
+	const address = server.address();
+	return typeof address === "object" && address ? address.port : 0;
+};
+
 async function handleApi({
 	state,
 	method,
@@ -200,6 +214,7 @@ async function handleApi({
 	body,
 	headers,
 	response,
+	agentPort,
 }: ApiRequest) {
 	const segments = path.split("/").filter(Boolean).slice(1);
 	const [head, ...rest] = segments;
@@ -459,6 +474,15 @@ async function handleApi({
 				parseColumns(url.searchParams.get("columns")),
 			),
 		});
+	}
+
+	// ---- client config ---------------------------------------------------
+	//
+	// `null` is a real answer rather than a 404: the component writes this file on
+	// every start and removes it on a clean shutdown, so absent is the common case.
+	if (method === "GET" && head === "clientconfig") {
+		if (rest[0] !== "foo_jean") return json(response, null);
+		return json(response, discoveryRecord(state.fooJean, agentPort));
 	}
 
 	// ---- artwork ---------------------------------------------------------

@@ -179,6 +179,19 @@ every key taken from the app behind. They did not, and the difference was invisi
 until it was written down -- Escape closed the dropdown *and* cleared the track
 selection behind it, in one keystroke.
 
+**A switch is not a checkbox, and Jean has both.** The line every design system draws
+is *when it takes effect*: a switch acts the moment it moves, a checkbox is a selection
+that something else submits. So the columns menu is checkboxes -- they choose from a set
+-- and `shared/ui/Switch.tsx` is a switch, for a setting that changes what the app does
+before your finger leaves it. Picking the wrong one implies a Save button that is not
+there, or implies its absence where there is one. It carries `role="switch"` rather than
+a styled checkbox, because the state is on/off with no indeterminate third and a reader
+should say "on" rather than "checked", and **the label is inside the control** so the
+whole row is the target -- a 34px switch is a poor thing to aim at with a thumb while
+the words next to it do nothing. The travel is the affordance, so `prefers-reduced-motion`
+drops the transition and keeps the movement; a colour swap with nothing moving is a
+state change with no gesture in it.
+
 **Notifications come from `shared/ui/toastStore.ts`, and only for things you cannot see.** Pushing
 one is a bare function call from anywhere, deliberately -- it is a module-level store
 rather than a context because a provider holding the list would re-render the virtualised

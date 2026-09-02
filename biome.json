@@ -12,6 +12,7 @@
 			"!test-results",
 			"!playwright-report",
 			"!test/fake-api/*.json",
+			"!src/shared/api/fooJeanSchema.d.ts",
 			"!pnpm-lock.yaml"
 		]
 	},

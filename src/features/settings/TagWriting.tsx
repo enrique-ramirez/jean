@@ -1,0 +1,259 @@
+import { useState } from "react";
+import type { TagWriterState } from "@/domain/track/tagWriter";
+import { labelOfField, useTagWriting } from "@/domain/track/useTagWriter";
+import { SUPPORTED_API_VERSION } from "@/shared/api/fooJean";
+import { Button } from "@/shared/ui/Button";
+import { Switch } from "@/shared/ui/Switch";
+import styles from "./Settings.module.css";
+
+// Jean never sees the player's filesystem, so the file is named the way the
+// component's own documentation names it.
+const CONFIG = "<foobar2000 profile>/foo_jean/config.json";
+
+// TODO: link the release once foo_jean is published.
+const IS_PUBLISHED = false;
+
+interface Explained {
+	// Three tones, but the badge names the state rather than collapsing to
+	// on/off: "Not connected" over a component that is answering perfectly and
+	// only wants a credential sends somebody to debug their network.
+	tone: "ok" | "warn" | "off";
+	badge: string;
+	summary: string;
+	// What to do about it, or null when there is nothing to do and saying so is
+	// the point.
+	fix: string | null;
+}
+
+// **Nothing here goes quiet.** Five of these are a component that is installed
+// and running, and in three the user has done everything right.
+function explain(state: TagWriterState): Explained {
+	switch (state.kind) {
+		case "absent":
+			return {
+				tone: "off",
+				badge: "Not installed",
+				summary:
+					"foo_jean is the companion component that writes tags back to your library. Without it Jean reads everything and changes nothing, which is still a complete app — just not one that can set a rating.",
+				fix: IS_PUBLISHED
+					? "Install it into foobar2000 and restart the player."
+					: "It is not published yet, so there is nothing to do here.",
+			};
+
+		case "not-listening":
+			return {
+				tone: "warn",
+				badge: "Not connected",
+				summary: `foo_jean is installed but could not start on port ${state.record.port}. ${state.error}`,
+				fix: state.portInUse
+					? `Another program already has that port. Change "port" in ${CONFIG} and restart foobar2000.`
+					: `Check ${CONFIG} and restart foobar2000.`,
+			};
+
+		case "unreachable":
+			return {
+				tone: "warn",
+				badge: "Not connected",
+				summary: `foo_jean says it is listening on port ${state.record.port}, but this device cannot reach it.`,
+				fix: `Something on the player is refusing the connection: usually "bindAddress" in ${CONFIG} restricted to one address, otherwise a firewall. Setting it to "0.0.0.0" accepts connections from your network, which is both the default and what beefweb itself does.`,
+			};
+
+		case "impostor":
+			return {
+				tone: "warn",
+				badge: "Not connected",
+				summary: `Something is listening on port ${state.record.port} and it is not foo_jean. Your token has not been sent to it.`,
+				fix: "That record is writable by anything that can reach the player, so it may simply be stale. Restart foobar2000 to have foo_jean publish it again.",
+			};
+
+		case "unsupported":
+			return {
+				tone: "warn",
+				badge: "Not connected",
+				summary: `foo_jean is speaking version ${state.apiVersion} of its API and this copy of Jean understands version ${SUPPORTED_API_VERSION}.`,
+				fix: "Update whichever of the two is older.",
+			};
+
+		case "no-token":
+			return {
+				tone: "warn",
+				badge: "Needs token",
+				summary: `foo_jean ${state.status.version} is running on port ${state.record.port}. It needs the token before it will accept anything.`,
+				fix: `Copy "authToken" from ${CONFIG} and paste it below. It is deliberately not published with the rest of the component's details, because anything that can reach the player can read those.`,
+			};
+
+		case "unauthorized":
+			return {
+				tone: "warn",
+				badge: "Token refused",
+				summary: "foo_jean refused that token.",
+				fix: `Check it against "authToken" in ${CONFIG}. It is regenerated only if you delete it.`,
+			};
+
+		case "ready":
+			return state.capabilities.canWrite
+				? {
+						tone: "ok",
+						badge: "Connected",
+						summary: `Connected to foo_jean ${state.status.version} on port ${state.record.port}.`,
+						fix: null,
+					}
+				: {
+						tone: "warn",
+						badge: "Connected",
+						summary:
+							"Connected, and this install permits no fields to be written.",
+						fix: `Add the fields you want to "allowedFields" in ${CONFIG} and restart foobar2000.`,
+					};
+	}
+}
+
+// Masked because it is a credential, revealable because it is pasted from a file
+// and one wrong character is otherwise unexplainable.
+function TokenField({
+	token,
+	onSave,
+	onCancel,
+}: {
+	token: string;
+	onSave: (token: string) => void;
+	// Absent while there is nothing to go back to: an unconfigured component has
+	// no earlier state for Cancel to mean.
+	onCancel?: () => void;
+}) {
+	const [draft, setDraft] = useState(token);
+	const [isVisible, setIsVisible] = useState(false);
+
+	// Committed rather than bound: the token keys the discovery query, so binding
+	// it would re-probe the component once per keystroke.
+	return (
+		<form
+			className={styles.tokenRow}
+			onSubmit={(event) => {
+				event.preventDefault();
+				onSave(draft.trim());
+			}}
+		>
+			<label className={styles.field}>
+				<span className={styles.label}>Token</span>
+				<input
+					className={styles.input}
+					type={isVisible ? "text" : "password"}
+					value={draft}
+					spellCheck={false}
+					autoComplete="off"
+					placeholder="Paste the token from config.json"
+					onChange={(event) => setDraft(event.target.value)}
+				/>
+			</label>
+
+			<Button
+				aria-pressed={isVisible}
+				onClick={() => setIsVisible((current) => !current)}
+			>
+				{isVisible ? "Hide" : "Show"}
+			</Button>
+			{onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}
+			<Button variant="primary" type="submit" disabled={draft.trim() === token}>
+				Save
+			</Button>
+		</form>
+	);
+}
+
+// Named for the component rather than for what it enables, because
+// troubleshooting is component-shaped: when a rating will not save, the question
+// is "is foo_jean running".
+export function TagWriting() {
+	const {
+		state,
+		isChecking,
+		token,
+		setToken,
+		allowedFields,
+		isFieldEnabled,
+		setFieldEnabled,
+		recheck,
+	} = useTagWriting();
+
+	const explained = explain(state);
+	const [isEditingToken, setIsEditingToken] = useState(false);
+
+	// A stored token that works is a setting nobody touches again, so it collapses
+	// to a button rather than sitting there as a filled field with a Save nothing
+	// needs pressing. It stays open where it is the panel's whole point: not yet
+	// pasted, or pasted and refused.
+	const needsToken = state.kind === "no-token" || state.kind === "unauthorized";
+	const wantsToken = needsToken || isEditingToken;
+	const isWorking = state.kind === "ready" && !wantsToken;
+
+	return (
+		<section className={styles.panel} aria-labelledby="foo-jean">
+			<div className={styles.panelHead}>
+				<h2 className={styles.panelTitle} id="foo-jean">
+					foo_jean
+				</h2>
+				<span className={styles.status} data-tone={explained.tone}>
+					{explained.badge}
+				</span>
+			</div>
+
+			<p className={styles.summary}>{explained.summary}</p>
+			{explained.fix ? <p className={styles.fix}>{explained.fix}</p> : null}
+
+			{wantsToken ? (
+				<TokenField
+					token={token}
+					onSave={(next) => {
+						setToken(next);
+						setIsEditingToken(false);
+					}}
+					onCancel={needsToken ? undefined : () => setIsEditingToken(false)}
+				/>
+			) : null}
+
+			{/* Narrowing only: a field missing here is permitted over there, not
+          switched on here. */}
+			{allowedFields.length > 0 ? (
+				<div className={styles.fields}>
+					<p className={styles.fieldsHead}>What Jean may write</p>
+					{allowedFields.map((field) => (
+						<Switch
+							key={field}
+							label={labelOfField(field)}
+							checked={isFieldEnabled(field)}
+							onChange={(enabled) => setFieldEnabled(field, enabled)}
+						/>
+					))}
+					<p className={styles.detail}>
+						This foobar2000 permits these fields and no others. That list lives
+						in <code>{CONFIG}</code>.
+					</p>
+
+					{isWorking ? (
+						<button
+							type="button"
+							className={styles.quiet}
+							onClick={() => setIsEditingToken(true)}
+						>
+							Change token
+						</button>
+					) : null}
+				</div>
+			) : null}
+
+			{/* Both of these are for getting *to* working: one retries after you have
+          fixed something, the other is a setup step. Neither has anything to
+          offer a panel that is already connected, so a working component shows
+          its state and its switches and nothing else. A reload re-runs
+          discovery if it is ever needed. */}
+			{isWorking ? null : (
+				<div className={styles.panelFoot}>
+					<Button onClick={recheck} disabled={isChecking}>
+						{isChecking ? "Checking..." : "Check again"}
+					</Button>
+				</div>
+			)}
+		</section>
+	);
+}

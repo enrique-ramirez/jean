@@ -33,6 +33,7 @@ import type {
 	TrackListHandle,
 } from "./listTypes";
 import type { Refs } from "./project";
+import { setRatingTarget } from "./ratingTarget";
 import styles from "./TrackBrowser.module.css";
 import { TrackList } from "./TrackList";
 import { targetsFrom } from "./trackTargets";
@@ -294,6 +295,17 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		pendingScroll.current = false;
 		scrollToTrack(selection.cursor, { align: "auto" });
 	}, [selection.cursor, scrollToTrack]);
+
+	// What `0`-`5` act on while this list is on screen. Published rather than
+	// bound to a key here, so the shortcut is declared once in the global scope
+	// and resolves its own target; see `useRateShortcut`.
+	const cursorRow = rows[selection.cursor];
+	useEffect(() => {
+		if (!cursorRow) return undefined;
+		const ref = indices ? indices[selection.cursor] : selection.cursor;
+		setRatingTarget({ source, ref, row: cursorRow });
+		return () => setRatingTarget(null);
+	}, [source, indices, selection.cursor, cursorRow]);
 
 	// Which index was last followed, rather than last seen, so scrolling away does
 	// not re-fire and drag the view back.

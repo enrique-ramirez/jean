@@ -2,6 +2,7 @@ import {
 	addFromLibrary,
 	artworkUrl,
 	copyPlaylistItems,
+	fetchLibraryItems,
 	fetchPlaylistItems,
 	fetchPlaylists,
 	LIBRARY_SORT,
@@ -10,7 +11,12 @@ import {
 	removePlaylistItems,
 	sortPlaylistItems,
 } from "@/shared/api/beefweb";
-import type { PlaybackPosition, TrackIdentity } from "@/shared/api/types";
+import type {
+	PlaybackPosition,
+	TrackColumns,
+	TrackIdentity,
+} from "@/shared/api/types";
+import { FIELD, sameTagValue, value } from "./fields";
 import { positionOf } from "./libraryIndex";
 import type { Refs } from "./project";
 
@@ -24,6 +30,11 @@ import type { Refs } from "./project";
 
 // What `/playqueue/add` needs, and what a media library row cannot supply on its
 // own -- it is in no playlist at all.
+export interface ResolvedTrack {
+	identity: TrackIdentity;
+	columns: string[];
+}
+
 export interface QueueTarget {
 	playlistId: string;
 	itemIndex: number;
@@ -39,6 +50,19 @@ export interface LibrarySource {
 	needsHeldCount: boolean;
 
 	artworkUrl: (ref: number) => string;
+	// A ref resolved to an absolute path, which neither source holds: the library
+	// API reports relative ones and a playlist row carries none. One request, on a
+	// deliberate action against a single track.
+	//
+	// **Null when the ref no longer names the row it was read from.** Indices move,
+	// and the failure mode is writing a tag to somebody else's file.
+	//
+	// `columns` are evaluated on the same round trip, since the trip is the cost.
+	identify: (
+		ref: number,
+		row: TrackColumns,
+		columns?: string[],
+	) => Promise<ResolvedTrack | null>;
 	fill: (targetId: string, refs: Refs, heldCount?: number) => Promise<unknown>;
 	addTo: (targetId: string, refs: Refs) => Promise<unknown>;
 	// `holding` is called only by a source that needs somewhere to put the tracks
@@ -177,6 +201,27 @@ const fromMediaLibrary = ({
 	needsHeldCount: false,
 
 	artworkUrl: (ref: number) => libraryArtworkUrl(paths[ref], subsongs[ref]),
+
+	// Checked against the relative path already held, which is exact. The `%path%`
+	// column is the player's absolute rendering; the item's `path` field is not.
+	identify: async (ref: number, _row: TrackColumns, columns: string[] = []) => {
+		const held = paths[ref];
+		if (!held) return null;
+
+		const { items } = await fetchLibraryItems({
+			columns: ["%path%", ...columns],
+			offset: ref,
+			count: 1,
+		});
+		const item = items[0];
+		if (!item || item.path !== held) return null;
+
+		return {
+			identity: { path: item.columns[0] || null, subsong: subsongs[ref] ?? 0 },
+			columns: item.columns.slice(1),
+		};
+	},
+
 	fill: fillByLibrary(paths, subsongs),
 	queueTargets: queueViaHolding(paths, subsongs),
 
@@ -208,6 +253,25 @@ const fromPlaylist = ({
 	needsHeldCount: true,
 
 	artworkUrl: (ref: number) => artworkUrl(playlistId, ref),
+
+	// Only the title to check against here. Weak -- two tracks can share one --
+	// but it catches the desktop inserting rows above, which shifts every index.
+	identify: async (ref: number, row: TrackColumns, columns: string[] = []) => {
+		const { rows } = await fetchPlaylistItems(playlistId, ref, 1, [
+			"%path%",
+			"%subsong%",
+			"%title%",
+			...columns,
+		]);
+		const found = rows[0];
+		if (!found || !sameTagValue(found[2], value(row, FIELD.title))) return null;
+
+		return {
+			identity: { path: found[0] || null, subsong: Number(found[1]) || 0 },
+			columns: found.slice(3),
+		};
+	},
+
 	fill: fillByCopy(playlistId),
 
 	// A ref already *is* a position here, so nothing is created or read back.

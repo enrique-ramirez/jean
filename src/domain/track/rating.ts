@@ -1,5 +1,5 @@
 import type { TrackColumns } from "@/shared/api/types";
-import { FIELD, number, sampleRows } from "./fields";
+import { FIELD, number, readValue, sampleRows } from "./fields";
 
 export const MAX_STARS = 5;
 
@@ -20,7 +20,7 @@ const popmStars = (raw: number) =>
 // Above 255 is not a rating in any convention, so it is not read as one and
 // specifically not clamped to five stars: inventing full marks out of a field
 // being used for something else is the loudest way to be wrong.
-function starsOf(raw: number | null): number | null {
+export function starsOf(raw: number | null): number | null {
 	if (raw === null || raw <= 0) return null; // `0` and `-1` are two spellings of "unrated"
 	if (raw <= MAX_STARS) return raw; // foobar2000's native scale, halves and all
 	if (raw <= 10) return raw / 2; // the 0-10 scale foo_playcount writes
@@ -29,19 +29,31 @@ function starsOf(raw: number | null): number | null {
 	return null;
 }
 
-export const ratingOf = (row: TrackColumns) =>
-	starsOf(number(row, FIELD.rating));
+// The tag before any scale has been guessed at. A write needs this rather than
+// the stars, which look the same whatever convention produced them.
+export const rawRatingOf = (row: TrackColumns) => number(row, FIELD.rating);
+
+// The same reading for a value Jean wrote, so an optimistic row and a loaded one
+// cannot disagree about what `''` means.
+export const rawRatingOfValue = (text: string) => {
+	const raw = readValue(text);
+	if (raw === null) return null;
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const ratingOf = (row: TrackColumns) => starsOf(rawRatingOf(row));
+
+// Narrower than whether it can be *read*: only foobar2000's native 0-5 is written
+// back, so anything above 5 is on another scale and is left alone. Unrated
+// declares no scale, so it is writable.
+export const isWritableScale = (raw: number | null) =>
+	raw === null || raw <= MAX_STARS;
 
 // A file that says 3.5 says 3.5; showing 4 would be Jean disagreeing with the
 // player. Rounding to the nearest half is only so a rescaled value has a star to
 // land on.
 export const toStars = (rating: number) => Math.round(rating * 2) / 2;
-
-// Scanned in full rather than sampled, unlike every other capability probe:
-// ratings are sparse enough that a sample misses them outright on a good few
-// libraries, silently.
-export const hasAnyRating = (rows: TrackColumns[]) =>
-	rows.some((row) => ratingOf(row) !== null);
 
 // What a future rating control has to ask before choosing an increment of 1 or
 // 0.5: introducing halves into a library that has none is a change to somebody's

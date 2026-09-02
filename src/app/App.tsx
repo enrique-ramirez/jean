@@ -1,4 +1,4 @@
-import { Keyboard, Moon, PanelLeft, Sun } from "lucide-react";
+import { Keyboard, Moon, PanelLeft, Settings, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
@@ -17,6 +17,8 @@ import {
 	withoutJeanPlaylists,
 } from "@/domain/track/jeanPlaylists";
 import { EMPTY_VIEW, project, wholeLibrary } from "@/domain/track/project";
+import { useRateShortcut } from "@/domain/track/useRateShortcut";
+import { TagWriterProvider } from "@/domain/track/useTagWriter";
 import { albumsOf } from "@/features/home/albums";
 import { HomeView } from "@/features/home/HomeView";
 import { buildShelves, refsOfShelf } from "@/features/home/shelves";
@@ -27,6 +29,7 @@ import { PlaylistView } from "@/features/playlist/PlaylistView";
 import { QueuePanel } from "@/features/queue/QueuePanel";
 import { LibrarySearchField } from "@/features/search/LibrarySearchField";
 import { SearchResults } from "@/features/search/SearchResults";
+import { SettingsView } from "@/features/settings/SettingsView";
 import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
@@ -46,7 +49,17 @@ import { useTheme } from "./useTheme";
 
 const SEEK_STEP = 5;
 
+// Wraps the shell so the control in a row and the screen that configures it read
+// one resolution.
 export function App() {
+	return (
+		<TagWriterProvider>
+			<Shell />
+		</TagWriterProvider>
+	);
+}
+
+function Shell() {
 	usePlayerStream();
 
 	const { data: playlists = [] } = usePlaylists();
@@ -74,7 +87,8 @@ export function App() {
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
-	const { shelf, isSearch, isAll, isHome, isLibrary } = resolveRoute(route);
+	const { shelf, isSearch, isAll, isHome, isSettings, isLibrary } =
+		resolveRoute(route);
 
 	// The library is loaded for the views that show it. Search asks for it
 	// separately, on focus, because reaching for the field is the ask and the
@@ -85,6 +99,7 @@ export function App() {
 	const search = useLibrarySearch(library, playlists);
 	const home = useHomePlayback({ library, playlists, navigate });
 
+	const rateShortcut = useRateShortcut();
 	const playing = usePlayingFrom();
 	const playingFrom = useMemo(() => routeOfPlayingSet(playing), [playing]);
 
@@ -211,6 +226,12 @@ export function App() {
 		toggleQueue,
 		showShortcuts: () => setIsSheetOpen((current) => !current),
 		toggleTheme,
+		rate0: () => rateShortcut(0),
+		rate1: () => rateShortcut(1),
+		rate2: () => rateShortcut(2),
+		rate3: () => rateShortcut(3),
+		rate4: () => rateShortcut(4),
+		rate5: () => rateShortcut(5),
 	});
 
 	return (
@@ -261,6 +282,13 @@ export function App() {
 					/>
 					<Button
 						variant="ghost"
+						icon={Settings}
+						aria-label="Settings"
+						aria-current={isSettings || undefined}
+						onClick={() => openRoute(ROUTE.settings)}
+					/>
+					<Button
+						variant="ghost"
 						icon={theme === "dark" ? Sun : Moon}
 						aria-label={
 							theme === "dark"
@@ -296,7 +324,9 @@ export function App() {
 				/>
 
 				<main className={styles.main} ref={scrollRef}>
-					{isHome ? (
+					{isSettings ? (
+						<SettingsView />
+					) : isHome ? (
 						<HomeView
 							library={library}
 							playlists={playlists}

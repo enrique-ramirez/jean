@@ -5,6 +5,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
 
 import type { LibraryInfo, PlayerState } from "../../src/shared/api/types.ts";
+import type { FooJeanOptions } from "../fake-api/fooJean.ts";
 import { createServer, type FakeServer } from "../fake-api/server.ts";
 import {
 	createState,
@@ -38,6 +39,8 @@ interface JeanFixtures {
 	library: Partial<LibraryInfo>;
 	hasLibraryApi: boolean;
 	retagged: Record<string, Track>;
+	fooJean: FooJeanOptions | null;
+	fooJeanToken: string | null;
 	playerState: Partial<PlayerState> | null;
 	player: FakePlayer;
 	settings: Record<string, unknown>;
@@ -66,7 +69,13 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 		async ({}, use) => {
 			const server = createServer({ serveDir: DIST });
 			await new Promise<void>((resolve) => server.listen(0, () => resolve()));
+			// Listens for every test whether or not one asks for it; what makes it
+			// absent is the discovery record beefweb serves.
+			await new Promise<void>((resolve) =>
+				server.agent.listen(0, () => resolve()),
+			);
 			await use(server);
+			await new Promise<void>((resolve) => server.agent.close(() => resolve()));
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		},
 		{ scope: "worker" },
@@ -145,6 +154,14 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 	// fixture growing an invented album for it.
 	retagged: [{}, { option: true }],
 
+	// The optional tag-writing component and the states it can present; absent by
+	// default. See `fake-api/fooJean.ts` and `test/README.md`.
+	fooJean: [null, { option: true }],
+
+	// Seeded into localStorage separately from `settings`, because the token may
+	// never travel through beefweb's clientconfig.
+	fooJeanToken: [null, { option: true }],
+
 	// Overrides merged onto the captured player state, for the things that vary
 	// between installs and are not in the fixture: permissions, the volume range,
 	// which playback orders the player actually offers.
@@ -164,6 +181,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 			withoutLibraryPlaylist,
 			library,
 			playerState,
+			fooJean,
 		},
 		use,
 	) => {
@@ -188,6 +206,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 					retagged,
 					library,
 					player: playerState,
+					fooJean,
 				}),
 			),
 		);
@@ -219,7 +238,10 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 	// that wants to assert on it opts out with test.use({ motion: 'allow' }).
 	motion: ["reduce", { option: true }],
 
-	page: async ({ page, settings, firstRun, player, motion }, use) => {
+	page: async (
+		{ page, settings, firstRun, player, motion, fooJeanToken },
+		use,
+	) => {
 		void player;
 		if (motion === "reduce")
 			await page.emulateMedia({ reducedMotion: "reduce" });
@@ -228,7 +250,12 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 				for (const [key, value] of Object.entries(values))
 					window.localStorage.setItem(key, JSON.stringify(value));
 			},
-			firstRun ? settings : { ...SEEDED_SETTINGS, ...settings },
+			{
+				...(firstRun ? settings : { ...SEEDED_SETTINGS, ...settings }),
+				...(fooJeanToken === null
+					? null
+					: { "jean.fooJeanToken": fooJeanToken }),
+			},
 		);
 		await use(page);
 	},

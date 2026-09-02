@@ -73,21 +73,23 @@ test.describe("reading a rating", () => {
 	});
 });
 
-// A library nobody has ever rated is not a library of unrated tracks -- it is a
-// question the player was never asked. Every other column answers '--' and is
-// quiet about it; five empty stars on every row is not, so the column goes.
+// A reversal: this used to assert the column was hidden. See
+// `domain/track/CLAUDE.md`.
 test.describe("a library with no ratings at all", () => {
 	test.use({ withoutFields: ["%lastfm_play_count%"] });
 
-	test("does not get the column", async ({ page }) => {
+	test("still gets the column, drawn quietly", async ({ page }) => {
 		await openLibrary(page);
-		await expect(trackRow(page, 0).getByRole("img")).toHaveCount(0);
-		// Listed as unavailable rather than removed, which is what every other
-		// column this player cannot supply does: the feature exists, this library
-		// has nothing to show through it.
+		await expect(trackRow(page, 0).getByRole("img")).toHaveAccessibleName(
+			"Unrated",
+		);
+	});
+
+	test("is offered in the columns menu like any other", async ({ page }) => {
+		await openLibrary(page);
 		await page.getByRole("button", { name: "View options" }).click();
 		await expect(
-			page.getByRole("menuitemcheckbox", { name: "Rating (not available)" }),
+			page.getByRole("menuitemcheckbox", { name: "Rating", exact: true }),
 		).toBeVisible();
 	});
 });

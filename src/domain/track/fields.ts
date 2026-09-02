@@ -37,9 +37,12 @@ export const FIELD = Object.fromEntries(
 const UNRESOLVED = "?";
 const ABSENT = new Set([UNRESOLVED, "", "N/A"]);
 
+// Split out so a value held outside a row reads by the same rules.
+export const readValue = (raw: string | undefined): string | null =>
+	raw === undefined || ABSENT.has(raw) ? null : raw;
+
 export function value(row: TrackColumns, field: number): string | null {
-	const raw = row[field];
-	return raw === undefined || ABSENT.has(raw) ? null : raw;
+	return readValue(row[field]);
 }
 
 export function number(row: TrackColumns, field: number): number | null {

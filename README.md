@@ -176,6 +176,7 @@ if it is not there — a bare beefweb install still gets a complete app.
 | **Required** | [`foo_beefweb`](https://github.com/hyperblast/beefweb) | Everything core: playback, playlists, the play queue, outputs, artwork, filesystem browsing, search |
 | **Recommended** | `foo_beefweb` **0.11+** | The media library, read directly instead of through an autoplaylist. Unreleased at the time of writing; Jean detects it and falls back cleanly |
 | **Optional** | `foo_enhanced_playcount` *or* `foo_playcount` | Play counts and first/last played, which drive the Most Played, Recently Played and "haven't heard since" shelves |
+| **Optional** | [`foo_jean`](https://github.com/enrique-ramirez/foo_jean) | Writing tags back. Today that is **ratings**: without it the stars are read-only, with it you can set one from any row. beefweb has no tag-writing endpoint at all, which is why this exists |
 | **Optional** | any component publishing title-formatting fields | Auto-detected. Jean probes the fields it knows about and enables whatever resolves |
 
 **Some features need no component at all**, because they read tags your files already carry:
@@ -183,7 +184,8 @@ if it is not there — a bare beefweb install still gets a complete app.
 - **Lyrics**, from the `UNSYNCED LYRICS` tag — including LRC-timestamped lyrics that scroll
   in time with playback. [`foo_openlyrics`](https://github.com/jacquesh/foo_openlyrics) is a
   good way to *populate* that tag, but Jean does not require it and never reads it directly.
-- Ratings, ReplayGain, composer, publisher, ISRC, and all standard metadata.
+- Ratings, ReplayGain, composer, publisher, ISRC, and all standard metadata. *Reading*
+  them needs nothing; writing a rating back is the one thing that needs `foo_jean`.
 
 Jean works with **foobar2000** and, on a best-effort basis, **DeaDBeeF** — beefweb supports
 both, and feature detection covers most of the difference.

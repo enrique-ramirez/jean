@@ -200,6 +200,14 @@ test('does the thing', async ({ page, player }) => {
   foobar2000 with no playback-statistics component, and everything built on play
   counts should disappear rather than break. This is the promise nothing else
   can check: a bare install must get a complete app, never a dead control.
+- **`fooJean`** installs the tag-writing component, in whichever state a spec needs:
+  absent (the default -- beefweb answers `null` and Jean is the app it was before this
+  feature existed), `{ listening: false }` with an error, `{ reachable: false }` for an
+  install that answers nothing, `{ agentName: ... }` for something else answering on the
+  advertised port, `{ allowedFields: [] }` for an install with writing switched off, and
+  `{ failWrites: 403 }` and friends for the statuses that cannot be provoked otherwise.
+  A write reaches the fake's own tracks, so a reload reads the value back through
+  beefweb -- which is what proves the app is not showing its own optimistic cache.
 - **`retagged`** patches tag values onto captured tracks, keyed by title:
   `test.use({ retagged: { Nutshell: { '%artist%': 'Alice in Chains feat. X' } } })`.
   One person's library is not every library -- this capture has no featured
@@ -323,6 +331,20 @@ foobar2000 -- and both are now modelled:
   status. The fake destroys the socket at the same threshold. Before it did,
   naming all 30,441 tracks to play All Music passed every test and reached the
   player never.
+- **`foo_jean` is a second listener on its own port, not another route.** The component
+  runs *beside* the player, so every call to it is cross-origin, is preceded by a CORS
+  preflight for the `Authorization` header, and can fail by not answering at all. None
+  of those exist on a same-origin route, and all three are what the feature has to
+  survive -- so `fake-api/fooJean.ts` gets its own `http.Server`, started and stopped by
+  the same worker fixture that owns the beefweb one. `test.use({ fooJean: ... })` puts
+  it into any of its states and `fooJeanToken` seeds the credential.
+  Two consequences worth knowing before writing an assertion. **The unreachable state
+  destroys the connection rather than answering 500** -- a refused socket and an error
+  response are different events in the browser, and the app has to tell them apart:
+  "installed, advertised, healthy, unreachable" is a real state that a hardened
+  `bindAddress` or a firewall produces, and it must never render as "not installed". And **the preflights land in `player.requests`**: both
+  servers record into one log, so counting writes means filtering to `POST`. An
+  `OPTIONS` the browser sent on its own is not a request the app made.
 - **A set added from the library comes back in the media library's browse
   order** -- album artist, album, track -- and not in the order it was given, nor
   in the file-path order the library endpoint pages in. The fake used to preserve

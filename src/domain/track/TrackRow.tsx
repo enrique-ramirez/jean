@@ -6,25 +6,53 @@ import {
 import { formatTime } from "@/domain/player/position";
 import type { TrackColumns } from "@/shared/api/types";
 import { Artwork } from "@/shared/ui/Artwork";
-import { Stars } from "@/shared/ui/Stars";
+import { Stars, StarsInput } from "@/shared/ui/Stars";
 import type { Column } from "./columns";
 import { FIELD, number, timestamp, value } from "./fields";
 import { discNumber } from "./grouping";
 import type { LibrarySource } from "./librarySource";
-import { MAX_STARS, ratingOf, toStars } from "./rating";
+import {
+	isWritableScale,
+	MAX_STARS,
+	rawRatingOf,
+	rawRatingOfValue,
+	starsOf,
+	toStars,
+} from "./rating";
+import { useWrittenRating } from "./ratingStore";
 import styles from "./TrackRow.module.css";
+import { useTagWriting } from "./useTagWriter";
 
 // An unreadable rating is drawn as unrated rather than as '--'. The column is
 // already hidden wholesale when the player cannot resolve the field at all, so
 // inside a library that has ratings the only thing an empty tag can mean is
 // that this track has none.
-function Rating({ row }: { row: TrackColumns }) {
-	const rating = ratingOf(row);
+function Rating({
+	row,
+	source,
+	itemIndex,
+}: {
+	row: TrackColumns;
+	source: LibrarySource;
+	itemIndex: number;
+}) {
+	const { canRateInline, rate } = useTagWriting();
+	const written = useWrittenRating(row);
+
+	const raw =
+		written === undefined ? rawRatingOf(row) : rawRatingOfValue(written);
+	const rating = starsOf(raw);
 	const stars = rating === null ? 0 : toStars(rating);
+	const label = rating === null ? "Unrated" : `${stars} of ${MAX_STARS} stars`;
+
+	if (!canRateInline || !isWritableScale(raw))
+		return <Stars value={stars} label={label} />;
+
 	return (
-		<Stars
+		<StarsInput
 			value={stars}
-			label={rating === null ? "Unrated" : `${stars} of ${MAX_STARS} stars`}
+			label={label}
+			onRate={(next) => rate({ source, ref: itemIndex, row }, next)}
 		/>
 	);
 }
@@ -38,7 +66,17 @@ function shortDate(row: TrackColumns) {
 	});
 }
 
-function Cell({ column, row }: { column: Column; row: TrackColumns }) {
+function Cell({
+	column,
+	row,
+	source,
+	itemIndex,
+}: {
+	column: Column;
+	row: TrackColumns;
+	source: LibrarySource;
+	itemIndex: number;
+}) {
 	const className = [
 		styles.cell,
 		column.align === "right" ? styles.numeric : null,
@@ -49,7 +87,7 @@ function Cell({ column, row }: { column: Column; row: TrackColumns }) {
 	if (column.kind === "rating") {
 		return (
 			<span className={className}>
-				<Rating row={row} />
+				<Rating row={row} source={source} itemIndex={itemIndex} />
 			</span>
 		);
 	}
@@ -211,7 +249,13 @@ function TrackRowComponent({
 			</span>
 
 			{columns.map((column) => (
-				<Cell key={column.id} column={column} row={row} />
+				<Cell
+					key={column.id}
+					column={column}
+					row={row}
+					source={source}
+					itemIndex={itemIndex}
+				/>
 			))}
 		</div>
 	);

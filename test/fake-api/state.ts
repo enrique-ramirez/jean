@@ -7,6 +7,7 @@ import type {
 	PlayerState,
 	PlaylistInfo,
 } from "../../src/shared/api/types.ts";
+import { type FooJeanOptions, fooJeanState } from "./fooJean.ts";
 
 // A captured track: a title-formatting expression to the value the player
 // answered with. A *missing* key is a field this player cannot resolve, which
@@ -320,6 +321,8 @@ export function createState({
 	// no compilation on it, and neither is worth a sixth album of invented
 	// fixture. Stating the tag a test needs keeps everything else captured.
 	retagged = {},
+	// The optional tag-writing component; see `fooJean.ts` for its states.
+	fooJean = null,
 }: {
 	playlists?: FakePlaylist[];
 	// Null as well as absent, because the Playwright fixtures default every
@@ -331,6 +334,7 @@ export function createState({
 	withoutFields?: string[];
 	library?: Partial<LibraryInfo>;
 	retagged?: Record<string, Track>;
+	fooJean?: FooJeanOptions | null;
 } = {}) {
 	const patches = Object.entries(retagged);
 	if (patches.length > 0) {
@@ -516,6 +520,10 @@ export function createState({
 		},
 		requests: state.requests,
 		library: state.library,
+		fooJean: fooJeanState(fooJean),
+		// Separate objects from the playlists' whenever `withoutFields` is in play,
+		// so a tag write has to reach both.
+		libraryTracks,
 		get playlists() {
 			return state.playlists;
 		},

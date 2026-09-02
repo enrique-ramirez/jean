@@ -1,4 +1,4 @@
-import { ListEnd, ListMusic, ListPlus, Music } from "lucide-react";
+import { Check, ListEnd, ListMusic, ListPlus, Music, Star } from "lucide-react";
 import {
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
@@ -14,12 +14,46 @@ import { FIELD, value } from "./fields";
 import { withoutJeanPlaylists } from "./jeanPlaylists";
 import type { LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
+import {
+	isWritableScale,
+	MAX_STARS,
+	rawRatingOf,
+	rawRatingOfValue,
+	starsOf,
+} from "./rating";
+import { useWrittenRating } from "./ratingStore";
 import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { QUEUE_LIMIT, useQueueTracks } from "./useQueueTracks";
+import { useTagWriting } from "./useTagWriter";
 
 const sameList = (a: number[], b: number[]) =>
 	a.length === b.length && a.every((entry, at) => entry === b[at]);
+
+// Descending, and `No rating` below a separator as the only entry that takes
+// something away. Plain entries with a check on the current value, since
+// `ActionMenu` has no checkable row.
+const ratingItems = (
+	current: number | null,
+	onRate: (stars: number) => void,
+) => [
+	...Array.from({ length: MAX_STARS }, (_, at) => {
+		const stars = MAX_STARS - at;
+		return {
+			id: `rate-${stars}`,
+			label: stars === 1 ? "1 star" : `${stars} stars`,
+			icon: stars === current ? Check : Star,
+			onSelect: () => onRate(stars),
+		};
+	}),
+	{ type: "separator" as const },
+	{
+		id: "rate-none",
+		label: "No rating",
+		icon: current === null ? Check : undefined,
+		onSelect: () => onRate(0),
+	},
+];
 
 // One menu for a list of any length. The gestures go on the container, not the
 // rows: a virtualised list must not carry a handler per row, and it unmounts
@@ -41,11 +75,23 @@ export function useTrackContextMenu({
 	const permissions = usePermissions();
 	const addTracks = useAddTracks();
 	const { queueTracks, canQueue } = useQueueTracks();
+	const { canRate, rate } = useTagWriting();
 	const menu = useContextMenu();
 
 	// View positions, not playlist indices. The translation happens once, where
 	// the request is built.
 	const [positions, setPositions] = useState<number[]>([]);
+
+	// One track only: forty tag writes behind a single click is an invisible cost
+	// and an undo that is forty more.
+	const rated = positions.length === 1 ? rows[positions[0]] : undefined;
+	const written = useWrittenRating(rated);
+	const rawRating =
+		rated === undefined
+			? null
+			: written === undefined
+				? rawRatingOf(rated)
+				: rawRatingOfValue(written);
 
 	const canEdit = permissions.changePlaylists !== false;
 
@@ -96,6 +142,9 @@ export function useTrackContextMenu({
 			(entry) => entry.id !== source.playlistId,
 		);
 
+		const rateable =
+			canRate && rated !== undefined && isWritableScale(rawRating);
+
 		return [
 			// Above the separator: the one action here about what happens next rather
 			// than where a track lives.
@@ -109,6 +158,23 @@ export function useTrackContextMenu({
 				disabled: !canQueue || count > QUEUE_LIMIT,
 				onSelect: () => queueTracks({ source, itemIndices }),
 			},
+			// The keyboard's and the thumb's only route to a rating; the row's stars
+			// are twelve pixels each.
+			...(rateable
+				? [
+						{
+							id: "rate",
+							label: "Rating",
+							icon: Star,
+							items: ratingItems(starsOf(rawRating), (stars: number) =>
+								rate(
+									{ source, ref: itemIndices[0], row: rated as TrackColumns },
+									stars === 0 ? null : stars,
+								),
+							),
+						},
+					]
+				: []),
 			{ type: "separator" as const },
 			{
 				id: "add",
@@ -134,6 +200,10 @@ export function useTrackContextMenu({
 		addTracks,
 		canQueue,
 		queueTracks,
+		canRate,
+		rate,
+		rated,
+		rawRating,
 	]);
 
 	const header = useMemo(() => {

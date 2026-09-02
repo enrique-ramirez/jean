@@ -429,8 +429,11 @@ re-indexes the library. Both appear in the loading rules as requirements for
 
 **Listening on this device is built**, through `foo_jean`'s stream. The control
 is a two-row output picker in the status bar -- the player, or this browser -- and
-it is a *handoff*: the component mutes the player while a listener is attached,
-and releasing hands it back. Jean sends no mute of its own. `domain/player/listener.ts`
+it is a *handoff*: the player is meant to go quiet while a listener is attached,
+and releasing hands it back. **That muting belongs to the component and is not
+built yet**, so today both play at once. Jean sends no mute of its own and must
+not grow one -- with two listeners it becomes a reference count, and only the
+component can see the listeners to count. `domain/player/listener.ts`
 is the seam and `listenerStore.ts` the connection; see that folder's CLAUDE.md
 for the codec choice, the stream clock and the failure states. **`canStream`
 absent means false**, so an older component gets no button rather than one that

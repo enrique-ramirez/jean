@@ -87,19 +87,22 @@ other way on a range reaching -100 -- the midpoint lands at -6 dB and everything
 
 **It is a handoff, not a second speaker.** The sound is in one place and the
 control says which -- the player, or this browser. That is why it is drawn as a
-two-row picker rather than a "listen here too" toggle: `foo_jean` mutes the
-player while a listener is attached, so there is only ever one answer to draw,
-and releasing hands it back. The one idea worth taking from Roon's zone menu and
+two-row picker rather than a "listen here too" toggle: the player is meant to go
+quiet while a listener is attached, so there is only ever one answer to draw, and
+releasing hands it back. The one idea worth taking from Roon's zone menu and
 Sonos's room tray is that you read *where* it is playing without opening
 anything, which is what the collapsed icon does. Deliberately **not** a cast
 glyph: casting pushes audio away to a box you are not holding, and this moves it
 to the device you are.
 
-**Muting the player is the component's job, not Jean's.** An earlier draft made
-it an explicit toggle beside the picker on the argument that automatic muting
-becomes a reference count with two listeners. It does -- and the component is
-where that count actually lives, so it is the only place that can get it right.
-Jean sends no mute and reads none.
+**Muting the player is the component's job, not Jean's, and it is not built
+yet.** So today both play at once: the sound arrives here and the player's
+speakers carry on. An earlier draft made it an explicit toggle beside the picker
+on the argument that automatic muting becomes a reference count once there are
+two listeners. It does -- and the component is where that count actually lives,
+so it is the only place that can get it right. Jean sends no mute and reads
+none, and must not grow one: a client counting listeners it cannot see would be
+the bug that argument predicts.
 
 **Only two devices can be named, and that is the whole list.** "This device" is
 always true on the device you are holding and needs no label and no user-agent

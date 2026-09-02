@@ -189,7 +189,7 @@ if it is not there — a bare beefweb install still gets a complete app.
 | **Required** | [`foo_beefweb`](https://github.com/hyperblast/beefweb) | Everything core: playback, playlists, the play queue, outputs, artwork, filesystem browsing, search |
 | **Recommended** | `foo_beefweb` **0.11+** | The media library, read directly instead of through an autoplaylist. Unreleased at the time of writing; Jean detects it and falls back cleanly |
 | **Optional** | `foo_enhanced_playcount` *or* `foo_playcount` | Play counts and first/last played, which drive the Most Played, Recently Played and "haven't heard since" shelves |
-| **Optional** | [`foo_jean`](https://github.com/enrique-ramirez/foo_jean) | Two things beefweb cannot do. **Writing tags back** -- today that is ratings, so without it the stars are read-only. And **listening on this device**: a control beside the volume moves the sound out of the player and into whatever browser you are holding, and hands it back when you are done |
+| **Optional** | [`foo_jean`](https://github.com/enrique-ramirez/foo_jean) | Two things beefweb cannot do. **Writing tags back** -- today that is ratings, so without it the stars are read-only. And **listening on this device**: a control beside the volume plays what the player is playing in whatever browser you are holding, and hands it back when you are done |
 | **Optional** | any component publishing title-formatting fields | Auto-detected. Jean probes the fields it knows about and enables whatever resolves |
 
 **Some features need no component at all**, because they read tags your files already carry:

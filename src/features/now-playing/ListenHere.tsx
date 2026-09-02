@@ -10,9 +10,11 @@ import styles from "./ListenHere.module.css";
 // menu and Sonos's room tray: you read where it is playing without opening
 // anything, because the collapsed control already says so.
 //
-// The alternative shape, a "listen here too" toggle, was rejected: it makes both
-// rooms play at once, and the player is muted while a listener is attached, so
-// there is only ever one answer to draw.
+// The alternative shape, a "listen here too" toggle, was rejected: the player is
+// meant to go quiet while a listener is attached, so there is only ever one
+// answer to draw. **The muting is the component's and is not built yet**, so
+// today both do play at once; Jean must not paper over that with a mute of its
+// own. See `domain/player/CLAUDE.md`.
 //
 // Deliberately not a cast glyph. Casting pushes audio away to a box you are not
 // holding; this moves it to the device you are, and the arrow points the other

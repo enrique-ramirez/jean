@@ -1,0 +1,31 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		// A service worker is not a page: no `document`, no `window`, and a `self`
+		// that is a `ServiceWorkerGlobalScope`. Checking it against the DOM would
+		// let all three through and fail at the one place there is no console.
+		"lib": ["ES2023", "WebWorker"],
+		"types": [],
+		"allowImportingTsExtensions": true,
+		"erasableSyntaxOnly": true,
+		"resolveJsonModule": true,
+
+		"composite": true,
+		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.sw.tsbuildinfo"
+	},
+	// The modules the worker shares with the page are listed in both scopes on
+	// purpose: they run in both, so they have to compile against both.
+	"include": [
+		"demo/sw.ts",
+		"demo/clock.ts",
+		"demo/cover.ts",
+		"demo/journal.ts",
+		"demo/library.ts",
+		"demo/responder.ts",
+		"test/fake-api/http.ts",
+		"test/fake-api/routes.ts",
+		"test/fake-api/state.ts",
+		"test/fake-api/fooJean.ts",
+		"src/shared/api/types.ts"
+	]
+}

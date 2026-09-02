@@ -4,6 +4,9 @@ Jean (/ʝan/) is a replacement web UI for the [beefweb](https://github.com/hyper
 controlling foobar2000 - and, best-effort, DeaDBeeF - from any browser on your
 network. Namely affectively for the feelings it evoked on me when the idea came.
 
+**[Try it](https://enrique-ramirez.github.io/jean/)** -- the whole app, running against
+a library and a player that live in your browser. Nothing to install, nothing plays.
+
 Jean shows your playlists and your whole library, in a compact list or grouped by
 album, over a virtualised view that stays smooth at 30,000 tracks. Search the library
 from the bar at the top -- accents optional, `babasonicos` finds `Babasónicos` -- or

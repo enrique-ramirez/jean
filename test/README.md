@@ -71,6 +71,21 @@ strategies. The answers are recorded in CLAUDE.md, which is where measurements
 live -- not in comments, here or in `src`. Re-run it when the endpoint changes,
 since caching is on the PR's list of things it does not do yet.
 
+### The routes run in two places
+
+`routes.ts` and `fooJean.ts`'s `handleAgent` have no host in them. `server.ts`
+and `agentServer.ts` give them a node socket for the suite; `demo/sw.ts` gives
+the same tables a `fetch` event, so the live demo is this player rather than a
+second one written to look like it. The seam is `Responder` in `http.ts` -- four
+methods, which `ServerResponse` satisfies as it stands.
+
+Two consequences worth knowing before adding a route. Anything that reaches for
+a socket, a file or a `Buffer` belongs in the host files rather than in the
+route tables; the artwork routes are the worked example, and take a
+`(name, headers, response)` function instead of a path. And the fixtures are
+*imported* rather than read off disk, because one of the two hosts has no
+filesystem.
+
 ### The media library
 
 The fake serves the beefweb 0.11+ library API — `/library/info`, `/library/items`,
@@ -213,6 +228,14 @@ test('does the thing', async ({ page, player }) => {
   control rather than one that fails. Assert on `player.requests` and
   `player.streamFormats` -- the latter because `requests` records paths without
   their query, and the whole codec choice is a claim about the query string.
+- **`fooJean` also carries pairing**: `pairingOpen: true` is somebody having just pressed
+  the button on the player, and it is **single-grant in the fake as it is in the
+  component** — the first success closes it, so a spec asserting that a second press is
+  refused is asserting the real behaviour. `failPairing` with `pairingError` reaches the
+  branches nothing else provokes: a 403 worded for the local-network refusal, a 429, and
+  a 404 for a component too old to have the route. The fake also refuses a body that is
+  not `application/json`, because a client that stopped sending that header would pass
+  every other assertion here and fail against a real install.
 - **`retagged`** patches tag values onto captured tracks, keyed by title:
   `test.use({ retagged: { Nutshell: { '%artist%': 'Alice in Chains feat. X' } } })`.
   One person's library is not every library -- this capture has no featured

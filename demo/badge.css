@@ -1,0 +1,93 @@
+/* The one piece of UI the demo adds to Jean.
+ *
+ * **Vocabulary**: a *chip*, not a banner and not a ribbon. A banner takes a
+ * full-width strip that the app then has to be laid out under, which changes
+ * the thing it is here to show; a corner ribbon reads as a template's "demo"
+ * watermark. A chip sits over the app, says one thing, and can be dismissed --
+ * and having been dismissed, stays dismissed.
+ *
+ * Drawn in the app's own tokens rather than in colours of its own, so it looks
+ * like part of the product in both themes rather than like something bolted
+ * over it.
+ *
+ * **Bottom left, and that is the whole of the placement decision.** The top
+ * right is where it wants to go and is the one place it may not: the toolbar's
+ * own controls are there, and a chip sitting over the Settings button is not a
+ * label on the app, it is a hole in it. Above the status bar rather than beside
+ * it, because that bar is the same height on both surfaces and is the only
+ * fixed thing to measure from. */
+
+.demo-chip {
+	position: fixed;
+	z-index: 60;
+	inset-block-end: calc(
+		var(--statusbar-height, 76px) +
+		env(safe-area-inset-bottom, 0px) +
+		12px
+	);
+	inset-inline-start: calc(env(safe-area-inset-left, 0px) + 12px);
+
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px 6px 12px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface-raised);
+	box-shadow: var(--shadow);
+	color: var(--muted);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.demo-chip b {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.demo-chip button {
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--faint);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.demo-chip button:hover {
+	color: var(--text);
+}
+
+/* Outranks `.demo-chip button` on specificity rather than following it, which
+ * is the house rule: a rule that overrides another must win on specificity, not
+ * on the order two files happened to be imported in. */
+.demo-chip .demo-chip-reset {
+	padding: 4px 8px;
+	border-radius: 999px;
+	background: var(--surface-sunken);
+}
+
+.demo-chip .demo-chip-close {
+	display: grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	font-size: 14px;
+}
+
+.demo-chip .demo-chip-close:hover {
+	background: var(--surface-sunken);
+}
+
+/* Below the breakpoint the app is a different design rather than a narrower
+ * one, and there is no room for a sentence beside the label. */
+@media (max-width: 860px) {
+	.demo-chip .demo-chip-note {
+		display: none;
+	}
+}

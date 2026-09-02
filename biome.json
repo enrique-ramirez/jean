@@ -9,6 +9,7 @@
 		"includes": [
 			"**",
 			"!dist",
+			"!dist-demo",
 			"!test-results",
 			"!playwright-report",
 			"!test/fake-api/*.json",
@@ -119,7 +120,7 @@
 			}
 		},
 		{
-			"includes": ["test/**", "scripts/**", "vite.config.ts"],
+			"includes": ["test/**", "scripts/**", "vite.config.ts", "demo/build.ts"],
 			"linter": {
 				"rules": {
 					"suspicious": {

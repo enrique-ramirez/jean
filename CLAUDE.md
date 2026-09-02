@@ -96,6 +96,7 @@ when you are not:
 | `src/features/queue/CLAUDE.md` | the play queue panel and how it is drawn |
 | `src/features/search/CLAUDE.md` | the search control |
 | `src/app/CLAUDE.md` | the shell, breakpoints and themes |
+| `demo/CLAUDE.md` | the live demo: the fake player in a service worker |
 
 Three documents sit outside this one and do not overlap with it: `API.md` is what
 beefweb and foobar2000 actually do, measured; `CONTRIBUTING.md` is the development
@@ -194,15 +195,29 @@ That leaves the attack needing someone who can already run a listener on the pla
 itself, which is a much larger problem than Jean can solve. Step 2 is cheap and is not
 optional.
 
-**The token is pasted once, by hand.** It is generated on the component's first run into
-`<profile>/foo_jean/config.json` and is deliberately **not** in the advertisement —
-anyone who can reach beefweb can read that file, and "can reach beefweb" must not become
-"can rewrite my music". So discovery removes the port from setup, not the credential.
-One paste — and **it is the one setting that may never move to `/api/clientconfig`**.
+**The token is pasted once, by hand — or paired, which is how it is actually done.**
+`POST /api/pair` on the component returns the token during a two-minute window somebody
+opened in `File → Preferences → Tools → Jean`, and Jean's settings pane has a **Pair**
+button on the `no-token` state. It exists because 64 hex characters on a television
+remote is not a thing anyone will do. The paste path stays beside it, unchanged.
+
+**Pairing is a write, so it obeys the same order as sending the token**: probe
+`/api/status`, confirm `foo_jean` at a version this build understands, and only then post
+to that port. `discovery.origin` is the proof — it is non-null exactly when the probe
+succeeded — which is why the Pair button renders on `origin` rather than on the state
+kind, and why an unreachable or impostor port never gets one.
+
+**None of that changes where the token comes from or where it lives.** It is generated on
+the component's first run into `<profile>/foo_jean/config.json` and is deliberately **not**
+in the advertisement — anyone who can reach beefweb can read that file, and "can reach
+beefweb" must not become "can rewrite my music". So discovery removes the port from setup,
+and pairing removes the transcription; neither removes the credential. **It remains the one
+setting that may never move to `/api/clientconfig`**.
 Everything else in Jean should end up there so it follows the user between devices;
 syncing this through a namespace beefweb serves unauthenticated would recreate the exact
 escalation the credential exists to prevent. `jean.fooJeanToken` stays in `localStorage`,
-and the exclusion is written next to it in `domain/track/useTagWriter.tsx`.
+and the exclusion is written next to it in `shared/api/fooJean.ts`, where the key now
+lives because two tiers read it.
 
 **Seven states, not four, and none of them is silence.** The four in the table above are
 the ones the discovery record can describe. The probe adds two more — something

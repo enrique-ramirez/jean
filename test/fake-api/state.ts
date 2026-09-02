@@ -1,13 +1,11 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import type {
 	LibraryInfo,
 	PlayerState,
 	PlaylistInfo,
 } from "../../src/shared/api/types.ts";
 import { type FooJeanOptions, fooJeanState } from "./fooJean.ts";
+import capturedLibrary from "./library.json" with { type: "json" };
+import capturedPlayer from "./player.json" with { type: "json" };
 
 // A captured track: a title-formatting expression to the value the player
 // answered with. A *missing* key is a field this player cannot resolve, which
@@ -59,12 +57,11 @@ export interface RecordedRequest {
 	body: Record<string, any> | null;
 }
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const read = (name: string) =>
-	JSON.parse(readFileSync(join(HERE, name), "utf8"));
-
-const LIBRARY = read("library.json") as { albums: CapturedAlbum[] };
-const CAPTURED_PLAYER = read("player.json") as PlayerState;
+// Imported rather than read off disk, because the fake runs in two places now:
+// `node` for the suite, and a service worker for the demo build, which has no
+// filesystem to read. Both hosts resolve a JSON import.
+const LIBRARY = capturedLibrary as { albums: CapturedAlbum[] };
+const CAPTURED_PLAYER = capturedPlayer as unknown as PlayerState;
 
 // beefweb reports index -1 rather than omitting activeItem when nothing is
 // playing. API.md, and the app tests `index >= 0` for exactly this reason.
@@ -339,6 +336,13 @@ export function createState({
 	retagged = {},
 	// The optional tag-writing component; see `fooJean.ts` for its states.
 	fooJean = null,
+	// Where a track's cover comes from when it is not one of the captured ones.
+	// The capture matches a track to an album by path and answers with a file
+	// name; a synthesised library has no file behind it, so the host that
+	// synthesised it is the only thing that can say. Absent -- which is every
+	// spec -- a track outside the capture has no cover, which is a real state
+	// the UI has to draw anyway.
+	artworkOf = null,
 }: {
 	playlists?: FakePlaylist[];
 	// Null as well as absent, because the Playwright fixtures default every
@@ -351,6 +355,7 @@ export function createState({
 	library?: Partial<LibraryInfo>;
 	retagged?: Record<string, Track>;
 	fooJean?: FooJeanOptions | null;
+	artworkOf?: ((track: Track) => string | null) | null;
 } = {}) {
 	const patches = Object.entries(retagged);
 	if (patches.length > 0) {
@@ -614,7 +619,7 @@ export function createState({
 					(candidate) => candidate["%path%"] === track["%path%"],
 				),
 			);
-			return album?.artwork ?? null;
+			return album?.artwork ?? artworkOf?.(track) ?? null;
 		},
 
 		playItem(playlistId: string, index: number) {
@@ -1007,7 +1012,8 @@ export function createState({
 			);
 			if (!entry) return null;
 			const album = LIBRARY.albums.find((a) => a.tracks.includes(entry.track));
-			return album ? `${album.slug}.jpg` : null;
+			if (album) return `${album.slug}.jpg`;
+			return artworkOf?.(entry.track) ?? null;
 		},
 
 		// `queueIndex` is accepted and ignored, as foobar2000 does. Honouring it

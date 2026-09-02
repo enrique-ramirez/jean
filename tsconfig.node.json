@@ -11,6 +11,7 @@
 		// erasable syntax -- enums, namespaces, parameter properties -- has to be
 		// a compile error here rather than a crash at `pnpm fake`.
 		"allowImportingTsExtensions": true,
+		"resolveJsonModule": true,
 		"erasableSyntaxOnly": true,
 
 		"composite": true,
@@ -21,6 +22,7 @@
 	// suite exists to catch.
 	"include": [
 		"vite.config.ts",
+		"demo/build.ts",
 		"test/fake-api/**/*.ts",
 		"src/shared/api/types.ts"
 	]

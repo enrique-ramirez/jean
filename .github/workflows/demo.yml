@@ -1,0 +1,60 @@
+# Builds the demo on every push to main and publishes it to GitHub Pages, so the
+# demo is whatever Jean is rather than whatever it was the day somebody last
+# remembered to build it. The whole player is in the bundle -- see `demo/` --
+# and Pages serves static files, which is all this needs.
+
+name: demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and the newest wins: a queued build of an older commit
+# is not worth publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned here rather than through a `packageManager` field, which would
+      # also start policing every local pnpm the repo is used with.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Typechecked before it is bundled, the way `pnpm build` does it: Vite
+      # never typechecks, so nothing else would.
+      - run: pnpm typecheck
+      - run: pnpm demo
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-demo
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

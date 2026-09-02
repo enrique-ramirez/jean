@@ -103,6 +103,12 @@ src/
   features/   one folder per thing a user can do: home, search, library, playlist,
               now-playing
   app/        the shell: App, Sidebar, CommandPalette, theme, hash routing
+test/
+  fake-api/   an in-memory foobar2000: portable route tables, plus the node
+              sockets that serve them
+  e2e/        the specs, in a real browser against that fake
+demo/         the live demo -- the same fake, in a service worker, so the app
+              runs with no player behind it. See demo/CLAUDE.md
 ```
 
 **Imports run one way: `app -> features -> domain -> shared`.** Biome enforces it, so
@@ -112,6 +118,20 @@ allowed there, a cycle is not.
 
 Anything outside its own folder is imported through the `@/` alias
 (`@/domain/track/fields`). Same-folder imports stay relative.
+
+### The demo runs the fake too
+
+```sh
+pnpm demo           # build it into dist-demo/
+pnpm demo:preview   # serve that
+```
+
+The published demo is the app with `test/fake-api/` answering from a service
+worker, deployed on every push to `main`. It matters here for one reason: the
+route tables in `test/fake-api/routes.ts` and `fooJean.ts` **must stay free of
+node**. Anything that needs a socket, a file or a `Buffer` goes in `server.ts`
+or `agentServer.ts`, which are the suite's half, and reaches the routes as a
+function the host passes in -- `artwork` is the worked example.
 
 ## Conventions
 

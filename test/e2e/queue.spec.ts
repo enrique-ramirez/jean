@@ -130,6 +130,22 @@ test.describe("the panel", () => {
 		await expect(queueRows(page)).toHaveCount(0);
 	});
 
+	test("opens over the list rather than shouldering it aside", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "there is nothing beside it to push on a phone");
+		await openLibrary(page);
+
+		const width = () =>
+			page.locator("main").evaluate((el) => Math.round(el.clientWidth));
+		const before = await width();
+
+		await openQueue(page);
+		await expect(page.locator("aside")).toHaveCSS("position", "absolute");
+		expect(await width()).toBe(before);
+	});
+
 	test("lists what was queued, in the order it was queued", async ({
 		page,
 		player,

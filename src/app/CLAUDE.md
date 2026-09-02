@@ -16,10 +16,17 @@ scrolling to `<body>`.
 The status bar is **one component with two shapes**, not two components: a full-width
 footer on desktop, a compact strip that expands to a full-screen sheet on mobile.
 
-**Two panels flank the content, and they are the same shape mirrored.** The sidebar
-is a grid column on the left and a fixed drawer from the left below the breakpoint;
-the queue is a grid column on the right and a fixed drawer from the right. Left is
-where music comes from, right is where it is going.
+**Two panels flank the content, and they are not the same kind of thing.** The
+sidebar is a grid column the content makes room for; the queue is an overlay that
+slides in from the right over the top of it, at every width. Left is where music
+comes from, right is where it is going.
+
+That asymmetry is the point. The sidebar is where you *are* -- it changes what the
+main pane shows, so the two belong side by side. The queue is a glance at what
+happens next, opened and shut around whatever you were already doing, and
+reflowing a table you were reading in order to show it is a poor trade. It slides
+rather than appears so the direction says where it came from and where dismissing
+it will send it back to.
 
 The queue is deliberately *not* an action sheet, though the app has one and the
 house style prefers it. A sheet is where you choose a command and leave; the queue
@@ -28,17 +35,16 @@ and a detached sheet has neither the height nor the scroll for that. If a third
 sheet-shaped thing ever appears, the chrome in `ActionMenu` should be extracted
 rather than copied a second time.
 
-Both panels' columns are set as **named custom properties on `.body`** rather than
-by writing the whole `grid-template-columns` out once per combination. Two
-independent toggles are four such rules that all have to agree, and the third one
-added is the one that will not. The transition survives it: a custom property is
-not animatable, but the `grid-template-columns` it resolves to is.
+**Both panels stop at the chrome rather than covering it.** They are positioned
+inside `.body`, so the top bar and the status bar stay live behind them -- which
+matters most on a phone, where the queue covers nearly everything else and the
+button that opened it is the obvious thing to reach for to close it again. Only
+the compact viewport gets a scrim, and it dims the content and nothing else.
 
-**A panel in a zero-width column still has to clip.** `min-width: 0` lets the column
-reach zero and does nothing about the content, which paints out of it and widens the
-document -- that surfaced as the library header's figures suddenly able to push the
-page sideways, a test that had been green for months. `overflow: hidden` on the
-panel, with the scroll on a child.
+**`.body` is what clips the parked panel.** Closed, the queue sits at
+`translateX(100%)`, off the right edge of its own containing block; without
+`overflow: hidden` there it becomes horizontal document overflow, which is how the
+library header's figures once gained the ability to push the page sideways.
 
 **Skipping is desktop-only in the status bar.** Two 32px targets flanking Play are a
 miss waiting to happen on a thumb, and a miss on Previous costs you the track you

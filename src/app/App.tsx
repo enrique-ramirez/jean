@@ -64,8 +64,8 @@ export function App() {
 	);
 	const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 	const [isSheetOpen, setIsSheetOpen] = useState(false);
-	// Split as the sidebar's is: docked it is furniture worth restoring, as a
-	// drawer it is something you opened and should not come back on its own.
+	// Split by breakpoint as the sidebar's is: on a desktop it is furniture worth
+	// restoring, on a phone it covers the app and should not come back on its own.
 	const [isQueueDocked, setIsQueueDocked] = useStoredState(
 		"jean.queueOpen",
 		false,

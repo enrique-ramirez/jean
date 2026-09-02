@@ -13,6 +13,7 @@ import {
 import { artworkUrl, readTrack } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
+import { useStoredState } from "@/shared/hooks/useStoredState";
 import { Artwork } from "@/shared/ui/Artwork";
 import {
 	PauseIcon,
@@ -28,15 +29,33 @@ import { Volume, VolumePopover } from "./Volume";
 // Times are their own leaf so the animation frame loop repaints two spans
 // rather than the whole bar.
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
+	const [showRemaining, setShowRemaining] = useStoredState(
+		"jean.timeRemaining",
+		false,
+	);
 	const elapsed = useElapsed(snapshot);
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
 
+	// A length is what a countdown counts against, and the player reports none
+	// for a stream. The preference is kept either way; only the reading falls
+	// back, so a track that has one goes back to counting down.
+	const isCountingDown = showRemaining && duration > 0;
+
 	return (
-		<div className={styles.times}>
-			<span className="tabular">{formatTime(elapsed)}</span>
+		<button
+			type="button"
+			className={styles.times}
+			title={showRemaining ? "Show time elapsed" : "Show time remaining"}
+			onClick={() => setShowRemaining((current) => !current)}
+		>
+			<span className="tabular">
+				{isCountingDown
+					? `-${formatTime(Math.max(0, duration - elapsed))}`
+					: formatTime(elapsed)}
+			</span>
 			<span className={styles.separator}>/</span>
 			<span className="tabular">{formatTime(duration)}</span>
-		</div>
+		</button>
 	);
 }
 

@@ -296,13 +296,30 @@
 	gap: 14px;
 }
 
+/* The countdown is a character wider than the elapsed time, and `.trailing` is
+   right-aligned -- so the readout grows leftward into empty space and the fader
+   beside it does not move. Measured across a toggle: the mute button holds its
+   position to the pixel. */
 .times {
 	display: flex;
 	align-items: center;
 	gap: 5px;
+	padding: 3px 5px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	font: inherit;
 	font-size: 0.75rem;
 	color: var(--muted);
 	white-space: nowrap;
+	transition:
+		color 0.12s var(--ease),
+		background-color 0.12s var(--ease);
+}
+
+.times:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
 }
 
 .separator {

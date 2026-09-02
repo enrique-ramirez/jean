@@ -42,6 +42,29 @@ window in Firefox and its derivatives, so "Go to playlist" never saw the keystro
 letter belongs to none of them — which is why `Q`, `T`, `V`, `H`, `N`, `S` and `G` are the
 app's idiom rather than an accident.
 
+**`Mod+,` is knowingly at risk.** It is the platform convention for preferences
+and therefore the key people try -- and also a *menu item* in Chrome, Safari and
+Firefox on macOS, where a menu key equivalent is resolved before the page is
+offered the keystroke. Unlike `Mod+Shift+P` it may work everywhere or nowhere
+depending on the browser. `Mod+K` is the encouraging precedent: an omnibox
+shortcut rather than a menu item, and Jean takes it. If it is eaten, a bare `,`
+is free.
+
+**An overlay owns the keyboard** (`keyboardOwner.ts`). Settings as a route
+unmounted the track list; as a dialog it left `V` switching the layout of a list
+nobody could see and `Space` on a focused switch both flipping it and pausing the
+music -- a `<button role="switch">` is not an input element, so `ignoreInputs`
+does not cover it. `useKeymap` takes an `owner`, and while an overlay holds the
+keyboard only registrations naming it stay enabled. **The binding that opens the
+overlay MUST be one of them**, or it cannot close it again. A store rather than a
+`keysEnabled` prop threaded through three views: this is not a question about a
+list.
+
+**Escape in an overlay MUST be caught in the capture phase.** The hotkey manager
+binds `keydown` on the document at bubble, and `Escape` in the playlist scope
+clears the track selection -- so a later listener closes the overlay *and* wipes
+the selection, in one keystroke.
+
 **Keyboard bindings are declared in `shared/keyboard/keymap.ts` and nowhere else.**
 `useKeymap(scope, handlers)` registers whatever that scope declares and has a handler
 for, and `ShortcutSheet` renders the help overlay from the same array — so the

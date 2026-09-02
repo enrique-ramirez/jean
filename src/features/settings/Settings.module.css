@@ -1,44 +1,102 @@
 /* Prose with controls in it rather than a form, so it takes the reading measure
    `LibrarySetup` uses rather than the window's width. */
 
-.view {
-	display: flex;
-	flex-direction: column;
-	gap: 28px;
-	max-width: 620px;
-	margin: 0 auto;
-	padding: 56px 24px 48px;
+.backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	display: grid;
+	place-items: center;
+	padding: 24px;
+	background: oklch(0 0 0 / 0.55);
+}
+
+/* A grid so the header is a fixed row and the body takes the rest and scrolls.
+   TagWriting alone can be seven states tall. */
+.dialog {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	width: min(620px, 100%);
+	max-height: 82dvh;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	background: var(--surface);
+	box-shadow: var(--shadow);
+}
+
+.dialog:focus-visible {
+	outline: none;
 }
 
 .header {
 	display: flex;
-	flex-direction: column;
-	gap: 10px;
+	align-items: center;
+	gap: 16px;
+	padding: 16px 16px 16px 22px;
+	border-bottom: 1px solid var(--border);
 }
 
-.eyebrow {
-	margin: 0;
+/* Carries the padding: a scroller with the gap outside it clips its first and
+   last child against the edge mid-scroll. */
+.body {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	padding: 20px 22px 24px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.close {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+	padding: 5px 8px 5px 10px;
+	border: 1px solid transparent;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--muted);
+	cursor: pointer;
+	transition:
+		color 0.12s var(--ease),
+		background 0.12s var(--ease);
+}
+
+.close:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+.close:focus-visible {
+	border-color: var(--accent);
+	outline: none;
+}
+
+/* The shortcut sheet's cap, deliberately. */
+.cap {
+	display: inline-grid;
+	place-items: center;
+	height: 20px;
+	padding: 0 6px;
+	box-sizing: border-box;
+	border: 1px solid var(--border-strong);
+	border-radius: 5px;
+	box-shadow: 0 1px 0 var(--border-strong);
+	background: var(--surface-raised);
+	color: var(--text);
+	font-family: inherit;
 	font-size: 0.6875rem;
-	font-weight: 600;
-	letter-spacing: 0.1em;
-	text-transform: uppercase;
-	color: var(--faint);
+	font-weight: 550;
+	line-height: 1;
 }
 
 .title {
 	margin: 0;
-	font-size: clamp(1.5rem, 3.4vw, 2.125rem);
-	font-weight: 680;
-	line-height: 1.1;
-	letter-spacing: -0.025em;
-}
-
-.blurb {
-	margin: 0;
-	font-size: 0.9375rem;
-	line-height: 1.6;
-	color: var(--muted);
-	text-wrap: pretty;
+	font-size: 1.25rem;
+	font-weight: 660;
+	line-height: 1.15;
+	letter-spacing: -0.02em;
 }
 
 /* ---- one component ---------------------------------------------------------
@@ -56,10 +114,12 @@
 	background: var(--surface);
 }
 
+/* Wraps so an open HelpHint takes the line below the title. */
 .panelHead {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 12px;
+	gap: 2px;
 }
 
 .panelTitle {
@@ -69,8 +129,8 @@
 	letter-spacing: -0.01em;
 }
 
-/* On, off, or absent. Tone and text can disagree -- connected but permitting
-   nothing reads "Connected" in an amber pill, which is exactly the situation. */
+/* Tone and text may disagree: connected but permitting nothing is "Connected"
+   in the warn tone. */
 .status {
 	margin-left: auto;
 	padding: 3px 10px;
@@ -84,9 +144,9 @@
 }
 
 .status[data-tone="ok"] {
-	border-color: var(--accent-line);
-	background: var(--accent-quiet);
-	color: var(--accent);
+	border-color: color-mix(in oklab, var(--positive) 40%, transparent);
+	background: color-mix(in oklab, var(--positive) 14%, transparent);
+	color: var(--positive);
 }
 
 .status[data-tone="warn"] {
@@ -182,6 +242,10 @@
 }
 
 .fieldsHead {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 2px;
 	margin: 0 0 2px;
 	font-size: 0.75rem;
 	font-weight: 600;
@@ -227,8 +291,26 @@
 }
 
 @media (max-width: 720px) {
-	.view {
-		padding: 32px 16px 40px;
+	/* Full screen: the content is a tall column either way, so scrim around it
+	   wastes the only axis a handset has. */
+	.backdrop {
+		padding: 0;
+	}
+
+	.dialog {
+		width: 100%;
+		max-height: none;
+		height: 100dvh;
+		border: 0;
+		border-radius: 0;
+	}
+
+	.header {
+		padding: max(16px, env(safe-area-inset-top)) 16px 14px;
+	}
+
+	.body {
+		padding: 18px 16px calc(28px + env(safe-area-inset-bottom));
 	}
 
 	/* Three controls on one line leaves the field about forty pixels wide. */

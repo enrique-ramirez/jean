@@ -3,6 +3,7 @@ import type { TagWriterState } from "@/domain/track/tagWriter";
 import { labelOfField, useTagWriting } from "@/domain/track/useTagWriter";
 import { SUPPORTED_API_VERSION } from "@/shared/api/fooJean";
 import { Button } from "@/shared/ui/Button";
+import { HelpHint } from "@/shared/ui/HelpHint";
 import { Switch } from "@/shared/ui/Switch";
 import styles from "./Settings.module.css";
 
@@ -216,7 +217,19 @@ export function TagWriting() {
           switched on here. */}
 			{allowedFields.length > 0 ? (
 				<div className={styles.fields}>
-					<p className={styles.fieldsHead}>What Jean may write</p>
+					<div className={styles.fieldsHead}>
+						<span>What Jean may write</span>
+						<HelpHint label="About the write allowlist">
+							<p>
+								This foobar2000 permits these fields and no others. That list
+								lives in <code>{CONFIG}</code>.
+							</p>
+							<p>
+								Turning one off here narrows what Jean offers. It cannot widen
+								the list.
+							</p>
+						</HelpHint>
+					</div>
 					{allowedFields.map((field) => (
 						<Switch
 							key={field}
@@ -225,11 +238,6 @@ export function TagWriting() {
 							onChange={(enabled) => setFieldEnabled(field, enabled)}
 						/>
 					))}
-					<p className={styles.detail}>
-						This foobar2000 permits these fields and no others. That list lives
-						in <code>{CONFIG}</code>.
-					</p>
-
 					{isWorking ? (
 						<button
 							type="button"

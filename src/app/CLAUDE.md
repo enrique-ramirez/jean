@@ -66,6 +66,22 @@ navigation rather than a state change. If a fourth surface ever appears, this
 is the pattern to copy for anything that is both a place and a thing over a
 place.
 
+**Settings is the fourth surface and deliberately not that pattern.** It is a
+dialog: `isSettingsOpen` state in `App`, no hash, opened by the gear or `Mod+,`,
+dismissed by Escape, the scrim or the close button. The test is whether the thing
+is a *place*. Now playing is one -- it has a subject, survives a reload, Back means
+something. Settings is a drawer you open over your work and shut. A route would
+have to answer "what is behind this" and "where does dismissing it go", and both
+answers are "wherever you already were".
+
+It is therefore not linkable and does not survive a reload. Nothing linked to it,
+so the trade was cheap -- but a fifth surface anything needs to point at SHOULD be
+a route.
+
+**An overlay leaves the app behind it live, where a route unmounted it.** The
+track list still answered to `V`, `H` and `S`, and `Space` on a focused switch
+both flipped it and paused the music. See `shared/keyboard/CLAUDE.md`.
+
 **On a phone that route replaces the status bar**, which is the one place in the app
 where a route does. The screen is the whole viewport and carries its own transport;
 leaving the strip below it puts two Play buttons and the same cover on screen at once.
@@ -130,6 +146,11 @@ Play's `#FBBC04` (1.64). Deliberately under WCAG's 3:1 for graphical objects:
 clearing that puts it at `#d97600`, which is orange, and what carries the meaning
 here is **fill against outline** -- the empty star is `--border-strong` and is
 the one drawn most.
+
+**`--positive` is the fifth**, because on dark the accent could not say "this is
+fine": the foo_jean badge read "Connected" in a yellow one notch from `--danger`'s
+red. Green in both themes, held at C 0.13 -- it marks a thing that is working, next
+to body copy, not a traffic light.
 
 The two splits came out of the same fact and are worth stating separately, because each
 was found by something breaking:

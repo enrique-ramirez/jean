@@ -23,6 +23,10 @@ import { Menu } from "@/shared/ui/Menu";
 import { Segmented, type SegmentedOption } from "@/shared/ui/Segmented";
 import { ColumnsMenu } from "./ColumnsMenu";
 import { DEFAULT_COLUMN_IDS, resolveColumns } from "./columns";
+import {
+	useCursorFollowsPlayback,
+	usePlaybackFollowsCursor,
+} from "./followSettings";
 import { groupByAlbum } from "./grouping";
 import { HeatLegend } from "./HeatLegend";
 import type { LibrarySource } from "./librarySource";
@@ -115,7 +119,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		"jean.columns",
 		DEFAULT_COLUMN_IDS,
 	);
-	const [followPlayback] = useStoredState("jean.followPlayback", true);
+	const [cursorFollowsPlayback] = useCursorFollowsPlayback();
+	const [playbackFollowsCursor] = usePlaybackFollowsCursor();
 	const [isColumnsOpen, setIsColumnsOpen] = useState(false);
 	const [isHeatInfoOpen, setIsHeatInfoOpen] = useState(false);
 	const [heatIntroSeen, setHeatIntroSeen] = useStoredState(
@@ -317,29 +322,58 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		return () => setRatingTarget(null);
 	}, [source, indices, selection.cursor, cursorRow]);
 
-	// Which index was last followed, rather than last seen, so scrolling away does
-	// not re-fire and drag the view back.
-	//
-	// It also covers a race: at library size the active index can arrive before the
-	// chunk holding that row, and scrolling to a row the virtualiser does not have
-	// is a no-op that never retries. Rows are a dependency, so the jump waits.
+	// The cursor as it stood when the track changed. A dependency would re-run the
+	// effect on every arrow key.
+	const cursorAt = useRef(selection.cursor);
+	cursorAt.current = selection.cursor;
+
+	// Last *followed*, not last seen, so scrolling away does not drag the view
+	// back. `rows.length` is a dependency because at library size the active index
+	// can arrive before the chunk holding that row.
 	const followedIndex = useRef(-1);
+	const followedView = useRef<string | null>(null);
 
 	useEffect(() => {
-		if (!canFollowPlayback || !followPlayback) return;
+		if (!canFollowPlayback) return;
 		if (activeIndex < 0 || activeIndex >= rows.length) return;
-		if (followedIndex.current === activeIndex) return;
 
+		const arrived = followedView.current !== viewKey;
+		followedView.current = viewKey;
+		if (!arrived && followedIndex.current === activeIndex) return;
+
+		const wasPlaying = followedIndex.current;
 		followedIndex.current = activeIndex;
-		// Centred in both directions. Minimal scrolling brings a row in from whichever
-		// edge it crossed and leaves it there, parking the track on the status bar going
-		// forwards and under the toolbar going back.
+
+		// Must run before the cursor moves below, or there is nothing left to
+		// compare. Excluding `wasPlaying` is what stops the two settings looping:
+		// with both on, the cursor is sitting on the track that just ended.
+		// Excluding `arrived` stops navigation being read as a track change.
+		const cursor = cursorAt.current;
+		if (
+			playbackFollowsCursor &&
+			!arrived &&
+			cursor !== activeIndex &&
+			cursor !== wasPlaying &&
+			cursor >= 0 &&
+			cursor < rows.length
+		) {
+			play(cursor);
+			return;
+		}
+
+		if (!cursorFollowsPlayback) return;
+		moveCursorTo(activeIndex);
+		// Centred in both directions; see this folder's CLAUDE.md.
 		scrollToTrack(activeIndex, { align: "center", animate: true });
 	}, [
 		activeIndex,
 		rows.length,
+		viewKey,
 		canFollowPlayback,
-		followPlayback,
+		cursorFollowsPlayback,
+		playbackFollowsCursor,
+		play,
+		moveCursorTo,
 		scrollToTrack,
 	]);
 

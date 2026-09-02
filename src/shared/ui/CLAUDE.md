@@ -198,6 +198,17 @@ the words next to it do nothing. The travel is the affordance, so `prefers-reduc
 drops the transition and keeps the movement; a colour swap with nothing moving is a
 state change with no gesture in it.
 
+**`shared/ui/HelpHint.tsx` holds a caveat worth having and not worth reading.**
+The label carries the setting; the hint carries the exception. Reach for it only
+when the text says something the label does not -- "search results are exempt from
+both" earns one, a paragraph restating the switch beside it earns deletion.
+
+It returns a **fragment**, and the head row it sits in must `flex-wrap` so the
+text takes the line below the button. It was a `Menu` popover first: inside the
+settings dialog that was clipped by the body's scroller and inherited the
+uppercase of the caption it sat in. An absolutely positioned panel inside a
+scrolling column is the wrong shape, whatever the alignment.
+
 **Notifications come from `shared/ui/toastStore.ts`, and only for things you cannot see.** Pushing
 one is a bare function call from anywhere, deliberately -- it is a module-level store
 rather than a context because a provider holding the list would re-render the virtualised

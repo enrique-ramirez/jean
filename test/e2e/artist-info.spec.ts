@@ -3,6 +3,8 @@ import {
 	expect,
 	nowPlayingScreen,
 	openNowPlaying,
+	openSettings,
+	settingsDialog,
 	statusBar,
 	test,
 	trackRow,
@@ -70,7 +72,7 @@ test.describe("artist information", () => {
 	test("the switch reports the state it is in, and keeps it", async ({
 		page,
 	}) => {
-		await page.goto("/#/settings");
+		await openSettings(page);
 
 		const toggle = page.getByRole("switch", { name: ARTIST_SWITCH });
 		await expect(toggle).toHaveAttribute("aria-checked", "false");
@@ -79,8 +81,11 @@ test.describe("artist information", () => {
 		await expect(toggle).toHaveAttribute("aria-checked", "true");
 
 		// A setting, so it survives the trip. A switch that only looked on would be
-		// the same bug from the other side.
+		// the same bug from the other side. The dialog is state rather than a
+		// route, so the reload lands on the app behind it and it has to be reopened
+		// -- which is the trade for not losing your place every time you open it.
 		await page.reload();
+		await openSettings(page);
 		await expect(
 			page.getByRole("switch", { name: ARTIST_SWITCH }),
 		).toHaveAttribute("aria-checked", "true");
@@ -91,13 +96,17 @@ test.describe("artist information", () => {
 		await openArtistTab(page);
 		await expect(page.getByText("Artist information is off.")).toBeVisible();
 
-		await page.goto("/#/settings");
-		// Gone, not merely leaving. The screen stays mounted for the length of its
-		// exit, so `openNowPlaying` sees it as already open and the tab click lands
-		// on the layer that is on its way out.
+		// Settings opens *over* the now-playing screen rather than navigating away
+		// from it, which is the point of it being a dialog -- so the screen is
+		// dismissed here on purpose, to get at the top bar the gear lives in. On a
+		// phone that screen is the whole viewport and covers it entirely.
+		await page.getByRole("button", { name: "Close now playing" }).click();
 		await expect(nowPlayingScreen(page)).toBeHidden();
 
+		await openSettings(page);
 		await page.getByRole("switch", { name: ARTIST_SWITCH }).click();
+		await page.keyboard.press("Escape");
+		await expect(settingsDialog(page)).toBeHidden();
 
 		await openArtistTab(page);
 		// Whatever it says next -- looking up, or nothing found, since the lookup

@@ -115,11 +115,7 @@ Anything outside its own folder is imported through the `@/` alias
 
 ## Conventions
 
-**Comments explain why, not what.** No JSDoc. If a line needs a comment to say what it
-does, rename something instead. What earns a comment is a trap or a decision that looks
-wrong until you know the reason -- and it belongs at the line it protects, in a sentence
-or two. Anything longer is a CLAUDE.md entry, and measurements belong there rather than
-in a comment that nobody re-runs.
+Short sentences. RFC 2119 keywords for obligations. Commit = imperative subject; body only for a fact the diff cannot show. Comments only where code needs clarification — never narration.
 
 **Styling is CSS Modules, colocated with the component.** The only global stylesheets
 are `shared/styles/tokens.css` (the palette and scale, as custom properties) and

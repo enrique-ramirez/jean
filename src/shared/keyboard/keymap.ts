@@ -223,6 +223,14 @@ export const KEYMAP: Binding[] = [
 		name: "Show / hide what's playing",
 		keys: ["W"],
 	},
+	// At risk: a browser menu item on macOS. See this folder's CLAUDE.md.
+	{
+		id: "openSettings",
+		scope: SCOPE.global,
+		group: "Navigation",
+		name: "Settings",
+		keys: ["Mod+,"],
+	},
 	{
 		id: "showShortcuts",
 		scope: SCOPE.global,

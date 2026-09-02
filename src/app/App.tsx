@@ -30,7 +30,10 @@ import { PlaylistView } from "@/features/playlist/PlaylistView";
 import { QueuePanel } from "@/features/queue/QueuePanel";
 import { LibrarySearchField } from "@/features/search/LibrarySearchField";
 import { SearchResults } from "@/features/search/SearchResults";
-import { SettingsView } from "@/features/settings/SettingsView";
+import {
+	SETTINGS_KEYBOARD,
+	SettingsDialog,
+} from "@/features/settings/SettingsDialog";
 import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
@@ -78,6 +81,7 @@ function Shell() {
 	);
 	const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 	const [isSheetOpen, setIsSheetOpen] = useState(false);
+	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	// Split by breakpoint as the sidebar's is: on a desktop it is furniture worth
 	// restoring, on a phone it covers the app and should not come back on its own.
 	const [isQueueDocked, setIsQueueDocked] = useStoredState(
@@ -95,7 +99,7 @@ function Shell() {
 	const [openedFrom, setOpenedFrom] = useState("");
 	const shellRoute = isNowPlaying ? openedFrom : route;
 
-	const { shelf, isSearch, isAll, isHome, isSettings, isLibrary } =
+	const { shelf, isSearch, isAll, isHome, isLibrary } =
 		resolveRoute(shellRoute);
 
 	// The library is loaded for the views that show it. Search asks for it
@@ -234,6 +238,14 @@ function Shell() {
 		[isNowPlaying, closeNowPlaying, navigate],
 	);
 
+	// Registered apart from the rest, which go quiet while settings holds the
+	// keyboard. This one must survive the dialog it opens.
+	useKeymap(
+		SCOPE.global,
+		{ openSettings: () => setIsSettingsOpen((current) => !current) },
+		{ owner: SETTINGS_KEYBOARD },
+	);
+
 	useKeymap(SCOPE.global, {
 		playPause: () => playPause.mutate(),
 		nextTrack: () => nextTrack(),
@@ -312,8 +324,8 @@ function Shell() {
 						variant="ghost"
 						icon={Settings}
 						aria-label="Settings"
-						aria-current={isSettings || undefined}
-						onClick={() => openRoute(ROUTE.settings)}
+						aria-expanded={isSettingsOpen}
+						onClick={() => setIsSettingsOpen(true)}
 					/>
 					<Button
 						variant="ghost"
@@ -352,9 +364,7 @@ function Shell() {
 				/>
 
 				<main className={styles.main} ref={scrollRef}>
-					{isSettings ? (
-						<SettingsView />
-					) : isHome ? (
+					{isHome ? (
 						<HomeView
 							library={library}
 							playlists={playlists}
@@ -458,6 +468,10 @@ function Shell() {
 
 			{isSheetOpen ? (
 				<ShortcutSheet onDismiss={() => setIsSheetOpen(false)} />
+			) : null}
+
+			{isSettingsOpen ? (
+				<SettingsDialog onDismiss={() => setIsSettingsOpen(false)} />
 			) : null}
 
 			<span className="visually-hidden" aria-live="polite">

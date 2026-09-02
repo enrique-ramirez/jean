@@ -1,6 +1,7 @@
 import { useHotkeys } from "@tanstack/react-hotkeys";
 import { useMemo, useRef } from "react";
 
+import { useKeyboardOwner } from "./keyboardOwner";
 import { KEYMAP } from "./keymap";
 
 // A binding's handler. The hotkeys manager hands back the DOM event and its own
@@ -16,10 +17,14 @@ type HotkeyHandler = (event: KeyboardEvent, context: unknown) => void;
 export function useKeymap(
 	scope: string,
 	handlers: Record<string, HotkeyHandler | undefined>,
-	{ enabled = true }: { enabled?: boolean } = {},
+	{ enabled = true, owner }: { enabled?: boolean; owner?: string } = {},
 ) {
 	const handlersRef = useRef(handlers);
 	handlersRef.current = handlers;
+
+	// While an overlay holds the keyboard, only registrations naming it survive.
+	const keyboardOwner = useKeyboardOwner();
+	const live = enabled && (keyboardOwner === null || keyboardOwner === owner);
 
 	const handledIds = Object.keys(handlers).sort().join(",");
 
@@ -35,12 +40,12 @@ export function useKeymap(
 					handlersRef.current[binding.id]?.(event, context),
 				options: {
 					...binding.options,
-					enabled,
+					enabled: live,
 					meta: { name: binding.name, group: binding.group },
 				},
 			})),
 		);
-	}, [scope, handledIds, enabled]);
+	}, [scope, handledIds, live]);
 
 	useHotkeys(definitions);
 }

@@ -67,7 +67,6 @@ export function LyricsScreen({
 			</div>
 
 			<div className={styles.body}>
-
 				<div className={styles.measure}>
 					<Lyrics lyrics={lyrics} snapshot={snapshot} onSeek={onSeek} />
 				</div>

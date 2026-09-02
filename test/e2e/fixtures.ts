@@ -335,6 +335,18 @@ export async function globalControls(page: Page, isCompact: boolean) {
 	return nowPlayingScreen(page);
 }
 
+export const settingsDialog = (page: Page) =>
+	page.getByRole("dialog", { name: "Settings" });
+
+export const openSettings = async (page: Page) => {
+	// The gear lives in the top bar, so the app has to be loaded first.
+	if (!page.url().includes("#")) await page.goto("/");
+	if (await settingsDialog(page).isVisible()) return;
+	await closeSidebar(page);
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	await expect(settingsDialog(page)).toBeVisible();
+};
+
 export const viewHeader = (page: Page) => page.locator("main header").first();
 
 // Where the sound is coming from. It used to be a third line in the status bar

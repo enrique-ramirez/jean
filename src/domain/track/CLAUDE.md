@@ -210,7 +210,27 @@ cheaper than it sounds: the row is already rendered, so it is one compositor
 scroll and not a re-render. Off for search
 results: those rows change under every keystroke, and jumping to the playing
 track the moment it appears among them would take the view away from the matches
-just typed for. Stored as `jean.followPlayback`, on by default, with no UI yet.
+just typed for.
+
+**It moves the cursor as well.** It used to only scroll, so `0`-`5` -- which rate
+the cursor row through `ratingTarget()` -- rated a track chosen an hour ago while
+a different one played. **Cursor follows playback**, foobar2000's name, on by
+default, still stored under `jean.followPlayback`.
+
+**Playback follows cursor** is the other half of that pair, off by default: when
+the player leaves a track it plays the cursor row instead of the next one. One
+effect owns both, and three guards were each a bug:
+
+- **Not on arrival.** Otherwise opening a view with the cursor on row 0 restarts
+  the library. `followedView` holds the key the last follow was made under.
+- **Not onto the track that just ended.** With both settings on, the cursor is on
+  the outgoing track when the incoming one arrives, so without this the pair
+  replays one song forever. Compare against `wasPlaying`, not just `activeIndex`.
+- **Evaluated before the cursor moves**, or cursor-follows-playback has already
+  put the cursor on the incoming track and there is nothing left to compare.
+
+The cursor is read through a ref. As a dependency the effect would re-run on
+every arrow key.
 
 ## Loading it
 

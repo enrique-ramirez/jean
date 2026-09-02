@@ -34,9 +34,9 @@ Two standing rules fall out of it:
 - **Never look like Spotify.** It is the obvious reference for a music player and
   therefore the one place Jean has nothing to gain by resembling. If a screen could be
   mistaken for it, redraw it.
-- **Record the choice.** A comment saying "this is an action sheet, not a bottom sheet,
-  because ..." is worth more than the code under it. Vocabulary is a design decision --
-  the two are different components and only one of them is detached from the edges.
+- **Record the choice.** Vocabulary is a design decision -- an action sheet and a
+  bottom sheet are different components, and only one of them is detached from the
+  edges. Write down which was chosen and what was rejected.
 
 ## Ground rules
 
@@ -390,12 +390,12 @@ set it true in the effect body as well. Usually it is not needed: work that only
 touches refs and network calls is safe to finish after unmount, and finishing it
 is often the correct behaviour.
 
-**Measurements belong in a CLAUDE.md, not in the code.** A number in a comment is
-useful while the thing is being written and noise for everyone who reads it
-afterwards -- it dates, nobody re-runs it, and it describes a machine that is not the
-reader's. Record the constraint the measurement established ("beefweb hangs up on a
-body over 1 MiB", "there is no way to ask for a thumbnail") and put the figures in
-whichever of these files owns that part of the app.
+**Measurements belong in a CLAUDE.md.** Record the constraint the measurement
+established -- "beefweb hangs up on a body over 1 MiB", "there is no way to ask for
+a thumbnail" -- and put the figures in whichever of these files owns that part of
+the app.
+
+Short sentences. RFC 2119 keywords for obligations. Commit = imperative subject; body only for a fact the diff cannot show. Comments only where code needs clarification — never narration.
 
 ## What is deliberately not built
 

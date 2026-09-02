@@ -3,6 +3,7 @@ import {
 	expect,
 	inSequence,
 	openLibrary,
+	openSettings,
 	pressAndHold,
 	requestsTo,
 	test,
@@ -344,8 +345,13 @@ test.describe("rating with the number keys", () => {
 		await trackRow(page, 2).dblclick();
 		await expect(page.locator("footer")).toContainText("Deléctrico");
 
-		await page.goto("/#/settings");
-		await expect(page.getByText(/Connected to foo_jean/)).toBeVisible();
+		// Home, not the settings dialog this used to use: a dialog owns the
+		// keyboard while it is open, so the rating keys deliberately do not fire
+		// there. Home is the remaining place with a player and no cursor.
+		await page.goto("/#/home");
+		await expect(
+			page.getByRole("heading", { level: 1, name: /of music/ }),
+		).toBeVisible();
 		await page.keyboard.press("3");
 
 		await expect.poll(() => tagWrites(player).length).toBe(1);
@@ -437,7 +443,7 @@ test.describe("rating from the track menu", () => {
 // ---- every state says something a person can act on -------------------------
 
 const settings = async (page: Page) => {
-	await page.goto("/#/settings");
+	await openSettings(page);
 	await expect(
 		page.getByRole("heading", { level: 2, name: "foo_jean" }),
 	).toBeVisible();

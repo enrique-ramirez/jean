@@ -1,0 +1,64 @@
+.trigger {
+	display: inline-grid;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--faint);
+	cursor: pointer;
+	transition:
+		color 0.12s var(--ease),
+		background 0.12s var(--ease);
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+.trigger:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+/* Takes a whole line of the head row it is in, which must therefore wrap. Every
+   type property is reset: the head this sits in may be an uppercase caption. */
+.body {
+	flex-basis: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 4px;
+	padding-left: 12px;
+	border-left: 2px solid var(--border-strong);
+	font-size: 0.8125rem;
+	font-weight: 400;
+	line-height: 1.5;
+	letter-spacing: normal;
+	text-transform: none;
+	color: var(--muted);
+	text-wrap: pretty;
+}
+
+.body p {
+	margin: 0;
+}
+
+.body strong {
+	font-weight: 600;
+	color: var(--text);
+}
+
+.body code {
+	padding: 1px 5px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: var(--surface-sunken);
+	font-family: var(--font-numeric);
+	font-size: 0.75rem;
+	overflow-wrap: anywhere;
+}

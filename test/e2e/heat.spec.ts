@@ -158,7 +158,7 @@ test.describe("the shading introduces itself", () => {
 	// Unseeded, so this is genuinely a first run. Every other spec marks it as
 	// already met, because otherwise the popover opens over the toolbar in tests
 	// that never asked about it.
-	test.use({ firstRun: true });
+	test.use({ firstRun: true, settings: { "jean.settingsSeen": true } });
 
 	const legend = (page: Page) =>
 		page.getByRole("dialog").filter({ hasText: "Play-count shading" });
@@ -248,6 +248,7 @@ test.describe("an install with no play counts", () => {
 	test.use({
 		withoutFields: ["%lastfm_play_count%", "%lastfm_last_played%"],
 		firstRun: true,
+		settings: { "jean.settingsSeen": true },
 	});
 
 	test("has no flame, no legend, and no shading", async ({ page }) => {

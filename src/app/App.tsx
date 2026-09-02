@@ -66,7 +66,7 @@ export function App() {
 function Shell() {
 	usePlayerStream();
 
-	const { data: playlists = [] } = usePlaylists();
+	const { data: playlists = [], isSuccess: hasPlaylists } = usePlaylists();
 	const isPlaying = useIsPlaying();
 	const playPause = usePlayPause();
 	const seekBy = useSeekBy();
@@ -82,6 +82,10 @@ function Shell() {
 	const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 	const [isSheetOpen, setIsSheetOpen] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const [settingsSeen, setSettingsSeen] = useStoredState(
+		"jean.settingsSeen",
+		false,
+	);
 	// Split by breakpoint as the sidebar's is: on a desktop it is furniture worth
 	// restoring, on a phone it covers the app and should not come back on its own.
 	const [isQueueDocked, setIsQueueDocked] = useStoredState(
@@ -227,6 +231,15 @@ function Shell() {
 	useEffect(() => {
 		if (!isNowPlaying) setOpenedFrom(route);
 	}, [isNowPlaying, route]);
+
+	// Once, so the switches are met rather than found. It waits for the library:
+	// an install with no `#Jean Library` has a setup step on screen, and that is
+	// the one thing to do first.
+	useEffect(() => {
+		if (settingsSeen || !hasPlaylists || library.needsSetup) return;
+		setIsSettingsOpen(true);
+		setSettingsSeen(true);
+	}, [settingsSeen, hasPlaylists, library.needsSetup, setSettingsSeen]);
 
 	const closeNowPlaying = useCallback(
 		() => navigate(`/${openedFrom}`),

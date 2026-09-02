@@ -490,7 +490,9 @@ test.describe("what the settings screen says", () => {
 		test("names the fix rather than going quiet", async ({ page }) => {
 			await settings(page);
 			await expect(page.getByText(/this device cannot reach it/)).toBeVisible();
-			await expect(page.getByText(/bindAddress/)).toBeVisible();
+			// The pane rather than the config key: the remedy has to be findable by
+			// somebody reading this on a phone, who has to walk to the player anyway.
+			await expect(page.getByText(/Preferences . Tools . Jean/)).toBeVisible();
 			await expect(page.getByText(/0\.0\.0\.0/)).toBeVisible();
 		});
 	});
@@ -665,7 +667,7 @@ test.describe("what the settings screen says", () => {
 			await expect(
 				page.getByText(/permits no fields to be written/),
 			).toBeVisible();
-			await expect(page.getByText(/allowedFields/)).toBeVisible();
+			await expect(page.getByText(/Fields they may write/)).toBeVisible();
 			// Scoped to this panel: Settings has other switches, and whether the
 			// component permits a field to be written is a claim about foo_jean.
 			await expect(

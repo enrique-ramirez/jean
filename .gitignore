@@ -6,6 +6,9 @@ dist
 # Local, uncommitted notes (machine-specific paths, hosts, credentials)
 *.local.md
 
+# Planning notes not ready to be public.
+_todo/
+
 # Personal deploy scripts -- how you copy a build to your player is your own
 # setup, not something the project should prescribe.
 scripts/*.local.sh

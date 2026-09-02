@@ -349,6 +349,7 @@ test.describe("an install with no play counts", () => {
 	test.use({
 		withoutFields: ["%lastfm_play_count%", "%lastfm_last_played%"],
 		firstRun: true,
+		settings: { "jean.settingsSeen": true },
 	});
 
 	test("the shelves that need them are simply not there", async ({ page }) => {

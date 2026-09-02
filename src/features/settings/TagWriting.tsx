@@ -7,9 +7,10 @@ import { HelpHint } from "@/shared/ui/HelpHint";
 import { Switch } from "@/shared/ui/Switch";
 import styles from "./Settings.module.css";
 
-// Jean never sees the player's filesystem, so the file is named the way the
-// component's own documentation names it.
-const CONFIG = "<foobar2000 profile>/foo_jean/config.json";
+// The pane, not the file. Both exist, and the file is what the pane writes -- but
+// Jean is being read on a phone, by somebody who has to walk to the player
+// either way, and a path is a worse instruction than a menu.
+const PANE = "File \u2192 Preferences \u2192 Tools \u2192 Jean";
 
 // TODO: link the release once foo_jean is published.
 const IS_PUBLISHED = false;
@@ -47,8 +48,8 @@ function explain(state: TagWriterState): Explained {
 				badge: "Not connected",
 				summary: `foo_jean is installed but could not start on port ${state.record.port}. ${state.error}`,
 				fix: state.portInUse
-					? `Another program already has that port. Change "port" in ${CONFIG} and restart foobar2000.`
-					: `Check ${CONFIG} and restart foobar2000.`,
+					? `Another program already has that port. Change the port under ${PANE} in foobar2000, then restart it.`
+					: `Check the settings under ${PANE} in foobar2000, then restart it.`,
 			};
 
 		case "unreachable":
@@ -56,7 +57,7 @@ function explain(state: TagWriterState): Explained {
 				tone: "warn",
 				badge: "Not connected",
 				summary: `foo_jean says it is listening on port ${state.record.port}, but this device cannot reach it.`,
-				fix: `Something on the player is refusing the connection: usually "bindAddress" in ${CONFIG} restricted to one address, otherwise a firewall. Setting it to "0.0.0.0" accepts connections from your network, which is both the default and what beefweb itself does.`,
+				fix: `Something on the player is refusing the connection: usually the address under ${PANE} restricted to one machine, otherwise a firewall. 0.0.0.0 accepts connections from your network, which is both the default and what beefweb itself does.`,
 			};
 
 		case "impostor":
@@ -80,7 +81,7 @@ function explain(state: TagWriterState): Explained {
 				tone: "warn",
 				badge: "Needs token",
 				summary: `foo_jean ${state.status.version} is running on port ${state.record.port}. It needs the token before it will accept anything.`,
-				fix: `Copy "authToken" from ${CONFIG} and paste it below. It is deliberately not published with the rest of the component's details, because anything that can reach the player can read those.`,
+				fix: `On the player, open ${PANE} and copy the token. It is deliberately not published with the rest of the component's details, because anything that can reach the player can read those.`,
 			};
 
 		case "unauthorized":
@@ -88,7 +89,7 @@ function explain(state: TagWriterState): Explained {
 				tone: "warn",
 				badge: "Token refused",
 				summary: "foo_jean refused that token.",
-				fix: `Check it against "authToken" in ${CONFIG}. It is regenerated only if you delete it.`,
+				fix: `Check it against the token under ${PANE}. Regenerating there locks out every client holding the old one.`,
 			};
 
 		case "ready":
@@ -104,7 +105,7 @@ function explain(state: TagWriterState): Explained {
 						badge: "Connected",
 						summary:
 							"Connected, and this install permits no fields to be written.",
-						fix: `Add the fields you want to "allowedFields" in ${CONFIG} and restart foobar2000.`,
+						fix: `Add the fields you want under ${PANE}, in "Fields they may write", then restart foobar2000.`,
 					};
 	}
 }
@@ -143,7 +144,7 @@ function TokenField({
 					value={draft}
 					spellCheck={false}
 					autoComplete="off"
-					placeholder="Paste the token from config.json"
+					placeholder="Paste the token from foobar2000"
 					onChange={(event) => setDraft(event.target.value)}
 				/>
 			</label>
@@ -222,7 +223,7 @@ export function TagWriting() {
 						<HelpHint label="About the write allowlist">
 							<p>
 								This foobar2000 permits these fields and no others. That list
-								lives in <code>{CONFIG}</code>.
+								lives under <code>{PANE}</code>.
 							</p>
 							<p>
 								Turning one off here narrows what Jean offers. It cannot widen

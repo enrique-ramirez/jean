@@ -56,7 +56,10 @@ const DIST = join(dirname(fileURLToPath(import.meta.url)), "../../dist");
 // never asked about it. Seeded by default and merged with whatever a spec adds,
 // so a spec states only the setting it cares about. `firstRun` opts out of the
 // seed entirely, for the tests that are about meeting Jean for the first time.
-const SEEDED_SETTINGS = { "jean.heatIntroSeen": true };
+const SEEDED_SETTINGS = {
+	"jean.heatIntroSeen": true,
+	"jean.settingsSeen": true,
+};
 
 export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 	// One fake player per worker, on a port the OS picks. Workers never share a

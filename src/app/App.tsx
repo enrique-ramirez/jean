@@ -47,6 +47,7 @@ import styles from "./App.module.css";
 import { CommandPalette } from "./CommandPalette";
 import { ROUTE, resolveRoute, routeOfPlayingSet } from "./routes";
 import { Sidebar } from "./Sidebar";
+import { useDocumentIdentity } from "./useDocumentIdentity";
 import { useHashRoute } from "./useHashRoute";
 import { useScrollMemory } from "./useScrollMemory";
 import { useTheme } from "./useTheme";
@@ -65,6 +66,7 @@ export function App() {
 
 function Shell() {
 	usePlayerStream();
+	useDocumentIdentity();
 
 	const { data: playlists = [], isSuccess: hasPlaylists } = usePlaylists();
 	const isPlaying = useIsPlaying();

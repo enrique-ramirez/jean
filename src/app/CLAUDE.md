@@ -169,3 +169,85 @@ was found by something breaking:
 The neutrals follow the accent's hue rather than a warm one, for the same reason the old
 palette was internally consistent: warm greys under a blue-cast charcoal read as two
 palettes that met by accident.
+
+## The tab
+
+The favicon is an LP and the title is what is playing. **The favicon carries state and
+the title carries content**, and that split is what makes each of them legible.
+
+**A CSS-animated SVG favicon only animates in Firefox.** Chrome, Edge and Safari draw
+one static frame of it. So `favicon.ts` rasterises `public/favicon.svg` onto a 32px
+canvas at twelve angles and swaps `link.href` between them -- twelve frames at 150ms
+is a 1.8s revolution, which is 33 1/3 rpm. Frames render once, lazily, on the first
+state that needs one, and are cached; the loop assigns an href and does no drawing.
+
+**Everything in the file except the sheen is centred and circular**, so rotating the
+whole image is the same picture as rotating the sheen alone. That is the whole reason
+one SVG can be both the static icon and the animation source. An off-centre mark
+would have to be drawn twice -- once in the file, once in canvas calls -- and the two
+would drift.
+
+**State is the label's colour and never the motion.** A background tab's timers are
+clamped to about a second, and harder still once it has been hidden a while, so a
+spinning icon freezes exactly when the tab strip was the only thing you could see.
+The exception is the interesting one: *a page that is itself playing audio is exempt*.
+Jean controlling a remote player is throttled; Jean streaming would not be. One build
+with two behaviours is a reason to leave the colour doing the work.
+
+So the accent means audio is coming out, and nothing else. Paused and stopped are one
+appearance -- which of the two you are in is not what anyone reads a tab strip to find
+out, and spending the only legible channel on it would leave the question actually
+being asked to the motion. Unreachable is a third, in `--danger`.
+
+**No output or speaker mark, now or when Jean streams.** The browser already badges an
+audible tab with a speaker glyph immediately beside the favicon, and that badge is how
+anyone finds the tab making noise. A second one there is noise about noise.
+
+**The label is the icon at 16px, and the vinyl is its ground.** At 41% of the diameter
+it reads as a dot rather than a record; at 33% -- which is roughly a real LP -- it
+reads as both. Because the label always sits on dark vinyl rather than on the page,
+`#ffb454` works over a light tab strip as well as a dark one, which is the one place
+in Jean the dark accent survives a light ground.
+
+The sheen is two shapes because one could not do both sizes: the gradient wedge is a
+convincing glance of light at 32px and invisible at 16px, the specular streak reads at
+16px and looks stuck on at 64px. Together the streak is the lit edge of the wedge.
+
+The rim is a single light hairline and the file carries no `prefers-color-scheme`. It
+is what separates the record from Chrome's `#35363A` dark strip, and on a light strip
+it reads as the disc edge catching the light, which is what an LP edge does. Keeping
+it out of a media query also keeps the file rasterisable, because a media query inside
+an SVG loaded as an `<img>` resolves inconsistently.
+
+### The title
+
+A tab ellipsises at around forty characters and a narrow one shows nearer fifteen, so
+**the track leads and `Jean` trails**. `Jean - Now playing: <artist> - <song>` spends
+the entire visible budget saying `Jean - Now pla`. No play or pause glyph: the favicon
+says it better, and `▶` renders as a colour emoji on some platforms. Nothing playing
+is `Jean` alone.
+
+**The title never animates.** A marquee rewrites `document.title` several times a
+second forever, and history, bookmarks and the tab's own tooltip each snapshot
+whichever frame they catch -- a history full of `st — The Beatl`. The title changes
+state; the favicon is what moves.
+
+**`Disconnected · Jean` only covers a failed first load.** `usePlayer` has
+`staleTime: Infinity` and never refetches, so `isError` is set by a load that did not
+succeed and by nothing afterwards: a player that quits while the tab is open leaves
+the last track sitting in the title. The status bar has the same blind spot for the
+same reason. Closing it means watching the EventSource's own `readyState`, which is a
+store in `domain/player` and not something this hook can see.
+
+### Not built here
+
+`navigator.mediaSession` wants exactly what `useDocumentIdentity` already derives --
+title, artist, artwork, playback state -- and would buy the OS media keys, the lock
+screen and Chrome's media hub. It does nothing until the page is itself audible, so it
+stays unwritten while Jean only controls a remote player. When Jean streams it belongs
+in that hook as a third consumer of those values, not a second derivation of the same
+track.
+
+There is no `apple-touch-icon`. `index.html` sets `mobile-web-app-capable`, so Jean can
+be added to a home screen, and iOS ignores SVG icons there -- it wants a 180px PNG.
+Until one exists, that shortcut gets a screenshot of the page.

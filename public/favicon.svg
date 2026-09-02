@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>Jean</title>
+  <defs>
+    <linearGradient id="sheen" x1=".05" y1=".95" x2=".95" y2=".05">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset=".6" stop-color="#ffffff" stop-opacity=".16" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".46" />
+    </linearGradient>
+  </defs>
+  <circle cx="16" cy="16" r="15.3" fill="#16191e" />
+  <circle cx="16" cy="16" r="15.3" fill="none" stroke="#ffffff" stroke-opacity=".26" stroke-width="1.3" />
+  <g fill="none" stroke="#ffffff" stroke-opacity=".09" stroke-width=".9">
+    <circle cx="16" cy="16" r="12.2" />
+    <circle cx="16" cy="16" r="9.2" />
+  </g>
+  <path d="M16 16 L18.73 1.96 A14.3 14.3 0 0 1 29.52 11.34 Z" fill="url(#sheen)" />
+  <path d="M22.65 6.42A11.4 11.4 0 0 1 27.15 13.15" fill="none" stroke="#ffffff" stroke-opacity=".8" stroke-width="2.4" stroke-linecap="round" />
+  <circle cx="16" cy="16" r="5" fill="#ffb454" />
+  <circle cx="16" cy="16" r="1" fill="#0e1013" />
+</svg>

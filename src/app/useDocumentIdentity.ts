@@ -1,0 +1,37 @@
+import { useEffect } from "react";
+
+import { usePlayer } from "@/domain/player/usePlayer";
+import { readTrack } from "@/shared/api/beefweb";
+import { type PlaybackBadge, setFavicon } from "./favicon";
+
+const NAME = "Jean";
+
+export function useDocumentIdentity() {
+	const { data: snapshot, isError } = usePlayer();
+
+	const player = snapshot?.player;
+	const track = readTrack(player);
+	const hasTrack = Boolean(track && (player?.activeItem?.index ?? -1) >= 0);
+
+	const badge: PlaybackBadge = isError
+		? "offline"
+		: player?.playbackState === "playing"
+			? "playing"
+			: hasTrack && player?.playbackState === "paused"
+				? "paused"
+				: "idle";
+
+	const title = isError
+		? `Disconnected · ${NAME}`
+		: hasTrack
+			? `${track?.title} — ${track?.artist} · ${NAME}`
+			: NAME;
+
+	useEffect(() => {
+		document.title = title;
+	}, [title]);
+
+	useEffect(() => {
+		setFavicon(badge);
+	}, [badge]);
+}

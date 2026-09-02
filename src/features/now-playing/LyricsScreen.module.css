@@ -38,6 +38,7 @@
      rather than the text keeps it set ragged-right like every other block of
      type in the app. */
 	--lyric-size: clamp(1.25rem, 2.6vw, 1.75rem);
+	--resume-bottom: calc(30px + env(safe-area-inset-bottom));
 
 	/* Same reason as the now-playing screen: the horizontal axis must not become
      Android Chrome's back gesture, and the vertical axis stays the scroller's
@@ -104,8 +105,12 @@
 
 /* A measure. Lyrics running the full width of a 27" display is not what going
    full screen was for -- the point is the type getting bigger, not the line
-   getting longer. */
-.body > * {
+   getting longer.
+
+   A wrapper rather than `.body > *`: the resume pill is a sibling of the lyric
+   list, so a width rule on the children caught it too and turned a floating
+   control into a full-width bar docked to the foot of the screen. */
+.measure {
 	width: 100%;
 	max-width: 44rem;
 	margin-inline: auto;

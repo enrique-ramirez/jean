@@ -197,20 +197,44 @@ rows is far worse than not offering the undo.
 **The list follows playback, and only when the track actually changes.** Scrolling
 away from the playing track does not change which track is playing, so nothing
 re-fires and the view stays where it was put; the "Now playing" pill and `n` are
-how you get back. It **centres the track, in both directions**.
-Minimal scrolling was the obvious choice and the wrong one: it brings a row in
-from whichever edge it crossed and leaves it there, so going forwards parked the
-playing track on the status bar -- measured at zero pixels from the bottom edge,
-ten track changes running -- and going backwards tucked it under the sticky
-toolbar, in view by the letter and needing a nudge of the wheel to be seen.
-Centre has no edge to land on, so the direction stops mattering, and where the
-playing track sits becomes a fact rather than a consequence of how you got
-there. Advancing a track then scrolls the list by exactly one row, which is
-cheaper than it sounds: the row is already rendered, so it is one compositor
-scroll and not a re-render. Off for search
-results: those rows change under every keystroke, and jumping to the playing
-track the moment it appears among them would take the view away from the matches
-just typed for.
+how you get back. Off for search results: those rows change under every
+keystroke, and jumping to the playing track the moment it appears among them
+would take the view away from the matches just typed for.
+
+**It moves only when the row is off screen, and then it centres.** Those are two
+rules and each was arrived at separately.
+
+*Only when off screen*, because a view that re-centres on a row you were already
+looking at is answering a question nobody asked. The case that makes it obvious
+is double-clicking a track halfway down the list: you can see it, you asked for
+it, and the list jumps anyway. `scrollToTrack`'s `ifNeeded` measures the row
+against the scroll container rather than reading the virtualiser's index range,
+because overscan mounts rows past the fold and rendered is not visible. An
+unmounted row counts as off screen -- the cost of being wrong that way is a
+scroll that was not needed, not a track that cannot be found.
+
+The consequence to know is that advancing no longer creeps the list by a row per
+track. The playing row walks down the view instead, and the list moves once,
+when it reaches the edge. That is the trade: no movement at all most of the
+time, in exchange for one larger jump rather than many small ones.
+
+*Centred*, when it does move. Minimal scrolling was the obvious choice and the
+wrong one: it brings a row in from whichever edge it crossed and leaves it
+there, so going forwards parked the playing track on the status bar -- measured
+at zero pixels from the bottom edge, ten track changes running -- and going
+backwards tucked it under the sticky toolbar, in view by the letter and needing
+a nudge of the wheel to be seen. Centre has no edge to land on, so the direction
+stops mattering, and where the playing track sits becomes a fact rather than a
+consequence of how you got there.
+
+Note that `ifNeeded` is **not** the virtualiser's `align: "auto"`, which is that
+same minimal scroll under another name. The two look interchangeable in an
+autocomplete list and are the opposite of each other here: `auto` moves the row
+to the nearest edge, `ifNeeded` does not move at all.
+
+`ifNeeded` is on the follow effect and nowhere else. `n`, the "Now playing" pill
+and the finder are all somebody asking to be taken to the track, and centring is
+the whole of what they were asked for.
 
 **It moves the cursor as well.** It used to only scroll, so `0`-`5` -- which rate
 the cursor row through `ratingTarget()` -- rated a track chosen an hour ago while

@@ -179,11 +179,12 @@ export const TrackList = forwardRef(function TrackList(
 		() => ({
 			scrollToTrack(
 				index: number,
-				{ animate = false, align = "center" }: ScrollToTrackOptions = {},
+				{
+					animate = false,
+					align = "center",
+					ifNeeded = false,
+				}: ScrollToTrackOptions = {},
 			) {
-				cancelScroll.current?.();
-				cancelScroll.current = null;
-
 				const target = isAlbumLayout
 					? groups.findIndex((entry) => index < entry.start + entry.count)
 					: index;
@@ -196,12 +197,24 @@ export const TrackList = forwardRef(function TrackList(
 				// virtualiser's items are groups, so centring an index centres the *album* and
 				// leaves the track wherever it falls inside it.
 				//
-				// Null until the row is mounted, which is what the fallback is for -- the first
-				// frames aim at the group, that mounts the row, and the target refines.
+
+				const rowRect = () =>
+					element
+						.querySelector(`[data-row="${index}"]`)
+						?.getBoundingClientRect() ?? null;
+
+				if (ifNeeded) {
+					const seen = rowRect();
+					const view = element.getBoundingClientRect();
+					if (seen && seen.top >= view.top && seen.bottom <= view.bottom)
+						return;
+				}
+				cancelScroll.current?.();
+				cancelScroll.current = null;
+
 				const centreOnRow = () => {
-					const row = element.querySelector(`[data-row="${index}"]`);
-					if (!row) return null;
-					const seen = row.getBoundingClientRect();
+					const seen = rowRect();
+					if (!seen) return null;
 					const view = element.getBoundingClientRect();
 					return (
 						element.scrollTop +

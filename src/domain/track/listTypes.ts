@@ -36,6 +36,7 @@ export type ActiveDirection = "up" | "down" | null;
 export interface ScrollToTrackOptions {
 	animate?: boolean;
 	align?: "start" | "center" | "end" | "auto";
+	ifNeeded?: boolean;
 }
 
 // What `TrackList` exposes to the view above it. Scrolling is by *track* index

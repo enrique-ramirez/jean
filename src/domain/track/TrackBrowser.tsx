@@ -363,8 +363,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 
 		if (!cursorFollowsPlayback) return;
 		moveCursorTo(activeIndex);
-		// Centred in both directions; see this folder's CLAUDE.md.
-		scrollToTrack(activeIndex, { align: "center", animate: true });
+
+		scrollToTrack(activeIndex, {
+			align: "center",
+			animate: true,
+			ifNeeded: true,
+		});
 	}, [
 		activeIndex,
 		rows.length,

@@ -71,6 +71,25 @@ const expectCentredOrClamped = async (page: Page, index: number) => {
 	).toBeLessThan(2);
 };
 
+// The first fully visible row at or past the middle of the view. Which index
+// that is depends on the layout and the viewport, so it is measured.
+const rowInTheMiddle = (page: Page) =>
+	page.evaluate(() => {
+		const scroller = document.querySelector("main");
+		const view = scroller!.getBoundingClientRect();
+		const middle = (view.top + view.bottom) / 2;
+		for (const row of scroller!.querySelectorAll("[data-row]")) {
+			const seen = row.getBoundingClientRect();
+			if (
+				seen.top >= view.top &&
+				seen.bottom <= view.bottom &&
+				seen.bottom >= middle
+			)
+				return Number(row.getAttribute("data-row"));
+		}
+		return null;
+	});
+
 // The shared openLibrary waits for row 0 to be *attached*, which overscan makes
 // true well above the fold. Everything below measures where the view came to
 // rest, so it has to start from one that has settled at the top.
@@ -274,16 +293,88 @@ test.describe("at library scale", () => {
 			await expectCentredOrClamped(page, 15);
 		});
 
-		test("keeps it centred while tracks advance", async ({ page, player }) => {
+		test("it leaves the view alone while the track advances on screen", async ({
+			page,
+			player,
+		}) => {
 			await openAtTheTop(page);
-			player.playItem("p7", 8);
-			await expect.poll(() => isRowOnScreen(page, 8)).toBe(true);
 
-			await times(6, async (step) => {
+			// Centred somewhere with room on both sides first, so "it did not move"
+			// is a different sentence from "it was at the top and could not".
+			player.playItem("p7", FAR.index);
+			await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);
+			const resting = await settle(page);
+			expect(resting).toBeGreaterThan(0);
+
+			// This used to re-centre on every one of these, so the list crept by a
+			// row per track and whatever you were reading moved out from under you.
+			await times(3, async (step) => {
+				const next = FAR.index + 1 + step;
 				player.next();
-				await page.waitForTimeout(600);
-				await expectCentredOrClamped(page, 9 + step);
+				await expect(trackRow(page, next)).toHaveAttribute(
+					"data-active",
+					"true",
+				);
+				await page.waitForTimeout(500);
+				expect(
+					await isRowOnScreen(page, next),
+					`track ${next} left the screen`,
+				).toBe(true);
+				expect(await scrollTop(page), `the view moved for track ${next}`).toBe(
+					resting,
+				);
 			});
+		});
+
+		test("it centres again once the track advances off screen", async ({
+			page,
+			player,
+		}) => {
+			await openAtTheTop(page);
+			player.playItem("p7", FAR.index);
+			await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);
+			await settle(page);
+
+			// Staying put is only right while the row is on screen. Away from it,
+			// the next track has to come back -- otherwise not scrolling stops being
+			// restraint and becomes the view never following at all.
+			await scrollTo(page, 0);
+			await expect.poll(() => scrollTop(page)).toBe(0);
+			expect(await isRowOnScreen(page, FAR.index + 1)).toBe(false);
+
+			player.next();
+			await expect.poll(() => isRowOnScreen(page, FAR.index + 1)).toBe(true);
+			await settle(page);
+			await expectCentredOrClamped(page, FAR.index + 1);
+		});
+
+		test("playing a row you can already see leaves the view alone", async ({
+			page,
+		}) => {
+			test.skip(
+				test.info().project.name === "mobile",
+				"double-click is a pointer gesture",
+			);
+
+			await openAtTheTop(page);
+			await scrollTo(page, 300);
+			await expect.poll(() => scrollTop(page)).toBe(300);
+
+			// Read off the page rather than named: which index is halfway down the
+			// view depends on the layout's row heights and on the viewport.
+			const index = await rowInTheMiddle(page);
+			expect(index, "no fully visible row past the middle").not.toBeNull();
+
+			await trackRow(page, index!).dblclick();
+			await expect(trackRow(page, index!)).toHaveAttribute(
+				"data-active",
+				"true",
+			);
+			await page.waitForTimeout(600);
+
+			// The whole complaint: asking for a track you are looking at should not
+			// take the list away from you.
+			expect(await scrollTop(page)).toBe(300);
 		});
 
 		test("the last track is reachable even though it cannot be centred", async ({

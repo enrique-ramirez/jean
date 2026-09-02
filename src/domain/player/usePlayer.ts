@@ -36,7 +36,14 @@ import type {
 } from "@/shared/api/types";
 import { useCoalescedWrite } from "@/shared/hooks/useCoalescedWrite";
 import { clamp } from "@/shared/lib/math";
+import { refusal } from "@/shared/lib/refusal";
 import { positionAt } from "./position";
+import {
+	dequeuePlaylist,
+	holdQueue,
+	isQueueStreamHeld,
+	QUEUE_KEY,
+} from "./queue";
 
 const PLAYER_KEY = ["player"];
 export const PLAYLISTS_KEY = ["playlists"];
@@ -57,9 +64,15 @@ export function usePlayerStream() {
 		const source = new EventSource(UPDATES_URL);
 
 		source.onmessage = (event) => {
-			const { player, playlists } = JSON.parse(event.data) as UpdateMessage;
+			const { player, playlists, playQueue } = JSON.parse(
+				event.data,
+			) as UpdateMessage;
 			if (player) queryClient.setQueryData(PLAYER_KEY, snapshot(player));
 			if (playlists) queryClient.setQueryData(PLAYLISTS_KEY, playlists);
+			// Dropped mid-mutation: a reorder rebuilds the tail, so the player passes
+			// through every intermediate state and pushes each one. See useQueue.
+			if (playQueue && !isQueueStreamHeld())
+				queryClient.setQueryData(QUEUE_KEY, playQueue);
 		};
 
 		// EventSource reconnects on its own and beefweb replays a full snapshot on
@@ -196,8 +209,24 @@ export function usePlaylistActions() {
 				),
 		),
 
+		// The queue goes first and the delete is abandoned if it will not go --
+		// deleting a playlist the queue points into crashes the player. Here rather
+		// than in the sidebar: the next caller would not know to repeat it.
 		remove: usePlaylistPatch(
-			(id: string) => removePlaylist(id),
+			async (id: string) => {
+				const release = holdQueue();
+				try {
+					if (!(await dequeuePlaylist(id))) {
+						throw refusal(
+							"Tracks from this playlist are still in the play queue, and deleting it while they are would stop the player. Clear the queue and try again.",
+						);
+					}
+				} finally {
+					release();
+					await queryClient.refetchQueries({ queryKey: QUEUE_KEY });
+				}
+				return removePlaylist(id);
+			},
 			(playlists, id) => playlists.filter((entry) => entry.id !== id),
 		),
 

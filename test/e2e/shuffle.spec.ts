@@ -142,7 +142,9 @@ test.describe("the status bar shuffle is the mode", () => {
 		).toBeVisible();
 	});
 
-	test("it is in the transport, on both surfaces", async ({ page }) => {
+	test("it is in the transport, on both surfaces", async ({
+		page,
+	}, testInfo) => {
 		const labels = await statusBar(page)
 			.getByRole("button")
 			.evaluateAll((buttons) =>
@@ -154,8 +156,16 @@ test.describe("the status bar shuffle is the mode", () => {
 		// full list, since the middle button is Play or Pause depending on what the
 		// player is doing and that is not what this is about.
 		expect(labels[0]).toBe("Shuffle");
-		expect(labels[1]).toBe("Previous track");
-		expect(labels).toContain("Next track");
+
+		// Skipping is desktop-only: two 32px targets flanking Play are a miss
+		// waiting to happen on a thumb, and the room they free is the queue's.
+		if (testInfo.project.name === "mobile") {
+			expect(labels).not.toContain("Previous track");
+			expect(labels).not.toContain("Next track");
+		} else {
+			expect(labels[1]).toBe("Previous track");
+			expect(labels).toContain("Next track");
+		}
 	});
 
 	test("it sets the playback order and starts nothing", async ({

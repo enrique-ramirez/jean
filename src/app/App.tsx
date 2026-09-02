@@ -24,6 +24,7 @@ import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { LibraryListView } from "@/features/library/LibraryListView";
 import { StatusBar } from "@/features/now-playing/StatusBar";
 import { PlaylistView } from "@/features/playlist/PlaylistView";
+import { QueuePanel } from "@/features/queue/QueuePanel";
 import { LibrarySearchField } from "@/features/search/LibrarySearchField";
 import { SearchResults } from "@/features/search/SearchResults";
 import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
@@ -63,6 +64,13 @@ export function App() {
 	);
 	const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 	const [isSheetOpen, setIsSheetOpen] = useState(false);
+	// Split as the sidebar's is: docked it is furniture worth restoring, as a
+	// drawer it is something you opened and should not come back on its own.
+	const [isQueueDocked, setIsQueueDocked] = useStoredState(
+		"jean.queueOpen",
+		false,
+	);
+	const [isQueueDrawerOpen, setIsQueueDrawerOpen] = useState(false);
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -156,6 +164,13 @@ export function App() {
 				: `playlist:${selectedId}`,
 	);
 
+	const isQueueOpen = isCompactViewport ? isQueueDrawerOpen : isQueueDocked;
+
+	const toggleQueue = useCallback(() => {
+		if (isCompactViewport) setIsQueueDrawerOpen((current) => !current);
+		else setIsQueueDocked((current) => !current);
+	}, [isCompactViewport, setIsQueueDocked]);
+
 	const toggleSidebar = () => {
 		if (isCompactViewport) setIsSidebarOpen((current) => !current);
 		else setIsSidebarCollapsed((current) => !current);
@@ -193,6 +208,7 @@ export function App() {
 		},
 		openPalette: () => setIsPaletteOpen(true),
 		toggleSidebar,
+		toggleQueue,
 		showShortcuts: () => setIsSheetOpen((current) => !current),
 		toggleTheme,
 	});
@@ -329,6 +345,16 @@ export function App() {
 						/>
 					)}
 				</main>
+
+				<QueuePanel
+					isOpen={isQueueOpen}
+					isCompactViewport={isCompactViewport}
+					onDismiss={() =>
+						isCompactViewport
+							? setIsQueueDrawerOpen(false)
+							: setIsQueueDocked(false)
+					}
+				/>
 			</div>
 
 			{/* A sibling of the body, not a child of it -- it shares the body's cell
@@ -336,7 +362,7 @@ export function App() {
           anyone having to know how tall the status bar is. */}
 			<Toasts />
 
-			<StatusBar />
+			<StatusBar isQueueOpen={isQueueOpen} onToggleQueue={toggleQueue} />
 
 			<DragGhost />
 

@@ -275,6 +275,22 @@ album, and splits one album into two groups mid-run.
 the media library by path, and the status bar by whatever the player is currently on.
 Anything drawing a row's cover calls `source.artworkUrl(ref)`.
 
+**Queueing goes through the seam too, and it is the case that justifies it.**
+`/playqueue/add` addresses a track as `(playlist, index)`, and a row read from the
+media library API is in no playlist at all -- so on Home, All music and search
+results there is nothing to send. `LibrarySource.queueTargets` is where that is
+answered: a playlist source hands back the refs it already has, and the library
+source appends to `#Jean Queue`, a holding playlist in Jean's own namespace, and
+reads the tail back to learn where the tracks actually landed. The read-back is not
+caution -- the player files a set in the media library's *browse* order, not the
+order it was sent, and a queue in the wrong order is the one bug a queue cannot
+have.
+
+That playlist is **append-only and emptied rather than deleted**, on the way in and
+only when the play queue is provably empty. Both halves matter: appending never
+disturbs an entry already queued, because the queue holds track handles rather than
+positions; and deleting a playlist the queue points into crashes the player.
+
 **List components take `source`, not `playlistId`.** `TrackBrowser`, `TrackList`,
 `TrackRow`, `AlbumGroup` and `Mosaic` all receive the source; so do
 `useTrackContextMenu`, `useTrackDragSource` and `useAddTracks`. A component that

@@ -26,6 +26,26 @@ time:
   `%lyrics%` returns `?` and `$meta(unsyncedlyrics)` finds nothing.
 - **`GET /api/player` ignores `trcolumns`** and returns `"columns": []`. Use
   `GET /api/query?player=true&trcolumns=…`.
+- **The play queue's columns parameter has two names**, and each endpoint ignores the
+  other's. `GET /api/playqueue` takes **`columns`**; `/api/query` and
+  `/api/query/updates` take **`qcolumns`**. Sending the wrong one is a 200 with
+  `"columns": []` on every entry, which reaches the UI as a panel full of blank rows
+  rather than as an error. Jean asks through `/api/query` in both places so that
+  first paint and every push evaluate the same expressions.
+- **A play queue entry holds a track, not a position, and `itemIndex: -1` is an
+  orphan.** *Measured*: removing a playlist row above a queued one renumbers the
+  reported `itemIndex` rather than stranding the entry, and removing the queued track
+  itself leaves the entry in place with `itemIndex: -1` and **garbage in `columns`**
+  — one probe came back titled `NEIN`. Test the index; never read the columns of an
+  orphan.
+- **`queueIndex` is honoured on `/playqueue/remove` and silently ignored on
+  `/playqueue/add`.** So removal is exact and insertion does not exist: a reorder is a
+  remove-and-re-append of the queue's tail. The add returns **204**, not 400, so there
+  is nothing to feature-detect it with.
+- **Deleting a playlist that the play queue points into crashes `foo_beefweb`** and
+  takes foobar2000 with it. `dequeuePlaylist` clears the entries first and
+  `usePlaylistActions` abandons the delete if they will not clear. Full crash report
+  in `API.md`.
 - **Volume is decibels** (`-100..0`), not a percentage, and `volume.type` says so --
   another player may report a linear range. How the fader maps onto that range is
   in `src/domain/player/CLAUDE.md`.

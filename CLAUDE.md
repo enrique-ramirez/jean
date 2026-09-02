@@ -90,6 +90,7 @@ when you are not:
 | `src/domain/library/CLAUDE.md` | where the library comes from, playing a set, search results |
 | `src/domain/player/CLAUDE.md` | playback state and the controls over it |
 | `src/features/home/CLAUDE.md` | the home screen and its shelves |
+| `src/features/queue/CLAUDE.md` | the play queue panel and how it is drawn |
 | `src/features/search/CLAUDE.md` | the search control |
 | `src/app/CLAUDE.md` | the shell, breakpoints and themes |
 
@@ -194,6 +195,7 @@ Things that vary between installs and must never be assumed:
 | | |
 |---|---|
 | Which playlist is "the library" | An autoplaylist the user creates and names `#Jean Library`. Guide them through it on first run; match the name exactly and never a title they chose. Never assume `p1` — that is scratch space. |
+| Whether `#Jean Queue` exists | Jean's holding playlist for queueing library rows, created on demand and never required. Nothing may assume it is there, and nothing may delete it while the play queue points into it — that crashes the player. |
 | `permissions` | `changePlaylists`, `changeOutput`, `changeClientConfig` come from the player. Gate the UI on them — a read-only instance gets a read-only Jean, not buttons that 403. |
 | `authRequired` | May be on. Support Basic auth and a credentials prompt. |
 | `pathSeparator` | From `/api/browser/roots`. `\` on Windows, `/` elsewhere. |
@@ -328,6 +330,18 @@ re-indexes the library. Both appear in the loading rules as requirements for
 
 **No tag writing.** There is no endpoint for it, and the `tagWriter.ts` seam described
 under *Detecting `foo_jean`* is a plan rather than a file.
+
+**No "play next", and no lookahead of any kind.** Inserting at a queue position is
+impossible on foobar2000 -- `queueIndex` on `/playqueue/add` is accepted and
+silently ignored -- so "play next" would be a full rebuild of the queue for a
+single track, and the API offers nothing that says what the player *would* play
+next on its own. The queue panel therefore shows what was explicitly queued and
+says so; see `src/domain/player/CLAUDE.md`.
+
+**No now-playing screen yet**, which is where previous and next went when they left
+the mobile status bar. Skipping there is meant to be a gesture across the whole
+width rather than a 32px button, and until it exists the phone reaches those through
+the keyboard, the desktop, or `Mod+Arrow`.
 
 **`Mosaic` is on hold at the owner's request** -- changes are coming there, so do not
 test or rework it yet.

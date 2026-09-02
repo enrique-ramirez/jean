@@ -16,6 +16,40 @@ scrolling to `<body>`.
 The status bar is **one component with two shapes**, not two components: a full-width
 footer on desktop, a compact strip that expands to a full-screen sheet on mobile.
 
+**Two panels flank the content, and they are the same shape mirrored.** The sidebar
+is a grid column on the left and a fixed drawer from the left below the breakpoint;
+the queue is a grid column on the right and a fixed drawer from the right. Left is
+where music comes from, right is where it is going.
+
+The queue is deliberately *not* an action sheet, though the app has one and the
+house style prefers it. A sheet is where you choose a command and leave; the queue
+is a surface you work inside -- scroll it, drag rows around it, take rows off it --
+and a detached sheet has neither the height nor the scroll for that. If a third
+sheet-shaped thing ever appears, the chrome in `ActionMenu` should be extracted
+rather than copied a second time.
+
+Both panels' columns are set as **named custom properties on `.body`** rather than
+by writing the whole `grid-template-columns` out once per combination. Two
+independent toggles are four such rules that all have to agree, and the third one
+added is the one that will not. The transition survives it: a custom property is
+not animatable, but the `grid-template-columns` it resolves to is.
+
+**A panel in a zero-width column still has to clip.** `min-width: 0` lets the column
+reach zero and does nothing about the content, which paints out of it and widens the
+document -- that surfaced as the library header's figures suddenly able to push the
+page sideways, a test that had been green for months. `overflow: hidden` on the
+panel, with the scroll on a child.
+
+**Skipping is desktop-only in the status bar.** Two 32px targets flanking Play are a
+miss waiting to happen on a thumb, and a miss on Previous costs you the track you
+were enjoying. The phone gets shuffle, play, the queue and volume; previous and next
+belong to the now-playing screen, where they are a swipe across the whole width
+rather than a button between two other buttons.
+
+**The queue button is destined for that screen too**, and is in the compact status
+bar only until it exists -- removing it first would leave the panel with nothing to
+open it on a phone. Deleting it there is a one-line change to `StatusBar`.
+
 Model **what is playing** separately from **where it is playing**. Output is a named
 target, not an assumption that audio comes from the remote player.
 

@@ -20,6 +20,7 @@ import {
 	SkipBackIcon,
 	SkipForwardIcon,
 } from "@/shared/ui/icons";
+import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsed } from "./SeekBar";
 import styles from "./StatusBar.module.css";
 import { Volume, VolumePopover } from "./Volume";
@@ -46,7 +47,13 @@ function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 const MOTIONS = ["equalizer", "fluid"];
 const MOTION_CYCLE_MS = 8000;
 
-export function StatusBar() {
+export function StatusBar({
+	isQueueOpen,
+	onToggleQueue,
+}: {
+	isQueueOpen: boolean;
+	onToggleQueue: () => void;
+}) {
 	const { data: snapshot, isPending, isError, error } = usePlayer();
 	const [motion, setMotion] = useState(MOTIONS[0]);
 	const isCompactViewport = useIsCompactViewport();
@@ -147,14 +154,19 @@ export function StatusBar() {
 						<Shuffle size={16} strokeWidth={2} />
 					</button>
 
-					<button
-						type="button"
-						className={styles.skip}
-						aria-label="Previous track"
-						onClick={() => transport.previous.mutate()}
-					>
-						<SkipBackIcon size={18} />
-					</button>
+					{/* Desktop only: 32px targets flanking Play are a miss waiting to
+              happen on a thumb. Skipping belongs to the now-playing screen,
+              where it is a swipe rather than a button between two buttons. */}
+					{isCompactViewport ? null : (
+						<button
+							type="button"
+							className={styles.skip}
+							aria-label="Previous track"
+							onClick={() => transport.previous.mutate()}
+						>
+							<SkipBackIcon size={18} />
+						</button>
+					)}
 
 					<button
 						type="button"
@@ -167,14 +179,21 @@ export function StatusBar() {
 						{isPlaying ? <PauseIcon size={19} /> : <PlayIcon size={19} />}
 					</button>
 
-					<button
-						type="button"
-						className={styles.skip}
-						aria-label="Next track"
-						onClick={() => transport.next.mutate()}
-					>
-						<SkipForwardIcon size={18} />
-					</button>
+					{isCompactViewport ? null : (
+						<button
+							type="button"
+							className={styles.skip}
+							aria-label="Next track"
+							onClick={() => transport.next.mutate()}
+						>
+							<SkipForwardIcon size={18} />
+						</button>
+					)}
+
+					{/* Right of the transport as playback order is left of it, and the
+              pair balances the group around Play. Order is the rule the buttons
+              follow when nothing is queued; the queue is what overrides it. */}
+					<QueueButton isOpen={isQueueOpen} onToggle={onToggleQueue} />
 				</div>
 
 				{isCompactViewport ? (

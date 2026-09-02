@@ -90,6 +90,15 @@ export function queryOfScratchPlaylist(
 	return held && held.kind === SCRATCH_KIND.search ? held.label : null;
 }
 
+// ---- the queue's holding playlist ------------------------------------------
+
+// Where library rows go so the queue has a (playlist, index) to address them by.
+// Append-only, emptied only when the queue is empty, never deleted.
+export const QUEUE_TITLE = `${PREFIX} Queue`;
+
+export const findQueuePlaylist = (playlists: PlaylistInfo[]) =>
+	playlists.find((entry) => entry.title === QUEUE_TITLE) ?? null;
+
 // ---- the namespace ---------------------------------------------------------
 
 const isJeanPlaylist = (playlist: PlaylistInfo | null | undefined) =>

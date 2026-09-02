@@ -2,6 +2,8 @@ import {
 	addFromLibrary,
 	artworkUrl,
 	copyPlaylistItems,
+	fetchPlaylistItems,
+	fetchPlaylists,
 	LIBRARY_SORT,
 	libraryArtworkUrl,
 	libraryPathMatcher,
@@ -19,6 +21,14 @@ import type { Refs } from "./project";
 // the search index stay integer-keyed and never learn which source they are
 // looking at. If something outside this file has to ask, the seam is in the
 // wrong place.
+
+// What `/playqueue/add` needs, and what a media library row cannot supply on its
+// own -- it is in no playlist at all.
+export interface QueueTarget {
+	playlistId: string;
+	itemIndex: number;
+}
+
 export interface LibrarySource {
 	kind: "library" | "playlist";
 	// Null on the media library. Anything that needs a playlist to act goes
@@ -31,6 +41,12 @@ export interface LibrarySource {
 	artworkUrl: (ref: number) => string;
 	fill: (targetId: string, refs: Refs, heldCount?: number) => Promise<unknown>;
 	addTo: (targetId: string, refs: Refs) => Promise<unknown>;
+	// `holding` is called only by a source that needs somewhere to put the tracks
+	// first. Pairs come back in the order asked for.
+	queueTargets: (
+		refs: Refs,
+		holding: () => Promise<string | null>,
+	) => Promise<QueueTarget[]>;
 	playingPosition: (
 		refs: Refs,
 		track: TrackIdentity | null | undefined,
@@ -117,6 +133,38 @@ const fillByCopy =
 		return copyPlaylistItems(sourceId, targetId, refs);
 	};
 
+// The read-back is not caution: the player files a set in the media library's
+// browse order, not the order it was sent, and a queue in the wrong order is the
+// one bug a queue cannot have. The appended block is contiguous.
+const queueViaHolding =
+	(paths: string[], subsongs: number[]) =>
+	async (refs: Refs, holding: () => Promise<string | null>) => {
+		const playlistId = await holding();
+		if (!playlistId || refs.length === 0) return [];
+
+		// Off the player: item changes are never pushed, so a cached count is stale
+		// from the first write on, and this one decides which rows get read back.
+		const before =
+			(await fetchPlaylists()).find((entry) => entry.id === playlistId)
+				?.itemCount ?? 0;
+
+		await addFromLibrary(playlistId, {
+			items: itemsFor(paths, subsongs, refs),
+		});
+
+		const landed = await fetchPlaylistItems(playlistId, before, refs.length, [
+			"%path%",
+		]);
+		// The playlist answers with an absolute, platform-separated path and the
+		// library with a relative, forward-slashed one, so they only meet by suffix.
+		const matchers = landed.rows.map((row) => libraryPathMatcher(row[0]));
+
+		return Array.from(refs, (ref) => {
+			const at = matchers.findIndex((matches) => matches(paths[ref]));
+			return at < 0 ? null : { playlistId, itemIndex: before + at };
+		}).filter((target): target is QueueTarget => target !== null);
+	};
+
 const fromMediaLibrary = ({
 	paths,
 	subsongs,
@@ -130,6 +178,7 @@ const fromMediaLibrary = ({
 
 	artworkUrl: (ref: number) => libraryArtworkUrl(paths[ref], subsongs[ref]),
 	fill: fillByLibrary(paths, subsongs),
+	queueTargets: queueViaHolding(paths, subsongs),
 
 	// No sort here, unlike `fill`: that playlist is the user's and its order is
 	// theirs.
@@ -160,6 +209,10 @@ const fromPlaylist = ({
 
 	artworkUrl: (ref: number) => artworkUrl(playlistId, ref),
 	fill: fillByCopy(playlistId),
+
+	// A ref already *is* a position here, so nothing is created or read back.
+	queueTargets: async (refs: Refs) =>
+		Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
 	addTo: (targetId: string, refs: Refs) =>
 		copyPlaylistItems(playlistId, targetId, refs),
 

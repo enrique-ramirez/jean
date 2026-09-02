@@ -32,6 +32,7 @@ import { useSortableList } from "@/shared/hooks/useSortableList";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
+import { isRefusal } from "@/shared/lib/refusal";
 import { plural } from "@/shared/lib/text";
 import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
@@ -185,8 +186,13 @@ export function Sidebar({
 		{ enabled: canEdit && focusedIndex >= 0 },
 	);
 
-	const refused = (message: string) => () =>
-		pushToast({ tone: "error", message });
+	// Only a refusal Jean wrote is shown as-is; anything else is an HTTP failure
+	// whose message is a URL and a status code.
+	const refused = (message: string) => (error: unknown) =>
+		pushToast({
+			tone: "error",
+			message: isRefusal(error) ? error.message : message,
+		});
 
 	// Created empty and dropped into rename: one click gets you a playlist and
 	// naming it is optional. The view does not change, because a new playlist is

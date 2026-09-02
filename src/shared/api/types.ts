@@ -88,6 +88,20 @@ export interface TrackRows {
 	offset: number;
 }
 
+// ---- the play queue --------------------------------------------------------
+
+// Only what was explicitly queued: the player consumes an entry the moment its
+// track starts, and offers no lookahead beyond that.
+export interface PlayQueueItem {
+	playlistId: string;
+	playlistIndex: number;
+	// Re-derived on every read, because the queue holds track handles rather than
+	// positions. -1 once the track itself is removed from its playlist, and that
+	// entry's `columns` are garbage rather than empty.
+	itemIndex: number;
+	columns: TrackColumns;
+}
+
 // ---- media library (beefweb 0.11+) ----------------------------------------
 
 // Three states, not two: `supported: false` is 0.10 or DeaDBeeF, while
@@ -131,6 +145,8 @@ export interface AddFromLibraryBody {
 export interface UpdateMessage {
 	player?: PlayerState;
 	playlists?: PlaylistInfo[];
+	// Complete, unlike `playlists`: the whole queue arrives on every change to it.
+	playQueue?: PlayQueueItem[];
 }
 
 // Kept with the moment it arrived, which is what makes the position

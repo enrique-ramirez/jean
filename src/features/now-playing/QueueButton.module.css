@@ -1,0 +1,69 @@
+.queue {
+	position: relative;
+	display: grid;
+	place-items: center;
+	padding: 8px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+	transition:
+		color 0.12s var(--ease),
+		background-color 0.12s var(--ease);
+}
+
+.queue:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+/* Same vocabulary as the shuffle toggle beside it: quiet until it is on. */
+.queue[data-open="true"] {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+/* The ring is the status bar's own background, not a border colour: without it
+   the badge and the icon's strokes touch and the number stops being legible.
+   min-width plus a pill radius, so 1 is a circle and 12 a capsule. */
+.badge {
+	position: absolute;
+	top: 1px;
+	right: 0;
+	min-width: 15px;
+	height: 15px;
+	padding: 0 4px;
+	box-sizing: border-box;
+	display: grid;
+	place-items: center;
+	border-radius: var(--radius-pill);
+	box-shadow: 0 0 0 2px var(--surface);
+	background: var(--accent);
+	color: var(--on-accent);
+	font-size: 0.625rem;
+	font-weight: 700;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+	/* Once: a notification, not motion the eye is meant to live with. */
+	animation: pop 0.34s var(--ease) 1;
+}
+
+.queue:hover .badge,
+.queue[data-open="true"] .badge {
+	box-shadow: 0 0 0 2px var(--surface-sunken);
+}
+
+@keyframes pop {
+	0% {
+		scale: 0.4;
+		opacity: 0;
+	}
+	62% {
+		scale: 1.18;
+		opacity: 1;
+	}
+	100% {
+		scale: 1;
+		opacity: 1;
+	}
+}

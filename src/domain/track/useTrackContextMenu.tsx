@@ -1,4 +1,4 @@
-import { ListMusic, ListPlus, Music } from "lucide-react";
+import { ListEnd, ListMusic, ListPlus, Music } from "lucide-react";
 import {
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
@@ -16,6 +16,7 @@ import type { LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
+import { QUEUE_LIMIT, useQueueTracks } from "./useQueueTracks";
 
 const sameList = (a: number[], b: number[]) =>
 	a.length === b.length && a.every((entry, at) => entry === b[at]);
@@ -39,6 +40,7 @@ export function useTrackContextMenu({
 	const { data: playlists = [] } = usePlaylists();
 	const permissions = usePermissions();
 	const addTracks = useAddTracks();
+	const { queueTracks, canQueue } = useQueueTracks();
 	const menu = useContextMenu();
 
 	// View positions, not playlist indices. The translation happens once, where
@@ -95,6 +97,19 @@ export function useTrackContextMenu({
 		);
 
 		return [
+			// Above the separator: the one action here about what happens next rather
+			// than where a track lives.
+			{
+				id: "queue",
+				label:
+					count > QUEUE_LIMIT
+						? `Add to queue (${QUEUE_LIMIT} at a time)`
+						: "Add to queue",
+				icon: ListEnd,
+				disabled: !canQueue || count > QUEUE_LIMIT,
+				onSelect: () => queueTracks({ source, itemIndices }),
+			},
+			{ type: "separator" as const },
 			{
 				id: "add",
 				label: "Add to playlist",
@@ -109,7 +124,17 @@ export function useTrackContextMenu({
 				})),
 			},
 		];
-	}, [count, positions, indices, playlists, source, canEdit, addTracks]);
+	}, [
+		count,
+		positions,
+		indices,
+		playlists,
+		source,
+		canEdit,
+		addTracks,
+		canQueue,
+		queueTracks,
+	]);
 
 	const header = useMemo(() => {
 		if (count === 0) return null;

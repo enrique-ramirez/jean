@@ -150,7 +150,9 @@ mutation invalidates indices you were holding.
 
 ### Others
 
-- `GET /api/playqueue?qcolumns=…` → `{ "playQueue": [] }`
+- `GET /api/playqueue?columns=…` → `{ "playQueue": [ { playlistId, playlistIndex,
+  itemIndex, columns } ] }`. See the play queue section below — the parameter is
+  `columns` here, and `qcolumns` only on `/api/query`.
 - `GET /api/outputs` → active output plus available types/devices, each with an opaque
   `id`. *Measured*: `supportsMultipleOutputTypes: false` on foobar2000.
 - `GET /api/browser/roots` → `{ "pathSeparator": "\\", "roots": [ { "path": "F:\\Musica", … } ] }`
@@ -160,6 +162,91 @@ mutation invalidates indices you were holding.
 - `GET|POST /api/clientconfig/{id}` → arbitrary JSON blob storage, server-side. Useful
   for making this UI's own settings follow the user between devices instead of living
   in `localStorage`.
+
+## The play queue
+
+*Measured* against foobar2000 2.25.3 with beefweb `0.11~git.dc0fdfc`. This is the
+one part of the player a client can describe **exactly**, because the queue is
+finite, ordered and exhaustive — the player takes all of it, in order, before it
+goes back to the playlist.
+
+**The parameter is named `columns` on `/api/playqueue` and `qcolumns` on
+`/api/query`.** Sending `qcolumns` to the former is not an error: it answers 200
+with `"columns": []` on every entry, exactly as `GET /api/player` does with
+`trcolumns`. Two endpoints, two spellings, both silent about the wrong one.
+
+**The update stream pushes it, and pushes it alone.** Subscribing with
+`playQueue=true&qcolumns=…` delivers `data: {"playQueue":[…]}` on every queue
+change with **no `player` object riding along** — unlike `playlists`, which only
+fires when the *set* of playlists changes, this carries the whole queue every
+time and is complete. Nothing at all arrives while the queue is untouched.
+
+**An entry is `(playlistId, playlistIndex, itemIndex, columns)` and holds a track
+handle, not a position.** Removing a playlist row *above* a queued one renumbers
+the `itemIndex` that comes back — queue entries at 3 and 4 reported 2 and 3 after
+row 0 was removed, same titles. So the queue survives edits to the playlist under
+it, and a client does not have to reconcile anything.
+
+**Removing the queued track itself leaves the entry behind, reporting
+`itemIndex: -1`.** Its `columns` are *not* empty — they hold whatever is in the
+freed slot, and one probe came back titled `NEIN`. **Test `itemIndex < 0`; never
+infer an orphan from its columns.**
+
+**A queued track leaves the queue the moment it starts.** So the queue is only
+ever what is still to come, and what is playing is never in it. It also outranks
+playback order: with three tracks queued, `POST /player/next` played the head of
+the queue rather than the next row, twice running.
+
+| Operation | Endpoint | Body | Notes |
+|---|---|---|---|
+| Read | `GET /playqueue` | — | `columns`, not `qcolumns` |
+| Add | `POST /playqueue/add` | `{ plref, itemIndex }` | one item per request |
+| Remove | `POST /playqueue/remove` | `{ queueIndex }` **or** `{ plref, itemIndex }` | |
+| Clear | `POST /playqueue/clear` | — | |
+
+- **`queueIndex` on *add* is accepted and silently ignored on foobar2000.**
+  *Measured*: `{ plref, itemIndex: 5, queueIndex: 0 }` answered **204** and
+  appended to the end anyway. It is not a 400, so **there is nothing to
+  feature-detect it with** — a client cannot discover that its insert did not
+  happen. There is therefore no insert-at-position and no cheap "play next": both
+  are a remove-and-re-append of the queue's tail.
+- **`queueIndex` on *remove* does work**, and is exact — removing index 1 of three
+  took that entry and left the others. This is not in the `queueIndex is
+  DeaDBeeF-only` caveat, which applies to `add`.
+- **No bulk form on either.** `{ plref, items: [1,2,3] }` on add is
+  `400 parameter is required: itemIndex`; `{ items: [0,1] }` on remove is
+  `400 either queueIndex or plref plus itemIndex parameters are required`.
+- **Duplicates are allowed** — the same `(plref, itemIndex)` queued twice gives two
+  entries.
+- **Cost**: ~34 ms per call over the LAN, sequential. 20 adds took 681 ms, 20
+  removes 618 ms. Order is preserved when they are issued one after another.
+
+> ### Deleting a playlist the queue points into crashes the player
+>
+> **This is the most expensive thing in this document.** *Measured*, and it took
+> foobar2000 down for good until it was restarted by hand:
+>
+> ```
+> Access violation, operation: read, address: 0000000000000000h
+> Call path: app_mainloop=>main_thread_callback::callback_run
+> Crash location:  Module: foo_beefweb   Offset: 16B7Dh
+> ```
+>
+> The sequence was: queue two items out of a playlist, remove one of the queued
+> *tracks* from that playlist (leaving the `itemIndex: -1` orphan described
+> above), then `POST /playlists/remove/{id}`. The player restarted itself and hung
+> before beefweb loaded — nothing listening on 8880, no main window, 0.03 s of CPU
+> over five minutes.
+>
+> Whether a *plain* queued entry is enough, or whether the orphan is required, has
+> **not** been narrowed — doing so means crashing the player again. Treat both as
+> fatal.
+>
+> **So: clear a playlist's queue entries before deleting it, and abandon the
+> delete if they will not clear.** `dequeuePlaylist` in
+> `src/domain/player/queue.ts` does this, and it sits in `usePlaylistActions`
+> rather than in the sidebar so that no future caller can forget. Emptying a
+> playlist with `/clear` is not implicated and is what Jean's holding playlist uses.
 
 ## Columns and title formatting
 
@@ -275,8 +362,10 @@ Request bodies, from `docs/player-api.yml` and verified against the live player.
 Notes that cost time to rediscover:
 
 - **`/playqueue/add` takes one item per request.** Queueing forty tracks is forty
-  POSTs. `queueIndex` exists but is DeaDBeeF-only. For "shuffle this playlist", set
-  `playbackOrder` instead — one request, no queue involved.
+  POSTs. `queueIndex` is accepted and **silently ignored** on foobar2000 rather than
+  refused, so there is no insert-at-position and no way to detect that there is not.
+  For "shuffle this playlist", set `playbackOrder` instead — one request, no queue
+  involved. The whole measured surface is under *The play queue* above.
 - **There is no bulk form, and asking for one is an error, not a no-op.** *Measured*:
   `{ plref, items: [1,2,3] }` and `{ plref, itemIndex: [1,2] }` both return **400**. That
   rules the play queue out as a way to express "play this set of tracks" — a playlist is

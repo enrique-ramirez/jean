@@ -119,6 +119,13 @@ export const KEYMAP: Binding[] = [
 		keys: ["Mod+B"],
 	},
 	{
+		id: "toggleQueue",
+		scope: SCOPE.global,
+		group: "Navigation",
+		name: "Show / hide the queue",
+		keys: ["Q"],
+	},
+	{
 		id: "showShortcuts",
 		scope: SCOPE.global,
 		group: "Navigation",

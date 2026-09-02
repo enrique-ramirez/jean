@@ -6,6 +6,7 @@ import type {
 	PlayerState,
 	PlaylistInfo,
 	PlaylistItemsResponse,
+	PlayQueueItem,
 	TrackRows,
 } from "./types";
 
@@ -25,9 +26,17 @@ const encode = (expressions: readonly string[]) =>
 
 const nowPlayingColumns = encode(TRACK_COLUMNS);
 
+// Three, not the track list's fourteen: the stream re-sends the whole queue on
+// every change to it and the player re-evaluates each expression.
+const QUEUE_COLUMNS = ["%artist%", "%title%", "%length_seconds%"];
+
+export const QUEUE_FIELD = { artist: 0, title: 1, duration: 2 };
+
+const queueColumns = encode(QUEUE_COLUMNS);
+
 // Change-driven stream: beefweb pushes on track change, pause, volume and
 // playlist edits, not on a timer. Long silences are normal, not a stall.
-export const UPDATES_URL = `/api/query/updates?player=true&playlists=true&trcolumns=${nowPlayingColumns}`;
+export const UPDATES_URL = `/api/query/updates?player=true&playlists=true&playQueue=true&trcolumns=${nowPlayingColumns}&qcolumns=${queueColumns}`;
 
 // Ids come from the player, but they are still interpolated into a URL, and a
 // path that escapes its segment would address a different endpoint.
@@ -66,6 +75,30 @@ export async function fetchPlaylists(): Promise<PlaylistInfo[]> {
 	};
 	return playlists;
 }
+
+// Through /api/query for the same reason as the player: `GET /api/playqueue`
+// takes a parameter named `columns` and ignores `qcolumns`, answering with
+// `"columns": []`.
+export async function fetchPlayQueue(): Promise<PlayQueueItem[]> {
+	const response = await request(
+		`/api/query?playQueue=true&qcolumns=${queueColumns}`,
+	);
+	const { playQueue } = (await response.json()) as {
+		playQueue: PlayQueueItem[];
+	};
+	return playQueue;
+}
+
+// One item per request; a bulk `items` array is a 400. `queueIndex` is accepted
+// and silently ignored on foobar2000, so this always appends.
+export const addToPlayQueue = (playlistId: string, itemIndex: number) =>
+	post("/api/playqueue/add", { plref: playlistId, itemIndex });
+
+// By queue position, which foobar2000 does honour here -- unlike on add.
+export const removeFromPlayQueue = (queueIndex: number) =>
+	post("/api/playqueue/remove", { queueIndex });
+
+export const clearPlayQueue = () => post("/api/playqueue/clear");
 
 // Raw positional column arrays rather than objects: markedly lighter at 30k+
 // rows, and the shape dictionary encoding will want.
@@ -201,6 +234,11 @@ export const copyPlaylistItems = (
 	post(`/api/playlists/${id(sourceId)}/${id(targetId)}/items/copy`, {
 		items: Array.from(items),
 	});
+
+// Empties without deleting. Deleting a playlist the play queue points into
+// crashes foo_beefweb and takes foobar2000 with it.
+export const clearPlaylist = (playlistId: string) =>
+	post(`/api/playlists/${id(playlistId)}/clear`);
 
 // Index is identity, so this only means anything against a list nobody has
 // touched since the indices were worked out. See useAddTracks for the check.

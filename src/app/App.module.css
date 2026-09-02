@@ -17,6 +17,11 @@
 	display: grid;
 	grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
 	min-height: 0;
+	/* The queue panel is absolutely positioned in here and parks off the right
+     edge when closed, so this both anchors it and stops it from becoming
+     horizontal document overflow while it is out there. */
+	position: relative;
+	overflow: hidden;
 	transition: grid-template-columns 0.22s var(--ease);
 }
 
@@ -69,6 +74,7 @@
 }
 
 @media (max-width: 860px) {
+	/* Both panels become fixed drawers here and leave the grid entirely. */
 	.body {
 		grid-template-columns: minmax(0, 1fr);
 	}

@@ -20,6 +20,7 @@ type FakeState = ReturnType<typeof createState>;
 interface UpdatePayload {
 	player?: unknown;
 	playlists?: unknown;
+	playQueue?: unknown;
 }
 
 // Everything a route handler is handed. One object rather than a long
@@ -216,11 +217,15 @@ async function handleApi({
 
 	if (method === "GET" && head === "query") {
 		const trcolumns = parseColumns(url.searchParams.get("trcolumns"));
+		const qcolumns = parseColumns(url.searchParams.get("qcolumns"));
 		const payload: UpdatePayload = {};
 		if (url.searchParams.get("player") === "true")
 			payload.player = state.playerPayload(trcolumns);
 		if (url.searchParams.get("playlists") === "true")
 			payload.playlists = state.playlistsPayload();
+		// `qcolumns` is the spelling that works here, and only here.
+		if (url.searchParams.get("playQueue") === "true")
+			payload.playQueue = state.queuePayload(qcolumns);
 		return json(response, payload);
 	}
 
@@ -424,10 +429,21 @@ async function handleApi({
 		// player, both {items:[...]} and an array itemIndex come back 400. The fake
 		// refuses them too, so a caller that tries to batch fails here rather than
 		// on someone's machine.
-		if (!Number.isInteger(body?.itemIndex))
+		if (!body || !Number.isInteger(body.itemIndex))
 			return json(response, { error: "itemIndex" }, 400);
-		state.queueAdd(body);
-		return empty(response);
+		return state.queueAdd(body.plref, body.itemIndex)
+			? empty(response)
+			: empty(response, 404);
+	}
+
+	if (method === "POST" && head === "playqueue" && rest[0] === "remove") {
+		// The live player's words: "either queueIndex or plref plus itemIndex
+		// parameters are required". A bulk `items` array is a 400 here too.
+		const hasPair =
+			typeof body?.plref === "string" && Number.isInteger(body?.itemIndex);
+		if (!body || (!Number.isInteger(body.queueIndex) && !hasPair))
+			return json(response, { error: "queueIndex" }, 400);
+		return state.queueRemove(body) ? empty(response) : empty(response, 404);
 	}
 
 	if (method === "POST" && head === "playqueue" && rest[0] === "clear") {
@@ -436,7 +452,13 @@ async function handleApi({
 	}
 
 	if (method === "GET" && head === "playqueue") {
-		return json(response, { playQueue: state.playQueue });
+		// `columns` here, NOT `qcolumns` -- that spelling only works on /api/query,
+		// and asking the wrong one is a blank panel rather than an error.
+		return json(response, {
+			playQueue: state.queuePayload(
+				parseColumns(url.searchParams.get("columns")),
+			),
+		});
 	}
 
 	// ---- artwork ---------------------------------------------------------
@@ -467,8 +489,10 @@ function streamUpdates({
 	response,
 }: Pick<ApiRequest, "state" | "url" | "response">) {
 	const trcolumns = parseColumns(url.searchParams.get("trcolumns"));
+	const qcolumns = parseColumns(url.searchParams.get("qcolumns"));
 	const wantsPlayer = url.searchParams.get("player") === "true";
 	const wantsPlaylists = url.searchParams.get("playlists") === "true";
+	const wantsQueue = url.searchParams.get("playQueue") === "true";
 
 	response.writeHead(200, {
 		"Content-Type": "text/event-stream",
@@ -483,6 +507,7 @@ function streamUpdates({
 	const snapshot: UpdatePayload = {};
 	if (wantsPlayer) snapshot.player = state.playerPayload(trcolumns);
 	if (wantsPlaylists) snapshot.playlists = state.playlistsPayload();
+	if (wantsQueue) snapshot.playQueue = state.queuePayload(qcolumns);
 	send(snapshot);
 
 	const unsubscribe = state.subscribe((changed) => {
@@ -491,6 +516,9 @@ function streamUpdates({
 			payload.player = state.playerPayload(trcolumns);
 		if (changed.playlists && wantsPlaylists)
 			payload.playlists = state.playlistsPayload();
+		// A queue change pushes `playQueue` and nothing else.
+		if (changed.playQueue && wantsQueue)
+			payload.playQueue = state.queuePayload(qcolumns);
 		if (Object.keys(payload).length > 0) send(payload);
 	});
 
@@ -519,7 +547,7 @@ function handleControl({
 				isCurrent: entry.isCurrent,
 				itemCount: entry.items.length,
 			})),
-			playQueue: state.playQueue,
+			playQueue: state.queuePayload(),
 			requests: state.requests,
 		});
 	}

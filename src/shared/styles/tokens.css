@@ -73,6 +73,7 @@
 	--row-height-compact: 38px;
 	--statusbar-height: 76px;
 	--sidebar-width: 260px;
+	--queue-width: 300px;
 
 	--font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 	--font-numeric: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;

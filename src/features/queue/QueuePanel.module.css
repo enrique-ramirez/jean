@@ -1,0 +1,407 @@
+/* Stated once, because three things have to agree on it: the rail line, the
+   covers that sit on it, and the text that clears them. */
+.panel {
+	--rail-x: 32px;
+	--tick: 32px;
+
+	position: absolute;
+	inset: 0 0 0 auto;
+	z-index: 30;
+	width: var(--queue-width);
+	max-width: 100%;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	background: var(--surface);
+	border-left: 1px solid var(--border);
+	box-shadow: var(--shadow);
+	/* Over the list rather than shouldering it aside: opening the queue should not
+     reflow a table you were reading. Parked off the right edge when closed --
+     `.body` clips it, and `inert` keeps it out of the tab order.
+     Transform only, so it composites. */
+	transform: translateX(100%);
+	transition: transform 0.24s var(--ease);
+}
+
+.panel[data-open="true"] {
+	transform: translateX(0);
+}
+
+.header {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 14px 12px 10px 16px;
+	border-bottom: 1px solid var(--border);
+}
+
+.heading {
+	flex: 1;
+	min-width: 0;
+}
+
+.title {
+	margin: 0;
+	font-size: 0.9375rem;
+	font-weight: 650;
+	letter-spacing: -0.01em;
+}
+
+.meta {
+	margin: 2px 0 0;
+	font-size: 0.75rem;
+	color: var(--muted);
+}
+
+.clear {
+	flex: 0 0 auto;
+	padding: 5px 9px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: var(--muted);
+	transition:
+		color 0.12s var(--ease),
+		background-color 0.12s var(--ease);
+}
+
+.clear:hover {
+	background: var(--surface-sunken);
+	color: var(--danger);
+}
+
+.close {
+	flex: 0 0 auto;
+	display: grid;
+	place-items: center;
+	padding: 5px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--faint);
+}
+
+.close:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+.scroller {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding-bottom: 16px;
+}
+
+/* --- the origin ---------------------------------------------------------- */
+.origin {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 14px 16px 6px;
+}
+
+.pip {
+	flex: 0 0 auto;
+	width: var(--tick);
+	display: grid;
+	place-items: center;
+}
+
+.pip::before {
+	content: "";
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	background: var(--border-strong);
+}
+
+/* The only thing on the rail that moves, because it is the only thing actually
+   happening. Opacity and scale, so it composites. */
+.origin[data-live="true"] .pip::before {
+	background: var(--accent);
+	animation: pulse 2.2s var(--ease) infinite;
+}
+
+@keyframes pulse {
+	0%,
+	100% {
+		opacity: 1;
+		scale: 1;
+	}
+	50% {
+		opacity: 0.45;
+		scale: 0.72;
+	}
+}
+
+.originLabel {
+	min-width: 0;
+	overflow: hidden;
+	font-size: 0.75rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--faint);
+}
+
+/* --- the rail ------------------------------------------------------------
+   On the list rather than per row, so it does not break at the seams. */
+.rail {
+	position: relative;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.rail::before {
+	content: "";
+	position: absolute;
+	left: calc(var(--rail-x) - 1px);
+	top: -10px;
+	bottom: calc(var(--tick) / 2);
+	width: 2px;
+	border-radius: 1px;
+	/* --border-strong, not --border: this has to survive being 2px on a dark
+     surface, where --border only ever separates two large areas. */
+	background: linear-gradient(
+		to bottom,
+		var(--accent-line),
+		var(--border-strong) 22%,
+		var(--border-strong)
+	);
+}
+
+/* `--stretch` is the row's share of the rail, set inline from its duration. */
+.row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 6px 12px calc(6px + var(--stretch, 0px)) 16px;
+	transition: background-color 0.12s var(--ease);
+}
+
+/* Nothing to push down, and left in it hangs a stub of rail below the last
+   cover. */
+.row:last-child {
+	padding-bottom: 0;
+}
+
+.row:hover {
+	background: var(--surface-sunken);
+}
+
+.row[data-dragging="true"] {
+	z-index: 2;
+	background: var(--surface-raised);
+	box-shadow: var(--shadow);
+	border-radius: var(--radius-sm);
+	cursor: grabbing;
+}
+
+.row[data-settling="true"] {
+	transition: transform 0.18s var(--ease);
+}
+
+/* The cover is the tick, sitting on the rail rather than beside it -- hence the
+   ring in the panel's own background, or the line runs under its corners. */
+.tick {
+	position: relative;
+	z-index: 1;
+	flex: 0 0 auto;
+	width: var(--tick);
+	height: var(--tick);
+	border-radius: var(--radius-sm);
+	box-shadow: 0 0 0 3px var(--surface);
+}
+
+.row:hover .tick {
+	box-shadow: 0 0 0 3px var(--surface-sunken);
+}
+
+.names {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+	flex: 1;
+}
+
+.row .title {
+	overflow: hidden;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.artist {
+	overflow: hidden;
+	font-size: 0.6875rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--muted);
+}
+
+.dot {
+	margin: 0 5px;
+	color: var(--faint);
+}
+
+.when {
+	flex: 0 0 auto;
+	font-size: 0.6875rem;
+	color: var(--faint);
+	font-variant-numeric: tabular-nums;
+}
+
+.controls {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: 2px;
+}
+
+.grip,
+.remove {
+	display: grid;
+	place-items: center;
+	padding: 5px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--faint);
+	/* Revealed by hover on a pointer; see the coarse-pointer block below. */
+	opacity: 0;
+	transition:
+		opacity 0.12s var(--ease),
+		color 0.12s var(--ease);
+}
+
+.row:hover .grip,
+.row:hover .remove,
+.grip:focus-visible,
+.remove:focus-visible {
+	opacity: 1;
+}
+
+.remove:hover {
+	color: var(--danger);
+}
+
+/* A mouse drags the row itself, so the grip is dead weight there. On touch it is
+   the only thing that can claim the vertical axis from the scroller. */
+.grip {
+	display: none;
+	cursor: grab;
+}
+
+.row {
+	cursor: grab;
+}
+
+.row[data-orphan="true"] {
+	cursor: default;
+}
+
+.row[data-orphan="true"] .title,
+.row[data-orphan="true"] .artist {
+	color: var(--faint);
+	font-style: italic;
+}
+
+.row[data-orphan="true"] .tick {
+	background: var(--surface-sunken);
+	box-shadow: 0 0 0 3px var(--surface);
+}
+
+@media (pointer: coarse) {
+	.row {
+		cursor: default;
+		padding-block: 9px calc(9px + var(--stretch, 0px));
+	}
+
+	.row:last-child {
+		padding-bottom: 0;
+	}
+
+	.grip {
+		display: grid;
+	}
+
+	.grip,
+	.remove {
+		opacity: 1;
+		padding: 9px 7px;
+	}
+}
+
+/* --- empty --------------------------------------------------------------- */
+.empty {
+	padding: 10px 16px 0 calc(var(--rail-x) + 20px);
+}
+
+.emptyLead {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 550;
+}
+
+.emptyBody {
+	margin: 6px 0 0;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--muted);
+}
+
+.emptyHint {
+	margin: 14px 0 0;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--faint);
+	border-left: 2px solid var(--border);
+	padding-left: 10px;
+}
+
+.coarse {
+	display: none;
+}
+
+/* A pointer question, not a width one: a narrow desktop window still has a
+   right mouse button and a phone at any width does not. */
+@media (hover: none), (pointer: coarse) {
+	.fine {
+		display: none;
+	}
+
+	.coarse {
+		display: inline;
+	}
+}
+
+.scrim {
+	display: none;
+}
+
+/* Same panel, wider, and with a scrim -- on a phone it covers most of what is
+   behind it, so tapping away has to be a way out. On a desktop it does not, and
+   the button that opened it stays visible in the status bar to close it again. */
+@media (max-width: 860px) {
+	.panel {
+		width: min(360px, 88vw);
+	}
+
+	.scrim {
+		position: absolute;
+		inset: 0;
+		z-index: 29;
+		display: block;
+		border: 0;
+		background: oklch(0 0 0 / 0.5);
+	}
+}

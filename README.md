@@ -173,7 +173,7 @@ if it is not there — a bare beefweb install still gets a complete app.
 
 | | Component | What it gives you |
 |---|---|---|
-| **Required** | [`foo_beefweb`](https://github.com/hyperblast/beefweb) | Everything core: playback, playlists, play queue, outputs, artwork, filesystem browsing, search |
+| **Required** | [`foo_beefweb`](https://github.com/hyperblast/beefweb) | Everything core: playback, playlists, the play queue, outputs, artwork, filesystem browsing, search |
 | **Recommended** | `foo_beefweb` **0.11+** | The media library, read directly instead of through an autoplaylist. Unreleased at the time of writing; Jean detects it and falls back cleanly |
 | **Optional** | `foo_enhanced_playcount` *or* `foo_playcount` | Play counts and first/last played, which drive the Most Played, Recently Played and "haven't heard since" shelves |
 | **Optional** | any component publishing title-formatting fields | Auto-detected. Jean probes the fields it knows about and enables whatever resolves |
@@ -211,6 +211,7 @@ stale. The short version:
 | `v` | Switch compact / album layout |
 | `t` | Switch light / dark |
 | `⌘B` | Show / hide the sidebar |
+| `q` | Show / hide the queue |
 
 ## Working on Jean
 

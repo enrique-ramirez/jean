@@ -42,6 +42,7 @@ interface CapturedAlbum {
 interface Changed {
 	player?: boolean;
 	playlists?: boolean;
+	playQueue?: boolean;
 }
 
 export interface RecordedRequest {
@@ -396,7 +397,9 @@ export function createState({
 			activeItem: { ...IDLE_ITEM },
 			...player,
 		},
-		playQueue: [] as unknown[],
+		// The track, not its position -- that is what foobar2000 holds, and both
+		// measured behaviours fall out of looking the index up on read.
+		playQueue: [] as { playlistId: string; track: Track }[],
 		library: { supported: true, enabled: true, ...library },
 		// Milliseconds to hold a write before answering. Zero by default, because
 		// the fake is otherwise faster than a pointer can move -- which hides
@@ -417,11 +420,25 @@ export function createState({
 		const message: Changed = {};
 		if (changed.player) message.player = true;
 		if (changed.playlists) message.playlists = true;
+		if (changed.playQueue) message.playQueue = true;
 		for (const listener of listeners) listener(message);
 	};
 
 	const byId = (id: string) =>
 		state.playlists.find((entry) => entry.id === id) ?? null;
+
+	// Consumed, not merely consulted: a queued track leaves the queue when it
+	// starts.
+	const consume = (playlist: FakePlaylist, index: number) => {
+		const at = state.playQueue.findIndex(
+			(entry) =>
+				entry.playlistId === playlist.id &&
+				entry.track === playlist.items[index],
+		);
+		if (at < 0) return false;
+		state.playQueue.splice(at, 1);
+		return true;
+	};
 
 	const setActive = (
 		playlist: FakePlaylist,
@@ -430,6 +447,7 @@ export function createState({
 	) => {
 		const track = playlist.items[index];
 		if (!track) return;
+		const dequeued = consume(playlist, index);
 		state.player.activeItem = {
 			columns: [],
 			duration: Number(evaluate(track, "%length_seconds%")) || 0,
@@ -442,10 +460,24 @@ export function createState({
 		// Playing from a playlist makes it the current one, exactly as the player
 		// does. The sidebar's "Playing from" marker depends on it.
 		for (const entry of state.playlists) entry.isCurrent = entry === playlist;
-		notify({ player: true, playlists: true });
+		notify({ player: true, playlists: true, playQueue: dequeued });
 	};
 
 	const step = (delta: number) => {
+		// The queue outranks both playback order and the playlist.
+		const queued = delta > 0 ? state.playQueue[0] : null;
+		if (queued) {
+			const from = byId(queued.playlistId);
+			const at = from?.items.indexOf(queued.track) ?? -1;
+			if (from && at >= 0) {
+				setActive(from, at, "playing");
+				return;
+			}
+			// A queued track whose row has gone. The player skips it; so does this.
+			state.playQueue.shift();
+			notify({ playQueue: true });
+		}
+
 		const item = state.player.activeItem;
 		const playlist = byId(item.playlistId);
 		if (!playlist || item.index < 0) return;
@@ -453,6 +485,20 @@ export function createState({
 		if (next < 0 || next >= playlist.items.length) return;
 		setActive(playlist, next, "playing");
 	};
+
+	// An orphan's columns are deliberately still the removed track's: the real
+	// player hands back whatever fell into the freed slot, so anything reading
+	// columns rather than testing itemIndex has to be visibly wrong here too.
+	const queuePayload = (expressions: string[] = []) =>
+		state.playQueue.map((entry) => {
+			const playlist = byId(entry.playlistId);
+			return {
+				playlistId: entry.playlistId,
+				playlistIndex: playlist ? state.playlists.indexOf(playlist) : -1,
+				itemIndex: playlist ? playlist.items.indexOf(entry.track) : -1,
+				columns: columnsFor(entry.track, expressions),
+			};
+		});
 
 	return {
 		// Named rather than spread: every mutation below works in place, so these
@@ -464,7 +510,10 @@ export function createState({
 		// reaching for this object. Behind the seam it was `undefined` until a test
 		// set it -- falsy, so it worked, but only by accident.
 		latency: state.latency,
-		playQueue: state.playQueue,
+		// What the player would report, rather than the track objects held inside.
+		get playQueue() {
+			return queuePayload();
+		},
 		requests: state.requests,
 		library: state.library,
 		get playlists() {
@@ -699,7 +748,8 @@ export function createState({
 			const drop = new Set(indices);
 			playlist.items = playlist.items.filter((_, index) => !drop.has(index));
 			// See copyItems: item changes do not push `playlists` on a real player.
-			notify({ player: true });
+			// They do move the queue: everything below a removed row renumbers.
+			notify({ player: true, playQueue: true });
 			return true;
 		},
 
@@ -925,15 +975,47 @@ export function createState({
 			return album ? `${album.slug}.jpg` : null;
 		},
 
-		queueAdd(entry: unknown) {
-			state.playQueue.push(entry);
-			notify({ player: true });
+		// `queueIndex` is accepted and ignored, as foobar2000 does. Honouring it
+		// would let an insert-at-position pass here and fail on the player.
+		queueAdd(playlistId: string, itemIndex: number) {
+			const playlist = byId(playlistId);
+			const track = playlist?.items[itemIndex];
+			if (!track) return false;
+			state.playQueue.push({ playlistId, track });
+			notify({ playQueue: true });
+			return true;
+		},
+
+		queueRemove({
+			queueIndex,
+			plref,
+			itemIndex,
+		}: {
+			queueIndex?: number;
+			plref?: string;
+			itemIndex?: number;
+		}) {
+			const at =
+				typeof queueIndex === "number"
+					? queueIndex
+					: state.playQueue.findIndex(
+							(entry) =>
+								entry.playlistId === plref &&
+								byId(plref)?.items.indexOf(entry.track) === itemIndex,
+						);
+
+			if (at < 0 || at >= state.playQueue.length) return false;
+			state.playQueue.splice(at, 1);
+			notify({ playQueue: true });
+			return true;
 		},
 
 		queueClear() {
 			state.playQueue.length = 0;
-			notify({ player: true });
+			notify({ playQueue: true });
 		},
+
+		queuePayload,
 	};
 }
 

@@ -656,7 +656,18 @@ test.describe("what the settings screen says", () => {
 				page.getByText(/permits no fields to be written/),
 			).toBeVisible();
 			await expect(page.getByText(/allowedFields/)).toBeVisible();
-			await expect(page.getByRole("switch")).toHaveCount(0);
+			// Scoped to this panel: Settings has other switches, and whether the
+			// component permits a field to be written is a claim about foo_jean.
+			await expect(
+				page
+					.getByRole("region", { name: "foo_jean" })
+					.or(
+						page
+							.locator("section")
+							.filter({ has: page.getByRole("heading", { name: "foo_jean" }) }),
+					)
+					.getByRole("switch"),
+			).toHaveCount(0);
 		});
 	});
 });

@@ -26,6 +26,19 @@ constantly but only own as a bad rip. Each card says why it is there. Click one 
 the whole row plays, starting from that album; click the row's title to open it
 without starting anything. **All music** is the whole library, unfiltered.
 
+Tap the cover in the bar at the bottom -- on a phone or a desktop -- and Jean opens
+**what's playing**: the artwork large, the rating, and tabs for **Lyrics**, **Details**
+and **Artist**. Lyrics come out of your own files and scroll in time with the track when
+they carry LRC timestamps; tap any line to jump there. Details lists what *that file*
+actually holds -- publisher, composer, disc, bitrate, sample rate, ReplayGain -- and
+leaves out what it does not, so it is never a grid of empty cells. On a phone this is
+where previous, next, shuffle, the queue and the rating live, at a size you can hit;
+the bar itself keeps only volume and a big Play, with Play nearest your thumb.
+
+**Artist** is the one thing in Jean that talks to the internet, so it is switched off
+until you turn it on in Settings. On, it asks MusicBrainz and Wikipedia for a short
+biography -- no account and no key, but it does mean telling them what you are playing.
+
 Shelves your library cannot support do not appear -- no ratings, no starred shelf; no
 playback statistics, no play-history shelves at all -- and an install with none of it
 still opens on a row of records to press. The same goes for the counts: a library with
@@ -182,8 +195,9 @@ if it is not there — a bare beefweb install still gets a complete app.
 **Some features need no component at all**, because they read tags your files already carry:
 
 - **Lyrics**, from the `UNSYNCED LYRICS` tag — including LRC-timestamped lyrics that scroll
-  in time with playback. [`foo_openlyrics`](https://github.com/jacquesh/foo_openlyrics) is a
-  good way to *populate* that tag, but Jean does not require it and never reads it directly.
+  in time with playback, and where every line is a place you can seek to.
+  [`foo_openlyrics`](https://github.com/jacquesh/foo_openlyrics) is a good way to
+  *populate* that tag; Jean only reads it, and says so when a track has none.
 - Ratings, ReplayGain, composer, publisher, ISRC, and all standard metadata. *Reading*
   them needs nothing; writing a rating back is the one thing that needs `foo_jean`.
 
@@ -214,6 +228,7 @@ stale. The short version:
 | `t` | Switch light / dark |
 | `⌘B` | Show / hide the sidebar |
 | `q` | Show / hide the queue |
+| `w` | Show / hide what's playing |
 
 ## Working on Jean
 

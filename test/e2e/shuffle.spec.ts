@@ -2,6 +2,9 @@ import type { PlayerOption } from "../../src/shared/api/types.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	globalControls,
+	nowPlayingScreen,
+	openNowPlaying,
 	playedFrom,
 	requestsTo,
 	statusBar,
@@ -24,8 +27,21 @@ const ALBUM = { route: "/#/p5", title: "Rock en Español", count: 12 };
 // no new coverage.
 const headerShuffle = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: "Shuffle" });
-const modeShuffle = (page: Page) =>
-	statusBar(page).getByRole("button", { name: "Shuffle" });
+// One switch, in one of two places: the status bar on a desktop, the
+// now-playing screen on a phone -- where shuffle went when the compact strip
+// was cut back to Play and volume. Asks the page which it is rather than taking
+// the project, so a spec reads the same on both and the answer comes from the
+// app rather than from a constant that can drift away from it.
+const modeShuffle = async (page: Page) => {
+	const onScreen = nowPlayingScreen(page).getByRole("button", {
+		name: "Shuffle",
+	});
+	if (await onScreen.count()) return onScreen;
+	const inStatusBar = statusBar(page).getByRole("button", { name: "Shuffle" });
+	if (await inStatusBar.count()) return inStatusBar;
+	await openNowPlaying(page);
+	return onScreen;
+};
 
 const orderRequests = (player: FakePlayer) =>
 	requestsTo(player, "/api/player").flatMap((entry) =>
@@ -58,7 +74,10 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		expect(playedIndex(player)).toBeLessThan(ALBUM.count);
 
 		await expect.poll(() => orderRequests(player)).toEqual([SHUFFLE_TRACKS]);
-		await expect(modeShuffle(page)).toHaveAttribute("aria-pressed", "true");
+		await expect(await modeShuffle(page)).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 		// One track, once -- not a queue built one request at a time.
 		expect(requestsTo(player, "/player/play/")).toHaveLength(1);
 		expect(player.playQueue).toEqual([]);
@@ -120,7 +139,10 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		// The property, not the request count: it turns shuffle on rather than
 		// flipping it, so nothing it sends may ever ask for another order. Asking
 		// for shuffle twice would be harmless and is not what this is guarding.
-		await expect(modeShuffle(page)).toHaveAttribute("aria-pressed", "true");
+		await expect(await modeShuffle(page)).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 		expect(
 			orderRequests(player).every((value) => value === SHUFFLE_TRACKS),
 		).toBe(true);
@@ -159,29 +181,54 @@ test.describe("the status bar shuffle is the mode", () => {
 		).toBeVisible();
 	});
 
-	test("it is in the transport, on both surfaces", async ({
+	test("it is in the transport, and which transport depends on the surface", async ({
 		page,
 	}, testInfo) => {
-		const labels = await statusBar(page)
+		const isCompact = testInfo.project.name === "mobile";
+
+		// The compact status bar is Play and volume and nothing else. Everything
+		// else moved to the now-playing screen, where it is a full-sized target
+		// rather than a 32px one wedged around Play -- and Play stays rightmost,
+		// closest to a right thumb.
+		const barLabels = await statusBar(page)
 			.getByRole("button")
 			.evaluateAll((buttons) =>
 				buttons.map((button) => button.getAttribute("aria-label")),
 			);
 
-		// Left of the transport rather than among it: the mode the buttons to its
-		// right operate in, not a fourth button. Asserted as position rather than a
-		// full list, since the middle button is Play or Pause depending on what the
-		// player is doing and that is not what this is about.
-		expect(labels[0]).toBe("Shuffle");
-
-		// Skipping is desktop-only: two 32px targets flanking Play are a miss
-		// waiting to happen on a thumb, and the room they free is the queue's.
-		if (testInfo.project.name === "mobile") {
-			expect(labels).not.toContain("Previous track");
-			expect(labels).not.toContain("Next track");
+		if (isCompact) {
+			expect(barLabels).not.toContain("Shuffle");
+			expect(barLabels).not.toContain("Previous track");
+			expect(barLabels).not.toContain("Next track");
+			expect(barLabels.some((label) => label?.startsWith("Queue"))).toBe(false);
+			// What is left, in order: the way into the screen, volume, then Play.
+			expect(barLabels[0]).toBe("Show current track");
+			expect(barLabels[barLabels.length - 1]).toMatch(/^(Play|Pause)$/);
 		} else {
-			expect(labels[1]).toBe("Previous track");
-			expect(labels).toContain("Next track");
+			// Left of the transport rather than among it: the mode the buttons to
+			// its right operate in, not a fourth button. Asserted as position rather
+			// than a full list, since the middle button is Play or Pause depending
+			// on what the player is doing and that is not what this is about.
+			expect(barLabels[1]).toBe("Shuffle");
+			expect(barLabels[2]).toBe("Previous track");
+			expect(barLabels).toContain("Next track");
+		}
+
+		// Either way there is exactly one of it, and it is reachable.
+		const transport = await globalControls(page, isCompact);
+		await expect(
+			transport.getByRole("button", { name: "Shuffle" }),
+		).toBeVisible();
+
+		if (isCompact) {
+			// Skipping came back with the screen -- it left the phone's status bar
+			// and did not leave the phone.
+			await expect(
+				transport.getByRole("button", { name: "Previous track" }),
+			).toBeVisible();
+			await expect(
+				transport.getByRole("button", { name: "Next track" }),
+			).toBeVisible();
 		}
 	});
 
@@ -189,44 +236,66 @@ test.describe("the status bar shuffle is the mode", () => {
 		page,
 		player,
 	}) => {
-		await expect(modeShuffle(page)).toHaveAttribute("aria-pressed", "false");
+		await expect(await modeShuffle(page)).toHaveAttribute(
+			"aria-pressed",
+			"false",
+		);
 
-		await modeShuffle(page).click();
+		(await modeShuffle(page)).click();
 
 		await expect.poll(() => orderRequests(player)).toEqual([SHUFFLE_TRACKS]);
-		await expect(modeShuffle(page)).toHaveAttribute("aria-pressed", "true");
+		await expect(await modeShuffle(page)).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 		expect(requestsTo(player, "/player/play/")).toEqual([]);
 		expect(player.playQueue).toEqual([]);
-		await expect(statusBar(page)).toContainText("Nothing playing");
+		// Asked of the page rather than of the status bar: on a phone the switch
+		// is on the now-playing screen, and reaching it hides the bar. Both
+		// surfaces say the same words for the same reason.
+		await expect(page.getByText("Nothing playing").first()).toBeVisible();
 	});
 
 	test("turning it off returns to the order you had", async ({
 		page,
 		player,
 	}) => {
-		await modeShuffle(page).click();
-		await expect(modeShuffle(page)).toHaveAttribute("aria-pressed", "true");
+		(await modeShuffle(page)).click();
+		await expect(await modeShuffle(page)).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 
-		await modeShuffle(page).click();
+		(await modeShuffle(page)).click();
 
 		// Not "off" -- back to what was set before, so a repeat setting survives a
 		// shuffle detour.
 		await expect.poll(() => orderRequests(player)).toEqual([SHUFFLE_TRACKS, 0]);
-		await expect(modeShuffle(page)).toHaveAttribute("aria-pressed", "false");
+		await expect(await modeShuffle(page)).toHaveAttribute(
+			"aria-pressed",
+			"false",
+		);
 	});
 
 	test("it is the same switch from every view", async ({ page }) => {
-		await modeShuffle(page).click();
-		await expect(modeShuffle(page)).toHaveAttribute("aria-pressed", "true");
+		(await modeShuffle(page)).click();
+		await expect(await modeShuffle(page)).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 
-		// Global player state, and the status bar is on every screen -- so there is
-		// one of these rather than one per view, which is what made the old
-		// placement read as "shuffle these tracks".
+		// Global player state, so there is one of these rather than one per view --
+		// which is what made the old placement read as "shuffle these tracks".
+		// Navigating away closes the now-playing screen on a phone, so this also
+		// checks the mode survives the trip rather than belonging to the screen.
 		await page.goto(ALBUM.route);
 		await expect(
 			page.getByRole("heading", { level: 1, name: ALBUM.title }),
 		).toBeVisible();
-		await expect(modeShuffle(page)).toHaveAttribute("aria-pressed", "true");
+		await expect(await modeShuffle(page)).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 	});
 });
 
@@ -258,13 +327,17 @@ test.describe("a player that offers no shuffle", () => {
 		// The order is found by name because the enum differs between players and
 		// versions. With none matching there is nothing to turn on, so a button
 		// labelled Shuffle would be promising something it cannot do.
-		await expect(modeShuffle(page)).toBeDisabled();
+		// Everything the playlist view owns happens first: on a phone `modeShuffle`
+		// opens the now-playing screen, which replaces that view entirely -- and a
+		// forced click on a header that is no longer mounted waits out the whole
+		// test timeout rather than failing.
 		await expect(headerShuffle(page)).toBeDisabled();
-
 		await headerShuffle(page)
 			.click({ force: true })
 			.catch(() => {});
 		await page.waitForTimeout(200);
 		expect(requestsTo(player, "/player/play/")).toEqual([]);
+
+		await expect(await modeShuffle(page)).toBeDisabled();
 	});
 });

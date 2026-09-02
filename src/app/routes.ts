@@ -24,6 +24,7 @@ export const ROUTE = {
 	all: "all",
 	search: "search",
 	settings: "settings",
+	playing: "playing",
 } as const;
 
 const SHELF_PREFIX = "shelf/";
@@ -39,6 +40,7 @@ export function resolveRoute(route: string): {
 	isAll: boolean;
 	isHome: boolean;
 	isSettings: boolean;
+	isNowPlaying: boolean;
 	isLibrary: boolean;
 } {
 	const shelfId = route.startsWith(SHELF_PREFIX)
@@ -54,6 +56,10 @@ export function resolveRoute(route: string): {
 		isAll: route === ROUTE.all,
 		isHome: route === "" || route === ROUTE.home,
 		isSettings: route === ROUTE.settings,
+		// Not about a set of tracks at all -- it is about the one that is playing,
+		// wherever that came from. So no playlist row lights up behind it, which is
+		// what puts it on the library side of the line below.
+		isNowPlaying: route === ROUTE.playing,
 		// Everything the library owns, as opposed to a playlist the player owns.
 		// Only a playlist route selects a playlist in the sidebar.
 		// Settings is here too: not a playlist, so no playlist row lights up.
@@ -63,6 +69,7 @@ export function resolveRoute(route: string): {
 			route === ROUTE.all ||
 			route === ROUTE.search ||
 			route === ROUTE.settings ||
+			route === ROUTE.playing ||
 			shelf !== null,
 	};
 }

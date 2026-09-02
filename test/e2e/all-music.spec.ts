@@ -1,12 +1,13 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
+	nowPlayingScreen,
+	openNowPlaying,
 	openSidebar,
 	playedFrom,
 	requestsTo,
 	scratchOf,
 	sidebar,
-	statusBar,
 	test,
 	trackPlayed,
 	trackRow,
@@ -128,6 +129,22 @@ test.describe("the order a set is played in", () => {
 	});
 });
 
+// Where the sound is coming from. It used to be a third line in the status bar
+// and is now the now-playing screen's header, which is the only place with room
+// for it. Same claim, asked of the surface that makes it.
+const expectPlayingFrom = async (page: Page, name: string) => {
+	await openNowPlaying(page);
+	// The header rather than the line: "Playing from" and the set's name are two
+	// elements, so a text query matches the label alone and never the name.
+	const header = nowPlayingScreen(page).locator("header");
+	await expect(header).toContainText("Playing from");
+	await expect(header).toContainText(name);
+	await nowPlayingScreen(page)
+		.getByRole("button", { name: "Close now playing" })
+		.click();
+	await expect(nowPlayingScreen(page)).toBeHidden();
+};
+
 test.describe("where the music is coming from", () => {
 	test.use({ mediaLibrarySize: 4000 });
 
@@ -153,6 +170,10 @@ test.describe("where the music is coming from", () => {
 
 		await trackRow(page, 3).dblclick();
 
+		// Before the drawer: on a phone the sidebar covers the status bar, and the
+		// way into the now-playing screen is in it.
+		await expectPlayingFrom(page, "All music");
+
 		// A shelf gets a temporary row because it has none of its own. All music
 		// has one, and marking it in place is the whole reason the temporary row is
 		// reserved for shelves.
@@ -160,8 +181,6 @@ test.describe("where the music is coming from", () => {
 		await expect(
 			allMusicRow(page).getByLabel("Playing from here"),
 		).toBeVisible();
-		await expect(statusBar(page)).toContainText("from");
-		await expect(statusBar(page)).toContainText("All music");
 
 		// Only one row is ever the one playing: the accent says where the sound is
 		// coming from, not which row is open.
@@ -187,7 +206,6 @@ test.describe("where the music is coming from", () => {
 		await expect(
 			allMusicRow(page).getByLabel("Playing from here"),
 		).toBeVisible();
-		await expect(statusBar(page)).toContainText("All music");
 	});
 
 	test("a live search is not marked by somebody else playing", async ({

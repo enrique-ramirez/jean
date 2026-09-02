@@ -212,6 +212,17 @@ export const KEYMAP: Binding[] = [
 		name: "Show / hide the queue",
 		keys: ["Q"],
 	},
+	// `N` is taken -- it moves the cursor to the playing row -- and `P` reads as
+	// play. `W` is what is left in the same reach as `Q`, and the two are
+	// neighbours for a reason: the queue is what plays next, this is what is
+	// playing.
+	{
+		id: "toggleNowPlaying",
+		scope: SCOPE.global,
+		group: "Navigation",
+		name: "Show / hide what's playing",
+		keys: ["W"],
+	},
 	{
 		id: "showShortcuts",
 		scope: SCOPE.global,

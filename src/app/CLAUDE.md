@@ -46,15 +46,31 @@ the compact viewport gets a scrim, and it dims the content and nothing else.
 `overflow: hidden` there it becomes horizontal document overflow, which is how the
 library header's figures once gained the ability to push the page sideways.
 
-**Skipping is desktop-only in the status bar.** Two 32px targets flanking Play are a
-miss waiting to happen on a thumb, and a miss on Previous costs you the track you
-were enjoying. The phone gets shuffle, play, the queue and volume; previous and next
-belong to the now-playing screen, where they are a swipe across the whole width
-rather than a button between two other buttons.
+**The compact status bar is Play and volume, and nothing else.** Two 32px targets
+flanking Play are a miss waiting to happen on a thumb, and a miss on Previous costs
+you the track you were enjoying -- so skipping, shuffle and the queue all live on the
+now-playing screen now, at full size. Volume stays, *left* of Play, so Play is the
+rightmost thing in the bar and therefore closest to a right thumb; it earns the slot
+because it is the player's volume and the handset's hardware keys cannot reach it.
 
-**The queue button is destined for that screen too**, and is in the compact status
-bar only until it exists -- removing it first would leave the panel with nothing to
-open it on a phone. Deleting it there is a one-line change to `StatusBar`.
+**The cover-and-names block is the way in**, on both surfaces -- a ~200px target
+rather than a 44px one. `#/playing` is a route rather than a fourth panel, so Back
+works and a reload lands on it.
+
+**Now playing is a third kind of surface, and it is neither of the two above.**
+The sidebar is a grid column and the queue is an overlay you work inside; this
+is a *route drawn as a layer* -- the hash decides whether it is open, and `App`
+goes on resolving the route underneath so the shell still draws what it covers.
+That is what gives it something to slide over, and it is why dismissing it is a
+navigation rather than a state change. If a fourth surface ever appears, this
+is the pattern to copy for anything that is both a place and a thing over a
+place.
+
+**On a phone that route replaces the status bar**, which is the one place in the app
+where a route does. The screen is the whole viewport and carries its own transport;
+leaving the strip below it puts two Play buttons and the same cover on screen at once.
+The desktop keeps it -- there the screen is a pane inside the shell and the status bar
+is the only transport there is.
 
 Model **what is playing** separately from **where it is playing**. Output is a named
 target, not an assumption that audio comes from the remote player.

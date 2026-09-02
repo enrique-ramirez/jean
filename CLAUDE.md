@@ -90,6 +90,7 @@ when you are not:
 | `src/domain/library/CLAUDE.md` | where the library comes from, playing a set, search results |
 | `src/domain/player/CLAUDE.md` | playback state and the controls over it |
 | `src/features/home/CLAUDE.md` | the home screen and its shelves |
+| `src/features/now-playing/CLAUDE.md` | the status bar, the now-playing screen, lyrics and details |
 | `src/features/queue/CLAUDE.md` | the play queue panel and how it is drawn |
 | `src/features/search/CLAUDE.md` | the search control |
 | `src/app/CLAUDE.md` | the shell, breakpoints and themes |
@@ -113,8 +114,11 @@ does not, is worth knowing before designing a feature on it: `%genre%` (144 dist
 `%year%` (69), `%album artist%` (742), `%lastfm_play_count%` (every track),
 `%lastfm_last_played%` (69% of them), `%publisher%`, `%date%`, `%length_seconds%`,
 `%codec%`, `%bitrate%` and `$len($meta(unsynced lyrics))` all answer. `%added%`,
-`%play_count%`, `%last_played%`, `%rating%`, `%composer%`, `%bpm%`, `%totaltracks%`
-and `%replaygain_*%` do not. **Ratings exist but are sparse**: `$meta(rating)` and
+`%play_count%`, `%last_played%`, `%totaltracks%` and `%bitspersample%` do not.
+`%composer%`, `%bpm%` and `%replaygain_*%` were listed here as absent and are
+not: *measured* across all 30,441 tracks they resolve on 25.0%, 0.9% and 4.1%
+of them respectively -- the same small-sample trap as the ratings note below,
+and the reason the Details panel detects **per track** rather than per library. **Ratings exist but are sparse**: `$meta(rating)` and
 `%rating%` both answer on exactly 500 of 30,441 tracks — an earlier note here said
 they were empty on every track, which was a five-row sample landing on unrated ones.
 Sparse is its own trap: 375 of those 500 are the value `5`, so anything sorting by
@@ -358,6 +362,12 @@ whichever of these files owns that part of the app.
 The code says what exists; this says what does not, and why -- which is the part that
 cannot be derived from reading it.
 
+**No lyrics *writing*, and no lyrics fetching.** Jean reads
+`$meta(unsynced lyrics)` and never fills it in -- `foo_openlyrics` is what writes that
+tag, and a lyrics provider inside Jean would be a second thing phoning the internet
+about your library on top of the artist lookup. The empty state names the component
+rather than offering to do it.
+
 **No folder tree.** `#/all` browses the library as one flat list. Walking it by folder
 is a separate feature, and `/library/items/by-path` is measured in `API.md` for when
 that happens -- one request per level, with an ordering that needs a client-side
@@ -381,10 +391,15 @@ single track, and the API offers nothing that says what the player *would* play
 next on its own. The queue panel therefore shows what was explicitly queued and
 says so; see `src/domain/player/CLAUDE.md`.
 
-**No now-playing screen yet**, which is where previous and next went when they left
-the mobile status bar. Skipping there is meant to be a gesture across the whole
-width rather than a 32px button, and until it exists the phone reaches those through
-the keyboard, the desktop, or `Mod+Arrow`.
+**The now-playing screen is built** -- `#/playing`, a gatefold on the desktop and a
+full screen on a phone, with Lyrics, Details and Artist tabs. What is *not* built is
+the gesture: skipping there is meant to be a swipe across the whole width, and for
+now it is the screen's own buttons, the keyboard, or `Mod+Arrow`. See
+`src/features/now-playing/CLAUDE.md`.
+
+**Artist information is the one thing that leaves the network**, and it is off until
+switched on in Settings. MusicBrainz and Wikipedia, no key, no proxy -- and no artist
+*images*: the obvious source is Deezer and it sends no CORS header.
 
 **`Mosaic` is on hold at the owner's request** -- changes are coming there, so do not
 test or rework it yet.

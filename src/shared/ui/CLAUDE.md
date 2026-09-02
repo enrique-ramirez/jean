@@ -228,7 +228,35 @@ panning and cancels the pointer stream mid-drag -- *measured*, a swipe aimed at
 25% lands at 74% -- and a guarantee a primitive depends on should not be one every
 caller has to remember.
 
-**Writes driven by a drag must be coalesced, not fired per event.** One pointer
+**A flick is not a drag, and `shared/hooks/useSwipe.ts` is deliberately neither
+`useDragFraction` nor `useSortableList`.** Those track a value or a position for
+the length of a gesture; a swipe has to answer one question at the end -- which
+way, if any -- so nothing follows the finger, nothing renders per frame and
+there is no pointer to capture. Touch only, for the same reason only a mouse
+drags a row: claiming horizontal mouse drags on a panel would take the gesture
+that selects text.
+
+**It reads touch events, not pointer events, and that is the design rather than
+an oversight.** The browser cancels the pointer stream the moment it claims a
+gesture for scrolling -- *measured*, a downward flick inside a scrollable panel
+arrives as `pointercancel` and never a `pointerup` -- so a pointer-based swipe
+can only ever see gestures on regions that do not scroll. Touch events keep
+firing through a scroll, which is what lets one handler cover a whole surface
+that also scrolls.
+
+**A gesture that competes with scrolling is settled by scroll *position*, not by
+region.** Down dismisses only when the thing under the finger had nowhere left
+to scroll up to; halfway through a list the same flick means "back to the top".
+Carving out the parts of a surface that happen not to scroll is the obvious fix
+and the wrong one: it leaves whatever the user is actually reading as the one
+place the gesture does not work.
+
+**`shared/lib/scrollParent.ts` takes a boundary, and a layered surface must pass
+one.** The walk otherwise goes straight past an overlay and returns the
+scroller *underneath* it -- which is off screen, belongs to something else, and
+reports a scroll position that quietly changes the answer.
+
+**Writes driven by a drag must be coalesced, not fired per event.****Writes driven by a drag must be coalesced, not fired per event.** One pointer
 gesture is ~40 pointer moves; a request each floods the player, and the responses
 can land out of order so the last value to arrive wins rather than the last one
 sent. `useCoalescedWrite` keeps one request in flight and sends the newest value

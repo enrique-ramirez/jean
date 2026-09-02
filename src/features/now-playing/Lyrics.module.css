@@ -1,0 +1,180 @@
+.scroller {
+	/* Sized by its content, so the screen around it is what overflows and what
+     scrolls. `flex: 1; min-height: 0` here made the panel exactly as tall as the
+     space left over and *clipped* the rest -- which the edge fade then dressed
+     up as more text below, on a screen that could not be scrolled to reach it.
+     The compact layout puts the constraint back, because there the transport
+     below is pinned. */
+	flex: none;
+	/* Padding, not a spacer element. There used to be a tall block after the last
+     line so the closing lines could still reach the focus point a third of the
+     way down -- but that is most of a screen of nothing, and on a lyric short
+     enough to fit it is *all* you can scroll to. The follow's `scrollTo` is
+     clamped by the browser anyway, so without it the final lines simply settle
+     lower than the focus point, which is what a page of text does and what
+     every other player accepts. This is the breathing room, and no more. */
+	padding: 18px 4px 88px;
+	/* The follow scrolls this itself; letting the browser chain a flick out to
+     the page underneath fights it. */
+	overscroll-behavior: contain;
+}
+
+/* Every line is a seek target, so every line is a button -- but a button that
+   looks like one would turn a lyric into a list. Stripped back to text with a
+   hover that only hints at it. */
+.line {
+	display: block;
+	width: 100%;
+	padding: 7px 10px;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: none;
+	text-align: left;
+	font-size: 1.125rem;
+	font-weight: 560;
+	line-height: 1.45;
+	letter-spacing: -0.01em;
+	color: var(--faint);
+	transition:
+		color 0.28s var(--ease),
+		opacity 0.28s var(--ease);
+}
+
+.line:hover {
+	background: var(--surface);
+	color: var(--muted);
+}
+
+/* Past lines dim rather than vanish -- you can still read back a line you
+   missed, which is most of why anyone looks at lyrics. */
+.line[data-state="past"] {
+	color: var(--faint);
+	opacity: 0.55;
+}
+
+/* Lines still to come, and the hardest of the three to get right. They must be
+   legible -- reading ahead is half of why anyone opens this -- while losing
+   clearly to the current line. On dark `--muted` does that; on light it is a
+   near-black that the current line, also near-black, could not beat, so the two
+   read as the same weight and the highlight disappeared. Pulled back to the
+   lighter step there, which restores the gap without dimming them to the past
+   lines' level. */
+.line[data-state="coming"] {
+	color: var(--muted);
+}
+
+:root[data-theme="light"] .line[data-state="coming"] {
+	color: var(--faint);
+}
+
+.line[data-state="active"] {
+	color: var(--text);
+	font-weight: 680;
+}
+
+/* A timed gap: an intro or an instrumental break. Drawn as a short rule rather
+   than left blank, so the space reads as "nothing is sung here" rather than as
+   a lyric that failed to load. */
+.gap {
+	display: block;
+	width: 28px;
+	height: 2px;
+	margin: 8px 0;
+	border-radius: 2px;
+	background: var(--border-strong);
+}
+
+/* Enough room under the last line for it to reach the focus point. Without it
+   the follow stops scrolling a third of a panel early and the final lines are
+   read from the very bottom edge. */
+.resume {
+	position: absolute;
+	bottom: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 8px 16px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-pill);
+	background: var(--surface-raised);
+	color: var(--text);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	box-shadow: var(--shadow);
+	animation: rise 0.2s var(--ease);
+}
+
+@keyframes rise {
+	from {
+		opacity: 0;
+		transform: translate(-50%, 8px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.resume {
+		animation: none;
+	}
+}
+
+.unsynced {
+	margin: 0 0 14px 10px;
+	font-size: 0.6875rem;
+	font-weight: 620;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.plainLine {
+	margin: 0;
+	padding: 3px 10px;
+	font-size: 1.0625rem;
+	line-height: 1.55;
+	color: var(--muted);
+	white-space: pre-wrap;
+}
+
+/* A state, not a message. Three quarters of a real library has no lyric tag, so
+   this is met constantly and must not read as something having gone wrong --
+   which is what a paragraph of explanation does. Where the tag comes from and
+   what writes it belongs in Settings, not here. */
+.empty {
+	flex: 1;
+	min-height: 160px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	color: var(--faint);
+}
+
+.empty p {
+	margin: 0;
+	font-size: 0.9375rem;
+}
+
+.notice {
+	padding: 28px 10px;
+	color: var(--muted);
+	font-size: 0.9375rem;
+}
+
+.notice p {
+	margin: 0 0 8px;
+}
+
+.hint {
+	color: var(--faint);
+	font-size: 0.8125rem;
+	max-width: 44ch;
+	line-height: 1.5;
+}
+
+.hint code {
+	font-family: var(--font-numeric);
+	font-size: 0.9em;
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: var(--surface);
+}

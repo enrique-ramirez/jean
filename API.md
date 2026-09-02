@@ -302,9 +302,17 @@ shown broken.
 > recent end where a "recently added" view would look.
 
 > **Lyrics need no component.** `$meta(unsynced lyrics)` — with a space — returns
-> LRC-timestamped lyrics from an ordinary tag, on 24% of tracks in this library.
-> `%lyrics%` returns `?` and `$meta(unsyncedlyrics)` finds nothing. `foo_openlyrics`
-> is what *writes* that tag; reading it requires nothing.
+> LRC-timestamped lyrics from an ordinary tag. `%lyrics%` returns `?` and
+> `$meta(unsyncedlyrics)` finds nothing. `foo_openlyrics` is what *writes* that tag;
+> reading it requires nothing.
+>
+> *Measured* over all 30,441 tracks: **7,705 (25.3%) carry the tag**, and of a random
+> 150 of those, **51 (34%) hold LRC timestamps** — so followable lyrics are ~8.6% of
+> the library and the tag is plain text more often than not. Median length ~1 KB,
+> longest 8.5 KB, which is why it is fetched per track and must never go in
+> `trcolumns` on the update stream. Real content includes several timestamps on one
+> line (`[00:18.50][01:02.10]…`, a repeated refrain), NetEase credit lines
+> (`[00:00.00]作词 : …`), and tags holding nothing but a URL.
 
 > **Hard limitation (*measured*):** the column list is split on commas **before** the
 > expressions are evaluated, so **any title-format function taking more than one

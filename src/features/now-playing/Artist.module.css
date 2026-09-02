@@ -1,0 +1,66 @@
+.artist {
+	/* Sized by its content, so the screen around it is what overflows and what
+     scrolls. `flex: 1; min-height: 0` here made the panel exactly as tall as the
+     space left over and *clipped* the rest -- which the edge fade then dressed
+     up as more text below, on a screen that could not be scrolled to reach it.
+     The compact layout puts the constraint back, because there the transport
+     below is pinned. */
+	flex: none;
+	padding: 20px 4px 24px;
+	overscroll-behavior: contain;
+}
+
+.name {
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 660;
+	letter-spacing: -0.02em;
+}
+
+.facts {
+	margin: 4px 0 0;
+	font-size: 0.8125rem;
+	color: var(--faint);
+}
+
+.summary {
+	margin: 16px 0 0;
+	/* A reading measure, not the panel's width. The gatefold's right leaf is wide
+     enough to run a paragraph past the point where the eye finds the next line. */
+	max-width: 62ch;
+	font-size: 0.9375rem;
+	line-height: 1.65;
+	color: var(--muted);
+}
+
+.source {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 18px;
+	color: var(--accent);
+	font-size: 0.875rem;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.source:hover {
+	text-decoration: underline;
+}
+
+.notice {
+	padding: 28px 10px;
+	color: var(--muted);
+	font-size: 0.9375rem;
+}
+
+.notice p {
+	margin: 0 0 8px;
+}
+
+.hint {
+	color: var(--faint);
+	font-size: 0.8125rem;
+	max-width: 52ch;
+	line-height: 1.55;
+}

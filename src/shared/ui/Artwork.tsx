@@ -27,7 +27,12 @@ export function Artwork({
 	className,
 }: {
 	src: string | null | undefined;
-	size: number | string;
+	// Omit to let the caller's stylesheet own the box. A number is right for a
+	// list, where every tile is the same known size; the now-playing cover is
+	// sized against the space it has, and an inline `width`/`height` would beat
+	// the class that works that out -- which is how a square cover came to be
+	// stretched into an oblong and cropped by `object-fit`.
+	size?: number | string;
 	alt?: string;
 	className?: string;
 }) {
@@ -64,7 +69,7 @@ export function Artwork({
 	};
 
 	const classes = [styles.artwork, className].filter(Boolean).join(" ");
-	const style = { width: size, height: size };
+	const style = size === undefined ? undefined : { width: size, height: size };
 
 	if (state === "failed") {
 		return (

@@ -3,12 +3,13 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	inSequence,
+	nowPlayingScreen,
+	openNowPlaying,
 	openSidebar,
 	playedFrom,
 	requestsTo,
 	scratchOf,
 	sidebar,
-	statusBar,
 	test,
 	viewHeader,
 } from "./fixtures.ts";
@@ -126,6 +127,22 @@ test.describe("a library with no genre tag", () => {
 	});
 });
 
+// Where the sound is coming from. It used to be a third line in the status bar
+// and is now the now-playing screen's header, which is the only place with room
+// for it. Same claim, asked of the surface that makes it.
+const expectPlayingFrom = async (page: Page, name: string) => {
+	await openNowPlaying(page);
+	// The header rather than the line: "Playing from" and the set's name are two
+	// elements, so a text query matches the label alone and never the name.
+	const header = nowPlayingScreen(page).locator("header");
+	await expect(header).toContainText("Playing from");
+	await expect(header).toContainText(name);
+	await nowPlayingScreen(page)
+		.getByRole("button", { name: "Close now playing" })
+		.click();
+	await expect(nowPlayingScreen(page)).toBeHidden();
+};
+
 test.describe("starting the library from the front door", () => {
 	const headerButton = (page: Page, name: string) =>
 		viewHeader(page).getByRole("button", { name, exact: true });
@@ -192,7 +209,10 @@ test.describe("starting the library from the front door", () => {
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
 
-		await expect(statusBar(page)).toContainText("All music");
+		// Before the drawer: on a phone the sidebar covers the status bar, and the
+		// way into the now-playing screen is in it. "from <set>" moved there when
+		// the screen was built -- the status bar had no room for a third line.
+		await expectPlayingFrom(page, "All music");
 		await openSidebar(page);
 		await expect(
 			sidebar(page)
@@ -421,12 +441,12 @@ test.describe("a shelf says it is playing", () => {
 
 		await albumOnShelf(page, "Most played", /^Jessico/).click();
 
+		await expectPlayingFrom(page, "Most played");
+
 		await openSidebar(page);
 		const row = sidebar(page).getByRole("button", { name: /Most played/ });
 		await expect(row).toBeVisible();
 		await expect(row.getByLabel("Playing from here")).toBeVisible();
-		await expect(statusBar(page)).toContainText("from");
-		await expect(statusBar(page)).toContainText("Most played");
 
 		// Browsing away does not move playback, so the row and the status line stay
 		// -- that is the whole point of separating what you are looking at from what
@@ -439,6 +459,5 @@ test.describe("a shelf says it is playing", () => {
 		await expect(
 			sidebar(page).getByRole("button", { name: /Most played/ }),
 		).toBeVisible();
-		await expect(statusBar(page)).toContainText("Most played");
 	});
 });

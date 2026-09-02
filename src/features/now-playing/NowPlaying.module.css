@@ -1,0 +1,598 @@
+/* Two shapes, one component -- as the status bar is.
+
+   Desktop is a gatefold: the cover and the identity are a sticky left leaf and
+   the tabs are the right one, so the thing you look at holds still while the
+   thing you read changes. Compact rotates it ninety degrees -- the panel is the
+   top region and the identity and transport are the fixed bottom -- which keeps
+   the transport under the thumb and never moves it.
+
+   Deliberately not the streaming-client shape: no colour pulled out of the
+   artwork, no centred column, no edge-to-edge sheet. The palette is Jean's and
+   the cover is the colour on the screen. */
+.screen {
+	/* A layer over the content rather than a replacement for it, which is what
+     gives it somewhere to slide from and something to slide over. Positioned in
+     `.body`, exactly as the queue panel is, so the top bar and the status bar
+     stay live behind it. */
+	position: absolute;
+	inset: 0;
+	/* Above everything the list puts in its own stacking order -- the sticky
+     toolbar is 12 and the finder is 20, and at 3 both drew straight through the
+     lyrics. Below the queue panel at 30, which slides over this as it slides
+     over everything else. */
+	z-index: 25;
+	background: var(--bg);
+
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	padding: 20px 28px 32px;
+	/* One scroll container, and it is this one. The panels used to scroll
+     themselves inside a height-constrained shell, which put two scrollbars on
+     the desktop and left part of a long lyric unreachable between them. */
+	/* What the two sticky things below pin against. Declared once because the
+     header's height is the offset for both, and two hand-tuned numbers drift
+     the moment its padding changes. */
+	--head-offset: 50px;
+
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	/* Keeps the horizontal axis from becoming a browser gesture -- an edge swipe
+     is back-navigation on Android Chrome, and that would beat a tab change to
+     it. The vertical axis stays the scroller's, which is the point: `useSwipe`
+     reads touch events, so it still sees a downward flick through a scroll and
+     decides for itself whether it was a dismissal. */
+	touch-action: pan-y;
+
+	animation: slide-up 0.28s var(--ease);
+}
+
+.screen[data-leaving="true"] {
+	animation: slide-down 0.28s var(--ease) forwards;
+	/* Nothing in here is worth clicking on the way out, and a click landing on a
+     control that is halfway off screen is a mis-tap by construction. */
+	pointer-events: none;
+}
+
+@keyframes slide-up {
+	from {
+		transform: translateY(100%);
+	}
+}
+
+@keyframes slide-down {
+	to {
+		transform: translateY(100%);
+	}
+}
+
+/* The movement *is* the affordance -- it says where dismissing will send it --
+   so reduced motion keeps a fade rather than dropping to a hard cut. */
+@media (prefers-reduced-motion: reduce) {
+	.screen {
+		animation: fade-in 0.16s var(--ease);
+	}
+
+	.screen[data-leaving="true"] {
+		animation: fade-in 0.16s var(--ease) reverse forwards;
+	}
+
+	@keyframes fade-in {
+		from {
+			opacity: 0;
+		}
+	}
+}
+
+.head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: none;
+	/* The header stays put while the leaf under it scrolls: it holds the way out
+     and the track actions, and hunting for either by scrolling back up is the
+     kind of thing that makes a screen feel like a document. */
+	position: sticky;
+	top: -20px;
+	z-index: 1;
+	margin: -20px -28px 0;
+	padding: 20px 28px 12px;
+	background: var(--bg);
+}
+
+.headActions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: auto;
+}
+
+.more {
+	display: grid;
+	place-items: center;
+	width: 38px;
+	height: 38px;
+	border: none;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+	transition: color 0.15s var(--ease);
+}
+
+.more:hover {
+	color: var(--text);
+}
+
+.more:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.dismiss {
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--muted);
+	transition:
+		color 0.15s var(--ease),
+		border-color 0.15s var(--ease);
+}
+
+.dismiss:hover {
+	color: var(--text);
+	border-color: var(--border-strong);
+}
+
+.from {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: var(--faint);
+	letter-spacing: 0.01em;
+}
+
+.fromLabel {
+	color: var(--faint);
+}
+
+.from b {
+	color: var(--muted);
+	font-weight: 600;
+	margin-left: 0.35em;
+}
+
+/* ---- the spread ------------------------------------------------------- */
+
+.spread {
+	display: grid;
+	grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+	gap: 40px;
+	align-items: start;
+}
+
+/* Sticky against `.screen`, which is now the scroller. A long lyric scrolls the
+   whole leaf past a cover that stays put -- one scrollbar, at the outside edge,
+   and the artwork never leaves. */
+.identity {
+	align-self: start;
+	position: sticky;
+	/* Below the header, not under it. At `0` the cover pinned to the top of the
+     scroller and the header -- which is also sticky -- slid over the top of it. */
+	top: var(--head-offset);
+	min-width: 0;
+}
+
+/* A square that never exceeds the height available to it, so the gatefold does
+   not grow a scrollbar on a short window. */
+.stage {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 1;
+	max-height: 46vh;
+	margin: 0 auto 20px;
+	display: flex;
+	justify-content: center;
+}
+
+.cover {
+	width: auto;
+	height: 100%;
+	max-width: 100%;
+	aspect-ratio: 1;
+	border-radius: var(--radius);
+	object-fit: cover;
+	box-shadow: var(--shadow);
+}
+
+/* Flush left and set large. Every reference centres the title under a centred
+   square, which is exactly what makes them interchangeable; a sleeve back is
+   set ragged-right and so is this. */
+.title {
+	margin: 0;
+	font-size: 1.75rem;
+	font-weight: 680;
+	line-height: 1.15;
+	letter-spacing: -0.025em;
+	text-wrap: balance;
+}
+
+.artist {
+	margin: 6px 0 0;
+	font-size: 1rem;
+	color: var(--muted);
+}
+
+.album {
+	margin: 2px 0 0;
+	font-size: 0.875rem;
+	color: var(--faint);
+}
+
+.year {
+	color: var(--faint);
+}
+
+/* `Stars` sizes itself from `--star-size`, so this raises it rather than
+   redeclaring the control. Twelve pixels is right in a table cell drawn thirty
+   thousand times and wrong here: this is the one place with room, and on a
+   phone it is a thumb doing the aiming -- 22px of glyph with the gap around it
+   clears a 44px target. */
+.rating {
+	margin-top: 16px;
+	--stars-size: 22px;
+	--stars-gap: 5px;
+}
+
+/* ---- the panel -------------------------------------------------------- */
+
+.panel {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	min-width: 0;
+}
+
+.tabs {
+	display: flex;
+	gap: 4px;
+	flex: none;
+	border-bottom: 1px solid var(--border);
+	/* Under the header, which is why the offset is the header's height rather
+     than zero. */
+	position: sticky;
+	top: var(--head-offset);
+	z-index: 1;
+	background: var(--bg);
+}
+
+.tab {
+	position: relative;
+	padding: 10px 14px;
+	border: none;
+	background: none;
+	color: var(--faint);
+	font-size: 0.75rem;
+	font-weight: 620;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	transition: color 0.15s var(--ease);
+}
+
+.tab:hover {
+	color: var(--muted);
+}
+
+.tab[data-active="true"] {
+	color: var(--text);
+}
+
+/* The accent budget here is the same two-pixel rail the menu spends it on, and
+   it scales from its own centre rather than fading in. */
+.tab::after {
+	content: "";
+	position: absolute;
+	inset: auto 8px -1px;
+	height: 2px;
+	border-radius: 2px;
+	background: var(--accent);
+	transform: scaleX(0);
+	transition: transform 0.18s var(--ease);
+}
+
+.tab[data-active="true"]::after {
+	transform: scaleX(1);
+}
+
+.panelBody {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+}
+
+/* ---- transport (compact only) ----------------------------------------- */
+
+.controls {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.times {
+	display: flex;
+	justify-content: space-between;
+	color: var(--faint);
+}
+
+.transport {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-top: 6px;
+}
+
+.order,
+.skip {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	border: none;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+}
+
+.order[aria-pressed="true"] {
+	color: var(--accent);
+}
+
+.order:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.skip {
+	color: var(--text);
+}
+
+/* ---- compact ----------------------------------------------------------- */
+
+.screen[data-compact="true"] {
+	/* Rows: header / spread / transport. The spread is the only part that
+     flexes, so the transport is at a constant distance from the bottom edge
+     whatever tab is open. */
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	height: 100%;
+	gap: 14px;
+	padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
+	/* The panel scrolls itself here, so the screen must not, or a flick scrolls
+     both. */
+	overflow: hidden;
+}
+
+.screen[data-compact="true"] .spread {
+	display: flex;
+	/* Reversed so the panel -- second in the DOM -- draws above the identity,
+     which is where the reading order wants it: what you are looking at, then
+     what it is about, then the controls. */
+	flex-direction: column-reverse;
+	/* Explicitly, because the gatefold's grid sets `align-items: start` and in a
+     *flex column* that means the cross axis too: every child shrank to its own
+     content width, so the tab strip and the artwork stopped ~58px short of the
+     right edge while the title and the transport ran full width. */
+	align-items: stretch;
+	gap: 0;
+	flex: 1;
+	min-height: 0;
+}
+
+/* Must grow. Left at `flex: 0 1 auto` it sized to its content and, in a
+   column-reverse container, all the free space collected *above* it -- which is
+   what pinned every tab's content to the bottom of a tall window. */
+.screen[data-compact="true"] .panel {
+	flex: 1;
+	min-height: 0;
+}
+
+/* The tabs sit at the top on a phone as well as on the gatefold, so the two
+   layouts read the same way and the panel below them is one uninterrupted
+   region. They were at the bottom, on the argument that a control belongs where
+   the thumb is -- which the swipe repealed: left and right change tab without
+   reaching for anything, so the strip is now a label of where you are more than
+   a control you aim at. */
+.screen[data-compact="true"] .tabs {
+	justify-content: space-around;
+}
+
+.screen[data-compact="true"] .panelBody {
+	flex: 1;
+	min-height: 0;
+	/* The one place a panel still scrolls itself: the transport below it is
+     pinned to the bottom edge, so the screen as a whole cannot be the scroller
+     without taking the controls off the viewport. */
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	/* The fade belongs to whatever actually scrolls, and on the gatefold that is
+     the whole screen rather than the panel -- left on the panel there it dimmed
+     the first and last row permanently, on content that was never clipped.
+     Both prefixes: Safari only took the unprefixed form in 15.4. */
+	-webkit-mask-image: linear-gradient(
+		to bottom,
+		transparent 0,
+		#000 30px,
+		#000 calc(100% - 30px),
+		transparent 100%
+	);
+	mask-image: linear-gradient(
+		to bottom,
+		transparent 0,
+		#000 30px,
+		#000 calc(100% - 30px),
+		transparent 100%
+	);
+}
+
+/* The artwork always fits, so there is nothing to scroll and nothing for a top
+   fade to promise -- all it did was soften the cover's own rounded corners
+   against the tab strip, which reads as the image being clipped rather than as
+   more of it above. The bottom fade stays: that edge does meet the title below
+   it, and softening it is the point. */
+.screen[data-compact="true"] .panelBody[data-tab="art"] {
+	overflow: hidden;
+	padding-top: 12px;
+	-webkit-mask-image: linear-gradient(
+		to bottom,
+		#000 calc(100% - 30px),
+		transparent 100%
+	);
+	mask-image: linear-gradient(
+		to bottom,
+		#000 calc(100% - 30px),
+		transparent 100%
+	);
+}
+
+/* The panel arrives from the side the gesture came from, which is most of what
+   makes the swipe discoverable: content that simply replaces itself gives no
+   sign that a flick did anything. Compact only -- the gatefold's tabs are
+   clicked, where the pointer already says which one you chose.
+
+   `transform` and `opacity` only, so it stays on the compositor; nothing here
+   moves the element's laid-out box, so the tab strip above holds still. */
+.screen[data-compact="true"] .panelBody {
+	animation: panel-in-right 0.24s var(--ease);
+}
+
+.screen[data-compact="true"] .panelBody[data-direction="-1"] {
+	animation-name: panel-in-left;
+}
+
+@keyframes panel-in-right {
+	from {
+		opacity: 0;
+		transform: translateX(14%);
+	}
+}
+
+@keyframes panel-in-left {
+	from {
+		opacity: 0;
+		transform: translateX(-14%);
+	}
+}
+
+/* The direction is the information; without the movement a crossfade still says
+   the panel changed, which is the part that has to survive. */
+@media (prefers-reduced-motion: reduce) {
+	.screen[data-compact="true"] .panelBody,
+	.screen[data-compact="true"] .panelBody[data-direction="-1"] {
+		animation: panel-fade 0.14s var(--ease);
+	}
+
+	@keyframes panel-fade {
+		from {
+			opacity: 0;
+		}
+	}
+}
+
+/* Centred when it fits, scrolled from the top when it does not -- and `margin:
+   auto` is what does both. `justify-content: center` is the trap here: it
+   centres identically and then clips the overflow *above* the scrollport, where
+   nothing can scroll back to it. Auto margins collapse to zero once the content
+   is taller than the box. */
+.screen[data-compact="true"] .panelBody > * {
+	flex: none;
+	margin-block: auto;
+}
+
+.screen[data-compact="true"] .identity {
+	position: static;
+	flex: none;
+	padding-top: 18px;
+}
+
+.screen[data-compact="true"] .title {
+	font-size: 1.375rem;
+}
+
+/* `margin: auto`, not `0` -- it is the `.panelBody > *` rule above that does the
+   centring, and an equally specific `margin` here overrides it on source order
+   alone, which parked the artwork at the top of a tall panel. */
+/* `margin: auto`, not `0` -- it is the `.panelBody > *` rule above that does the
+   centring, and an equally specific `margin` here overrides it on source order
+   alone, which parked the artwork at the top of a tall panel.
+
+   `max-height: 100%` is what stops a scrollbar appearing on a narrow window:
+   the stage is `aspect-ratio: 1; width: 100%`, so on a screen narrower than the
+   panel is tall it was taller than the space and overflowed. Capped, the box
+   goes short and wide and the cover inside -- sized from the *height* -- shrinks
+   to fit and stays square. Artwork is the one panel that should always fit; the
+   other three have content that genuinely runs on. */
+.screen[data-compact="true"] .stage {
+	max-height: 100%;
+	margin: auto;
+	flex: none;
+	align-items: center;
+}
+
+.screen[data-compact="true"] .rating {
+	margin-top: 12px;
+	--stars-size: 26px;
+	--stars-gap: 7px;
+}
+
+@media (max-width: 720px) {
+	.screen {
+		padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+	}
+}
+
+/* Between the two breakpoints the gatefold has no room for two columns, so it
+   stacks -- a media query rather than the JS flag, because this is spacing and
+   anything spatial belongs to the media query. */
+@media (max-width: 1040px) {
+	.screen:not([data-compact="true"]) .spread {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 24px;
+	}
+
+	.screen:not([data-compact="true"]) .identity {
+		position: static;
+		display: grid;
+		grid-template-columns: 220px minmax(0, 1fr);
+		grid-template-areas:
+			"art title"
+			"art artist"
+			"art album"
+			"art rating";
+		align-content: start;
+		column-gap: 24px;
+	}
+
+	.screen:not([data-compact="true"]) .stage {
+		grid-area: art;
+		margin: 0;
+	}
+
+	.screen:not([data-compact="true"]) .title {
+		grid-area: title;
+		align-self: end;
+	}
+	.screen:not([data-compact="true"]) .artist {
+		grid-area: artist;
+	}
+	.screen:not([data-compact="true"]) .album {
+		grid-area: album;
+	}
+	.screen:not([data-compact="true"]) .rating {
+		grid-area: rating;
+		align-self: start;
+	}
+}

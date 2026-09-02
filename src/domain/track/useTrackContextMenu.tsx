@@ -1,4 +1,4 @@
-import { Check, ListEnd, ListMusic, ListPlus, Music, Star } from "lucide-react";
+import { ListMusic, Music, Star } from "lucide-react";
 import {
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
@@ -11,49 +11,23 @@ import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { plural } from "@/shared/lib/text";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { FIELD, value } from "./fields";
-import { withoutJeanPlaylists } from "./jeanPlaylists";
 import type { LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 import {
 	isWritableScale,
-	MAX_STARS,
 	rawRatingOf,
 	rawRatingOfValue,
 	starsOf,
 } from "./rating";
 import { useWrittenRating } from "./ratingStore";
+import { ratingItems, trackActions } from "./trackActions";
 import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
-import { QUEUE_LIMIT, useQueueTracks } from "./useQueueTracks";
+import { useQueueTracks } from "./useQueueTracks";
 import { useTagWriting } from "./useTagWriter";
 
 const sameList = (a: number[], b: number[]) =>
 	a.length === b.length && a.every((entry, at) => entry === b[at]);
-
-// Descending, and `No rating` below a separator as the only entry that takes
-// something away. Plain entries with a check on the current value, since
-// `ActionMenu` has no checkable row.
-const ratingItems = (
-	current: number | null,
-	onRate: (stars: number) => void,
-) => [
-	...Array.from({ length: MAX_STARS }, (_, at) => {
-		const stars = MAX_STARS - at;
-		return {
-			id: `rate-${stars}`,
-			label: stars === 1 ? "1 star" : `${stars} stars`,
-			icon: stars === current ? Check : Star,
-			onSelect: () => onRate(stars),
-		};
-	}),
-	{ type: "separator" as const },
-	{
-		id: "rate-none",
-		label: "No rating",
-		icon: current === null ? Check : undefined,
-		onSelect: () => onRate(0),
-	},
-];
 
 // One menu for a list of any length. The gestures go on the container, not the
 // rows: a virtualised list must not carry a handler per row, and it unmounts
@@ -136,60 +110,32 @@ export function useTrackContextMenu({
 		const itemIndices = positions.map((position) =>
 			indices ? indices[position] : position,
 		);
-		// Not Jean's scratch playlist: it is where results are put to be played, and the
-		// next search would empty it anyway.
-		const targets = withoutJeanPlaylists(playlists).filter(
-			(entry) => entry.id !== source.playlistId,
-		);
-
 		const rateable =
 			canRate && rated !== undefined && isWritableScale(rawRating);
 
-		return [
-			// Above the separator: the one action here about what happens next rather
-			// than where a track lives.
-			{
-				id: "queue",
-				label:
-					count > QUEUE_LIMIT
-						? `Add to queue (${QUEUE_LIMIT} at a time)`
-						: "Add to queue",
-				icon: ListEnd,
-				disabled: !canQueue || count > QUEUE_LIMIT,
-				onSelect: () => queueTracks({ source, itemIndices }),
-			},
-			// The keyboard's and the thumb's only route to a rating; the row's stars
-			// are twelve pixels each.
-			...(rateable
-				? [
-						{
-							id: "rate",
-							label: "Rating",
-							icon: Star,
-							items: ratingItems(starsOf(rawRating), (stars: number) =>
-								rate(
-									{ source, ref: itemIndices[0], row: rated as TrackColumns },
-									stars === 0 ? null : stars,
-								),
+		return trackActions({
+			count,
+			source,
+			itemIndices,
+			playlists,
+			canEdit,
+			canQueue,
+			queueTracks,
+			addTracks,
+			rating: rateable
+				? {
+						id: "rate",
+						label: "Rating",
+						icon: Star,
+						items: ratingItems(starsOf(rawRating), (stars: number) =>
+							rate(
+								{ source, ref: itemIndices[0], row: rated as TrackColumns },
+								stars === 0 ? null : stars,
 							),
-						},
-					]
-				: []),
-			{ type: "separator" as const },
-			{
-				id: "add",
-				label: "Add to playlist",
-				icon: ListPlus,
-				disabled: !canEdit || targets.length === 0,
-				filter: "Find a playlist",
-				items: targets.map((target) => ({
-					id: target.id,
-					label: target.title,
-					icon: ListMusic,
-					onSelect: () => addTracks({ source, target, itemIndices }),
-				})),
-			},
-		];
+						),
+					}
+				: null,
+		});
 	}, [
 		count,
 		positions,

@@ -1,10 +1,16 @@
 .stars {
 	/* Spatial, so the media query owns it and not the JS breakpoint -- otherwise
-     the stars resize at 860px while the column they sit in resizes at 720. */
-	--star-size: 12px;
+     the stars resize at 860px while the column they sit in resizes at 720.
+     Both are defaults a caller may raise by setting `--stars-size` on any
+     ancestor -- the now-playing screen does. Read through a second name rather
+     than declared directly, because a custom property *declared on the element*
+     beats an inherited one, so `--star-size: 12px` here would silently win over
+     anything a container set. */
+	--star-size: var(--stars-size, 12px);
+	--star-gap: var(--stars-gap, 2px);
 	display: inline-flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--star-gap);
 	/* The empty state, and it is the one that gets drawn thirty thousand times.
      Quiet enough that a list of unrated tracks reads as texture rather than as
      a column of rejected records. */
@@ -34,8 +40,8 @@
 
 @media (max-width: 720px) {
 	.stars {
-		--star-size: 11px;
-		gap: 1.5px;
+		--star-size: var(--stars-size, 11px);
+		--star-gap: var(--stars-gap, 1.5px);
 	}
 }
 

@@ -1,3 +1,4 @@
+import { ArtistInformation } from "./ArtistInformation";
 import styles from "./Settings.module.css";
 import { TagWriting } from "./TagWriting";
 
@@ -17,6 +18,7 @@ export function SettingsView() {
 			</header>
 
 			<TagWriting />
+			<ArtistInformation />
 		</div>
 	);
 }

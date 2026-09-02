@@ -279,6 +279,62 @@ export const rowByTitle = (page: Page, title: string) =>
 
 export const statusBar = (page: Page) => page.locator("footer");
 
+// Not "Now playing": that name belongs to the playing row's equalizer, and
+// `play.spec` counts how many elements answer to it.
+export const nowPlayingScreen = (page: Page) =>
+	page.getByRole("region", { name: "Current track" });
+
+// `data-open` is the *drawer*, not the desktop sidebar: on a desktop the toggle
+// sets `isSidebarCollapsed` and this stays false, so closing here is a no-op
+// there rather than something that collapses a sidebar the spec wanted.
+//
+// Worth knowing on its own: a bare `page.goto('/#/p5')` is a hashchange rather
+// than a load, so React state survives it and the drawer does *not* close the
+// way it does when a row inside it is clicked.
+export const closeSidebar = async (page: Page) => {
+	// Not `sidebar()`: a closed drawer is `display: none`, so the role query does
+	// not resolve at all and asking it for an attribute waits out the timeout.
+	const nav = page.locator('nav[aria-label="Playlists"]');
+	if ((await nav.count()) === 0) return;
+	if ((await nav.getAttribute("data-open")) !== "true") return;
+	// The scrim, not the toggle in the top bar: an open drawer overlaps its own
+	// toggle, so clicking that waits for a button the drawer is sitting on. The
+	// scrim is what a finger reaches for anyway.
+	await page.getByRole("button", { name: "Close menu" }).click();
+	await expect(nav).toHaveAttribute("data-open", "false");
+};
+
+// Idempotent, and it has to be: on a phone the screen *replaces* the status
+// bar, so a second call would look for the button that opened it in the one
+// place it is guaranteed not to be. Closes the drawer first, which covers the
+// status bar on a phone and swallows the click.
+export const openNowPlaying = async (page: Page) => {
+	if (await nowPlayingScreen(page).isVisible()) return;
+	await closeSidebar(page);
+	await statusBar(page)
+		.getByRole("button", { name: "Show current track" })
+		.click();
+	await expect(nowPlayingScreen(page)).toBeVisible();
+};
+
+/**
+ * Where the global playback controls are, which is a question about the
+ * viewport rather than about the control.
+ *
+ * The compact status bar is Play and volume and nothing else -- shuffle,
+ * skipping and the queue are full-sized targets on the now-playing screen
+ * instead of 32px ones wedged around Play. On a desktop they are all still in
+ * the status bar, which is on every screen.
+ *
+ * Opens the screen as a side effect on mobile, so a spec that only wants to
+ * *find* a control reads the same on both projects.
+ */
+export async function globalControls(page: Page, isCompact: boolean) {
+	if (!isCompact) return statusBar(page);
+	await openNowPlaying(page);
+	return nowPlayingScreen(page);
+}
+
 export const viewHeader = (page: Page) => page.locator("main header").first();
 
 export const sidebar = (page: Page) =>

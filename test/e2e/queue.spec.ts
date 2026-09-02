@@ -1,7 +1,9 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	nowPlayingScreen,
 	openLibrary,
+	openNowPlaying,
 	openSidebar,
 	pressAndHold,
 	requestsTo,
@@ -14,11 +16,20 @@ import {
 const queuePanel = (page: Page) =>
 	page.getByRole("complementary", { name: "Queue" });
 
+// The status bar on a desktop; the now-playing screen's header on a phone,
+// where the compact strip is down to Play and volume. The drop target is only
+// ever the status-bar one -- dragging is mouse-only, so it is desktop-only too.
 const queueButton = (page: Page) =>
 	statusBar(page).getByRole("button", { name: /^Queue/ });
 
+const anyQueueButton = async (page: Page) => {
+	if (await queueButton(page).count()) return queueButton(page);
+	await openNowPlaying(page);
+	return nowPlayingScreen(page).getByRole("button", { name: /^Queue/ });
+};
+
 const openQueue = async (page: Page) => {
-	await queueButton(page).click();
+	(await anyQueueButton(page)).click();
 	await expect(
 		queuePanel(page).getByRole("heading", { name: "Queue" }),
 	).toBeVisible();
@@ -205,14 +216,29 @@ test.describe("putting things in the queue", () => {
 	}) => {
 		await openLibrary(page);
 
-		await expect(queueButton(page)).toHaveAccessibleName("Queue");
+		// Read wherever the button lives, and come back to the list afterwards --
+		// on a phone it is on the now-playing screen, and the tracks being queued
+		// are in the list behind it.
+		const badge = async () => {
+			const button = await anyQueueButton(page);
+			const name = await button.getAttribute("aria-label");
+			const text = (await button.textContent()) ?? "";
+			if (isMobile) {
+				await nowPlayingScreen(page)
+					.getByRole("button", { name: "Close now playing" })
+					.click();
+				await expect(nowPlayingScreen(page)).toBeHidden();
+			}
+			return { name, text };
+		};
+
+		expect((await badge()).name).toBe("Queue");
 
 		await queueTracks(page, isMobile);
-		await expect(queueButton(page)).toHaveAccessibleName("Queue, 1 track");
-		await expect(queueButton(page)).toContainText("1");
+		expect(await badge()).toMatchObject({ name: "Queue, 1 track", text: "1" });
 
 		await queueTracks(page, isMobile, 1);
-		await expect(queueButton(page)).toHaveAccessibleName("Queue, 2 tracks");
+		expect((await badge()).name).toBe("Queue, 2 tracks");
 		expect(player.playQueue).toHaveLength(2);
 	});
 });

@@ -24,6 +24,7 @@ import { HomeView } from "@/features/home/HomeView";
 import { buildShelves, refsOfShelf } from "@/features/home/shelves";
 import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { LibraryListView } from "@/features/library/LibraryListView";
+import { NowPlaying } from "@/features/now-playing/NowPlaying";
 import { StatusBar } from "@/features/now-playing/StatusBar";
 import { PlaylistView } from "@/features/playlist/PlaylistView";
 import { QueuePanel } from "@/features/queue/QueuePanel";
@@ -87,8 +88,15 @@ function Shell() {
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
+	// Now playing is a layer over whatever you were looking at rather than a
+	// replacement for it, so the shell keeps resolving the route *underneath*.
+	// That is what lets it slide: there is something behind it to slide over.
+	const isNowPlaying = route === ROUTE.playing;
+	const [openedFrom, setOpenedFrom] = useState("");
+	const shellRoute = isNowPlaying ? openedFrom : route;
+
 	const { shelf, isSearch, isAll, isHome, isSettings, isLibrary } =
-		resolveRoute(route);
+		resolveRoute(shellRoute);
 
 	// The library is loaded for the views that show it. Search asks for it
 	// separately, on focus, because reaching for the field is the ask and the
@@ -207,6 +215,25 @@ function Shell() {
 
 	const openSearch = useCallback(() => openRoute(ROUTE.search), [openRoute]);
 
+	// Where dismissing the screen goes, and what the shell draws behind it.
+	// `history.back()` is wrong here: a reload lands directly on `#/playing` with
+	// no entry behind it, and back would leave Jean altogether. State rather than
+	// a ref because it decides what renders, and it only changes when you
+	// navigate somewhere that is not this screen.
+	useEffect(() => {
+		if (!isNowPlaying) setOpenedFrom(route);
+	}, [isNowPlaying, route]);
+
+	const closeNowPlaying = useCallback(
+		() => navigate(`/${openedFrom}`),
+		[navigate, openedFrom],
+	);
+
+	const toggleNowPlaying = useCallback(
+		() => (isNowPlaying ? closeNowPlaying() : navigate(`/${ROUTE.playing}`)),
+		[isNowPlaying, closeNowPlaying, navigate],
+	);
+
 	useKeymap(SCOPE.global, {
 		playPause: () => playPause.mutate(),
 		nextTrack: () => nextTrack(),
@@ -224,6 +251,7 @@ function Shell() {
 		openPalette: () => setIsPaletteOpen(true),
 		toggleSidebar,
 		toggleQueue,
+		toggleNowPlaying,
 		showShortcuts: () => setIsSheetOpen((current) => !current),
 		toggleTheme,
 		rate0: () => rateShortcut(0),
@@ -376,6 +404,17 @@ function Shell() {
 					)}
 				</main>
 
+				{/* A layer over the content, not a replacement for it -- which is what
+            lets it slide up and down over the view you came from. A sibling of
+            `main` inside `.body`, exactly as the queue panel is. */}
+				<NowPlaying
+					isOpen={isNowPlaying}
+					isCompactViewport={isCompactViewport}
+					isQueueOpen={isQueueOpen}
+					onToggleQueue={toggleQueue}
+					onDismiss={closeNowPlaying}
+				/>
+
 				<QueuePanel
 					isOpen={isQueueOpen}
 					isCompactViewport={isCompactViewport}
@@ -392,7 +431,20 @@ function Shell() {
           anyone having to know how tall the status bar is. */}
 			<Toasts />
 
-			<StatusBar isQueueOpen={isQueueOpen} onToggleQueue={toggleQueue} />
+			{/* The one route that replaces the status bar rather than sitting above
+          it, and only on a phone: there the now-playing screen is the whole
+          viewport and carries its own transport, so leaving the strip below it
+          puts two Play buttons and the same cover on screen at once. The
+          desktop keeps it -- there the screen is a pane inside the shell and
+          the status bar is the only transport there is. */}
+			{isCompactViewport && isNowPlaying ? null : (
+				<StatusBar
+					isQueueOpen={isQueueOpen}
+					onToggleQueue={toggleQueue}
+					onOpenNowPlaying={toggleNowPlaying}
+					onRevealNowPlaying={() => navigate(`/${ROUTE.playing}`)}
+				/>
+			)}
 
 			<DragGhost />
 

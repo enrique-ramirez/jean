@@ -1,0 +1,74 @@
+.details {
+	/* Sized by its content, so the screen around it is what overflows and what
+     scrolls. `flex: 1; min-height: 0` here made the panel exactly as tall as the
+     space left over and *clipped* the rest -- which the edge fade then dressed
+     up as more text below, on a screen that could not be scrolled to reach it.
+     The compact layout puts the constraint back, because there the transport
+     below is pinned. */
+	flex: none;
+	padding: 20px 4px 24px;
+	overscroll-behavior: contain;
+}
+
+.group + .group {
+	margin-top: 26px;
+}
+
+.groupTitle {
+	margin: 0 0 10px;
+	font-size: 0.6875rem;
+	font-weight: 620;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.rows {
+	margin: 0;
+	display: grid;
+	gap: 1px;
+	/* One background behind hairline gaps, so the rules are the gaps rather than
+     nine borders that have to be turned off at the ends. */
+	background: var(--border);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+}
+
+.row {
+	display: grid;
+	/* The label column is fixed so the values line up into a readable column;
+     `minmax(0, …)` on the value is what lets a long path shrink instead of
+     pushing the row wider than the panel. */
+	grid-template-columns: 8.5rem minmax(0, 1fr);
+	gap: 12px;
+	padding: 9px 12px;
+	background: var(--surface);
+	font-size: 0.875rem;
+}
+
+.label {
+	color: var(--faint);
+}
+
+.value {
+	margin: 0;
+	color: var(--text);
+	/* Tags are user data and some of them are very long -- a composer field can
+     hold six names. Wrapping beats truncating: this is the screen you came to
+     in order to read the value. */
+	overflow-wrap: anywhere;
+}
+
+.notice {
+	padding: 28px 10px;
+	color: var(--muted);
+	font-size: 0.9375rem;
+}
+
+@media (max-width: 720px) {
+	.row {
+		grid-template-columns: 7rem minmax(0, 1fr);
+		gap: 10px;
+	}
+}

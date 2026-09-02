@@ -49,6 +49,30 @@ built there, because the two callers hold a rating in different shapes — a row
 array against a now-playing column set — and neither belongs in the other's
 file.
 
+**The identity block has two shapes on a phone, and the tab decides which.**
+Under the artwork it is the caption to a picture and can afford four lines --
+title, artist, album · year, stars. Under Lyrics, Details or Artist it is
+competing with the content for the same screen, and four lines of it was
+costing a verse: *observed*, a title as long as "Magnetizing feat. Del tha
+Funkee Homosapien" wrapped to two lines and took the best part of an inch off
+the biography under it.
+
+So on those three tabs it is the smallest thing that still answers "what is
+this": **title and artist, one line each, truncated.** The album and the year go
+because Details lists both, two rows further down; the stars go because rating
+is a deliberate act with two other routes to it -- the Playing tab and the ⋯
+menu -- and not something to hold a 44px target on screen for at all times.
+
+**No thumbnail in the slim strip, and that is the decision worth recording.**
+Every mini-player worth looking at -- Apple Music's, Music Assistant's -- is
+artwork plus two lines, and copying that here gets the Spotify bar exactly. The
+cover is one swipe away at full size, this screen's identity is set flush left
+like a sleeve back rather than as a row with a picture in it, and a 40px copy of
+something already on the next tab buys nothing.
+
+The gatefold is untouched: its identity is a sticky column with a leaf to itself
+and nothing to take space from.
+
 **"Playing from", not "from".** The bare preposition reads as a fragment of a
 sentence that never arrives, especially next to a name like "All music".
 
@@ -315,6 +339,78 @@ simply settle lower than the focus point, which is what a page of text does.
 What replaced it is `padding-bottom` on the list: breathing room above the edge,
 and no dead scroll.
 
+### Full screen
+
+**`LyricsScreen` reuses `Lyrics` rather than drawing its own**, so the follow,
+the resume pill, seek-on-click and the synced/plain/empty states cannot come to
+mean two things. The only differences are `--lyric-size` -- read with a fallback
+in `Lyrics.module.css`, because a custom property *declared* on the element
+would beat anything an ancestor set -- and the space around it.
+
+**It is a sibling of the now-playing screen, not a child**, and that is the one
+structural decision here. As a child it sits inside the screen's own touch
+handlers, so every flick in full screen would also step the tabs underneath;
+stopping propagation on three handlers to undo that is a fix that holds until
+someone adds a fourth.
+
+**And it is `position: fixed`, the only layer in Jean that is.** Everything else
+-- this screen, the queue panel -- is positioned in `.body`, which starts *below*
+the top bar and beside the sidebar. A layer there covers the view and leaves the
+search field, the settings gear and the theme switch on screen above it, and
+"only the lyrics are visible" is then false. Nothing between it and the viewport
+establishes a containing block, so fixed resolves against the viewport;
+`z-index: 45` puts it over the app chrome, the queue panel (30) and this screen
+(25), and deliberately *under* toasts (50) and menus (70) -- a write that failed
+still has to be able to say so.
+
+**The panel's own `Lyrics` is unmounted while it is up.** Two mounted at once is
+two animation-frame loops recomputing the same active line, and the hidden one
+still drives *its* scroller -- so the panel underneath would quietly scroll
+itself for the whole song. Same rule as the screen unmounting rather than
+hiding.
+
+**The X is top-right, and the references say top-left.** Apple Music's
+full-screen player and Spotify's lyric sheet both dismiss from the top-left
+corner, and here that corner already holds this screen's chevron-down, one layer
+down. Two dismissals stacked in one corner is a mis-tap by construction and it
+makes the deeper one feel like the shallower one. Top-right is also what a modal
+covering everything gets on the web. What *was* taken from the references is
+that neither floats its control over the text: the X sits in a bar of its own
+rather than on a scrim, because a gradient over the one thing this screen is for
+is not a fix.
+
+**Swiping it away needed nothing built.** `useSwipe`'s `onDown` already fires
+only when the thing under the finger had nowhere further up to go -- halfway
+down a lyric a downward flick scrolls, at the top it closes -- and it reads touch
+events, so it still sees the gesture through a scroll the browser has claimed.
+That is the whole of "without sacrificing scroll". Escape closes it too, on the
+*capture* phase and stopped there, because the playlist scope binds Escape to
+clearing a selection and the list is still mounted two layers down.
+
+**It is offered on the Lyrics tab and only when there is a lyric**, and it sits
+in the panel's own top-right corner rather than in the screen's header. It was
+in the header first, on the argument that the header is the one place outside
+the panel's edge fade -- a control inside `.panelBody` is drawn at 40% opacity
+for the first 30px of scroll -- and that argument was answered rather than
+right: the button is a child of the **tab strip**, absolutely positioned at
+`top: 100%`, so it lands over the panel without being in it.
+
+That placement buys three things the header did not. It is next to the thing it
+acts on, so nothing has to explain which tab it belongs to. The header stays at
+three controls on a phone rather than four. And `.tabs` is already
+`position: sticky`, which the button inherits for free -- on the gatefold it
+rides the strip and stays with the lyric instead of scrolling off the top of
+it, with no second sticky rule to keep in step.
+
+Out of flow, deliberately: on compact the four tabs are `space-around` across
+the full width, and a real flex child here would push ARTIST off its own
+spacing. It carries a surface and a border because lyrics scroll under it -- a
+bare glyph over running text reads as a mark *in* the lyric rather than a
+control on top of one, which is the same reason `.resume` is a pill.
+
+Hidden rather than disabled when the tag is empty: a dimmed control on the three
+quarters of a real library with no lyric is an affordance that never once works.
+
 The current line sits **a third of the way down, not centred**: the line being
 sung is the one you have already heard, and the useful half of the view is what
 is coming.
@@ -384,6 +480,17 @@ which keeps the fact in one store rather than adding a second overlay beside
 `ratingStore` -- that one is keyed on the row arrays `playlistStore` publishes
 and cannot see this one.
 
+**Rating is silent.** `rateTrack` used to confirm every write in a toast, on the
+argument that this path has no row to patch optimistically so nothing on screen
+would show it -- which was true when the keyboard shortcut was its only caller
+and false the moment this screen grew its own stars. Rating from here drew the
+new stars *and* threw a toast over the transport, which is the app
+congratulating itself for doing exactly what was asked. A rating is a small,
+reversible, one-click act with a visible result; confirming it is the failure
+mode toasts exist for. **A failure still speaks, and names the track**, because
+that is the one outcome the stars cannot show and `0`-`5` can be pressed with
+the track nowhere on screen.
+
 The read-only rule is unchanged and asked per track: a raw value above 5 is on
 somebody else's scale, and rescaling a `100` to five stars is a 4% rating drawn
 as full marks with nothing on screen to say it happened.
@@ -399,11 +506,25 @@ out and stretched a square cover into that oblong, cropping the middle of the
 artwork out of it. The stylesheet sizes the cover from the *height* of whatever
 box it is in, so it shrinks and stays square.
 
-The fade over that panel loses its top stop for the same reason. With nothing
-to scroll there is nothing above for a fade to promise, and all it did was
-soften the cover's own rounded corners against the tab strip -- which reads as
-the image being clipped. The bottom stays: that edge does meet the title below
-it.
+**The panel has no fade at all now, and getting there took two goes at one
+argument.** The top stop went first: with nothing to scroll there is nothing
+above for a fade to promise, and all it did was soften the cover's own rounded
+corners against the tab strip -- which reads as the image being clipped. The
+bottom stop was kept on the grounds that *that* edge does meet the title below
+it, and softening it is the point.
+
+That was wrong for the same reason the first one was. When the artwork is
+height-constrained -- a tall phone, which is most of them -- the bottom of the
+sleeve **is** the bottom 30px of the panel, so the fade was not softening a
+boundary between two things, it was dissolving the last inch of the picture.
+Reported as the cover being "slightly covered up", which is exactly what it
+looks like. **A mask belongs to a scroller, and this is not one.**
+
+The other half of the fix is that every number between the top of the viewport
+and the cover gives some of itself back: the compact grid gap (14 → 10), the
+identity's lead (18 → 12), the star size (26 → 22) and the panel's own padding
+(12 → 8). About 26px, which is what the artwork was over by. Cheaper than
+shrinking the cover, and nothing else notices.
 
 ## One play button
 
@@ -433,3 +554,7 @@ point: **a custom property declared on the element beats an inherited one**, so
 `.stars { --star-size: 12px }` silently won over anything a container set. Twelve
 pixels is right in a table cell drawn thirty thousand times and wrong here --
 this is the one screen with room, and on a phone it is a thumb doing the aiming.
+The compact size is **22px, down from 26**: still a target (22px of glyph plus
+the 6px gap and the button's own padding clears 44px), and the four pixels come
+off the only stack of margins between the tab strip and the bottom of the
+cover.

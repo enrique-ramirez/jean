@@ -256,13 +256,15 @@
 }
 
 .tabs {
+	/* The containing block for `.expand`, which hangs below it. `sticky` already
+     positions this, so nothing else changes. */
+	position: sticky;
 	display: flex;
 	gap: 4px;
 	flex: none;
 	border-bottom: 1px solid var(--border);
 	/* Under the header, which is why the offset is the header's height rather
      than zero. */
-	position: sticky;
 	top: var(--head-offset);
 	z-index: 1;
 	background: var(--bg);
@@ -304,6 +306,47 @@
 
 .tab[data-active="true"]::after {
 	transform: scaleX(1);
+}
+
+/* Hangs off the *bottom* of the tab strip rather than sitting in it. `top: 100%`
+   resolves against `.tabs`, which is already `position: sticky` and therefore a
+   containing block -- so on the gatefold the button rides the sticky strip and
+   stays with the lyric instead of scrolling off the top of it, and no second
+   sticky rule is needed to say so.
+
+   Out of flow, so the four tabs are laid out as though it were not there: on
+   compact they are `space-around` across the full width and a real flex child
+   here would push ARTIST off its own spacing.
+
+   It has a surface and a border because lyrics scroll under it. A bare glyph
+   over running text reads as a mark *in* the lyric rather than as a control on
+   top of one -- which is the same reason `.resume` is a pill. */
+.expand {
+	position: absolute;
+	top: 100%;
+	/* Clear of a compact scrollbar, which is an overlay on the panel body. */
+	right: 4px;
+	margin-top: 8px;
+	z-index: 1;
+
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--muted);
+	transition:
+		color 0.15s var(--ease),
+		background 0.15s var(--ease),
+		border-color 0.15s var(--ease);
+}
+
+.expand:hover {
+	background: var(--surface-raised);
+	border-color: var(--border-strong);
+	color: var(--text);
 }
 
 .panelBody {
@@ -348,7 +391,7 @@
 }
 
 .order[aria-pressed="true"] {
-	color: var(--accent);
+	color: var(--accent-text);
 }
 
 .order:disabled {
@@ -369,8 +412,15 @@
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr) auto;
 	height: 100%;
-	gap: 14px;
-	padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
+	/* Tightened from 14/12. The Playing tab is the one panel that must never
+     scroll, and on a 2400px-tall handset the artwork was arriving a couple of
+     dozen pixels over the space left for it -- so the square went short and the
+     bottom of the sleeve sat under the title. Every number on this screen that
+     is between the top of the viewport and the cover gives some of it back:
+     this gap, the identity's lead, the star size and the art panel's own
+     padding. Cheaper than shrinking the cover, and nothing else notices. */
+	gap: 10px;
+	padding: 10px 20px calc(16px + env(safe-area-inset-bottom));
 	/* The panel scrolls itself here, so the screen must not, or a flick scrolls
      both. */
 	overflow: hidden;
@@ -438,24 +488,25 @@
 	);
 }
 
-/* The artwork always fits, so there is nothing to scroll and nothing for a top
-   fade to promise -- all it did was soften the cover's own rounded corners
-   against the tab strip, which reads as the image being clipped rather than as
-   more of it above. The bottom fade stays: that edge does meet the title below
-   it, and softening it is the point. */
+/* No fade at all on this tab, and that is a reversal of half a decision rather
+   than a new one. The top stop went first, because with nothing to scroll there
+   is nothing above for a fade to promise and all it did was soften the cover's
+   own rounded corners -- which reads as the image being clipped. The bottom
+   stop was kept on the argument that the edge meets the title below it and
+   wants softening.
+
+   That argument is wrong for the same reason the first one was. When the
+   artwork is height-constrained -- a tall phone, which is most of them -- the
+   bottom of the sleeve *is* the bottom 30px of the panel, so the fade is not
+   softening a boundary between two things, it is dissolving the last inch of
+   the picture. Reported as the cover being "slightly covered up", which is
+   exactly what it looks like. A mask belongs to a scroller; this is not one. */
 .screen[data-compact="true"] .panelBody[data-tab="art"] {
 	overflow: hidden;
-	padding-top: 12px;
-	-webkit-mask-image: linear-gradient(
-		to bottom,
-		#000 calc(100% - 30px),
-		transparent 100%
-	);
-	mask-image: linear-gradient(
-		to bottom,
-		#000 calc(100% - 30px),
-		transparent 100%
-	);
+	padding-top: 8px;
+	padding-bottom: 4px;
+	-webkit-mask-image: none;
+	mask-image: none;
 }
 
 /* The panel arrives from the side the gesture came from, which is most of what
@@ -515,7 +566,7 @@
 .screen[data-compact="true"] .identity {
 	position: static;
 	flex: none;
-	padding-top: 18px;
+	padding-top: 12px;
 }
 
 .screen[data-compact="true"] .title {
@@ -542,10 +593,54 @@
 	align-items: center;
 }
 
+/* 22px, down from 26. Still a thumb target -- 22px of glyph plus the 6px gap
+   and the button's own padding clears 44px -- and the four pixels come off the
+   only stack of margins between the tab strip and the bottom of the cover. */
 .screen[data-compact="true"] .rating {
-	margin-top: 12px;
-	--stars-size: 26px;
-	--stars-gap: 7px;
+	margin-top: 10px;
+	--stars-size: 22px;
+	--stars-gap: 6px;
+}
+
+/* ---- the slim strip ----------------------------------------------------- */
+
+/* On Lyrics, Details and Artist the identity is not the caption to a picture,
+   it is the answer to "what is this" while you read something else -- so it is
+   the smallest thing that answers it: title, artist, one line each, truncated.
+   No stars (rating is a deliberate act, and the Playing tab and the ⋯ menu both
+   offer it), no album and no year (Details lists both, two rows down).
+
+   Reference pass: every mini-player worth copying -- Apple Music's, Music
+   Assistant's -- is artwork plus two lines. The artwork is what was rejected:
+   it is one swipe away at full size, a 40px copy of it beside the title is the
+   Spotify bar exactly, and this screen's identity is set flush left like a
+   sleeve back rather than as a row with a thumbnail in it.
+
+   Outranks the compact `.title` rule rather than merely following it -- both
+   would otherwise be (0,3,0) and decided by source order, which is the trap
+   recorded in the root CLAUDE.md. */
+.screen[data-compact="true"] .identity[data-slim="true"] {
+	padding-top: 8px;
+}
+
+.screen[data-compact="true"] .identity[data-slim="true"] .title {
+	font-size: 1.0625rem;
+	line-height: 1.3;
+	letter-spacing: -0.015em;
+	/* One line. A wrapping title is precisely the space this strip gives back --
+     "Magnetizing feat. Del tha Funkee Homosapien" took two lines and the best
+     part of an inch off the artist biography under it. */
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.screen[data-compact="true"] .identity[data-slim="true"] .artist {
+	margin-top: 1px;
+	font-size: 0.8125rem;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 @media (max-width: 720px) {

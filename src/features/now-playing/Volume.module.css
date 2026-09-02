@@ -23,7 +23,8 @@
 }
 
 .button[aria-pressed="true"] {
-	color: var(--accent);
+	/* Muted, against a hover that is already `--text`. See StatusBar. */
+	color: var(--accent-text);
 }
 
 /* The hit area is taller than the visible rail, the same trick the seek bar

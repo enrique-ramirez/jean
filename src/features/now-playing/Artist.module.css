@@ -38,7 +38,9 @@
 	align-items: center;
 	gap: 6px;
 	margin-top: 18px;
-	color: var(--accent);
+	/* A link, sitting under a paragraph. In the ink accent it is bold body
+     copy with an icon after it. */
+	color: var(--accent-text);
 	font-size: 0.875rem;
 	font-weight: 600;
 	text-decoration: none;

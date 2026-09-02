@@ -123,9 +123,19 @@ scopes is an arbitration this does not need -- `TrackBrowser` publishes its
 cursor to `ratingTarget.ts` and `useRateShortcut` reads it. The cursor wins
 because it is marked on screen and is the thing being looked at; `N` moves it to
 the playing track, so rating what is playing from inside a list is two keys
-rather than a special case. Rating the playing track from elsewhere has no stars
-on screen to update, so that one **says what it did** in a toast -- the same rule
-as everywhere else: confirm only what is not already visible.
+rather than a special case.
+
+**A successful rating is silent, and it used to speak.** Rating the playing
+track from elsewhere has no stars on screen to update, so `rateTrack` confirmed
+it in a toast -- the general rule being to confirm only what is not already
+visible. That held while the keyboard shortcut was its only caller and stopped
+holding the moment the now-playing screen grew its own stars: rating from there
+drew the new value *and* threw a toast over the transport, which is the app
+congratulating itself for doing exactly what was asked. A rating is small,
+reversible, one click, and mostly visible; confirming it is the failure mode a
+toast exists for. **A failure still speaks and names the track**, because that
+is the one outcome the stars cannot show and `0`-`5` can be pressed with the
+track nowhere on screen.
 
 **The stars in a row are a pointer control, and the menu is the other two devices'.**
 Hovering previews and clicking commits — Letterboxd, Plex and Apple Music all do this,

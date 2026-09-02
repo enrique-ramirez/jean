@@ -331,8 +331,12 @@ test.describe("rating with the number keys", () => {
 	});
 
 	// Away from any list there is no cursor, so the keys fall through to what is
-	// playing -- and say so, since no stars are on screen to show it.
-	test("falls back to the playing track, and says what it did", async ({
+	// playing. It used to announce that in a toast, on the argument that no stars
+	// are on screen to show it; that toast is gone. A rating is a small,
+	// reversible, one-click act, and once the now-playing screen grew its own
+	// stars the confirmation was being thrown over a control that had already
+	// drawn the answer. Success is silent everywhere now; only a failure speaks.
+	test("falls back to the playing track, silently", async ({
 		page,
 		player,
 	}) => {
@@ -349,7 +353,7 @@ test.describe("rating with the number keys", () => {
 			path: expect.stringContaining("Deléctrico"),
 			fields: { rating: "3" },
 		});
-		await expect(page.getByText(/Deléctrico — rated 3/)).toBeVisible();
+		await expect(page.getByRole("status")).toHaveCount(0);
 	});
 });
 

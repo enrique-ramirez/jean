@@ -53,7 +53,7 @@
 }
 
 .brand span {
-	color: var(--accent);
+	color: var(--accent-text);
 }
 
 .actions {

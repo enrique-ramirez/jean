@@ -92,9 +92,59 @@ spatial belongs to the media query.** If a JS flag is setting padding, that is t
 ## Theming
 
 The accent is `#ffb454` on `#0e1013` — effectively the Ayu Dark palette, and the
-identity of the app. Keep the warmth.
+identity of the app. Keep the warmth. **On dark.**
 
-`#ffb454` on white is ~1.7:1 and unreadable, so the **light theme must darken the accent**
-(Ayu Light's `#fa8d3e` is the reference), not reuse it. Define both themes in `oklch` as
-one hue with different lightness ramps, so they stay in sync rather than drifting into two
-hand-tuned palettes.
+**Light is not the dark theme with the ramp reversed, and trying to make it one is what
+was wrong with it.** The rule here used to be "one hue, two lightness ramps": darken the
+accent for light and the two stay in sync. That produced a burnt orange over a warm
+off-white, and the reason it never looked right is not contrast — the darkened accent
+clears 4.5:1 — it is that **a warm accent on a near-black page is a lamp and the same
+hue on a near-white page is a stain.** It has nothing to glow against, so it reads as the
+page being dirty rather than as a colour anybody chose.
+
+So light drops the hue almost entirely and accents in **charcoal** — near-black fills,
+white glyphs, the artwork as the only colour in the frame. The two themes now share a
+structure and not a hue, and `tokens.css` is where the whole of it is written down.
+
+**Three accent tokens, because an accent does three jobs and a charcoal can only do
+one of them.**
+
+| | | |
+|---|---|---|
+| `--accent` | *ink* — opaque fills and small shapes: the play button, a set star, the tab rail, the seek fill, the cursor bar | charcoal on light |
+| `--tint-l/c/h` | *wash* — large translucent areas: the play-count heat, the header gradients, `--album-ground` | blue on light |
+| `--accent-text` | *mark* — a foreground whose whole job is to differ from `--text` | blue on light |
+| `--star` | a set star, and nothing else | gold in **both** |
+
+On dark all three are the same yellow, and nothing about that theme changed.
+
+**`--star` is the fourth, and it is the exception that proves the split is about
+jobs rather than about hue.** A set star stays gold in *both* themes, because
+gold is not Jean's accent being reused -- it is what a rating is drawn in
+everywhere, from Amazon to Letterboxd to the App Store, and a star in the page's
+own charcoal reads as a checkbox. Light deepens it one notch rather than reusing
+`#ffb454` verbatim: *measured*, the dark yellow is **1.69:1** against the light
+page and looks bleached -- peach rather than gold -- while `oklch(0.78 0.165 72)`
+is `#f7a30d` and **1.97:1**, between Amazon's `#FFA41C` (1.90) and above Google
+Play's `#FBBC04` (1.64). Deliberately under WCAG's 3:1 for graphical objects:
+clearing that puts it at `#d97600`, which is orange, and what carries the meaning
+here is **fill against outline** -- the empty star is `--border-strong` and is
+the one drawn most.
+
+The two splits came out of the same fact and are worth stating separately, because each
+was found by something breaking:
+
+- **A near-black at 6–22% alpha over white is a grey vignette.** A row washed in it says
+  *disabled*, which is the opposite of what a heavily played track is. Hence `--tint`.
+- **`--accent` at L 0.27 and `--text` at L 0.26 are the same colour to the eye.** Every
+  place the accent was carrying *state* as a text colour stopped carrying anything: the
+  playing playlist's icon matched the four silent ones, "shuffle is on" matched "you are
+  hovering shuffle", and an album card's hover changed nothing at all. Hence
+  `--accent-text`, and the test for reaching for it is **what the alternative state is
+  drawn in.** If it is `--text` or `--muted`, use `--accent-text`. If the thing has a
+  background, a border or a shape of its own — a filled pill, an outlined star, a 2px
+  rail — it keeps the ink, because a black disc is obviously not the page.
+
+The neutrals follow the accent's hue rather than a warm one, for the same reason the old
+palette was internally consistent: warm greys under a blue-cast charcoal read as two
+palettes that met by accident.

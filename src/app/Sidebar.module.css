@@ -113,7 +113,10 @@
    at different things. Selection now owns the background and the label; the
    accent belongs to the sound. */
 .item .playing {
-	color: var(--accent);
+	/* `--accent-text`, not `--accent`: the four silent playlists' icons are
+     `--text`, and on light the ink accent *is* `--text`. Whatever marks the
+     one that is sounding has to be a colour, because nothing else here is. */
+	color: var(--accent-text);
 }
 
 .item svg {

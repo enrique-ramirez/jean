@@ -62,9 +62,10 @@ interface TagWriting {
 	setFieldEnabled: (field: string, enabled: boolean) => void;
 	recheck: () => void;
 	rate: (target: RateTarget, stars: number | null) => void;
-	// For a track with no row on screen -- the playing one, rated from the
-	// keyboard while looking at something else. There is nothing to update
-	// optimistically, so this one says what it did.
+	// For a track with no row anywhere -- the playing one, rated from the
+	// now-playing screen or from the keyboard. There is no row array to overlay,
+	// so callers that can show the result patch their own store instead.
+	// `label` is only ever spoken on failure.
 	rateTrack: (
 		track: TrackIdentity,
 		label: string,
@@ -187,11 +188,25 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 		(track: TrackIdentity, label: string, stars: number | null) => {
 			const raw = tagValueOf(stars);
 			writerRef.current.write(track, { [RATING_FIELD]: raw }).then((result) => {
+				// **Success is silent**, and it used to speak. The argument for the
+				// toast was that this path has no row to patch optimistically, so
+				// nothing on screen would confirm the write -- which was true when the
+				// only caller was the keyboard shortcut and false the moment the
+				// now-playing screen grew its own stars. There, rating a track drew
+				// the new stars *and* threw a toast over the transport, which is the
+				// app congratulating itself for doing exactly what was asked.
+				//
+				// A rating is a small, reversible, one-click act with a visible
+				// result. Confirming it is the failure mode toasts are for.
+				if (result.ok) return;
+
+				// A failure still speaks, and names the track: this is the one path
+				// that can be reached with the track nowhere on screen -- `0`-`5`
+				// from a list, or from Home -- so "it did not save" without saying
+				// what did not save is unactionable.
 				pushToast({
-					message: result.ok
-						? `${label} — ${stars === null ? "rating removed" : `rated ${stars}`}`
-						: `The rating was not saved. ${result.message}`,
-					tone: result.ok ? "default" : "error",
+					message: `${label} was not rated. ${result.message}`,
+					tone: "error",
 				});
 			});
 		},

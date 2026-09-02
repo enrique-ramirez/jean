@@ -30,7 +30,7 @@
 	inset: 0;
 	background: linear-gradient(
 		180deg,
-		oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.06),
+		oklch(var(--tint-l) var(--tint-c) var(--tint-h) / 0.06),
 		transparent 72%
 	);
 	pointer-events: none;

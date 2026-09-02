@@ -6,6 +6,8 @@
      than declared directly, because a custom property *declared on the element*
      beats an inherited one, so `--star-size: 12px` here would silently win over
      anything a container set. */
+	/* Sizes, not the colour: `--star` is the gold a set star is filled with
+     and lives in `tokens.css`. Three names one letter apart, so read them. */
 	--star-size: var(--stars-size, 12px);
 	--star-gap: var(--stars-gap, 2px);
 	display: inline-flex;
@@ -32,9 +34,13 @@
 }
 
 /* Filled and stroked in the same colour, so a set star is a solid shape rather
-   than a tinted outline -- at 12px the stroke is most of what you see. */
+   than a tinted outline -- at 12px the stroke is most of what you see.
+
+   `--star`, not `--accent`: gold is what a rating is drawn in everywhere, and
+   it is the one warm thing that survives into the light theme, where the accent
+   is a charcoal. A star in the page's own ink reads as a checkbox. */
 .fill {
-	color: var(--accent);
+	color: var(--star);
 	fill: currentColor;
 }
 
@@ -74,7 +80,7 @@
 
 /* Without this, hovering an unrated row looks identical to a read-only one. */
 .stars[data-interactive]:hover {
-	color: color-mix(in oklab, var(--accent) 35%, var(--border-strong));
+	color: color-mix(in oklab, var(--star) 35%, var(--border-strong));
 }
 
 /* Hovering the star already set means "click to remove", and this is how loud

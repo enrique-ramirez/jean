@@ -108,7 +108,9 @@
 
 .card:hover .album,
 .card:focus-visible .album {
-	color: var(--accent);
+	/* The base is `--text`, so on light the ink accent is a hover that changes
+     nothing. This is the whole of the card's pointer feedback. */
+	color: var(--accent-text);
 }
 
 .artist {

@@ -30,7 +30,11 @@
 	border-radius: var(--radius-sm);
 	background: none;
 	text-align: left;
-	font-size: 1.125rem;
+	/* Set by whoever is drawing the panel, and inherited rather than declared
+     here -- a custom property declared on the element beats an inherited one,
+     so a `font-size` fixed at this level could not be raised from outside.
+     `LyricsScreen` is the one caller that raises it. */
+	font-size: var(--lyric-size, 1.125rem);
 	font-weight: 560;
 	line-height: 1.45;
 	letter-spacing: -0.01em;
@@ -128,7 +132,7 @@
 .plainLine {
 	margin: 0;
 	padding: 3px 10px;
-	font-size: 1.0625rem;
+	font-size: var(--lyric-size, 1.0625rem);
 	line-height: 1.55;
 	color: var(--muted);
 	white-space: pre-wrap;

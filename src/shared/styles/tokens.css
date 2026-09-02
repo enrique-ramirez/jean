@@ -1,10 +1,44 @@
-/* One warm hue, two lightness ramps. The accent is split into l/c/h channels so
-   translucent variants can be composed inline — `oklch(from …)` would be nicer
-   but this composes anywhere without relative-colour support. */
+/* Two themes that are not each other's inverse. The accent is split into l/c/h
+   channels so translucent variants can be composed inline — `oklch(from …)`
+   would be nicer but this composes anywhere without relative-colour support.
+   `--tint-*` is the same trick for the second job an accent does; see below.
+
+   **Dark is warm and light is not, deliberately.** `#ffb454` over a near-black
+   page is a lamp; the same hue over a near-white one is a stain — it has
+   nowhere to glow against, so it reads as the page being dirty rather than as
+   a colour anybody chose. Light therefore drops the hue almost entirely and
+   accents in charcoal, which is the palette the reference for this screen
+   uses: near-black fills, white glyphs, and the artwork as the only colour in
+   the frame. The two themes share a structure and not a hue.
+
+   **Two accents, because an accent does two different jobs.** `--accent` is
+   *ink*: a filled play button, a tab rail, a set star — small, opaque shapes
+   that have to be legible against the page. `--tint` is *wash*: the play-count
+   heat on a row, the gradient under a header, the ground a dissolving sleeve
+   lands on — large, translucent areas that have to read as a colour rather
+   than as shading. On dark they are one and the same. On light they cannot be:
+   a near-black at 6–22% alpha over white is a grey vignette, and a row washed
+   in it says "disabled", not "played a lot". So the wash keeps a real hue —
+   blue, being as far from the sleeve-warm end as the palette gets — and the
+   ink goes to charcoal. */
 :root {
 	--accent-l: 0.8238;
 	--accent-c: 0.1408;
 	--accent-h: 70.17;
+
+	/* On dark the two are the same colour: the accent already glows against the
+     page, so there is nothing for a separate wash hue to fix. */
+	--tint-l: 0.8238;
+	--tint-c: 0.1408;
+	--tint-h: 70.17;
+
+	/* A set star, and the one thing that stays warm in both themes. Gold is not
+     Jean's accent being reused, it is what a rating *is* -- Amazon, Google
+     Play, Letterboxd and the App Store all draw one in this hue, and a star in
+     the page's own ink reads as a checkbox. So it is a token rather than
+     `--accent`: on light the accent went charcoal and the stars did not
+     follow. */
+	--star: oklch(0.8238 0.1408 70.17);
 
 	--bg: oklch(0.1722 0.007 258);
 	--surface: oklch(0.2125 0.0109 260);
@@ -30,27 +64,72 @@
 }
 
 :root[data-theme="light"] {
-	--accent-l: 0.6;
-	--accent-c: 0.155;
-	--accent-h: 58;
+	/* Charcoal with a blue cast, not grey: at C 0.02 it still reads as ink at a
+     glance, and the cast is what keeps a filled star or a play button from
+     looking like disabled black text. Dark enough that `--on-accent` can be
+     plain white, which is what makes the filled controls read as the reference
+     does -- a solid near-black disc rather than a tinted one. */
+	--accent-l: 0.27;
+	--accent-c: 0.02;
+	--accent-h: 262;
 
-	--bg: oklch(0.985 0.004 80);
-	--surface: oklch(0.967 0.006 80);
+	/* The wash, and the whole reason it is a separate token. Mid-dark and
+     genuinely blue, so 22% of it over the page is a colour and 6% is a hint of
+     one. The hue is the cool end on purpose: album art is overwhelmingly warm,
+     so a wash that never competes with a sleeve is one that sits opposite it. */
+	--tint-l: 0.52;
+	--tint-c: 0.13;
+	--tint-h: 250;
+
+	/* The neutrals follow the accent's hue rather than the old warm one. Warm
+     greys under a blue-cast charcoal read as two palettes that met by accident
+     -- the page looked faintly yellowed next to its own ink. */
+	--bg: oklch(0.985 0.003 262);
+	--surface: oklch(0.967 0.005 262);
 	--surface-raised: oklch(1 0 0);
-	--surface-sunken: oklch(0.94 0.007 80);
-	--border: oklch(0.9 0.008 78);
-	--border-strong: oklch(0.83 0.01 78);
+	--surface-sunken: oklch(0.94 0.006 262);
+	--border: oklch(0.9 0.007 262);
+	--border-strong: oklch(0.83 0.009 262);
 	--text: oklch(0.26 0.012 260);
 	--muted: oklch(0.5 0.014 258);
 	--faint: oklch(0.62 0.012 258);
 
 	/* Light needs the opposite of nothing. The page is all but white, so a pale
      sleeve dissolving into it took the card with it -- no bottom edge, no
-     rounded corners, a row that read as captions floating in space. A warm tint
-     a shade under the page gives the sleeve something to land on, and it is
-     pulled towards the accent hue rather than grey so it reads as part of the
-     palette rather than as dirt. */
-	--album-ground: oklch(0.945 0.014 84);
+     rounded corners, a row that read as captions floating in space. A tint a
+     shade under the page gives the sleeve something to land on, and it is
+     pulled towards `--tint` rather than grey so it reads as part of the palette
+     rather than as dirt. It follows the *wash* and not the ink for the same
+     reason everything else here does: a charcoal at this lightness is grey. */
+	--album-ground: oklch(0.945 0.012 250);
+
+	/* The same yellow, one notch deeper, because a near-white page is not a
+     near-black one. `#ffb454` unchanged is 1.69:1 against this background and
+     reads bleached -- peach rather than gold. *Measured* at L 0.78 it is
+     `#f7a30d` and 1.97:1, which is between Amazon's `#FFA41C` (1.90) and above
+     Google Play's `#FBBC04` (1.64): the range every rating control on a white
+     page already lives in. Below 3:1 on purpose -- WCAG's graphical-object
+     threshold would put this at `#d97600`, which is orange, and the ask was
+     yellow. What carries the meaning is fill against outline, and the empty
+     star is `--border-strong`. */
+	--star: oklch(0.78 0.165 72);
+
+	/* The third job, and the one a charcoal cannot do. `--accent` at L 0.27 and
+     `--text` at L 0.26 are the same colour to the eye, so every place the
+     accent was carrying *state* as a text colour stopped carrying anything:
+     the playing playlist's icon matched the four silent ones, "shuffle is on"
+     matched "you are hovering shuffle", and an album title's hover changed
+     nothing at all. A fill does not have this problem -- a black disc is
+     obviously not the page -- which is why the play button, the stars, the tab
+     rail and the seek fill all stay on `--accent`.
+
+     So: blue, on the wash's hue so the palette stays two hues and not three,
+     dark enough to sit among body copy without shouting. It is used only where
+     the alternative to the accent is `--text` or `--muted`; anything with a
+     background, a border or a shape of its own keeps the ink. On dark it is
+     the accent, unchanged -- yellow against a near-black page has never had
+     this problem. */
+	--accent-text: oklch(0.46 0.12 250);
 
 	--on-accent: oklch(1 0 0);
 	--danger: oklch(0.53 0.2 27);
@@ -64,6 +143,10 @@
 	--accent: oklch(var(--accent-l) var(--accent-c) var(--accent-h));
 	--accent-quiet: oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.16);
 	--accent-line: oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.4);
+	/* Overridden by the light block above, which outranks this on specificity
+     rather than on order: `:root[data-theme]` is (0,1,1) and `:root` is
+     (0,1,0), so it wins wherever it is written. */
+	--accent-text: var(--accent);
 
 	--radius: 14px;
 	--radius-sm: 8px;

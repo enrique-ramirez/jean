@@ -45,7 +45,8 @@
 
 .open:hover,
 .open:focus-visible {
-	color: var(--accent);
+	/* Base is `inherit`, which is `--text`. Same reason as the album card. */
+	color: var(--accent-text);
 }
 
 /* Present rather than revealed. A chevron that only appears under the pointer

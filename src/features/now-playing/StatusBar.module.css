@@ -102,7 +102,9 @@
 }
 
 .order[aria-pressed="true"] {
-	color: var(--accent);
+	/* Hovering already takes this to `--text`, so on light the ink accent made
+     "shuffle is on" and "you are pointing at shuffle" the same drawing. */
+	color: var(--accent-text);
 }
 
 .order:disabled {
@@ -207,7 +209,7 @@
 	}
 
 	.order[aria-pressed="true"] {
-		color: var(--accent);
+		color: var(--accent-text);
 	}
 
 	.order:disabled {

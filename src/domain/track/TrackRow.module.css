@@ -23,7 +23,12 @@
 
 /* Play count as texture rather than a number you have to read. The wash fades
    out to the right so titles stay legible over it, and it is painted on a
-   pseudo-element so hover and selection backgrounds can sit above it. */
+   pseudo-element so hover and selection backgrounds can sit above it.
+
+   `--tint`, not `--accent`, and that is the whole reason the two exist
+   separately: on light the accent is a charcoal, and a row washed in 22% of a
+   near-black is grey -- which reads as *disabled*, the opposite of what a
+   heavily played track is. See the note at the top of `tokens.css`. */
 .track::before {
 	content: "";
 	position: absolute;
@@ -32,14 +37,13 @@
 	border-radius: var(--radius-sm);
 	background: linear-gradient(
 		90deg,
-		oklch(var(--accent-l) var(--accent-c) var(--accent-h) / var(--heat-alpha))
-			0%,
+		oklch(var(--tint-l) var(--tint-c) var(--tint-h) / var(--heat-alpha)) 0%,
 		oklch(
-				var(--accent-l) var(--accent-c) var(--accent-h) /
+				var(--tint-l) var(--tint-c) var(--tint-h) /
 				calc(var(--heat-alpha) * 0.35)
 			)
 			38%,
-		oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0) 100%
+		oklch(var(--tint-l) var(--tint-c) var(--tint-h) / 0) 100%
 	);
 	pointer-events: none;
 }
@@ -66,7 +70,10 @@
 }
 
 .track[data-active="true"] .title {
-	color: var(--accent);
+	/* The equalizer marks this row too, but only where the index column is
+     drawn -- and on light the ink accent is indistinguishable from every
+     other title. */
+	color: var(--accent-text);
 	font-weight: 600;
 }
 

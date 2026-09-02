@@ -28,8 +28,8 @@
 	background:
 		linear-gradient(
 			90deg,
-			oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0),
-			oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.22)
+			oklch(var(--tint-l) var(--tint-c) var(--tint-h) / 0),
+			oklch(var(--tint-l) var(--tint-c) var(--tint-h) / 0.22)
 		),
 		var(--bg);
 }

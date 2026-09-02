@@ -223,3 +223,143 @@ test.describe("the way in and the way out", () => {
 		await expect(page.locator("main")).toBeVisible();
 	});
 });
+
+// The identity block under the panel has two shapes on a phone: the caption to
+// a picture on the Playing tab, and the smallest thing that answers "what is
+// this" on the other three. Four lines of it there was costing a verse.
+test.describe("the slim strip", () => {
+	test.use(TAGGED);
+
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"the gatefold's identity is a column of its own and takes space from nothing",
+	);
+
+	test("the Playing tab keeps the album, the year and the stars", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+
+		const screen = nowPlayingScreen(page);
+		await expect(screen).toContainText("Los Calientes");
+		await expect(screen).toContainText("Babasónicos");
+		await expect(screen).toContainText("Jessico");
+		await expect(
+			screen.getByRole("img", { name: /stars|Unrated/ }),
+		).toBeVisible();
+	});
+
+	test("the other tabs keep the title and the artist and drop the rest", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await tab(page, "Lyrics").click();
+
+		const screen = nowPlayingScreen(page);
+		await expect(screen).toContainText("Los Calientes");
+		await expect(screen).toContainText("Babasónicos");
+		// The album and the year go because Details lists both; the stars go
+		// because rating is a deliberate act with two other routes to it.
+		await expect(screen).not.toContainText("Jessico");
+		await expect(
+			screen.getByRole("img", { name: /stars|Unrated/ }),
+		).toHaveCount(0);
+		await expect(
+			screen.getByRole("group", { name: /stars|Unrated/ }),
+		).toHaveCount(0);
+	});
+
+	test("going back to Playing brings them back", async ({ page }) => {
+		await playRow(page, 0);
+		// Lyrics rather than Details, which lists the album in its own grid.
+		await tab(page, "Lyrics").click();
+		await expect(nowPlayingScreen(page)).not.toContainText("Jessico");
+
+		await tab(page, "Playing").click();
+		await expect(nowPlayingScreen(page)).toContainText("Jessico");
+	});
+});
+
+// Lyrics with everything else taken away -- including the app's own chrome,
+// which is why this layer is `position: fixed` and every other one is not.
+test.describe("full-screen lyrics", () => {
+	test.use(TAGGED);
+
+	const expand = (page: Page) =>
+		page.getByRole("button", { name: "Full-screen lyrics" });
+	const close = (page: Page) =>
+		page.getByRole("button", { name: "Close full-screen lyrics" });
+
+	test("it is offered on the Lyrics tab and nowhere else", async ({ page }) => {
+		await playRow(page, 0);
+		await tab(page, "Lyrics").click();
+		await expect(expand(page)).toBeVisible();
+
+		await tab(page, "Details").click();
+		await expect(expand(page)).toHaveCount(0);
+	});
+
+	// Hidden rather than disabled: a dimmed control on the three quarters of a
+	// real library with no lyric tag is an affordance that never once works.
+	test("it is not offered when there is no lyric to expand", async ({
+		page,
+	}) => {
+		await playRow(page, 3);
+		await tab(page, "Lyrics").click();
+		await expect(nowPlayingScreen(page)).toContainText("No lyrics found");
+		await expect(expand(page)).toHaveCount(0);
+	});
+
+	test("only the lyrics are left, and the X brings the screen back", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await tab(page, "Lyrics").click();
+		await expand(page).click();
+
+		// The lyric is still there and everything around it is not -- the tab
+		// strip, the transport, and the app's own top bar above them. Scoped to
+		// the full-screen region because the panel behind it does *not* also hold
+		// a copy: mounting two would be two animation-frame loops and two
+		// scrollers following the same song.
+		const full = page.getByRole("region", { name: "Lyrics" });
+		await expect(
+			full.getByRole("button", { name: "Dancing in the dark" }),
+		).toBeVisible();
+		await expect(
+			nowPlayingScreen(page).getByRole("button", {
+				name: "Dancing in the dark",
+			}),
+		).toHaveCount(0);
+		// Everything else is *covered*, not removed, so this is a claim about
+		// geometry rather than visibility: the layer fills the viewport, top-left
+		// included. Every other layer in Jean is positioned inside `.body`, which
+		// starts below the top bar -- one of those would leave the search field
+		// and the theme switch on screen, and "only the lyrics" would be false.
+		const box = await full.boundingBox();
+		const view = page.viewportSize();
+		expect(box).toBeTruthy();
+		expect(view).toBeTruthy();
+		expect(box?.x).toBe(0);
+		expect(box?.y).toBe(0);
+		expect(box?.width).toBe(view?.width);
+		expect(box?.height).toBe(view?.height);
+
+		await close(page).click();
+		await expect(close(page)).toHaveCount(0);
+		await expect(tab(page, "Details")).toBeVisible();
+	});
+
+	test("Escape closes it, and closes only it", async ({ page }) => {
+		await playRow(page, 0);
+		await tab(page, "Lyrics").click();
+		await expand(page).click();
+		await expect(close(page)).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		await expect(close(page)).toHaveCount(0);
+		// The screen underneath is still open: Escape belonged to the top-most
+		// layer and stopped there.
+		await expect(nowPlayingScreen(page)).toBeVisible();
+	});
+});

@@ -105,6 +105,28 @@ that field for the session rather than failing again on the next click. **A 504 
 one failure that is not rolled back**: the player did not answer inside its own thirty
 seconds and the write may still land, so the value is re-read rather than assumed lost.
 
+**A hover may not make a rated track look unrated, and this took two goes.**
+Hovering the star that is already set means "click to remove", and the first
+drawing of that emptied all five -- so sweeping the pointer across a five-star
+row made it read as unrated, constantly, with nothing clicked. It now fades them
+instead: same claim about the same click, still legibly a rating. The second
+half is that **committing must drop the preview**, because the star just clicked
+becomes the one that would now clear, and leaving it armed redraws the control
+with no pointer movement to explain it. Re-arm on `pointerenter` and *not* on
+`pointermove` -- the latter looks equivalent and re-renders at the pointer's
+sample rate, which is felt immediately as a laggy hover.
+
+**`0`-`5` rate from anywhere, and resolve their own target**: the cursor row when
+a track list is on screen, the playing track otherwise. Declared once in the
+global scope rather than in the list's scope as well, because six keys in two
+scopes is an arbitration this does not need -- `TrackBrowser` publishes its
+cursor to `ratingTarget.ts` and `useRateShortcut` reads it. The cursor wins
+because it is marked on screen and is the thing being looked at; `N` moves it to
+the playing track, so rating what is playing from inside a list is two keys
+rather than a special case. Rating the playing track from elsewhere has no stars
+on screen to update, so that one **says what it did** in a toast -- the same rule
+as everywhere else: confirm only what is not already visible.
+
 **The stars in a row are a pointer control, and the menu is the other two devices'.**
 Hovering previews and clicking commits — Letterboxd, Plex and Apple Music all do this,
 because a five-way choice made in a 60px strip has to show its answer before it takes

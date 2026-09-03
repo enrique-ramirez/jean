@@ -108,27 +108,17 @@ export const anchorOf = (streamTimeAtConnect: number, bufferedStart: number) =>
 export const bufferedStart = (audio: HTMLAudioElement) =>
 	audio.buffered.length > 0 ? audio.buffered.start(0) : null;
 
-// beefweb and the component root the same file differently -- `F:\Musica\...`
-// against `file-relative://..\Musica\...` -- and Jean is never told where either
-// root is, so this matches by suffix as `libraryPathMatcher` does. Anchored on a
-// separator, or `Live.mp3` would match `Alive.mp3`.
-const flatten = (path: string) =>
-	path
-		.replaceAll("\\", "/")
-		.toLowerCase()
-		.replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
-		.replace(/^(\.\.?\/)+/, "");
-
+// One arrives through beefweb and the other through the component, which resolves
+// it to the display path so the two agree. Compared leniently for separator and
+// case, and **never against an assumed path**.
 export const samePlayerPath = (
 	left: string | null | undefined,
 	right: string | null | undefined,
-) => {
-	if (!left || !right) return false;
-
-	const a = flatten(left);
-	const b = flatten(right);
-	return a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
-};
+) =>
+	Boolean(left) &&
+	Boolean(right) &&
+	left?.replaceAll("\\", "/").toLowerCase() ===
+		right?.replaceAll("\\", "/").toLowerCase();
 
 // Which track the audible sample belongs to, or null when the timeline cannot
 // say. Separate from the position because the identity is wanted on its own.

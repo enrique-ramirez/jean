@@ -272,12 +272,20 @@ helper lives in `position.ts` beside `positionAt`, which is where the second
 caller would have found it.
 
 **The marks go stale two ways and both are silent.** A **track change** lays a
-mark, and a **seek** lays another -- the same stream time now means a different
-place in the track. `audible.ts` asks for a refresh on each, because it is the
-one place that already tells a new track from a fresh snapshot of the same one,
-and a seek from the interpolation drifting. Left to the ten-second poll a
-2.8-second lag was drawn as **8.3**: the correction was right and arrived late,
-which on a screen is indistinguishable from being wrong.
+mark, and so does a **seek** -- the same stream time then means a different place
+in the track. `audible.ts` asks for a refresh on each, because it is the one
+place that already tells a new track from a fresh snapshot of the same one, and a
+seek from the interpolation drifting. Left to the ten-second poll a 2.8-second
+lag was drawn as **8.3**: the correction was right and arrived late, which on a
+screen is indistinguishable from being wrong.
+
+The seek mark is `foo_jean 0.12`. Before it, the component registered
+`on_playback_new_track` alone, so seeking left the timeline describing the
+position the track *would* have reached: the trackbar and the lyric went on
+counting from before the jump and never came back. A **backwards** seek is the
+only thing that shows it -- playing on reaches any later line by itself, so a
+forward seek looks correct whether or not it was marked, and so does a test
+written with one.
 
 **`__jeanStream()` in a dev console prints the whole clock** -- anchor,
 `currentTime`, the buffered range, the marks and `lagSeconds`, which is what the
@@ -294,29 +302,38 @@ sample loops and never plays. `START_MS` is the longer wait that applies until
 the first sample. The *stopped* check still runs at `STALL_MS`, because naming
 that state costs nothing and is not destructive; only giving up waits.
 
-**`marks[].path` and beefweb's `%path%` are the same file under two different
-names, and comparing them exactly killed the entire feature.** *Measured* on a
-portable install: beefweb answers `F:\Musica\J\...` and the component answers
-`file-relative://..\Musica\J\...` for that identical track, because the profile
-sits beside the library rather than under `%APPDATA%`. Exact comparison is
-`false` forever -- and a failed match reads as *cannot say*, so every correction
-downstream turned itself off while `phase`, `anchor`, `lagSeconds` and
-`audiblePath` all stayed healthy. On screen it was indistinguishable from the
-feature never having been built: the trackbar never once stepped back.
+**`marks[].path` joins beefweb's `%path%` on equality, and the component is what
+makes that true.** `markOf` resolves through `g_get_display_path`, so a mark says
+`F:\Musica\...` exactly as beefweb does. Unresolved it answers foobar2000's own
+canonical form -- `file-relative://..\Musica\...` on a portable install, where
+the profile sits beside the library rather than under `%APPDATA%` -- and against
+that an equality test can never be true.
 
-So `samePlayerPath` matches by **suffix**, the way `libraryPathMatcher` already
-does and for the same reason -- the two sources root the same file differently,
-Jean is never told where either root is, and the tail is what survives that. It
-strips a scheme and any leading traversal, then anchors on a separator so
-`Live.mp3` cannot match `Alive.mp3`.
+**A failed path match reads as *cannot say*, which is the trap.** Every
+correction downstream turns itself off, while `phase`, `anchor`, `lagSeconds` and
+`audiblePath` all stay healthy: on screen it is indistinguishable from the
+feature never having been built, and the trackbar never once steps back. If a
+join here quietly stops working, print the two strings before anything else.
 
-**The suite was green through all of it, and that is the lesson.** Both halves of
-every fixture came from one string, so the fake compared a path with itself and
-could not fail. `componentPath` in `test/fake-api/fooJean.ts` now rewrites the
-component's answers into the portable form: with it in place, reverting the
-matcher fails the two correction specs, which is the only reason to trust them.
-**Anywhere the fake supplies both sides of a comparison, it has to supply them
-the way the two real sources do -- or the comparison is untested.**
+**The fake cannot catch that and must not be trusted to**, because both halves of
+its fixtures come from one string -- it compares a path with itself. The guard is
+`verify-stream.ps1 -Seek` in the component, which asserts the timeline path and
+beefweb's `%path%` are identical against a real player. **Anywhere the fake
+supplies both sides of a comparison, it is only testing that a string equals
+itself.**
+
+**A seek holds where it was put.** The audio it asks for is a lag away, so the
+bar and the lyric would otherwise snap back to what is still audible -- reading
+as a click refused -- run on from the old position, and jump. `beginSeek` freezes
+the display at the target until the audio arrives, which is the mark under the
+audible point becoming a later one than the mark the seek was asked from. **Held,
+not advanced**: ticking on from the target would put the display ahead of the
+sound by the lag and have to step back.
+
+Both entry points announce it. Jean's own seeks call `beginSeek` from the
+optimistic patch, so the control answers the click rather than the round trip; a
+seek from the desktop arrives as a push and `audible.ts` reads it off the
+position disagreeing with the interpolation.
 
 **Jean must not pause the element when the player pauses, however much the
 handoff argues for it.** Pressing pause leaves a second or so of sound coming out

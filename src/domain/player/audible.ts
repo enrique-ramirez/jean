@@ -4,6 +4,7 @@ import { readTrack } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { samePlayerPath } from "./listener";
 import {
+	beginSeek,
 	listeningServerSnapshot,
 	listeningSnapshot,
 	refreshTimeline,
@@ -40,8 +41,10 @@ export function rememberSnapshot(next: PlayerSnapshot) {
 		history[history.length - 1] = next;
 		// A seek lays a mark too, and nothing in the update says "seek" -- so it is
 		// read off the position disagreeing with the interpolation.
-		if (Math.abs(positionOf(next) - positionAt(last, next.syncedAt)) > JUMP)
+		if (Math.abs(positionOf(next) - positionAt(last, next.syncedAt)) > JUMP) {
+			beginSeek(positionOf(next));
 			refreshTimeline();
+		}
 		return;
 	}
 

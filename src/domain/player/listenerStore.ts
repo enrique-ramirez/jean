@@ -37,6 +37,10 @@ const STALL_MS = 6000;
 // restarts the buffering a slow start is waiting on. Applies until the first
 // sample; the stopped check still runs at `STALL_MS`.
 const START_MS = 25_000;
+// How long a seek may stay pending. Reached only when no mark arrives to end it,
+// which a component that marks seeks never does -- but a frozen position is not
+// a thing to leave without a floor.
+const SEEK_WAIT_MS = 20_000;
 const WATCHDOG_MS = 1000;
 // The marks, not the anchor -- that is fixed for the life of a connection.
 const TIMELINE_POLL_MS = 10_000;
@@ -105,6 +109,14 @@ let timelineAt = 0;
 let connectAt = 0;
 let marks: StreamMark[] = [];
 let audiblePath: string | null = null;
+// A seek the player has taken and this device has not heard yet, with the
+// audible mark current when it was asked for. **The control holds where it was
+// put**: snapping back to what is still audible reads as the click having been
+// refused, and letting it run on from the target would only have to jump back
+// when the audio arrives.
+let pendingSeek: number | null = null;
+let pendingMarkAt = 0;
+let pendingAt = 0;
 let lastTime = 0;
 let lastAdvance = 0;
 // Which of the two waits above applies.
@@ -190,10 +202,22 @@ function onPlaying() {
 // answer moves.
 function onTimeUpdate() {
 	deriveAnchor();
-	const next =
+
+	const mark =
 		element && phase.kind === "playing"
-			? (audibleMark(anchor, marks, element.currentTime)?.path ?? null)
+			? audibleMark(anchor, marks, element.currentTime)
 			: null;
+
+	// The audio has reached the seek when the mark under it is a later one than
+	// the mark the seek was asked for from.
+	if (
+		pendingSeek !== null &&
+		((mark !== null && mark.at > pendingMarkAt) ||
+			performance.now() - pendingAt > SEEK_WAIT_MS)
+	)
+		pendingSeek = null;
+
+	const next = mark?.path ?? null;
 	if (next === audiblePath) return;
 	audiblePath = next;
 	publish();
@@ -276,6 +300,7 @@ async function open(next: string) {
 	timelineStreamTime = null;
 	marks = [];
 	audiblePath = null;
+	pendingSeek = null;
 	setPhase(
 		attempt > 0 ? { kind: "reconnecting", attempt } : { kind: "connecting" },
 	);
@@ -447,7 +472,24 @@ export function listeningPosition(
 	duration: number,
 ): number | null {
 	if (!element || phase.kind !== "playing") return null;
+	// Held, not advanced: the audio it is waiting for has not moved either, so
+	// ticking on from the target would put the bar ahead of the sound by the lag
+	// and then have to step back.
+	if (pendingSeek !== null) return pendingSeek;
 	return audiblePosition(anchor, marks, element.currentTime, path, duration);
+}
+
+// The player has been asked to seek. Ignored unless this device is listening,
+// where it is the difference between a control that answers and one that looks
+// broken for as long as the buffer is deep.
+export function beginSeek(position: number) {
+	if (!isListening() || !element) return;
+
+	pendingSeek = position;
+	pendingMarkAt =
+		audibleMark(anchor, marks, element.currentTime)?.at ??
+		Number.NEGATIVE_INFINITY;
+	pendingAt = performance.now();
 }
 
 // ---- volume ------------------------------------------------------------------
@@ -527,6 +569,7 @@ function stopStream() {
 	timelineStreamTime = null;
 	marks = [];
 	audiblePath = null;
+	pendingSeek = null;
 
 	const audio = element;
 	if (audio) {

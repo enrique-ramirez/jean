@@ -38,6 +38,7 @@ import { useCoalescedWrite } from "@/shared/hooks/useCoalescedWrite";
 import { clamp } from "@/shared/lib/math";
 import { refusal } from "@/shared/lib/refusal";
 import { rememberSnapshot, useAudibleSnapshot } from "./audible";
+import { beginSeek } from "./listenerStore";
 import { positionAt } from "./position";
 import {
 	dequeuePlaylist,
@@ -301,11 +302,11 @@ export const usePlayPause = () =>
 	}));
 
 export const useSeek = () =>
-	usePlayerPatch(seekTo, (player, position: number) =>
-		player.activeItem
-			? { activeItem: { ...player.activeItem, position } }
-			: null,
-	);
+	usePlayerPatch(seekTo, (player, position: number) => {
+		if (!player.activeItem) return null;
+		beginSeek(position);
+		return { activeItem: { ...player.activeItem, position } };
+	});
 
 export const useSeekBy = () =>
 	usePlayerPatch(seekBy, (player, offset: number, previous) => {
@@ -318,6 +319,7 @@ export const useSeekBy = () =>
 			0,
 			item.duration ?? 0,
 		);
+		beginSeek(position);
 		return { activeItem: { ...item, position } };
 	});
 

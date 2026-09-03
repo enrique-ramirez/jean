@@ -2,7 +2,7 @@
 
 A replacement web UI for the [beefweb](https://github.com/hyperblast/beefweb) plugin, controlling foobar2000 (and, best-effort, DeaDBeeF) over HTTP.
 
-This file holds what an agent cannot read off the code. How to *write* code here — the dev loop, the tiers, naming, styling, comments, the commands — is [CONTRIBUTING.md](./CONTRIBUTING.md), and is not repeated. [API.md](./API.md) is the reference for what the player returns. [README.md](./README.md) is for someone installing Jean.
+This file holds what an agent cannot read off the code. How to *write* code here — the dev loop, the tiers, naming, styling, comments, the commands — is [CONTRIBUTING.md](./CONTRIBUTING.md), and is not repeated. Its *Design*, *Comments* and *Documentation* sections are the three that get ignored first, and two of its rules are enforced rather than trusted: `.claude/hooks/check-style.sh` fails an edit that reintroduces personal detail, history or hard-wrapped prose, and the `style-reviewer` agent reviews uncommitted changes for the rest. [API.md](./API.md) is the reference for what the player returns. [README.md](./README.md) is for someone installing Jean.
 
 ## Ground rules
 

@@ -33,9 +33,8 @@
 	pointer-events: none;
 }
 
-/* Wide: naming and meta stack into one column beside the mosaic, which is what
-   the single flex column used to be -- the gaps are the same 13px, so nothing
-   moves. */
+/* Wide: naming and meta stack into one column beside the mosaic, on the same 13px gaps as
+   the compact layout. */
 .naming {
 	position: relative;
 	grid-area: naming;

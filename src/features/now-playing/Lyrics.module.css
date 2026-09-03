@@ -6,13 +6,10 @@
      The compact layout puts the constraint back, because there the transport
      below is pinned. */
 	flex: none;
-	/* Padding, not a spacer element. There used to be a tall block after the last
-     line so the closing lines could still reach the focus point a third of the
-     way down -- but that is most of a screen of nothing, and on a lyric short
-     enough to fit it is *all* you can scroll to. The follow's `scrollTo` is
-     clamped by the browser anyway, so without it the final lines simply settle
-     lower than the focus point, which is what a page of text does and what
-     every other player accepts. This is the breathing room, and no more. */
+	/* Padding rather than a trailing spacer element: a spacer tall enough to lift the closing
+     lines to the focus point is most of a screen of nothing, and on a short lyric it is all
+     there is to scroll to. The follow's `scrollTo` is clamped by the browser, so the final
+     lines simply settle below the focus point. */
 	padding: 18px 4px 88px;
 	/* The follow scrolls this itself; letting the browser chain a flick out to
      the page underneath fights it. */

@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { formatTime } from "@/domain/player/position";
 import {
+	useAudiblePlayer,
 	usePlaybackOrder,
-	usePlayer,
 	usePlayPause,
 	useSeek,
 	useTransport,
@@ -134,7 +134,7 @@ export function NowPlaying({
 		return () => clearTimeout(timer);
 	}, [isOpen]);
 
-	const { data: snapshot } = usePlayer();
+	const snapshot = useAudiblePlayer();
 	const { track, details } = useNowPlayingTrack();
 	const from = usePlayingFrom();
 

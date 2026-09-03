@@ -91,44 +91,59 @@ export function resolveListener({
 
 // ---- the stream clock --------------------------------------------------------
 
-// `audio.currentTime` counts *rendered* audio, so the only unknown is the stream
-// time of the first sample this element played. `streamTime` is the component's
-// own clock at the moment it answered, and the elapsed wall time takes it back
-// to when the question was asked.
+// The element's first sample is the live edge -- `BroadcastRing::subscribe` --
+// and delivery is 1x, so:
 //
-// **The `currentTime` term is not decoration.** Browsers disagree over whether
-// it starts at zero or at the stream's own granule position, which for a
-// listener joining a long-running stream is a large number; subtracting it here
-// is what makes the arithmetic work either way, and what lets a later poll
-// re-derive the same anchor rather than a drifting one.
-export const anchorOf = (
-	streamTime: number,
-	roundTripMs: number,
-	currentTime: number,
-) => streamTime - roundTripMs / 1000 - currentTime;
+//     audible = streamTimeAtConnect + (currentTime - bufferedStart)
+//
+// The lag is never measured. It falls out as wall time since connecting minus
+// audio played, which is why a stall widens it without being told. `bufferedStart`
+// is the timebase origin, not a depth: browsers differ over whether `currentTime`
+// starts at zero or at the stream's granule position. See this folder's CLAUDE.md.
+export const anchorOf = (streamTimeAtConnect: number, bufferedStart: number) =>
+	streamTimeAtConnect - bufferedStart;
 
-// The player reports both of these, so they should be the same string -- but one
-// arrives through beefweb and the other through the component, and a portable
-// install reports `file-relative://..\Musica\...` rather than a drive letter.
-// Compared leniently for separator and case, and **never against an assumed
-// path**.
+// Null until something has arrived, which is what says the anchor cannot be
+// derived yet.
+export const bufferedStart = (audio: HTMLAudioElement) =>
+	audio.buffered.length > 0 ? audio.buffered.start(0) : null;
+
+// beefweb and the component root the same file differently -- `F:\Musica\...`
+// against `file-relative://..\Musica\...` -- and Jean is never told where either
+// root is, so this matches by suffix as `libraryPathMatcher` does. Anchored on a
+// separator, or `Live.mp3` would match `Alive.mp3`.
+const flatten = (path: string) =>
+	path
+		.replaceAll("\\", "/")
+		.toLowerCase()
+		.replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+		.replace(/^(\.\.?\/)+/, "");
+
 export const samePlayerPath = (
 	left: string | null | undefined,
 	right: string | null | undefined,
-) =>
-	Boolean(left) &&
-	Boolean(right) &&
-	left?.replaceAll("\\", "/").toLowerCase() ===
-		right?.replaceAll("\\", "/").toLowerCase();
+) => {
+	if (!left || !right) return false;
 
-// Where in the *track* the audible sample sits, or null when the timeline cannot
-// say. Null is not a failure: it means drive the bar from beefweb as usual.
-//
-// `path` is what beefweb says is playing. A mark that names a different track is
-// the ordinary state for the second or two after a track change -- the player
-// has moved on and this device has not heard it yet -- and answering null there
-// is what keeps the bar from reporting one track's position against another's
-// duration.
+	const a = flatten(left);
+	const b = flatten(right);
+	return a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
+};
+
+// Which track the audible sample belongs to, or null when the timeline cannot
+// say. Separate from the position because the identity is wanted on its own.
+export function audibleMark(
+	anchor: number | null,
+	marks: readonly StreamMark[],
+	currentTime: number,
+): StreamMark | null {
+	if (anchor === null) return null;
+	const audible = anchor + currentTime;
+	return marks.findLast((entry) => entry.at <= audible) ?? null;
+}
+
+// Where in the *track* the audible sample sits. Null is not a failure: it means
+// drive the bar from beefweb as usual.
 export function audiblePosition(
 	anchor: number | null,
 	marks: readonly StreamMark[],
@@ -138,11 +153,10 @@ export function audiblePosition(
 ): number | null {
 	if (anchor === null) return null;
 
-	const audible = anchor + currentTime;
-	const mark = marks.findLast((entry) => entry.at <= audible);
+	const mark = audibleMark(anchor, marks, currentTime);
 	if (!mark || !samePlayerPath(mark.path, path)) return null;
 
-	const position = mark.position + (audible - mark.at);
+	const position = mark.position + (anchor + currentTime - mark.at);
 	return clamp(position, 0, duration > 0 ? duration : position);
 }
 

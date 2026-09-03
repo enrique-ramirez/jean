@@ -1,13 +1,14 @@
 import { useEffect } from "react";
 
-import { usePlayer } from "@/domain/player/usePlayer";
+import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
 import { readTrack } from "@/shared/api/beefweb";
 import { type PlaybackBadge, setFavicon } from "./favicon";
 
 const NAME = "Jean";
 
 export function useDocumentIdentity() {
-	const { data: snapshot, isError } = usePlayer();
+	const { isError } = usePlayer();
+	const snapshot = useAudiblePlayer();
 
 	const player = snapshot?.player;
 	const track = readTrack(player);

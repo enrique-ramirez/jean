@@ -454,6 +454,13 @@ for the codec choice, the stream clock and the failure states. **`canStream`
 absent means false**, so an older component gets no button rather than one that
 fails.
 
+**What is on screen while a stream is attached is what is *audible*, not what
+beefweb says is playing** -- the two differ by the buffer, and the track changes
+before the sound does. `domain/player/audible.ts` is the one seam for that, and
+it delays `activeItem` alone: a transport press must still answer the finger that
+made it. A throttle across the whole API was the other candidate and is argued
+down where the arithmetic lives.
+
 **No naming of other listening devices**, and it needs a component route rather
 than a guess. "This device" and the player are the only two things Jean can name
 without a label or a user-agent string; the component counts connections for

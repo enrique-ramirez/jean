@@ -385,6 +385,25 @@ foobar2000 -- and both are now modelled:
   `failTickets` with `ticketError` separates a 503 that means "busy" from one that
   means "not supported" -- the component distinguishes them in the error string
   alone. `expireTickets` answers 401 at `GET /stream` the way an expired one does.
+- **The timeline carries a history, and the clock starts before the fake does.**
+  `state.streamMarks` records where each of the last few tracks began, backdated
+  by the position the player was at -- a listener is always *behind* the live
+  edge, so the track it is hearing is one the player has already left, and a
+  timeline describing only what is playing now cannot say so. `startedAt` is
+  likewise set a minute in the past: the component starts with foobar2000, long
+  before any client connects, and a clock beginning at zero the instant the test
+  did would put the audible point before any stream the fake admits to having
+  served. Both exist so a spec can set up a lag without waiting one out.
+- **`streamPrime` decides whether this fake has a lag at all**, and the default
+  removes it. The component hands a listener the *live edge*, so a listener falls
+  behind only by what the browser buffers before it starts -- and the 15-second
+  prime, which exists because Chromium needs about twelve seconds of a
+  non-seekable WAV before it will begin, hands over everything at once and leaves
+  it never behind. A spec about the lag asks for `streamPrime: 6`, waits while
+  Chromium accumulates the rest at real time, and gets a six-second lag arrived
+  at the way a real one is. **`12 - prime`** is the arithmetic; size a fixture's
+  margin against a loaded machine buffering slower, never against the nominal
+  figure.
 - **A set added from the library comes back in the media library's browse
   order** -- album artist, album, track -- and not in the order it was given, nor
   in the file-path order the library endpoint pages in. The fake used to preserve

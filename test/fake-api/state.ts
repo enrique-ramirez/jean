@@ -13,6 +13,19 @@ import capturedPlayer from "./player.json" with { type: "json" };
 // detection, so it is modelled by absence rather than by a sentinel.
 export type Track = Record<string, string>;
 
+// Where a track began, in wall-clock milliseconds. Held as wall time so the
+// state box does not need the listener half's epoch.
+export interface StreamMark {
+	atMs: number;
+	path: string;
+	subsong: number;
+	position: number;
+}
+
+// Bounded, as the component's is: a client only ever needs the marks around
+// what it is currently hearing.
+const STREAM_MARKS = 6;
+
 // A playlist as the fake holds it, which is not what it serves: `PlaylistInfo`
 // has six fields and carries a count rather than the items.
 export interface FakePlaylist {
@@ -435,6 +448,10 @@ export function createState({
 		// the wire -- that a drag sent one items/copy and not forty, that a
 		// coalesced write sent the last value rather than every value.
 		requests: [] as RecordedRequest[],
+		// Where each of the last few tracks began, in wall-clock milliseconds;
+		// `fooJean.ts` puts them on the stream clock. Same bound as the
+		// component's.
+		streamMarks: [] as StreamMark[],
 	};
 
 	// beefweb pushes on change and never on a timer, so this deliberately has no
@@ -465,6 +482,22 @@ export function createState({
 		return true;
 	};
 
+	// A track began, or the player moved within one. Both change what a given
+	// stream time means, so both are a mark.
+	const mark = (track: Track, position: number) => {
+		state.streamMarks = [
+			...state.streamMarks.slice(1 - STREAM_MARKS),
+			{
+				// Backdated by where the player is in the track: a track at 0:30 began
+				// thirty seconds ago. Lets a spec set up a lag without waiting one out.
+				atMs: Date.now() - position * 1000,
+				path: String(evaluate(track, "%path%") ?? ""),
+				subsong: 0,
+				position: 0,
+			},
+		];
+	};
+
 	const setActive = (
 		playlist: FakePlaylist,
 		index: number,
@@ -472,6 +505,7 @@ export function createState({
 	) => {
 		const track = playlist.items[index];
 		if (!track) return;
+		mark(track, 0);
 		const dequeued = consume(playlist, index);
 		state.player.activeItem = {
 			columns: [],
@@ -540,6 +574,11 @@ export function createState({
 			return queuePayload();
 		},
 		requests: state.requests,
+		// A getter for the same reason `playlists` is one: `mark` replaces the array
+		// rather than pushing into it.
+		get streamMarks() {
+			return state.streamMarks;
+		},
 		library: state.library,
 		fooJean: fooJeanState(fooJean),
 		// Which `?format=` each stream was opened with, in order. `requests`
@@ -664,12 +703,19 @@ export function createState({
 			} = {},
 		) {
 			const item = state.player.activeItem;
+			const before = item.position;
 			if (body.position != null) item.position = body.position;
 			if (body.relativePosition != null) {
 				item.position = Math.min(
 					Math.max(item.position + body.relativePosition, 0),
 					item.duration,
 				);
+			}
+			// A seek is a new mark: the same stream time now means a different place
+			// in the track.
+			if (item.position !== before) {
+				const track = byId(item.playlistId)?.items[item.index];
+				if (track) mark(track, item.position);
 			}
 			if (body.volume != null) state.player.volume.value = body.volume;
 			if (body.isMuted != null) state.player.volume.isMuted = body.isMuted;

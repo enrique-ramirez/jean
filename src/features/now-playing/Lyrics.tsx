@@ -1,7 +1,7 @@
 import { Mic2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { positionAt } from "@/domain/player/position";
+import { audibleAt } from "@/domain/player/position";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { scrollParentOf } from "@/shared/lib/scrollParent";
 import styles from "./Lyrics.module.css";
@@ -45,7 +45,7 @@ function Synced({
 	// the "it loads at the top and then jumps" that switching tabs used to look
 	// like.
 	const [active, setActive] = useState(() =>
-		activeLineAt(lines, positionAt(snapshot, performance.now())),
+		activeLineAt(lines, audibleAt(snapshot)),
 	);
 	const [isFollowing, setIsFollowing] = useState(true);
 	const list = useRef<HTMLDivElement | null>(null);
@@ -57,7 +57,7 @@ function Synced({
 	// index changes a few times a minute.
 	useEffect(() => {
 		let frame = requestAnimationFrame(function tick() {
-			setActive(activeLineAt(lines, positionAt(snapshot, performance.now())));
+			setActive(activeLineAt(lines, audibleAt(snapshot)));
 			frame = requestAnimationFrame(tick);
 		});
 		return () => cancelAnimationFrame(frame);

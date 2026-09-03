@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { usePlayer, usePlaylists } from "@/domain/player/usePlayer";
+import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
 import {
 	isScratchPlaylist,
 	scratchContentsOf,
@@ -16,7 +16,7 @@ import {
 // title, so this needs no state of Jean's own.
 export function usePlayingFrom() {
 	const { data: playlists = [] } = usePlaylists();
-	const { data: snapshot } = usePlayer();
+	const snapshot = useAudiblePlayer();
 	const activePlaylistId = snapshot?.player?.activeItem?.playlistId ?? null;
 
 	return useMemo(() => {

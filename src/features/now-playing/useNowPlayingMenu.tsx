@@ -2,8 +2,8 @@ import { Music, Star } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
+	useAudiblePlayer,
 	usePermissions,
-	usePlayer,
 	usePlaylists,
 } from "@/domain/player/usePlayer";
 import { librarySourceOf } from "@/domain/track/librarySource";
@@ -28,7 +28,7 @@ import { useNowPlayingTrack } from "./useNowPlayingTrack";
 // even for a set that came out of the media library: Jean materialises those
 // into the scratch before playing them.
 export function useNowPlayingMenu() {
-	const { data: snapshot } = usePlayer();
+	const snapshot = useAudiblePlayer();
 	const { data: playlists = [] } = usePlaylists();
 	const permissions = usePermissions();
 	const { details, setRating } = useNowPlayingTrack();

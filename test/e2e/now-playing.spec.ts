@@ -40,6 +40,28 @@ const LYRIC = {
 	].join("\r\n"),
 };
 
+const TOKEN = "0123456789abcdef0123456789abcdef";
+
+const listenHere = async (page: Page) => {
+	await page
+		.locator("footer")
+		.getByRole("button", {
+			name: /Choose where to play|Playing on this device/,
+		})
+		.click();
+	await page.getByRole("radio", { name: /This device/ }).click();
+	// `listeningPosition` answers null until audio is rendering, which is the
+	// fallback this is trying to leave.
+	await page.waitForFunction(
+		() => {
+			const audio = document.querySelector("audio");
+			return Boolean(audio && audio.currentTime > 0);
+		},
+		undefined,
+		{ timeout: 60_000 },
+	);
+};
+
 const TAGGED = {
 	retagged: {
 		"Los Calientes": { "$meta(unsynced lyrics)": LYRIC.synced },
@@ -140,6 +162,58 @@ test.describe("reading the lyric tag", () => {
 		// Settings, not in front of somebody who is playing an instrumental.
 		await expect(nowPlayingScreen(page)).toContainText("No lyrics found");
 		await expect(nowPlayingScreen(page)).not.toContainText("foo_openlyrics");
+	});
+});
+
+test.describe("a lyric read through the stream", () => {
+	// Kept out of `TAGGED`: a component also makes the rating control writable,
+	// which is a different screen from the one the slim-strip tests measure.
+	// Six seconds of lag; the default leaves none. See `test/README.md`.
+	test.use({ ...TAGGED, fooJean: { streamPrime: 6 }, fooJeanToken: TOKEN });
+	test.setTimeout(120_000);
+
+	// Past the last line for the player, still on the refrain for the ear. The two
+	// are eighteen seconds apart, so any lag up to that lands on the same line --
+	// margin a loaded machine needs. Asserts which clock is read, not how deep.
+	const PAST_THE_END = 80.5;
+
+	test("follows the player when nothing is listening", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		player.patchPlayer({ position: PAST_THE_END });
+
+		await openNowPlaying(page);
+		await tab(page, "Lyrics").click();
+		await expect(
+			nowPlayingScreen(page).locator('[data-state="active"]'),
+		).toHaveText("And I don't mind");
+	});
+
+	test("follows the audible position while listening", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+
+		// Before the screen goes up, because on a phone it covers the status bar
+		// the control lives in.
+		await listenHere(page);
+
+		// Set after the stream is running: the player goes on playing through the
+		// seconds it takes to start, and a position set before that has the wait
+		// added back to it.
+		player.patchPlayer({ position: PAST_THE_END });
+
+		await openNowPlaying(page);
+		await tab(page, "Lyrics").click();
+
+		await expect(
+			nowPlayingScreen(page).locator('[data-state="active"]'),
+		).toHaveText("Give you all my time");
 	});
 });
 

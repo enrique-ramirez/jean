@@ -9,7 +9,9 @@ import { subscribers } from "@/shared/lib/store";
 import {
 	amplitudeOf,
 	anchorOf,
+	audibleMark,
 	audiblePosition,
+	bufferedStart,
 	DEVICE_VOLUME_FLOOR_DB,
 	decibelsOf,
 	type ListenTarget,
@@ -31,7 +33,12 @@ const BUSY_RETRY_MS = 5000;
 // playing. A live stream that dies fires `stalled` and `waiting`, never `error`,
 // so nothing else notices.
 const STALL_MS = 6000;
+// A stream that has not started is not one that has stalled: reconnecting
+// restarts the buffering a slow start is waiting on. Applies until the first
+// sample; the stopped check still runs at `STALL_MS`.
+const START_MS = 25_000;
 const WATCHDOG_MS = 1000;
+// The marks, not the anchor -- that is fixed for the life of a connection.
 const TIMELINE_POLL_MS = 10_000;
 
 // **A stopped player and a broken stream are identical from the stream**: the
@@ -63,6 +70,9 @@ export interface ListenSnapshot {
 	// False on iOS, where `audio.volume` is a documented no-op and the hardware
 	// keys are the only volume there is. Probed, never sniffed.
 	canSetVolume: boolean;
+	// Which track is coming out of the speaker. Published on change only, never
+	// per frame. See `audible.ts`.
+	audiblePath: string | null;
 }
 
 const listeners = subscribers();
@@ -82,12 +92,23 @@ const dead = new Set<string>();
 let attempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let watchdogTimer: ReturnType<typeof setInterval> | null = null;
-let timelineTimer: ReturnType<typeof setInterval> | null = null;
+let timelineTimer: ReturnType<typeof setTimeout> | null = null;
 
 let anchor: number | null = null;
+// The last `/stream/timeline` answer and when it arrived. Kept rather than
+// consumed: the anchor needs it paired with a buffered range, and the two become
+// available in either order.
+let timelineStreamTime: number | null = null;
+let timelineAt = 0;
+// When this element was pointed at the stream. The clock runs at 1x, so any
+// later answer carries back to here.
+let connectAt = 0;
 let marks: StreamMark[] = [];
+let audiblePath: string | null = null;
 let lastTime = 0;
 let lastAdvance = 0;
+// Which of the two waits above applies.
+let hasRendered = false;
 // Bumps on every connect so a ticket or a timeline that settles after the
 // connection it belonged to was torn down is discarded rather than applied.
 let generation = 0;
@@ -95,7 +116,7 @@ let generation = 0;
 let snapshot: ListenSnapshot = build();
 
 function build(): ListenSnapshot {
-	return { phase, format, volumeDb, isMuted, canSetVolume };
+	return { phase, format, volumeDb, isMuted, canSetVolume, audiblePath };
 }
 
 function publish() {
@@ -139,6 +160,7 @@ function ensureElement() {
 	audio.muted = isMuted;
 
 	audio.addEventListener("playing", onPlaying);
+	audio.addEventListener("timeupdate", onTimeUpdate);
 	audio.addEventListener("error", onError);
 	audio.addEventListener("ended", onEnded);
 
@@ -159,7 +181,22 @@ function onPlaying() {
 	setPhase({ kind: "playing" });
 	lastTime = element?.currentTime ?? 0;
 	lastAdvance = performance.now();
-	void reanchor();
+	hasRendered = true;
+	deriveAnchor();
+}
+
+// `timeupdate` fires about four times a second, which is the resolution the
+// audible track needs and one timer fewer than polling. Publishes only when the
+// answer moves.
+function onTimeUpdate() {
+	deriveAnchor();
+	const next =
+		element && phase.kind === "playing"
+			? (audibleMark(anchor, marks, element.currentTime)?.path ?? null)
+			: null;
+	if (next === audiblePath) return;
+	audiblePath = next;
+	publish();
 }
 
 // **`error.code` is the only thing separating "cannot play this" from "the Wi-Fi
@@ -236,7 +273,9 @@ async function open(next: string) {
 	const mine = ++generation;
 	format = next;
 	anchor = null;
+	timelineStreamTime = null;
 	marks = [];
+	audiblePath = null;
 	setPhase(
 		attempt > 0 ? { kind: "reconnecting", attempt } : { kind: "connecting" },
 	);
@@ -262,9 +301,16 @@ async function open(next: string) {
 	}
 
 	const audio = ensureElement();
+	// Noted before the request goes out: this instant is the only record of what
+	// the component sends while the browser is still buffering to start.
+	connectAt = performance.now();
 	audio.src = streamUrl(target.origin, issued.ticket.ticket, next);
 	audio.volume = amplitudeOf(volumeDb);
+
 	startWatchdog();
+	// Straight away rather than on the first poll: without it there is no anchor,
+	// and so no correction at all.
+	void reloadMarks();
 
 	try {
 		await audio.play();
@@ -321,8 +367,9 @@ function startWatchdog() {
 	if (watchdogTimer) return;
 	lastTime = 0;
 	lastAdvance = performance.now();
+	hasRendered = false;
 	watchdogTimer = setInterval(watch, WATCHDOG_MS);
-	timelineTimer = setInterval(() => void reanchor(), TIMELINE_POLL_MS);
+	timelineTimer = setInterval(() => void refreshTimeline(), TIMELINE_POLL_MS);
 }
 
 async function watch() {
@@ -333,6 +380,7 @@ async function watch() {
 	if (audio.currentTime !== lastTime) {
 		lastTime = audio.currentTime;
 		lastAdvance = performance.now();
+		hasRendered = true;
 		if (phase.kind === "silent") setPhase({ kind: "playing" });
 		return;
 	}
@@ -353,29 +401,44 @@ async function watch() {
 		return;
 	}
 
+	// Playing at the other end and nothing here yet -- a start, not a stall.
+	if (!hasRendered && performance.now() - lastAdvance < START_MS) return;
+
 	scheduleReconnect();
 }
 
 // ---- the stream clock --------------------------------------------------------
 
-// Re-anchored on every reconnect, because `currentTime` restarts, and re-polled
-// while playing to shed drift. Over minutes the difference is milliseconds; over
-// an evening it is not.
-async function reanchor() {
+// Fixed once per connection, and **retried until it takes** -- from `playing`,
+// every `timeupdate` and every poll. The two terms arrive in either order, and a
+// connection whose first request failed must still end up anchored.
+function deriveAnchor() {
+	if (anchor !== null || timelineStreamTime === null || !element) return;
+
+	const origin = bufferedStart(element);
+	if (origin === null) return;
+
+	const atConnect = timelineStreamTime - (timelineAt - connectAt) / 1000;
+	anchor = anchorOf(atConnect, origin);
+}
+
+// The marks alone. The anchor is not touched -- see `deriveAnchor`.
+async function reloadMarks() {
 	if (!target || !element || !isListening()) return;
 
 	const mine = generation;
-	const at = performance.now();
 	const timeline = await fetchStreamTimeline(target.origin, target.token);
 	if (!timeline || mine !== generation || !element) return;
 
-	anchor = anchorOf(
-		timeline.streamTime,
-		performance.now() - at,
-		element.currentTime,
-	);
 	marks = timeline.marks;
+	timelineStreamTime = timeline.streamTime;
+	timelineAt = performance.now();
+	deriveAnchor();
 }
+
+// A track change or a seek lays a mark this client does not hold. Called from
+// `audible.ts`, which is the one place that already tells those apart.
+export const refreshTimeline = () => void reloadMarks();
 
 // Read per animation frame by the seek bar, so it reads `currentTime` at call
 // time rather than pushing sixty notifications a second through the store.
@@ -417,18 +480,53 @@ export function toggleListeningMute() {
 export const listeningVolumeFloor = DEVICE_VOLUME_FLOOR_DB;
 export { decibelsOf };
 
+// ---- diagnostics -------------------------------------------------------------
+
+// Dev only. The stream clock cannot be read off the screen -- too early and
+// exactly right look identical -- so `__jeanStream()` prints it. `lagSeconds` is
+// the figure; a null anchor means no correction is being applied at all.
+if (import.meta.env.DEV) {
+	(globalThis as unknown as Record<string, unknown>).__jeanStream = () => {
+		const audio = element;
+		const ranges = audio?.buffered;
+		const liveNow =
+			timelineStreamTime === null
+				? null
+				: timelineStreamTime + (performance.now() - timelineAt) / 1000;
+
+		return {
+			phase: phase.kind,
+			format,
+			anchor,
+			currentTime: audio?.currentTime ?? null,
+			bufferedStart: audio ? bufferedStart(audio) : null,
+			bufferedEnd:
+				ranges && ranges.length > 0 ? ranges.end(ranges.length - 1) : null,
+			// Seconds behind the live edge: what the correction comes to.
+			lagSeconds:
+				anchor === null || !audio || liveNow === null
+					? null
+					: liveNow - (anchor + audio.currentTime),
+			audiblePath,
+			marks,
+		};
+	};
+}
+
 // ---- teardown ----------------------------------------------------------------
 
 function stopStream() {
 	generation += 1;
 	if (reconnectTimer) clearTimeout(reconnectTimer);
 	if (watchdogTimer) clearInterval(watchdogTimer);
-	if (timelineTimer) clearInterval(timelineTimer);
+	if (timelineTimer) clearTimeout(timelineTimer);
 	reconnectTimer = null;
 	watchdogTimer = null;
 	timelineTimer = null;
 	anchor = null;
+	timelineStreamTime = null;
 	marks = [];
+	audiblePath = null;
 
 	const audio = element;
 	if (audio) {

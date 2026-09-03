@@ -254,3 +254,75 @@ test.describe("a stream that goes quiet", () => {
 			.toMatch(/stopped/i);
 	});
 });
+
+// Two tracks far enough apart in the Library fixture to have nothing in common.
+const HEARD = { index: 2, title: "Deléctrico" };
+const NEXT = { index: 40, title: "Goodnite, Noises Everywhere" };
+
+test.describe("what is audible, not what the player is doing", () => {
+	// The lag is `12 - prime`; the default of fifteen leaves none. See
+	// `test/README.md`.
+	test.use({ fooJean: { streamPrime: 6 }, fooJeanToken: TOKEN });
+
+	// Real time is the thing under test.
+	test.setTimeout(120_000);
+
+	test("stays on the track still coming out of the speaker", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		player.playItem("p7", HEARD.index);
+		// Two minutes in, so the audible point lands inside this track rather than
+		// before anything the fake ever played.
+		player.patchPlayer({ position: 120 });
+		await expect(statusBar(page)).toContainText(HEARD.title);
+
+		await startListening(page);
+		await expect
+			.poll(() => currentTime(page), { timeout: 60_000, intervals: TICK })
+			.toBeGreaterThan(0);
+
+		// The desktop moves on, and beefweb says so at once.
+		player.playItem("p7", NEXT.index);
+		// Pushed straight after, and never delayed -- so the button flipping is
+		// proof the app has the new track and is choosing not to draw it. An
+		// ordering to assert on rather than a margin to guess.
+		player.patchPlayer({ playbackState: "paused" });
+		await expect(
+			statusBar(page).getByRole("button", { name: "Play", exact: true }),
+		).toBeVisible();
+
+		await expect(statusBar(page)).toContainText(HEARD.title);
+		await expect(statusBar(page)).not.toContainText(NEXT.title);
+
+		// A delay, not a freeze: it arrives when the audio does.
+		player.patchPlayer({ playbackState: "playing" });
+		await expect(statusBar(page)).toContainText(NEXT.title, {
+			timeout: 60_000,
+		});
+	});
+
+	test("a pause pressed here still answers at once", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		player.playItem("p7", HEARD.index);
+		player.patchPlayer({ position: 120 });
+
+		await startListening(page);
+		await expect
+			.poll(() => currentTime(page), { timeout: 60_000, intervals: TICK })
+			.toBeGreaterThan(0);
+
+		// Only the track is delayed. A control MUST move under the finger that
+		// pressed it.
+		await statusBar(page)
+			.getByRole("button", { name: "Pause", exact: true })
+			.click();
+		await expect(
+			statusBar(page).getByRole("button", { name: "Play", exact: true }),
+		).toBeVisible();
+	});
+});

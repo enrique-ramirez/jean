@@ -37,6 +37,7 @@ import type {
 import { useCoalescedWrite } from "@/shared/hooks/useCoalescedWrite";
 import { clamp } from "@/shared/lib/math";
 import { refusal } from "@/shared/lib/refusal";
+import { rememberSnapshot, useAudibleSnapshot } from "./audible";
 import { positionAt } from "./position";
 import {
 	dequeuePlaylist,
@@ -50,10 +51,12 @@ export const PLAYLISTS_KEY = ["playlists"];
 
 // Player state is pushed, not fetched, so it carries the timestamp it arrived
 // at. Keeping the two together makes the interpolation anchor atomic.
-const snapshot = (player: PlayerState): PlayerSnapshot => ({
-	player,
-	syncedAt: performance.now(),
-});
+const snapshot = (player: PlayerState): PlayerSnapshot => {
+	const next = { player, syncedAt: performance.now() };
+	// The one funnel every pushed snapshot passes through.
+	rememberSnapshot(next);
+	return next;
+};
 
 // Bridges the SSE stream into the query cache. Mount once, at the root;
 // everything downstream then reads through an ordinary useQuery.
@@ -89,6 +92,14 @@ export function usePlayer() {
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
 	});
+}
+
+// What is audible here. **Anything drawing the current track MUST read this** --
+// title, artwork, lyrics, the row in a list. Identical to `usePlayer().data`
+// whenever nothing is listening; `usePlayer` stays the source for the player's
+// own state and for query status, neither of which is delayed.
+export function useAudiblePlayer() {
+	return useAudibleSnapshot(usePlayer().data);
 }
 
 export function usePlaylists() {

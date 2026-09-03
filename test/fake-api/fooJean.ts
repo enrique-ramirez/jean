@@ -47,6 +47,10 @@ export interface FooJeanOptions {
 	// reconnect. `quiet` opens and then sends nothing -- the case that models a
 	// stopped player, and the one with no error to catch.
 	streamBehaviour?: "ok" | "short" | "quiet";
+	// Seconds written the instant the connection opens, before the pump takes over
+	// at real time. Decides how far behind the live edge this listener ends up;
+	// see `serveStream`.
+	streamPrime?: number;
 	// Force a status on `POST /api/stream/ticket`. A 503 reads as "busy" or as
 	// "not supported" depending on the wording, and the two want opposite
 	// responses from a client.
@@ -89,6 +93,7 @@ const DEFAULTS: FooJeanFake = {
 	streamFormats: ["opus", "aac"],
 	playableFormats: ["opus", "aac"],
 	streamBehaviour: "ok",
+	streamPrime: 15,
 	failTickets: null,
 	ticketError: "",
 	expireTickets: false,
@@ -251,25 +256,50 @@ function tone(seconds: number, phase: number) {
 	return new Uint8Array(buffer.buffer);
 }
 
-// `at`, `path` and `position` in the component's own terms. `streamTime` counts
-// from when this fake started, which is what the client anchors against.
-const startedAt = Date.now();
+// **The clock starts before the fake does.** The component starts with
+// foobar2000, long before any client connects -- and a listener is always behind
+// the live edge, so a clock beginning at zero would put the audible point before
+// any stream this admits to having served.
+const PRERUN_MS = 60_000;
+const startedAt = Date.now() - PRERUN_MS;
+
+// **The component does not name a file the way beefweb does**, and a fake that
+// echoed beefweb's string would compare a path with itself and never fail. On a
+// portable install beefweb answers `F:\Musica\...` and the component answers
+// `file-relative://..\Musica\...` for the identical track.
+const componentPath = (path: string) =>
+	path.replace(/^[A-Za-z]:\\/, "file-relative://..\\");
 
 function timelineOf(state: FakeState) {
 	const streamTime = (Date.now() - startedAt) / 1000;
+
+	// The last few tracks, not the current one: a listener is behind the player,
+	// so the track it hears is one the player has already left.
+	if (state.streamMarks.length > 0) {
+		return {
+			streamTime,
+			marks: state.streamMarks.map((entry) => ({
+				at: Math.max(0, (entry.atMs - startedAt) / 1000),
+				path: componentPath(entry.path),
+				subsong: entry.subsong,
+				position: entry.position,
+			})),
+		};
+	}
+
+	// Nothing has started under this fake. Seeded from the active item so the
+	// arithmetic has something to land on.
 	const item = state.player.activeItem;
 	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
 	const track = playlist?.items[item.index];
 	if (!track) return { streamTime, marks: [] };
 
-	// One mark, placed so the track began `position` seconds ago in stream time.
-	// Enough for the arithmetic; the component keeps a few.
 	return {
 		streamTime,
 		marks: [
 			{
 				at: Math.max(0, streamTime - item.position),
-				path: String(track["%path%"] ?? ""),
+				path: componentPath(String(track["%path%"] ?? "")),
 				subsong: 0,
 				position: 0,
 			},
@@ -320,11 +350,11 @@ function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 	// streamed, and not of live streaming: Ogg and ADTS are designed for it and
 	// the component serves those.
 	//
-	// So this is the fake being *kinder* than the component, deliberately and in
-	// one narrow way: the stream starts sooner than a real one would. What that
-	// could hide -- a long gap between asking and hearing -- is covered by the
-	// `quiet` behaviour instead, which is that gap with no end to it.
-	const PRIME_SECONDS = fake.streamBehaviour === "ok" ? 15 : 1;
+	// **The prime also decides whether this fake has a lag at all**, and the
+	// default removes it: the component hands a listener the live edge, so it
+	// falls behind only by what the browser buffers to start, and fifteen seconds
+	// up front means never. `12 - prime` is the lag. See `test/README.md`.
+	const PRIME_SECONDS = fake.streamBehaviour === "ok" ? fake.streamPrime : 1;
 	let phase = SAMPLE_RATE * PRIME_SECONDS;
 	response.write(tone(PRIME_SECONDS, 0));
 

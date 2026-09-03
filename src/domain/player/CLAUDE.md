@@ -176,24 +176,161 @@ connections, not people.
 tap, and it is the only thing that works. Holding a ticket in advance would avoid
 it and is not worth the unused tickets until the tap proves annoying.
 
-**The progress bar reads what is audible, in one branch in one place.** A device
-listening to the stream is a second or two behind the player, so a bar driven
-from beefweb alone runs ahead of the sound. `listeningPosition` answers null
-whenever it cannot be sure -- not listening, no anchor yet, or a mark naming a
-track beefweb has already moved on from -- and null means drive it from beefweb
-exactly as before. It is read per animation frame rather than pushed, because
-`currentTime` advances continuously and a store notifying on it would repaint the
-app sixty times a second.
+**The screen reads what is audible, in one branch in one place.** A device
+listening to the stream is a second or two behind the player, so anything drawn
+from beefweb alone runs ahead of the sound -- and it is the *track*, not only the
+position, that runs ahead: beefweb names the next one while the last is still
+coming out of the speaker, so the title, the artwork, the lyrics and the row
+highlight all change a beat early. Nothing is slow; one thing is early, which on
+a screen is the same complaint.
 
-The anchor is `streamTime - roundTrip - currentTime`, re-derived after every
-reconnect (`currentTime` restarts) and re-polled every ten seconds to shed drift.
-**The `currentTime` term is not decoration**: browsers disagree over whether it
-starts at zero or at the stream's own granule position, which for a listener
-joining a long-running stream is a large number, and subtracting it is what makes
-the arithmetic work either way. `marks[].path` arrives in the player's own form
--- `file-relative://..\Musica\...` on a portable install, not a drive letter --
-so it is matched against **what beefweb reports** and never against an assumed
-path.
+`audible.ts` is that seam. It keeps the last four player snapshots, keyed by
+track, and hands back the one describing what `listenerStore` says is audible;
+`useAudiblePlayer` is what every surface drawing the current track reads, and it
+returns the live snapshot **by object identity** whenever nothing is listening,
+so an install without the component is untouched. `listeningPosition` is the same
+correction for the position and still answers null whenever it cannot be sure,
+which still means drive it from beefweb -- but its caller now passes the audible
+path, so the mark matches through the transition instead of falling back inside
+it. It is read per animation frame rather than pushed, because `currentTime`
+advances continuously and a store notifying on it would repaint the app sixty
+times a second. The *identity* is pushed, on `timeupdate` and only when it
+changes: the path is stable for the length of a track.
+
+**Only `activeItem` is delayed, and that line is the design.** Volume,
+`playbackState`, permissions and `info` are the player's rather than the track's
+and have no buffered copy running late. Delaying them would mean a Pause pressed
+here not moving for a second and a half -- trading this lag for a worse one, on a
+control the user touched themselves. So a track change is held and a transport
+press is not, and the two are asserted separately.
+
+**A whole-API throttle was the other candidate and is worse three ways.** It
+would delay writes that have no audio behind them and fight the optimistic
+patches in `usePlayer`; it would freeze a figure that moves on every reconnect
+and rebuffer, which is why the timeline is re-polled at all; and a timer delays
+the *snapshot* rather than the audio, so it only lines up if the buffer is
+exactly what it was when measured. Releasing on "the audio reached this track"
+needs no figure and self-corrects.
+
+**The anchor is the component's clock at the moment of connection, and nothing
+else.** `BroadcastRing::subscribe` hands a new listener the **live edge** -- no
+backlog, no priming burst -- and the stream is then delivered at 1x. So the first
+sample this element renders *is* the audio that was live when it connected, and:
+
+```
+anchor  = streamTimeAtConnect - buffered.start(0)
+audible = anchor + currentTime
+```
+
+`buffered.start(0)` is the timebase origin rather than a depth: browsers disagree
+over whether `currentTime` starts at zero or at the stream's own granule
+position, and this is that number whichever it turned out to be. Fixed **once per
+connection** and never re-derived -- both terms are constant, so a later poll
+would only add noise. The poll refreshes the *marks*.
+
+**But it is retried until it takes, and that is not the same thing.** The two
+terms become available in either order -- a timeline response and the element's
+first buffered range -- so the derivation runs on `playing`, on every
+`timeupdate` and on every poll, and no-ops once set. Computing it from a single
+request at connect and giving up was worse than the bug it replaced: one lost
+response left a whole session with **no correction at all**, and a null anchor is
+indistinguishable on screen from not listening. The stream clock runs at 1x with
+the wall clock -- measured -- so any later answer carries back to the connection
+and nothing is lost by asking again.
+
+**The lag is never measured, which is the point.** It falls out as wall time
+since connecting minus audio played, so it is whatever the browser spent
+buffering to start plus whatever it has stalled for since, and it corrects itself
+without being told: a rebuffer stops `currentTime` and the lag grows on its own.
+
+**Subtracting a measured buffer depth was the previous form, and it under-read so
+badly it was nearly a no-op.** `bufferedEnd - currentTime` counts only what the
+media pipeline has ingested. The audio the server sends while the element is
+still buffering to *start* sits in the socket, which no browser reports -- and on
+a live stream that startup gap is most of the lag. The seek bar looked corrected
+and the lyric, which is where a second actually shows, did not.
+
+**Three things measured against the real component, all of which this rests on.**
+Taken by reading Ogg granule positions off the wire:
+
+- **`streamTime` is the live edge.** It tracks beefweb's reported position to
+  within **50-90 ms**, so the encoder sits at the speaker and none of the lag is
+  upstream.
+- **Delivery is exactly 1x with a constant offset** -- granule advanced 11.52 s
+  over 11.61 s of wall clock, holding to ±50 ms from the first sample. Nothing
+  accumulates on the wire, so every second of lag is the browser's.
+- **The component keeps encoding through a pause**, 5.52 s of audio over 5.58 s
+  of wall clock with the player stopped. See the paragraph on not pausing the
+  element, which is the same fact pointed at a different mistake.
+
+**Everything that draws the passage of time must read `audibleAt`, and the lyric
+is why that is written as a rule.** It had its own animation-frame loop calling
+`positionAt` directly while the correction lived in the seek bar's private
+helper, so the one surface where a second is most visible -- a line lighting up
+before it is sung -- was the only surface the correction never reached. The
+helper lives in `position.ts` beside `positionAt`, which is where the second
+caller would have found it.
+
+**The marks go stale two ways and both are silent.** A **track change** lays a
+mark, and a **seek** lays another -- the same stream time now means a different
+place in the track. `audible.ts` asks for a refresh on each, because it is the
+one place that already tells a new track from a fresh snapshot of the same one,
+and a seek from the interpolation drifting. Left to the ten-second poll a
+2.8-second lag was drawn as **8.3**: the correction was right and arrived late,
+which on a screen is indistinguishable from being wrong.
+
+**`__jeanStream()` in a dev console prints the whole clock** -- anchor,
+`currentTime`, the buffered range, the marks and `lagSeconds`, which is what the
+correction actually comes to. It exists because this is the one part of Jean
+whose correctness cannot be read off the screen: too early and exactly right look
+identical unless the lag is already known, and the port the numbers come from is
+not reachable from every machine this gets debugged on. Dev only, and stripped
+from a build.
+
+**A stream that has not started is not a stream that has stalled**, and the two
+want opposite responses -- reconnecting restarts the very buffering a slow start
+is waiting on, so a browser needing longer than `STALL_MS` to reach its first
+sample loops and never plays. `START_MS` is the longer wait that applies until
+the first sample. The *stopped* check still runs at `STALL_MS`, because naming
+that state costs nothing and is not destructive; only giving up waits.
+
+**`marks[].path` and beefweb's `%path%` are the same file under two different
+names, and comparing them exactly killed the entire feature.** *Measured* on a
+portable install: beefweb answers `F:\Musica\J\...` and the component answers
+`file-relative://..\Musica\J\...` for that identical track, because the profile
+sits beside the library rather than under `%APPDATA%`. Exact comparison is
+`false` forever -- and a failed match reads as *cannot say*, so every correction
+downstream turned itself off while `phase`, `anchor`, `lagSeconds` and
+`audiblePath` all stayed healthy. On screen it was indistinguishable from the
+feature never having been built: the trackbar never once stepped back.
+
+So `samePlayerPath` matches by **suffix**, the way `libraryPathMatcher` already
+does and for the same reason -- the two sources root the same file differently,
+Jean is never told where either root is, and the tail is what survives that. It
+strips a scheme and any leading traversal, then anchors on a separator so
+`Live.mp3` cannot match `Alive.mp3`.
+
+**The suite was green through all of it, and that is the lesson.** Both halves of
+every fixture came from one string, so the fake compared a path with itself and
+could not fail. `componentPath` in `test/fake-api/fooJean.ts` now rewrites the
+component's answers into the portable form: with it in place, reverting the
+matcher fails the two correction specs, which is the only reason to trust them.
+**Anywhere the fake supplies both sides of a comparison, it has to supply them
+the way the two real sources do -- or the comparison is untested.**
+
+**Jean must not pause the element when the player pauses, however much the
+handoff argues for it.** Pressing pause leaves a second or so of sound coming out
+of this device -- the buffer draining -- and pausing the element would stop it
+dead. *Measured*: the component **keeps encoding at 1x through a pause**, 5.52
+seconds of audio over 5.58 seconds of wall clock with the player stopped. So a
+paused element would go on filling, and resume however long the pause lasted
+further behind. The tail is the buffer, it is the component's to shorten, and
+this is the second thing on this screen that only the component can fix.
+
+**The transport itself is not slow and should not be tuned as though it were.**
+*Measured* against the live player: the button flips in **17-29 ms**, because the
+patch is optimistic and `playbackState` is never delayed. Anything that still
+feels late after a press is the audio, and the paragraph above says why.
 
 **The toggle is per device and is never synced.** Not through `clientconfig`, not
 through anything `useStoredState` might one day sync. Two devices decide for

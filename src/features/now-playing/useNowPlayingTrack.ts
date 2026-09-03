@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { usePlayer } from "@/domain/player/usePlayer";
+import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { fetchActiveItemColumns, readTrack } from "@/shared/api/beefweb";
 import type { NowPlayingTrack, TrackColumns } from "@/shared/api/types";
 import { NOW_PLAYING_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
@@ -28,7 +28,7 @@ export interface NowPlayingDetails {
 // and deliberately not off the update stream, which re-evaluates its expressions
 // on every push. See "The one request" in this folder's CLAUDE.md.
 export function useNowPlayingTrack() {
-	const { data: snapshot } = usePlayer();
+	const snapshot = useAudiblePlayer();
 	const track = readTrack(snapshot?.player);
 	const path = track?.path ?? null;
 

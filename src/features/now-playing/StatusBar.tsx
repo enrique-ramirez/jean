@@ -2,6 +2,7 @@ import { Shuffle } from "lucide-react";
 import { formatTime } from "@/domain/player/position";
 import { useListener } from "@/domain/player/useListener";
 import {
+	useAudiblePlayer,
 	usePlaybackOrder,
 	usePlayer,
 	usePlayPause,
@@ -73,7 +74,8 @@ export function StatusBar({
 	onOpenNowPlaying: () => void;
 	onRevealNowPlaying: () => void;
 }) {
-	const { data: snapshot, isPending, isError, error } = usePlayer();
+	const { isPending, isError, error } = usePlayer();
+	const snapshot = useAudiblePlayer();
 	const isCompactViewport = useIsCompactViewport();
 	const { volume, setValue, setMuted } = useVolume();
 	const listener = useListener();
@@ -102,13 +104,13 @@ export function StatusBar({
 	const transport = useTransport();
 	const order = usePlaybackOrder();
 
-	if (isPending || isError) {
+	if (isPending || isError || !snapshot) {
 		return (
 			<footer className={styles.statusbar}>
 				<p className={styles.notice}>
-					{isPending
-						? "Connecting to the player…"
-						: `Can’t reach the player — ${error.message}`}
+					{isError
+						? `Can’t reach the player — ${error.message}`
+						: "Connecting to the player…"}
 				</p>
 			</footer>
 		);

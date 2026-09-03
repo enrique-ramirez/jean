@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { usePlayer } from "@/domain/player/usePlayer";
+import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import { readTrack } from "@/shared/api/beefweb";
@@ -26,7 +26,7 @@ export function useActivePosition({
 	scratch: ReturnType<typeof useScratchPlaylist>;
 	holdsThisView: boolean;
 }) {
-	const { data: snapshot } = usePlayer();
+	const snapshot = useAudiblePlayer();
 
 	const activeItem = snapshot?.player?.activeItem;
 	const playing = readTrack(snapshot?.player);

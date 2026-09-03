@@ -35,7 +35,7 @@ Writing a custom foobar component to feed Jean is a last resort. Do not design t
 
 **Jean's own settings live in `localStorage` today** (`shared/hooks/useStoredState.ts`), and belong in `/api/clientconfig/{id}` so they follow the user between devices; the hook's signature is the shape a server-backed version would have. Fall back to local storage where `permissions.changeClientConfig` is false.
 
-**`jean.fooJeanToken` and `jean.listenVolume` are permanently excluded** from that move: a credential and a per-device level must not follow the user between devices, and beefweb serves the `clientconfig` namespace unauthenticated, so syncing the token would recreate the escalation it exists to prevent. The exclusion is written next to `TOKEN_KEY` in `shared/api/fooJean.ts`.
+**`jean.fooJeanToken`, `jean.listenVolume`, `jean.deviceId` and `jean.deviceName` are permanently excluded** from that move, and this is the list. A credential must not follow the user between devices — beefweb serves the `clientconfig` namespace unauthenticated, so syncing the token would recreate the escalation it exists to prevent. The other three *describe one device*: synced, every screen in the house would share a level, a name, and one row in the listener list. The exclusion is named next to `TOKEN_KEY` in `shared/api/fooJean.ts`.
 
 **The `foo_jean` clientconfig id is spoken for.** The component publishes its discovery record there and Jean writing to it would clobber the record. Ids are lowercase alphanumeric plus underscore; `foo-jean` is a 400.
 
@@ -146,8 +146,8 @@ The code says what exists; this says what does not, and why.
 - **No Web Worker and no IndexedDB persistence**, so a cold start re-fetches and re-indexes. Both are requirements for 100k–200k libraries, not things already done.
 - **Tag writing is one field.** `domain/track/tagWriter.ts` writes **ratings** and nothing else. Genre, comment and the rest of what the component could write are deliberately not wired up: the seam should not be shaped around a second field before there is one.
 - **No "play next", and no lookahead of any kind.** `queueIndex` on `/playqueue/add` is accepted and silently ignored, and the API says nothing about what the player would play next on its own. The queue panel shows what was explicitly queued and says so.
-- **No naming of other listening devices.** "This device" and the player are the only two Jean can name; the component counts connections and publishes nothing about them.
-- **Muting the player while a listener is attached belongs to the component and is not built**, so today both play at once. Jean sends no mute and must not grow one — with two listeners it becomes a reference count, and only the component can see the listeners to count.
+- **No sending audio to another device.** Other listeners are a roster and never a set of targets: starting playback in a browser needs a gesture on *that* browser, so a "play on the kitchen phone" button would fail every time the phone was locked. Jean shows who has the sound and offers nothing to press.
+- **No multi-room sync.** The player and the stream can both be on, and they are a second or two apart. Closing that would mean delaying the player's own output past the stream, and `foo_jean` captures post-DSP with nothing after it to delay; each listener's lag differs anyway, so one delay could never align two of them. The picker says by how much and leaves it there.
 - **The now-playing swipe-to-skip gesture is not built.** Skipping there is the screen's buttons, the keyboard, or `Mod+Arrow`.
 - **Artist information is the one thing that leaves the network**, and it is off until switched on in Settings. MusicBrainz and Wikipedia, no key, no proxy — and no artist *images*: the obvious source is Deezer and it sends no CORS header.
 - **`Mosaic` is on hold.** Do not rework it or add tests for it.

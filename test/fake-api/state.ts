@@ -496,11 +496,33 @@ export function createState({
 		// Which `?format=` each stream was opened with, in order; `requests` records
 		// paths without their query.
 		streamFormats: [] as string[],
+		// Set by `DELETE /api/stream/hold`: somebody asked to hear the player
+		// alongside the listeners.
+		holdReleased: false,
+		// Devices this fake is streaming to, keyed by the id they named themselves
+		// with. Grouped, because one device routinely holds more than one socket.
+		streamDevices: new Map<
+			string,
+			{
+				deviceId: string;
+				name: string | null;
+				format: string;
+				connections: number;
+				listeningFor: number;
+			}
+		>(),
 		// Separate objects from the playlists' whenever `withoutFields` is in play,
 		// so a tag write has to reach both.
 		libraryTracks,
 		get playlists() {
 			return state.playlists;
+		},
+
+		// The hold is a volume, so a client watching the player sees it change. The
+		// real one has nothing to announce: foobar2000's own volume moved, and
+		// beefweb pushes that like any other.
+		announceHold() {
+			notify({ player: true });
 		},
 
 		subscribe(listener: (message: Changed) => void) {
@@ -526,12 +548,29 @@ export function createState({
 				totalTime: 0,
 			})),
 
+		// True while the component is silencing the player for a listener. Derived
+		// rather than set, so a fixture that starts with somebody already listening
+		// starts muted, exactly as reconnecting to a running install would.
+		// `this` rather than `state`: these live on the object being built here,
+		// where `state` is the raw one it is built from.
+		get playerHeld(): boolean {
+			if (!this.fooJean.canMuteWhileStreaming || this.holdReleased)
+				return false;
+			return this.streamDevices.size + this.fooJean.otherListeners.length > 0;
+		},
+
 		playerPayload(trcolumns: string[] = []) {
 			const item = state.player.activeItem;
 			const playlist = item.index >= 0 ? byId(item.playlistId) : null;
 			const track = playlist?.items[item.index];
 			return {
 				...state.player,
+				// foobar2000 has no mute flag -- mute is the volume at -100 dB -- so a
+				// hold the component takes for a listener is visible to every beefweb
+				// client, and Jean is built on exactly that being true.
+				volume: this.playerHeld
+					? { ...state.player.volume, isMuted: true, value: -100 }
+					: state.player.volume,
 				activeItem: {
 					...item,
 					columns: track ? columnsFor(track, trcolumns) : [],

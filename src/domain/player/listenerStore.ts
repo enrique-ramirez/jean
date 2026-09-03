@@ -2,10 +2,12 @@ import { fetchPlayer } from "@/shared/api/beefweb";
 import {
 	fetchStreamTimeline,
 	issueStreamTicket,
+	leaveStream,
 	type StreamMark,
 	streamUrl,
 } from "@/shared/api/fooJean";
 import { subscribers } from "@/shared/lib/store";
+import { deviceId, deviceIdentity } from "./device";
 import {
 	amplitudeOf,
 	anchorOf,
@@ -262,7 +264,11 @@ async function open(next: string) {
 		attempt > 0 ? { kind: "reconnecting", attempt } : { kind: "connecting" },
 	);
 
-	const issued = await issueStreamTicket(target.origin, target.token);
+	const issued = await issueStreamTicket(
+		target.origin,
+		target.token,
+		deviceIdentity(),
+	);
 	if (mine !== generation) return;
 
 	if (!issued.ok) {
@@ -454,6 +460,21 @@ export function toggleListeningMute() {
 export const listeningVolumeFloor = DEVICE_VOLUME_FLOOR_DB;
 export { decibelsOf };
 
+// ---- what the audience store reads -------------------------------------------
+
+// The roster comes from the same component this device streams from, so it reads the target here rather than resolving a second one out of discovery.
+export const listenTarget = () => target;
+
+// How far behind the player this device is, or null while nothing is listening or the clock has not settled.
+// Sampled by a caller rather than published: it moves continuously, and a store notifying on it would repaint the app sixty times a second.
+export function listeningLagSeconds(): number | null {
+	const audio = element;
+	if (anchor === null || !audio || timelineStreamTime === null) return null;
+
+	const liveNow = timelineStreamTime + (performance.now() - timelineAt) / 1000;
+	return liveNow - (anchor + audio.currentTime);
+}
+
 // ---- diagnostics -------------------------------------------------------------
 
 // The stream clock cannot be read off the screen, so `__jeanStream()` prints it. A null anchor means no correction is applied.
@@ -461,10 +482,6 @@ if (import.meta.env.DEV) {
 	(globalThis as unknown as Record<string, unknown>).__jeanStream = () => {
 		const audio = element;
 		const ranges = audio?.buffered;
-		const liveNow =
-			timelineStreamTime === null
-				? null
-				: timelineStreamTime + (performance.now() - timelineAt) / 1000;
 
 		return {
 			phase: phase.kind,
@@ -474,10 +491,7 @@ if (import.meta.env.DEV) {
 			bufferedStart: audio ? bufferedStart(audio) : null,
 			bufferedEnd:
 				ranges && ranges.length > 0 ? ranges.end(ranges.length - 1) : null,
-			lagSeconds:
-				anchor === null || !audio || liveNow === null
-					? null
-					: liveNow - (anchor + audio.currentTime),
+			lagSeconds: listeningLagSeconds(),
 			audiblePath,
 			marks,
 		};
@@ -515,8 +529,14 @@ function teardown() {
 }
 
 export function disconnect() {
+	const gone = target;
+	const wasListening = isListening();
+
 	teardown();
 	setPhase({ kind: "off" });
+
+	// Only when there was a connection to end. A closed socket says nothing about why it closed, and the component waits out a linger before unmuting the player in case it was a reconnect; this is what says it was not one.
+	if (wasListening && gone) leaveStream(gone.origin, gone.token, deviceId());
 }
 
 // Idempotent, so every caller of the hook may state the target without tearing down another's connection.

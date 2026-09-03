@@ -236,8 +236,82 @@ export interface paths {
          *     A ticket is not single-use. Safari's media element probes a source with a `Range: bytes=0-1` request before fetching it for real, so one playback start is two requests and a single-use ticket cannot serve Safari at all. A ticket is good until it expires; `maxConcurrentStreams` bounds how many streams may be open at once.
          *
          *     A client SHOULD call this immediately before opening the stream rather than at page load, and MUST request a fresh ticket when reconnecting. Clients MUST NOT store a ticket, log it, or put it anywhere a bearer token would not go.
+         *
+         *     This is also where a device says who it is, because it is the only part of opening a stream a client controls: an `<audio>` element sends no body and no header of its own. The identity rides the ticket to the connection it opens, so `GET /stream/listeners` can group sockets into devices. A request with no body is an anonymous listener rather than a refusal.
          */
         post: operations["issueStreamTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stream/listeners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who is listening, and whether the player was silenced for them.
+         * @description The audience, counted two ways at once. **Connections** are what cost a thread and what `maxConcurrentStreams` bounds. **Devices** are what a person reads, and one device is routinely two connections — Safari probes a source with `Range: bytes=0-1` before fetching it for real — or three across a reconnect. A client MUST count devices anywhere it says how many people are listening.
+         *
+         *     This is a roster and not a set of targets. Audio cannot be sent to a device that is not already asking for it: starting playback in a browser needs a gesture on that browser, so there is nothing here for a client to press.
+         *
+         *     Nothing in it names a network address or a user agent. A device is called what it called itself.
+         */
+        get: operations["getStreamListeners"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stream/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Ask for the player to be audible alongside the listeners.
+         * @description While anybody is listening this component silences the player, so that choosing a device moves the sound rather than doubling it. This asks for both at once instead.
+         *
+         *     There is no route that *takes* the hold. A client says it wants both outputs; when they should be one is the component's to decide, and it decides again the moment everybody has stopped listening — the choice is scoped to the spell of listening it was made in, not to a connection, so a reconnect does not undo it and the next session does not inherit it.
+         *
+         *     Clients SHOULD warn before offering this. The stream runs a second or two behind the player, which is fine a room apart and an echo in the same room; `GET /stream/timeline` is how a client can say by how much rather than hedging.
+         *
+         *     Idempotent, and it says nothing about whether there was a hold to release: with nobody listening there is nothing to give back and nothing has gone wrong.
+         */
+        delete: operations["releaseOutputHold"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stream/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Say that a device stopped listening on purpose.
+         * @description A closed socket does not say why it closed. A handoff back to the player and a wireless dropout look identical from here, and they want opposite answers: the first should give the player its sound back at once, the second must not unmute into a gap the client is about to reconnect across. So a device that stopped deliberately says so, and everything else waits out the linger.
+         *
+         *     Best effort, and never required. A client that crashes, a tab that closes and a request that fails all end the same way a moment later. Ignored while the device still holds a connection, and it can only ever end its own linger — a `deviceId` nobody sent is not a way to unmute the player.
+         */
+        post: operations["leaveStream"];
         delete?: never;
         options?: never;
         head?: never;
@@ -365,6 +439,12 @@ export interface components {
              *     ]
              */
             streamFormats?: string[];
+            /**
+             * @description Whether this install silences the player while somebody is listening to the stream. `muteWhileStreaming` in `config.json`, and the player owner's decision rather than a client's: there is no route that changes it.
+             *
+             *     The capture is taken before the player's volume, so muting leaves the stream at full level. False makes the player one more speaker alongside every listener, which is fine a room apart from them and an echo in the same one — the stream runs a second or two behind.
+             */
+            canMuteWhileStreaming: boolean;
         };
         StreamTimeline: {
             /** @description Seconds of audio encoded since the component started. Not wall-clock time and not the player's position. It is the clock `marks[].at` is expressed in. */
@@ -396,6 +476,48 @@ export interface components {
              * @example 1
              */
             apiVersion: number;
+        };
+        DeviceIdentity: {
+            /**
+             * @description Opaque, and stable for as long as the device keeps its storage. It is what groups a device's connections into one listener, so a reconnect and Safari's `Range` probe do not read as three people.
+             *
+             *     Untrusted: it labels a row in somebody else's picker and nothing branches on it, and anyone already holding the token could send another device's. A client SHOULD generate one at random and keep it, and MUST NOT derive it from anything about the person using it.
+             * @example 3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8
+             */
+            deviceId?: string;
+            /**
+             * @description What to call this device in a picker. Empty, absent, unprintable or overlong all become no name at all — the label is refused, never the request, because a bad name must not cost somebody their audio.
+             * @example Android phone
+             */
+            name?: string;
+        };
+        StreamListeners: {
+            /** @description Connected devices, longest-listening first. A device inside its linger has gone and is not here. */
+            devices: {
+                /** @description As the device sent it, or `#<n>` for a connection that named nothing. Each anonymous connection is its own device: merging them would report two strangers as one person. */
+                deviceId: string;
+                /** @description Null when the device did not name itself, so a client can tell that from a name it chose. */
+                name: string | null;
+                /** @example opus */
+                format: string;
+                /**
+                 * @description Sockets this device holds. Routinely two — Safari probes a source with `Range: bytes=0-1` before fetching it for real.
+                 * @example 2
+                 */
+                connections: number;
+                /** @description Seconds since this device's oldest live connection opened. */
+                listeningFor: number;
+            }[];
+            /** @description Every socket, across every device. This is what `maxConnections` bounds, and it is not the number a person should be shown. */
+            connections: number;
+            /** @description `maxConcurrentStreams` from `config.json`. */
+            maxConnections: number;
+            /**
+             * @description Whether the player is silent *because somebody is listening*, as opposed to muted by hand. foobar2000 has no mute flag — mute is the volume at -100 dB — so a client reading beefweb sees a fader at the bottom either way, and this is what tells it which sentence to put next to it.
+             *
+             *     False the moment anybody unmutes the player from either end: the hold never argues, and stays released until nobody is listening.
+             */
+            playerMuted: boolean;
         };
         StreamTicket: {
             /** @description Opaque. Send it as the `ticket` query parameter and discard it once the connection is open. */
@@ -1077,7 +1199,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeviceIdentity"];
+            };
+        };
         responses: {
             /** @description A ticket, good until it expires. */
             200: {
@@ -1090,6 +1216,96 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             503: components["responses"]["StreamUnavailable"];
+        };
+    };
+    getStreamListeners: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The audience as it stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamListeners"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    releaseOutputHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Noted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description This install does not mute the player, so there is never a hold. `canMuteWhileStreaming` says so in advance. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    leaveStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceIdentity"];
+            };
+        };
+        responses: {
+            /** @description Noted, whether or not there was anything to end. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No `deviceId`, or a body that is not a JSON object. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The body was not `application/json`. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getStreamTimeline: {

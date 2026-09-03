@@ -32,6 +32,10 @@
 
 **`discovery.origin` is non-null exactly when `/api/status` answered as `foo_jean` at a supported version**, which makes it the proof that a port is safe to post to. Pairing needs that before it has a token, so it cannot be gated on `ready`.
 
+**`POST /stream/ticket` is where this device says who it is**, and the only place it can: an `<audio>` element sends no body and no header of its own, so the identity has to ride the one request the client controls. Both fields are untrusted text and the component treats them as such — a bad name is dropped and the ticket is still issued, because a label must never cost somebody their audio.
+
+**`DELETE /stream/hold` has no matching PUT, and that is deliberate on the component's side.** A client asks for the player to be audible alongside the listeners; *when* the two should be one is the component's decision, and it takes the hold back on its own once nobody is listening.
+
 **`GET /stream` takes no bearer token**, because an `<audio>` element cannot send a header. The ticket is the credential and it travels in the query string, which is why it expires in minutes; **the token must never go there**. All three 401 causes — no ticket, unknown, expired — answer identically on purpose, so a client cannot sort guesses into "wrong" and "too late", and cannot tell any of them from an undecodable codec either. A 503 is *two* conditions distinguished only by the `error` string: this install does not stream, or it is already serving as many listeners as it allows. The second must read as "busy" and retry.
 
 ## Types

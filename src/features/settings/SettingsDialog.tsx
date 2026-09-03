@@ -6,6 +6,7 @@ import { ArtistInformation } from "./ArtistInformation";
 import { Playback } from "./Playback";
 import styles from "./Settings.module.css";
 import { TagWriting } from "./TagWriting";
+import { ThisDevice } from "./ThisDevice";
 
 export const SETTINGS_KEYBOARD = "settings";
 
@@ -93,6 +94,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 				<div className={styles.body}>
 					<TagWriting />
 					<Playback />
+					<ThisDevice />
 					<ArtistInformation />
 				</div>
 			</div>

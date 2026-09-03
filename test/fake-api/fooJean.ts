@@ -1,4 +1,4 @@
-import { json, type RequestHeaders, type Responder } from "./http.ts";
+import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { createState, Track } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
@@ -51,6 +51,17 @@ export interface FooJeanOptions {
 	ticketError?: string;
 	// Every ticket answers 401 at `GET /stream`, as an expired one does.
 	expireTickets?: boolean;
+	// Whether this install silences the player while somebody is listening.
+	canMuteWhileStreaming?: boolean;
+	// Devices the component reports as listening, beside whatever this browser
+	// opens. Named as a client named itself, and never carrying an address.
+	otherListeners?: {
+		deviceId: string;
+		name: string | null;
+		format?: string;
+		connections?: number;
+		listeningFor?: number;
+	}[];
 
 	// ---- pairing ----
 	// Whether somebody has pressed "Pair a device" on the player.
@@ -88,6 +99,8 @@ const DEFAULTS: FooJeanFake = {
 	failTickets: null,
 	ticketError: "",
 	expireTickets: false,
+	canMuteWhileStreaming: true,
+	otherListeners: [],
 	pairingOpen: false,
 	failPairing: null,
 	pairingError: "",
@@ -175,6 +188,13 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Issued tickets. Not single-use: Safari sends a `Range: bytes=0-1` probe before
 // fetching for real, so one playback start is two requests.
+// The device an <audio> element belongs to, remembered from the request that
+// minted its ticket: the element itself sends no body and no header.
+const ticketDevices = new Map<
+	string,
+	{ deviceId: string; name: string | null }
+>();
+
 const tickets = new Set<string>();
 let ticketSeq = 0;
 // Bounded the way the component bounds it: keep the last few, evict the oldest.
@@ -354,7 +374,7 @@ export async function handleAgent({
 	// Answered without a credential, and identically for every path.
 	if (method === "OPTIONS") {
 		response.writeHead(204, {
-			"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+			"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 			"Access-Control-Allow-Headers": "Authorization, Content-Type",
 			"Access-Control-Max-Age": "600",
 		});
@@ -411,6 +431,22 @@ export async function handleAgent({
 			return json(response, { error: "unsupported format" }, 400);
 
 		state.streamFormats.push(format);
+
+		// One device however many sockets it holds: Safari opens two, and a
+		// reconnect is a third, and none of that is another person.
+		const device = ticketDevices.get(ticket);
+		if (device?.deviceId) {
+			const known = state.streamDevices.get(device.deviceId);
+			state.streamDevices.set(device.deviceId, {
+				deviceId: device.deviceId,
+				name: device.name,
+				format,
+				connections: (known?.connections ?? 0) + 1,
+				listeningFor: known?.listeningFor ?? 0,
+			});
+			state.announceHold();
+		}
+
 		return serveStream(response, fake, format);
 	}
 
@@ -427,10 +463,56 @@ export async function handleAgent({
 			maxAutoPlaylists: 0,
 			canCreateAutoPlaylists: false,
 			canStream: fake.canStream && fake.streamFormats.length > 0,
+			canMuteWhileStreaming: fake.canMuteWhileStreaming,
 			// Omitted rather than empty when the component does not stream, which is
 			// what an older one looks like.
 			...(fake.canStream ? { streamFormats: fake.streamFormats } : null),
 		});
+	}
+
+	if (path === "/api/stream/listeners") {
+		const here = [...state.streamDevices.values()];
+		const others = fake.otherListeners.map((device) => ({
+			deviceId: device.deviceId,
+			name: device.name,
+			format: device.format ?? "opus",
+			connections: device.connections ?? 1,
+			listeningFor: device.listeningFor ?? 0,
+		}));
+		const devices = [...here, ...others];
+
+		return json(response, {
+			devices,
+			connections: devices.reduce(
+				(total, device) => total + device.connections,
+				0,
+			),
+			maxConnections: 8,
+			playerMuted: state.playerHeld,
+		});
+	}
+
+	if (method === "DELETE" && path === "/api/stream/hold") {
+		if (!fake.canMuteWhileStreaming)
+			return json(response, { error: "this install does not mute" }, 503);
+
+		state.holdReleased = true;
+		state.announceHold();
+		return empty(response);
+	}
+
+	if (method === "POST" && path === "/api/stream/leave") {
+		const said = (body ?? {}) as { deviceId?: string };
+		if (!said.deviceId)
+			return json(response, { error: "deviceId is required" }, 400);
+
+		state.streamDevices.delete(said.deviceId);
+		// The choice to hear both outputs was scoped to the spell of listening it
+		// was made in, so it goes when the last listener does.
+		if (!state.playerHeld) state.holdReleased = false;
+		state.announceHold();
+
+		return empty(response);
 	}
 
 	if (method === "POST" && path === "/api/stream/ticket") {
@@ -448,7 +530,14 @@ export async function handleAgent({
 				fake.failTickets,
 			);
 
-		return json(response, { ticket: issue(), expiresIn: 120 });
+		const said = (body ?? {}) as { deviceId?: string; name?: string };
+		const ticket = issue();
+		ticketDevices.set(ticket, {
+			deviceId: said.deviceId ?? "",
+			name: said.name || null,
+		});
+
+		return json(response, { ticket, expiresIn: 120 });
 	}
 
 	if (path === "/api/stream/timeline") {

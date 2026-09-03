@@ -25,6 +25,10 @@ const held = <T>(key: string, fallback: T | (() => T)): T => {
 	return values.get(key) as T;
 };
 
+// The same value the hook sees, for a caller that is not a component. Reading `localStorage` directly instead would be a second parse of the same key and would miss a write this store has not flushed.
+export const readStoredState = <T>(key: string, fallback: T | (() => T)): T =>
+	held(key, fallback);
+
 export function useStoredState<T>(
 	key: string,
 	fallback: T | (() => T),

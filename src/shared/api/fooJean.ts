@@ -13,9 +13,12 @@ export type TagWritten = Schema["TagWritten"];
 export type StreamTicket = Schema["StreamTicket"];
 export type StreamTimeline = Schema["StreamTimeline"];
 export type StreamMark = StreamTimeline["marks"][number];
+export type StreamListeners = Schema["StreamListeners"];
+export type StreamListener = StreamListeners["devices"][number];
+export type DeviceIdentity = Schema["DeviceIdentity"];
 export type Paired = Schema["Paired"];
 
-// This may never move to `/api/clientconfig`: beefweb serves that namespace unauthenticated.
+// This may never move to `/api/clientconfig`: beefweb serves that namespace unauthenticated. `jean.listenVolume`, `jean.deviceId` and `jean.deviceName` are excluded from that move as well; the root CLAUDE.md holds the list and the reasons.
 export const TOKEN_KEY = "jean.fooJeanToken";
 
 // The component owns this clientconfig id and rewrites it on every start, so Jean must not store settings under it.
@@ -311,16 +314,19 @@ const isBusy = (message: string) =>
 
 // Asked for immediately before connecting and never stored.
 // Not single-use: Safari sends a `Range: bytes=0-1` probe before fetching for real, so one playback start is two requests.
+// The device names itself here because this is the only part of opening a stream a client controls: an `<audio>` element sends no body and no header of its own.
 export async function issueStreamTicket(
 	origin: string,
 	token: string,
+	device: DeviceIdentity,
 ): Promise<TicketResult> {
 	let response: Response;
 	try {
 		response = await withTimeout(PROBE_TIMEOUT_MS, (signal) =>
 			fetch(`${origin}/api/stream/ticket`, {
 				method: "POST",
-				headers: bearer(token),
+				headers: { ...bearer(token), "Content-Type": "application/json" },
+				body: JSON.stringify(device),
 				signal,
 			}),
 		);
@@ -367,6 +373,55 @@ export async function fetchStreamTimeline(
 		});
 	} catch {
 		return null;
+	}
+}
+
+// `null` rather than a failure shape, for the same reason as the timeline: without it the picker shows this device and the player and says nothing about anybody else.
+export async function fetchStreamListeners(
+	origin: string,
+	token: string,
+): Promise<StreamListeners | null> {
+	try {
+		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
+			const response = await fetch(`${origin}/api/stream/listeners`, {
+				headers: bearer(token),
+				signal,
+			});
+			if (!response.ok) return null;
+			return (await response.json()) as StreamListeners;
+		});
+	} catch {
+		return null;
+	}
+}
+
+// Says that this device stopped on purpose, which is what tells a handoff from a dropped connection: both close the socket, and only this one should give the player its sound back now rather than after the component's linger.
+// Best effort and never awaited for correctness — a tab that closes says nothing and is noticed a moment later anyway.
+export function leaveStream(origin: string, token: string, deviceId: string) {
+	void fetch(`${origin}/api/stream/leave`, {
+		method: "POST",
+		headers: { ...bearer(token), "Content-Type": "application/json" },
+		body: JSON.stringify({ deviceId }),
+	}).catch(() => {});
+}
+
+// Asks for the player to be audible alongside the listeners, which is what turns the handoff into two outputs at once.
+// There is no call that takes the hold back: when the two should be one is the component's to decide, and it decides again as soon as everybody stops listening.
+export async function releaseOutputHold(
+	origin: string,
+	token: string,
+): Promise<boolean> {
+	try {
+		const response = await withTimeout(PROBE_TIMEOUT_MS, (signal) =>
+			fetch(`${origin}/api/stream/hold`, {
+				method: "DELETE",
+				headers: bearer(token),
+				signal,
+			}),
+		);
+		return response.ok;
+	} catch {
+		return false;
 	}
 }
 

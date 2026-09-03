@@ -20,7 +20,7 @@ const listenButton = (page: Page) =>
 	});
 
 const thisDevice = (page: Page) =>
-	page.getByRole("radio", { name: /This device/ });
+	page.getByRole("button", { name: /This device/ });
 
 // The element is created by the store and never mounted in the tree.
 const currentTime = (page: Page) =>
@@ -51,8 +51,12 @@ const startListening = async (page: Page) => {
 	await thisDevice(page).click();
 };
 
-const picker = (page: Page) =>
-	page.getByRole("radiogroup", { name: "Playing on" });
+const picker = (page: Page) => page.getByRole("group", { name: "Playing on" });
+
+// By the player's name rather than by its note: the note is the whole point of
+// that row and says something different in every state it has.
+const thePlayer = (page: Page) =>
+	picker(page).getByRole("button", { name: /foobar2000/ });
 
 test.describe("listening on this device", () => {
 	test.use({ fooJean: {}, fooJeanToken: TOKEN });
@@ -99,7 +103,7 @@ test.describe("listening on this device", () => {
 			.poll(() => currentTime(page), { timeout: 15_000 })
 			.toBeGreaterThan(0);
 
-		await page.getByRole("radio", { name: /Where the player is/ }).click();
+		await thePlayer(page).click();
 
 		// Released, not merely paused: the connection has to go, or the component
 		// keeps counting this device against `maxConcurrentStreams`.
@@ -352,5 +356,142 @@ test.describe("what is audible, not what the player is doing", () => {
 		await expect(
 			statusBar(page).getByRole("button", { name: "Play", exact: true }),
 		).toBeVisible();
+	});
+});
+
+test.describe("who else is listening", () => {
+	test.use({
+		fooJean: {
+			otherListeners: [
+				{ deviceId: "phone-1", name: "Android phone", listeningFor: 240 },
+				{ deviceId: "phone-2", name: "Android phone", listeningFor: 30 },
+				{ deviceId: "laptop-1", name: null, listeningFor: 0 },
+			],
+		},
+		fooJeanToken: TOKEN,
+	});
+
+	test("names them, and tells two of a kind apart", async ({ page }) => {
+		await page.goto("/");
+		await listenButton(page).click();
+
+		const roster = page.getByRole("list", { name: "Also listening" });
+		await expect(roster.getByRole("listitem")).toHaveCount(3);
+
+		// A guessed label is the same word on two phones of the same make, and a
+		// list with two identical rows says nothing.
+		await expect(roster).toContainText("Android phone");
+		await expect(roster).toContainText("Android phone (2)");
+
+		// A client that named nothing still occupies a row: an empty one would
+		// read as a bug rather than as somebody who did not say.
+		await expect(roster).toContainText("Unknown device");
+		await expect(roster).toContainText("4 min");
+	});
+
+	test("the count is on the button before anything is opened", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await expect(listenButton(page)).toHaveText("3");
+	});
+
+	test("this device is a row of its own and never also one of the others", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await startListening(page);
+		await expect
+			.poll(() => currentTime(page), { timeout: 15_000 })
+			.toBeGreaterThan(0);
+
+		// The fake groups by the id sent with the ticket, exactly as the component
+		// does, so this asserts the id made the round trip.
+		const roster = page.getByRole("list", { name: "Also listening" });
+		await expect(roster.getByRole("listitem")).toHaveCount(3);
+	});
+
+	test("says why the player is silent, and names who it is silent for", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await listenButton(page).click();
+
+		// Nothing is listening from here, so the reason is somebody else's doing
+		// and the row has to say whose.
+		await expect(page.getByRole("group", { name: "Playing on" })).toContainText(
+			"Muted while 3 devices are listening",
+		);
+	});
+
+	test("asking for both outputs unmutes the player and does not stop anybody", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		await listenButton(page).click();
+
+		// Named for its target: the status bar's own mute button answers to
+		// "Unmute" as well whenever the player is silent.
+		await page.getByRole("button", { name: "Unmute foobar2000" }).click();
+
+		await expect(picker(page)).toContainText("Where the player is");
+		await expect(
+			page.getByRole("button", { name: "Unmute foobar2000" }),
+		).toHaveCount(0);
+
+		// It adds an output rather than taking one away: everybody who was
+		// listening still is.
+		const roster = page.getByRole("list", { name: "Also listening" });
+		await expect(roster.getByRole("listitem")).toHaveCount(3);
+
+		// The preflight is a request too: this is a cross-origin call carrying a
+		// bearer token, so every one of them is two entries.
+		const released = requestsTo(player, "/api/stream/hold").filter(
+			(entry) => entry.method === "DELETE",
+		);
+		expect(released.length).toBe(1);
+	});
+});
+
+test.describe("saying goodbye", () => {
+	test.use({ fooJean: {}, fooJeanToken: TOKEN });
+
+	test("a handoff back to the player says it meant to stop", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		await startListening(page);
+		await expect.poll(() => streamRequests(player).length).toBeGreaterThan(0);
+
+		await thePlayer(page).click();
+
+		// A closed socket says nothing about why it closed, and the component
+		// waits out a linger before unmuting in case it was a reconnect. This is
+		// what tells it this one was not.
+		await expect
+			.poll(
+				() =>
+					requestsTo(player, "/api/stream/leave").filter(
+						(entry) => entry.method === "POST",
+					).length,
+			)
+			.toBe(1);
+	});
+
+	test("a device that never listened says nothing", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		await listenButton(page).click();
+		await thePlayer(page).click();
+
+		expect(
+			requestsTo(player, "/api/stream/leave").filter(
+				(entry) => entry.method === "POST",
+			),
+		).toEqual([]);
 	});
 });

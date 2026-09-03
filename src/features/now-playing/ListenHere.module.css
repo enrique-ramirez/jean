@@ -4,6 +4,7 @@
 }
 
 .button {
+	position: relative;
 	display: grid;
 	place-items: center;
 	padding: 6px;
@@ -39,7 +40,9 @@
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	width: 264px;
+	/* Wide enough that "Muted while you listen here" and the Unmute beside it
+	   share one line, which is the longest thing a row has to hold. */
+	width: 288px;
 	padding: 8px;
 	border: 1px solid var(--border-strong);
 	border-radius: var(--radius-md);
@@ -71,6 +74,14 @@
 	color: var(--faint);
 }
 
+/* Holds the option and, where there is one, the Unmute beside it. The option
+   still takes the whole width it is not using, so the names stay in one column. */
+.row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
 .option {
 	display: flex;
 	align-items: flex-start;
@@ -88,6 +99,11 @@
 
 .option:hover {
 	background: var(--surface-sunken);
+}
+
+.row > .option {
+	flex: 1 1 auto;
+	min-width: 0;
 }
 
 /* A fixed column so the two names line up whether or not either is ticked --
@@ -123,6 +139,98 @@
    the words. `busy` is deliberately not among them: it is a queue, not a fault. */
 .optionNote[data-tone="failed"] {
 	color: var(--danger, var(--accent-text));
+}
+
+/* Secondary by construction: it adds an output rather than choosing one, so it
+   reads as a link beside the row rather than as a second thing to aim at. */
+.inlineAction {
+	flex: 0 0 auto;
+	align-self: center;
+	padding: 6px 8px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	font: inherit;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	color: var(--accent-text);
+}
+
+.inlineAction:hover {
+	background: var(--surface-sunken);
+}
+
+/* Indented under the row it belongs to, by exactly the width of the checkmark
+   column, so the fader starts where the name does. */
+.alongside {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 2px 0 6px;
+	padding: 0 8px 0 32px;
+}
+
+.drift {
+	margin: 0;
+	font-size: 0.6875rem;
+	line-height: 1.35;
+	color: var(--muted);
+}
+
+.roster {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Nothing here is pressable, so it carries no hover and no target padding: a row
+   that lights up under the cursor promises an action this list does not have. */
+.listener {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 5px 8px 5px 32px;
+	font-size: 0.8125rem;
+}
+
+.listenerName {
+	overflow: hidden;
+	min-width: 0;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text);
+}
+
+.listenerFor {
+	flex: 0 0 auto;
+	font-size: 0.6875rem;
+	font-variant-numeric: tabular-nums;
+	color: var(--faint);
+}
+
+/* Sits on the icon rather than beside it: the strip has no room for a second
+   glyph, and the number is only ever one digit short of maxConcurrentStreams. */
+.badge {
+	position: absolute;
+	top: 0;
+	right: 0;
+	display: grid;
+	place-items: center;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 3px;
+	border-radius: var(--radius-pill);
+	background: var(--surface-raised);
+	box-shadow: 0 0 0 1px var(--border-strong);
+	font-size: 0.5625rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	color: var(--muted);
 }
 
 .unblock {
@@ -179,5 +287,13 @@
 
 	.option {
 		padding: 10px 8px;
+	}
+
+	.inlineAction {
+		padding: 10px 8px;
+	}
+
+	.listener {
+		padding: 8px 8px 8px 32px;
 	}
 }

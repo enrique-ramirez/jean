@@ -90,4 +90,11 @@
 	.demo-chip .demo-chip-note {
 		display: none;
 	}
+
+	/* The now-playing screen is the whole window here and its transport reaches
+   * further up than the status bar it replaces. The gatefold has room, so this
+   * is only below the breakpoint. */
+	.demo-chip[data-hidden] {
+		display: none;
+	}
 }

@@ -171,6 +171,15 @@
 	grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
 	gap: 40px;
 	align-items: start;
+	/* **Half of what keeps a long title inside a narrow window**, the other half
+     being `align-self` on `.identity` below -- *measured*, each alone leaves
+     the leaf 502px wide in a 480px one.
+
+     This half: `.screen` is a grid, and a grid item's automatic minimum is its
+     *min-content* size, so the leaf refuses to be narrower than the widest
+     unbreakable thing in it. On the slim strip that is the title, set
+     `nowrap`. The block-axis twin of this is already on the compact rule. */
+	min-width: 0;
 }
 
 /* Sticky against `.screen`, which is now the scroller. A long lyric scrolls the
@@ -567,6 +576,19 @@
 	position: static;
 	flex: none;
 	padding-top: 12px;
+	/* The other half. `.identity` sets `align-self: start` for the *gatefold*,
+     where the grid's cross axis is vertical and start means top; here the
+     cross axis is horizontal and the same declaration means "shrink to your
+     content", which for a `nowrap` title is as wide as the title is long. A
+     child's `align-self` outranks its container's `align-items`, so the
+     `stretch` on `.spread` above never reached this.
+
+     Both halves are needed and neither is decoration: without them a
+     65-character title took the tab strip and the details grid out past the
+     right edge, where `overflow: hidden` cut them off rather than letting
+     anything scroll back to them. Covered at 480px, which is a width neither
+     test project runs at -- see `now-playing.spec.ts`. */
+	align-self: stretch;
 }
 
 .screen[data-compact="true"] .title {

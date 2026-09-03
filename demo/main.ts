@@ -50,6 +50,18 @@ const chip = () => {
 		localStorage.setItem(DISMISSED, "true");
 		element.remove();
 	});
+
+	// Out of the way on the now-playing screen, which on a phone is the whole
+	// window and puts its seek bar exactly where the chip sits. There is nothing
+	// for a label to sit beside there anyway.
+	const follow = () =>
+		element.toggleAttribute(
+			"data-hidden",
+			location.hash.startsWith("#/playing"),
+		);
+	window.addEventListener("hashchange", follow);
+	follow();
+
 	document.body.append(element);
 };
 

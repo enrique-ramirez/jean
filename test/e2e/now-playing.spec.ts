@@ -280,6 +280,64 @@ test.describe("the slim strip", () => {
 	});
 });
 
+// A title wider than the window it is in. The identity block shrank to its own
+// content, and on the slim strip that content is a title set `nowrap` -- so a
+// 65-character one was 522px wide *whatever the window was*, and took the tab
+// strip and the details grid out past the right edge with it, where `overflow:
+// hidden` cut them off rather than letting anything scroll back to them.
+//
+// **480, because neither project runs anywhere near it.** The phone is 412 and
+// the gatefold starts at 861; this is the band between them -- a desktop window
+// pulled narrow, a tablet, a browser side panel -- and it is the only place the
+// slim strip and a shrinking window are on screen at once. Measured: the
+// overflow starts below about 562px and neither project would ever have seen
+// it.
+test.describe("a title wider than the screen", () => {
+	test.use({
+		// Both projects run this at the same width on purpose: what is under test
+		// is the layout at a size neither of them otherwise reaches.
+		viewport: { width: 480, height: 900 },
+		retagged: {
+			"Los Calientes": {
+				"%title%":
+					"Good to Know That If I Ever Need Attention All I Have to Do Is Die",
+			},
+		},
+	});
+
+	test("is truncated, and takes nothing else off the screen with it", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		await openNowPlaying(page);
+		await tab(page, "Details").click();
+
+		const screen = nowPlayingScreen(page);
+		const title = screen.getByRole("heading", { level: 1 });
+
+		// The title really is longer than its box, so what follows is a claim
+		// about a truncation that happened rather than about a short string.
+		await expect
+			.poll(() =>
+				title.evaluate(
+					(element: HTMLElement) => element.scrollWidth - element.clientWidth,
+				),
+			)
+			.toBeGreaterThan(0);
+
+		const box = await screen.boundingBox();
+		const edge = (box?.x ?? 0) + (box?.width ?? 0);
+		for (const inside of [title, tab(page, "Details")]) {
+			const at = await inside.boundingBox();
+			expect(
+				(at?.x ?? 0) + (at?.width ?? 0),
+				`${await inside.textContent()} runs past the right edge`,
+			).toBeLessThanOrEqual(edge + 1);
+		}
+	});
+});
+
 // Lyrics with everything else taken away -- including the app's own chrome,
 // which is why this layer is `position: fixed` and every other one is not.
 test.describe("full-screen lyrics", () => {

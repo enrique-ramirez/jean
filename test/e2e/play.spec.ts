@@ -8,23 +8,17 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// The first three tracks of the Library fixture, which is Jessico in playlist
-// order. Named here rather than inline so a recapture that reorders the album
-// breaks in one place.
+// The Library fixture is Jessico in playlist order.
 const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 
-// Both layouts. Album mode renders its rows through AlbumGroup rather than
-// TrackList directly -- the same file the per-row play handler was removed from
-// when tap-to-play moved onto the container -- so the one path these gestures
-// were changed for is the one they were never tested on.
+// Album mode renders its rows through AlbumGroup rather than TrackList, so
+// these gestures take a different path in each layout.
 ["compact", "album"].forEach((layout) => {
 	test.describe(`playing a track (${layout} layout)`, () => {
 		test.use({ settings: { "jean.layout": layout } });
 
 		test.beforeEach(async ({ page }) => {
 			await page.goto("/#/p7");
-			// Opening with no hash lands on whichever playlist the player is on, so
-			// this also asserts that isCurrent is what decides.
 			await expect(
 				page.getByRole("heading", { level: 1, name: "Library" }),
 			).toBeVisible();
@@ -32,8 +26,6 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 		});
 
 		test("double-clicking a row plays that track", async ({ page, player }) => {
-			// Skipped rather than rewritten for touch: there is no touch equivalent
-			// yet. See the fixme at the bottom of this file.
 			test.skip(
 				test.info().project.name === "mobile",
 				"double-click is a pointer gesture",
@@ -44,16 +36,14 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 
 			await row.dblclick();
 
-			// What went over the wire. Index is identity in this API, so the assertion
-			// is on the exact position -- an off-by-one here plays the wrong song, and
-			// looks fine on screen because the row would still light up.
+			// Index is identity in this API, so an off-by-one plays the wrong song
+			// and still looks right on screen.
 			await expect
 				.poll(() => playedFrom(player))
 				.toEqual({ plref: "p7", index: THIRD_TRACK.index });
 
-			// And what came back. Nothing below is written by the click: the app
-			// learns it played from the SSE snapshot the fake pushes afterwards, so
-			// this is the whole round trip rather than an optimistic update.
+			// Nothing below is written by the click: the app learns it played from
+			// the SSE snapshot the fake pushes afterwards.
 			await expect(statusBar(page)).toContainText(THIRD_TRACK.title);
 			await expect(statusBar(page)).toContainText(THIRD_TRACK.artist);
 			await expect(
@@ -63,9 +53,8 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 				"data-active",
 				"true",
 			);
-			// The equalizer replaces the track number in the active row, and is the
-			// only thing on the page labelled this way -- so exactly one row carries
-			// it, and it is that one.
+			// The equalizer replaces the track number in the active row and is the
+			// only thing on the page labelled this way.
 			await expect(page.getByLabel("Now playing")).toHaveCount(1);
 			await expect(
 				trackRow(page, THIRD_TRACK.index).getByLabel("Now playing"),
@@ -78,9 +67,9 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 				"no keyboard on the phone",
 			);
 
-			// Arrow keys move a cursor held in state rather than DOM focus, because the
-			// virtualiser unmounts the focused row the moment it scrolls away. It
-			// starts on the first row rather than nowhere, so one press is row 1.
+			// Arrow keys move a cursor held in state rather than DOM focus: the
+			// virtualiser unmounts the focused row the moment it scrolls away. The
+			// cursor starts on the first row, so one press is row 1.
 			await expect(trackRow(page, 0)).toHaveAttribute("data-cursor", "true");
 			await page.keyboard.press("ArrowDown");
 			await expect(trackRow(page, 1)).toHaveAttribute("data-cursor", "true");
@@ -97,8 +86,6 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 			page,
 			player,
 		}) => {
-			// The one play path that exists on both surfaces, so this is also the
-			// mobile coverage for playback reaching the status bar.
 			await page
 				.getByRole("main")
 				.getByRole("button", { name: "Play", exact: true })
@@ -160,9 +147,8 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 			page,
 			player,
 		}) => {
-			// The whole gesture, echo included: a hold ends in a synthetic click that
-			// useLongPress swallows in its capture phase, and if it ever stops doing
-			// that every long press also starts a track.
+			// A hold ends in a synthetic click, which useLongPress swallows in its
+			// capture phase.
 			await pressAndHold(page, trackRow(page, THIRD_TRACK.index));
 
 			await expect(page.getByRole("dialog")).toBeVisible();
@@ -175,9 +161,8 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 		page,
 		player,
 	}) => {
-		// The other half of the same gate. Tap-to-play is decided by pointerType, so
-		// a regression there does not break the phone -- it silently turns every
-		// desktop click into playback, which nothing else here would catch.
+		// Tap-to-play is decided by pointerType, so a regression there turns every
+		// desktop click into playback rather than breaking the phone.
 		test.skip(test.info().project.name === "mobile", "this is the mouse path");
 
 		await page.goto("/#/p7");

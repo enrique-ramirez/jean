@@ -4,9 +4,7 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
 import styles from "./SeekBar.module.css";
 
-// The interpolated position, ticking. Deliberately a leaf's own state, never
-// lifted: this re-renders every animation frame, and a shared store would
-// repaint the virtualised track list sixty times a second.
+/** The interpolated position, ticking. Never lift this into a shared store: it re-renders every animation frame. */
 export function useElapsed(snapshot: PlayerSnapshot | null | undefined) {
 	const [elapsed, setElapsed] = useState(() => audibleAt(snapshot));
 
@@ -33,8 +31,7 @@ export function SeekBar({
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
 	const canSeek = duration > 0;
 
-	// Seeking commits on release rather than on drag: scrubbing would otherwise
-	// fire a request per pointer move and the player would stutter chasing them.
+	// Seeking commits on release rather than on drag, or scrubbing fires a request per pointer move and the player stutters chasing them.
 	const { ref, fraction, isDragging, handlers } = useDragFraction({
 		onCommit: (next) => onSeek(next * duration),
 		disabled: !canSeek,

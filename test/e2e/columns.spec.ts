@@ -9,8 +9,7 @@ import {
 } from "./fixtures.ts";
 
 // Every optional column is fetched whether or not it is shown, so toggling one
-// is a layout change and nothing else. That is the claim this file is here to
-// hold: instant, no round trip, and the grid still lines up afterwards.
+// is a layout change and costs no round trip.
 
 const LEADING = 3; // the number, the artwork, the names cell
 
@@ -28,10 +27,9 @@ const toggle = async (page: Page, name: string) => {
 const cellCount = (page: Page) =>
 	trackRow(page, 0).locator(":scope > *").count();
 
-// The invariant behind the whole file, and the shape of the bug it guards: the
-// grid template is built from the same list the cells are rendered from, so a
-// template with one track too many leaves an empty column and shifts every cell
-// after it. Neither count is interesting alone; only that they agree.
+// The grid template is built from the same list the cells are rendered from, so
+// a template with one track too many leaves an empty column and shifts every
+// cell after it. Neither count is interesting alone; only that they agree.
 const templateMatchesCells = (page: Page) =>
 	trackRow(page, 0).evaluate((row: HTMLElement) => {
 		const tracks = getComputedStyle(row)
@@ -44,8 +42,6 @@ const itemFetches = (player: FakePlayer) =>
 	requestsTo(player, "/items/").filter((entry) => entry.method === "GET")
 		.length;
 
-// Desktop only: a phone caps the count at two, so turning on a fourth column
-// there correctly changes nothing on screen. The cap has its own block below.
 test.describe("showing and hiding columns", () => {
 	test.skip(
 		({ isMobile }) => isMobile,
@@ -67,8 +63,6 @@ test.describe("showing and hiding columns", () => {
 		// than being an empty column that happens to be the right width.
 		await expect(trackRow(page, 0)).toContainText("2001");
 
-		// The reason every field is fetched regardless of what is displayed: a
-		// toggle that cost a round trip would make the menu feel broken.
 		await page.waitForTimeout(300);
 		expect(itemFetches(player)).toBe(fetches);
 	});
@@ -96,9 +90,8 @@ test.describe("showing and hiding columns", () => {
 			expect(measured.tracks, `after turning on ${name}`).toBe(measured.cells);
 		});
 
-		// And with the artwork track removed, which is the case that first got this
-		// wrong: album rows sit beside a cover and carry no artwork cell, so a
-		// template built for one leaves a hole.
+		// And with the artwork track removed: album rows sit beside a cover and
+		// carry no artwork cell, so a template built for one leaves a hole.
 		await toggle(page, "Artwork");
 		const bare = await templateMatchesCells(page);
 		expect(bare.tracks).toBe(bare.cells);
@@ -120,8 +113,8 @@ test.describe("the artwork toggle", () => {
 });
 
 test.describe("a field the player cannot resolve", () => {
-	// No playback-statistics component, so %lastfm_play_count% comes back '?' on
-	// every row exactly as it would on a real install.
+	// With no playback-statistics component installed, %lastfm_play_count% comes
+	// back '?' on every row.
 	test.use({ withoutFields: ["%lastfm_play_count%"] });
 
 	test("it is offered as unavailable rather than quietly dropped", async ({
@@ -130,8 +123,6 @@ test.describe("a field the player cannot resolve", () => {
 		await openLibrary(page);
 		await menu(page).click();
 
-		// Named, so someone looking for the column learns it needs a component --
-		// rather than finding an entry missing and wondering whether Jean forgot.
 		const plays = option(page, "Plays (not available)");
 		await expect(plays).toBeVisible();
 		await expect(plays).toBeDisabled();
@@ -142,12 +133,9 @@ test.describe("a field the player cannot resolve", () => {
 	}) => {
 		await openLibrary(page);
 
-		// 'playCount' is in the stored defaults, so this is the case where the
-		// setting and the player disagree: the setting says show it, the player
-		// cannot supply it, and the row must not gain an empty column for it.
-		//
-		// Rating is the counter-example: nothing carries one here either and it is
-		// drawn anyway. See rating.spec.
+		// 'playCount' is in the stored defaults, so the setting says show it and
+		// the player cannot supply it. Rating is the counter-example: nothing
+		// carries one here either and it is drawn anyway. See rating.spec.
 		const measured = await templateMatchesCells(page);
 		expect(measured.tracks).toBe(measured.cells);
 		expect(measured.cells).toBe(LEADING + 2); // Time and Rating
@@ -172,9 +160,9 @@ test.describe("on a phone", () => {
 		);
 		await page.keyboard.press("Escape");
 
-		// Every fixed column comes straight out of the title, and once the fixed
-		// widths exceed the viewport the flexible names cell collapses to nothing.
-		// So the compact layout caps the count rather than trusting the grid.
+		// Once the fixed column widths exceed the viewport the flexible names cell
+		// collapses to nothing, so the compact layout caps the count rather than
+		// trusting the grid.
 		const measured = await templateMatchesCells(page);
 		expect(measured.cells - LEADING).toBeLessThanOrEqual(2);
 		expect(measured.tracks).toBe(measured.cells);
@@ -200,7 +188,6 @@ test.describe("the settings follow you", () => {
 		await expect(trackRow(page, 0)).toContainText("2001");
 		await expect(trackRow(page, 0).locator("img")).toHaveCount(0);
 
-		// The menu agrees with the rows, rather than each remembering separately.
 		await menu(page).click();
 		await expect(option(page, "Year")).toHaveAttribute("aria-checked", "true");
 		await expect(option(page, "Artwork")).toHaveAttribute(

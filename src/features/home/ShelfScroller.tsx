@@ -5,17 +5,8 @@ import type { CoveredAlbum } from "./albums";
 import styles from "./ShelfRow.module.css";
 import type { FilledShelf } from "./shelves";
 
-// A shelf is a horizontal scroller, not a carousel. The distinction is the
-// point: a carousel shows one thing and hides the rest behind an animation,
-// which is lovely for eight albums and useless for a library. A scroller shows
-// six at a time and is a native scroll -- so it flicks on a phone,
-// shift-wheels on a desktop, and costs nothing.
-//
-// Split out from `ShelfRow` when the tabbed row arrived: the two differ in what
-// sits above the covers and in nothing below them, and a second copy of the
-// arrow measuring is a second place for it to go wrong. Its stylesheet stays
-// `ShelfRow.module.css`, because `.shelf:hover .arrow` reaches across the two --
-// the arrows appear on the section, which is the parent's element.
+// A native horizontal scroller rather than a carousel, so it flicks on a phone and shift-wheels on a desktop for nothing.
+// Its stylesheet is `ShelfRow.module.css` because `.shelf:hover .arrow` reaches across the two: the arrows appear on the parent's section element.
 export function ShelfScroller({
 	shelf,
 	onPlayAlbum,
@@ -43,15 +34,13 @@ export function ShelfScroller({
 		return () => window.removeEventListener("resize", measure);
 	}, [measure, shelf.albums]);
 
-	// Switching tabs is a different row of covers in the same box, so the old
-	// scroll offset would leave the new shelf opening halfway along itself.
+	// Switching tabs is a different row of covers in the same box, so the old offset would open the new shelf halfway along itself.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the shelf changing is what resets it
 	useEffect(() => {
 		scrollerRef.current?.scrollTo({ left: 0 });
 	}, [shelf.id]);
 
-	// A page is whatever is currently visible, less a little overlap so nothing
-	// is skipped over between presses.
+	// A page is whatever is visible, less a little overlap so nothing is skipped between presses.
 	const page = (direction: number) => {
 		const element = scrollerRef.current;
 		if (!element) return;
@@ -61,9 +50,7 @@ export function ShelfScroller({
 		});
 	};
 
-	// The rail exists so the arrows have somewhere to sit that the scroller's own
-	// overflow cannot clip, and so they can be centred on the artwork without
-	// anyone measuring the heading above it.
+	// The rail exists so the arrows sit somewhere the scroller's own overflow cannot clip them.
 	return (
 		<div className={styles.rail}>
 			<button

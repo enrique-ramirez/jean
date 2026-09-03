@@ -1,16 +1,8 @@
-// The element that actually scrolls a given node, or null. Jean has surfaces
-// whose scroller is a different box on each layout, and threading a ref down
-// instead would make every component in between know which shape it is in.
-//
-// `offsetParent` answers a different question -- the nearest *positioned*
-// ancestor -- which is what made following the active lyric line work on a phone
-// and do nothing at all on a desktop.
+// The element that actually scrolls a given node, or null.
+// offsetParent answers a different question, the nearest positioned ancestor, and is not a substitute.
 export function scrollParentOf(
 	node: Element | null,
-	// Stop here. A surface drawn *over* another one -- the now-playing layer over
-	// the track list -- must never answer with the scroller underneath it: the
-	// walk would happily return the list's own scroll container, which is off
-	// screen and belongs to something else entirely.
+	// Stop here: a surface drawn over another one must not answer with the scroller underneath it, which is off screen and belongs to something else.
 	boundary?: Element | null,
 ): HTMLElement | null {
 	let element = node?.parentElement ?? null;

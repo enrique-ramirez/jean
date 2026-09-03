@@ -5,16 +5,8 @@ import { useActivePosition } from "./useActivePosition";
 import type { Library } from "./useLibrary";
 import { usePlaySet } from "./usePlaySet";
 
-// A library view that plays into the scratch playlist: what starts a track, and
-// which row of the view the player is on.
-//
-// These are three questions with one answer between them. `holdsView` decides
-// whether the scratch currently *is* this set, `useActivePosition` needs that to
-// read the player's index straight off it rather than sweeping every ref, and
-// `play` is the thing that makes it true. All three are keyed on the same
-// `(kind, label, count)`, so a caller wiring them up itself is a caller that can
-// pass three different answers to one question and get a view that marks the
-// wrong row.
+// A library view that plays into the scratch playlist: what starts a track, and which row of the view the player is on.
+// `holdsView`, `useActivePosition` and `play` must be keyed on the same `(kind, label, count)`, so they are wired up here rather than by each caller.
 export function useViewPlayback({
 	library,
 	playlists,
@@ -24,8 +16,7 @@ export function useViewPlayback({
 }: {
 	library: Library;
 	playlists: PlaylistInfo[];
-	// What the scratch playlist is named for, and what tells one filled set from
-	// another: a shelf, a search, all music.
+	// What the scratch playlist is named for, and what tells one filled set from another: a shelf, a search, all music.
 	kind: string;
 	label: string | null;
 	indices: Refs;

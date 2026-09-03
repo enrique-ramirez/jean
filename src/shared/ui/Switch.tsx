@@ -1,7 +1,6 @@
 import styles from "./Switch.module.css";
 
-// For a setting that takes effect the moment it moves. A checkbox is for a
-// selection something else submits; see `shared/ui/CLAUDE.md`.
+// For a setting that takes effect the moment it moves; a checkbox is for a selection something else submits.
 export function Switch({
 	checked,
 	label,
@@ -31,7 +30,6 @@ export function Switch({
 				) : null}
 			</span>
 
-			{/* The button carries the name and the state; these are decoration. */}
 			<span className={styles.track} aria-hidden="true">
 				<span className={styles.thumb} />
 			</span>

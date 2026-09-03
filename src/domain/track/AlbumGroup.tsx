@@ -7,14 +7,11 @@ import type { AlbumRun } from "./grouping";
 import type { TrackRenderProps } from "./listTypes";
 import { TrackRow } from "./TrackRow";
 
-// One fixed cover size per breakpoint. Scaling it to the run length made the
-// column jitter between groups, which reads worse than the empty space beside a
-// short run does.
+// One fixed cover size per breakpoint: scaling it to the run length makes the column jitter between groups.
 export const ALBUM_COVER = 160;
 export const ALBUM_COVER_COMPACT = 72;
 
-// One contiguous album run. Beside the cover on desktop; beneath a compact
-// header on a phone, where a side-by-side layout costs too much width.
+// One contiguous album run: beside the cover on desktop, beneath a compact header on a narrow viewport.
 export function AlbumGroup({
 	group,
 	rows,
@@ -36,16 +33,12 @@ export function AlbumGroup({
 	const itemIndexOf = (position: number) =>
 		indices ? indices[position] : position;
 
-	// A single-disc album is one unlabelled run, so the ordinary case renders
-	// through the same loop rather than through a branch around it.
+	// A single-disc album is one unlabelled run, so the ordinary case renders through the same loop rather than through a branch around it.
 	const runs = group.discs ?? [
 		{ number: null, start: group.start, count: group.count },
 	];
 
-	// The caption to the left already names the album artist, so a row whose artist
-	// is that name plus a guest only has to say the guest, on the title's line. A
-	// row whose artist is someone else is a compilation, where the artist is the
-	// fact about the row rather than a footnote, and keeps its own line.
+	// The caption already names the album artist, so a row whose artist is that name plus a guest only has to say the guest. A row whose artist is someone else is a compilation and keeps its own line.
 	const track = (index: number) => {
 		const artist = value(rows[index], FIELD.artist);
 		const guest = featuring(artist, group.albumArtist);
@@ -95,12 +88,7 @@ export function AlbumGroup({
 			<div className={styles.tracks}>
 				{runs.map((run) => (
 					<Fragment key={run.start}>
-						{/* Above disc one as well as the rest. A label that only appears
-                once you are already past the boundary tells you where you are
-                too late to have used it, and the first run is the one that
-                establishes what these headings mean. The rule is what makes it
-                a break rather than a row: 'Disc 2' on its own line looks like a
-                track called Disc 2. */}
+						{/* Above disc one as well as the rest, since the first run is what establishes what these headings mean. */}
 						{run.number === null ? null : (
 							<h3 className={styles.disc}>Disc {run.number}</h3>
 						)}

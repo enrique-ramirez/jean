@@ -1,23 +1,15 @@
-// Pulls fixture data off a real player, so the fake serves bytes foobar2000
-// actually produced rather than what someone imagined it produces.
+// Pulls fixture data off a real player. Everything it writes is committed, so
+// the tests themselves never touch a real player.
 //
-//   node test/fake-api/capture.ts --url http://home.local:8880
+// With no arguments it writes the test fixture, five albums chosen for the
+// branches the UI has:
 //
-// Re-run it when a fixture needs a field the current capture does not have.
-// Everything it writes is committed, so the tests themselves never touch a
-// real player.
+//   node test/fake-api/capture.ts --url http://player.local:8880
 //
-// **It captures two different libraries.** With no arguments it writes the test
-// fixture: five albums chosen for the branches the UI has, which every spec is
-// written against. Given a list and somewhere to put it, it writes the demo's
-// instead -- a hundred and fifty albums chosen to be recognised:
+// Given a list and somewhere to put it, it writes the demo's larger library
+// instead:
 //
 //   node test/fake-api/capture.ts --albums demo/albums.ts --out demo
-//
-// One tool, because the hard parts -- keying fields by expression rather than
-// by position, and pulling the cover through the artwork endpoint -- are the
-// same either way, and a second copy of them would be a second thing to keep
-// true about a real player.
 
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -30,9 +22,6 @@ import type {
 	PlaylistItemsResponse,
 } from "../../src/shared/api/types.ts";
 
-// One captured track: its position in the playlist, and every expression this
-// script asked for keyed by name rather than positionally -- which is what
-// lets the fake answer any column set the app asks for later.
 interface CapturedTrack {
 	index: number;
 	fields: Record<string, string>;
@@ -40,9 +29,8 @@ interface CapturedTrack {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-// Wider than TRACK_EXPRESSIONS on purpose: a fixture is expensive to recapture
-// and cheap to store, and the views still to be built -- now playing, file
-// metadata, lyrics -- will want fields the track list has no use for.
+// Wider than TRACK_EXPRESSIONS: a fixture is expensive to recapture and cheap to
+// store.
 const EXPRESSIONS = [
 	"%tracknumber%",
 	"%title%",
@@ -67,8 +55,8 @@ const EXPRESSIONS = [
 	"$len($meta(unsynced lyrics))",
 ];
 
-// Chosen to cover the cases the UI actually has branches for, not to be a
-// representative sample of a library:
+// The fixture albums cover the branches the UI has rather than a representative
+// library:
 //
 //   Jessico            accented artist, for fold(); hot throughout
 //   Deja Entendu       the heat range -- one 0-play track among 180-play ones
@@ -79,16 +67,14 @@ interface Wanted {
 	albumArtist: string;
 	album: string;
 	slug?: string;
-	// Whether to capture the lyric *text* as well as the length probe in
-	// EXPRESSIONS. Opt-in per album, and asked for in a second pass: adding the
-	// expression to EXPRESSIONS would put a lyric on every track of every
-	// capture, including the test fixture -- whose specs supply their own with
-	// `retagged` precisely so the fixture carries none.
+	// Capture the lyric text as well as the length probe in EXPRESSIONS. Opt-in
+	// per album, in a second pass, so the fixture carries no lyrics of its own --
+	// its specs supply them with `retagged`.
 	lyrics?: true;
 }
 
-// The tag the app reads. `$len(...)` of it is in EXPRESSIONS, for capability
-// detection; this is the words.
+// `$len(...)` of this tag is in EXPRESSIONS for capability detection; this is
+// the words.
 const LYRIC = "$meta(unsynced lyrics)";
 
 const FIXTURE_ALBUMS: Wanted[] = [
@@ -113,19 +99,16 @@ const args = new Map(
 const base =
 	args.get("--url") ?? process.env.BEEFWEB_URL ?? "http://localhost:8880";
 
-// Where library.json and artwork/ land. Defaults to beside this file, which is
-// the test fixture.
+// Where library.json and artwork/ land. Defaults to beside this file.
 const out = args.has("--out") ? resolve(args.get("--out") as string) : null;
 
-// A module exporting `ALBUMS`, so the list can carry comments explaining why
-// each record is in it -- which a JSON file cannot.
+// A module exporting `ALBUMS`, so the list can carry comments a JSON file could
+// not.
 const listed = args.get("--albums");
 
-// The covers a real player serves are as big as whatever is embedded in the
-// file, which for 150 albums is tens of megabytes of repository. `sips` ships
-// with macOS and is the only thing here that is not portable, so a machine
-// without it gets full-size covers and is *told* rather than left to find out
-// when it commits them.
+// The covers a real player serves are as large as whatever is embedded in the
+// file, which for 150 albums is tens of megabytes of repository. `sips` is
+// macOS-only, so a machine without it gets full-size covers and is told so.
 const COVER_PIXELS = 400;
 const sips = spawnSync("sips", ["--help"]).status === 0;
 
@@ -135,9 +118,8 @@ const shrink = (file: string) => {
 	return true;
 };
 
-// Unique, stable, and readable in a directory listing. Both halves of the name
-// matter: `MTV Unplugged` is Korn's and Nirvana's, and a slug taken from the
-// album alone would have one album overwrite the other's cover.
+// Both halves of the name matter: `MTV Unplugged` is Korn's and Nirvana's, and a
+// slug taken from the album alone would overwrite the other's cover.
 const slugOf = (wanted: Wanted, taken: Set<string>) => {
 	if (wanted.slug) return wanted.slug;
 	const kebab = (text: string) =>
@@ -179,8 +161,7 @@ async function findLibrary() {
 	const { playlists } = (await (await get("/api/playlists")).json()) as {
 		playlists: PlaylistInfo[];
 	};
-	// The biggest playlist is the library on any install that has one, and this
-	// never needs to be right on someone else's machine -- it runs once, here.
+	// The biggest playlist is the library on any install that has one.
 	const library = [...playlists].sort((a, b) => b.itemCount - a.itemCount)[0];
 	if (!library) throw new Error("no playlists on this player");
 	return library;
@@ -203,13 +184,10 @@ async function main() {
 		)
 	).json()) as { playlistItems: PlaylistItemsResponse };
 
-	// Objects keyed by expression, not the positional arrays the API returns.
-	// The fake has to answer whatever column set the app asks for -- two columns
-	// for the status bar, thirteen for the track list -- and a lookup by
-	// expression is the only shape that does that. It also preserves the
-	// difference the whole capability-detection mechanism rests on: an
-	// expression that is absent from the object resolves to '?', exactly as an
-	// unsupported field does on a real player.
+	// Keyed by expression, not the positional arrays the API returns, so the fake
+	// can answer whatever column set the app asks for. It also preserves what
+	// capability detection rests on: an expression absent from the object
+	// resolves to '?', exactly as an unsupported field does on a real player.
 	const toTrack = (
 		item: { columns: string[] },
 		index: number,
@@ -222,7 +200,7 @@ async function main() {
 
 	const all = playlistItems.items.map(toTrack);
 
-	// Second pass, one column wide, and only when something asked for it.
+	// Second pass, one column wide, and only when an album asked for lyrics.
 	const wanted = await albumsToCapture();
 	const lyrics = new Map<number, string>();
 	if (wanted.some((album) => album.lyrics)) {
@@ -249,10 +227,9 @@ async function main() {
 				track.fields["%album artist%"] === want.albumArtist &&
 				track.fields["%album%"] === want.album,
 		);
-		// The fixture's five must be there -- a spec depends on each. A named list
-		// is somebody's typo away from one missing album, and losing the other
-		// hundred and fifty to it is the wrong trade: collect them and say so at
-		// the end.
+		// The fixture's five must be there -- a spec depends on each. A supplied
+		// list is one typo away from a missing album, so those are collected and
+		// reported at the end rather than losing the whole capture.
 		if (tracks.length === 0) {
 			const line = `${want.albumArtist} -- ${want.album}`;
 			if (!listed) throw new Error(`not found: ${line}`);
@@ -298,9 +275,9 @@ async function main() {
 		`${JSON.stringify({ capturedFrom: `${info.player.info.title} ${info.player.info.version} / beefweb ${info.player.info.pluginVersion}`, expressions: EXPRESSIONS, albums }, null, 2)}\n`,
 	);
 
-	// The player state itself, so the fake's idle state is a real one rather
-	// than a guess at which fields beefweb sends. It belongs to the fake rather
-	// than to a library, so a demo capture leaves it alone.
+	// The player state, so the fake's idle state is a real one rather than a guess
+	// at which fields beefweb sends. It belongs to the fake rather than to a
+	// library, so a demo capture leaves it alone.
 	if (!listed) {
 		const { player } = (await (
 			await get(

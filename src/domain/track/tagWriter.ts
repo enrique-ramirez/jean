@@ -7,14 +7,11 @@ import {
 } from "@/shared/api/fooJean";
 import type { TrackIdentity } from "@/shared/api/types";
 
-// Where a tag write goes: nowhere, or `foo_jean`. Nothing outside this file may
-// ask which; see the root CLAUDE.md.
-
+// Where a tag write goes: nowhere, or `foo_jean`. Nothing outside this file may ask which.
 export interface TagWriter {
 	kind: "none" | "agent";
 	canWrite: boolean;
-	// Compared case-insensitively, so callers ask `allows()` rather than reading
-	// this directly.
+	// Compared case-insensitively, so callers ask `allows()` rather than reading this directly.
 	allowedFields: string[];
 	allows: (field: string) => boolean;
 	write: (
@@ -23,8 +20,7 @@ export interface TagWriter {
 	) => Promise<WriteResult>;
 }
 
-// `write` answers rather than throwing: a caller that had to guard would be a
-// caller that knows which writer it holds.
+// `write` answers rather than throwing: a caller that had to guard would be a caller that knows which writer it holds.
 export const NO_WRITER: TagWriter = {
 	kind: "none",
 	canWrite: false,
@@ -66,8 +62,7 @@ const agentWriter = (
 	};
 };
 
-// How a field leaves the writer, whether refused by the component or switched
-// off in settings. The rest of the app cannot tell the two apart.
+// How a field leaves the writer, whether refused by the component or switched off in settings. The rest of the app cannot tell the two apart.
 export const withoutField = (writer: TagWriter, field: string): TagWriter => {
 	const remaining = writer.allowedFields.filter(
 		(name) => name.toLowerCase() !== field.toLowerCase(),
@@ -84,10 +79,6 @@ export const withoutField = (writer: TagWriter, field: string): TagWriter => {
 	};
 };
 
-// The states are `FooJeanState`, in `shared/api/fooJean.ts`: they describe the
-// component rather than this seam, and listening asks the same question of the
-// same probe. Aliased rather than re-declared so the settings pane keeps naming
-// the thing it draws.
 export type TagWriterState = FooJeanState;
 
 export interface TagWriterResolution {
@@ -95,9 +86,7 @@ export interface TagWriterResolution {
 	writer: TagWriter;
 }
 
-// The discovery is done -- once, in `shared/api` -- and this only decides what
-// falls out of it for writing. A `ready` component with an empty allowlist is
-// indistinguishable from no component at all, which is correct.
+// A `ready` component with an empty allowlist is indistinguishable from no component at all, which is correct.
 export function tagWriterOf({
 	state,
 	origin,

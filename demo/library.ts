@@ -1,21 +1,12 @@
 import type { FakePlaylist, Track } from "../test/fake-api/state.ts";
 
-// The library the demo browses: a hundred and fifty-two real albums, captured
-// off a real foobar2000 by `test/fake-api/capture.ts --albums demo/albums.ts`.
-// Which records, and why those, is in `albums.ts`.
+// The library the demo browses: real albums captured off a real foobar2000 by
+// `test/fake-api/capture.ts --albums demo/albums.ts`. Which records, and why
+// those, is in `albums.ts`. Nothing here is synthesised, so every shelf on the
+// home screen is a true statement about a real collection.
 //
-// **Nothing here is synthesised any more, and that is the point.** It used to
-// be five captured albums plus two hundred invented ones with drawn covers,
-// which demonstrated the app on a library nobody has: the play counts came out
-// of a random number generator, so the home screen's shelves were a picture of
-// that generator, and the genre bars were a picture of a word list. Now the
-// counts, the last-played dates, the lyrics, the ratings, the two- and
-// three-disc sets and the four codecs are one person's actual collection, and
-// every shelf on the front door is a true statement about it.
-//
-// The file is *fetched* rather than bundled: it is 1.9 MB of JSON, the service
-// worker is revalidated on every visit, and a worker carrying the whole library
-// would be re-downloaded whenever anything else in it changed.
+// `library.json` is fetched rather than bundled: it is 1.9 MB, and the service
+// worker carrying it is revalidated on every visit.
 
 export interface CapturedAlbum {
 	albumArtist: string;
@@ -35,16 +26,11 @@ const albumKey = (track: Track) =>
 
 // ---- recency ---------------------------------------------------------------
 
-// Half of what the home screen draws is *when*: a shelf of what you have been
-// playing lately, and a shading that fades a row by how long it has been. A
-// capture is a photograph of one afternoon, so a demo still serving it a year
-// later says "last played: a year ago" about everything, and the shelves
-// quietly stop meaning anything.
-//
-// So the whole capture is slid forward once, on load. Relative distances are
-// untouched -- what was played that morning is still hours ahead of what was
-// played the spring before -- and no date is invented: the newest one in the
-// file becomes today, and the rest follow it.
+// A capture is a photograph of one afternoon, so a year later it says "last
+// played: a year ago" about everything and the recency shelves stop meaning
+// anything. The whole capture is slid forward once on load: the newest date
+// becomes today and the rest follow, so relative distances are untouched and no
+// date is invented.
 const DATE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
 const FIELD = "%lastfm_last_played%";
 
@@ -78,8 +64,8 @@ const slideForward = (tracks: Track[]) => {
 	}
 	if (newest === 0) return;
 
-	// A few hours short of now, so the most-played record was played this
-	// morning rather than this second -- which is what a real one looks like.
+	// A few hours short of now, so the newest track was played this morning rather
+	// than this second.
 	const shift = Date.now() - 3 * 60 * 60 * 1000 - newest;
 	if (shift <= 0) return;
 
@@ -97,14 +83,11 @@ export interface DemoLibrary {
 	artworkOf: (track: Track) => string | null;
 }
 
-// Playlists somebody would actually have, drawn from what was captured. The
-// names are ordinary on purpose, and one of them is `Library`: Jean used to
-// adopt anything loosely called that as the whole collection, and an ordinary
-// playlist with that name sitting beside the real one is what keeps that from
-// coming back -- the same reason the test fixture has one.
+// One playlist is called `Library` and is an ordinary playlist, sitting beside
+// the `#Jean Library` autoplaylist that is the real thing. The test fixture has
+// the same pair.
 //
-// The ids are `p1 p7 p2 p5`, not contiguous and not in index order, because
-// that is what a real install looks like.
+// The ids are not contiguous and not in index order, as on a real install.
 const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 	const of = (...slugs: string[]) =>
 		slugs.flatMap((slug) => byAlbum.get(slug)?.tracks ?? []);
@@ -143,11 +126,11 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 			isCurrent: false,
 			items: of("metallica-metallica", "korn-issues"),
 		},
-		// Jean's own, hidden from the sidebar, and what the library resolves to on
-		// a player with no media library API. `mediaLibrary` fills it.
+		// Jean's own, hidden from the sidebar, and what the library resolves to on a
+		// player with no media library API. `mediaLibrary` fills it.
 		{ id: "p8", title: "#Jean Library", isCurrent: false, items: [] },
-		// An autoplaylist with an ordinary name, which is what one looks like from
-		// the API: writes to it are accepted and ignored.
+		// An autoplaylist looks ordinary from the API, except that writes to it are
+		// accepted and ignored.
 		{
 			id: "p9",
 			title: "Recently Added",
@@ -164,8 +147,8 @@ export function demoLibrary(captured: CapturedLibrary): DemoLibrary {
 
 	const byAlbum = new Map(captured.albums.map((album) => [album.slug, album]));
 
-	// Keyed by album rather than by track: twelve rows of one record share a
-	// cover, so they share the file name the worker is asked for.
+	// Keyed by album rather than by track: the rows of one record share a cover,
+	// so they share the file name the worker is asked for.
 	const covers = new Map<string, string>();
 	for (const album of captured.albums) {
 		const first = album.tracks[0];

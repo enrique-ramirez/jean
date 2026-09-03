@@ -9,24 +9,22 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// One test per binding in keymap.js, because a binding that stops firing does
-// so silently: `useKeymap` registers only the ids a scope both declares and has
-// a handler for, so deleting a handler leaves the shortcut in the help sheet,
-// documented and dead. Nothing else in the suite would notice.
+// One test per binding in keymap.ts: `useKeymap` registers only the ids a scope
+// both declares and has a handler for, so a deleted handler leaves the shortcut
+// in the help sheet, documented and dead.
 //
-// Not every binding is here. These already had a home, and moving them would
-// have cost the context that makes them worth reading:
+// Bindings covered elsewhere:
 //
-//   /  ArrowUp/Down  Enter  Escape   finder.spec.js   (the finder's own scope)
-//   n                                follow.spec.js   (jump to playing)
-//   h                                heat.spec.js     (and finder.spec, where
+//   /  ArrowUp/Down  Enter  Escape   finder.spec.ts   (the finder's own scope)
+//   n                                follow.spec.ts   (jump to playing)
+//   h                                heat.spec.ts     (and finder.spec, where
 //                                                      it must NOT fire)
-//   Mod+Shift+p                      search-playback.spec.js
-//   Alt+ArrowDown                    sidebar.spec.js  (against a real reorder)
+//   Mod+Shift+p                      search-playback.spec.ts
+//   Alt+ArrowDown                    sidebar.spec.ts  (against a real reorder)
 //
-// Mod is spelled ControlOrMeta rather than Meta: @tanstack/react-hotkeys maps
-// Mod by platform and so does Playwright, so writing the literal one would pass
-// here and fail the moment the suite runs on Linux.
+// Mod is spelled ControlOrMeta rather than Meta: @tanstack/react-hotkeys and
+// Playwright both map Mod by platform, so the literal would pass here and fail
+// on Linux.
 
 const searchField = (page: Page) => page.getByLabel("Search your library");
 const sidebarLink = (page: Page, title: string) =>
@@ -35,18 +33,14 @@ const sidebarLink = (page: Page, title: string) =>
 const paths = (player: FakePlayer, fragment: string) =>
 	requestsTo(player, fragment).map((entry) => entry.path);
 
-// Every one of these is a keyboard gesture. A phone has no keyboard, and the
-// suite runs both projects over every spec, so this is stated once here rather
-// than in twenty-odd tests.
 test.skip(({ isMobile }) => isMobile, "no keyboard on the phone");
 
 test.describe("playback", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
 
 	test("Space plays and pauses", async ({ page, player }) => {
-		// Focus is on the body, which is the case that matters: Space on a focused
-		// button activates the button instead, and the app must not be relying on
-		// something having been clicked first.
+		// Focus is on the body: Space on a focused button activates the button
+		// instead.
 		await page.keyboard.press("Space");
 		await expect
 			.poll(() => paths(player, "/player/play-pause"))
@@ -71,8 +65,7 @@ test.describe("playback", () => {
 
 	test("the bare horizontal arrows seek instead", async ({ page, player }) => {
 		// Only the vertical pair moves the list cursor, which is what leaves these
-		// two free -- so the same key means "seek" or "previous track" depending on
-		// one modifier, and the two must not be reachable from each other.
+		// two free.
 		await page.keyboard.press("ArrowRight");
 		await page.keyboard.press("ArrowLeft");
 
@@ -93,11 +86,10 @@ test.describe("playback", () => {
 	});
 
 	test("= and - move the volume", async ({ page, player }) => {
-		// Known and unfixed: these are only reachable on layouts where they are
-		// unshifted. On Spanish, French and German keyboards '=' is Shift+0, the
-		// matcher compares modifier state strictly, and the fallback to event.code
-		// finds Digit0 rather than Equal -- so volume up is simply unreachable
-		// there, with no error. The test asserts the layout it can drive.
+		// Known and unfixed: on Spanish, French and German layouts '=' is Shift+0,
+		// the matcher compares modifier state strictly, and the fallback to
+		// event.code finds Digit0 rather than Equal, so volume up is unreachable
+		// there. The test asserts the layout it can drive.
 		await page.keyboard.press("=");
 		await expect.poll(() => paths(player, "/player/volume/up")).toHaveLength(1);
 
@@ -123,8 +115,7 @@ test.describe("navigation and appearance", () => {
 		await expect(searchField(page)).not.toBeFocused();
 		await page.keyboard.press("ControlOrMeta+k");
 
-		// Mod+K always searches the whole library; '/' filters whatever list you
-		// are looking at. That distinction is the reason both exist.
+		// Mod+K searches the whole library; '/' filters the list on screen.
 		await expect(searchField(page)).toBeFocused();
 	});
 
@@ -139,24 +130,20 @@ test.describe("navigation and appearance", () => {
 	});
 
 	test("? opens the shortcut sheet", async ({ page }) => {
-		// Shift and the key that types `?`, which is what a person does. Playwright
-		// sends `key: '?'` with shiftKey set, exactly as a browser does on every
-		// layout -- the binding matches that rather than the physical slash key,
-		// which is elsewhere on Dvorak, Spanish and French.
+		// Playwright sends `key: '?'` with shiftKey set, as a browser does on every
+		// layout. The binding matches that rather than the physical slash key, which
+		// is elsewhere on Dvorak, Spanish and French.
 		await page.keyboard.press("Shift+?");
 		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
 		await expect(sheet).toBeVisible();
 
-		// Rendered from the same array the bindings are registered from, so the
-		// help cannot drift from what actually fires -- which is only true while it
-		// keeps listing every group.
+		// The sheet is rendered from the array the bindings are registered from, so
+		// it cannot drift from what fires while it lists every group.
 		await inSequence(["Playback", "Navigation", "In a playlist"], (group) =>
 			expect(sheet.getByRole("heading", { name: group })).toBeVisible(),
 		);
 
-		// The finder's keys are bound and undocumented: arrows and Enter inside a
-		// dropdown are what anyone tries first, so a row teaching them spends
-		// attention and returns none.
+		// The finder's keys are bound and deliberately undocumented.
 		await expect(
 			sheet.getByRole("heading", { name: "While finding" }),
 		).toHaveCount(0);
@@ -175,8 +162,8 @@ test.describe("navigation and appearance", () => {
 			.last();
 		await expect(nextTrack.locator("kbd")).toHaveCount(2);
 
-		// And `?` is one, despite being registered under two spellings so that it
-		// works whether or not a layout shifts to reach it.
+		// `?` is one cap despite being registered under two spellings, for layouts
+		// that do and do not shift to reach it.
 		const shortcuts = sheet
 			.locator("div")
 			.filter({ hasText: /^Keyboard shortcuts/ })
@@ -217,9 +204,7 @@ test.describe("moving the cursor in a playlist", () => {
 		await page.keyboard.press("ArrowUp");
 		await cursorAt(page, 1);
 
-		// j and k were bound here too and are not any more. The sheet documents
-		// every binding, so a binding worth having is one worth a row in it -- and
-		// a second spelling of the arrow keys was not.
+		// j is not bound; the arrows are the only spelling.
 		await page.keyboard.press("j");
 		await cursorAt(page, 1);
 	});
@@ -244,8 +229,6 @@ test.describe("moving the cursor in a playlist", () => {
 		await page.keyboard.press("PageUp");
 		await cursorAt(page, 0);
 
-		// Clamped rather than wrapped: paging up from the top is a no-op, not a
-		// jump to the bottom of the library!.
 		await page.keyboard.press("PageUp");
 		await cursorAt(page, 0);
 	});
@@ -270,8 +253,8 @@ test.describe("selecting in a playlist", () => {
 		await page.keyboard.press("ControlOrMeta+a");
 		await expect(selected(page).first()).toBeVisible();
 
-		// Background inside the view -- here the title, because with 54 rows the
-		// list is taller than the window and there is no empty space under it.
+		// The title stands in for background: with 54 rows the list is taller than
+		// the window and there is no empty space under it.
 		await page.getByRole("heading", { level: 1 }).click();
 		await expect(selected(page)).toHaveCount(0);
 	});
@@ -281,9 +264,6 @@ test.describe("selecting in a playlist", () => {
 		const before = await selected(page).count();
 		expect(before).toBeGreaterThan(1);
 
-		// The whole point of building a selection is to act on it, and every
-		// button that acts on one sits inside the same view. A click that used the
-		// selection must not also undo it.
 		await page.getByRole("button", { name: "Play-count heat" }).click();
 		await expect(selected(page)).toHaveCount(before);
 	});
@@ -291,8 +271,8 @@ test.describe("selecting in a playlist", () => {
 	test("Mod+A takes everything and Escape gives it back", async ({ page }) => {
 		await page.keyboard.press("ControlOrMeta+a");
 
-		// Everything the virtualiser has mounted, which is what "all" can mean on
-		// screen -- the selection itself is a set of indices over all 54 rows.
+		// Only mounted rows can be counted on screen; the selection itself is a set
+		// of indices over all 54.
 		const mounted = await page.locator('[role="row"]').count();
 		expect(mounted).toBeGreaterThan(1);
 		await expect(selected(page)).toHaveCount(mounted);
@@ -313,9 +293,8 @@ test.describe("view keys", () => {
 		await page.keyboard.press("v");
 		await expect(layout("Albums")).toHaveAttribute("aria-pressed", "true");
 
-		// Rows are grouped now, and the measurements cached by index mean something
-		// else entirely -- which is why the layout switch is worth pressing rather
-		// than just reading the toggle.
+		// Rows are grouped in the album layout, so the measurements cached by index
+		// mean something else entirely.
 		await expect(
 			page.locator("section").filter({ hasText: "Jessico" }),
 		).toBeVisible();
@@ -334,8 +313,8 @@ test.describe("in search results", () => {
 		).toBeVisible();
 		await expect(trackRow(page, 0)).toBeAttached();
 
-		// The field has focus straight after typing, and this binding has to fire
-		// from there -- there is nowhere else the hands would be.
+		// The field has focus straight after typing, and the binding has to fire
+		// from there.
 		await page.keyboard.press("ControlOrMeta+s");
 		await expect(
 			page.getByRole("textbox", { name: "Playlist name" }),
@@ -347,8 +326,8 @@ test.describe("in the sidebar", () => {
 	test("Alt+ArrowUp moves a playlist up", async ({ page, player }) => {
 		await openLibrary(page);
 
-		// Registered only while a row holds focus, so that ordinary arrow keys with
-		// a modifier cannot fire while the cursor is in the track list.
+		// Registered only while a row holds focus, so arrow keys with a modifier
+		// cannot fire while the cursor is in the track list.
 		await sidebarLink(page, "Favorites").focus();
 		await page.keyboard.press("Alt+ArrowUp");
 
@@ -356,12 +335,4 @@ test.describe("in the sidebar", () => {
 			.poll(() => player.playlists.map((entry) => entry.title).slice(0, 3))
 			.toEqual(["Default Playlist", "Favorites", "Library"]);
 	});
-
-	// There is deliberately no test here for the other half of that sentence --
-	// that Alt+Arrow does nothing while the cursor is in the track list. Three
-	// independent things enforce it (the scope is registered only while a row has
-	// focus, moveFocused returns early on a negative index, and again on an
-	// out-of-range target), so removing any one of them leaves the assertion
-	// green and removing all three only produces a crash. It would have been a
-	// test that could not fail, which is worse than not having one.
 });

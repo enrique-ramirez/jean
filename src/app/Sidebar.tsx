@@ -40,10 +40,7 @@ import { pushToast } from "@/shared/ui/toastStore";
 import type { PlayingRoute } from "./routes";
 import styles from "./Sidebar.module.css";
 
-// The accent means "this is playing" and nothing else -- never which row you are
-// looking at, which is what aria-current and the row's own styling are for.
-// Tinting by selection made the two identical, which is the pair this design
-// exists to separate.
+// The accent means "this is playing" and nothing else. The row being looked at is `aria-current` and the row's own styling.
 function NavRow({
 	icon: Icon,
 	label,
@@ -121,12 +118,9 @@ export function Sidebar({
 }) {
 	const permissions = usePermissions();
 	const { create, rename, remove, move } = usePlaylistActions();
-	// Only the coarse facts, and only here -- the rows read `isDropTarget` as a
-	// plain prop rather than each subscribing to the drag.
+	// Subscribed here only; the rows read `isDropTarget` as a plain prop rather than each subscribing to the drag.
 	const drag = useDragState();
-	// Undefined until the player answers. Assume yes and let a refusal correct it,
-	// rather than showing everybody a read-only sidebar for the first few hundred
-	// milliseconds.
+	// Undefined until the player answers. Assume yes and let a refusal correct it, rather than showing a read-only sidebar for the first few hundred milliseconds.
 	const canEdit = permissions.changePlaylists !== false;
 
 	const menu = useContextMenu({ disabled: !canEdit });
@@ -134,26 +128,17 @@ export function Sidebar({
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [focusedId, setFocusedId] = useState<string | null>(null);
 
-	// Jean's scratch playlist is not the user's, so it is not in their list. It
-	// still exists on the player, but here it would be a row whose name changed
-	// every time they searched.
+	// Jean's scratch playlist still exists on the player, but here it would be a row whose name changed on every search.
 	const shown = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
 
-	// One answer for every row, from the same place the status bar reads it: playing
-	// search results makes the hidden scratch the current playlist, so without this
-	// the status bar names a track nothing on screen accounts for.
-	//
-	// Not `isScratchPlaylist && isCurrent`, which was wrong twice: `isCurrent`
-	// outlives playback, and it never asked what the scratch was holding, so a shelf
-	// playing lit up the search row.
+	// One answer for every row, from the same place the status bar reads it: playing search results makes the hidden scratch the current playlist.
+	// Not `isScratchPlaylist && isCurrent`: `isCurrent` outlives playback and says nothing about what the scratch is holding.
 	const playingRoute = playingFrom?.isPlaying ? playingFrom.route : null;
 
 	const target = shown.find((entry) => entry.id === targetId) ?? null;
 	const focusedIndex = shown.findIndex((entry) => entry.id === focusedId);
 
-	// The player orders the real list and `move` takes a position in it, so a drop
-	// among the visible rows is translated through the playlist currently occupying
-	// it -- landing on the correct side of the hidden entry either way.
+	// The player orders the real list and `move` takes a position in it, so a drop among the visible rows is translated through the playlist currently occupying it.
 	const playerIndexOf = (position: number) =>
 		playlists.findIndex((entry) => entry.id === shown[position].id);
 
@@ -175,8 +160,7 @@ export function Sidebar({
 		reorder(focusedIndex, to);
 	};
 
-	// Only while a playlist row holds focus. These are ordinary arrow keys with a
-	// modifier, and they must not fire while the cursor is in the track list.
+	// Only while a playlist row holds focus: these are arrow keys with a modifier and must not fire while the cursor is in the track list.
 	useKeymap(
 		SCOPE.sidebar,
 		{
@@ -186,17 +170,14 @@ export function Sidebar({
 		{ enabled: canEdit && focusedIndex >= 0 },
 	);
 
-	// Only a refusal Jean wrote is shown as-is; anything else is an HTTP failure
-	// whose message is a URL and a status code.
+	// Only a refusal Jean wrote is shown as-is; anything else is an HTTP failure whose message is a URL and a status code.
 	const refused = (message: string) => (error: unknown) =>
 		pushToast({
 			tone: "error",
 			message: isRefusal(error) ? error.message : message,
 		});
 
-	// Created empty and dropped into rename: one click gets you a playlist and
-	// naming it is optional. The view does not change, because a new playlist is
-	// somewhere to put things.
+	// Created empty and dropped into rename, so naming it is optional. The view does not change: a new playlist is somewhere to put things.
 	const newPlaylist = () =>
 		create.mutate(untitledPlaylistName(shown), {
 			onSuccess: (playlist) => setRenamingId(playlist.id),
@@ -204,8 +185,7 @@ export function Sidebar({
 		});
 
 	const deletePlaylist = (playlist: PlaylistInfo) => {
-		// Step onto the neighbour before it goes, so deleting what you are looking
-		// at lands somewhere real instead of on an empty view.
+		// Step onto the neighbour before it goes, so deleting the open playlist lands somewhere real.
 		if (playlist.id === selectedId) {
 			const at = shown.findIndex((entry) => entry.id === playlist.id);
 			const next = shown[at + 1] ?? shown[at - 1];
@@ -272,11 +252,7 @@ export function Sidebar({
 				aria-label="Playlists"
 				aria-hidden={isCollapsed}
 			>
-				{/* While a search is live, and also while the player is still holding
-            one: playing results writes them to a playlist named after the
-            query, so the search outlives the tab it was typed in and can be
-            picked up on another device. Not a permanent shelf -- with neither
-            of those true there is nothing here at all. */}
+				{/* Playing results writes them to a playlist named after the query, so a search outlives the tab it was typed in and can be picked up on another device. */}
 				{search.hasQuery || search.remembered ? (
 					<>
 						<p className={styles.heading}>Search</p>
@@ -287,9 +263,7 @@ export function Sidebar({
 							isPlaying={playingRoute === "search"}
 							isCurrent={isSearchOpen}
 							onClick={() => {
-								// Taking back a search the player remembered is what loads the
-								// library, so it happens on the tap rather than on every launch
-								// that happens to follow one.
+								// Restoring a remembered search is what loads the library, so it happens on the tap rather than on every launch that follows one.
 								if (!search.hasQuery) search.restore();
 								onOpenSearch();
 							}}
@@ -297,9 +271,6 @@ export function Sidebar({
 					</>
 				) : null}
 
-				{/* Above the playlists and below the search, which is the order they
-            are reached for: search is a thing you are already doing, home is
-            where you start, and playlists are what you keep. */}
 				<NavRow
 					icon={Home}
 					label="Home"
@@ -315,11 +286,7 @@ export function Sidebar({
 					onClick={() => onOpenRoute("all")}
 				/>
 
-				{/* A shelf you played, for as long as it is the thing playing. Jean's
-            scratch playlist is hidden, so without this the status bar would name
-            a track with nothing on screen accounting for where it came from --
-            and unlike a playlist, a shelf has no permanent row to point at. It
-            leaves on its own when the next set takes the scratch over. */}
+				{/* A shelf, for as long as it is playing: the scratch playlist is hidden, and unlike a playlist a shelf has no permanent row to point at. */}
 				{playingFrom?.temporaryRow ? (
 					<NavRow
 						icon={Disc3}
@@ -455,9 +422,7 @@ function PlaylistRow({
 			icon={ListMusic}
 			label={playlist.title}
 			count={playlist.itemCount.toLocaleString()}
-			// A user's own playlist keeps `isCurrent` rather than reading the scratch:
-			// it is a real playlist the player can be inside, so the player's own
-			// answer is the honest one. See "Showing playlists".
+			// A user's own playlist keeps `isCurrent` rather than reading the scratch: it is a real playlist the player can be inside.
 			isPlaying={playlist.isCurrent}
 			isCurrent={isSelected}
 			onClick={onSelect}
@@ -468,24 +433,16 @@ function PlaylistRow({
 				"data-drop-target": isDropTarget ? playlist.id : undefined,
 				"data-drop-over": isDropOver ? "true" : undefined,
 				...rowState,
-				// Merged, not spread one over the other: the long press and the drag
-				// both want onPointerDown, Move, Up and Cancel, and the second object
-				// would quietly win all four. They sort themselves out by pointer type.
+				// Merged rather than spread: both want onPointerDown, Move, Up and Cancel, and the second object would quietly win all four.
 				...mergeHandlers(gestures, dragProps),
 			}}
 		>
-			{/* Not focusable: reordering by keyboard is Alt with the arrows, on the
-          row itself, which needs no separate stop on the tab route. */}
 			{canEdit ? (
 				<span
 					className={styles.grip}
 					aria-hidden="true"
 					onPointerDown={(event) => {
-						// The row is waiting to see whether this becomes a long press. On
-						// the grip it never should -- holding the handle is the start of a
-						// drag, and both gestures firing at once opens a menu mid-drag.
-						// Stopping here also keeps the row's own mouse drag from starting a
-						// second time; the move and release still bubble to it.
+						// Holding the grip starts a drag, not a long press, and both firing at once opens a menu mid-drag. This also keeps the row's own mouse drag from starting twice.
 						event.stopPropagation();
 						handleProps.onPointerDown?.(event);
 					}}
@@ -505,7 +462,6 @@ function RenameField({
 	onCommit: (title: string | null) => void;
 }) {
 	const [value, setValue] = useState(title);
-	// Escape has to beat the blur that follows it, or cancelling would commit.
 	const cancelled = useRef(false);
 
 	return (
@@ -522,8 +478,6 @@ function RenameField({
 				aria-label={`Rename ${title}`}
 				spellCheck="false"
 				autoComplete="off"
-				// A new playlist is created empty and dropped straight into rename, so
-				// the field is the whole reason this row is in this state.
 				// biome-ignore lint/a11y/noAutofocus: rename is the state, see above
 				autoFocus
 				onFocus={(event) => event.target.select()}

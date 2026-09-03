@@ -67,8 +67,6 @@ export function ColumnsMenu({
 				/>
 			}
 		>
-			{/* The permanent way back to the explanation. The flame teaches once, on
-          first sight, and after that this is where someone goes looking. */}
 			{onExplainHeat ? (
 				<>
 					<MenuItem icon={Flame} onClick={onExplainHeat}>

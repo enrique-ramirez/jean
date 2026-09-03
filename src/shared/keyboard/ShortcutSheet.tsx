@@ -3,10 +3,7 @@ import { formatForDisplay } from "@tanstack/react-hotkeys";
 import { type Binding, bindingsIn, KEYMAP_GROUPS } from "./keymap";
 import styles from "./ShortcutSheet.module.css";
 
-// `formatForDisplay` returns a whole chord in one string -- "⌘ ⇧ P" -- and a
-// keycap is a key, so the chord is split back into its parts. Space-joined by
-// the formatter, which is why a space is a safe separator here and the Space
-// key comes back as `␣` rather than as a gap.
+// formatForDisplay returns a whole chord in one string, space-joined, and a keycap is a key, so it is split back into its parts. The Space key comes back as ␣ rather than as a gap, which is what makes a space a safe separator.
 const capsOf = (binding: Binding) =>
 	(binding.shown ?? binding.keys.map((key) => formatForDisplay(key))).map(
 		(chord) => chord.split(" ").filter(Boolean),
@@ -14,8 +11,7 @@ const capsOf = (binding: Binding) =>
 
 export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 	return (
-		// A dismissal scrim, not a control: Escape is the keyboard route out and the
-		// panel above owns it.
+		// A dismissal scrim, not a control: Escape is the keyboard route out and the panel above owns it.
 		// biome-ignore lint/a11y/noStaticElementInteractions: scrim, see above
 		<div
 			className={styles.backdrop}
@@ -53,8 +49,7 @@ export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 							<div key={binding.id} className={styles.row}>
 								<span>{binding.name}</span>
 								<span className={styles.keys}>
-									{/* A registerable hotkey can be an object rather than a
-                      string, so the rendered spelling is what keys the row. */}
+									{/* A registerable hotkey can be an object rather than a string, so the rendered spelling is what keys the row. */}
 									{capsOf(binding).map((chord) => (
 										<span key={chord.join("+")} className={styles.chord}>
 											{chord.map((cap) => (

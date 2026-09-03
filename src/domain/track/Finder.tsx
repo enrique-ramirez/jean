@@ -13,8 +13,7 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import styles from "./Finder.module.css";
 import { FIELD, value } from "./fields";
 
-// Finds without filtering: the list keeps every track and its order, and only
-// Enter starts playback -- browsing should never hijack what is playing.
+// Finds without filtering: the list keeps every track and its order, and only Enter starts playback.
 export function Finder({
 	rows,
 	label,
@@ -41,8 +40,7 @@ export function Finder({
 	const [active, setActive] = useState(0);
 	const debouncedActive = useDebounced(active, 90);
 
-	// Held in a ref: the parent passes a new closure every render, and depending
-	// on it directly would make previewing re-run itself forever.
+	// Held in a ref: the parent passes a new closure every render, and depending on it directly would make previewing re-run itself forever.
 	const previewRef = useRef(onPreview);
 	previewRef.current = onPreview;
 
@@ -51,8 +49,7 @@ export function Finder({
 		inputRef.current?.select();
 	}, []);
 
-	// Whether the active result is where the user put it, or merely where a new
-	// query reset it. Previewing is for the first; see the effect below.
+	// Whether the active result is where the user put it, or merely where a new query reset it. Only the first previews.
 	const navigated = useRef(false);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: a new query resets the cursor, not a read
@@ -61,15 +58,8 @@ export function Finder({
 		navigated.current = false;
 	}, [query]);
 
-	// Hover only counts if the pointer actually went somewhere. A list appearing
-	// under a stationary cursor gets a mouseenter it did not earn -- which happens
-	// on every open and every keystroke, and handed the active result to whatever
-	// landed under the mouse.
-	//
-	// Two signals: `moved` covers the ordinary case and is re-armed per result set,
-	// in a layout effect so the reset lands before the mouseenter that follows
-	// paint. The coordinate check covers the first move onto a result, where
-	// mouseenter arrives before the mousemove that would have set the flag.
+	// A list appearing under a stationary cursor gets a mouseenter it did not earn, on every open and every keystroke, which would hand the active result to whatever landed under the mouse.
+	// `moved` covers the ordinary case and is re-armed per result set in a layout effect, so the reset lands before the mouseenter that follows paint; the coordinate check covers the first move onto a result, where mouseenter arrives before the mousemove that would have set the flag.
 	const moved = useRef(false);
 	const lastSeen = useRef<{ x: number; y: number } | null>(null);
 
@@ -89,8 +79,7 @@ export function Finder({
 
 	const aimedAt = (event: ReactMouseEvent) => {
 		if (moved.current) return true;
-		// The first enter has no earlier position to compare against, so it is rejected
-		// and its coordinates become the reference.
+		// The first enter has no earlier position to compare against, so it is rejected and its coordinates become the reference.
 		const previous = lastSeen.current;
 		lastSeen.current = { x: event.clientX, y: event.clientY };
 		return (
@@ -99,14 +88,7 @@ export function Finder({
 		);
 	};
 
-	// Follows the cursor, deliberately not the query: while you are typing you are
-	// reading the dropdown, not the list behind it.
-	//
-	// Following the query did real damage on a phone. Each keystroke jumps to a
-	// different leading match, which relaid out the sticky toolbar the field lives
-	// in, and Android's keyboard lost its composition and returned the letters
-	// scrambled. Nothing is lost: the dropdown names every match, and arrowing
-	// still previews.
+	// Follows the cursor, deliberately not the query: previewing per keystroke relays out the sticky toolbar the field sits in, and Android's keyboard then loses its composition and returns the letters scrambled.
 	const previewIndex = results[debouncedActive];
 
 	useEffect(() => {
@@ -126,8 +108,7 @@ export function Finder({
 
 		const above = option.offsetTop - list.scrollTop;
 		const below = above + option.offsetHeight - list.clientHeight;
-		// One branch each way, and neither when the row is already whole: scrolling
-		// a visible row to an edge is motion that answers nothing.
+		// One branch each way, and neither when the row is already whole: scrolling a visible row to an edge is motion that answers nothing.
 		if (above < 0) list.scrollTop += above;
 		else if (below > 0) list.scrollTop += below;
 	}, [active]);
@@ -135,9 +116,7 @@ export function Finder({
 	const step = (delta: number) => {
 		if (results.length === 0) return;
 		navigated.current = true;
-		// Only a key scrolls. A hover already proves the row is on screen, and
-		// scrolling under a stationary pointer moves a different row beneath it --
-		// which fires mouseenter, which moves the cursor, which scrolls again.
+		// Only a key scrolls: a hover already proves the row is on screen, and scrolling under a stationary pointer fires mouseenter, which moves the cursor, which scrolls again.
 		revealActive.current = true;
 		setActive((current) => (current + delta + results.length) % results.length);
 	};

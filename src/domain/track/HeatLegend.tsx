@@ -3,10 +3,6 @@ import { Columns3 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import styles from "./HeatLegend.module.css";
 
-// What the shading on the rows means. Three facts, in the order someone
-// actually asks them: what is it, what is it measured against, why does it
-// fade. The scale does most of the work -- the words are there for the two
-// things a swatch cannot say.
 export function HeatLegend({ onDismiss }: { onDismiss: () => void }) {
 	return (
 		<div className={styles.legend}>
@@ -30,10 +26,6 @@ export function HeatLegend({ onDismiss }: { onDismiss: () => void }) {
 			</p>
 
 			<div className={styles.actions}>
-				{/* Shows the icon rather than naming the menu. "How do I find this
-            again" is the real discoverability problem, and it is best answered
-            while the question is live -- pointing at the thing to look for
-            beats a badge on a control that has to stay a one-click toggle. */}
 				<p className={styles.home}>
 					<Columns3 size={13} strokeWidth={2} aria-hidden="true" />
 					Find this again under view options

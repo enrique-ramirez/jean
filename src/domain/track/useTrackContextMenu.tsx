@@ -29,9 +29,7 @@ import { useTagWriting } from "./useTagWriter";
 const sameList = (a: number[], b: number[]) =>
 	a.length === b.length && a.every((entry, at) => entry === b[at]);
 
-// One menu for a list of any length. The gestures go on the container, not the
-// rows: a virtualised list must not carry a handler per row, and it unmounts
-// them under the pointer anyway.
+// The gestures go on the container, not the rows: a virtualised list must not carry a handler per row, and it unmounts them under the pointer anyway.
 export function useTrackContextMenu({
 	rows,
 	indices,
@@ -52,12 +50,10 @@ export function useTrackContextMenu({
 	const { canRate, rate } = useTagWriting();
 	const menu = useContextMenu();
 
-	// View positions, not playlist indices. The translation happens once, where
-	// the request is built.
+	// View positions, not playlist indices. The translation happens once, where the request is built.
 	const [positions, setPositions] = useState<number[]>([]);
 
-	// One track only: forty tag writes behind a single click is an invisible cost
-	// and an undo that is forty more.
+	// One track only: a rating over a whole selection is dozens of tag writes behind a single click, and an undo that is dozens more.
 	const rated = positions.length === 1 ? rows[positions[0]] : undefined;
 	const written = useWrittenRating(rated);
 	const rawRating =
@@ -69,12 +65,8 @@ export function useTrackContextMenu({
 
 	const canEdit = permissions.changePlaylists !== false;
 
-	// Right-clicking inside a selection acts on all of it, outside one replaces it.
-	// That is why TrackRow ignores non-primary buttons: selecting on pointer-down
-	// would collapse the selection before the menu about to act on it opened.
-	//
-	// `adopt` is off for the hold: claiming the selection on pointer-down would undo
-	// the shift-click in the same event, and on touch there is nothing to adopt.
+	// Right-clicking inside a selection acts on all of it, outside one replaces it. That is why TrackRow ignores non-primary buttons: selecting on pointer-down would collapse the selection before the menu about to act on it opened.
+	// `adopt` is off for the hold, because claiming the selection on pointer-down would undo the shift-click in the same event.
 	const aim = (event: ReactMouseEvent, { adopt }: { adopt: boolean }) => {
 		const aimed = targetsFrom(event, rows, selection);
 		if (!aimed) return false;
@@ -93,11 +85,9 @@ export function useTrackContextMenu({
 			menu.triggerProps.onContextMenu(event);
 		},
 		onPointerDown: (event: ReactPointerEvent) => {
-			// Only touch arms a hold, so a mouse does no work here at all -- this
-			// fires on every click in a thirty-thousand row list.
+			// Only touch arms a hold, so a mouse does no work here: this fires on every click in a list of any size.
 			if (event.pointerType === "mouse") return;
-			// Resolved now rather than when the hold fires: by then the pointer has
-			// been down for four hundred milliseconds and the event is long gone.
+			// Resolved now rather than when the hold fires, by which time the event is long gone.
 			if (aim(event, { adopt: false })) menu.triggerProps.onPointerDown(event);
 		},
 	};

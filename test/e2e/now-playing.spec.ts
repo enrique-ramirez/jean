@@ -10,15 +10,11 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// The now-playing screen: what it reads, and how it decides what to draw.
-//
-// The lyric tag is `$meta(unsynced lyrics)` and the name lies -- it holds LRC
-// timestamps about a third of the time. Everything below is a real shape found
-// in one 30,441-track library, not an invented one.
+// The lyric tag is `$meta(unsynced lyrics)` and the name lies: it holds LRC
+// timestamps about a third of the time.
 
 const LYRIC = {
-	// Note the repeated timestamps on one line: a refrain sung twice, and common
-	// enough that reading only the first would silently drop half of it.
+	// Repeated timestamps on one line: a refrain sung twice.
 	synced: [
 		"[00:12.00]I never meant to",
 		"[00:18.50][01:02.10]Give you all my time",
@@ -30,9 +26,7 @@ const LYRIC = {
 	plain: ["Wait a minute, let me finish", "", "I came committed"].join("\r\n"),
 
 	// A NetEase rip of an instrumental: two credit lines and a marker, all inside
-	// the first five seconds of a four-minute track. Counted, that is three
-	// timestamps and a synced lyric; drawn, it is a karaoke view that fires three
-	// times and then sits dead. It is *plain*.
+	// the first five seconds of a four-minute track.
 	boilerplate: [
 		"[00:00.00] 作词 : Marcus Fuereder",
 		"[00:01.00] 作曲 : Marcus Fuereder",
@@ -50,8 +44,7 @@ const listenHere = async (page: Page) => {
 		})
 		.click();
 	await page.getByRole("radio", { name: /This device/ }).click();
-	// `listeningPosition` answers null until audio is rendering, which is the
-	// fallback this is trying to leave.
+	// `listeningPosition` answers null until audio is rendering.
 	await page.waitForFunction(
 		() => {
 			const audio = document.querySelector("audio");
@@ -67,8 +60,8 @@ const TAGGED = {
 		"Los Calientes": { "$meta(unsynced lyrics)": LYRIC.synced },
 		Fizz: { "$meta(unsynced lyrics)": LYRIC.plain },
 		Deléctrico: { "$meta(unsynced lyrics)": LYRIC.boilerplate },
-		// Soy Rock is deliberately left with no lyric tag at all -- the common
-		// case, at 74.7% of the measured library.
+		// Soy Rock is left with no lyric tag at all -- the common case, at about
+		// three quarters of a real library.
 	},
 };
 
@@ -96,8 +89,6 @@ test.describe("reading the lyric tag", () => {
 		});
 		await expect(line).toBeVisible();
 
-		// Seeking to a line is exact on a local file, and it is the thing a
-		// streaming client mostly cannot offer.
 		await line.click();
 		await expect
 			.poll(() =>
@@ -112,8 +103,6 @@ test.describe("reading the lyric tag", () => {
 		await playRow(page, 0);
 		await tab(page, "Lyrics").click();
 
-		// The refrain is sung at 0:18 and again at 1:02, so it appears twice --
-		// reading only the first timestamp would drop the second chorus.
 		await expect(
 			nowPlayingScreen(page).getByRole("button", {
 				name: "Give you all my time",
@@ -145,11 +134,10 @@ test.describe("reading the lyric tag", () => {
 		await playRow(page, 2);
 		await tab(page, "Lyrics").click();
 
-		// Three timestamps, so a count threshold would call this synced. They span
-		// five seconds of a four-minute track, so it is drawn as plain text.
+		// Three timestamps, so a count threshold would call this synced; they span
+		// five seconds of a four-minute track.
 		await expect(nowPlayingScreen(page)).toContainText("Unsynced");
 		await expect(nowPlayingScreen(page)).toContainText("纯音乐，请欣赏");
-		// And the timestamps themselves are never shown as text.
 		await expect(nowPlayingScreen(page)).not.toContainText("[00:00.00]");
 	});
 
@@ -157,9 +145,6 @@ test.describe("reading the lyric tag", () => {
 		await playRow(page, 3);
 		await tab(page, "Lyrics").click();
 
-		// Met three times out of four while listening, so it says the one thing it
-		// has to and stops. Where the tag comes from and what writes it belongs in
-		// Settings, not in front of somebody who is playing an instrumental.
 		await expect(nowPlayingScreen(page)).toContainText("No lyrics found");
 		await expect(nowPlayingScreen(page)).not.toContainText("foo_openlyrics");
 	});
@@ -167,14 +152,14 @@ test.describe("reading the lyric tag", () => {
 
 test.describe("a lyric read through the stream", () => {
 	// Kept out of `TAGGED`: a component also makes the rating control writable,
-	// which is a different screen from the one the slim-strip tests measure.
-	// Six seconds of lag; the default leaves none. See `test/README.md`.
+	// which changes the screen the slim-strip tests measure. Six seconds of lag;
+	// the default leaves none. See `test/README.md`.
 	test.use({ ...TAGGED, fooJean: { streamPrime: 6 }, fooJeanToken: TOKEN });
 	test.setTimeout(120_000);
 
-	// Past the last line for the player, still on the refrain for the ear. The two
-	// are eighteen seconds apart, so any lag up to that lands on the same line --
-	// margin a loaded machine needs. Asserts which clock is read, not how deep.
+	// Past the last line for the player, still on the refrain for the ear. The
+	// two are eighteen seconds apart, so any lag up to that lands on the same
+	// line.
 	const PAST_THE_END = 80.5;
 
 	test("follows the player when nothing is listening", async ({
@@ -203,15 +188,14 @@ test.describe("a lyric read through the stream", () => {
 		await tab(page, "Lyrics").click();
 		const active = nowPlayingScreen(page).locator('[data-state="active"]');
 
-		// Played to, not seeked to: this is the setup, and it has to hold whether or
-		// not a seek is marked at all.
+		// Played to, not seeked to: this is the setup.
 		await expect(active).toHaveText("Give you all my time", {
 			timeout: 90_000,
 		});
 
-		// **Backwards is the case that matters.** A position counting on from a
-		// stale mark reaches any *later* line by simply playing, so a forward seek
-		// passes either way; only a line already sung cannot be arrived at.
+		// Backwards is the case that matters: a position counting on from a stale
+		// mark reaches any later line by simply playing, so a forward seek passes
+		// either way.
 		await nowPlayingScreen(page)
 			.getByRole("button", { name: "I never meant to" })
 			.click();
@@ -239,9 +223,8 @@ test.describe("a lyric read through the stream", () => {
 			.getByRole("button", { name: "I never meant to" })
 			.click();
 
-		// **Well inside the fake's six-second lag.** The audio has not arrived, and
-		// the control still has to hold where it was put -- falling back to what is
-		// audible reads as the click having been refused.
+		// Well inside the fake's six-second lag: the audio has not arrived and the
+		// control still has to hold where it was put.
 		await expect(active).toHaveText("I never meant to", { timeout: 2500 });
 	});
 });
@@ -256,8 +239,6 @@ test.describe("which panel opens", () => {
 		test.skip(isMobile, "the compact layout opens on the artwork instead");
 
 		await playRow(page, 3);
-		// Three quarters of a real library has no lyric tag, so opening on Lyrics
-		// would land on an empty panel most of the time.
 		await expect(tab(page, "Details")).toHaveAttribute("data-active", "true");
 
 		await playRow(page, 0);
@@ -280,10 +261,8 @@ test.describe("the details panel", () => {
 		await expect(panel).toContainText("Publisher");
 		await expect(panel).toContainText("Discos Manzana");
 
-		// The fake resolves nothing for these, exactly as a real player answers `?`
-		// for a tag the file does not carry. A fixed grid would draw them as empty
-		// cells, and empty cells read as Jean failing rather than as tags nobody
-		// wrote.
+		// The fake resolves nothing for these, as a real player answers `?` for a
+		// tag the file does not carry.
 		await expect(panel).not.toContainText("BPM");
 		await expect(panel).not.toContainText("ReplayGain");
 	});
@@ -305,7 +284,6 @@ test.describe("the way in and the way out", () => {
 			.click();
 		await expect(nowPlayingScreen(page)).toBeHidden();
 
-		// Back where you were, rather than wherever the sidebar would have picked.
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
@@ -327,9 +305,6 @@ test.describe("the way in and the way out", () => {
 	});
 });
 
-// The identity block under the panel has two shapes on a phone: the caption to
-// a picture on the Playing tab, and the smallest thing that answers "what is
-// this" on the other three. Four lines of it there was costing a verse.
 test.describe("the slim strip", () => {
 	test.use(TAGGED);
 
@@ -361,8 +336,6 @@ test.describe("the slim strip", () => {
 		const screen = nowPlayingScreen(page);
 		await expect(screen).toContainText("Los Calientes");
 		await expect(screen).toContainText("Babasónicos");
-		// The album and the year go because Details lists both; the stars go
-		// because rating is a deliberate act with two other routes to it.
 		await expect(screen).not.toContainText("Jessico");
 		await expect(
 			screen.getByRole("img", { name: /stars|Unrated/ }),
@@ -383,22 +356,12 @@ test.describe("the slim strip", () => {
 	});
 });
 
-// A title wider than the window it is in. The identity block shrank to its own
-// content, and on the slim strip that content is a title set `nowrap` -- so a
-// 65-character one was 522px wide *whatever the window was*, and took the tab
-// strip and the details grid out past the right edge with it, where `overflow:
-// hidden` cut them off rather than letting anything scroll back to them.
-//
-// **480, because neither project runs anywhere near it.** The phone is 412 and
-// the gatefold starts at 861; this is the band between them -- a desktop window
-// pulled narrow, a tablet, a browser side panel -- and it is the only place the
-// slim strip and a shrinking window are on screen at once. Measured: the
-// overflow starts below about 562px and neither project would ever have seen
-// it.
+// The slim strip's title is set `nowrap`, so a long one is as wide as its
+// content whatever the window is. 480 sits between the phone at 412 and the
+// gatefold at 861 -- the only width where the strip and a shrinking window are
+// on screen together, and neither project otherwise runs there.
 test.describe("a title wider than the screen", () => {
 	test.use({
-		// Both projects run this at the same width on purpose: what is under test
-		// is the layout at a size neither of them otherwise reaches.
 		viewport: { width: 480, height: 900 },
 		retagged: {
 			"Los Calientes": {
@@ -419,8 +382,8 @@ test.describe("a title wider than the screen", () => {
 		const screen = nowPlayingScreen(page);
 		const title = screen.getByRole("heading", { level: 1 });
 
-		// The title really is longer than its box, so what follows is a claim
-		// about a truncation that happened rather than about a short string.
+		// The title really is longer than its box, so what follows is a claim about
+		// a truncation that happened rather than about a short string.
 		await expect
 			.poll(() =>
 				title.evaluate(
@@ -441,8 +404,7 @@ test.describe("a title wider than the screen", () => {
 	});
 });
 
-// Lyrics with everything else taken away -- including the app's own chrome,
-// which is why this layer is `position: fixed` and every other one is not.
+// This layer is `position: fixed`; every other one in Jean is not.
 test.describe("full-screen lyrics", () => {
 	test.use(TAGGED);
 
@@ -460,8 +422,6 @@ test.describe("full-screen lyrics", () => {
 		await expect(expand(page)).toHaveCount(0);
 	});
 
-	// Hidden rather than disabled: a dimmed control on the three quarters of a
-	// real library with no lyric tag is an affordance that never once works.
 	test("it is not offered when there is no lyric to expand", async ({
 		page,
 	}) => {
@@ -478,11 +438,8 @@ test.describe("full-screen lyrics", () => {
 		await tab(page, "Lyrics").click();
 		await expand(page).click();
 
-		// The lyric is still there and everything around it is not -- the tab
-		// strip, the transport, and the app's own top bar above them. Scoped to
-		// the full-screen region because the panel behind it does *not* also hold
-		// a copy: mounting two would be two animation-frame loops and two
-		// scrollers following the same song.
+		// Scoped to the full-screen region: the panel behind it does not hold a
+		// second copy of the lyric.
 		const full = page.getByRole("region", { name: "Lyrics" });
 		await expect(
 			full.getByRole("button", { name: "Dancing in the dark" }),
@@ -492,11 +449,9 @@ test.describe("full-screen lyrics", () => {
 				name: "Dancing in the dark",
 			}),
 		).toHaveCount(0);
-		// Everything else is *covered*, not removed, so this is a claim about
-		// geometry rather than visibility: the layer fills the viewport, top-left
-		// included. Every other layer in Jean is positioned inside `.body`, which
-		// starts below the top bar -- one of those would leave the search field
-		// and the theme switch on screen, and "only the lyrics" would be false.
+		// Everything else is covered rather than removed, so this is geometry
+		// rather than visibility. Every other layer in Jean sits inside `.body`,
+		// which starts below the top bar.
 		const box = await full.boundingBox();
 		const view = page.viewportSize();
 		expect(box).toBeTruthy();
@@ -519,8 +474,6 @@ test.describe("full-screen lyrics", () => {
 
 		await page.keyboard.press("Escape");
 		await expect(close(page)).toHaveCount(0);
-		// The screen underneath is still open: Escape belonged to the top-most
-		// layer and stopped there.
 		await expect(nowPlayingScreen(page)).toBeVisible();
 	});
 });

@@ -11,10 +11,6 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// The ways around the app: the palette, the first-run library screen, and the
-// view memory that decides where you land when you come back to a list you had
-// scrolled.
-
 const palette = (page: Page) =>
 	page.getByRole("dialog", { name: "Go to playlist" });
 const paletteField = (page: Page) =>
@@ -29,7 +25,7 @@ test.describe("the command palette", () => {
 
 	test.beforeEach(async ({ page }) => {
 		await openLibrary(page);
-		// A bare letter: Mod+Shift+P is a private window in Firefox and its
+		// A bare letter: Mod+Shift+P opens a private window in Firefox and its
 		// derivatives, and the browser wins that one.
 		await page.keyboard.press("g");
 		await expect(palette(page)).toBeVisible();
@@ -39,10 +35,8 @@ test.describe("the command palette", () => {
 		page,
 	}) => {
 		await expect(paletteField(page)).toBeFocused();
-		// The fixture's four user playlists plus the autoplaylist, which is not
-		// distinguishable from them here and must not be: `#Jean Library` is the
-		// only one held back, because it is Jean's own plumbing rather than a kind
-		// of playlist.
+		// The fixture's four user playlists plus the autoplaylist; `#Jean Library`
+		// is the only one held back.
 		await expect(results(page)).toHaveCount(5);
 		await expect(results(page).first()).toHaveAttribute(
 			"aria-selected",
@@ -79,10 +73,6 @@ test.describe("the command palette", () => {
 		).toBeVisible();
 	});
 
-	// The one rule that holds for anything typed at a list in this app: it goes
-	// through fold(), so the accents in somebody's own library are never a tax on
-	// finding it. The palette used to filter with a plain toLowerCase().includes()
-	// and was the single place where they were.
 	test("typing without the accents still finds the playlist", async ({
 		page,
 	}) => {
@@ -92,10 +82,7 @@ test.describe("the command palette", () => {
 		await expect(results(page).first()).toContainText("Rock en Español");
 	});
 
-	// Every token has to match, in any order, as a substring -- the same rule the
-	// library search and the finder use, so typing at one behaves like typing at
-	// the others.
-	test("the words can arrive in any order", async ({ page }) => {
+	test("every word has to match, in any order", async ({ page }) => {
 		await paletteField(page).fill("espanol rock");
 		await expect(results(page)).toHaveCount(1);
 	});
@@ -118,18 +105,13 @@ test.describe("the command palette", () => {
 });
 
 // beefweb has no library API, so "the library" is whichever playlist the user
-// points Jean at. On an install that has none by that name, the first thing
-// search can do is explain how to make one.
+// points Jean at.
 test.describe("the first run, with no library playlist", () => {
-	// Both, and the pairing is the point: the setup screen exists only for a
-	// player with no media library API *and* no autoplaylist to fall back on.
-	// Give it the API and there is nothing to set up, which is the whole reason
-	// the API is worth having.
+	// The setup screen exists only for a player with no media library API and no
+	// autoplaylist to fall back on.
 	test.use({ withoutLibraryPlaylist: true, library: { supported: false } });
 
-	test("it names the playlist exactly, because the name is the whole contract", async ({
-		page,
-	}) => {
+	test("it names the exact strings to type", async ({ page }) => {
 		await page.goto("/#/search");
 
 		await expect(
@@ -139,9 +121,8 @@ test.describe("the first run, with no library playlist", () => {
 			}),
 		).toBeVisible();
 
-		// The two strings the user has to reproduce exactly, asserted on the code
-		// elements that set them apart. `getByText` is a case-insensitive substring
-		// match, so plain 'ALL' also finds the word "called" in the prose below.
+		// `getByText` is a case-insensitive substring match, so plain 'ALL' also
+		// finds the word "called" in the prose below.
 		await expect(
 			page.locator("code").filter({ hasText: /^ALL$/ }),
 		).toBeVisible();
@@ -149,7 +130,6 @@ test.describe("the first run, with no library playlist", () => {
 			page.locator("code").filter({ hasText: /^#Jean Library$/ }),
 		).toBeVisible();
 
-		// The promise that makes the instruction safe to follow.
 		await expect(
 			page.getByText("Nothing here creates, clears or reorders a playlist."),
 		).toBeVisible();
@@ -159,11 +139,7 @@ test.describe("the first run, with no library playlist", () => {
 		page,
 		player,
 	}) => {
-		// The fixture still has an ordinary playlist titled 'Library' -- it is
-		// right there in the sidebar. Jean used to resolve the library by falling
-		// back to anything loosely titled that, with no check on its size, so a
-		// dozen production-music cues under the name silently became someone's
-		// whole collection. Setup is the correct answer here, not that playlist.
+		// The fixture still has an ordinary playlist titled 'Library'.
 		expect(player.playlists.some((entry) => entry.title === "Library")).toBe(
 			true,
 		);
@@ -176,7 +152,6 @@ test.describe("the first run, with no library playlist", () => {
 			}),
 		).toBeVisible();
 
-		// And there is nothing to pick: choosing was the guess, in a nicer coat.
 		await expect(page.getByRole("listitem")).toHaveCount(0);
 	});
 
@@ -186,9 +161,6 @@ test.describe("the first run, with no library playlist", () => {
 	}) => {
 		await page.goto("/#/search");
 
-		// Renaming someone's playlist is theirs to agree to, so it is a button and
-		// never automatic. This is also the upgrade path for installs set up before
-		// the name meant anything.
 		await page
 			.getByRole("button", { name: /Rename it to #Jean Library/ })
 			.click();
@@ -199,7 +171,7 @@ test.describe("the first run, with no library playlist", () => {
 		).toBeVisible();
 		await expect(trackRow(page, 0)).toBeAttached();
 
-		// Renamed, not copied: no playlist was created and none was emptied.
+		// Renamed, not copied.
 		expect(requestsTo(player, "/playlists/add")).toHaveLength(0);
 		expect(
 			player.playlists.some((entry) => entry.title === "#Jean Library"),
@@ -208,8 +180,8 @@ test.describe("the first run, with no library playlist", () => {
 			false,
 		);
 
-		// And it sticks, because the name is on the player rather than in this
-		// browser -- which is what makes it true on the next device too.
+		// The name is on the player rather than in this browser, so it survives a
+		// reload and holds on the next device too.
 		await page.reload();
 		await page.getByLabel("Search your library").fill("babasonicos");
 		await expect(
@@ -240,8 +212,7 @@ test.describe("the library playlist is Jean's, not furniture", () => {
 				.filter({ hasText: /^Library/ }),
 		).toHaveCount(1);
 
-		// Routing to it lands somewhere else instead: browsing the library is a
-		// feature Jean has not built, and it must not back into one by accident.
+		// p8 is `#Jean Library`, and routing to it lands somewhere else.
 		await page.goto("/#/p8");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "#Jean Library" }),
@@ -264,7 +235,6 @@ test.describe("where a view puts you when you come back to it", () => {
 			page.getByRole("heading", { level: 1, name: "Favorites" }),
 		).toBeVisible();
 
-		// A different view starts at the top rather than inheriting the offset.
 		await expect.poll(() => scrollTop(page)).toBe(0);
 
 		await openSidebar(page);
@@ -277,8 +247,8 @@ test.describe("where a view puts you when you come back to it", () => {
 		).toBeVisible();
 
 		// Rows arrive a chunk at a time, so the content is often too short to hold
-		// the offset at the moment the view comes back -- the restore keeps trying
-		// for about a second rather than giving up on the first frame.
+		// the offset at the moment the view comes back; the restore keeps trying
+		// for about a second.
 		await expect.poll(() => scrollTop(page)).toBe(900);
 	});
 });
@@ -290,10 +260,8 @@ test.describe("chrome that only means something with a keyboard", () => {
 		await page.goto("/");
 		const shortcuts = page.getByRole("button", { name: "Keyboard shortcuts" });
 
-		// Asked as a pointer question rather than a width one, because that is the
-		// actual question -- a narrow desktop window still has a keyboard. Nothing
-		// is lost where one exists either: the sheet is bound to `?`, so the
-		// keyboard opens the list of things the keyboard does.
+		// A pointer question rather than a width one: a narrow desktop window still
+		// has a keyboard.
 		await expect(shortcuts).toBeVisible({
 			visible: info.project.name !== "mobile",
 		});

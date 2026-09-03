@@ -2,13 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { clamp } from "@/shared/lib/math";
 
-// Which modifiers were held, whichever kind of event carried them.
 type SelectionModifiers = Pick<MouseEvent, "shiftKey" | "metaKey" | "ctrlKey">;
 
-// Where the cursor was, per view. Leaving a playlist for a search and coming
-// back should put you where you left off, and the cursor is half of that -- the
-// other half is the scroll offset, in useScrollMemory. Bounded, because a live
-// search mints a new key on every keystroke.
+// Where the cursor was, per view, so returning to a list lands where it was left. Bounded, because a live search mints a new key on every keystroke.
 const MAX_REMEMBERED = 50;
 const cursors = new Map<string, number>();
 
@@ -26,10 +22,7 @@ const rangeBetween = (from: number, to: number) => {
 	);
 };
 
-// Cursor and selection live as indices in state, never as DOM focus: the
-// virtualiser unmounts the focused row the moment it scrolls out of view, so
-// anything relying on document.activeElement loses its place. Rows are plain
-// divs; the list element owns keyboard focus.
+// Cursor and selection live as indices in state, never as DOM focus: the virtualiser unmounts the focused row the moment it scrolls out of view, so anything relying on document.activeElement loses its place.
 export function useTrackSelection(total: number, viewKey: string) {
 	const [cursor, setCursor] = useState(() => cursors.get(viewKey) ?? 0);
 	const [selection, setSelection] = useState<Set<number>>(() => new Set());
@@ -38,8 +31,7 @@ export function useTrackSelection(total: number, viewKey: string) {
 	const cursorRef = useRef(cursor);
 	cursorRef.current = cursor;
 
-	// Saved on the way out rather than on every move: the cleanup runs with the
-	// key it was registered under, so the value cannot land under the new one.
+	// Saved on the way out rather than on every move: the cleanup runs with the key it was registered under, so the value cannot land under the new one.
 	useEffect(() => () => remember(viewKey, cursorRef.current), [viewKey]);
 
 	useEffect(() => {
@@ -49,8 +41,7 @@ export function useTrackSelection(total: number, viewKey: string) {
 		setSelection(new Set());
 	}, [viewKey]);
 
-	// Clamp only. Rows arrive in chunks, so `total` grows several times during a
-	// load, and resetting here would throw away the user's place on every chunk.
+	// Clamp only: rows arrive in chunks, so `total` grows several times during a load and resetting here would throw away the cursor on every chunk.
 	useEffect(() => {
 		setCursor((current) => clamp(current, 0, Math.max(total - 1, 0)));
 	}, [total]);
@@ -113,8 +104,7 @@ export function useTrackSelection(total: number, viewKey: string) {
 
 	const clear = useCallback(() => setSelection(new Set()), []);
 
-	// Memoised: a fresh object here would change identity every render and defeat
-	// the memo on every row in the list.
+	// Memoised: a fresh object here would change identity every render and defeat the memo on every row in the list.
 	return useMemo(
 		() => ({
 			cursor,

@@ -10,15 +10,8 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// The one switch in Jean that decides whether anything leaves the network, and
-// the only claim on the settings screen that is about the user's privacy rather
-// than about the player. It had no test at all.
-//
-// Nothing here lets a request out, and that is most of the point: the default is
-// off, so the assertion is that the panel explains itself and the network stays
-// quiet. Turning it on is checked as far as the panel's own words -- MusicBrainz
-// is a third party on the open internet, and a suite that called it would be
-// slow, flaky and rude in equal measure.
+// Nothing here calls MusicBrainz: it is a third party on the open internet, so
+// turning the lookup on is only checked as far as the panel's own words.
 
 const ARTIST_SWITCH = "Look up artists on MusicBrainz and Wikipedia";
 
@@ -47,14 +40,9 @@ test.describe("artist information", () => {
 		await openArtistTab(page);
 
 		await expect(page.getByText("Artist information is off.")).toBeVisible();
-		// Naming the switch is the whole difference between an empty panel and one
-		// a person can do something about.
 		await expect(page.getByText(/Settings . Artist information/)).toBeVisible();
 	});
 
-	// The promise the default exists to make. A tab that has quietly gone and
-	// asked MusicBrainz about this track while claiming to be off is the one
-	// failure here that matters, and it is invisible from the screen.
 	test("asks nobody anything while it is off", async ({ page }) => {
 		const outbound: string[] = [];
 		page.on("request", (request) => {
@@ -80,10 +68,8 @@ test.describe("artist information", () => {
 		await toggle.click();
 		await expect(toggle).toHaveAttribute("aria-checked", "true");
 
-		// A setting, so it survives the trip. A switch that only looked on would be
-		// the same bug from the other side. The dialog is state rather than a
-		// route, so the reload lands on the app behind it and it has to be reopened
-		// -- which is the trade for not losing your place every time you open it.
+		// The dialog is state rather than a route, so a reload lands on the app
+		// behind it and it has to be reopened.
 		await page.reload();
 		await openSettings(page);
 		await expect(
@@ -96,10 +82,8 @@ test.describe("artist information", () => {
 		await openArtistTab(page);
 		await expect(page.getByText("Artist information is off.")).toBeVisible();
 
-		// Settings opens *over* the now-playing screen rather than navigating away
-		// from it, which is the point of it being a dialog -- so the screen is
-		// dismissed here on purpose, to get at the top bar the gear lives in. On a
-		// phone that screen is the whole viewport and covers it entirely.
+		// The now-playing screen covers the top bar the gear lives in, so it has to
+		// be dismissed before Settings can be opened.
 		await page.getByRole("button", { name: "Close now playing" }).click();
 		await expect(nowPlayingScreen(page)).toBeHidden();
 
@@ -109,9 +93,8 @@ test.describe("artist information", () => {
 		await expect(settingsDialog(page)).toBeHidden();
 
 		await openArtistTab(page);
-		// Whatever it says next -- looking up, or nothing found, since the lookup
-		// cannot reach anything from here -- it is no longer the off state, which
-		// is the only part this can assert without calling a third party.
+		// Looking up or nothing found, depending on what the lookup can reach: only
+		// the off state can be asserted against without calling a third party.
 		await expect(page.getByText("Artist information is off.")).toBeHidden();
 	});
 });

@@ -8,27 +8,16 @@ import {
 
 import { subscribers } from "@/shared/lib/store";
 
-// Dragging out of one scroll container and onto a target in another.
-//
-// Deliberately not built on useSortableList: there the dragged element stays
-// mounted and the drop is arithmetic. Here the source row can be unmounted by
-// the virtualiser mid-gesture and the target is elsewhere in the tree, so the
-// drop is hit-tested against the document and a ghost follows the pointer.
-//
-// No pointer capture, here of all places: capture retargets every later event to
-// the capturing element, and the natural one is the scroll container -- an
-// ancestor of the rows, so a handler on a descendant would never fire again.
+// Dragging out of one scroll container and onto a target in another. The source row can be unmounted by the virtualiser mid-gesture and the target is elsewhere in the tree, so the drop is hit-tested against the document and a ghost follows the pointer.
+// No pointer capture: capture retargets every later event to the capturing element, and the natural one here is the scroll container, an ancestor of the rows, so a handler on a descendant would never fire again.
 
-// What a row hands over when a drag starts on it: the refs being dragged, and
-// what the ghost should say about them.
 export interface DragPayload<T = unknown> {
 	items: T;
 	label: string;
 	count: number;
 }
 
-// Only coarse facts, because everything subscribes to this and nothing may
-// re-render per frame because of it.
+// Only coarse facts, because everything subscribes to this and nothing may re-render per frame because of it.
 export interface DragState {
 	isDragging: boolean;
 	over: string | null;
@@ -36,8 +25,7 @@ export interface DragState {
 	label: string | null;
 }
 
-// One in-flight gesture. The window listeners are held on it so teardown can
-// remove exactly the ones it added.
+// One in-flight gesture. The window listeners are held on it so teardown can remove exactly the ones it added.
 interface Gesture {
 	startX: number;
 	startY: number;
@@ -52,8 +40,7 @@ interface Gesture {
 const THRESHOLD_PX = 5;
 const AUTOSCROLL_ZONE_PX = 52;
 const AUTOSCROLL_MAX_PX = 13;
-// Below and right of the cursor, so the ghost never covers the row the pointer
-// is actually over -- which is the row being hit-tested.
+// Below and right of the cursor, so the ghost never covers the row being hit-tested underneath it.
 const GHOST_OFFSET = { x: 18, y: 16 };
 
 const IDLE: DragState = {
@@ -77,13 +64,12 @@ const snapshot = () => state;
 export const useDragState = () =>
 	useSyncExternalStore(listeners.subscribe, snapshot, snapshot);
 
-// Held outside React because it is written every frame. See the note above.
+// Held outside React because it is written every frame.
 export const setGhostElement = (element: HTMLElement | null) => {
 	ghostElement = element;
 };
 
-// A drag that started somewhere with user-select: none can still select text it
-// passes over, so the whole document is held still for the gesture.
+// A drag that started somewhere with user-select: none can still select text it passes over, so the whole document is held still for the gesture.
 const setDocumentDragging = (on: boolean) => {
 	document.body.style.userSelect = on ? "none" : "";
 	document.body.style.cursor = on ? "grabbing" : "";
@@ -108,8 +94,6 @@ const targetUnder = (
 	return id;
 };
 
-// Any marked scroller under the pointer follows the drag, so a target below the
-// fold of a long sidebar is still reachable without letting go.
 const autoscroll = (x: number, y: number) => {
 	const scroller = document
 		.elementFromPoint(x, y)
@@ -127,8 +111,7 @@ const autoscroll = (x: number, y: number) => {
 	}
 };
 
-// `getPayload` returns { items, label, count } for the row the gesture started
-// on, or null to leave the pointer alone. `canDrop` filters targets by id.
+// getPayload returns the payload for the row the gesture started on, or null to leave the pointer alone. canDrop filters targets by id.
 export function useDragSource<T = unknown>({
 	getPayload,
 	canDrop,
@@ -142,8 +125,7 @@ export function useDragSource<T = unknown>({
 }) {
 	const gesture = useRef<Gesture | null>(null);
 	const frame = useRef<number | null>(null);
-	// True from the moment a drag starts until the next pointer-down, so a caller
-	// can tell a drag from a click after the fact -- selection has to know.
+	// True from the moment a drag starts until the next pointer-down, so a caller can tell a drag from a click after the fact.
 	const dragged = useRef(false);
 
 	const latest = useRef({ getPayload, canDrop, onDrop });
@@ -163,8 +145,7 @@ export function useDragSource<T = unknown>({
 
 	useEffect(() => teardown, [teardown]);
 
-	// Hit-testing on a frame rather than on the move event, so a target that
-	// scrolls under a stationary pointer still arms.
+	// Hit-testing on a frame rather than on the move event, so a target that scrolls under a stationary pointer still arms.
 	const tick = useCallback(() => {
 		const current = gesture.current;
 		if (!current?.started) return;
@@ -180,8 +161,7 @@ export function useDragSource<T = unknown>({
 	}, []);
 
 	const onPointerDown = (event: ReactPointerEvent) => {
-		// Touch is not a drag surface here: the sidebar is a drawer that covers the
-		// list, so there is nothing to drag onto. The menu is the path there.
+		// Touch is not a drag surface here: the sidebar is a drawer that covers the list, so there is nothing to drag onto. The menu is the path there.
 		if (disabled || event.pointerType !== "mouse" || event.button !== 0) return;
 
 		dragged.current = false;
@@ -214,8 +194,7 @@ export function useDragSource<T = unknown>({
 			current.started = true;
 			dragged.current = true;
 			setDocumentDragging(true);
-			// Placed before the first paint of the ghost, or it appears at the origin
-			// for one frame before catching up.
+			// Placed before the first paint of the ghost, or it appears at the origin for one frame before catching up.
 			placeGhost(current.pointer.x, current.pointer.y);
 			publish({
 				isDragging: true,

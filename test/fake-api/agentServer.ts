@@ -8,8 +8,7 @@ type FakeState = ReturnType<typeof createState>;
 
 // The socket under `handleAgent`. The component runs beside the player rather
 // than inside it, so every call to it is cross-origin and can fail by not
-// answering at all -- which is why the fake gives it a listener of its own
-// rather than another route on the beefweb one.
+// answering at all. Hence a listener of its own rather than a beefweb route.
 
 const readBody = (request: IncomingMessage): Promise<unknown> =>
 	new Promise((resolve) => {

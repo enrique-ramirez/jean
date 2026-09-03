@@ -23,10 +23,7 @@ import { useWrittenRating } from "./ratingStore";
 import styles from "./TrackRow.module.css";
 import { useTagWriting } from "./useTagWriter";
 
-// An unreadable rating is drawn as unrated rather than as '--'. The column is
-// already hidden wholesale when the player cannot resolve the field at all, so
-// inside a library that has ratings the only thing an empty tag can mean is
-// that this track has none.
+// An unreadable rating draws as unrated rather than '--': the column is hidden wholesale when the player cannot resolve the field at all, so an empty tag here means the track has no rating.
 function Rating({
 	row,
 	source,
@@ -142,9 +139,7 @@ function TrackRowComponent({
 	row,
 	index,
 	itemIndex,
-	// The ref whose cover this row draws -- its album's first row, so a record's
-	// worth of rows share one URL and therefore one request. Its own, when the
-	// caller has no grouping to hand.
+	// The ref whose cover this row draws: its album's first row, so a record's worth of rows share one URL and therefore one request.
 	coverIndex = itemIndex,
 	source,
 	columns,
@@ -186,18 +181,11 @@ function TrackRowComponent({
 	const artist = value(row, FIELD.artist) ?? "Unknown artist";
 	const trackNumber = value(row, FIELD.trackNumber);
 
-	// '1.01', the way a booklet writes it. Only where a heading cannot say it
-	// instead -- the album layout groups the discs and labels them, so repeating
-	// the disc on every row under its own heading would be saying it twice. The
-	// fallback for an untagged track is its position in the view, which belongs
-	// to no disc, so it never takes the prefix.
+	// '1.01', the way a booklet writes it. The fallback for an untagged track is its position in the view, which belongs to no disc, so it never takes the prefix.
 	const disc = showDisc && trackNumber !== null ? discNumber(row) : null;
 
 	return (
-		// Not a <tr>, for the reason the grid above is not a <table>. And not
-		// focusable on purpose: the virtualiser unmounts the focused row the moment
-		// it scrolls out of view, so the cursor is an index in state and the list
-		// element owns focus. See CLAUDE.md, "Keyboard".
+		// Not focusable on purpose: the virtualiser unmounts the focused row the moment it scrolls out of view, so the cursor is an index in state and the list element owns focus.
 		// biome-ignore lint/a11y/useSemanticElements: virtualised, see above
 		// biome-ignore lint/a11y/useFocusableInteractive: cursor is state, see above
 		<div
@@ -217,9 +205,7 @@ function TrackRowComponent({
 			role="row"
 			aria-selected={isSelected}
 			onPointerDown={(event) => {
-				// Secondary click must leave the selection alone -- collapsing it here
-				// would empty a multi-track selection before the context menu that is
-				// about to act on it has even opened.
+				// Secondary click must leave the selection alone, or a multi-track selection is emptied before the context menu about to act on it has opened.
 				if (event.button === 0) onSelect(index, event);
 			}}
 		>
@@ -233,17 +219,14 @@ function TrackRowComponent({
 				)}
 			</span>
 
-			{/* index is the row's place in the view; itemIndex is the ref the source
-          addresses it by. They differ in a filtered view. */}
+			{/* index is the row's place in the view; itemIndex is the ref the source addresses it by. They differ in a filtered view. */}
 			{showArtwork ? (
 				<Artwork src={source.artworkUrl(coverIndex)} size={34} />
 			) : null}
 
 			<span className={styles.names} data-inline={note !== null}>
 				<span className={styles.title}>{title}</span>
-				{/* No separator between the two. The note starts with the word the tag
-            used -- 'feat.', 'w.' -- which is already a join, and a middot on
-            every second row is the clutter this is removing. */}
+				{/* No separator: the note starts with the tag's own connective, 'feat.' or 'w.', which is already a join. */}
 				{note === null ? null : <span className={styles.note}>{note}</span>}
 				{showArtist ? <span className={styles.artist}>{artist}</span> : null}
 			</span>
@@ -261,6 +244,4 @@ function TrackRowComponent({
 	);
 }
 
-// Rows mount and unmount continuously while scrolling, so the cheap bail-out
-// matters more here than anywhere else in the app.
 export const TrackRow = memo(TrackRowComponent);

@@ -8,14 +8,7 @@ import { Button } from "@/shared/ui/Button";
 import { PlayIcon } from "@/shared/ui/icons";
 import type { TrackBrowserHandle } from "./listTypes";
 
-// Play starts at the beginning, Shuffle starts anywhere and turns the mode on.
-//
-// Shuffle here is the action, not the mode -- that lives in the status bar, where
-// global player state belongs. Playing a position makes the playlist active and
-// the mode draws its next track from it, so this only opens the door.
-//
-// Neither button touches the mode the other way: a Play that quietly turned
-// shuffle off would be reaching across the app to do it.
+// Shuffle here is the action, not the mode: it turns shuffle on and plays a random position, and Play never turns it back off.
 export function PlayActions({
 	browserRef,
 	trackCount,

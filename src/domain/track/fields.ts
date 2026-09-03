@@ -1,9 +1,7 @@
 import { fieldTable } from "@/shared/api/fieldTable";
 import type { TrackColumns } from "@/shared/api/types";
 
-// One string per row each, so per-track-unique values are the expensive ones.
-// %path% is absent deliberately: the largest field, and tracks are addressed by
-// index, so it is fetched on demand for the one track that needs it.
+// %path% is absent deliberately: it is the largest field, and tracks are addressed by index, so it is fetched on demand for the one track that needs it.
 const FIELDS = [
 	["trackNumber", "%tracknumber%"],
 	["discNumber", "%discnumber%"],
@@ -24,12 +22,10 @@ const FIELDS = [
 export const { expressions: TRACK_EXPRESSIONS, index: FIELD } =
 	fieldTable(FIELDS);
 
-// A field the player cannot resolve returns '?'; one that resolves but is empty
-// returns '' or 'N/A'. That difference is the whole capability detection.
+// A field the player cannot resolve returns '?'; one that resolves but is empty returns '' or 'N/A'. That difference is the whole capability detection.
 const UNRESOLVED = "?";
 const ABSENT = new Set([UNRESOLVED, "", "N/A"]);
 
-// Split out so a value held outside a row reads by the same rules.
 export const readValue = (raw: string | undefined): string | null =>
 	raw === undefined || ABSENT.has(raw) ? null : raw;
 
@@ -37,9 +33,7 @@ export function value(row: TrackColumns, field: number): string | null {
 	return readValue(row[field]);
 }
 
-// Split out for the same reason as `readValue`: a value Jean holds outside a row
-// -- an optimistic rating, say -- has to read by exactly the same rules, or an
-// optimistic row and a loaded one disagree about what `''` means.
+// A value Jean holds outside a row, such as an optimistic rating, must read by exactly the same rules, or it disagrees with a loaded row about what `''` means.
 export function readNumber(raw: string | undefined): number | null {
 	const text = readValue(raw);
 	if (text === null) return null;
@@ -50,8 +44,7 @@ export function readNumber(raw: string | undefined): number | null {
 export const number = (row: TrackColumns, field: number): number | null =>
 	readNumber(row[field]);
 
-// 'YYYY-MM-DD HH:MM:SS', with a trailing space from some components. Not every
-// engine parses the space separator, hence the swap for 'T'.
+// 'YYYY-MM-DD HH:MM:SS', with a trailing space from some components. Not every engine parses the space separator, hence the swap for 'T'.
 export function timestamp(row: TrackColumns, field: number): number | null {
 	const raw = value(row, field);
 	if (!raw) return null;
@@ -59,8 +52,7 @@ export function timestamp(row: TrackColumns, field: number): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-// Sampling is only safe where a wrong answer picks a default. Where it decides
-// whether a column exists at all, scan instead.
+// Sampling is only safe where a wrong answer picks a default. Where it decides whether a column exists at all, scan instead.
 export function sampleRows(
 	rows: TrackColumns[],
 	sampleSize: number,
@@ -78,9 +70,7 @@ export const fieldIsAvailable = (
 	sampleSize = 200,
 ) => sampleRows(rows, sampleSize).some((row) => row[field] !== UNRESOLVED);
 
-// Tags drift in case and spacing between files in the same album --
-// '5 Seconds Of Summer' and '5 Seconds of Summer' are one artist. Compare
-// loosely to decide what the user sees; display the file's own spelling.
+// Tags drift in case and spacing between files in the same album, so compare loosely to decide what the user sees and display the file's own spelling.
 export const tagKey = (text: string | null | undefined) =>
 	(text ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -92,24 +82,19 @@ export const sameTagValue = (
 const escapeForRegExp = (text: string) =>
 	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// What a track's artist adds to the album's: 'feat. Future' out of 'Post Malone
-// feat. Future'. Null on compilations, where the artist is the fact about the
-// row rather than a footnote to it. Sliced out of the original rather than
-// rebuilt from the normalised form, because the album artist may be another
-// file's spelling and what is shown has to be this one's.
+// What a track's artist adds to the album's: 'feat. Future' out of 'Post Malone feat. Future'. Null on compilations, where the artist is the fact about the row rather than a footnote to it.
+// Sliced out of the original rather than rebuilt from the normalised form, because the album artist may carry another file's spelling.
 export function featuring(
 	artist: string | null | undefined,
 	albumArtist: string | null | undefined,
 ): string | null {
 	if (!artist || !albumArtist) return null;
 
-	// The lookahead stops a prefix from being a coincidence: without it a 'Kid'
-	// album turns 'Kidz Bop' into 'z Bop'.
+	// The lookahead stops a prefix from being a coincidence: without it a 'Kid' album turns 'Kidz Bop' into 'z Bop'.
 	const name = escapeForRegExp(albumArtist.trim()).replace(/\s+/g, "\\s+");
 	const match = new RegExp(`^\\s*${name}(?=$|[\\s,;/&])`, "i").exec(artist);
 	if (!match) return null;
 
-	// The tag's own separator carries nothing, but a connective word does:
-	// 'feat.' and 'w.' are how the sleeve says it, so they stay.
+	// The tag's own separator carries nothing, but a connective word does: 'feat.' and 'w.' are how the sleeve says it, so they stay.
 	return artist.slice(match[0].length).replace(/^[\s,;/&]+/, "") || null;
 }

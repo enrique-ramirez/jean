@@ -1,26 +1,15 @@
 import { tagKey } from "@/domain/track/fields";
 import type { Album } from "./albums";
 
-// Artists, aggregated off the album pass rather than off the rows: an artist is
-// their records, and everything the front door says about one -- how much of it
-// there is, how often it is played, which sleeve stands for it -- is already
-// summed per album.
-//
-// Keyed loosely, because these are counts rather than labels: `5 Seconds Of
-// Summer` and `5 Seconds of Summer` are one artist. The name shown is still the
-// spelling on the first record found.
-// Generic in the album, so an artist aggregated from covered albums still hands
-// back a covered one: the header draws its most played record, and a `cover`
-// typed as a bare `Album` would have lost the artwork url on the way through.
+// Artists, aggregated off the album pass rather than off the rows, since everything said about one is already summed per album.
+// Keyed loosely, so `5 Seconds Of Summer` and `5 Seconds of Summer` are one artist; the name shown is the spelling on the first record found.
 export interface Artist<A extends Album = Album> {
 	key: string;
 	name: string;
 	plays: number;
 	albumCount: number;
 	trackCount: number;
-	// The artist's most played record, which is the sleeve that stands for them.
-	// Jean has no artist images and will not get any -- the obvious source sends
-	// no CORS header -- so a cover is the only picture there is.
+	/** The artist's most played record. Jean has no artist images, so a cover is the only picture there is. */
 	cover: A;
 }
 
@@ -50,10 +39,7 @@ export function artistsOf<A extends Album>(albums: A[]): Artist<A>[] {
 	return [...byKey.values()];
 }
 
-// The one this library is *about*, or null where the player keeps no play
-// counts. Not "the one with the most records": that is a fact about how a
-// collection was filled rather than about what is listened to, and a card
-// captioned "most played" has to mean it.
+/** The most played entry, or null where the player keeps no play counts. Not the one with the most records, which is a different claim. */
 export const mostPlayed = <T extends { plays: number }>(
 	entries: T[],
 ): T | null =>

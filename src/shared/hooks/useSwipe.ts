@@ -2,13 +2,11 @@ import { type TouchEvent as ReactTouchEvent, useRef } from "react";
 
 import { scrollParentOf } from "@/shared/lib/scrollParent";
 
+// Longer than this and the gesture is a scroll that happened to end somewhere else, not an instruction.
+const FLICK_MS = 600;
+
 // A directional flick on a surface that also has to scroll.
-//
-// **Touch events, not pointer events**, and that is the design rather than an
-// oversight: the browser cancels the pointer stream the moment it claims a
-// gesture for scrolling, so a pointer-based version can only ever see gestures
-// on regions that do not scroll. Touch only, for the same reason only a mouse
-// drags a row. See "A flick is not a drag" in `shared/ui/CLAUDE.md`.
+// Touch events rather than pointer events: the browser cancels the pointer stream the moment it claims a gesture for scrolling, so a pointer-based version only ever sees gestures on regions that do not scroll.
 export function useSwipe({
 	onLeft,
 	onRight,
@@ -26,8 +24,7 @@ export function useSwipe({
 		x: number;
 		y: number;
 		at: number;
-		// Whether the thing under the finger had anywhere to scroll *up* to when
-		// the gesture began. See `onTouchEnd`.
+		// Whether the thing under the finger had anywhere to scroll up to when the gesture began. See onTouchEnd.
 		wasAtTop: boolean;
 	} | null>(null);
 
@@ -36,10 +33,7 @@ export function useSwipe({
 			const touch = event.touches[0];
 			if (!touch) return;
 
-			// Bounded by the surface this handler is attached to. Unbounded, a
-			// gesture starting on the header walks straight past the screen and
-			// finds the *track list* scrolling behind it -- which, mid-list, reports
-			// "not at the top" and silently refuses to dismiss.
+			// Bounded by the surface this handler is attached to: unbounded, a gesture starting on the header finds the track list scrolling behind it, which mid-list reports not at the top and silently refuses to dismiss.
 			const scroller = scrollParentOf(
 				event.target as Element,
 				event.currentTarget,
@@ -61,13 +55,9 @@ export function useSwipe({
 			const dx = touch.clientX - start.x;
 			const dy = touch.clientY - start.y;
 
-			// A slow drag is a scroll that happened to end somewhere else. Only a
-			// flick is an instruction.
-			if (event.timeStamp - start.at > 600) return;
+			if (event.timeStamp - start.at > FLICK_MS) return;
 
-			// The dominant axis wins outright rather than both firing: a diagonal
-			// flick that dismissed the screen *and* changed tab would be two things
-			// nobody asked for.
+			// The dominant axis wins outright rather than both firing: a diagonal flick that dismissed the screen and changed tab would be two things nobody asked for.
 			if (Math.abs(dx) > Math.abs(dy)) {
 				if (dx <= -distance) onLeft?.();
 				else if (dx >= distance) onRight?.();
@@ -79,13 +69,7 @@ export function useSwipe({
 				return;
 			}
 
-			// Down dismisses only from the top of whatever was under the finger,
-			// which is the rule every sheet that does this uses. Pulling down inside
-			// a lyric you are halfway through means "scroll back up" and nothing
-			// else; pulling down again once there is no further up to go means
-			// "close". Restricting it by *region* instead -- the header and the
-			// artwork only -- was the first attempt, and it left the tab you are
-			// most likely to be reading as the one tab you could not swipe away.
+			// Down dismisses only from the top of whatever was under the finger: part-way through a scrollable region, pulling down means scroll up and nothing else.
 			if (dy >= distance && start.wasAtTop) onDown?.();
 		},
 

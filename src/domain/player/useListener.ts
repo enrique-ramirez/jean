@@ -17,16 +17,8 @@ import {
 	toggleListeningMute,
 } from "./listenerStore";
 
-// **This device's volume, dressed as the player's, because the status bar's
-// fader points at one or the other and never at both.** The capture is taken
-// before foobar2000's volume, so while the sound is here that fader is provably
-// dead -- dragging it changes nothing anyone can hear. Retargeting it is the
-// answer; growing a second one beside it is not.
-//
-// The decibel scale is the dressing. `audio.volume` is an amplitude multiplier,
-// which is the other end of the conversion in `listener.ts` and not a scale to
-// put in front of anybody: presented this way, the same gesture in the same
-// place is the same change in loudness whichever target it is pointed at.
+// This device's volume, shaped like the player's, because the status bar's fader points at one or the other and never at both.
+// foo_jean captures audio before foobar2000's own volume, so while the sound is here the player's fader changes nothing anyone can hear.
 const deviceVolume = (value: number, isMuted: boolean): Volume => ({
 	type: "db",
 	min: DEVICE_VOLUME_FLOOR_DB,
@@ -41,8 +33,7 @@ export function useListener() {
 	const listener = useMemo(() => resolveListener(discovery), [discovery]);
 	const { target } = listener;
 
-	// Idempotent in the store, so two callers stating the same target do not tear
-	// down each other's connection.
+	// Idempotent in the store, so two callers stating the same target do not tear down each other's connection.
 	useEffect(() => {
 		configureListening(target);
 	}, [target]);
@@ -66,8 +57,7 @@ export function useListener() {
 		phase: live.phase,
 		format: live.format,
 		isOn,
-		// Null where the platform will not have it: on iOS `audio.volume` is a
-		// documented no-op and the hardware keys are the only volume there is.
+		// Null where the platform will not have it: on iOS `audio.volume` is a documented no-op and the hardware keys are the only volume there is.
 		volume: live.canSetVolume
 			? deviceVolume(live.volumeDb, live.isMuted)
 			: null,

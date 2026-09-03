@@ -5,11 +5,8 @@ import { rowHaystack } from "./searchText";
 
 const indexes = new Map<string, string[]>();
 
-// Rows only ever grow -- appended a chunk at a time -- so the index extends in
-// place instead of being rebuilt for every chunk that lands. The key carries
-// the item count, so an edited library indexes afresh rather than inheriting
-// rows that have moved; only one is ever held, since a superseded key is a
-// stale copy of the largest thing in memory.
+// Rows only ever grow, a chunk at a time, so the index extends in place rather than being rebuilt for every chunk that lands.
+// The key carries the item count, so an edited library indexes afresh rather than inheriting rows that have moved.
 export function libraryIndex(key: string, rows: TrackColumns[]): string[] {
 	const held = indexes.get(key);
 	if (held) {
@@ -25,9 +22,7 @@ export function libraryIndex(key: string, rows: TrackColumns[]): string[] {
 	return haystacks;
 }
 
-// Refs, ascending, in library order rather than ranked: order is what makes
-// album grouping mean anything, and a library is usually sorted the way its
-// owner reads it.
+// Refs ascending, in library order rather than ranked: order is what makes album grouping mean anything.
 export function searchLibrary(
 	haystacks: string[],
 	query: string,
@@ -43,8 +38,7 @@ export function searchLibrary(
 	return Int32Array.from(matched);
 }
 
-// Results are ascending, so finding the row the player is on is a bisection
-// rather than a scan -- this runs on every position update.
+// Results are ascending, so finding the row the player is on is a bisection rather than a scan; this runs on every position update.
 export function positionOf(
 	indices: Refs,
 	index: number | null | undefined,

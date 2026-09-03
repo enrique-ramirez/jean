@@ -14,8 +14,6 @@ import {
 } from "./fixtures.ts";
 
 // 'babasonicos' matches the twelve Jessico tracks, library indices 0-11.
-// The scratch says which kind of view filled it: 'Most played' is both a
-// plausible search and the name of a shelf, and a reload has to tell them apart.
 const QUERY = {
 	text: "babasonicos",
 	matches: 12,
@@ -36,8 +34,6 @@ const search = async (page: Page, text: string) => {
 	await expect(trackRow(page, 0)).toBeAttached();
 };
 
-// Search, then play a result -- which is the moment the results stop being a
-// view and become a playlist on the player. Most of this file starts here.
 const searchAndPlay = async (
 	page: Page,
 	player: FakePlayer,
@@ -63,8 +59,7 @@ test.describe("playing from search results", () => {
 	}) => {
 		await search(page, QUERY.text);
 
-		// Nothing exists until someone actually asks to hear something: typing and
-		// refining stay entirely client-side.
+		// Typing and refining stay client-side; nothing reaches the player yet.
 		expect(scratchOf(player)).toBeUndefined();
 
 		await trackRow(page, 2).dblclick();
@@ -75,9 +70,6 @@ test.describe("playing from search results", () => {
 		const scratch = scratchOf(player);
 		expect(scratch!.title).toBe(QUERY.title);
 
-		// Played from the scratch playlist by position, not from the library by
-		// index -- which is the whole point. What comes next is now these results'
-		// business rather than the library's.
 		await expect.poll(() => playedFrom(player)?.plref).toBe(scratch!.id);
 		expect(playedFrom(player)!.index).toBe(2);
 	});
@@ -93,8 +85,7 @@ test.describe("playing from search results", () => {
 		)!;
 		const titleOf = (track: Track) => track["%title%"];
 
-		// Identity by track rather than by index: the copy is by index, so an
-		// off-by-one would still produce twelve items and the wrong twelve.
+		// The copy is by index, so an off-by-one still produces twelve items.
 		expect(scratchOf(player)!.items.map(titleOf)).toEqual(
 			library!.items.slice(0, QUERY.matches).map(titleOf),
 		);
@@ -116,8 +107,6 @@ test.describe("playing from search results", () => {
 		await expect
 			.poll(() => scratchOf(player)?.items.length)
 			.toBe(NARROWER.matches);
-		// One playlist, reused. Creating one per search would churn ids and litter
-		// the player with a playlist per keystroke anyone happened to play from!.
 		expect(
 			player.playlists.filter((entry) => entry.title.startsWith("#Jean [")),
 		).toHaveLength(1);
@@ -135,7 +124,6 @@ test.describe("playing from search results", () => {
 		await trackRow(page, 5).dblclick();
 
 		await expect.poll(() => playedFrom(player)?.index).toBe(5);
-		// Already holds this set, so the second play is one request.
 		expect(requestsTo(player, "/items/copy")).toHaveLength(copiesBefore);
 	});
 
@@ -153,8 +141,7 @@ test.describe("playing from search results", () => {
 		await expect
 			.poll(() => playedFrom(player)?.plref)
 			.toBe(scratchOf(player)!.id);
-		// The order is on, and it is drawing from a playlist that is exactly these
-		// twelve tracks -- so there is nowhere else for it to go.
+		// 4 is the player's shuffle-by-tracks order.
 		await expect.poll(() => player.player.playbackMode).toBe(4);
 		expect(playedFrom(player)!.index).toBeLessThan(QUERY.matches);
 	});
@@ -165,9 +152,6 @@ test.describe("playing from search results", () => {
 	}) => {
 		await searchAndPlay(page, player);
 
-		// It exists on the player and it will show up in foobar -- there is no
-		// hidden playlist to be had -- but it is Jean's workspace, not one of the
-		// user's playlists, so it appears in none of the places those are offered.
 		await page.goto("/#/p5");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
@@ -189,8 +173,7 @@ test.describe("playing from search results", () => {
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
 		).toBeVisible();
 
-		// Filing a track into the scratch playlist would put it somewhere the next
-		// search silently empties.
+		// The next search empties the scratch playlist, so anything filed there goes.
 		await trackRow(page, 0).click({ button: "right" });
 		await page.getByRole("menuitem", { name: "Add to playlist" }).click();
 
@@ -228,8 +211,8 @@ test.describe("a search outlives the tab it was typed in", () => {
 
 		await page.reload();
 
-		// The query was only ever in memory; the player is what remembered it,
-		// because the playlist it is holding is named after it.
+		// The query is not stored in the browser; the scratch playlist's title is
+		// what remembers it.
 		await expect(
 			page.getByRole("heading", { level: 1, name: QUERY.text }),
 		).toBeVisible();
@@ -247,8 +230,8 @@ test.describe("a search outlives the tab it was typed in", () => {
 	}) => {
 		await searchAndPlay(page, player);
 
-		// A different device: nothing of Jean's own kept, landing on the root
-		// rather than on the search route.
+		// Stands in for another device: local state cleared, landing off the search
+		// route.
 		await page.goto("/#/p7");
 		await page.evaluate(() => localStorage.clear());
 		await page.goto("/#/p7");
@@ -256,8 +239,6 @@ test.describe("a search outlives the tab it was typed in", () => {
 
 		await openSidebar(page);
 		await expect(sidebar(page).getByText(QUERY.text)).toBeVisible();
-		// The scratch playlist is hidden, so without this the status bar would name
-		// a track with nothing on screen saying where it came from!.
 		await expect(sidebar(page).getByLabel("Playing from here")).toBeVisible();
 
 		await sidebar(page).getByText(QUERY.text).click();
@@ -279,7 +260,6 @@ test.describe("a search outlives the tab it was typed in", () => {
 		).toBeVisible();
 
 		await openSidebar(page);
-		// An entry that means nothing most of the time is a dead shelf.
 		await expect(
 			sidebar(page).getByText("Search", { exact: true }),
 		).toHaveCount(0);
@@ -290,20 +270,16 @@ test.describe("clearing the search", () => {
 	test("takes the scratch playlist with it", async ({ page, player }) => {
 		await searchAndPlay(page, player);
 
-		// Stop first, so the player is not on it. Nobody asked for a playlist named
-		// after a search they closed.
+		// Stop first: whether the scratch survives is decided from the app's copy of
+		// the player state, so clearing before the stop lands reads the old answer.
 		await statusBar(page).getByRole("button", { name: "Pause" }).click();
 		await page.goto("/#/p5");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
 		).toBeVisible();
 
-		// Stopped on the player, and then waited for the browser to have heard it.
-		// Whether the scratch survives is decided from the app's copy of the player
-		// state, so clicking before the push lands reads the old answer.
-		// Playing is two requests -- build the playlist, then play from it -- and
-		// the poll above only waits for the first. Stopping between them would land
-		// before playback had started and the play would undo it.
+		// Playing is two requests -- build the playlist, then play from it -- and the
+		// poll above only waits for the first, so a stop between them is undone.
 		await expect(statusBar(page)).toContainText("Los Calientes");
 		player.stop();
 		await expect(statusBar(page)).toContainText("Nothing playing");
@@ -319,18 +295,15 @@ test.describe("clearing the search", () => {
 		await page.getByRole("button", { name: "Clear search" }).click();
 
 		// Ordered rather than timed: the field emptying says the handler ran, and a
-		// navigation after it says anything it sent has reached the player. A bare
-		// wait would pass just as happily against a delete that was merely slow.
+		// navigation after it says anything it sent has reached the player.
 		await expect(page.getByLabel("Search your library")).toHaveValue("");
 		await page.goto("/#/p5");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
 		).toBeVisible();
 
-		// Deleting the playing playlist does not stop at the end of the track: the
-		// player falls back to another playlist and keeps going, which is the
-		// wandering out of the results this arrangement exists to stop. So it
-		// outlives the search for as long as it is being listened to!.
+		// Deleting the playing playlist does not stop playback: the player falls back
+		// to another playlist and keeps going.
 		expect(scratchOf(player)).toBeDefined();
 		expect(scratchOf(player)!.items).toHaveLength(QUERY.matches);
 	});
@@ -348,9 +321,8 @@ test.describe("saving results as a playlist", () => {
 
 		await saveAs(page, "Keepers");
 
-		// The same playlist, renamed -- not a second copy of it beside the first.
-		// Counted rather than matched on length: two unrelated playlists can hold
-		// the same number of tracks, and in this fixture two of them do.
+		// Matched on id: two unrelated playlists in this fixture hold the same
+		// number of tracks.
 		const keepers = player.playlists.find(
 			(entry) => entry.title === "Keepers",
 		)!;
@@ -359,22 +331,13 @@ test.describe("saving results as a playlist", () => {
 		expect(player.playlists).toHaveLength(playlistsBefore);
 		expect(scratchOf(player)).toBeUndefined();
 
-		// And playback never moved, because it never had to!.
 		expect(player.player.activeItem.playlistId).toBe(scratchId);
 		await expect(statusBar(page)).toContainText("Los Calientes");
 	});
 
-	// Every other test here plays first, so the scratch already holds exactly
-	// these results and saving is a rename. This is the other branch: results
-	// that were never played have no playlist behind them, so one is made and
-	// filled.
-	//
-	// It used to copy those refs out of the `Library` autoplaylist by index. A
-	// ref is only an index into its own source, so with a media library it
-	// addresses that library's path-ordered array instead and the saved playlist
-	// gets whatever sits at those positions in a differently ordered list. No
-	// error either way, which is why the title is asserted and not just the
-	// count.
+	// A ref is only an index into its own source, so copying out of the `Library`
+	// autoplaylist by index addresses that library's path-ordered array instead --
+	// with no error either way, hence the assertion on the title.
 	test("saving results that were never played builds the playlist", async ({
 		page,
 		player,
@@ -389,12 +352,10 @@ test.describe("saving results as a playlist", () => {
 		expect(saved!.items).toHaveLength(QUERY.matches);
 		expect(player.playlists).toHaveLength(playlistsBefore + 1);
 
-		// Made from the results rather than from whatever happened to be at those
-		// indices: the twelve Jessico tracks, in order. Items are the player's own
-		// title-formatting rows, so the key is the expression.
+		// Items are the player's own title-formatting rows, so the key is the
+		// expression.
 		expect(saved!.items[0]["%title%"]).toBe("Los Calientes");
 
-		// And nothing was played to get here.
 		expect(playedFrom(player)).toBeNull();
 		expect(scratchOf(player)).toBeUndefined();
 	});
@@ -409,7 +370,6 @@ test.describe("saving results as a playlist", () => {
 		await saveAs(page, "Keepers");
 
 		await openSidebar(page);
-		// The search is over: it has become a playlist, which is right there.
 		await expect(sidebar(page).getByText("Keepers")).toBeVisible();
 		await expect(sidebar(page).getByText(QUERY.text)).toHaveCount(0);
 		await expect(page.getByLabel("Search your library")).toHaveValue("");
@@ -428,10 +388,7 @@ test.describe("saving results as a playlist", () => {
 		)!.id;
 
 		// Adopting leaves the stored id pointing at a playlist that is now the
-		// user's. Resolving the scratch by that id without checking it is still one
-		// would hand their saved playlist to the next search, which empties what it
-		// finds before refilling it -- so the failure here is not a wrong view, it
-		// is their playlist gone.
+		// user's. Reusing it without checking would empty their saved playlist.
 		await search(page, NARROWER.text);
 		await trackRow(page, 0).dblclick();
 		await expect
@@ -447,9 +404,8 @@ test.describe("saving results as a playlist", () => {
 	test("saving finishes the search off", async ({ page, player }) => {
 		await searchAndPlay(page, player);
 
-		// Playing is two requests -- build the playlist, then play from it -- and
-		// the poll above only waits for the first. Stopping between them would land
-		// before playback had started and the play would undo it.
+		// Playing is two requests -- build the playlist, then play from it -- and the
+		// poll above only waits for the first, so a stop between them is undone.
 		await expect(statusBar(page)).toContainText("Los Calientes");
 		player.stop();
 		await expect(statusBar(page)).toContainText("Nothing playing");
@@ -458,8 +414,6 @@ test.describe("saving results as a playlist", () => {
 		await page.getByRole("textbox", { name: "Playlist name" }).fill("Keepers");
 		await page.getByRole("button", { name: "Create" }).click();
 
-		// The results have somewhere permanent to live now, so the temporary
-		// version of them goes.
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Keepers" }),
 		).toBeVisible();
@@ -484,13 +438,12 @@ test.describe("saving results as a playlist", () => {
 			page.getByRole("textbox", { name: "Playlist name" }),
 		).toBeFocused();
 
-		// Focusing a field the popover puts past the header's bottom edge had the
-		// browser scroll the header inside itself, carrying the title and the mosaic
-		// off the top while the page never moved.
+		// Focusing a field the popover puts past the header's bottom edge makes the
+		// browser scroll the header inside itself, carrying the title off the top
+		// while the page never moves.
 		expect(await titleTop()).toBe(before);
 
-		// And the form is whole: clipping the header instead of letting it scroll
-		// would have cut these off rather than moved them.
+		// Clipping the header instead would cut the form off rather than move it.
 		const create = page.getByRole("button", { name: "Create" });
 		await expect(create).toBeVisible();
 		await expect(create).toBeInViewport();
@@ -514,16 +467,12 @@ test.describe("a player that will not let Jean make playlists", () => {
 	}) => {
 		await search(page, QUERY.text);
 
-		// No scratch playlist is possible, so the old behaviour is the honest
-		// fallback: the track plays, and what follows it is the library's business.
 		await expect(
 			viewHeader(page).getByRole("button", { name: "Shuffle" }),
 		).toHaveCount(0);
 
 		await trackRow(page, 2).dblclick();
 
-		// The `#Jean Library` autoplaylist, looked up rather than hardcoded: it is
-		// whichever playlist carries the name, and the name is the identity.
 		const libraryId = player.playlists.find(
 			(entry) => entry.title === "#Jean Library",
 		)!.id;
@@ -535,17 +484,16 @@ test.describe("a player that will not let Jean make playlists", () => {
 
 test.describe("marking the row that is playing", () => {
 	// The library source identifies a row by `(path, subsong)`, which playlist
-	// items do not have. So it can answer "is this the track that is playing"
-	// from wherever the player happens to be -- including a playlist Jean is not
-	// looking at. The autoplaylist fallback cannot: index is identity there, and
+	// items do not have -- so only it can mark a track playing from a playlist
+	// Jean is not looking at. Index is identity in the autoplaylist fallback, and
 	// an index only means anything inside its own playlist.
 	test("a track playing from another playlist is still marked in the results", async ({
 		page,
 		player,
 		hasLibraryApi,
 	}) => {
-		// Rock en Español holds Los Calientes too, and it is not the library and
-		// not the scratch!. Playing it there is the case that used to go unmarked.
+		// Rock en Español holds Los Calientes too, and is neither the library nor
+		// the scratch.
 		await page.goto("/#/p5");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
@@ -556,14 +504,11 @@ test.describe("marking the row that is playing", () => {
 
 		await search(page, QUERY.text);
 
-		// Nothing was played from the results, so no scratch playlist exists and
-		// there is no position to read off one.
 		expect(scratchOf(player)).toBeUndefined();
 
 		const marked = page.locator('[role="row"][data-active="true"]');
 		if (!hasLibraryApi) {
-			// Honest degradation rather than a wrong answer: without paths there is
-			// nothing to match on, so the row is left unmarked.
+			// Without paths there is nothing to match on, so the row stays unmarked.
 			await expect(marked).toHaveCount(0);
 			return;
 		}

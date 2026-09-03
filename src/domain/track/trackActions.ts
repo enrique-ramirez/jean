@@ -7,9 +7,7 @@ import type { LibrarySource } from "./librarySource";
 import { MAX_STARS } from "./rating";
 import { QUEUE_LIMIT } from "./useQueueTracks";
 
-// Descending, and `No rating` below a separator as the only entry that takes
-// something away. Plain entries with a check on the current value, since
-// `ActionMenu` has no checkable row.
+// Plain entries with a check on the current value, since `ActionMenu` has no checkable row.
 export const ratingItems = (
 	current: number | null,
 	onRate: (stars: number) => void,
@@ -32,12 +30,8 @@ export const ratingItems = (
 	},
 ];
 
-// What can be done to a set of tracks, wherever they were reached from. Shared
-// by the list's context menu and the now-playing screen's ⋯, so the two cannot
-// drift into offering different things.
-//
-// The rating submenu is passed in rather than built here: the two callers hold a
-// rating in different shapes, and neither belongs in the other's file.
+// Shared by the list's context menu and the now-playing screen, so the two cannot drift into offering different things.
+// The rating submenu is passed in rather than built here, because the two callers hold a rating in different shapes.
 export function trackActions({
 	count,
 	source,
@@ -67,15 +61,12 @@ export function trackActions({
 	// Null where the track's scale is somebody else's, or nothing can write.
 	rating: ActionNode | null;
 }): ActionNode[] {
-	// Not Jean's scratch playlist: it is where results are put to be played, and
-	// the next search would empty it anyway.
+	// Not Jean's own playlists: the scratch is where results are put to be played, and the next search would empty it anyway.
 	const targets = withoutJeanPlaylists(playlists).filter(
 		(entry) => entry.id !== source.playlistId,
 	);
 
 	return [
-		// Above the separator: the one action here about what happens next rather
-		// than where a track lives.
 		{
 			id: "queue",
 			label:

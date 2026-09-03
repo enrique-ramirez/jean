@@ -4,9 +4,7 @@ import { type Subscribers, subscribers } from "@/shared/lib/store";
 import { TRACK_EXPRESSIONS } from "./fields";
 import { deriveIntensity } from "./intensity";
 
-// `paths` and `subsongs` are parallel to `rows` and present only on the media
-// library, where a track has a real identity. Null on a playlist rather than
-// empty, so reaching for them on the wrong source fails loudly.
+// `paths` and `subsongs` are parallel to `rows` and present only on the media library. Null rather than empty on a playlist, so reaching for them on the wrong source fails loudly.
 export interface PlaylistSnapshot {
 	rows: TrackColumns[];
 	paths: string[] | null;
@@ -20,8 +18,6 @@ export interface PlaylistSnapshot {
 	playedCount: number;
 }
 
-// Which of the two the loader is reading. The playlist one carries the id it
-// reads from; the library has no playlist behind it at all.
 type LoadSource =
 	| { kind: "playlist"; playlistId: string }
 	| { kind: "library" };
@@ -41,22 +37,13 @@ interface Entry {
 	isStarted: boolean;
 }
 
-// Two servers with opposite costs. On a playlist almost all the cost is the
-// round trip, so one modest chunk to paint and then as few large concurrent ones
-// as the browser allows. The media library endpoint has no cache and
-// re-enumerates on every call, so concurrency buys nothing there.
+// On a playlist almost all the cost is the round trip, so paint from one modest chunk and then fetch large concurrent ones. The media library endpoint has no cache and re-enumerates on every call, so concurrency buys nothing there.
 const STRATEGY = {
 	playlist: { firstChunk: 2500, chunkSize: 7500, concurrency: 4 },
 	library: { firstChunk: 500, chunkSize: Infinity, concurrency: 1 },
 };
 
-// One shared load per key: the library has several consumers and none may fetch
-// its own copy.
-//
-// A load runs to completion even after every consumer unmounts -- the bytes are
-// already paid for. What is kept afterwards is bounded, because rows are the
-// largest thing Jean holds and browsing twenty playlists would otherwise retain
-// twenty copies for the life of the tab.
+// One shared load per key, run to completion even after every consumer unmounts. What is kept afterwards is bounded, because rows are the largest thing Jean holds.
 const MAX_IDLE_ENTRIES = 4;
 
 const entries = new Map<string, Entry>();
@@ -77,12 +64,9 @@ export const EMPTY_PLAYLIST: PlaylistSnapshot = Object.freeze({
 export const playlistKey = (playlistId: string, itemCount: number) =>
 	`${playlistId}:${itemCount}`;
 
-// The media library has no playlist id, so it gets a key of its own -- still
-// carrying the count, so an edited library loads afresh.
+// The media library has no playlist id, so it gets a key of its own, still carrying the count so an edited library loads afresh.
 export const libraryKey = (itemCount: number) => `library:${itemCount}`;
 
-// One shape for both, so the loading machinery below never asks which it is.
-// `paths` and `subsongs` are null for a playlist, which has neither.
 const fetchChunk = async (
 	source: LoadSource,
 	offset: number,
@@ -148,9 +132,7 @@ function emit(entry: Entry, patch: Partial<PlaylistSnapshot>) {
 
 const prefixOf = (key: string) => key.slice(0, key.indexOf(":"));
 
-// A superseded entry -- same playlist, different item count -- is a stale copy
-// of the largest thing in memory and always goes. The rest are merely old, and
-// insertion order is recency. Either way nobody may be watching.
+// A superseded entry -- same playlist, different item count -- always goes, since it is a stale copy of the largest thing in memory. The rest are merely old, and insertion order is recency.
 function evictIdle(currentKey: string) {
 	const idle = [...entries.values()].filter(
 		(entry) => entry.key !== currentKey && entry.listeners.size === 0,
@@ -183,8 +165,6 @@ async function load(entry: Entry, source: LoadSource) {
 		const snapshot = [...rows];
 		emit(entry, {
 			rows: snapshot,
-			// Null rather than empty off the library source, so a consumer reaching for it
-			// on the wrong source fails loudly.
 			paths: paths ? [...paths] : null,
 			subsongs: subsongs ? [...subsongs] : null,
 			loaded: snapshot.length,
@@ -210,16 +190,14 @@ async function load(entry: Entry, source: LoadSource) {
 		publish(total, rows.length < total);
 		if (rows.length >= total) return;
 
-		// Infinity means "the rest in one request", which is what the library
-		// wants: every extra call is another full enumeration.
+		// Infinity means the rest in one request, which is what the library wants: every extra call is another full enumeration.
 		const step = Number.isFinite(chunkSize) ? chunkSize : total - rows.length;
 		const offsets = Array.from(
 			{ length: Math.ceil((total - rows.length) / step) },
 			(_, at) => rows.length + at * step,
 		);
 
-		// Chunks land out of order but rows may only grow in order, so a chunk waits
-		// here until the gap in front of it is filled.
+		// Chunks land out of order but rows may only grow in order, so a chunk waits here until the gap in front of it is filled.
 		const pending = new Map<number, Chunk>();
 		const queue = [...offsets];
 		let appended = 0;
@@ -245,13 +223,11 @@ async function load(entry: Entry, source: LoadSource) {
 			Array.from({ length: Math.min(concurrency, queue.length) }, worker),
 		);
 
-		// The list can be shorter than it claimed if it was edited mid-load, so loading
-		// ends here rather than when the count is reached.
+		// The list can be shorter than it claimed if it was edited mid-load, so loading ends here rather than when the count is reached.
 		publish(total, false);
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") return;
-		// Cleared so a later mount can try again rather than sitting on the failure
-		// for as long as the tab is open.
+		// Cleared so a later mount can try again rather than sitting on the failure for as long as the tab is open.
 		entry.isStarted = false;
 		emit(entry, {
 			isLoading: false,

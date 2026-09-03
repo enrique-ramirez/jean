@@ -10,10 +10,8 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// The captured playlists, in the order the fake serves them. Ids are not
-// contiguous and not in index order, which is what the real install looks like
-// -- so a reorder assertion that quietly assumed p1 p2 p3 would pass here and
-// fail on someone's machine.
+// The captured playlists, in the order the fake serves them. Ids are neither
+// contiguous nor in index order, as on a real install.
 const DEFAULT_PLAYLIST = "Default Playlist";
 const LIBRARY = "Library";
 const FAVORITES = "Favorites";
@@ -23,8 +21,8 @@ const SPANISH = "Rock en Español";
 const AUTO = "Recently Added";
 
 // Rows are direct children of the nav; so is the section header, hence the
-// filter. The row rather than the button inside it, because the drop target,
-// the drag gesture and the grip all live on the row.
+// filter. The drop target, the drag gesture and the grip all live on the row
+// rather than on the button inside it.
 const row = (page: Page, title: string) =>
 	sidebar(page).locator("> div").filter({ hasText: title });
 const link = (page: Page, title: string) =>
@@ -41,11 +39,8 @@ const openApp = async (page: Page) => {
 	await openSidebar(page);
 };
 
-// Right-click on a pointer, press-and-hold on touch. They are two ways of
-// asking for the same menu and `useContextMenu` unifies them, but only one has
-// an echo to swallow -- so driving the desktop gesture on the mobile viewport
-// would leave the hold, and the action sheet it opens, uncovered on the surface
-// they exist for.
+// Right-click on a pointer, press-and-hold on touch: the same menu, asked for
+// the way each surface asks for it. Only the hold has an echo to swallow.
 const menuFor = async (page: Page, title: string, isMobile: boolean) => {
 	const target = row(page, title);
 	if (isMobile) await pressAndHold(page, target);
@@ -61,17 +56,13 @@ test.describe("creating a playlist", () => {
 		await openApp(page);
 		await page.getByRole("button", { name: "New playlist" }).click();
 
-		// Named, waiting to be renamed, and already selected -- one click gets you
-		// a playlist and naming it is optional. No toast either: the row is on
-		// screen, and a message about something visible is noise.
 		const field = page.getByRole("textbox", { name: "Rename New playlist" });
 		await expect(field).toBeFocused();
 		await expect(field).toHaveValue("New playlist");
 
 		await expect.poll(() => titlesInOrder(player)).toContain("New playlist");
 
-		// The view does not change. A new playlist is somewhere to put things, so
-		// throwing you out of the list you were looking at is the wrong reflex.
+		// The view does not change.
 		await expect(
 			page.getByRole("heading", { level: 1, name: LIBRARY }),
 		).toBeVisible();
@@ -134,8 +125,7 @@ test.describe("renaming a playlist", () => {
 		await field.fill("Bangers");
 		await field.press("Escape");
 
-		// Escape has to beat the blur that follows it. Without that, cancelling
-		// commits -- which is the same keystroke doing the opposite of what it says.
+		// Escape has to beat the blur that follows it, or cancelling commits.
 		await expect(link(page, FAVORITES)).toBeVisible();
 		expect(titlesInOrder(player)).toContain(FAVORITES);
 		expect(titlesInOrder(player)).not.toContain("Bangers");
@@ -152,8 +142,6 @@ test.describe("deleting a playlist", () => {
 		await menuFor(page, FAVORITES, isMobile);
 		await page.getByRole("menuitem", { name: "Delete" }).click();
 
-		// A nested page rather than a dialog -- same machinery on both surfaces,
-		// and it is the one place the count and the reassurance can be stated.
 		await expect(
 			page.getByText("7 tracks stay where they are on disk"),
 		).toBeVisible();
@@ -193,8 +181,6 @@ test.describe("deleting a playlist", () => {
 		await page.getByRole("menuitem", { name: "Delete" }).click();
 		await page.getByRole("menuitem", { name: "Delete playlist" }).click();
 
-		// Somewhere real, rather than the empty view left by the route pointing at
-		// a playlist that no longer exists.
 		await expect(
 			page.getByRole("heading", { level: 1, name: SPANISH }),
 		).toBeVisible();
@@ -211,9 +197,8 @@ test.describe("the drawer", () => {
 		await openApp(page);
 		await expect(link(page, LIBRARY)).toBeVisible();
 
-		// Clicked near the edge rather than at its centre: the scrim covers the
-		// whole viewport and sits *under* the drawer, so its middle is behind the
-		// thing it dismisses.
+		// Clicked near the edge: the scrim covers the whole viewport and sits under
+		// the drawer, so its middle is behind the thing it dismisses.
 		const scrim = page.getByRole("button", { name: "Close menu" });
 		const box = await scrim.boundingBox();
 		await scrim.click({ position: { x: box!.width - 8, y: box!.height / 2 } });
@@ -240,8 +225,6 @@ test.describe("the search entry", () => {
 			sidebar(page).getByText("Search", { exact: true }),
 		).toBeVisible();
 
-		// The query is the label and the match count is the count, exactly as a
-		// playlist row states its own -- because that is what it is standing in for.
 		await expect(link(page, "babasonicos")).toContainText("12");
 	});
 
@@ -266,23 +249,19 @@ test.describe("the search entry", () => {
 	});
 });
 
-// Both of the drags below are mouse-only by design, and the mobile path is the
-// menu instead. On a phone there is nothing to drag onto: the sidebar is a
-// drawer that covers the list it would be dragged from!.
-// Outside the mouse-only block below: opening a playlist has to work on both
-// surfaces, and the trap it guards is created by the drag machinery that is
-// bound to every row regardless of which pointer will arrive.
+// The drags below are mouse-only: on a phone the sidebar is a drawer covering
+// the list a track would be dragged from, and the menu is the path instead.
+// This describe stays outside that skip, because the trap it guards comes from
+// drag machinery bound to every row whichever pointer arrives.
 test.describe("opening a playlist", () => {
 	test("a plain click still opens the playlist", async ({ page }) => {
 		await openApp(page);
 		await link(page, DEFAULT_PLAYLIST).click();
 
-		// The other side of the same trap. setPointerCapture retargets the
-		// compatibility mousedown and mouseup, and click is dispatched at their
-		// common ancestor -- so capturing on the row up front makes every click
-		// land on the row rather than on the button, and navigation stops working
-		// with no error anywhere. The row captures only once it is definitely a
-		// drag, which is what keeps this working.
+		// setPointerCapture retargets the compatibility mousedown and mouseup, and
+		// the click is dispatched at their common ancestor -- so capturing on the row
+		// up front sends every click to the row rather than to the button, and
+		// navigation stops working with no error anywhere.
 		await expect(
 			page.getByRole("heading", { level: 1, name: DEFAULT_PLAYLIST }),
 		).toBeVisible();
@@ -316,9 +295,8 @@ test.describe("reordering playlists", () => {
 		});
 		await page.mouse.up();
 
-		// Position among the player's playlists, not among the visible rows. The
-		// two differ the moment Jean's hidden scratch playlist exists, so the move
-		// is asserted on the wire as well as on screen.
+		// Position among the player's playlists, not among the visible rows: the two
+		// differ the moment Jean's hidden scratch playlist exists.
 		await expect
 			.poll(() =>
 				requestsTo(player, "/playlists/move/").map((entry) => entry.path),
@@ -340,10 +318,9 @@ test.describe("reordering playlists", () => {
 			y: from!.y + from!.height / 2,
 		};
 
-		// Down past the threshold and back again, so the release lands on the row
-		// it started on and the browser really does dispatch a click on the button
-		// inside it. Ending the drag elsewhere would leave the click at a common
-		// ancestor instead, and the test could not fail.
+		// Down past the threshold and back, so the release lands on the row it
+		// started on and the browser dispatches a click on the button inside it.
+		// Ending the drag elsewhere would leave the click at a common ancestor.
 		await page.mouse.move(centre.x, centre.y);
 		await page.mouse.down();
 		await page.mouse.move(centre.x, centre.y + from!.height * 1.5, {
@@ -352,13 +329,10 @@ test.describe("reordering playlists", () => {
 		await page.mouse.move(centre.x, centre.y, { steps: 8 });
 		await page.mouse.up();
 
-		// A drag that starts on a link ends with a click on that link, so
-		// reordering would navigate as well. Two things stop it independently --
-		// the gesture swallows its own click, and pointer capture retargets that
-		// click to the row rather than the button inside it -- so removing either
-		// one alone leaves this green. It goes red with both gone, which is what
-		// makes it a guard on the behaviour rather than on one implementation of
-		// it, checked by removing them.
+		// A drag that starts on a link ends with a click on that link. Two things
+		// stop it independently -- the gesture swallows its own click, and pointer
+		// capture retargets that click to the row -- so removing either one alone
+		// leaves this green.
 		await expect(
 			page.getByRole("heading", { level: 1, name: LIBRARY }),
 		).toBeVisible();
@@ -437,8 +411,6 @@ test.describe("dragging tracks onto a playlist", () => {
 			)
 			.toBe(before + 1);
 
-		// You are not looking at Favorites, so the copy needs saying -- and that is
-		// where the undo lives.
 		await expect(page.getByRole("status")).toContainText(FAVORITES);
 	});
 
@@ -449,9 +421,8 @@ test.describe("dragging tracks onto a playlist", () => {
 		await openApp(page);
 		await scrollUntilMounted(page, trackRow(page, 0));
 
-		// An autoplaylist. It arms like any other row, because nothing in the API
-		// distinguishes one -- the refusal is only knowable after the fact, from
-		// the count not having moved.
+		// It arms like any other row: nothing in the API distinguishes an
+		// autoplaylist, so the refusal is only knowable from the count not moving.
 		const target = await dragTrackTo(page, 0, AUTO);
 		await expect(target).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();

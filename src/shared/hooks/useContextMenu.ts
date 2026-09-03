@@ -6,11 +6,8 @@ import {
 
 import { type Point, useLongPress } from "./useLongPress";
 
-// One anchor, three ways of asking for it: right-click, press-and-hold, and the
-// Menu key. `<ActionMenu>` never learns which one happened.
-//
-// Spread `triggerProps` onto whatever the menu belongs to. It carries a `style`
-// (see useLongPress) so merge rather than overwrite if the element has its own.
+// One anchor, three ways of asking for it: right-click, press-and-hold, and the Menu key. ActionMenu never learns which one happened.
+// triggerProps carries a style from useLongPress, so merge rather than overwrite if the element has its own.
 export function useContextMenu({ disabled = false } = {}) {
 	const [anchor, setAnchor] = useState<Point | null>(null);
 
@@ -23,9 +20,7 @@ export function useContextMenu({ disabled = false } = {}) {
 		if (disabled) return;
 		event.preventDefault();
 
-		// Keyboard invocation -- the Menu key, Shift+F10 -- reports no coordinates.
-		// Anchor to the element instead, so the menu opens under the focus ring
-		// rather than in the top-left corner of the window.
+		// Keyboard invocation, the Menu key or Shift+F10, reports no coordinates, so anchor to the element instead of the top-left corner of the window.
 		if (event.clientX === 0 && event.clientY === 0) {
 			const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 			openAt({ x: rect.left + 16, y: rect.bottom - 4 });

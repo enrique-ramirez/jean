@@ -1,7 +1,6 @@
 import { FIELD } from "./fields";
 
-// How a cell is rendered, which is not the same as what it holds: `duration`
-// and `bitrate` are both numbers and neither is drawn like the other.
+// How a cell is rendered, which is not the same as what it holds: `duration` and `bitrate` are both numbers and neither is drawn like the other.
 export type ColumnKind =
 	| "text"
 	| "duration"
@@ -20,9 +19,7 @@ export interface Column {
 	field: number;
 }
 
-// Title and artist are not here: they share one cell and are always shown.
-// Everything is fetched regardless of what is displayed, so toggling is instant
-// and never refetches.
+// Title and artist are not here: they share one cell and are always shown. Every field is fetched regardless of what is displayed, so toggling never refetches.
 export const OPTIONAL_COLUMNS: Column[] = [
 	{
 		id: "duration",
@@ -33,8 +30,6 @@ export const OPTIONAL_COLUMNS: Column[] = [
 		kind: "duration",
 		field: FIELD.duration,
 	},
-	// Sized to the five stars rather than to the word, with enough slack to keep
-	// them off the column that follows.
 	{
 		id: "rating",
 		label: "Rating",
@@ -100,23 +95,14 @@ export const OPTIONAL_COLUMNS: Column[] = [
 
 export const DEFAULT_COLUMN_IDS = ["duration", "rating", "playCount"];
 
-// On a phone the title is the row, and once the fixed widths plus padding exceed
-// the viewport the flexible names cell collapses to nothing -- so the compact
-// layout caps how many columns appear rather than trusting the grid.
+// Once the fixed widths plus padding exceed a narrow viewport the flexible names cell collapses to nothing, so the compact layout caps how many columns appear rather than trusting the grid.
 const COMPACT_PRIORITY = ["duration", "playCount", "rating"];
 const COMPACT_MAX_COLUMNS = 2;
 
 const LEADING = {
-	// The number is left-aligned, so its slack falls on the right, and whether that
-	// is visible depends on what follows: with artwork it hides behind the cover,
-	// without it the slack reads as a hole. Neither is sized for the longest index
-	// there could be -- anything longer runs into the gap rather than pushing every
-	// row across.
+	// None of these is sized for the longest index there could be: anything longer runs into the gap rather than pushing every row across.
 	number: { width: "2rem", compactWidth: "1.5rem" },
 	numberBare: { width: "1.5rem", compactWidth: "1.25rem" },
-	// At four characters the two sizes above stop distinguishing anything, so this
-	// is one size fitted to a disc-prefixed number. Only the list layout asks: album
-	// groups head their discs instead of prefixing.
 	numberWithDisc: { width: "2.375rem", compactWidth: "2.25rem" },
 	artwork: { width: "34px", compactWidth: "32px" },
 	names: { width: "minmax(0, 2fr)", compactWidth: "minmax(6rem, 1fr)" },
@@ -185,8 +171,7 @@ export function resolveColumns({
 			.filter((width) => width !== null)
 			.join(" ");
 
-	// Album rows sit beside a cover and carry no artwork cell, so reusing the compact
-	// template leaves an empty column and shifts every cell after it.
+	// Album rows sit beside a cover and carry no artwork cell, so reusing the other template would leave an empty column and shift every cell after it.
 	return {
 		optional,
 		template: build(showArtwork, hasDiscs),

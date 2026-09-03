@@ -7,10 +7,8 @@ import {
 	test,
 } from "./fixtures.ts";
 
-// Playwright cannot hear anything, so nothing here asserts on sound. What it
-// asserts on is what went over the wire and what the element believes: which
-// `?format=` was asked for, that exactly one ticket was fetched per connect, and
-// that `currentTime` is advancing.
+// Playwright cannot hear anything, so nothing here asserts on sound -- only on
+// what went over the wire and what the audio element believes.
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
@@ -24,8 +22,7 @@ const listenButton = (page: Page) =>
 const thisDevice = (page: Page) =>
 	page.getByRole("radio", { name: /This device/ });
 
-// The element is created by the store and never mounted in the tree, so it is
-// found through the store rather than through the DOM.
+// The element is created by the store and never mounted in the tree.
 const currentTime = (page: Page) =>
 	page.evaluate(() => {
 		const audio = document.querySelector("audio");
@@ -47,9 +44,8 @@ const ticketRequests = (player: FakePlayer) =>
 		(entry) => entry.method === "POST",
 	);
 
-// Choosing does not dismiss the panel: the row you just picked is where the
-// connection reports itself, so closing it would hide the only progress there
-// is. Every helper below therefore leaves it open.
+// Choosing does not dismiss the panel -- the chosen row is where the connection
+// reports itself -- so every helper below leaves it open.
 const startListening = async (page: Page) => {
 	await listenButton(page).click();
 	await thisDevice(page).click();
@@ -65,9 +61,8 @@ test.describe("listening on this device", () => {
 		await page.goto("/");
 		await startListening(page);
 
-		// One ticket per connect. Not one per request: Safari probes with a
-		// `Range` before fetching for real, so a ticket good once could not serve
-		// it -- but a second *connect* must not reuse this one.
+		// One ticket per connect, not per request: Safari probes with a `Range`
+		// before fetching for real, so a ticket good once could not serve it.
 		await expect.poll(() => ticketRequests(player).length).toBe(1);
 		await expect.poll(() => streamRequests(player).length).toBeGreaterThan(0);
 	});
@@ -77,9 +72,8 @@ test.describe("listening on this device", () => {
 		await startListening(page);
 
 		// The server's order is the quality order and the client only excludes, so
-		// Chromium -- which plays both -- must ask for the first. Read off the
-		// fake's own log: `requests` records paths without their query, and this
-		// is a claim about the query string.
+		// Chromium, which plays both, asks for the first. Read off the fake's own
+		// log: `requests` records paths without their query.
 		await expect.poll(() => player.streamFormats).toEqual(["opus"]);
 	});
 
@@ -87,9 +81,8 @@ test.describe("listening on this device", () => {
 		await page.goto("/");
 		await startListening(page);
 
-		// Polled tightly rather than on the default backoff: this is watching a
-		// clock tick, so a poll that has already backed off to a second is a test
-		// spending ten of them to observe half of one.
+		// Polled tightly rather than on the default backoff, which reaches a second
+		// between polls while this is watching a clock tick.
 		await expect
 			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
 			.toBeGreaterThan(0);
@@ -139,8 +132,8 @@ test.describe("listening on this device", () => {
 });
 
 test.describe("choosing a codec", () => {
-	// The component offers both; this browser is served bytes that are not the
-	// declared type for the first one, which is what the fall-through is for.
+	// The browser is served bytes that are not the declared type for the first
+	// format, which is what the fall-through is for.
 	test.use({
 		fooJean: {
 			streamFormats: ["opus", "aac"],
@@ -173,8 +166,7 @@ test.describe("an install with no encoder", () => {
 	test("does not offer the control at all", async ({ page }) => {
 		await page.goto("/");
 		await expect(statusBar(page).getByRole("button")).not.toHaveCount(0);
-		// `canStream` absent or false means the button does not render. Offering
-		// one and then failing is worse than never offering it.
+		// `canStream` absent or false means the button does not render.
 		await expect(listenButton(page)).toHaveCount(0);
 	});
 });
@@ -216,9 +208,9 @@ test.describe("an expired ticket", () => {
 		await page.goto("/");
 		await startListening(page);
 
-		// A 401 on the stream is not an error the element can report as anything
-		// but "cannot play this", so it falls through the formats and then keeps
-		// asking -- each attempt with a ticket of its own.
+		// A 401 on the stream reaches the element only as "cannot play this", so it
+		// falls through the formats and keeps asking, each attempt with its own
+		// ticket.
 		await expect
 			.poll(() => ticketRequests(player).length, { timeout: 20_000 })
 			.toBeGreaterThan(1);
@@ -250,10 +242,8 @@ test.describe("a stream that goes quiet", () => {
 		await page.goto("/");
 		await startListening(page);
 
-		// The one case with no error to catch. The element never fires `playing`,
-		// `currentTime` never moves, and only beefweb can say which of the two
-		// this is -- so the watchdog asks it. The fake player is stopped, so it
-		// must say so rather than blaming the network.
+		// No error to catch: the element never fires `playing` and `currentTime`
+		// never moves, so the watchdog asks beefweb which of the two it is.
 		await expect
 			.poll(async () => (await picker(page).textContent()) ?? "", {
 				timeout: 25_000,
@@ -280,8 +270,7 @@ test.describe("what is audible, not what the player is doing", () => {
 	}) => {
 		await page.goto("/");
 		player.playItem("p7", HEARD.index);
-		// Two minutes in, so the audible point lands inside this track rather than
-		// before anything the fake ever played.
+		// Two minutes in, so the audible point lands inside this track.
 		player.patchPlayer({ position: 120 });
 		await expect(statusBar(page)).toContainText(HEARD.title);
 
@@ -290,11 +279,9 @@ test.describe("what is audible, not what the player is doing", () => {
 			.poll(() => currentTime(page), { timeout: 60_000, intervals: TICK })
 			.toBeGreaterThan(0);
 
-		// The desktop moves on, and beefweb says so at once.
 		player.playItem("p7", NEXT.index);
-		// Pushed straight after, and never delayed -- so the button flipping is
-		// proof the app has the new track and is choosing not to draw it. An
-		// ordering to assert on rather than a margin to guess.
+		// Playback state is never delayed, so the button flipping proves the app has
+		// the new track and is choosing not to draw it.
 		player.patchPlayer({ playbackState: "paused" });
 		await expect(
 			statusBar(page).getByRole("button", { name: "Play", exact: true }),
@@ -318,8 +305,7 @@ test.describe("what is audible, not what the player is doing", () => {
 		test.skip(isMobile, "the readout is desktop-only");
 		await page.goto("/");
 		// Wall clock is the reference: the fake pushes on change and never on a
-		// timer, so its stored `position` stays where the last push left it while
-		// the player it stands for goes on playing.
+		// timer, so its stored `position` stays where the last push left it.
 		const startedAt = Date.now();
 		player.playItem("p7", HEARD.index);
 
@@ -328,9 +314,8 @@ test.describe("what is audible, not what the player is doing", () => {
 			.poll(() => currentTime(page), { timeout: 60_000, intervals: TICK })
 			.toBeGreaterThan(0);
 
-		// The bound is wide because what is asserted is that a correction is applied
-		// at all, and in the right direction. Its size is the browser's business,
-		// and on the fake it comes to about six seconds.
+		// The bound is wide: what is asserted is that a correction is applied at
+		// all and in the right direction. On the fake it comes to about six seconds.
 		await expect
 			.poll(
 				async () => {
@@ -360,8 +345,7 @@ test.describe("what is audible, not what the player is doing", () => {
 			.poll(() => currentTime(page), { timeout: 60_000, intervals: TICK })
 			.toBeGreaterThan(0);
 
-		// Only the track is delayed. A control MUST move under the finger that
-		// pressed it.
+		// Only the track readout is delayed; the controls answer at once.
 		await statusBar(page)
 			.getByRole("button", { name: "Pause", exact: true })
 			.click();

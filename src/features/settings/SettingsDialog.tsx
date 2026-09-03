@@ -7,7 +7,6 @@ import { Playback } from "./Playback";
 import styles from "./Settings.module.css";
 import { TagWriting } from "./TagWriting";
 
-// A dialog rather than a route; see `app/CLAUDE.md`.
 export const SETTINGS_KEYBOARD = "settings";
 
 export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
@@ -15,8 +14,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 
 	useKeyboardOwnership(SETTINGS_KEYBOARD);
 
-	// Capture phase: the hotkey manager binds keydown on the document at bubble,
-	// where `Escape` also clears the track selection behind the scrim.
+	// Capture phase: the hotkey manager binds keydown on the document at bubble, where Escape also clears the track selection behind the scrim.
 	useEffect(() => {
 		const opener = document.activeElement as HTMLElement | null;
 		dialogRef.current?.focus();

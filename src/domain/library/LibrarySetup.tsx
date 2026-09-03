@@ -8,18 +8,12 @@ import { plural } from "@/shared/lib/text";
 import { Button } from "@/shared/ui/Button";
 import styles from "./LibrarySetup.module.css";
 
-// beefweb sees playlists and the filesystem, and the Media Library is invisible
-// to it. An autoplaylist is the way through: made once, it appears like any
-// other playlist and stays in sync.
-//
-// There is no picker, and that is the feature. Accepting anything loosely titled
-// 'Library' once made a dozen production-music cues someone's whole collection.
-// The name is the contract now.
+// beefweb sees playlists and the filesystem, and foobar2000's Media Library is invisible to it, so an autoplaylist is the way through.
+// There is no picker: the exact title is the contract, because adopting anything loosely named "Library" can make a stray playlist stand in for a whole collection.
 export function LibrarySetup({ playlists }: { playlists: PlaylistInfo[] }) {
 	const queryClient = useQueryClient();
 
-	// Almost certainly what they meant: a playlist from before the name was a
-	// contract. Offered, never taken -- renaming is theirs to agree to.
+	// Offered, never taken: renaming somebody's playlist is theirs to agree to.
 	const candidate = playlists.find(looksLikeLibrary) ?? null;
 
 	const adopt = useMutation({

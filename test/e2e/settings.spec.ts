@@ -23,7 +23,6 @@ test.describe("the settings dialog", () => {
 
 		await openSettings(page);
 
-		// Still there, behind the scrim. A route unmounted it.
 		await expect(trackRow(page, 0)).toBeAttached();
 		await expect(page).toHaveURL(/#\/p7$/);
 	});
@@ -73,7 +72,6 @@ test.describe("the settings dialog", () => {
 		await expect(settingsDialog(page)).toBeHidden();
 	});
 
-	// The list behind is live and mounted, which a route never had to think about.
 	test("the app behind it does not answer the keyboard", async ({
 		page,
 		player,
@@ -97,8 +95,8 @@ test.describe("the settings dialog", () => {
 		expect(requestsTo(player, "/player/play").length).toBe(played);
 	});
 
-	// Proves the binding is wired, not that a real browser hands the key over:
-	// Playwright delivers it over CDP, past the macOS menu bar.
+	// Playwright delivers the key over CDP, past the macOS menu bar, so this
+	// covers the binding rather than the browser handing the key over.
 	test("mod+, opens it, and closes it again", async ({ page }) => {
 		test.skip(
 			test.info().project.name === "mobile",
@@ -166,8 +164,8 @@ test.describe("the settings dialog", () => {
 		await hint.click();
 		await expect(text).toBeVisible();
 
-		// Inside the dialog, not floating over it: a popover here was clipped by
-		// the body's scroller.
+		// Inside the dialog rather than floating over it: a popover here is clipped
+		// by the body's scroller.
 		await expect(settingsDialog(page)).toContainText(
 			"Search results are exempt",
 		);
@@ -188,7 +186,7 @@ test.describe("cursor follows playback", () => {
 	}) => {
 		await openLibrary(page);
 
-		// Driven on the player: a track ending with nothing clicked here.
+		// Driven on the player, with nothing clicked here.
 		player.playItem("p7", 6);
 		await expect(statusBar(page)).toContainText("La Fox");
 

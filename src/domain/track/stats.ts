@@ -2,23 +2,14 @@ import type { TrackColumns } from "@/shared/api/types";
 import { plural } from "@/shared/lib/text";
 import { FIELD, number, tagKey, value } from "./fields";
 
-// Four is what a header's row of chips has room for. The front door's genre
-// bars ask for more, because a chart of four bars is a list with decoration on
-// it.
+// What a header's row of chips has room for; callers wanting more pass their own.
 const TOP_GENRES = 4;
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// A genre is the tag taken whole -- foobar joins values with '; ', and Jean does
-// not get to decide somebody's tag is really two tags. Counted through `tagKey`
-// so a portrait does not report `Rock` and `rock` as two genres, which would be
-// measuring the tagging rather than the music.
-
-// One implementation for a playlist header, a set of results and the front door,
-// so the same library cannot be described two ways two centimetres apart. One
-// pass with a mutable accumulator: this runs over the whole library again for
-// every chunk that lands.
+// A genre is the tag taken whole, since foobar joins multiple values with '; ', and it is counted through `tagKey` so `Rock` and `rock` are not two genres.
+// One pass with a mutable accumulator: this runs over the whole library again for every chunk that lands.
 export function summarise(
 	rows: TrackColumns[],
 	playedCount = 0,
@@ -71,8 +62,6 @@ export function summarise(
 	};
 }
 
-// What a header is handed. Inferred from `summarise`, so a figure added there
-// reaches every header without being declared twice.
 export type TrackStats = ReturnType<typeof summarise>;
 
 const breakDown = (seconds: number) =>
@@ -84,9 +73,7 @@ const breakDown = (seconds: number) =>
 			}
 		: null;
 
-// Human units, biggest first, never more than two. Days rather than months,
-// because a month is not a fixed length and nobody can picture "2.8 months of
-// music".
+// Human units, biggest first, never more than two. Days rather than months, which are not a fixed length.
 export function spellDuration(seconds: number) {
 	const parts = breakDown(seconds);
 	if (!parts) return null;

@@ -21,16 +21,8 @@ import { FIELD, sameTagValue, value } from "./fields";
 import { positionOf } from "./libraryIndex";
 import type { Refs } from "./project";
 
-// Two answers to "where does the library come from" -- the media library API,
-// and an autoplaylist -- behind one interface.
-//
-// The seam is a numeric ref per row, so the virtualised list, the selection and
-// the search index stay integer-keyed and never learn which source they are
-// looking at. If something outside this file has to ask, the seam is in the
-// wrong place.
-
-// What `/playqueue/add` needs, and what a media library row cannot supply on its
-// own -- it is in no playlist at all.
+// One interface over the two places tracks come from: the media library API and a playlist.
+// A row is addressed by a numeric ref, so the virtualised list, the selection and the search index never learn which source they are looking at.
 export interface ResolvedTrack {
 	identity: TrackIdentity;
 	columns: string[];
@@ -43,22 +35,14 @@ export interface QueueTarget {
 
 export interface LibrarySource {
 	kind: "library" | "playlist";
-	// Null on the media library. Anything that needs a playlist to act goes
-	// through the methods rather than reaching for this.
+	// Null on the media library; anything that needs a playlist to act goes through the methods rather than reaching for this.
 	playlistId: string | null;
-	// Whether `fill` needs the target's live item count: emptying a playlist is
-	// a remove-by-range, and a cached count is stale from the first write on.
+	// Whether `fill` needs the target's live item count: emptying a playlist is a remove-by-range, and a cached count is stale from the first write on.
 	needsHeldCount: boolean;
 
 	artworkUrl: (ref: number) => string;
-	// A ref resolved to an absolute path, which neither source holds: the library
-	// API reports relative ones and a playlist row carries none. One request, on a
-	// deliberate action against a single track.
-	//
-	// **Null when the ref no longer names the row it was read from.** Indices move,
-	// and the failure mode is writing a tag to somebody else's file.
-	//
-	// `columns` are evaluated on the same round trip, since the trip is the cost.
+	// Resolves a ref to an absolute path, which neither source holds; `columns` are evaluated on the same round trip.
+	// Null when the ref no longer names the row it was read from: indices move, and the failure mode is writing a tag to somebody else's file.
 	identify: (
 		ref: number,
 		row: TrackColumns,
@@ -66,8 +50,7 @@ export interface LibrarySource {
 	) => Promise<ResolvedTrack | null>;
 	fill: (targetId: string, refs: Refs, heldCount?: number) => Promise<unknown>;
 	addTo: (targetId: string, refs: Refs) => Promise<unknown>;
-	// `holding` is called only by a source that needs somewhere to put the tracks
-	// first. Pairs come back in the order asked for.
+	// `holding` is called only by a source that needs somewhere to put the tracks first. Pairs come back in the order asked for.
 	queueTargets: (
 		refs: Refs,
 		holding: () => Promise<string | null>,
@@ -88,21 +71,15 @@ interface ItemChunk {
 	bytes: number;
 }
 
-// Array.from, never refs.map: refs arrive as an Int32Array, and mapping a typed
-// array gives back a typed array -- the objects coerce to NaN and the body
-// serialises as `{"0":0,...}` rather than a list.
+// Array.from, never refs.map: refs can be an Int32Array, and mapping one gives back a typed array whose objects coerce to NaN.
 const itemsFor = (paths: string[], subsongs: number[], refs: Refs) =>
 	Array.from(refs, (ref) => ({ path: paths[ref], subsong: subsongs[ref] }));
 
-// The player adds a set in the media library's browse order, not the path order
-// the rows are in, so every view that plays by position would play the wrong
-// track. The order cannot be predicted and there is no library-change event to
-// cache it against, so it is overwritten rather than learned.
+// The player files a set in the media library's browse order rather than the order it was sent, so a view that plays by position would play the wrong track. The order cannot be predicted, so it is overwritten.
 const sortToLibraryOrder = (targetId: string) =>
 	sortPlaylistItems(targetId, LIBRARY_SORT);
 
-// beefweb hangs up over 1 MiB, and it arrives as a network error rather than a
-// status -- so naming a whole library never reached the player at all.
+// beefweb hangs up over 1 MiB, and it arrives as a network error rather than a status.
 const MAX_BODY_BYTES = 768 * 1024;
 
 const chunkedItems = (items: { path: string; subsong: number }[]) =>
@@ -123,16 +100,13 @@ const chunkedItems = (items: { path: string; subsong: number }[]) =>
 const fillByLibrary =
 	(paths: string[], subsongs: number[]) =>
 	async (targetId: string, refs: Refs) => {
-		// Omitting `items` means the whole library, in one request with no body and
-		// no per-track path resolution. The sort below makes the two
-		// indistinguishable afterwards.
+		// Omitting `items` means the whole library, in one request with no body and no per-track path resolution.
 		if (refs.length === paths.length) {
 			await addFromLibrary(targetId, { replace: true });
 			return sortToLibraryOrder(targetId);
 		}
 
-		// Sequential, and it has to be: only the first may replace. Run
-		// concurrently, that replace could arrive last and empty what it filled.
+		// Sequential, and it has to be: only the first request may replace, and run concurrently that replace could arrive last and empty what it filled.
 		await inSequence(
 			chunkedItems(itemsFor(paths, subsongs, refs)),
 			(chunk, at) =>
@@ -154,17 +128,14 @@ const fillByCopy =
 		return copyPlaylistItems(sourceId, targetId, refs);
 	};
 
-// The read-back is not caution: the player files a set in the media library's
-// browse order, not the order it was sent, and a queue in the wrong order is the
-// one bug a queue cannot have. The appended block is contiguous.
+// The read-back is not caution: the player files a set in the library's browse order rather than the order it was sent. The appended block is contiguous.
 const queueViaHolding =
 	(paths: string[], subsongs: number[]) =>
 	async (refs: Refs, holding: () => Promise<string | null>) => {
 		const playlistId = await holding();
 		if (!playlistId || refs.length === 0) return [];
 
-		// Off the player: item changes are never pushed, so a cached count is stale
-		// from the first write on, and this one decides which rows get read back.
+		// From the player, not the cache: item changes are never pushed, so a cached count is stale from the first write on.
 		const before =
 			(await fetchPlaylists()).find((entry) => entry.id === playlistId)
 				?.itemCount ?? 0;
@@ -176,8 +147,7 @@ const queueViaHolding =
 		const landed = await fetchPlaylistItems(playlistId, before, refs.length, [
 			"%path%",
 		]);
-		// The playlist answers with an absolute, platform-separated path and the
-		// library with a relative, forward-slashed one, so they only meet by suffix.
+		// The playlist answers with an absolute, platform-separated path and the library with a relative, forward-slashed one, so they only meet by suffix.
 		const matchers = landed.rows.map((row) => libraryPathMatcher(row[0]));
 
 		return Array.from(refs, (ref) => {
@@ -199,8 +169,7 @@ const fromMediaLibrary = ({
 
 	artworkUrl: (ref: number) => libraryArtworkUrl(paths[ref], subsongs[ref]),
 
-	// Checked against the relative path already held, which is exact. The `%path%`
-	// column is the player's absolute rendering; the item's `path` field is not.
+	// Checked against the relative path already held: the item's `path` field is relative, while the `%path%` column is the player's absolute rendering.
 	identify: async (ref: number, _row: TrackColumns, columns: string[] = []) => {
 		const held = paths[ref];
 		if (!held) return null;
@@ -222,13 +191,11 @@ const fromMediaLibrary = ({
 	fill: fillByLibrary(paths, subsongs),
 	queueTargets: queueViaHolding(paths, subsongs),
 
-	// No sort here, unlike `fill`: that playlist is the user's and its order is
-	// theirs.
+	// No sort here, unlike `fill`: that playlist is the user's and its order is theirs.
 	addTo: (targetId: string, refs: Refs) =>
 		addFromLibrary(targetId, { items: itemsFor(paths, subsongs, refs) }),
 
-	// Linear, where the playlist source bisects, because path order is not ref
-	// order. Paid once per track change rather than per player message.
+	// Linear, where the playlist source bisects, because path order is not ref order.
 	playingPosition: (refs: Refs, track: TrackIdentity | null | undefined) => {
 		if (!track?.path) return -1;
 		const matches = libraryPathMatcher(track.path);
@@ -251,8 +218,7 @@ const fromPlaylist = ({
 
 	artworkUrl: (ref: number) => artworkUrl(playlistId, ref),
 
-	// Only the title to check against here. Weak -- two tracks can share one --
-	// but it catches the desktop inserting rows above, which shifts every index.
+	// Only the title to check against here. Weak, since two tracks can share one, but it catches the desktop inserting rows above and shifting every index.
 	identify: async (ref: number, row: TrackColumns, columns: string[] = []) => {
 		const { rows } = await fetchPlaylistItems(playlistId, ref, 1, [
 			"%path%",
@@ -271,15 +237,13 @@ const fromPlaylist = ({
 
 	fill: fillByCopy(playlistId),
 
-	// A ref already *is* a position here, so nothing is created or read back.
+	// A ref already is a position here, so nothing is created or read back.
 	queueTargets: async (refs: Refs) =>
 		Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
 	addTo: (targetId: string, refs: Refs) =>
 		copyPlaylistItems(playlistId, targetId, refs),
 
-	// Index is identity here, so this can only answer while the player is inside
-	// the playlist being browsed -- the limitation the library source does not
-	// have. Refs arrive ascending, so it bisects.
+	// Index is identity in a playlist, so this can only answer while the player is inside the playlist being browsed. Refs arrive ascending, so it bisects.
 	playingPosition: (
 		refs: Refs,
 		_track: TrackIdentity | null | undefined,

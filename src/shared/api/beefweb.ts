@@ -11,15 +11,9 @@ import type {
 	TrackRows,
 } from "./types";
 
-// Title-formatting expressions, evaluated by the player and returned
-// positionally, so adding a field needs no support on beefweb's side.
-// Multi-argument functions are unusable -- the list is split on commas before
-// evaluation, so $if(a,b,c) arrives as three columns -- but single-argument ones
-// nest.
-//
-// %path% and %subsong% are here for identity rather than display. This is the
-// active item only, one string per player update, which is why the "never hold
-// per-track-unique strings" rule does not apply.
+// Title-formatting expressions, evaluated by the player and returned positionally.
+// Multi-argument functions are unusable: the list is split on commas before evaluation, so $if(a,b,c) arrives as three columns. Single-argument ones nest.
+// %path% and %subsong% are here for identity rather than display.
 const TRACK_COLUMNS = ["%artist%", "%title%", "%path%", "%subsong%"];
 
 const encode = (expressions: readonly string[]) =>
@@ -27,20 +21,17 @@ const encode = (expressions: readonly string[]) =>
 
 const nowPlayingColumns = encode(TRACK_COLUMNS);
 
-// Three, not the track list's fourteen: the stream re-sends the whole queue on
-// every change to it and the player re-evaluates each expression.
+// Kept short: the stream re-sends the whole queue on every change and the player re-evaluates each expression.
 const QUEUE_COLUMNS = ["%artist%", "%title%", "%length_seconds%"];
 
 export const QUEUE_FIELD = { artist: 0, title: 1, duration: 2 };
 
 const queueColumns = encode(QUEUE_COLUMNS);
 
-// Change-driven stream: beefweb pushes on track change, pause, volume and
-// playlist edits, not on a timer. Long silences are normal, not a stall.
+// Change-driven, not a timer: beefweb pushes on track change, pause, volume and playlist edits, so long silences are normal.
 export const UPDATES_URL = `/api/query/updates?player=true&playlists=true&playQueue=true&trcolumns=${nowPlayingColumns}&qcolumns=${queueColumns}`;
 
-// Ids come from the player, but they are still interpolated into a URL, and a
-// path that escapes its segment would address a different endpoint.
+// Ids come from the player but are still interpolated into a URL, and one that escaped its segment would address a different endpoint.
 const id = encodeURIComponent;
 
 async function request(path: string, options?: RequestInit) {
@@ -59,8 +50,7 @@ const post = (path: string, body?: unknown) =>
 		body: body ? JSON.stringify(body) : undefined,
 	});
 
-// Through /api/query rather than /api/player: the latter ignores trcolumns and
-// hands back an empty columns array.
+// Through /api/query rather than /api/player, which ignores `trcolumns` and hands back an empty columns array.
 export async function fetchPlayer(): Promise<PlayerState> {
 	const response = await request(
 		`/api/query?player=true&trcolumns=${nowPlayingColumns}`,
@@ -77,9 +67,7 @@ export async function fetchPlaylists(): Promise<PlaylistInfo[]> {
 	return playlists;
 }
 
-// Through /api/query for the same reason as the player: `GET /api/playqueue`
-// takes a parameter named `columns` and ignores `qcolumns`, answering with
-// `"columns": []`.
+// Through /api/query for the same reason as the player: `GET /api/playqueue` takes a parameter named `columns`, ignores `qcolumns`, and answers `"columns": []`.
 export async function fetchPlayQueue(): Promise<PlayQueueItem[]> {
 	const response = await request(
 		`/api/query?playQueue=true&qcolumns=${queueColumns}`,
@@ -90,19 +78,17 @@ export async function fetchPlayQueue(): Promise<PlayQueueItem[]> {
 	return playQueue;
 }
 
-// One item per request; a bulk `items` array is a 400. `queueIndex` is accepted
-// and silently ignored on foobar2000, so this always appends.
+// One item per request; a bulk `items` array is a 400. `queueIndex` is accepted and silently ignored on foobar2000, so this always appends.
 export const addToPlayQueue = (playlistId: string, itemIndex: number) =>
 	post("/api/playqueue/add", { plref: playlistId, itemIndex });
 
-// By queue position, which foobar2000 does honour here -- unlike on add.
+// By queue position, which foobar2000 does honour here, unlike on add.
 export const removeFromPlayQueue = (queueIndex: number) =>
 	post("/api/playqueue/remove", { queueIndex });
 
 export const clearPlayQueue = () => post("/api/playqueue/clear");
 
-// Raw positional column arrays rather than objects: markedly lighter at 30k+
-// rows, and the shape dictionary encoding will want.
+// Raw positional column arrays rather than objects, which is markedly lighter at library scale.
 export async function fetchPlaylistItems(
 	playlistId: string,
 	offset: number,
@@ -129,14 +115,11 @@ export const artworkUrl = (playlistId: string, index: number) =>
 
 // ---- media library (beefweb 0.11+) ----------------------------------------
 //
-// Absent before 0.11 and on DeaDBeeF, where every endpoint below answers 501.
-// `fetchLibraryInfo` always answers, because it is how a client finds out which
-// of those it is talking to.
+// Absent before 0.11 and on DeaDBeeF, where every endpoint below answers 501. `fetchLibraryInfo` always answers, because it is how a client finds out which it is talking to.
 
 export async function fetchLibraryInfo(): Promise<LibraryInfo> {
 	const response = await fetch("/api/library/info");
-	// A released beefweb has no such route at all. Same answer as 501: no library
-	// here, fall back to the autoplaylist.
+	// A released beefweb has no such route. Same answer as 501: no library here, fall back to the autoplaylist.
 	if (response.status === 404 || response.status === 501) {
 		return { supported: false, enabled: false, itemCount: 0 };
 	}
@@ -146,10 +129,7 @@ export async function fetchLibraryInfo(): Promise<LibraryInfo> {
 	return library;
 }
 
-// The endpoint already defaults to file path, so this changes nothing on its
-// own. It is named so the sort Jean applies to a playlist it just filled is
-// demonstrably the expression it read the library with, rather than two defaults
-// that happen to agree today.
+// Named so the sort Jean applies to a playlist it just filled is demonstrably the expression it read the library with.
 export const LIBRARY_SORT = "%path%";
 
 export async function fetchLibraryItems({
@@ -178,8 +158,7 @@ export const libraryArtworkUrl = (path: string, subsong?: number) =>
 	`/api/artwork/library?path=${encodeURIComponent(path)}` +
 	(subsong ? `&subsong=${subsong}` : "");
 
-// `items` rather than `query`: the player's syntax and Jean's fold()-based
-// matching do not return the same set.
+// `items` rather than `query`: the player's syntax and Jean's fold()-based matching do not return the same set.
 export const addFromLibrary = (playlistId: string, body: AddFromLibraryBody) =>
 	post(`/api/playlists/${id(playlistId)}/items/add-from-library`, body);
 
@@ -198,17 +177,13 @@ export const seekBy = (offset: number) =>
 export const setVolume = (volume: number) => post("/api/player", { volume });
 export const setMuted = (isMuted: boolean) => post("/api/player", { isMuted });
 
-// The player owns the step size for these, which is why they are endpoints
-// rather than a relativeVolume value picked here.
+// The player owns the step size, which is why these are endpoints rather than a `relativeVolume` picked here.
 export const volumeUp = () => post("/api/player/volume/up");
 export const volumeDown = () => post("/api/player/volume/down");
 
-// playbackMode is deprecated in the spec; the options array is the current form.
 export const setPlaybackOrder = (value: number) =>
 	post("/api/player", { options: [{ id: "playbackOrder", value }] });
 
-// Returns the new playlist, id included, so nothing has to guess which of the
-// player's playlists just appeared.
 export async function createPlaylist(title: string): Promise<PlaylistInfo> {
 	const response = await post(
 		`/api/playlists/add?title=${encodeURIComponent(title)}`,
@@ -216,8 +191,7 @@ export async function createPlaylist(title: string): Promise<PlaylistInfo> {
 	return response.json() as Promise<PlaylistInfo>;
 }
 
-// The three ways a playlist itself changes, as opposed to its contents. A
-// negative move index means "last", per the spec.
+// A negative move index means "last", per the spec.
 export const renamePlaylist = (playlistId: string, title: string) =>
 	post(`/api/playlists/${id(playlistId)}`, { title });
 export const removePlaylist = (playlistId: string) =>
@@ -225,8 +199,7 @@ export const removePlaylist = (playlistId: string) =>
 export const movePlaylist = (playlistId: string, index: number) =>
 	post(`/api/playlists/move/${id(playlistId)}/${index}`);
 
-// By index, so this uploads nothing but numbers at any size. `items` is often a
-// typed array, which JSON.stringify would turn into an object -- hence the copy.
+// `items` is often a typed array, which `JSON.stringify` would turn into an object, hence the copy.
 export const copyPlaylistItems = (
 	sourceId: string,
 	targetId: string,
@@ -236,13 +209,11 @@ export const copyPlaylistItems = (
 		items: Array.from(items),
 	});
 
-// Empties without deleting. Deleting a playlist the play queue points into
-// crashes foo_beefweb and takes foobar2000 with it.
+// Empties without deleting: deleting a playlist the play queue points into crashes foo_beefweb and takes foobar2000 with it.
 export const clearPlaylist = (playlistId: string) =>
 	post(`/api/playlists/${id(playlistId)}/clear`);
 
-// Index is identity, so this only means anything against a list nobody has
-// touched since the indices were worked out. See useAddTracks for the check.
+// Index is identity, so this only means anything against a list nobody has touched since the indices were worked out.
 export const removePlaylistItems = (
 	playlistId: string,
 	items: ArrayLike<number>,
@@ -251,7 +222,6 @@ export const removePlaylistItems = (
 		items: Array.from(items),
 	});
 
-// Maps the positional columns array back onto names.
 export function readTrack(
 	player: PlayerState | null | undefined,
 ): NowPlayingTrack | null {
@@ -266,13 +236,8 @@ export function readTrack(
 	};
 }
 
-// The player reports an absolute path; the media library reports one relative to
-// the library folders, forward-slashed. Jean is never told where those folders
-// are, so the two are matched by suffix -- safe, because a relative path is
-// unique within the library.
-//
-// A matcher rather than a predicate, because the caller asks the same question
-// of every path in the library in a row.
+// The player reports an absolute path; the media library reports one relative to the library folders, forward-slashed.
+// Jean is never told where those folders are, so the two are matched by suffix, which is unique within a library.
 export function libraryPathMatcher(absolute: string | null | undefined) {
 	if (!absolute) return () => false;
 	const flat = absolute.replaceAll("\\", "/");
@@ -280,13 +245,8 @@ export function libraryPathMatcher(absolute: string | null | undefined) {
 		Boolean(relative) && (flat === relative || flat.endsWith(`/${relative}`));
 }
 
-// The active item against an arbitrary expression list, separate from
-// `fetchPlayer` because the expressions are the caller's -- none of the
-// now-playing screen's two dozen fields belong in `UPDATES_URL`, which the
-// player re-evaluates on every push.
-//
-// The caller must verify the identity it gets back: this reports whatever is
-// playing *now*, not necessarily the track that was asked about.
+// The active item against an arbitrary expression list, kept out of `UPDATES_URL` because the player re-evaluates that on every push.
+// The caller must verify the identity it gets back: this reports whatever is playing now, not the track that was asked about.
 export async function fetchActiveItemColumns(
 	expressions: string[],
 ): Promise<TrackColumns | null> {

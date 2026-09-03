@@ -17,8 +17,7 @@ import { removePlaylist } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Library } from "./useLibrary";
 
-// Owns the query and nothing else: the rows, the source and the loading belong
-// to `useLibrary`. Held by the shell, so it survives navigating away and back.
+// Owns the query and nothing else: the rows, the source and the loading belong to `useLibrary`. Held by the shell, so it survives navigating away and back.
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const permissions = usePermissions();
 	const { data: playerSnapshot } = usePlayer();
@@ -26,9 +25,8 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const [isFocused, setIsFocused] = useState(false);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
-	// The scratch playlist's title is the query that built it, which is how a
-	// search survives a reload and reaches another device. Reading it does not
-	// touch the library, so a session that never searches never loads it.
+	// The scratch playlist's title is the query that built it, which is how a search survives a reload and reaches another device.
+	// Reading it does not touch the library, so a session that never searches never loads it.
 	const remembered = useMemo(
 		() => queryOfScratchPlaylist(playlists.find(isScratchPlaylist)) || null,
 		[playlists],
@@ -38,15 +36,11 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		setQuery((current) => current || remembered || "");
 	}, [remembered]);
 
-	// Dismissing the search takes the playlist with it -- except while the player
-	// is on it, because deleting the playing playlist does not stop playback: the
-	// player falls back to another one and carries on, which is the wandering out
-	// of the results this whole arrangement exists to stop.
+	// Dismissing the search takes the playlist with it, except while the player is on it: deleting the playing playlist does not stop playback, it falls back to another one and wanders out of the results.
 	const clear = useCallback(() => {
 		setQuery("");
 
-		// The active item, not `isCurrent`: that keeps pointing at the last
-		// playlist played from long after playback stopped.
+		// The active item, not `isCurrent`: that keeps pointing at the last playlist played from long after playback stopped.
 		const playingFrom = playerSnapshot?.player?.activeItem?.playlistId;
 		const scratch = playlists.find(isScratchPlaylist);
 		if (
@@ -60,13 +54,12 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 	const { request } = library;
 
-	// A query is an ask, however it arrived. Focus is the other one, and a reload
-	// restoring a query focuses nothing -- without this it renders no rows.
+	// A restored query never touches the field, so focus alone would leave the library unrequested and the results empty.
 	useEffect(() => {
 		if (query.length > 0) request();
 	}, [query, request]);
 
-	// Typing stays responsive while the filter runs over 30k rows behind it.
+	// Typing stays responsive while the filter runs over the whole library behind it.
 	const deferredQuery = useDeferredValue(query);
 
 	const matched = useMemo(
@@ -96,8 +89,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		focus,
 		remembered,
 		restore,
-		// Mod chords still fire inside a text field, so the list has to stand down
-		// while the field has focus or Mod+A selects the library.
+		// Mod chords still fire inside a text field, so the list stands down while the field has focus or Mod+A selects the library.
 		isFocused,
 		onFocus: useCallback(() => {
 			setIsFocused(true);
@@ -108,8 +100,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		isFiltering: query !== deferredQuery,
 		results: results ?? EMPTY_VIEW,
 		matchCount: matched?.length ?? 0,
-		// Distinct per query, so each result set is its own view with its own
-		// scroll offset, cursor and row measurements.
+		// Distinct per query, so each result set is its own view with its own scroll offset, cursor and row measurements.
 		viewKey: `search:${deferredQuery.trim().toLowerCase()}`,
 	};
 }

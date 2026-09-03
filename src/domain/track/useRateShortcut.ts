@@ -7,13 +7,7 @@ import { writtenRatingOf } from "./ratingStore";
 import { ratingTarget } from "./ratingTarget";
 import { useTagWriting } from "./useTagWriter";
 
-// `0`-`5` from anywhere, resolving what they act on: the cursor row when a track
-// list is on screen, and the playing track otherwise. One question with one
-// answer, rather than the same six keys declared in two scopes.
-//
-// The cursor wins because it is the thing you are looking at and it is marked on
-// screen. `N` moves the cursor to the playing track, so rating what is playing
-// while a list is open is two keys rather than a special case.
+// `0`-`5` from anywhere: the cursor row when a track list is on screen, the playing track otherwise. The cursor wins because it is the marked row, and `N` moves it to the playing track.
 export function useRateShortcut() {
 	const { canRate, rate, rateTrack } = useTagWriting();
 	const { data: snapshot } = usePlayer();
@@ -25,9 +19,7 @@ export function useRateShortcut() {
 
 			const target = ratingTarget();
 			if (target) {
-				// Read-only scales are read-only however the rating is reached. A
-				// keyboard shortcut that quietly rescaled a `100` would be worse than
-				// the click that cannot: there is no pointer over the row to see it.
+				// Read-only scales are read-only however the rating is reached: a shortcut that quietly rescaled a 100 would be worse than the click that cannot, since no pointer is over the row to see it.
 				const written = writtenRatingOf(target.row);
 				const raw =
 					written === undefined

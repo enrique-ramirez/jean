@@ -42,8 +42,7 @@ export function useQueueActions() {
 	const queryClient = useQueryClient();
 	const permissions = usePermissions();
 
-	// beefweb publishes no permission for the queue itself. This is the nearest
-	// true thing: an instance refusing playlist writes cannot hold a queue either.
+	// beefweb publishes no permission for the queue itself, and an instance refusing playlist writes cannot hold a queue either.
 	const canQueue = permissions.changePlaylists !== false;
 
 	const write = useCallback(
@@ -76,8 +75,7 @@ export function useQueueActions() {
 		[queryClient],
 	);
 
-	// Sequential, and it has to be: fired concurrently these arrive in whatever
-	// order the network settles on, and the order is the point of a queue.
+	// Sequential, and it has to be: fired concurrently these arrive in whatever order the network settles on, and the order is the point of a queue.
 	const queue = useCallback(
 		async (pairs: { playlistId: string; itemIndex: number }[]) => {
 			if (!canQueue || pairs.length === 0) return;
@@ -94,8 +92,7 @@ export function useQueueActions() {
 				before === null
 					? undefined
 					: async () => {
-							// Those positions are only ours while nothing else has touched the
-							// queue -- and a track starting consumes the head of it.
+							// Those positions are only ours while nothing else has touched the queue, and a track starting consumes the head of it.
 							const current = await fetchPlayQueue().catch(() => null);
 							if (!current || current.length !== before + pairs.length) {
 								pushToast({
@@ -141,8 +138,7 @@ export function useQueueActions() {
 		async (from: number, to: number) => {
 			if (!canQueue || from === to) return;
 
-			// A track ending mid-drag consumes the head and shifts every index the
-			// plan is built from, so a queue that moved is refused, not half-applied.
+			// A track ending mid-drag consumes the head and shifts every index the plan is built from, so a queue that moved is refused rather than half-applied.
 			const current = await fetchPlayQueue().catch(() => null);
 			const shown = queryClient.getQueryData<PlayQueueItem[]>(QUEUE_KEY);
 			if (!current || !sameQueue(current, shown)) {

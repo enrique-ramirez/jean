@@ -5,8 +5,7 @@ import type { LibrarySource } from "./librarySource";
 import styles from "./Mosaic.module.css";
 import type { Refs } from "./project";
 
-// The tile count is capped rather than scaled with the playlist: nine images is
-// the whole cost whether it holds twelve tracks or the entire library.
+// Capped rather than scaled with the playlist: nine images is the whole cost whether it holds twelve tracks or the entire library.
 const tileCountFor = (trackCount: number) => {
 	if (trackCount === 0) return 0;
 	if (trackCount < 4) return 1;
@@ -22,10 +21,7 @@ const hash = (text: string) => {
 	return value;
 };
 
-// Evenly spaced across the set rather than randomly sampled, so the tiles
-// represent the whole thing instead of clustering. The offset is derived from
-// the seed so two lists of the same length still look different, and so a given
-// list looks the same on every render.
+// Evenly spaced across the set rather than randomly sampled. The offset is derived from the seed, so two lists of the same length still differ and a given list looks the same on every render.
 const pickPositions = (
 	seed: string | null,
 	trackCount: number,
@@ -39,8 +35,7 @@ const pickPositions = (
 	);
 };
 
-// `indices` maps a position in the set back to the ref the source addresses
-// artwork by; without it the set is the whole list and the two are the same.
+// `indices` maps a position in the set back to the ref the source addresses artwork by; without it the set is the whole list and the two are the same.
 export function Mosaic({
 	source,
 	trackCount,
@@ -82,8 +77,7 @@ export function Mosaic({
 		>
 			{positions.map((index, position) => (
 				<Artwork
-					// The tiles are a fixed grid picked by stride, never reordered, and
-					// one album can legitimately fill two -- so the slot is the identity.
+					// The tiles are a fixed grid picked by stride, never reordered, and one album can legitimately fill two, so the slot is the identity.
 					// biome-ignore lint/suspicious/noArrayIndexKey: fixed grid, see above
 					key={`${index}-${position}`}
 					src={source.artworkUrl(index)}

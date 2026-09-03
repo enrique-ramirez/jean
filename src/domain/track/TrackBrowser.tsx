@@ -55,11 +55,10 @@ const LAYOUTS: SegmentedOption<Layout>[] = [
 
 const PAGE = 12;
 
+const isRepeatClick = (event: ReactMouseEvent) => event.detail > 1;
+
 // Everything a list of tracks does regardless of where the tracks came from.
-//
-// `rows` is the view; `indices` maps a position in it back to the ref the source
-// addresses, and is null when the two are the same. Selection, the cursor and
-// heat are all in view space -- only artwork and playback cross back over.
+// `indices` maps a position in the view back to the ref the source addresses it by, and is null when the two are the same. Selection, cursor and heat are all in view space.
 export const TrackBrowser = forwardRef(function TrackBrowser(
 	{
 		rows,
@@ -80,8 +79,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		toolbarLeading,
 		emptyNotice,
 		keysEnabled = true,
-		// Off unless a view asks: search results change under every keystroke, and
-		// jumping to the playing track would take the view away from the matches.
+		// Off unless a view asks: search results change under every keystroke, and jumping to the playing track would take the view away from the matches.
 		canFollowPlayback = false,
 		onPlay,
 		onOpenFinder,
@@ -138,16 +136,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		setHeatIntroSeen(true);
 	}, [setHeatIntroSeen]);
 
-	// Explained the first time the shading is actually on screen, which is the only
-	// moment the question occurs to anyone. After that it lives in the columns menu.
 	useEffect(() => {
 		if (heatIntroSeen || !hasPlayCounts || !showHeat) return;
 		setIsHeatInfoOpen(true);
 	}, [heatIntroSeen, hasPlayCounts, showHeat]);
 
-	// Both layouts want it: the album layout draws the groups, and the list layout
-	// still needs a multi-disc album's track-number column wide enough for the
-	// prefix before a single row is laid out.
+	// Both layouts want it: the list layout still needs a multi-disc album's track-number column wide enough for the prefix before a row is laid out.
 	const groups = useMemo(() => groupByAlbum(rows), [rows]);
 	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);
 
@@ -209,9 +203,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		selection: selection.selection,
 	});
 
-	// Pressing inside a multi-track selection must not collapse it on the way down:
-	// this could be the start of a drag of all of them, and without deferring to the
-	// release the selection is gone before the pointer has moved.
+	// Pressing inside a multi-track selection must not collapse it on the way down: this could be the start of a drag of all of them.
 	const pendingCollapse = useRef<number | null>(null);
 
 	const selectFromPointer = useCallback(
@@ -237,10 +229,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		if (pending !== null && !trackDrag.didDrag()) moveCursorTo(pending);
 	}, [moveCursorTo, trackDrag]);
 
-	// What plays a track depends on the device driving, not the viewport. Recorded
-	// on the way down rather than read off the click, because `click` is a
-	// PointerEvent in Chromium and Safari but a plain MouseEvent in Firefox, where
-	// every desktop click would read as a tap.
+	// Recorded on the way down rather than read off the click: `click` is a PointerEvent in Chromium and Safari but a plain MouseEvent in Firefox, where every desktop click would read as a tap.
 	const pointerType = useRef("mouse");
 
 	const playFromPointer = useCallback(
@@ -251,17 +240,11 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		[rows, selection.selection, play],
 	);
 
-	// A tap plays; a click selects and a double-click plays. On a pointer the
-	// modifier keys exist to build a selection; touch has neither, and a tap that
-	// only highlighted left the phone with no way to play a single track.
-	//
-	// `click` rather than `pointerup`, because the browser withholds it when the
-	// gesture turns out to be a scroll.
+	// A tap plays; a click selects and a double-click plays. Touch has no modifier keys, so a tap that only highlighted left no way to play a single track.
+	// `click` rather than `pointerup`, because the browser withholds it when the gesture turns out to be a scroll.
 	const onRowsClick = useCallback(
 		(event: ReactMouseEvent) => {
-			// detail counts clicks in a rapid sequence. A double-tap otherwise plays
-			// twice, restarting the track under the finger that just started it.
-			if (pointerType.current === "mouse" || event.detail > 1) return;
+			if (pointerType.current === "mouse" || isRepeatClick(event)) return;
 			playFromPointer(event);
 		},
 		[playFromPointer],
@@ -285,8 +268,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		[clearSelection],
 	);
 
-	// Only when the keyboard moved it: arriving chunks can clamp the cursor too, and
-	// reacting to that drags the view back to the top mid-scroll.
+	// Only when the keyboard moved it: arriving chunks can clamp the cursor too, and reacting to that drags the view back to the top mid-scroll.
 	const pendingScroll = useRef(false);
 
 	const keyMove = useCallback(
@@ -311,9 +293,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		scrollToTrack(selection.cursor, { align: "auto" });
 	}, [selection.cursor, scrollToTrack]);
 
-	// What `0`-`5` act on while this list is on screen. Published rather than
-	// bound to a key here, so the shortcut is declared once in the global scope
-	// and resolves its own target; see `useRateShortcut`.
+	// What `0`-`5` act on while this list is on screen. The shortcut itself is declared once in the global scope, in `useRateShortcut`.
 	const cursorRow = rows[selection.cursor];
 	useEffect(() => {
 		if (!cursorRow) return undefined;
@@ -322,14 +302,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		return () => setRatingTarget(null);
 	}, [source, indices, selection.cursor, cursorRow]);
 
-	// The cursor as it stood when the track changed. A dependency would re-run the
-	// effect on every arrow key.
+	// The cursor as it stood when the track changed. A dependency would re-run the effect on every arrow key.
 	const cursorAt = useRef(selection.cursor);
 	cursorAt.current = selection.cursor;
 
-	// Last *followed*, not last seen, so scrolling away does not drag the view
-	// back. `rows.length` is a dependency because at library size the active index
-	// can arrive before the chunk holding that row.
+	// Last followed, not last seen, so scrolling away does not drag the view back.
+	// `rows.length` is a dependency of the effect below because the active index can arrive before the chunk holding that row.
 	const followedIndex = useRef(-1);
 	const followedView = useRef<string | null>(null);
 
@@ -344,10 +322,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		const wasPlaying = followedIndex.current;
 		followedIndex.current = activeIndex;
 
-		// Must run before the cursor moves below, or there is nothing left to
-		// compare. Excluding `wasPlaying` is what stops the two settings looping:
-		// with both on, the cursor is sitting on the track that just ended.
-		// Excluding `arrived` stops navigation being read as a track change.
+		// Must run before the cursor moves below, or there is nothing left to compare.
+		// Excluding `wasPlaying` stops the two follow settings looping, since with both on the cursor sits on the track that just ended; excluding `arrived` stops navigation being read as a track change.
 		const cursor = cursorAt.current;
 		if (
 			playbackFollowsCursor &&
@@ -408,15 +384,12 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		{ enabled: keysEnabled && rows.length > 0 },
 	);
 
-	// Held so the arrow does not flip mid-exit: while the pill animates away its
-	// direction is already null.
+	// Held so the arrow does not flip mid-exit: while the pill animates away its direction is already null.
 	if (activeDirection) lastDirection.current = activeDirection;
 	const shownDirection = activeDirection ?? lastDirection.current;
 
 	return (
-		// Not a control, and deliberately not focusable: this is the background
-		// behind the list, and its only job is to notice that a click missed
-		// everything. The keyboard route to the same thing is Escape.
+		// Deliberately not focusable: this is the background behind the list, and its only job is to notice that a click missed everything.
 		// biome-ignore lint/a11y/noStaticElementInteractions: background, see above
 		// biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard equivalent is Escape, declared in the keymap rather than here -- a keydown on this element would need it focusable, which is the thing it must not be
 		<div className={styles.view} onClick={onViewClick}>
@@ -535,8 +508,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 
 			{trackMenu.element}
 
-			{/* Stays mounted so it can animate out as well as in. The slot has no
-          height, so nothing is reserved at the end of the list while hidden. */}
+			{/* Stays mounted so it can animate out as well as in. The slot has no height, so nothing is reserved at the end of the list while hidden. */}
 			{activeIndex >= 0 ? (
 				<div className={styles.pillSlot} aria-hidden={!activeDirection}>
 					<button

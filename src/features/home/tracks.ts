@@ -1,17 +1,7 @@
 import { FIELD, number, value } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
 
-// Not `topTracks.ts`, beside `TopTracks.tsx`: a case-insensitive filesystem
-// cannot tell the two apart, so `'./TopTracks'` resolves to whichever the
-// compiler probes first and the import lands silently on the wrong one. The
-// same family as naming a store after the component beside it -- see the root
-// CLAUDE.md. It sits with `albums.ts` and `artists.ts` instead, which is where
-// it belonged anyway.
-//
-// A ranked list rather than a shelf of covers, and that is the point of it:
-// GrooveGraph's top-tracks column is ten rows in the space one row of sleeves
-// takes, and a numbered list needs no artist photograph -- which Jean does not
-// have and is not going to get.
+// Not named `topTracks.ts`: a case-insensitive filesystem cannot tell it from `TopTracks.tsx`, and `'./TopTracks'` would resolve to whichever the compiler probes first.
 export interface TopTrack {
 	ref: number;
 	title: string;
@@ -20,10 +10,7 @@ export interface TopTrack {
 	artworkUrl: string;
 }
 
-// Unlike an album, a track is a single row, so there is nothing to average and
-// nothing to reconcile: the play count is the play count. Rows with none are
-// dropped rather than sorted to the bottom -- a library the player keeps no
-// statistics for gets no list at all, by the same rule the shelves follow.
+/** The most played tracks. Rows with no play count are dropped rather than sorted last, so a player that keeps no statistics yields an empty list. */
 export function topTracksOf(
 	rows: TrackColumns[],
 	limit: number,

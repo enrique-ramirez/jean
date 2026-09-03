@@ -13,8 +13,7 @@ import { createState } from "./state.ts";
 type FakeState = ReturnType<typeof createState>;
 
 // A parsed JSON request body, or null when there was none or it did not parse.
-// Deliberately loose: the router reads whatever field a route expects, and the
-// player's request bodies are the app's business rather than the fake's.
+// Loose on purpose: the router reads whatever field a route expects.
 // biome-ignore lint/suspicious/noExplicitAny: see above
 type RequestBody = Record<string, any> | null;
 
@@ -23,29 +22,18 @@ export interface FakeServer extends Server {
 	readonly state: FakeState;
 	reset: (next?: FakeState) => FakeState;
 	// `foo_jean`, on a port of its own. Started and stopped by the fixture that
-	// owns this one; see `fooJean.ts`.
+	// owns this one.
 	agent: Server;
 }
 
-// Named for the shape rather than the implementation. What Jean talks to today
-// is beefweb, and the comments here name it wherever its actual behaviour is
-// the reason for something -- the '?' for an unresolved column, the stream that
-// never ticks, the static server with no SPA fallback. But the plugin is the
-// part that could be swapped; the request/response shape is the part that would
-// survive it, and that is what `routes.ts` is a copy of. This file is only the
-// socket under it, plus the two things a real filesystem answers: the build
-// beefweb serves and the cover art.
+// The socket under `routes.ts`, plus the two things a real filesystem answers:
+// the build beefweb serves and the cover art.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-// beefweb refuses a request body over 1 MiB, and it refuses it by hanging up
-// rather than answering: past the cap the socket is closed mid-upload,
-// which arrives at the client as a network error and not as a status code.
-//
-// The fake does the same, because the alternative is what already happened
-// once: naming a whole library to play All music outgrows the cap, the fake
-// swallowed it happily, every test passed, and the feature did not work on a
-// real player at all.
+// beefweb refuses a request body over 1 MiB by hanging up rather than answering:
+// past the cap the socket is closed mid-upload, which arrives at the client as a
+// network error and not as a status code.
 const MAX_BODY_BYTES = 1024 * 1024;
 
 const readBody = (request: IncomingMessage): Promise<RequestBody> =>
@@ -79,9 +67,8 @@ export function createServer({
 	state?: FakeState;
 	serveDir?: string | null;
 } = {}): FakeServer {
-	// Held in a box rather than closed over directly, so a test run can swap the
-	// whole player out between tests without tearing the server down. One server
-	// per worker, one state per test.
+	// Held in a box rather than closed over, so a test run can swap the whole
+	// player out without tearing the server down.
 	const held = { state };
 	const agent = createFooJeanServer(() => held.state);
 
@@ -114,7 +101,7 @@ export function createServer({
 		}
 
 		// A control surface the app knows nothing about, so tests can reach the
-		// player's own state without going through the UI they are testing.
+		// player's state without going through the UI under test.
 		if (path.startsWith("/__control/")) {
 			const body = method === "POST" ? await readBody(request) : null;
 			return handleControl({ state, path, body, response });
@@ -128,10 +115,7 @@ export function createServer({
 	Object.defineProperty(fake, "state", { get: () => held.state });
 	fake.agent = agent;
 
-	// Any stream still open belongs to the state being replaced. In a test run
-	// the previous page is already closed by this point, so there is nothing
-	// listening -- but a swap must not silently leave one subscribed to a player
-	// that no longer exists.
+	// Any stream still open belongs to the state being replaced.
 	fake.reset = (next: FakeState = createState()) => {
 		held.state = next;
 		return next;
@@ -165,21 +149,13 @@ function serveFile(file: string, response: ServerResponse) {
 	return true;
 }
 
-// Artwork is cached, and the exact terms are the player's rather than something
-// convenient: foobar2000 answers with `Cache-Control: max-age=3,
-// must-revalidate` with a **content**-derived ETag, and a 304 for a conditional
-// request that matches.
+// The caching terms are the player's: foobar2000 answers `Cache-Control:
+// max-age=3, must-revalidate` with a content-derived ETag, and a 304 for a
+// conditional request that matches.
 //
-// Modelling it is not decoration. Without headers the browser refetches a cover
-// it drew a moment ago, so a fake that sends none makes twelve rows of one album
-// look like twelve requests whatever the app does -- which is exactly the bug
-// under test, permanently reproduced, and unfixable from the client. With them,
-// the rows after the first are cache hits and the count means something.
-//
-// The ETag being content-based is worth knowing and is *not* worth relying on:
-// two indices off the same album carry the same one, but an HTTP cache is keyed
-// by URL, so it never matches across two rows unless the URL is shared too.
-// That is the whole reason `albumCoverRows` exists.
+// Content-derived is not the same as shared: two indices off one album carry the
+// same ETag, but an HTTP cache is keyed by URL, so it never matches across two
+// rows unless the URL is shared too. Hence `albumCoverRows`.
 const etags = new Map<string, string>();
 
 const serveArtwork: ArtworkServer = (name, requestHeaders, response) => {
@@ -204,8 +180,7 @@ const serveArtwork: ArtworkServer = (name, requestHeaders, response) => {
 		return true;
 	}
 
-	// Read whole rather than piped: a cover is a few tens of kilobytes, and
-	// `Responder` is deliberately not a node stream.
+	// Read whole rather than piped: `Responder` is not a node stream.
 	response.writeHead(200, headers);
 	response.end(readFileSync(file));
 	return true;

@@ -13,8 +13,7 @@ import {
 
 const stayUnsubscribed = () => () => {};
 
-// A window onto one load in the store: rows, progress and the derived heat and
-// patina. The work happens once in there, however many components look at it.
+// A window onto one load in the store; the work happens once in there, however many components look at it.
 function useLoadedRows(
 	key: string | null,
 	start: () => void,
@@ -48,8 +47,6 @@ export function usePlaylistItems(
 	);
 }
 
-// The media library, through the same store and the same subscription. Only the
-// fetching differs, and that lives in the store.
 export function useLibraryItems(itemCount: number | null | undefined) {
 	return useLoadedRows(
 		itemCount == null ? null : libraryKey(itemCount),

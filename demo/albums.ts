@@ -1,18 +1,14 @@
 // The demo's library, named album by album.
 //
-// `test/fake-api/capture.ts --albums demo/albums.ts --out demo` pulls these off
-// a real foobar2000 and writes `demo/library.json` plus a cover each, so what
-// the demo browses is bytes the player actually produced -- the same rule the
-// test fixture follows, and the reason neither is invented.
+// `test/fake-api/capture.ts --albums demo/albums.ts --out demo` pulls these off a
+// real foobar2000 and writes `demo/library.json` plus a cover each.
 //
-// **The two lists are separate on purpose.** The fixture under `test/fake-api/`
-// is five albums chosen for the branches the UI has, and every spec is written
-// against its titles and row indices; this one is chosen to be *recognised*, so
-// that somebody who has never heard of Jean can see their own records in it.
-// Changing this file cannot break a test, which is the point.
+// Separate from the fixture under `test/fake-api/`, which is five albums chosen
+// for the branches the UI has and which every spec is written against. This list
+// is chosen to be recognised, and changing it cannot break a test.
 //
-// The first block is the list Enrique asked for. Everything after it fills a
-// gap the app has a feature for and that block does not cover on its own:
+// The first block is widely recognised records. The rest fill gaps the app has a
+// feature for:
 //
 //   discs        a two- or three-disc set restarts %tracknumber% mid-album
 //   codecs       FLAC, AAC and a mixed-format album, for the Details panel
@@ -26,23 +22,19 @@
 export interface DemoAlbum {
 	albumArtist: string;
 	album: string;
-	// Capture the *lyric text* for this album, not just the length probe.
-	//
-	// **Off by default, and per album rather than per capture.** The rest of what
-	// is captured here is metadata and a thumbnail; a lyric is licensed text, and
-	// a public demo carrying a thousand of them is a different thing from one
-	// carrying a hundred and fifty covers. Six albums is enough to show the tab,
-	// the scroll-in-time and tapping a line to seek -- chosen for having a
-	// timestamped lyric on nearly every track, in two languages, with `Vessel`
-	// carrying some plain and some timed so both code paths are on screen.
+	// Capture the lyric text for this album, not just the length probe. Off by
+	// default and per album, because a lyric is licensed text: six albums is
+	// enough to show the tab, the scroll-in-time and tapping a line to seek.
+	// `Vessel` carries some plain and some timed lyrics, so both code paths are on
+	// screen.
 	lyrics?: true;
 }
 
-// Exactly as the player reports them: `%album artist%` and `%album%`, spelling,
-// punctuation, accents and all. A capture that has to guess at a title is a
-// capture that silently drops an album.
+// Spelled exactly as the player reports `%album artist%` and `%album%`,
+// punctuation and accents included. A title the capture cannot match is an album
+// silently dropped.
 export const ALBUMS: DemoAlbum[] = [
-	// ---- asked for ---------------------------------------------------------
+	// ---- widely recognised -------------------------------------------------
 	{ albumArtist: "Metallica", album: "Metallica" },
 	{ albumArtist: "Nirvana", album: "Nevermind", lyrics: true },
 	{ albumArtist: "Oasis", album: "(What's the Story) Morning Glory?" },
@@ -89,8 +81,8 @@ export const ALBUMS: DemoAlbum[] = [
 	{ albumArtist: "Nirvana", album: "MTV Unplugged in New York" },
 
 	// ---- more from the same artists ----------------------------------------
-	// A library holds records, not singles: one album per artist makes every
-	// artist page a single row and the "more by" idea meaningless.
+	// One album per artist would make every artist page a single row and the
+	// "more by" shelf meaningless.
 	{ albumArtist: "The Beatles", album: "Abbey Road" },
 	{
 		albumArtist: "The Beatles",
@@ -123,8 +115,8 @@ export const ALBUMS: DemoAlbum[] = [
 	{ albumArtist: "Tool", album: "Ænima" },
 	{ albumArtist: "Daft Punk", album: "Homework" },
 	{ albumArtist: "Daft Punk", album: "Random Access Memories" },
-	// One album, two formats -- half AAC, half FLAC. The Details panel reads the
-	// file rather than the album, and this is the only way to see that.
+	// One album, half AAC and half FLAC. The Details panel reads the file rather
+	// than the album, and this is the only way to see that.
 	{ albumArtist: "Daft Punk", album: "TRON: Legacy" },
 	{ albumArtist: "The Strokes", album: "Room On Fire" },
 	{ albumArtist: "The Strokes", album: "First Impressions Of Earth" },
@@ -138,8 +130,8 @@ export const ALBUMS: DemoAlbum[] = [
 	{ albumArtist: "Stevie Wonder", album: "Innervisions" },
 	{ albumArtist: "Stevie Wonder", album: "Talking Book" },
 	{ albumArtist: "The Smiths", album: "The Queen Is Dead" },
-	// Never played once, and that is why it is here: the home screen has a shelf
-	// for records you have not opened, and it needs records nobody has opened.
+	// Never played once: the home screen has a shelf for unopened records and
+	// needs some.
 	{ albumArtist: "The Smiths", album: "Strangeways, Here We Come" },
 	{ albumArtist: "The Cardigans", album: "Life" },
 	{ albumArtist: "The Cardigans", album: "First Band on the Moon" },
@@ -189,7 +181,7 @@ export const ALBUMS: DemoAlbum[] = [
 	{ albumArtist: "Have a Nice Life", album: "Deathconsciousness" },
 	{ albumArtist: "Alice in Chains", album: "Jar Of Flies" },
 	{ albumArtist: "As Tall as Lions", album: "Lafcadio" },
-	// Accents, and the reason `fold()` exists: `babasonicos` has to find this.
+	// `fold()` exists for this: a search for `babasonicos` has to find it.
 	{ albumArtist: "Babasónicos", album: "Jessico" },
 	{ albumArtist: "Babasónicos", album: "Infame" },
 	{ albumArtist: "Babasónicos", album: "Luces" },
@@ -221,8 +213,8 @@ export const ALBUMS: DemoAlbum[] = [
 	{ albumArtist: "Rodrigo y Gabriela", album: "Area 52" },
 	{ albumArtist: "Rata Blanca", album: "Magos, espadas y rosas" },
 	{ albumArtist: "Carbon Based Lifeforms", album: "World of Sleepers" },
-	// The most-played record in the library, and 67 tracks of it -- one album
-	// longer than most playlists.
+	// The most-played record in the library, and 67 tracks of it: one album longer
+	// than most playlists.
 	{
 		albumArtist: "Yasunori Mitsuda, Various Artists",
 		album: "Chrono Cross Original Soundtrack",

@@ -3,16 +3,10 @@ import { clamp } from "@/shared/lib/math";
 const easeInOutCubic = (t: number) =>
 	t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
 
-// Native `behavior: 'smooth'` has a browser-decided duration that grows with
-// distance, so a jump across a library-sized list crawls for seconds.
-//
-// `getTarget` is re-read every frame rather than captured, because rows measured
-// during the flight move where the destination actually sits.
+// Native behavior: 'smooth' has a browser-decided duration that grows with distance, so a jump across a library-sized list crawls for seconds.
+// getTarget is re-read every frame rather than captured, because rows measured during the flight move where the destination actually sits.
 
-// A wheel event is not by itself a decision: trackpad and mouse momentum keep
-// emitting for a second after the fingers leave, so a jump asked for at the end
-// of a flick was cancelled by the tail of the gesture before it. Deliberate
-// scrolling passes this in one or two events; a decaying tail never does.
+// A wheel event is not by itself a decision: trackpad and mouse momentum keep emitting for a second after the fingers leave, and a decaying tail never passes this while deliberate scrolling does so in one or two events.
 const CANCEL_DELTA_PX = 40;
 
 export function animateScrollTo(
@@ -56,9 +50,7 @@ export function animateScrollTo(
 		else cancel();
 	};
 
-	// Real input still wins -- an animation that fights the wheel feels broken --
-	// but a touch is unambiguous where a wheel event is not, so only one of them
-	// gets to stop this on its own.
+	// A touch is unambiguous where a wheel event is not, so only touch cancels on its own.
 	element.addEventListener("wheel", onWheel, { passive: true });
 	element.addEventListener("touchstart", cancel, { passive: true });
 	frame = requestAnimationFrame(step);

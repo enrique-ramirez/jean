@@ -16,19 +16,15 @@ import { ViewHeader } from "@/domain/track/ViewHeader";
 import type { PlaylistInfo } from "@/shared/api/types";
 import styles from "./LibraryListView.module.css";
 
-// What the finder button calls the list it is searching. Keyed on the kind
-// rather than branched on, because there are three of these now and a genre
-// offered to "find in this shelf".
+// What the finder button calls the list it is searching.
 const FINDER_LABEL: Record<string, string> = {
 	[SCRATCH_KIND.all]: "Find in all music",
 	[SCRATCH_KIND.shelf]: "Find in this shelf",
 	[SCRATCH_KIND.genre]: "Find in this genre",
 };
 
-// One list, whatever filtered it. All music is the no-filter view; a shelf is
-// the same thing with a preset. Both are shells over the library array and
-// neither is a playlist -- playback is materialised into the scratch only when
-// somebody presses play, which is what keeps browsing free.
+// One list, whatever filtered it: All music is the no-filter view and a shelf is the same thing with a preset.
+// Neither is a playlist; playback is materialised into the scratch only when somebody presses play, which is what keeps browsing free.
 export function LibraryListView({
 	library,
 	view,
@@ -56,27 +52,19 @@ export function LibraryListView({
 	const { rows, indices, heat, patina, playedCount } = view;
 
 	const isPlaying = useIsPlaying();
-	// Strictly true, not merely "not false": without the permission there is no
-	// scratch playlist to make, so Shuffle would be shuffling the whole library
-	// rather than this view. Better absent until the player has said yes.
+	// Strictly true, not merely "not false": without the permission there is no scratch playlist to make, so Shuffle would shuffle the whole library rather than this view.
 	const canWrite = usePermissions().changePlaylists === true;
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
 	const { hasPlayCounts } = useAvailableFields(rows);
-	// No genre chips on a genre, where there is exactly one of them and it is at
-	// 100%: the title already says it, and a chip repeating the heading with a
-	// percentage attached looks like a figure until you read it.
+	// No genre chips on a genre, where there is exactly one of them and it is at 100%.
 	const stats = useMemo(
 		() => summarise(rows, playedCount, isGenre ? { genres: 0 } : undefined),
 		[rows, playedCount, isGenre],
 	);
 
-	// Named for what it is searching, because the top bar has a search of its own
-	// two centimetres above and the two do different things: that one filters the
-	// library down to matches, this one walks you to a track without disturbing a
-	// row. All music is where it matters most -- a whole library is not something
-	// anyone scrolls looking for a record.
+	// Named for what it is searching, because the top bar has its own search: that one filters the library down to matches, this one jumps to a row without changing the list.
 	const finder = useFinder({
 		rows,
 		browserRef,
@@ -117,9 +105,7 @@ export function LibraryListView({
 			total={library.total}
 			scrollRef={scrollRef}
 			isCompactViewport={isCompactViewport}
-			// Unlike search, these rows do not change under every keystroke, so
-			// following playback is safe -- and it is what makes opening a shelf land
-			// on the track it just started.
+			// Unlike search, these rows do not change under every keystroke, so following playback is safe.
 			canFollowPlayback
 			onPlay={playAt}
 			onOpenFinder={finder.open}

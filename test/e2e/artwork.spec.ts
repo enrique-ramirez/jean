@@ -1,13 +1,11 @@
 import type { Page } from "./fixtures.ts";
 import { expect, requestsTo, scrollTop, test, times } from "./fixtures.ts";
 
-// Far enough down a library-sized playlist that getting there crosses thousands
-// of rows. The view has never been near it, so nothing about these covers is
-// already known.
+// Far enough down that getting there crosses thousands of rows the view has
+// never been near.
 const FAR = 25000;
 
-// The covers on screen when the list stops moving, which is the number every
-// assertion here is really about.
+// Rows on screen once the list has stopped moving.
 const settle = async (page: Page) => {
 	await page.waitForTimeout(1500);
 	return page.locator('main [role="row"]').count();
@@ -30,11 +28,8 @@ test.describe("artwork loading", () => {
 		await page.waitForTimeout(500);
 		player.requests.length = 0;
 
-		// Following playback flies the list there, mounting and unmounting every row
-		// in between. Native lazy loading counted each of those as visible and
-		// started a request for it, so the covers for a screenful arrived behind
-		// hundreds for rows nobody saw -- and so did everything else Jean asked the
-		// player for, on the same handful of connections.
+		// Following playback flies the list there, mounting and unmounting every
+		// row in between. Native lazy loading counts each of those as visible.
 		await page.evaluate(
 			(index: number) =>
 				fetch(`/api/player/play/p7/${index}`, { method: "POST" }),
@@ -45,9 +40,8 @@ test.describe("artwork loading", () => {
 		const rows = await settle(page);
 		const asked = requestsTo(player, "artwork").length;
 
-		// A little over one screenful is the honest bound: the destination is
-		// measured rather than computed, so the list settles through a row or two.
-		// Hundreds would mean the ones it flew past are being fetched as well.
+		// A little over one screenful: the destination is measured rather than
+		// computed, so the list settles through a row or two on arrival.
 		expect(
 			asked,
 			`${asked} artwork requests for ${rows} rows on screen`,
@@ -73,9 +67,8 @@ test.describe("artwork loading", () => {
 		const seen = requestsTo(player, "artwork").length;
 		player.requests.length = 0;
 
-		// Back over rows that have all been answered for once -- including the ones
-		// with no cover at all, which is most of a real library and was most of the
-		// traffic.
+		// Back over rows that have all been answered for once, including the ones
+		// with no cover at all.
 		await page.evaluate(() =>
 			(document.querySelector("main") as HTMLElement).scrollTo(0, 0),
 		);
@@ -89,18 +82,14 @@ test.describe("artwork loading", () => {
 	});
 });
 
-// The other half of the traffic, and a different question from the one above.
-// That one is about *when* a cover is asked for; this is about how many covers
-// there are. Artwork is addressed per row -- a playlist by index, the library by
-// path -- so a record's tracks are one URL each for one picture and the browser
-// has no way to know. There is no thumbnail to ask for either: the full image
-// comes back whatever size it is drawn at.
+// beefweb addresses artwork per row -- a playlist by index, the library by path
+// -- so a record's tracks are one URL each for one picture and the browser has
+// no way to know. There is no thumbnail endpoint: the full image comes back
+// whatever size it is drawn at.
 test.describe("one cover per album, not per track", () => {
 	test.use({ settings: { "jean.layout": "compact" } });
 
-	// The captured fixture is 54 tracks in 12 albums, so the two numbers are far
-	// enough apart that nothing ambiguous sits between them.
-	const TRACKS = 54;
+	const TRACKS = 54; // the captured fixture, in 12 albums
 	const ALBUMS = 12;
 
 	const walkTheList = async (page: Page) => {
@@ -123,9 +112,6 @@ test.describe("one cover per album, not per track", () => {
 		await walkTheList(page);
 
 		const asked = requestsTo(player, "artwork").length;
-		// The bound is nearer the album count than the track count on purpose:
-		// anything that drifts back towards one-per-row should fail here rather
-		// than merely look worse.
 		expect(
 			asked,
 			`${asked} requests for ${TRACKS} tracks in ${ALBUMS} albums`,
@@ -137,9 +123,8 @@ test.describe("one cover per album, not per track", () => {
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
 		await walkTheList(page);
 
-		// The property rather than the count: covers on screen are far fewer than
-		// rows on screen, because rows off the same record share a src. A count
-		// alone would also pass if the covers simply had not loaded.
+		// Distinct srcs rather than a count of requests: a count alone would also
+		// pass if the covers simply had not loaded.
 		const { rows, covers } = await page.evaluate(() => {
 			const drawn = [
 				...document.querySelectorAll<HTMLImageElement>('main [role="row"] img'),

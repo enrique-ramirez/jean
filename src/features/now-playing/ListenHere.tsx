@@ -5,25 +5,10 @@ import { type ListenPhase, useListener } from "@/domain/player/useListener";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import styles from "./ListenHere.module.css";
 
-// **An output picker, not a confirmation.** The sound is in one of two places
-// and this says which -- which is the one idea worth taking from Roon's zone
-// menu and Sonos's room tray: you read where it is playing without opening
-// anything, because the collapsed control already says so.
-//
-// The alternative shape, a "listen here too" toggle, was rejected: the player is
-// meant to go quiet while a listener is attached, so there is only ever one
-// answer to draw. **The muting is the component's and is not built yet**, so
-// today both do play at once; Jean must not paper over that with a mute of its
-// own. See `domain/player/CLAUDE.md`.
-//
-// Deliberately not a cast glyph. Casting pushes audio away to a box you are not
-// holding; this moves it to the device you are, and the arrow points the other
-// way. `MonitorSpeaker` is device-agnostic on purpose -- a TV, a laptop and an
-// iMac are all "this device", and none of them is a pair of headphones.
+// An output picker: the sound is in one of two places and this says which.
+// Silencing the player while a listener is attached is the component's job and is not built yet, so both play at once today. Jean must not paper over that with a mute of its own.
 
-// What the row under "This device" says, in the states where it has something to
-// say. **Silence is wrong in every one of these**: the component is installed and
-// working in all of them, and in most the user has done nothing wrong.
+// What the row under "This device" says, in the states where it has something to say.
 function explain(phase: ListenPhase): string | null {
 	switch (phase.kind) {
 		case "off":
@@ -37,8 +22,7 @@ function explain(phase: ListenPhase): string | null {
 			return "This browser needs one more tap before it will play audio.";
 		case "busy":
 			return "The player is already streaming to as many devices as it allows.";
-		// The one case with no error to catch: the stream is open and carrying
-		// nothing, which from here is indistinguishable from a broken one.
+		// A stopped player and a broken stream look identical from the stream: it is open and carrying nothing, with no error to catch.
 		case "silent":
 			return "foobar2000 is stopped, so there is nothing to hear yet.";
 		case "failed":
@@ -63,8 +47,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 	const [isOpen, setIsOpen] = useState(false);
 	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false));
 
-	// No component, no encoder, or a codec this browser cannot decode. A bare
-	// install must get a complete app, never a dead control.
+	// No component, no encoder, or a codec this browser cannot decode: a bare install gets no control rather than a dead one.
 	if (!canListen) return null;
 
 	const note = explain(phase);
@@ -72,22 +55,18 @@ export function ListenHere({ playerName }: { playerName: string }) {
 	return (
 		<div className={styles.anchor} ref={ref}>
 			{isOpen ? (
-				/* A radio group rather than a menu: the two outputs are mutually
-				   exclusive and one of them is always true, which is what a radio
-				   says and a pressed button does not. */
+				/* A radio group rather than a menu: the two outputs are mutually exclusive and one is always true. */
 				<div
 					className={styles.popover}
 					role="radiogroup"
 					aria-labelledby="listen-here-heading"
 				>
-					{/* Labelled *by* the heading rather than carrying a copy of it, or
-					    the group announces its own name twice. */}
+					{/* Labelled by the heading rather than carrying a copy, or the group announces its own name twice. */}
 					<p className={styles.heading} id="listen-here-heading">
 						Playing on
 					</p>
 
-					{/* Native radios would bring a form control's styling and focus
-					    model into a menu that is neither. */}
+					{/* Native radios would bring a form control's styling and focus model into a menu that is neither. */}
 					{/* biome-ignore lint/a11y/useSemanticElements: not a form field, see above */}
 					<button
 						type="button"
@@ -130,8 +109,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 						</span>
 					</button>
 
-					{/* Called straight out of the click, with no await in front of it:
-              that is the whole point of this control existing. */}
+					{/* Called straight out of the click with no await in front of it: an await loses the user gesture browsers require to start audio. */}
 					{phase.kind === "blocked" ? (
 						<button
 							type="button"
@@ -143,8 +121,6 @@ export function ListenHere({ playerName }: { playerName: string }) {
 						</button>
 					) : null}
 
-					{/* Giving up is visible and offers the way back, rather than the
-              button quietly going dark. */}
 					{phase.kind === "failed" ? (
 						<button
 							type="button"
@@ -156,9 +132,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 						</button>
 					) : null}
 
-					{/* There is no fader here: the bar's own retargets to this device while
-              the sound is here, so a second one would be the same control drawn
-              twice. This is only for the platform that will not have either. */}
+					{/* No fader here: the status bar's own retargets to this device. This line is only for the platform that exposes no level at all. */}
 					{isOn && !canSetVolume ? (
 						<p className={styles.level}>
 							This device sets its own level. Use its volume buttons.
@@ -177,10 +151,6 @@ export function ListenHere({ playerName }: { playerName: string }) {
 				data-listening={isOn}
 				onClick={() => setIsOpen((open) => !open)}
 			>
-				{/* One glyph, and the tone is the state -- the same idiom the shuffle
-				    mode uses. A control that swaps its drawing is a control that
-				    moves in the corner of your eye every time the sound changes
-				    rooms, and `MonitorSpeaker` already shows both outputs. */}
 				<MonitorSpeaker size={17} strokeWidth={2} aria-hidden="true" />
 			</button>
 		</div>

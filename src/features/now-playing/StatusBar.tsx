@@ -24,8 +24,7 @@ import { SeekBar, useElapsed } from "./SeekBar";
 import styles from "./StatusBar.module.css";
 import { Volume, VolumePopover } from "./Volume";
 
-// Times are their own leaf so the animation frame loop repaints two spans
-// rather than the whole bar.
+// Its own leaf so the animation frame loop repaints two spans rather than the whole bar.
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	const [showRemaining, setShowRemaining] = useStoredState(
 		"jean.timeRemaining",
@@ -34,9 +33,7 @@ function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	const elapsed = useElapsed(snapshot);
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
 
-	// A length is what a countdown counts against, and the player reports none
-	// for a stream. The preference is kept either way; only the reading falls
-	// back, so a track that has one goes back to counting down.
+	// The player reports no duration for a stream, so only the reading falls back; the preference is kept either way.
 	const isCountingDown = showRemaining && duration > 0;
 
 	return (
@@ -57,9 +54,6 @@ function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	);
 }
 
-// One component, two shapes: full transport on desktop, compact on mobile. The
-// seek bar spans the whole width above both.
-
 export function StatusBar({
 	isQueueOpen,
 	onToggleQueue,
@@ -68,9 +62,6 @@ export function StatusBar({
 }: {
 	isQueueOpen: boolean;
 	onToggleQueue: () => void;
-	// Tapping the block toggles; a swipe up only ever opens. "Up" is a direction
-	// rather than a switch -- there is nothing for it to mean when the screen is
-	// already up, and on a phone the bar is not even on screen then.
 	onOpenNowPlaying: () => void;
 	onRevealNowPlaying: () => void;
 }) {
@@ -80,11 +71,8 @@ export function StatusBar({
 	const { volume, setValue, setMuted } = useVolume();
 	const listener = useListener();
 
-	// **One fader, one target at a time.** While the sound is on this device the
-	// player's volume sits *before* the capture, so pointing the control at it
-	// would leave a slider that moves and changes nothing audible. Where the
-	// platform will not give a level at all -- iOS -- there is nothing honest to
-	// draw, so the control goes rather than pretending.
+	// While the sound is on this device the player's volume sits before the capture, so a fader pointed at it would move and change nothing audible.
+	// Where the platform gives no level at all, as iOS does, the control is dropped rather than drawn dead.
 	const isHere = listener.isOn;
 	const shownVolume = isHere ? listener.volume : volume;
 	const changeVolume = isHere ? listener.setVolume : setValue;
@@ -93,10 +81,7 @@ export function StatusBar({
 		: () => setMuted(!volume?.isMuted);
 	const hasFader = !isHere || Boolean(listener.volume);
 
-	// On the row rather than the whole footer, so it starts below the seek bar:
-	// that is a 4px strip at the very top which owns the vertical axis for
-	// scrubbing, and a swipe beginning there is a scrub, not a request for this
-	// screen.
+	// On the row rather than the footer, so it starts below the seek bar: that strip owns the vertical axis, and a swipe beginning there is a scrub.
 	const swipeUp = useSwipe({ onUp: onRevealNowPlaying });
 
 	const playPause = usePlayPause();
@@ -130,9 +115,6 @@ export function StatusBar({
 			/>
 
 			<div className={styles.row} {...swipeUp}>
-				{/* The whole block, not a button beside it: a 200px target instead of
-            a 44px one, which on a phone is the difference between reaching for
-            it and aiming at it. */}
 				<button
 					type="button"
 					className={styles.now}
@@ -155,16 +137,6 @@ export function StatusBar({
 				</button>
 
 				<div className={styles.transport}>
-					{/* Everything except Play is desktop-only now. On a phone the strip is
-              one thumb-sized action and a way into the now-playing screen,
-              which is where shuffle, skipping and the queue moved -- there they
-              are full-sized targets rather than 32px ones wedged around Play.
-
-              Playback order is global player state, so it belongs with the
-              other global controls rather than in a view header, where sitting
-              next to Play made it read as "shuffle these tracks" -- which is
-              not what it does. Left of the transport, not among it: this is the
-              mode the buttons to its right operate in, not a fourth button. */}
 					{isCompactViewport ? null : (
 						<>
 							<button
@@ -194,12 +166,6 @@ export function StatusBar({
 						</>
 					)}
 
-					{/* Left of Play on a phone, so Play stays the rightmost thing in the
-              bar and therefore the closest to a right thumb. Where the sound
-              comes out is left of how loud it is there, because the second
-              question only means anything once the first is answered -- and
-              until the sound is on this device, the fader is the *player's*
-              volume, which the handset's own keys cannot reach. */}
 					{isCompactViewport ? (
 						<>
 							<ListenHere playerName={player.info.title ?? player.info.name} />
@@ -218,9 +184,6 @@ export function StatusBar({
 						onToggle={() => playPause.mutate()}
 					/>
 
-					{/* Right of the transport as playback order is left of it, and the
-              pair balances the group around Play. Order is the rule the buttons
-              follow when nothing is queued; the queue is what overrides it. */}
 					{isCompactViewport ? null : (
 						<>
 							<button
@@ -240,9 +203,6 @@ export function StatusBar({
 				{isCompactViewport ? null : (
 					<div className={styles.trailing}>
 						<Times snapshot={snapshot} />
-						{/* Between the readout and the fader: where the sound comes out is
-                a property of this device, as the two things either side of it
-                are, and it is read far more often than it is pressed. */}
 						<ListenHere playerName={player.info.title ?? player.info.name} />
 						{hasFader ? (
 							<Volume

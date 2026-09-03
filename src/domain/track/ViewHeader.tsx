@@ -18,9 +18,7 @@ function PlayedMeter({ share }: { share: number }) {
 	);
 }
 
-// One header for anything that is a list of tracks. A playlist and a set of
-// search results differ in where they came from, not in what is worth saying
-// about them -- how many tracks, how long, which years, what it is made of.
+// One header for anything that is a list of tracks: a playlist, a shelf or a set of search results.
 export function ViewHeader({
 	eyebrow,
 	title,
@@ -45,11 +43,7 @@ export function ViewHeader({
 			: null;
 
 	return (
-		// Three grid areas rather than one column beside the mosaic. On a wide
-		// screen they stack into that same column, but on a phone the naming can
-		// move up alongside the mosaic while the rest stays full width -- which is
-		// the whole point: stacked, the mosaic owned a row and left the space next
-		// to it empty, and the header ran to six separate bands before a track.
+		// Three grid areas rather than one column, so on a narrow viewport the naming can sit beside the mosaic while the rest stays full width.
 		<header className={styles.header}>
 			<div className={styles.naming}>
 				<p className={styles.eyebrow}>{eyebrow}</p>

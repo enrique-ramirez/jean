@@ -1,11 +1,7 @@
 import type { components } from "./fooJeanSchema";
 
-// `foo_jean`, the optional component that writes tags. Types are generated from
-// its OpenAPI document; regenerating and the reason for the file's name are in
-// `shared/api/CLAUDE.md`.
-//
-// The discovery record comes from beefweb, same origin. Everything else comes
-// from the component, on its own port, cross-origin, with a bearer token.
+// `foo_jean`, the optional component that writes tags and streams audio. Types are generated from its OpenAPI document.
+// The discovery record comes from beefweb, same origin. Everything else comes from the component, cross-origin, with a bearer token.
 
 type Schema = components["schemas"];
 
@@ -19,33 +15,20 @@ export type StreamTimeline = Schema["StreamTimeline"];
 export type StreamMark = StreamTimeline["marks"][number];
 export type Paired = Schema["Paired"];
 
-// **The one setting that may never move to `/api/clientconfig`.** beefweb serves
-// that namespace unauthenticated, so syncing this through it would recreate the
-// exact escalation the credential exists to prevent. It lives here rather than
-// beside one of its readers because there are now two, in two tiers that may not
-// import each other: tag writing and listening.
+// This may never move to `/api/clientconfig`: beefweb serves that namespace unauthenticated.
 export const TOKEN_KEY = "jean.fooJeanToken";
 
-// The component owns this clientconfig id and rewrites it on every start, so
-// Jean's own settings may never be stored under it.
+// The component owns this clientconfig id and rewrites it on every start, so Jean must not store settings under it.
 export const FOO_JEAN_ID = "foo_jean";
 
-// The component's own version moves independently and is informational; this is
-// the number to refuse on.
+// The component's own version moves independently; this is the number to refuse on.
 export const SUPPORTED_API_VERSION = 1;
 
 const PROBE_TIMEOUT_MS = 4000;
-// Past the component's own 30s player timeout, so anything longer is the network.
 const WRITE_TIMEOUT_MS = 35_000;
 
-// The component's own port on the machine beefweb is running on. That is the
-// page's own host in a build -- beefweb serves Jean -- and *not* on the dev
-// server, which serves it from a developer's machine and proxies `/api` to the
-// player. `__PLAYER_HOST__` is how the second case is told apart; see
-// `vite.config.ts` and CONTRIBUTING.md.
-//
-// Jean's protocol rather than a hardcoded `http:`, so this still works if TLS is
-// ever terminated in front of both.
+// The component's port on the machine beefweb runs on: the page's own host in a build, and `__PLAYER_HOST__` on the dev server, which proxies `/api` to the player.
+// Jean's protocol rather than a hardcoded `http:`, so this survives TLS terminated in front of both.
 export const originOfPort = (port: number) =>
 	`${window.location.protocol}//${__PLAYER_HOST__ ?? window.location.hostname}:${port}`;
 
@@ -64,11 +47,7 @@ const withTimeout = async <T>(
 
 // ---- discovery, through beefweb ---------------------------------------------
 
-// The port is the one field of this record that becomes a URL, and the record is
-// writable by anyone who can reach beefweb -- so it is bounded here, at the only
-// place that decides a record is a record. A number cannot smuggle a `/` or an
-// `@` past `originOfPort`, so this is not what stops a forged host; it is so
-// that a record this file accepts is one the rest of the file can rely on.
+// The record is writable by anyone who can reach beefweb, so the port is bounded here rather than trusted downstream.
 const isPort = (value: unknown) =>
 	typeof value === "number" &&
 	Number.isInteger(value) &&
@@ -81,7 +60,6 @@ const looksLikeRecord = (value: unknown): value is DiscoveryRecord =>
 	(value as DiscoveryRecord).name === FOO_JEAN_ID &&
 	isPort((value as DiscoveryRecord).port);
 
-// `null` is "not installed", the common case, and not an error.
 export async function fetchDiscoveryRecord(): Promise<DiscoveryRecord | null> {
 	const response = await fetch(`/api/clientconfig/${FOO_JEAN_ID}`);
 	if (response.status === 404) return null;
@@ -96,13 +74,11 @@ export async function fetchDiscoveryRecord(): Promise<DiscoveryRecord | null> {
 export type ProbeResult =
 	| { ok: true; status: FooJeanStatus }
 	| { ok: false; reason: "unreachable" }
-	// Something answered and it is not the component, which is what a forged
-	// discovery record looks like from here.
+	// Something answered and it is not the component, which is what a forged discovery record looks like.
 	| { ok: false; reason: "impostor" }
 	| { ok: false; reason: "unsupported"; apiVersion: number };
 
-// Unauthenticated, and must stay so: this is what makes the advertised port safe
-// to send a credential to.
+// Unauthenticated, and must stay so: this is what makes the advertised port safe to send a credential to.
 export async function probeStatus(origin: string): Promise<ProbeResult> {
 	const body = await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
 		const response = await fetch(`${origin}/api/status`, { signal });
@@ -110,8 +86,7 @@ export async function probeStatus(origin: string): Promise<ProbeResult> {
 		return (await response.json()) as unknown;
 	}).catch(() => undefined);
 
-	// `undefined` is a refused connection, a CORS rejection or a timeout; `null`
-	// is an answer that was not a 200.
+	// `undefined` is a refused connection, a CORS rejection or a timeout; `null` is an answer that was not a 200.
 	if (body === undefined || body === null)
 		return { ok: false, reason: "unreachable" };
 
@@ -152,12 +127,11 @@ export async function fetchCapabilities(
 	}
 }
 
-// Named for what a caller has to decide -- retry, roll back, stop offering the
-// control -- which cuts across the HTTP statuses.
+// Named for what a caller has to decide, which cuts across the HTTP statuses.
 export type WriteFailure =
 	| { ok: false; reason: "not-allowed"; field: string | null; message: string }
 	| { ok: false; reason: "unknown-track"; message: string }
-	// The write may still land. Never rolled back; see `domain/track/CLAUDE.md`.
+	// The write may still land, so it is never rolled back.
 	| { ok: false; reason: "timeout"; message: string }
 	| { ok: false; reason: "unauthorized"; message: string }
 	| { ok: false; reason: "refused"; message: string }
@@ -167,8 +141,7 @@ export type WriteFailure =
 
 export type WriteResult = { ok: true; written: TagWritten } | WriteFailure;
 
-// Branches on the status, never on `written`: 401 and 413 are refused before the
-// route is reached and do not carry it.
+// 401 and 413 are refused before the route is reached, so neither carries `written`.
 const messageOf = async (response: Response, fallback: string) => {
 	const body = (await response.json().catch(() => null)) as {
 		error?: string;
@@ -230,21 +203,12 @@ export async function writeTags(
 
 // ---- one discovery, two seams -----------------------------------------------
 
-// What Jean found, which is not the same as what it can do. This is the whole
-// list, and **nothing here is a silent state**: five of these are a component
-// that is installed and running, and in three the user has done everything
-// right. `features/settings/` holds one message and one remedy per state.
-//
-// It lives here rather than beside either seam because there are two of them --
-// tag writing in `domain/track`, listening in `domain/player` -- in tiers that
-// may not import each other, and re-running the probe once per seam would send
-// two requests to answer one question.
+// What Jean found, which is not the same as what it can do. No state here is silent: each has one message and one remedy in `features/settings/`.
 export type FooJeanState =
 	| { kind: "absent" }
 	| {
 			kind: "not-listening";
 			record: DiscoveryRecord;
-			// The component's own words, safe to show.
 			error: string;
 			portInUse: boolean;
 	  }
@@ -262,18 +226,13 @@ export type FooJeanState =
 
 export interface FooJeanDiscovery {
 	state: FooJeanState;
-	// **Non-null exactly when the probe succeeded**, which makes it the proof rather
-	// than a convenience: a caller holding an origin is holding a port that answered
-	// `/api/status` as `foo_jean` at a version this build understands. Pairing needs
-	// that and has no token yet, so it cannot be gated on `ready`.
+	// Non-null exactly when the probe succeeded, so holding it is proof the port answered `/api/status` as `foo_jean`. Pairing needs that before it has a token.
 	origin: string | null;
-	// Only when there is one, and only when the component accepted it.
 	token: string | null;
 }
 
-// **The order is the security model**: read the hint, prove the port with an
-// unauthenticated call, and only then attach the token. Skipping the middle step
-// hands a credential to whoever forged the record.
+// The order is the security model: read the hint, prove the port with an unauthenticated call, and only then attach the token.
+// Skipping the middle step hands a credential to whoever forged the record.
 export async function discoverFooJean(
 	token: string | null,
 ): Promise<FooJeanDiscovery> {
@@ -307,7 +266,6 @@ export async function discoverFooJean(
 	}
 
 	const { status } = probe;
-	// The port is proven from here on, so the origin travels with every state below it.
 	const proven = { origin, token: null };
 
 	if (!token) return { state: { kind: "no-token", record, status }, ...proven };
@@ -337,28 +295,22 @@ export async function discoverFooJean(
 
 // ---- listening ---------------------------------------------------------------
 
-// Named for what a caller has to decide, as the write failures above are: retry
-// later, try a different codec, or stop offering the control.
+// Named for what a caller has to decide, as the write failures above are.
 export type TicketFailure =
-	// Serving as many listeners as `maxConcurrentStreams` allows. Retryable, and
-	// it MUST read as "busy" rather than "not supported".
+	// Serving as many listeners as `maxConcurrentStreams` allows. Retryable, and it must not read as "not supported".
 	| { ok: false; reason: "busy"; message: string }
-	// This install does not stream at all.
 	| { ok: false; reason: "unavailable"; message: string }
 	| { ok: false; reason: "unauthorized"; message: string }
 	| { ok: false; reason: "unreachable"; message: string };
 
 export type TicketResult = { ok: true; ticket: StreamTicket } | TicketFailure;
 
-// The component distinguishes "does not stream" from "too many listeners" in the
-// `error` string alone -- both are 503 -- and the two want opposite responses.
+// Both are 503, so the `error` string is the only thing separating "does not stream" from "too many listeners".
 const isBusy = (message: string) =>
 	/busy|listener|concurrent|too many/i.test(message);
 
-// Asked for immediately before connecting and never stored: it is a capability
-// URL for as long as it lives. **Not single-use** -- Safari sends a
-// `Range: bytes=0-1` probe before fetching for real, so one playback start is
-// two requests -- but a reconnect still takes a fresh one.
+// Asked for immediately before connecting and never stored.
+// Not single-use: Safari sends a `Range: bytes=0-1` probe before fetching for real, so one playback start is two requests.
 export async function issueStreamTicket(
 	origin: string,
 	token: string,
@@ -395,16 +347,11 @@ export async function issueStreamTicket(
 	return { ok: false, reason: "unreachable", message };
 }
 
-// **The ticket travels in the query string and the bearer token never does.** An
-// `<audio>` element cannot send a header, which is the whole reason the ticket
-// exists; putting the token here instead would publish it to every proxy log
-// between here and the player.
+// The ticket travels in the query string and the bearer token never does: an `<audio>` element cannot send a header, and a token here would reach every proxy log on the way.
 export const streamUrl = (origin: string, ticket: string, format: string) =>
 	`${origin}/api/stream?ticket=${encodeURIComponent(ticket)}&format=${encodeURIComponent(format)}`;
 
-// `null` rather than a failure shape: a timeline that does not answer costs the
-// progress correction and nothing else, and the caller's remedy is to keep the
-// anchor it already has.
+// `null` rather than a failure shape: a missing timeline costs the progress correction and nothing else.
 export async function fetchStreamTimeline(
 	origin: string,
 	token: string,
@@ -425,12 +372,11 @@ export async function fetchStreamTimeline(
 
 // ---- pairing -----------------------------------------------------------------
 
-// Named for what the user has to do about it, which is the whole point: the common
-// failure is a window nobody opened, and that is a button to press rather than an error.
+// Named for what the user has to do about it: the common failure is a window nobody opened.
 export type PairFailure =
-	// By far the most common, and the message MUST name the menu path.
+	// The message must name the menu path that opens the pairing window.
 	| { ok: false; reason: "not-open"; message: string }
-	// Reached from outside the LAN. No amount of pressing fixes this one.
+	// Reached from outside the LAN.
 	| { ok: false; reason: "not-local"; message: string }
 	| { ok: false; reason: "busy"; message: string }
 	| { ok: false; reason: "unreachable"; message: string }
@@ -438,13 +384,8 @@ export type PairFailure =
 
 export type PairResult = { ok: true; token: string } | PairFailure;
 
-// **Pairing is a write, so it follows the same rule as sending the token**: the caller
-// probes `/api/status` first and confirms this really is `foo_jean` before posting
-// anything to the port a forgeable record named. See the root CLAUDE.md.
-//
-// `Content-Type: application/json` is not decoration -- the component refuses anything
-// else, because a simple POST needs no CORS preflight and could be fired blind by a page
-// to spend the single grant. Sending it is what makes this request preflighted.
+// Pairing is a write, so the caller must probe `/api/status` first and confirm this really is `foo_jean` before posting to the port a forgeable record named.
+// `Content-Type: application/json` is what makes the request preflighted: the component refuses anything else, so no page can fire a simple POST blind and spend the single grant.
 export async function pairWithAgent(
 	origin: string,
 	name: string,
@@ -455,8 +396,6 @@ export async function pairWithAgent(
 			fetch(`${origin}/api/pair`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				// Optional, and it stays optional: requiring a name would put back the
-				// typing this exists to remove.
 				body: JSON.stringify(name ? { name } : {}),
 				signal,
 			}),
@@ -482,15 +421,13 @@ export async function pairWithAgent(
 
 	const { message } = await messageOf(response, `HTTP ${response.status}`);
 
-	// The component distinguishes the two 403s in the error string on purpose: one is a
-	// button, the other is a network.
+	// The two 403s are told apart by the error string: one is a button to press, the other is a network.
 	if (response.status === 403)
 		return /local network/i.test(message)
 			? { ok: false, reason: "not-local", message }
 			: { ok: false, reason: "not-open", message };
 	if (response.status === 429) return { ok: false, reason: "busy", message };
-	// A component too old to have the route at all. 404 from this port is not "no such
-	// track", it is "this build cannot pair".
+	// 404 from this port means the build has no pair route, not that a track is missing.
 	if (response.status === 404 || response.status === 415)
 		return { ok: false, reason: "unsupported", message };
 

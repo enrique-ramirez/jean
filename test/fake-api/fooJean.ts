@@ -3,8 +3,7 @@ import type { createState, Track } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
-// The optional tag-writing component, on a port of its own. Why a second
-// listener rather than another route here is in `test/README.md`.
+// The optional tag-writing component, on a port of its own.
 
 export interface FooJeanOptions {
 	// What the discovery record says.
@@ -15,12 +14,12 @@ export interface FooJeanOptions {
 	port?: number;
 
 	// `false` destroys the connection rather than answering 500. Those are
-	// different events in a browser and the app has to tell them apart.
+	// different events in a browser.
 	reachable?: boolean;
 
 	name?: string;
-	// What answers on the advertised port, which is a different fact from what
-	// the record claims. The two disagreeing is what a forgery looks like.
+	// What answers on the advertised port, which is a different fact from what the
+	// record claims. The two disagreeing is what a forged record looks like.
 	agentName?: string;
 	version?: string;
 	apiVersion?: number;
@@ -28,44 +27,36 @@ export interface FooJeanOptions {
 	token?: string;
 	allowedFields?: string[];
 
-	// Force a status on `POST /api/tags`, for the branches nothing else provokes.
+	// Force a status on `POST /api/tags`.
 	failWrites?: number | null;
 
 	// ---- streaming ----
-	// Absent on an older component, and absent means false. `undefined` here
-	// would be indistinguishable from the default, so the switch is explicit and
-	// `streamFormats` is what actually goes on the wire.
+	// Absent on an older component, and absent means false. `streamFormats` is
+	// what goes on the wire.
 	canStream?: boolean;
-	// **Best first**, as the component reports it. An install whose Windows has
-	// no AAC encoder reports `opus` alone.
+	// Best first, as the component reports it. An install whose Windows has no AAC
+	// encoder reports `opus` alone.
 	streamFormats?: string[];
 	// Formats this fake serves bytes for. Anything in `streamFormats` and not in
-	// here gets bytes that are not the declared type, which is how the codec
-	// fall-through gets exercised rather than assumed.
+	// here gets bytes that are not the declared type.
 	playableFormats?: string[];
 	// What the stream does once it is open. `short` ends after a second, for
-	// reconnect. `quiet` opens and then sends nothing -- the case that models a
-	// stopped player, and the one with no error to catch.
+	// reconnect. `quiet` opens and then sends nothing, as a stopped player does.
 	streamBehaviour?: "ok" | "short" | "quiet";
 	// Seconds written the instant the connection opens, before the pump takes over
-	// at real time. Decides how far behind the live edge this listener ends up;
-	// see `serveStream`.
+	// at real time. Decides how far behind the live edge this listener lands.
 	streamPrime?: number;
-	// Force a status on `POST /api/stream/ticket`. A 503 reads as "busy" or as
-	// "not supported" depending on the wording, and the two want opposite
-	// responses from a client.
+	// Force a status on `POST /api/stream/ticket`.
 	failTickets?: number | null;
 	ticketError?: string;
 	// Every ticket answers 401 at `GET /stream`, as an expired one does.
 	expireTickets?: boolean;
 
 	// ---- pairing ----
-	// Whether somebody has pressed "Pair a device" on the player. False by default,
-	// because a window standing permanently open is the one state a real install never
-	// has.
+	// Whether somebody has pressed "Pair a device" on the player.
 	pairingOpen?: boolean;
-	// Force a status on `POST /api/pair`. A 403 with the local-network wording, a 429,
-	// and a 404 for a component too old to have the route are the ones worth provoking.
+	// Force a status on `POST /api/pair`. 403 for a closed window, 429, and 404 for
+	// a component too old to have the route.
 	failPairing?: number | null;
 	pairingError?: string;
 }
@@ -124,8 +115,7 @@ export const discoveryRecord = (fake: FooJeanFake, listeningPort: number) => {
 	};
 };
 
-// Reflected rather than `*`, which would let an implementation pass here and
-// fail against the real component.
+// The origin is reflected rather than `*`, as the component does it.
 const one = (value: string | string[] | undefined) =>
 	(Array.isArray(value) ? value[0] : value) ?? "";
 
@@ -155,8 +145,7 @@ const FAILURES: Record<number, unknown> = {
 	504: { written: false, error: "the player did not answer in time" },
 };
 
-// In place, so a reload reads the value back through beefweb -- which is what
-// proves the app is not showing its own optimistic cache.
+// In place, so a reload reads the value back through beefweb.
 const applyTags = (
 	state: FakeState,
 	path: string,
@@ -175,7 +164,7 @@ const applyTags = (
 	let found = false;
 	for (const playlist of state.playlists)
 		for (const track of playlist.items) found = patch(track) || found;
-	// Separate objects whenever `withoutFields` stripped them.
+	// Separate objects whenever `withoutFields` stripped them, so patch both.
 	for (const track of state.libraryTracks) found = patch(track) || found;
 	return found;
 };
@@ -184,14 +173,11 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---- the stream --------------------------------------------------------------
 
-// Issued tickets. Not single-use -- Safari sends a `Range: bytes=0-1` probe
-// before fetching for real, so one playback start is two requests and a ticket
-// good once could not serve it at all.
+// Issued tickets. Not single-use: Safari sends a `Range: bytes=0-1` probe before
+// fetching for real, so one playback start is two requests.
 const tickets = new Set<string>();
 let ticketSeq = 0;
-// Bounded the way the component bounds it: keep the last few and evict the
-// oldest. Unused tickets are harmless, and a set that only grew would be a fake
-// being kinder than the thing it stands in for.
+// Bounded the way the component bounds it: keep the last few, evict the oldest.
 const TICKET_LIMIT = 16;
 
 const issue = () => {
@@ -209,16 +195,10 @@ const BYTES_PER_SECOND = SAMPLE_RATE * 2;
 // ends when the client leaves. A browser reads until the socket closes.
 const DECLARED_SECONDS = 3600;
 
-// **Real playable bytes, in a codec neither `streamFormats` name.** What is
-// under test is the ticket flow, the codec *choice*, the reconnect and the
-// clock -- not the decoder, which is the component's business and Playwright
-// cannot hear anyway. So the good case serves a WAV the browser will genuinely
-// render `currentTime` against, and the bad case serves bytes that are not the
-// declared type. Serving nothing playable at all would make every assertion
-// about a running stream vacuous.
+// Real playable bytes, in a codec neither `streamFormats` names: the browser has
+// to render `currentTime` against something, and the decoder is not under test.
 // `Uint8Array` and a `DataView` rather than a `Buffer`, because this module is
-// also bundled into the demo's service worker, where there is no node. The
-// bytes are identical; only the writer changed.
+// also bundled into the demo's service worker, where there is no node.
 function wavHeader() {
 	const data = DECLARED_SECONDS * BYTES_PER_SECOND;
 	const header = new Uint8Array(44);
@@ -243,8 +223,7 @@ function wavHeader() {
 }
 
 // A quiet tone rather than digital silence: some decoders shortcut a run of
-// zeroes, and `currentTime` not advancing is the one thing every stream test
-// asserts on.
+// zeroes and `currentTime` then does not advance.
 function tone(seconds: number, phase: number) {
 	const samples = SAMPLE_RATE * seconds;
 	const buffer = new Int16Array(samples);
@@ -256,18 +235,15 @@ function tone(seconds: number, phase: number) {
 	return new Uint8Array(buffer.buffer);
 }
 
-// **The clock starts before the fake does.** The component starts with
-// foobar2000, long before any client connects -- and a listener is always behind
-// the live edge, so a clock beginning at zero would put the audible point before
-// any stream this admits to having served.
+// The clock starts before the fake does: the component starts with foobar2000,
+// long before any client connects, and a listener is behind the live edge.
 const PRERUN_MS = 60_000;
 const startedAt = Date.now() - PRERUN_MS;
 
 function timelineOf(state: FakeState) {
 	const streamTime = (Date.now() - startedAt) / 1000;
 
-	// The last few tracks, not the current one: a listener is behind the player,
-	// so the track it hears is one the player has already left.
+	// The last few tracks, not the current one: a listener is behind the player.
 	if (state.streamMarks.length > 0) {
 		return {
 			streamTime,
@@ -280,8 +256,7 @@ function timelineOf(state: FakeState) {
 		};
 	}
 
-	// Nothing has started under this fake. Seeded from the active item so the
-	// arithmetic has something to land on.
+	// Nothing has started under this fake, so seed from the active item.
 	const item = state.player.activeItem;
 	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
 	const track = playlist?.items[item.index];
@@ -300,9 +275,8 @@ function timelineOf(state: FakeState) {
 	};
 }
 
-// One endless chunked response. No length, no `Range`, no seeking -- and it ends
-// only when the client leaves, the component stops, or the fake was asked to get
-// it wrong on purpose.
+// One endless chunked response. No length, no `Range`, no seeking; it ends when
+// the client leaves.
 function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 	response.writeHead(200, {
 		"Content-Type": fake.playableFormats.includes(format)
@@ -312,17 +286,14 @@ function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 				: "audio/ogg",
 		"Cache-Control": "no-store",
 		"Accept-Ranges": "none",
-		// No explicit `Transfer-Encoding`: setting it by hand tells Node the
-		// handler is doing its own chunk framing, and it then writes the bytes
-		// raw into a response the client is still parsing as chunked. Node adds
-		// the header itself when there is no `Content-Length`, which is what a
-		// live stream wants.
+		// No explicit `Transfer-Encoding`: setting it by hand tells Node the handler
+		// is doing its own chunk framing, and it then writes the bytes raw into a
+		// response the client is still parsing as chunked. Node adds the header
+		// itself when there is no `Content-Length`.
 	});
 
-	// A format the element cannot play. Bytes that are not the declared type are
-	// enough, and they must arrive *as* the declared type -- that is what makes
-	// the element fail with `MEDIA_ERR_SRC_NOT_SUPPORTED` rather than never
-	// starting, and so what exercises the fall-through rather than the watchdog.
+	// A format the element cannot play. The bytes must arrive as the declared type,
+	// so the element fails with `MEDIA_ERR_SRC_NOT_SUPPORTED` rather than stalling.
 	if (!fake.playableFormats.includes(format)) {
 		response.write("this is not audio, and never was.\n");
 		return response.end();
@@ -330,28 +301,19 @@ function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 
 	response.write(wavHeader());
 
-	// Opens and then goes quiet: the header arrives, nothing follows, and there
-	// is no error to catch. This is what a stopped player looks like from here,
-	// and what the stall watchdog is the only answer to.
+	// Opens and then goes quiet: the header arrives, nothing follows, and there is
+	// no error to catch. Only a stall watchdog notices.
 	if (fake.streamBehaviour === "quiet") return;
 
-	// **Primed with a burst, then real time.** *Measured* in Chromium: a
-	// non-seekable WAV does not fire `loadedmetadata` until roughly twelve
-	// *seconds of content* have arrived -- not bytes, since raising the prime to
-	// 15s moved playback start from 12.7s to 287ms while the byte rate was
-	// unchanged. That is a property of PCM in a container never meant to be
-	// streamed, and not of live streaming: Ogg and ADTS are designed for it and
-	// the component serves those.
-	//
-	// **The prime also decides whether this fake has a lag at all**, and the
-	// default removes it: the component hands a listener the live edge, so it
-	// falls behind only by what the browser buffers to start, and fifteen seconds
-	// up front means never. `12 - prime` is the lag. See `test/README.md`.
+	// Primed with a burst, then real time. In Chromium a non-seekable WAV does not
+	// fire `loadedmetadata` until roughly twelve seconds of content have arrived --
+	// content, not bytes. That is a property of PCM in a container never meant to
+	// be streamed; Ogg and ADTS, which the component serves, are not affected. The
+	// lag this fake ends up with is `12 - prime`. See `test/README.md`.
 	const PRIME_SECONDS = fake.streamBehaviour === "ok" ? fake.streamPrime : 1;
 	let phase = SAMPLE_RATE * PRIME_SECONDS;
 	response.write(tone(PRIME_SECONDS, 0));
 
-	// Ends after what it has already sent, for reconnect.
 	if (fake.streamBehaviour === "short") return response.end();
 
 	const pump = setInterval(() => {
@@ -363,11 +325,9 @@ function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 	response.on("close", () => clearInterval(pump));
 }
 
-// Reads the same state box the beefweb fake does, so both halves of the feature
-// land in one `player.requests` log.
-// The component's routes, with no host in them -- `agentServer.ts` gives them a
+// The component's routes, with no host in them: `agentServer.ts` gives them a
 // socket for the suite, the demo's service worker gives them a `fetch` event.
-// The body arrives read, because only the host knows how to read one.
+// The body arrives already read, because only the host knows how to read one.
 export async function handleAgent({
 	state,
 	method,
@@ -401,7 +361,7 @@ export async function handleAgent({
 		return response.end();
 	}
 
-	// The only route with no credential.
+	// Unauthenticated: a client checks it before trusting the discovery record.
 	if (path === "/api/status") {
 		return json(response, {
 			name: fake.agentName,
@@ -411,12 +371,10 @@ export async function handleAgent({
 		});
 	}
 
-	// Unauthenticated on purpose -- it is what hands the token out -- and answered
-	// before the bearer check for the same reason `/api/stream` is.
+	// Unauthenticated: it is the route that hands the token out.
 	if (method === "POST" && path === "/api/pair") {
 		// A simple POST would skip the preflight, so the component refuses anything
-		// that is not JSON. Modelled, because a client that stopped sending the
-		// header would pass every other assertion here and fail on a real install.
+		// that is not JSON.
 		if (!one(headers["content-type"]).startsWith("application/json"))
 			return json(response, { error: "send application/json" }, 415);
 
@@ -430,29 +388,25 @@ export async function handleAgent({
 		if (!fake.pairingOpen)
 			return json(response, { error: "pairing is not open" }, 403);
 
-		// Single grant: the first success closes the window, so a second press must
-		// be refused exactly as the component refuses it.
+		// Single grant: the first success closes the window, as on the component.
 		fake.pairingOpen = false;
 		return json(response, { token: fake.token, apiVersion: fake.apiVersion });
 	}
 
-	// **The one route with no bearer token**, because an `<audio>` element
-	// cannot send a header. The ticket is the credential and it travels in the
-	// query string, so this is answered before the check below rather than
-	// after it.
+	// No bearer token, because an `<audio>` element cannot send a header. The
+	// ticket is the credential and travels in the query string.
 	if (path === "/api/stream") {
 		const query = url.searchParams;
 		const ticket = query.get("ticket");
 		const format = query.get("format") ?? fake.streamFormats[0];
 
-		// No ticket, an unknown one and an expired one answer identically and
-		// deliberately: telling them apart would let a caller sort guesses.
+		// No ticket, an unknown one and an expired one answer identically: telling
+		// them apart would let a caller sort guesses.
 		if (!ticket || !tickets.has(ticket) || fake.expireTickets)
 			return json(response, { error: "authentication required" }, 401);
 
 		// A format outside the advertised list is a 400 rather than a silent
-		// substitution -- a client that asked for `aac` and got Opus would play
-		// silence on the browser it asked for `aac` for.
+		// substitution, which would play as silence on the browser that asked.
 		if (!fake.streamFormats.includes(format))
 			return json(response, { error: "unsupported format" }, 400);
 
@@ -473,8 +427,8 @@ export async function handleAgent({
 			maxAutoPlaylists: 0,
 			canCreateAutoPlaylists: false,
 			canStream: fake.canStream && fake.streamFormats.length > 0,
-			// Omitted rather than empty when the component does not stream, which
-			// is what an older one looks like.
+			// Omitted rather than empty when the component does not stream, which is
+			// what an older one looks like.
 			...(fake.canStream ? { streamFormats: fake.streamFormats } : null),
 		});
 	}

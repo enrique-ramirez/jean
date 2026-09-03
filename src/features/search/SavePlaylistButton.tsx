@@ -12,14 +12,8 @@ import { Button } from "@/shared/ui/Button";
 import { Menu } from "@/shared/ui/Menu";
 import styles from "./SavePlaylistButton.module.css";
 
-// The one place Jean writes a playlist, and it takes an explicit click. How the
-// tracks get across is the source's business: an autoplaylist copies by index,
-// the media library adds by `(path, subsong)` because there is no playlist to
-// copy from.
-//
-// Reaching past the source for a playlist id is wrong and silent: a ref only
-// indexes its own source, so copying media-library refs out of the autoplaylist
-// takes whatever sits at those positions in a differently ordered list.
+// The one place Jean writes a playlist, and it takes an explicit click. How the tracks get across is the source's business.
+// Reaching past the source for a playlist id fails silently: a ref only indexes its own source, so media-library refs read out of the autoplaylist take whatever sits at those positions in a differently ordered list.
 export function SavePlaylistButton({
 	search,
 	library,
@@ -44,9 +38,7 @@ export function SavePlaylistButton({
 	const { indices } = search.results;
 	const trackCount = indices.length;
 
-	// The query is the obvious name, and the obvious name is usually right. It
-	// follows the field until the dialog is opened, then stops moving under the
-	// cursor while it is being edited.
+	// The title follows the search field until the dialog is opened, then stops moving under the cursor while it is being edited.
 	useEffect(() => {
 		if (!isOpen) setTitle(search.query);
 	}, [isOpen, search.query]);
@@ -59,10 +51,7 @@ export function SavePlaylistButton({
 		mutationFn: async () => {
 			const name = title.trim();
 
-			// If playing these results already built a playlist of exactly them, that
-			// playlist *is* what is being saved -- so rename rather than copy. Playback
-			// carries on through the rename, and the scratch stops being Jean's, which is
-			// what takes the search out of the sidebar.
+			// If playing these results already built a playlist of exactly them, renaming it saves it: playback carries on and the scratch stops being Jean's.
 			if (holdsResults) {
 				const id = await scratch.adopt(name);
 				await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
@@ -71,18 +60,15 @@ export function SavePlaylistButton({
 
 			const playlist = await createPlaylist(name);
 			await library.source.addTo(playlist.id, indices);
-			// Refetched rather than invalidated: the route that follows resolves against
-			// this list, and an id it has not seen yet lands on the old view.
+			// Refetched rather than invalidated: the route that follows resolves against this list, and an id it has not seen yet lands on the old view.
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			return playlist;
 		},
 		onSuccess: (playlist) => {
-			// The results have somewhere permanent to live now, so the scratch -- only ever
-			// the temporary version of what was just saved -- is done.
+			// The results have somewhere permanent to live now, so the scratch is done.
 			search.clear();
 			onOpenChange(false);
-			// A guard rather than a branch: `holdsResults` already rules this out, and
-			// navigating to a null id would be the worse failure.
+			// A guard rather than a branch: `holdsResults` already rules this out, and navigating to a null id would be the worse failure.
 			if (playlist.id) onOpenPlaylist(playlist.id);
 		},
 	});
@@ -101,8 +87,7 @@ export function SavePlaylistButton({
 				<Button
 					icon={ListPlus}
 					aria-expanded={isOpen}
-					// Saving a set that is still filling in would quietly write a
-					// fraction of the matches and look like the whole answer.
+					// Saving a set that is still filling in would quietly write a fraction of the matches and look like the whole answer.
 					disabled={trackCount === 0 || library.isLoading}
 					title={library.isLoading ? "Still reading your library" : undefined}
 					onClick={() => onOpenChange(!isOpen)}
@@ -126,8 +111,7 @@ export function SavePlaylistButton({
 					aria-label="Playlist name"
 					spellCheck="false"
 					autoComplete="off"
-					// The dialog exists to be typed in, and it opens with the query already
-					// in the field for editing.
+					// The dialog exists to be typed in, and opens with the query in the field for editing.
 					// biome-ignore lint/a11y/noAutofocus: the field is the dialog, see above
 					autoFocus
 				/>

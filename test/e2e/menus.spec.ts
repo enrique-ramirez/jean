@@ -9,15 +9,12 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// `ui/ActionMenu.jsx` is the only menu surface in the app, and it is one
-// component with two shapes: a popover at the pointer on a desktop viewport, an
-// action sheet on a compact one. Both projects run this file, so every
-// assertion below is made against both -- which is the point, because the
-// gestures, the keyboard and the nested pages are the same declared data drawn
-// two different ways.
+// `ui/ActionMenu.tsx` is one component with two shapes: a popover at the pointer
+// on a desktop viewport, an action sheet on a compact one. Both projects run
+// this file, so every assertion below is made against both.
 //
-// Driven through the track menu, which is the one that has everything: a nested
-// page, a typed filter, and a list long enough to filter.
+// Driven through the track menu, which has a nested page, a typed filter, and a
+// list long enough to filter.
 
 const menuItem = (page: Page, name: string | RegExp) =>
 	page.getByRole("menuitem", { name });
@@ -43,10 +40,9 @@ test.describe("the menu names what it is about", () => {
 		await openLibrary(page);
 		await openTrackMenu(page, isMobile);
 
-		// The header is what makes a menu opened by a gesture safe to act on: on a
-		// phone the sheet covers the row it was summoned from, so without it there
-		// is nothing on screen saying which track is about to be filed. Scoped to
-		// the menu, because the row it names is on screen behind it.
+		// On a phone the sheet covers the row it was summoned from, so the header is
+		// the only thing naming the track. Scoped to the menu, because the row it
+		// names is on screen behind it.
 		const menu = page
 			.locator("body > div")
 			.filter({ has: menuItem(page, "Add to playlist") });
@@ -80,11 +76,8 @@ test.describe("a nested page", () => {
 		await openLibrary(page);
 		await openTrackMenu(page, isMobile);
 
-		// In place on both surfaces rather than a flyout on one of them: a flyout
-		// that closes when the pointer strays is the wrong place to put a
-		// confirmation, and one drill-in beats two half-tested ones. The page it
-		// came from stays in the panel, inert and slid aside, which is what the
-		// back button is named after.
+		// The back button is named after the page it came from, which stays in the
+		// panel, inert and slid aside.
 		const back = page.getByRole("button", { name: "Add to playlist" });
 		await expect(back).toHaveCount(0);
 
@@ -104,8 +97,8 @@ test.describe("a nested page", () => {
 		await openLibrary(page);
 		await openTargets(page, isMobile);
 
-		// Not the one you are already in, and not Jean's own -- filing a track into
-		// the scratch would put it somewhere the next search empties.
+		// Not the open playlist, and not Jean's scratch, which the next search
+		// empties.
 		await expect(menuItem(page, "Favorites")).toBeVisible();
 		await expect(menuItem(page, "Rock en Español")).toBeVisible();
 		await expect(menuItem(page, /^Library$/)).toHaveCount(0);
@@ -121,9 +114,8 @@ test.describe("typing at a menu", () => {
 		await openLibrary(page);
 		await openTargets(page, isMobile);
 
-		// Accents and all: the filter goes through the same fold() the library
-		// search and the finder use, so typing at a menu behaves like typing at the
-		// search field rather than like a different product in the same window.
+		// The filter folds accents through the same `fold()` as the library search
+		// and the finder.
 		await filterField(page).fill("espanol");
 
 		await expect(menuItem(page, "Rock en Español")).toBeVisible();
@@ -171,9 +163,9 @@ test.describe("typing at a menu", () => {
 		await openLibrary(page);
 		await openTargets(page, isMobile);
 
-		// Most opens of this menu are scroll-and-tap, and on a phone a field that
-		// takes focus on open costs half the screen to a keyboard nobody asked for.
-		// Where a keyboard is already there, not focusing it is a wasted keystroke.
+		// On a phone, focusing on open costs half the screen to a keyboard nobody
+		// asked for; where there is already a keyboard, not focusing wastes a
+		// keystroke.
 		if (isMobile) await expect(filterField(page)).not.toBeFocused();
 		else await expect(filterField(page)).toBeFocused();
 	});
@@ -190,9 +182,7 @@ test.describe("while a menu is open", () => {
 		await openLibrary(page);
 		await openTrackMenu(page, isMobile);
 
-		// Without stopping propagation the arrows seek the player while you are
-		// choosing an action, and the space bar toggles playback while you are
-		// typing a playlist name.
+		// Without stopping propagation these seek the player and toggle playback.
 		await page.keyboard.press("ArrowRight");
 		await page.keyboard.press("Space");
 
@@ -212,18 +202,16 @@ test.describe("while a menu is open", () => {
 		await page.keyboard.press("Escape");
 
 		await expect(menuItem(page, "Add to playlist")).toHaveCount(0);
-		// The same key clears the track selection when the menu is not there, so
-		// this is also the check that it did not reach past the menu.
+		// The same key clears the track selection when no menu is open, so this is
+		// also the check that it did not reach past the menu.
 		await expect(
 			page.locator('[role="row"][data-selected="true"]'),
 		).toHaveCount(1);
 	});
 });
 
-// The other menu surface, and the reason `menuKeys.js` exists: a dropdown you
-// opened from a button you can see rather than one you summoned at the pointer.
-// It used to leave every key to the app behind it, so Escape closed the panel
-// and cleared the track selection in the same keystroke.
+// The other menu surface, and the reason `menuKeys.ts` exists: a dropdown opened
+// from a visible button rather than summoned at the pointer.
 test.describe("a dropdown owns the keyboard too", () => {
 	test.skip(({ isMobile }) => isMobile, "these are keyboard events");
 
@@ -245,8 +233,7 @@ test.describe("a dropdown owns the keyboard too", () => {
 		await page.keyboard.press("Escape");
 
 		await expect(columnOption(page, "Artwork")).toHaveCount(0);
-		// The same key clears the track selection when no menu is open, which is
-		// exactly what it used to do *as well as* closing this.
+		// The same key clears the track selection when no menu is open.
 		await expect(
 			page.locator('[role="row"][data-selected="true"]'),
 		).toHaveCount(1);
@@ -260,8 +247,8 @@ test.describe("a dropdown owns the keyboard too", () => {
 		await viewOptions(page).click();
 		await expect(columnOption(page, "Artwork")).toBeVisible();
 
-		// Which option is first depends on what this player can supply, so this
-		// asks that the arrows land on options at all and then move between them.
+		// Which option is first depends on what the player can supply, so this asks
+		// only that the arrows land on options and then move between them.
 		const focused = () =>
 			page.evaluate(() => [
 				document.activeElement!.getAttribute("role"),
@@ -302,8 +289,6 @@ test.describe("a player that will not let Jean change playlists", () => {
 		await openLibrary(page);
 		await openSidebar(page);
 
-		// A read-only instance gets a read-only Jean. The playlists are still there
-		// to browse -- this is a narrower app, not a broken one.
 		await expect(
 			page.getByRole("button", { name: "New playlist" }),
 		).toHaveCount(0);
@@ -319,8 +304,7 @@ test.describe("a player that will not let Jean change playlists", () => {
 		await openLibrary(page);
 		await openTrackMenu(page, isMobile);
 
-		// Present and disabled rather than absent: the action exists, this player
-		// will not have it, and saying so beats leaving a hole where it was.
+		// Present and disabled rather than absent.
 		await expect(menuItem(page, "Add to playlist")).toBeDisabled();
 	});
 });

@@ -21,14 +21,6 @@ import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./ActionMenu.module.css";
 import { handleMenuKeys, useFocusCapture } from "./menuKeys";
 
-// One menu, two shapes -- a popover at the pointer on desktop, a floating tray on
-// touch -- because the actions are declared once, as data, and the surface decides
-// how to draw them. Every menu in the app comes from here.
-//
-// Nested pages slide in place rather than flying out, on desktop too: a flyout
-// that closes when the pointer strays is a poor place for a confirmation.
-
-// lucide's icons, and anything shaped like one.
 type MenuIcon = ComponentType<{
 	className?: string;
 	size?: number;
@@ -36,9 +28,7 @@ type MenuIcon = ComponentType<{
 	"aria-hidden"?: "true";
 }>;
 
-// A row that does something, or -- with `items` -- opens a nested page. One
-// interface rather than a union because callers build these as array literals
-// with entries spread in conditionally, where a union costs a cast per menu.
+// One interface rather than a union: callers build these as array literals with entries spread in conditionally, where a union costs a cast per menu.
 export interface ActionEntry {
 	type?: undefined;
 	id: string;
@@ -48,10 +38,9 @@ export interface ActionEntry {
 	danger?: boolean;
 	disabled?: boolean;
 	onSelect?: () => void;
-	// Stay open after selecting -- a checkbox row rather than a command.
 	keepOpen?: boolean;
 	items?: ActionNode[];
-	// A placeholder puts a filter field at the top of this page.
+	// The string is the placeholder; its presence is what puts a filter field on the page.
 	filter?: string;
 }
 
@@ -68,8 +57,7 @@ export interface ActionMessage {
 
 export type ActionNode = ActionEntry | ActionSeparator | ActionMessage;
 
-// A page of the panel. The root has no label of its own; a nested one is
-// titled by the entry that opened it.
+// The root page has no label of its own; a nested one is titled by the entry that opened it.
 interface Page {
 	id: string;
 	label?: string;
@@ -85,8 +73,6 @@ export interface MenuHeader {
 
 const EDGE_MARGIN = 8;
 const SHEET_EXIT_MS = 220;
-// Far enough that it cannot be reached by the wobble of a hold, close enough
-// that it feels like a flick rather than a haul.
 const SHEET_DISMISS_PX = 92;
 
 export function ActionMenu({
@@ -104,18 +90,11 @@ export function ActionMenu({
 }) {
 	const isCompact = useIsCompactViewport();
 
-	// The trigger forgets which row was right-clicked the moment the menu closes,
-	// so the last open state is kept here -- otherwise the sheet slides out empty.
+	// The trigger forgets which row was clicked as the menu closes, so the last open state is held here or the sheet slides out empty.
 	const shown = useRef({ anchor, header, actions });
 	if (isOpen) shown.current = { anchor, header, actions };
 
-	// Derived during render, deliberately. From an effect there is one commit in
-	// which the menu is neither open nor leaving: it unmounts, the effect brings it
-	// back for the exit, and that remount re-runs the surface's focus effect --
-	// stealing focus from whatever the action just put it on.
-	//
-	// Only the sheet plays an exit; a popover that lingers after the click feels
-	// broken.
+	// Derived during render rather than in an effect: from an effect there is one commit in which the menu is neither open nor leaving, and that remount re-runs the surface's focus effect, stealing focus from whatever the action just put it on.
 	const [isLeaving, setIsLeaving] = useState(false);
 	const [wasOpen, setWasOpen] = useState(isOpen);
 
@@ -143,8 +122,7 @@ export function ActionMenu({
 				onDismiss={onDismiss}
 			/>
 		) : (
-			// Keyed on the anchor so a right-click on a different row remeasures
-			// rather than reusing the placement of the row before it.
+			// Keyed on the anchor so a click on a different row remeasures rather than reusing the previous placement.
 			<ActionPopover
 				key={`${view.anchor?.x},${view.anchor?.y}`}
 				anchor={view.anchor as Point}
@@ -157,8 +135,7 @@ export function ActionMenu({
 	);
 }
 
-// Stops at the first id that no longer names a page, so a submenu whose parent
-// went away collapses rather than resolving deeper against the wrong list.
+// Stops at the first id that no longer names a page, so a submenu whose parent went away collapses rather than resolving deeper against the wrong list.
 const pagesAlong = (
 	items: ActionNode[] | undefined,
 	[id, ...rest]: string[],
@@ -169,8 +146,7 @@ const pagesAlong = (
 		: [];
 };
 
-// Walks the trail of opened ids into the pages it names, re-resolved against
-// the current actions every render.
+// Resolves the trail of opened ids into the pages it names, against the current actions, on every render.
 function usePages(actions: ActionNode[]) {
 	const [trail, setTrail] = useState<string[]>([]);
 
@@ -191,9 +167,7 @@ function usePages(actions: ActionNode[]) {
 	return { pages, depth: pages.length - 1, push, pop };
 }
 
-// On for the popover, off for the sheet: a field that takes focus the instant a
-// menu opens is right where a keyboard already exists and wrong where summoning
-// one costs half the screen.
+// focusFilter is on for the popover and off for the sheet: autofocus summons the software keyboard, which costs half the screen on touch.
 function usePanel({
 	actions,
 	onDismiss,
@@ -210,8 +184,7 @@ function usePanel({
 	const [height, setHeight] = useState<number | null>(null);
 	const [query, setQuery] = useState("");
 
-	// The surface follows the page it is showing. Observed rather than measured
-	// once: a nested page's content can settle after it mounts.
+	// Observed rather than measured once: a nested page's content can settle after it mounts.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: a new page is a new node to observe, see above
 	useLayoutEffect(() => {
 		const element = pageRefs.current[depth];
@@ -246,7 +219,6 @@ function usePanel({
 	const active = pages[depth];
 	const isFiltered = canFilter && Boolean(active?.filter);
 
-	// A page whose whole point is to be typed at should put the caret there.
 	useEffect(() => {
 		if (!isFiltered || !focusFilter) return;
 		pageRefs.current[depth]
@@ -254,8 +226,6 @@ function usePanel({
 			?.focus({ preventScroll: true });
 	}, [isFiltered, focusFilter, depth]);
 
-	// Escape is `back` rather than dismiss, because on a nested page it is a step
-	// out of that page.
 	const pageKeys = ({
 		event,
 		items,
@@ -266,7 +236,6 @@ function usePanel({
 		at: number;
 	}) => {
 		if (event.target instanceof HTMLInputElement) {
-			// Type three letters and commit, without reaching for the arrows.
 			if (event.key !== "Enter") return false;
 			items[0]?.click();
 			return true;
@@ -292,14 +261,12 @@ function usePanel({
 			beyond: pageKeys,
 		});
 
-	// Only the page on screen is filtered: the others are inert and sliding, and
-	// narrowing them would resize the panel behind the animation. Matched through
-	// the same tokenize() the library search uses.
+	// Only the page on screen is filtered: the others are inert and sliding, and narrowing them would resize the panel behind the animation.
 	const visibleItems = (page: Page, isActive: boolean): ActionNode[] => {
 		const tokens = tokenize(query);
 		if (!isActive || !isFiltered || tokens.length === 0) return page.items;
 
-		// Separators and prose describe a list that is no longer the list.
+		// Separators and messages describe a list that filtering has replaced.
 		const matched = page.items.filter(
 			(node) => !node.type && matchesTokens(fold(node.label), tokens),
 		);
@@ -468,8 +435,6 @@ function ActionPopover({
 		canFilter: true,
 		focusFilter: true,
 	});
-	// Clicking away closes the menu outright rather than stepping back a page:
-	// the pointer went somewhere else entirely, which is not a request to go up.
 	const ref = useDismissable<HTMLDivElement>(true, onDismiss);
 	const [placement, setPlacement] = useState<{
 		left: number;
@@ -478,8 +443,7 @@ function ActionPopover({
 		origin: string;
 	} | null>(null);
 
-	// Measured once, on open: recomputing as a nested page changes height would
-	// slide the menu out from under the pointer. maxHeight absorbs the overflow.
+	// Measured once, on open: recomputing as a nested page changes height would slide the menu out from under the pointer, and maxHeight absorbs the overflow.
 	useLayoutEffect(() => {
 		const { width, height } = (
 			ref.current as HTMLDivElement
@@ -495,8 +459,6 @@ function ActionPopover({
 			left,
 			top,
 			maxHeight: room.y - top - EDGE_MARGIN,
-			// The panel scales out of the corner nearest the click, so it reads as
-			// having come from there rather than merely appearing beside it.
 			origin: `${flipX ? "right" : "left"} ${flipY ? "bottom" : "top"}`,
 		});
 	}, [anchor, ref]);
@@ -504,8 +466,7 @@ function ActionPopover({
 	useFocusCapture(ref, placement !== null);
 
 	return (
-		// The panel takes the keyboard for the whole menu, which is the point rather
-		// than an oversight -- see ui/menuKeys.ts.
+		// The panel takes the keyboard for the whole menu; see ui/menuKeys.ts.
 		// biome-ignore lint/a11y/noStaticElementInteractions: menu panel, see above
 		<div
 			ref={ref}
@@ -547,12 +508,10 @@ function ActionSheet({
 	const from = useRef<number | null>(null);
 
 	useFocusCapture(ref);
-	// The scrim is the sheet's containing block, so tracking the visual viewport
-	// here is what lifts the sheet clear of the keyboard.
+	// The scrim is the sheet's containing block, so tracking the visual viewport here is what lifts the sheet clear of the keyboard.
 	useVisualViewport(scrimRef);
 
-	// Pull down to put it away. Only downward travel counts, so the gesture never
-	// fights the sheet's own content.
+	// Only downward travel counts, so the drag never fights the sheet's own content.
 	const grabber = {
 		onPointerDown: (event: ReactPointerEvent) => {
 			event.currentTarget.setPointerCapture(event.pointerId);

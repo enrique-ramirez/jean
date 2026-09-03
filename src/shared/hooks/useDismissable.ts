@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 
-// Closes a popover on outside pointer-down or Escape. Returns the ref to put on
-// the popover's containing element (trigger included, so clicking the trigger
-// again toggles rather than closing-then-reopening).
+// Closes a popover on outside pointer-down or Escape. The returned ref goes on the containing element, trigger included, so clicking the trigger again toggles rather than closing and reopening.
 export function useDismissable<T extends HTMLElement = HTMLDivElement>(
 	isOpen: boolean,
 	onDismiss: () => void,

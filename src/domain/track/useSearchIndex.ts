@@ -7,8 +7,7 @@ import { rowHaystack } from "./searchText";
 
 const MAX_RESULTS = 60;
 
-// Built lazily -- only once somebody opens a finder -- and dropped with the
-// playlist it was built for.
+// Built lazily, only once somebody opens a finder, and dropped with the playlist it was built for.
 export function useSearchIndex(
 	rows: TrackColumns[],
 	enabled: boolean,
@@ -19,9 +18,7 @@ export function useSearchIndex(
 	);
 }
 
-// Every match, for highlighting in place, plus a capped list to render in the
-// dropdown. The list is never filtered down: finding a track must not change
-// what the playlist is.
+// Every match, for highlighting in place, plus a capped list for the dropdown. The list is never filtered down: finding a track must not change what the playlist is.
 export function search(
 	haystacks: string[] | null,
 	query: string,

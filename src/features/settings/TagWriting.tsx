@@ -12,28 +12,21 @@ import { HelpHint } from "@/shared/ui/HelpHint";
 import { Switch } from "@/shared/ui/Switch";
 import styles from "./Settings.module.css";
 
-// The pane, not the file. Both exist, and the file is what the pane writes -- but
-// Jean is being read on a phone, by somebody who has to walk to the player
-// either way, and a path is a worse instruction than a menu.
+// The menu path rather than the config file it writes: whoever reads this has to walk to the player either way, and a menu is the easier instruction.
 const PANE = "File \u2192 Preferences \u2192 Tools \u2192 Jean";
 
 // TODO: link the release once foo_jean is published.
 const IS_PUBLISHED = false;
 
 interface Explained {
-	// Three tones, but the badge names the state rather than collapsing to
-	// on/off: "Not connected" over a component that is answering perfectly and
-	// only wants a credential sends somebody to debug their network.
 	tone: "ok" | "warn" | "off";
+	// Names the state rather than collapsing to on/off: a component that answers perfectly and only wants a credential must not read as a network fault.
 	badge: string;
 	summary: string;
-	// What to do about it, or null when there is nothing to do and saying so is
-	// the point.
+	// What to do about it, or null when there is nothing to do.
 	fix: string | null;
 }
 
-// **Nothing here goes quiet.** Five of these are a component that is installed
-// and running, and in three the user has done everything right.
 function explain(state: TagWriterState): Explained {
 	switch (state.kind) {
 		case "absent":
@@ -115,10 +108,7 @@ function explain(state: TagWriterState): Explained {
 	}
 }
 
-// Streaming is the component's other half and fails for its own reasons, so it
-// gets its own line rather than being folded into the badge above: an install
-// that writes tags perfectly and has no encoder is connected, working, and
-// missing one feature, which one word cannot say.
+// Streaming fails for its own reasons, so it gets its own line: an install that writes tags perfectly and has no encoder is connected and working, minus one feature.
 function explainStreaming(state: TagWriterState): string | null {
 	if (state.kind !== "ready") return null;
 	const { canStream, streamFormats } = state.capabilities;
@@ -130,10 +120,7 @@ function explainStreaming(state: TagWriterState): string | null {
 	return `Streaming ${(streamFormats ?? []).join(" and ")}. The control is beside the volume in the status bar.`;
 }
 
-// What went wrong, in the user's terms. The common one by far is a window nobody has
-// opened yet, and that is a button to press rather than an error to debug -- so it names
-// the menu path, because somebody reading this on a television is not going to find it
-// by hunting.
+// What went wrong, in the user's terms. The common case is a pairing window nobody has opened yet, so every message names the menu path.
 function explainPairing(failure: PairFailure): string {
 	switch (failure.reason) {
 		case "not-open":
@@ -149,19 +136,12 @@ function explainPairing(failure: PairFailure): string {
 	}
 }
 
-// **The reason this exists**: the token is 64 hex characters, and on a television remote
-// that is not a thing anyone will do. One press here and one on the player replaces it.
-//
-// The paste path stays exactly where it was, underneath. Pairing makes the token cheap
-// to get; it does not become the only way to get one, and an install that has turned the
-// window off still has a way in.
+// The token is 64 hex characters, which nobody will type on a television remote. Pairing replaces that with one press here and one on the player; the paste path underneath stays, so an install with the window turned off still has a way in.
 function PairButton({
 	origin,
 	onPaired,
 }: {
-	// Non-null only once `/api/status` has answered as foo_jean at a version this build
-	// understands -- which is the same rule as sending the token, and for the same
-	// reason: the record naming this port is forgeable.
+	// Non-null only once `/api/status` has answered as foo_jean at a version this build understands: the discovery record naming this port is forgeable, so it is a hint and never a credential target.
 	origin: string;
 	onPaired: (token: string) => void;
 }) {
@@ -190,8 +170,7 @@ function PairButton({
 						value={name}
 						spellCheck={false}
 						autoComplete="off"
-						// Optional, and it has to stay optional: asking for a name before
-						// pairing would put back the typing this removes.
+						// Optional, and it stays optional: requiring a name would put back the typing pairing removes.
 						placeholder="This device (optional)"
 						maxLength={64}
 						onChange={(event) => setName(event.target.value)}
@@ -211,8 +190,7 @@ function PairButton({
 	);
 }
 
-// Masked because it is a credential, revealable because it is pasted from a file
-// and one wrong character is otherwise unexplainable.
+// Masked because it is a credential, revealable because it is pasted by hand and one wrong character is otherwise unexplainable.
 function TokenField({
 	token,
 	onSave,
@@ -220,15 +198,13 @@ function TokenField({
 }: {
 	token: string;
 	onSave: (token: string) => void;
-	// Absent while there is nothing to go back to: an unconfigured component has
-	// no earlier state for Cancel to mean.
+	// Absent while there is nothing to go back to: an unconfigured component has no earlier state for Cancel to mean.
 	onCancel?: () => void;
 }) {
 	const [draft, setDraft] = useState(token);
 	const [isVisible, setIsVisible] = useState(false);
 
-	// Committed rather than bound: the token keys the discovery query, so binding
-	// it would re-probe the component once per keystroke.
+	// Committed rather than bound: the token keys the discovery query, so binding it would re-probe the component once per keystroke.
 	return (
 		<form
 			className={styles.tokenRow}
@@ -264,14 +240,8 @@ function TokenField({
 	);
 }
 
-// Named for the component rather than for what it enables, because
-// troubleshooting is component-shaped: when a rating will not save, the question
-// is "is foo_jean running".
 export function TagWriting() {
-	// Discovery comes from the shared hook rather than through the tag-writing context:
-	// this pane is about the *component*, and pairing in particular has nothing to do
-	// with tracks. The context still owns the allowlist switches, which genuinely are
-	// about writing.
+	// Discovery comes from the shared hook rather than the tag-writing context, which owns only the allowlist switches.
 	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
 	const { allowedFields, isFieldEnabled, setFieldEnabled } = useTagWriting();
 	const { state, origin } = discovery;
@@ -280,10 +250,7 @@ export function TagWriting() {
 	const streaming = explainStreaming(state);
 	const [isEditingToken, setIsEditingToken] = useState(false);
 
-	// A stored token that works is a setting nobody touches again, so it collapses
-	// to a button rather than sitting there as a filled field with a Save nothing
-	// needs pressing. It stays open where it is the panel's whole point: not yet
-	// pasted, or pasted and refused.
+	// A stored token that works collapses to a button; the field stays open only where it is the panel's whole point, not yet pasted or pasted and refused.
 	const needsToken = state.kind === "no-token" || state.kind === "unauthorized";
 	const wantsToken = needsToken || isEditingToken;
 	const isWorking = state.kind === "ready" && !wantsToken;
@@ -318,8 +285,7 @@ export function TagWriting() {
 				/>
 			) : null}
 
-			{/* Narrowing only: a field missing here is permitted over there, not
-          switched on here. */}
+			{/* Narrowing only: a field switched on here is still refused unless the component permits it. */}
 			{allowedFields.length > 0 ? (
 				<div className={styles.fields}>
 					<div className={styles.fieldsHead}>
@@ -355,11 +321,7 @@ export function TagWriting() {
 				</div>
 			) : null}
 
-			{/* Both of these are for getting *to* working: one retries after you have
-          fixed something, the other is a setup step. Neither has anything to
-          offer a panel that is already connected, so a working component shows
-          its state and its switches and nothing else. A reload re-runs
-          discovery if it is ever needed. */}
+			{/* Only useful while getting to working: a connected component shows its state and its switches, and a reload re-runs discovery if it is ever needed. */}
 			{isWorking ? null : (
 				<div className={styles.panelFoot}>
 					<Button onClick={recheck} disabled={isChecking}>

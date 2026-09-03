@@ -4,16 +4,11 @@ import { useMemo, useRef } from "react";
 import { useKeyboardOwner } from "./keyboardOwner";
 import { KEYMAP } from "./keymap";
 
-// A binding's handler. The hotkeys manager hands back the DOM event and its own
-// context; every handler here ignores both, but they are passed through so one
-// that needs to preventDefault can.
+// A binding's handler. The event and the manager's context are passed through so a handler that needs to preventDefault can.
 type HotkeyHandler = (event: KeyboardEvent, context: unknown) => void;
 
-// Registers every binding declared for `scope` that has a matching handler.
-// Handlers live in a ref so the definition array stays stable across renders
-// while callbacks always see current state; `handledIds` is the memo's
-// dependency for the same reason -- a fresh handlers object every render would
-// re-register every binding every time.
+// Registers every binding declared for scope that has a matching handler.
+// Handlers live in a ref so the definition array stays stable across renders while callbacks always see current state; handledIds is the memo's dependency for the same reason, since a fresh handlers object every render would re-register every binding every time.
 export function useKeymap(
 	scope: string,
 	handlers: Record<string, HotkeyHandler | undefined>,

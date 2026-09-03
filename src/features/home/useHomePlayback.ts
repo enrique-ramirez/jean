@@ -8,10 +8,7 @@ import type { PlaylistInfo } from "@/shared/api/types";
 import type { Album } from "./albums";
 import { type FilledShelf, refsOfShelf } from "./shelves";
 
-// The two things the home screen can start, and both navigate as well as play:
-// pressing a record on a shelf should leave you looking at the shelf, and
-// starting the library should leave you looking at the library. Neither wants
-// the row it was pressed from to be the last thing on screen.
+// The two things the home screen can start. Both navigate as well as play, to the view of the set they started.
 export function useHomePlayback({
 	library,
 	playlists,
@@ -24,19 +21,13 @@ export function useHomePlayback({
 	const { play, canPlaySets } = usePlaySet({ library, playlists });
 	const order = usePlaybackOrder();
 
-	// Clicking an album plays the *shelf*, starting at that album. Playing only
-	// the album would make every shelf twenty dead ends: the record finishes and
-	// playback falls out of the shelf into whatever the player finds next.
+	// Clicking an album plays the shelf, starting at that album: playing the album alone leaves playback falling out into whatever the player finds next.
 	const playShelf = useCallback(
 		async (shelf: FilledShelf<Album>, album: Album) => {
 			const refs = refsOfShelf(shelf);
-			// Found by identity rather than arithmetic: the refs are the shelf's, so
-			// the album's first ref is in there exactly once.
 			const position = Math.max(0, refs.indexOf(album.refs[0]));
 
-			// Navigate first. The fill is a round trip and the view it opens already
-			// knows how to mark and follow whatever ends up playing, so the screen
-			// changes immediately rather than after the player answers.
+			// Navigate first: the fill is a round trip, and the view it opens already follows whatever ends up playing.
 			navigate(`/shelf/${shelf.id}`);
 			await play({
 				kind: SCRATCH_KIND.shelf,
@@ -48,9 +39,6 @@ export function useHomePlayback({
 		[play, navigate],
 	);
 
-	// Both land on All music, because that is the view of the set they just
-	// started -- pressing play should not leave you looking at the screen you
-	// pressed it from.
 	const startEverything = useCallback(
 		async (refs: Refs, position: number) => {
 			if (refs.length === 0) return;
@@ -65,23 +53,14 @@ export function useHomePlayback({
 		[startEverything],
 	);
 
-	// A track pressed on the front door starts All music at that track, rather
-	// than playing it alone: one track played by itself is a dead end -- it
-	// finishes and playback falls out into whatever the player finds next -- and
-	// the set it belongs to is the library, which is the view this opens.
-	// Searched for by value rather than assumed equal to the ref: the whole
-	// library happens to be ascending, and building on that would break the day
-	// anything else is passed here.
+	// The position is searched for rather than assumed equal to the ref: the whole library happens to be ascending, and anything else passed here would not be.
 	const playTrack = useCallback(
 		(refs: Refs, ref: number) =>
 			startEverything(refs, Math.max(0, refs.indexOf(ref))),
 		[startEverything],
 	);
 
-	// The mode first, then a track -- the same two requests the Shuffle beside a
-	// playlist's Play sends. Neither button touches the mode the other way round:
-	// it is global player state, the status bar owns it, and a Play that quietly
-	// turned shuffle off would be reaching across the app to do it.
+	// The mode first, then a track. Play never turns shuffle back off: playback order is global player state and the status bar owns it.
 	const shuffleEverything = useCallback(
 		(refs: Refs) => {
 			if (refs.length === 0) return undefined;

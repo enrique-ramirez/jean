@@ -1,20 +1,11 @@
 // Measures the media library API against the playlist read Jean uses today.
 //
-// Two questions, both from the PR's own warning that there is no caching and
-// "every call enumerates the library and computes a relative path per item":
+// The library endpoint has no caching: every call enumerates the library and
+// computes a relative path per item. So chunking may not pay the way it does for
+// playlist reads, and `%path%` arrives on every item whether Jean wants it or
+// not.
 //
-//   1. Does chunking still pay? Our "chunk small, then go wide" strategy was
-//      measured against playlist reads, where paging is cheap. If every chunk
-//      re-enumerates, N chunks could be N enumerations.
-//   2. What does the payload weigh with `path` on every item? `%path%` was
-//      deliberately excluded from what Jean fetches; the library returns it
-//      whether we want it or not.
-//
-// Answers recorded in CLAUDE.md, "The library API". Re-run it when the player
-// changes -- the PR is unmerged and the endpoint is being polished, so these
-// numbers have a shelf life.
-//
-//   PLAYER=home.local:8880 node test/measure-library.mjs
+//   PLAYER=player.local:8880 node test/measure-library.ts
 //
 // It needs a real player with a real library; the fake cannot answer questions
 // about a server-side cost it does not have.
@@ -22,7 +13,7 @@
 import { TRACK_EXPRESSIONS } from "../src/domain/track/fields.ts";
 import type { LibraryInfo, PlaylistInfo } from "../src/shared/api/types.ts";
 
-const HOST = process.env.PLAYER ?? "home.local:8880";
+const HOST = process.env.PLAYER ?? "localhost:8880";
 const COLUMNS = encodeURIComponent(TRACK_EXPRESSIONS.join(","));
 const REPEATS = 3;
 
@@ -48,7 +39,7 @@ async function fetchOnce(
 	if (!response.ok) throw new Error(`${path} -> ${response.status}`);
 	const body = await response.arrayBuffer();
 	// Content-Length is what crossed the wire; arrayBuffer() has already been
-	// decompressed, so measuring it would report the same number either way.
+	// decompressed.
 	const wire =
 		Number(response.headers.get("content-length")) || body.byteLength;
 	return { elapsed: performance.now() - started, bytes: body.byteLength, wire };
@@ -163,8 +154,8 @@ for (const n of [1, 500, 2000, 5000, 10000, 20000, 30441]) {
 	);
 	sweep.push([n, r.elapsed]);
 }
-// Least squares over the sweep: the intercept is what a call costs before it
-// has returned a single row, which is the enumeration the PR warns about.
+// Least squares over the sweep: the intercept is what a call costs before it has
+// returned a single row, which is the enumeration.
 const n = sweep.length;
 const sx = sweep.reduce((a, [x]) => a + x, 0);
 const sy = sweep.reduce((a, [, y]) => a + y, 0);

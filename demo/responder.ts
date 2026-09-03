@@ -1,17 +1,14 @@
 import type { Responder } from "../test/fake-api/http.ts";
 
-// `ServerResponse` for a service worker. The fake's routes write a status, some
-// headers and then bytes, and never learn which of the two they are talking to
-// -- which is the whole point of `Responder`: the demo runs the player the
-// suite runs, not a second one written to look like it.
+// `ServerResponse` for a service worker, so the fake's routes never learn which
+// of the two they are answering.
 //
-// The `Response` resolves at `writeHead` rather than at `end`, because the
-// update stream is answered and *then* written to for as long as the page is
-// open. Waiting for the end of that would be waiting for the visitor to leave.
+// The `Response` resolves at `writeHead` rather than at `end`: the update stream
+// is answered and then written to for as long as the page is open.
 export interface Answer {
 	response: Responder;
-	// Resolves once the route has written its head. A route that answers nothing
-	// never settles it, which is what `handled === false` is for.
+	// A route that answers nothing never settles this, which is what
+	// `handled === false` is for.
 	ready: Promise<Response>;
 }
 
@@ -41,8 +38,8 @@ export function answer(): Answer {
 			queued = [];
 			if (ended) controller.close();
 		},
-		// The page navigated away, or the `EventSource` was closed. Node calls
-		// this "close" and so does everything subscribed to it.
+		// The page navigated away, or the `EventSource` was closed. Node calls this
+		// "close" and so does everything subscribed to it.
 		cancel() {
 			ended = true;
 			for (const close of closers) close();

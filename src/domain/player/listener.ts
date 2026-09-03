@@ -1,18 +1,12 @@
 import type { FooJeanDiscovery, StreamMark } from "@/shared/api/fooJean";
 import { clamp } from "@/shared/lib/math";
 
-// Where the sound comes out: the player, or this browser. Nothing outside this
-// file and the store beside it may ask which -- a control renders or it does
-// not, and the reason is `canListen`. See the root CLAUDE.md.
+// Where the sound comes out: the player, or this browser. Nothing outside this file and the store beside it asks which; a control renders or it does not, and the reason is `canListen`.
 
-// ---- choosing a codec, without ever naming a browser -------------------------
+// ---- choosing a codec --------------------------------------------------------
 
-// **Never branch on the user agent.** The question is not "is this Safari", it
-// is "will this element play these bytes", and the platform answers that
-// directly.
-//
-// The codecs parameter is not optional for Ogg: bare `audio/ogg` can answer for
-// Vorbis alone. `audio/aac` is the string browsers actually answer to for ADTS.
+// Ask the platform what it will play rather than branching on the user agent.
+// The codecs parameter is not optional for Ogg: bare `audio/ogg` can answer for Vorbis alone, and `audio/aac` is the string browsers answer to for ADTS.
 const MIME: Record<string, string[]> = {
 	opus: ['audio/ogg; codecs="opus"'],
 	aac: ["audio/aac", "audio/aacp"],
@@ -20,9 +14,7 @@ const MIME: Record<string, string[]> = {
 
 let probe: HTMLAudioElement | null = null;
 
-// `canPlayType` returns `''`, `'maybe'` or `'probably'`. **Only `''` is a real
-// answer**; everything else is a candidate and none of it is a ranking, so the
-// server's order survives untouched.
+// `canPlayType` returns `''`, `'maybe'` or `'probably'`; only `''` is a real answer, and the rest is not a ranking.
 const isPlayable = (format: string) => {
 	probe ??= document.createElement("audio");
 	const types = MIME[format];
@@ -30,10 +22,7 @@ const isPlayable = (format: string) => {
 	return types.some((type) => probe?.canPlayType(type) !== "");
 };
 
-// **The server's order is the quality order and this only excludes.** Opus first
-// means a Safari that reads Ogg Opus gets the better codec and an older one
-// falls to AAC, without anybody naming a browser. A format the component does
-// not offer is never requested: `?format=` outside `streamFormats` is a 400.
+// The server's order is the quality order and this only excludes: a format the component does not offer is never requested, since `?format=` outside `streamFormats` is a 400.
 export const playableFormats = (offered: readonly string[] | undefined) =>
 	(offered ?? []).filter(isPlayable);
 
@@ -53,8 +42,7 @@ export interface Listener {
 	target: ListenTarget | null;
 }
 
-// `canListen` false and a target of null, so a caller that ignored the flag
-// still cannot connect to anything.
+// `canListen` false and a target of null, so a caller that ignored the flag still cannot connect to anything.
 export const NO_LISTENER: Listener = {
 	kind: "none",
 	canListen: false,
@@ -62,14 +50,8 @@ export const NO_LISTENER: Listener = {
 	target: null,
 };
 
-// **`canStream` absent means false.** An older `foo_jean` does not carry the
-// field, and a client that offers a control and then fails is worse than one
-// that never offered it.
-//
-// A component that streams a codec this browser cannot decode resolves to *none*
-// as well: there is nothing the button could do, so there is no button. That is
-// the same rule as an empty write allowlist being indistinguishable from no
-// component at all.
+// `canStream` absent means false: an older foo_jean does not carry the field.
+// A component streaming only codecs this browser cannot decode resolves to none as well, so no control is offered for something that could not work.
 export function resolveListener({
 	state,
 	origin,
@@ -91,26 +73,16 @@ export function resolveListener({
 
 // ---- the stream clock --------------------------------------------------------
 
-// The element's first sample is the live edge -- `BroadcastRing::subscribe` --
-// and delivery is 1x, so:
-//
-//     audible = streamTimeAtConnect + (currentTime - bufferedStart)
-//
-// The lag is never measured. It falls out as wall time since connecting minus
-// audio played, which is why a stall widens it without being told. `bufferedStart`
-// is the timebase origin, not a depth: browsers differ over whether `currentTime`
-// starts at zero or at the stream's granule position. See this folder's CLAUDE.md.
+// The element's first sample is the live edge and delivery is 1x, so `audible = streamTimeAtConnect + (currentTime - bufferedStart)`; the lag is never measured, it falls out of that.
+// `bufferedStart` is the timebase origin rather than a depth: browsers differ over whether `currentTime` starts at zero or at the stream's granule position.
 export const anchorOf = (streamTimeAtConnect: number, bufferedStart: number) =>
 	streamTimeAtConnect - bufferedStart;
 
-// Null until something has arrived, which is what says the anchor cannot be
-// derived yet.
+// Null until something has arrived, which is what says the anchor cannot be derived yet.
 export const bufferedStart = (audio: HTMLAudioElement) =>
 	audio.buffered.length > 0 ? audio.buffered.start(0) : null;
 
-// One arrives through beefweb and the other through the component, which resolves
-// it to the display path so the two agree. Compared leniently for separator and
-// case, and **never against an assumed path**.
+// One path arrives through beefweb and the other through the component, so they are compared leniently for separator and case.
 export const samePlayerPath = (
 	left: string | null | undefined,
 	right: string | null | undefined,
@@ -120,8 +92,7 @@ export const samePlayerPath = (
 	left?.replaceAll("\\", "/").toLowerCase() ===
 		right?.replaceAll("\\", "/").toLowerCase();
 
-// Which track the audible sample belongs to, or null when the timeline cannot
-// say. Separate from the position because the identity is wanted on its own.
+// Which track the audible sample belongs to, or null when the timeline cannot say.
 export function audibleMark(
 	anchor: number | null,
 	marks: readonly StreamMark[],
@@ -132,8 +103,7 @@ export function audibleMark(
 	return marks.findLast((entry) => entry.at <= audible) ?? null;
 }
 
-// Where in the *track* the audible sample sits. Null is not a failure: it means
-// drive the bar from beefweb as usual.
+// Where in the track the audible sample sits. Null is not a failure: it means drive the bar from beefweb as usual.
 export function audiblePosition(
 	anchor: number | null,
 	marks: readonly StreamMark[],
@@ -152,11 +122,7 @@ export function audiblePosition(
 
 // ---- this device's volume ----------------------------------------------------
 
-// Presented on the same decibel scale the player's fader uses, so the identical
-// gesture in the identical place is the identical change in loudness whichever
-// of the two the control is currently pointed at. `audio.volume` is an amplitude
-// multiplier, which is the other end of this conversion and not a scale to put
-// in front of anyone.
+// The same decibel scale the player's fader uses, so one gesture is the same change in loudness whichever target the control points at. `audio.volume` is the amplitude end of this conversion.
 export const DEVICE_VOLUME_FLOOR_DB = -60;
 
 export const amplitudeOf = (db: number) =>

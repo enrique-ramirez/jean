@@ -1,20 +1,10 @@
 import { fieldTable } from "@/shared/api/fieldTable";
 
-// What the now-playing screen asks the player for, over and above the four
-// expressions the update stream already carries.
-//
-// **This list must never reach the stream.** `UPDATES_URL` re-evaluates its
-// `trcolumns` on every push -- track change, pause, and each write of a volume
-// drag -- and the lyric tag alone runs to 8.5 KB. These are fetched once per
-// track instead, by `useNowPlayingTrack`.
-//
-// The comma limitation applies here as everywhere: the list is split before it
-// is evaluated, so no multi-argument function can appear. `$meta(unsynced
-// lyrics)` is fine -- one argument, and single-argument functions nest.
+// What the now-playing screen asks the player for, over and above the expressions the update stream already carries.
+// This list must never reach the stream: `UPDATES_URL` re-evaluates its `trcolumns` on every push, and the lyric tag alone runs to kilobytes.
+// beefweb splits `trcolumns` on commas before evaluating, so no multi-argument title-format function may appear here.
 
 const FIELDS = [
-	// Identity, and the check that the answer describes the track that was asked
-	// about rather than the one that started while the request was in flight.
 	["path", "%path%"],
 	["subsong", "%subsong%"],
 
@@ -56,12 +46,4 @@ export const {
 	index: NOW_PLAYING_FIELD,
 } = fieldTable(FIELDS);
 
-// `%comment%` is deliberately absent. It resolves on 19.9% of the measured
-// library and most of what it holds is ReplayGain hex written there by an old
-// tagger -- a Details row that is usually empty and, when it is not, is usually
-// noise.
-//
-// So are `%isrc%`, `%barcode%`, `%catalognumber%`, `%label%`, `%media%`,
-// `%mood%`, `%style%`, `%key%`, `%language%` and the MusicBrainz ids: *measured*
-// over all 30,441 tracks, every one of them resolves on exactly zero. They cost
-// a column each and would never draw a row.
+// `%comment%`, `%isrc%`, `%barcode%`, `%catalognumber%`, `%label%`, `%media%`, `%mood%`, `%style%`, `%key%`, `%language%` and the MusicBrainz ids are deliberately absent: they cost a column each and resolve on almost nothing.

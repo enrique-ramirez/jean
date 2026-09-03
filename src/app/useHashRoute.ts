@@ -1,8 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-// Hash routing rather than history: beefweb's static server has no SPA
-// fallback, so /playlists/p2 would be a genuine 404 once this is deployed
-// under the player.
+// Hash routing rather than history: beefweb's static server has no SPA fallback, so /playlists/p2 would be a genuine 404 once this is served from the player.
 const subscribe = (onChange: () => void) => {
 	window.addEventListener("hashchange", onChange);
 	return () => window.removeEventListener("hashchange", onChange);

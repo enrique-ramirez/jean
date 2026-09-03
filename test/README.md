@@ -1,131 +1,35 @@
 # Tests
 
-End-to-end, in a real browser, against a fake player. There are no unit tests
-and no jsdom.
+End-to-end, in a real browser, against a fake player. There are no unit tests and no jsdom: what breaks in Jean needs real layout, real pointers and a real viewport — the virtualiser renders nothing without layout, `dnd.ts` hit-tests with `elementFromPoint`, the gestures are pointer and touch streams, and half the design is a *different component* below 860px rather than a narrower one.
 
-That is a deliberate choice rather than a stage we have not reached yet. The
-things that break in Jean are the things jsdom cannot see: the virtualiser needs
-real layout to render anything at all, `dnd.ts` hit-tests with
-`elementFromPoint`, `useSortableList` and `useLongPress` are pointer gestures,
-`useVisualViewport` follows a keyboard that only exists on a device, and half
-the design is a *different component* below 860px rather than a narrower one. A
-suite that mocked all of that would go green while the app was broken, which is
-worse than having none.
+Pure functions — `fold()`, the volume curve, `deriveIntensity`, `groupByAlbum` — need no DOM and are worth unit tests when someone wants them.
 
-Pure functions -- `fold()`, the volume curve, `deriveIntensity`, `groupByAlbum`
--- are the exception and are worth unit tests when someone wants them. They need
-no DOM, so they need no harness either.
+## Running it
 
 ```sh
-pnpm test          # everything, desktop and mobile
-pnpm test:ui       # pick and watch tests interactively
-pnpm test --project=desktop -g "double-clicking"
+pnpm test                                        # everything, desktop and mobile
+pnpm test:ui                                     # pick and watch interactively
+pnpm test --project=desktop -g "double-clicking" # one test
 ```
 
-`pnpm test` builds first (`test/e2e/build.ts`) and serves the build from the
-fake, because that is beefweb's own arrangement: one origin answering both the
-app and `/api`. Running the dev server behind a proxy instead would test a
-setup that exists only on the machine it was written on.
+`pnpm test` builds first (`test/e2e/build.ts`) and serves the build from the fake, because that is beefweb's arrangement: one origin answering both the app and `/api`.
 
-## The fake player
+Both projects — `desktop` and `mobile` (Pixel 7, touch on) — run every spec. Skip explicitly when a gesture has no equivalent on the other surface, and say why.
 
-`test/fake-api/` is a small in-memory foobar2000. It implements the routes the
-app uses, holds real playlists, and pushes SSE the way beefweb does -- a full
-snapshot on connect, then only what changed, and **never on a timer**.
-
-### The suite runs against both library sources
-
-The app is supposed to behave identically whether the library comes from the media
-library API or from an autoplaylist -- that is what the source seam exists for -- so
-the same assertions run against both:
+**The suite runs against both library sources**, since the app must behave identically whether the library comes from the media library API or from an autoplaylist:
 
 ```sh
 pnpm test                          # the media library API (the default)
 JEAN_NO_LIBRARY_API=1 pnpm test    # the autoplaylist fallback
 ```
 
-Both are green at the same count. That is the check that the seam has not leaked: if
-a change makes one pass and the other fail, something outside `librarySource.ts` has
-learned which source it is talking to.
+Both are green at the same count. If a change makes one pass and the other fail, something outside `librarySource.ts` has learned which source it is talking to. Three specs are source-aware: `fake-library.spec.ts` and one describe in `library-source.spec.ts` **pin the API on** because they are about it, and `navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and* `library: { supported: false }`, because the setup screen exists only when there is no API **and** no autoplaylist.
 
-Three specs are source-aware, and only three. `fake-library.spec.ts` and one describe
-in `library-source.spec.ts` **pin the API on**, because they are about it -- pinned
-rather than skipped, so they still cover it on a fallback run. And
-`navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and*
-`library: { supported: false }`, because the setup screen exists only when there is no
-API **and** no autoplaylist. Give it the API and there is nothing to set up.
+## The fake player
 
-### Measuring the library API
+`test/fake-api/` is a small in-memory foobar2000. It implements the routes the app uses, holds real playlists, and pushes SSE the way beefweb does — a full snapshot on connect, then only what changed, and **never on a timer**. Position advances in the app's own interpolation, so a test depending on the fake ticking would be testing behaviour the real player does not have.
 
-`test/measure-library.ts` times the media library endpoints against a real player
-and a real library, because the questions it answers are about server-side cost and
-the fake has none:
-
-```sh
-PLAYER=home.local:8880 node test/measure-library.ts
-```
-
-It compares the library read against the playlist read Jean uses today, sweeps range
-sizes to separate the per-call cost from the per-item one, and tries the chunking
-strategies. The answers are recorded in CLAUDE.md, which is where measurements
-live -- not in comments, here or in `src`. Re-run it when the endpoint changes,
-since caching is on the PR's list of things it does not do yet.
-
-### The routes run in two places
-
-`routes.ts` and `fooJean.ts`'s `handleAgent` have no host in them. `server.ts`
-and `agentServer.ts` give them a node socket for the suite; `demo/sw.ts` gives
-the same tables a `fetch` event, so the live demo is this player rather than a
-second one written to look like it. The seam is `Responder` in `http.ts` -- four
-methods, which `ServerResponse` satisfies as it stands.
-
-Two consequences worth knowing before adding a route. Anything that reaches for
-a socket, a file or a `Buffer` belongs in the host files rather than in the
-route tables; the artwork routes are the worked example, and take a
-`(name, headers, response)` function instead of a path. And the fixtures are
-*imported* rather than read off disk, because one of the two hosts has no
-filesystem.
-
-### The media library
-
-The fake serves the beefweb 0.11+ library API — `/library/info`, `/library/items`,
-`/library/items/by-path`, `/artwork/library` and
-`/playlists/{id}/items/add-from-library` — checked against shapes measured on a live
-player running `0.11~git.dc0fdfc`. `fake-library.spec.ts` is that check; `API.md`
-records the measurements.
-
-The library is **derived from the captured tracks rather than invented**: the
-capture's `%path%` values are absolute (`F:\Musica\B\Babasónicos\…`), the deepest
-shared directory is treated as the media library folder, and what is left is the
-library-relative, forward-slashed path the real API returns. So the fixture stays
-captured and the paths stay real.
-
-`test.use({ library: { supported: false } })` is **DeaDBeeF**: `/library/info` still
-answers, because that is how a client discovers it has no library, and everything
-else is **501**. `{ enabled: false }` is foobar2000 with no media library configured
-— supported, empty, and a different problem with a different fix. Both send Jean back
-to the autoplaylist and they must not collapse into one state.
-
-Two things the fake deliberately **refuses** rather than approximating, because a
-filter that silently disagreed with the real one is worse than no filter: the
-player's `query` syntax, and `sort` by anything but a bare `%field%`. Both answer
-**400**. Jean should be addressing adds by explicit `items` anyway.
-
-Not covered, and not fakeable: **`subsong` is always 0**. Every captured file is one
-track, and the whole point of a subsong is that one file holds several — that needs a
-cue sheet or a disc image in the capture, not a relabelled fixture.
-
-It is named for the API shape rather than for beefweb, deliberately. The plugin
-is the swappable part; the request and response shapes are what would survive
-swapping it, and those are what this is a copy of. Comments inside still name
-beefweb wherever its real behaviour is the reason for something -- the `?` an
-unresolved column returns, the stream that never ticks, the static server with
-no SPA fallback. Those are the notes you would want in front of you if the
-provider ever did change.
-Position advances in the app's own interpolation, so a test that depended on the
-fake ticking would be testing behaviour the real player does not have.
-
-Run it on its own to develop with no foobar2000 in reach:
+Run it alone to develop with no player in reach:
 
 ```sh
 pnpm fake                                   # API only, on :8880
@@ -134,12 +38,15 @@ BEEFWEB_URL=http://localhost:8880 pnpm dev  # in another shell
 pnpm build && node test/fake-api/main.ts --serve dist   # as beefweb serves it
 ```
 
+### The routes run in two places
+
+`routes.ts` and `fooJean.ts`'s `handleAgent` have no host in them. `server.ts` and `agentServer.ts` give them a node socket for the suite; `demo/sw.ts` gives the same tables a `fetch` event. The seam is `Responder` in `http.ts` — four methods, which `ServerResponse` satisfies as it stands.
+
+Two consequences before adding a route. **Anything reaching for a socket, a file or a `Buffer` belongs in the host files**, not the route tables; the artwork routes are the worked example and take a `(name, headers, response)` function instead of a path. And **fixtures are imported rather than read off disk**, because one of the two hosts has no filesystem.
+
 ### The fixture is captured, not invented
 
-`library.json` and `player.json` came off a real player via
-`node test/fake-api/capture.ts --url http://your-player:8880`, so the fake
-replays bytes foobar2000 actually produced. Five albums, 54 tracks, chosen for
-the branches the UI has rather than to be a representative library:
+`library.json` and `player.json` came off a real player via `node test/fake-api/capture.ts --url http://<player-host>:8880`, so the fake replays bytes foobar2000 actually produced. Five albums, 54 tracks, chosen for the branches the UI has:
 
 | | why it is in there |
 |---|---|
@@ -149,45 +56,54 @@ the branches the UI has rather than to be a representative library:
 | As Tall as Lions — *Lafcadio* | never played at all — no heat, no patina, no last-played |
 | Have a Nice Life — *Deathconsciousness* | two discs, so `%tracknumber%` restarts mid-album |
 
-Tracks are stored as objects keyed by title-formatting expression, not as the
-positional arrays the API returns. The fake has to answer whatever column set is
-asked of it -- two for the status bar, thirteen for the track list -- and it
-preserves the distinction the whole capability-detection mechanism rests on: an
-expression the fixture does not carry resolves to `?`, exactly as an unsupported
-field does on a real player. Dropping `%lastfm_play_count%` from a fixture is
-how you test an install with no playback-statistics component.
+Tracks are stored as objects keyed by title-formatting expression, not as the positional arrays the API returns: the fake has to answer whatever column set is asked of it, and **an expression the fixture does not carry resolves to `?`**, exactly as an unsupported field does on a real player. Dropping `%lastfm_play_count%` from a fixture is how you test an install with no playback-statistics component.
 
-The playlist ids are `p1 p7 p2 p5` -- not contiguous, not in index order. That is
-what the real install looks like, and anything that quietly assumes otherwise
-should fail here rather than on someone's machine.
+The playlist ids are `p1 p7 p2 p5` — not contiguous, not in index order, which is what a real install looks like.
 
-The cover art is real, downscaled to 320px. If shipping five album covers in a
-public repo is a problem, replace the files in `artwork/`; nothing reads them
-but the fake.
+The cover art is real, downscaled to 320px. Nothing but the fake reads `artwork/`.
 
-**The same tool captures the demo's library, and the two must not be
-confused.** `capture.ts --albums demo/albums.ts --out demo` writes a hundred
-and fifty albums into `demo/`, chosen to be *recognised* rather than for the
-branches they cover; see `demo/CLAUDE.md`. The fixture here is the one the specs
-are written against, so a spec's row index means what it meant when it was
-written. Nothing in `demo/` is read by a test, and nothing here is read by the
-demo.
+**The same tool captures the demo's library, and the two must not be confused.** `capture.ts --albums demo/albums.ts --out demo` writes into `demo/`; see `demo/CLAUDE.md`. Nothing in `demo/` is read by a test and nothing here is read by the demo. A named album the tool cannot find is fatal for the fixture and merely skipped for the demo, and a demo capture leaves `player.json` alone.
 
-Two differences fall out of that. A named album this tool cannot find is fatal
-for the fixture -- a spec depends on each of the five -- and merely skipped and
-reported for the demo, where losing one of a hundred and fifty to a typo should
-not cost the other hundred and forty-nine. And `player.json`, the idle state the
-fake starts in, belongs to the fake rather than to a library, so a demo capture
-leaves it alone.
+### The media library
 
-## Writing a test
+The fake serves the beefweb 0.11+ library API — `/library/info`, `/library/items`, `/library/items/by-path`, `/artwork/library` and `/playlists/{id}/items/add-from-library` — against shapes measured on a live player. `fake-library.spec.ts` is that check; `API.md` records the shapes.
 
-`test/e2e/fixtures.ts` gives every test its own player, on its own port, and
-carries the helpers every spec would otherwise write for itself -- `openLibrary`,
-`openSidebar`, `trackRow`, `scratchOf`, `playedFrom`, `trackPlayed`,
-`pressAndHold`, `statusBar`, `viewHeader`. Anything more than one spec needs
-belongs there: five files with five slightly different ways of opening the
-sidebar drawer is five chances for one of them to be the wrong one.
+The library is **derived from the captured tracks rather than invented**: the capture's absolute `%path%` values give a deepest shared directory, which is treated as the media library folder, and what is left is the library-relative, forward-slashed path the real API returns.
+
+- `test.use({ library: { supported: false } })` is **DeaDBeeF**: `/library/info` still answers, because that is how a client discovers it has no library, and everything else is **501**.
+- `{ enabled: false }` is foobar2000 with no media library configured — supported, empty, a different problem with a different fix.
+- Both send Jean back to the autoplaylist and **must not collapse into one state**.
+
+Two things the fake **refuses** rather than approximating, because a filter that silently disagreed with the real one is worse than no filter: the player's `query` syntax, and `sort` by anything but a bare `%field%`. Both answer **400**.
+
+Not fakeable: **`subsong` is always 0**, because every captured file is one track and a subsong needs a cue sheet or a disc image.
+
+### What the fake gets wrong on purpose
+
+A fake kinder than the player it stands in for makes the suite agree with itself and disagree with reality.
+
+- **A request body over 1 MiB is refused by hanging up**, not answered with a status. The fake destroys the socket at the same threshold.
+- **A set added from the library comes back in the media library's browse order** — album artist, album, track — not the order it was given, nor the file-path order `/library/items` pages in. The captured fixture cannot show this on its own, since its folders match its tags; `mediaLibrarySize` synthesises a library where they disagree.
+- **`foo_jean` is a second listener on its own port, not another route.** Every call to it is cross-origin, is preceded by a CORS preflight for the `Authorization` header, and can fail by not answering at all. So `fake-api/fooJean.ts` gets its own `http.Server`, started and stopped by the worker fixture that owns the beefweb one. **The unreachable state destroys the connection rather than answering 500** — a refused socket and an error response are different events in the browser, and "installed, advertised, healthy, unreachable" must never render as "not installed". **Preflights land in `player.requests`**, so counting writes means filtering to `POST`.
+- **A stream fails every way a second listener can.** `fooJean.streamBehaviour` is `short` (ends after what it has sent, for reconnect) and `quiet` (opens, sends the container header, then nothing — the case with **no error to catch**, which is what a stopped player looks like and what the stall watchdog is the only answer to). `playableFormats` names which of `streamFormats` get bytes of the declared type. `failTickets` with `ticketError` separates a 503 meaning "busy" from one meaning "not supported". `expireTickets` answers 401 at `GET /stream`.
+- **The timeline carries a history and the clock starts before the fake does.** `state.streamMarks` records where recent tracks began, backdated by the position the player was at, because a listener is always *behind* the live edge. `startedAt` is a minute in the past, since the component starts with foobar2000 long before any client connects.
+- **`streamPrime` decides whether this fake has a lag at all**, and the default removes it. A spec about the lag asks for `streamPrime: 6` and waits while Chromium accumulates the rest at real time. **`12 - prime`** is the arithmetic; size a margin against a loaded machine, never against the nominal figure.
+
+**The one place the fake is deliberately kinder.** The stream serves WAV rather than Ogg Opus — there is no encoder in a Node fake — and in Chromium a non-seekable WAV does not fire `loadedmetadata` until roughly twelve **seconds of content** have arrived. Not bytes: raising the primed burst from 2 s to 15 s moved playback start from 12.7 s to 287 ms at an unchanged byte rate. That is a property of PCM in a container never meant to be streamed. So the healthy stream hands over 15 s up front and then feeds at 1x, which starts sooner than a real one would; what that could hide — a long gap between asking and hearing — is covered by `quiet` instead.
+
+### Measuring against a real player
+
+`test/measure-library.ts` times the media library endpoints against a real player and a real library, because the questions it answers are about server-side cost and the fake has none:
+
+```sh
+PLAYER=<player-host>:8880 node test/measure-library.ts
+```
+
+It compares the library read against the playlist read, sweeps range sizes to separate per-call cost from per-item cost, and tries the chunking strategies. Answers go in a `CLAUDE.md` or in `API.md`, never in a comment.
+
+## Writing a spec
+
+`test/e2e/fixtures.ts` gives every test its own player, on its own port, and carries the helpers every spec would otherwise write for itself — `openLibrary`, `openSidebar`, `trackRow`, `scratchOf`, `playedFrom`, `trackPlayed`, `pressAndHold`, `statusBar`, `viewHeader`. Anything more than one spec needs belongs there.
 
 ```js
 import { expect, requestsTo, test, trackRow } from './fixtures.ts'
@@ -205,249 +121,39 @@ test('does the thing', async ({ page, player }) => {
 })
 ```
 
-- **`player`** is the fake's state, live. `player.requests` is every request the
-  app made, which is how you assert that a drag sent one `items/copy` and not
-  forty, or that a coalesced write sent the last value rather than every value.
-- **One player per worker, reset per test**, so the suite stays parallel without
-  tests seeing each other's playlists.
-- **`POST /__control/play`** drives the player the way the desktop would --
-  the case Jean has to survive and which cannot be provoked reliably against a
-  real one. **`/__control/append`** is the same idea for playlists: the desktop
-  adding tracks while Jean is holding a range of indices, which is what undo
-  has to notice before it removes anything.
-- **`POST /__control/latency`** holds writes for N milliseconds. On localhost
-  against an in-memory player every request settles before the next pointer
-  event, so a control that coalesces forty moves into three looks identical to
-  one that sends forty. A real player on a real network does not answer that
-  fast, and `useCoalescedWrite` is untestable without this.
-- **`librarySize`** swaps the 54 captured tracks for that many generated ones.
-  `test.use({ librarySize: 30441 })` gets a library that loads in chunks rather
-  than one response, over a list 1.4 million pixels tall. Scroll arithmetic that
-  breaks past a few thousand rows has nowhere else to show up.
-- **`withoutFields`** removes title-formatting expressions from the fixture, so
-  the player answers `?` for them exactly as a real one does for a field no
-  component provides. `test.use({ withoutFields: ['%lastfm_play_count%'] })` is
-  foobar2000 with no playback-statistics component, and everything built on play
-  counts should disappear rather than break. This is the promise nothing else
-  can check: a bare install must get a complete app, never a dead control.
-- **`fooJean`** installs the tag-writing component, in whichever state a spec needs:
-  absent (the default -- beefweb answers `null` and Jean is the app it was before this
-  feature existed), `{ listening: false }` with an error, `{ reachable: false }` for an
-  install that answers nothing, `{ agentName: ... }` for something else answering on the
-  advertised port, `{ allowedFields: [] }` for an install with writing switched off, and
-  `{ failWrites: 403 }` and friends for the statuses that cannot be provoked otherwise.
-  A write reaches the fake's own tracks, so a reload reads the value back through
-  beefweb -- which is what proves the app is not showing its own optimistic cache.
-- **`fooJean` also carries the streaming half**: `canStream: false` is an install
-  with no encoder and an older component both, which must render **no** listen
-  control rather than one that fails. Assert on `player.requests` and
-  `player.streamFormats` -- the latter because `requests` records paths without
-  their query, and the whole codec choice is a claim about the query string.
-- **`fooJean` also carries pairing**: `pairingOpen: true` is somebody having just pressed
-  the button on the player, and it is **single-grant in the fake as it is in the
-  component** — the first success closes it, so a spec asserting that a second press is
-  refused is asserting the real behaviour. `failPairing` with `pairingError` reaches the
-  branches nothing else provokes: a 403 worded for the local-network refusal, a 429, and
-  a 404 for a component too old to have the route. The fake also refuses a body that is
-  not `application/json`, because a client that stopped sending that header would pass
-  every other assertion here and fail against a real install.
-- **`retagged`** patches tag values onto captured tracks, keyed by title:
-  `test.use({ retagged: { Nutshell: { '%artist%': 'Alice in Chains feat. X' } } })`.
-  One person's library is not every library -- this capture has no featured
-  artist on it and no compilation, and an album row draws those two differently.
-  Stating the tag a test needs beats growing an invented sixth album, and
-  everything else about the track stays captured.
-- **`withoutLibraryPlaylist`** renames the playlist Jean resolves as the
-  library, which is the only way to reach the first-run setup screen: an install
-  that already has one never sees it, and the capture always has one.
-- **`settings`** is merged over a default seed, so a spec names only the setting
-  it cares about: `test.use({ settings: { 'jean.layout': 'album' } })`. The seed
-  marks the play-count shading as already introduced, since that popover
-  otherwise opens over the toolbar in every test that never asked about it.
-  **`firstRun: true`** drops the seed entirely, for the tests that are about
-  meeting Jean for the first time.
-- **`hasLibraryApi`** answers whether this run has the media library API. Ask the
-  fixture rather than reading `process.env` in a spec: a spec that pins `library`
-  gets the right answer, and there is one implementation of the question.
-- **Motion is reduced by default.** The play/pause toggle animates for as long
-  as something is playing, and Playwright will not click a target whose bounding
-  box never holds still. `test.use({ motion: 'allow' })` opts out.
-  Note that `reducedMotion` in `use` does *not* work as of Playwright 1.62 --
-  it is accepted and silently ignored, which is why the fixture calls
-  `page.emulateMedia()` instead.
+`player` is the fake's state, live; `player.requests` is every request the app made. **One player per worker, reset per test**, so the suite stays parallel.
 
-**Parameterise over the layouts, not just the viewports.** Compact and album are
-not one code path with a different stylesheet: album virtualises groups rather
-than rows, so the index the virtualiser is given is not the index being scrolled
-to, and on a phone the cover stacks above its tracks instead of beside them.
-Looping a describe over `['compact', 'album']` and seeding `jean.layout` costs
-one line and doubles into four cases, since both projects run everything.
+### Fixture options
 
-**`test.use` goes *inside* a describe, never beside one.** At file scope it
-applies to the whole file however many times it is called, so a loop that writes
-it once per layout runs every case under whichever layout it wrote last. That
-had `finder.spec.ts` running its five `(compact)` describes in album mode --
-green, correctly named, and covering the same thing twice.
+| | |
+|---|---|
+| `librarySize` | swaps the 54 captured tracks for that many generated ones, for scroll arithmetic that only breaks past a few thousand rows |
+| `mediaLibrarySize` | inflates the **media library** and the `#Jean Library` autoplaylist together, so both sources describe the same library |
+| `libraryShape` | states a library outright: counts, durations, years, tags to omit, whether an artist is spelled two ways. A description rather than built tracks, because an option's top level does not survive the trip to the worker as an array (nested arrays are fine) |
+| `withoutFields` | removes title-formatting expressions, so the player answers `?` as a real one does. `['%lastfm_play_count%']` is an install with no playback-statistics component, and everything built on play counts must disappear rather than break |
+| `withoutPlaylists` | empties everything but Jean's own — the player a fresh install would find |
+| `withoutLibraryPlaylist` | renames the playlist Jean resolves as the library, the only way to reach the first-run setup screen |
+| `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured |
+| `settings` | merged over a default seed, so a spec names only what it cares about. **`firstRun: true`** drops the seed entirely |
+| `fooJean` | installs the component in whichever state is needed: absent (the default), `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `canStream: false`, `pairingOpen: true`, `failPairing` with `pairingError`. `fooJeanToken` seeds the credential |
+| `hasLibraryApi` | whether this run has the media library API. Ask the fixture rather than reading `process.env`: a spec that pins `library` gets the right answer |
+| `motion` | reduced by default, because Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work as of Playwright 1.62 — it is accepted and silently ignored, so the fixture calls `page.emulateMedia()` |
 
-Both projects -- `desktop` and `mobile` (Pixel 7, touch on) -- run every spec.
-Skip explicitly when a gesture has no equivalent on the other surface, and say
-why.
+Pairing is **single-grant in the fake as in the component**: the first success closes the window. The fake also refuses a body that is not `application/json`, because a client that stopped sending that header would pass every other assertion and fail against a real install.
 
-**`inSequence` and `times` rather than a loop.** Playwright assertions share one
-page, so a list of steps has to be awaited in order, and no spec should write
-that plumbing itself. `times` is one `reduce` in `fixtures.ts`; `inSequence` is
-re-exported from `src/shared/lib/sequence.ts`, because the app needs the same
-thing for its own reasons and there is no version of it worth having two of.
+### Control routes
 
-**Drive timing-sensitive input from inside the page.** Anything racing an
-animation -- interrupting a 240ms scroll, say -- cannot be driven over the wire:
-`keyboard.press` then `waitForTimeout(80)` then `mouse.wheel` is three round
-trips, and under parallel workers they land after the animation has already
-finished, so the test passes whether the behaviour works or not. That is worse
-than a test that cannot fail, because it *does* fail correctly when run alone
-and then passes in a full run. Dispatch the events from `page.evaluate` instead,
-one frame apart. A synthetic wheel event scrolls nothing, which is usually the
-point: what is under test is the listener, not the scrolling.
+- **`POST /__control/play`** drives the player the way the desktop would — the case Jean has to survive and cannot provoke reliably against a real one. **`/__control/append`** is the same for playlists: the desktop adding tracks while Jean holds a range of indices.
+- **`POST /__control/latency`** holds writes for N milliseconds. On localhost every request settles before the next pointer event, so a control coalescing forty moves into three looks identical to one sending forty. `useCoalescedWrite` is untestable without it.
 
-**Wait on the player, not on the render that looks right.** Four separate flakes
-this session were the same mistake: waiting for a signal that goes true *before*
-the app has settled, then measuring.
+### Rules
 
-It has two faces. One is transitions -- `isRowOnScreen` is true as soon as an
-animated scroll brings the row into view, which is several hundred milliseconds
-before it stops moving, so anything that then measures the position or scrolls
-away is fighting the animation still in flight. That is what `settle()` in
-`follow.spec.ts` is for: two equal scroll readings, and only then measure.
-
-The other is optimistic state. Mutations write to the query cache before the
-request goes out, so the UI flips immediately -- and if a second request is in
-flight concurrently, the stream can still be describing the state before both of
-them. The status bar's shuffle toggle genuinely flickers unpressed for a beat
-and settles pressed. Harmless to a person, a coin flip to press a second button
-against.
-
-So prefer the fake's own state as the thing you wait on -- `player.player.playbackMode`
-is what the player really thinks, with no optimism in it -- and assert the
-property rather than the exact traffic. "Nothing it sends ever asks for a
-different order" survives a duplicated idempotent request; `toEqual([4])` does
-not, and the difference between those two is not a bug.
-
-These fail once in five full runs and pass every time in isolation, which is the
-worst way for a test to be wrong: you debug it alone, it passes, and you move on.
-
-**Check an injection more than once.** A guard that fails on one run and passes
-on the next is not covered, it is flaky, and running the suite three times under
-the injection is what tells the two apart.
-
-A test that cannot fail is worse than no test. When one covers a guard rather
-than a feature -- "a long press plays nothing", "a desktop click does not
-play" -- delete the guard, watch it go red, and put the guard back. Both of
-those were vacuous when first written: one never dispatched the `pointerup`
-that produces the click it claimed to be about.
-
-## Libraries that are not this one
-
-The capture is one person's collection: tidy, mid-sized, thoroughly tagged. Every
-bug about somebody *else's* library lives in the shapes it is not, so there are
-three ways to ask for a different one:
-
-- `librarySize` inflates the ordinary playlist the browsing specs open, for the
-  things that only appear past a few thousand rows.
-- `mediaLibrarySize` inflates the **media library** -- what `#/all` and search read
-  on a 0.11 player -- and the `#Jean Library` autoplaylist with it, so both sources
-  keep describing the same library.
-- `libraryShape` states one outright: how many tracks, albums, artists and genres,
-  how long the tracks run, which years they span, which tags to leave off
-  entirely, and whether the same artist is spelled two ways. A description rather
-  than built tracks, because an option's top level does not survive the trip to the
-  worker as an array.
-
-`withoutPlaylists` empties everything but Jean's own, which is the only way to
-reach a player a fresh install would find.
-
-## What the fake has to get wrong on purpose
-
-A fake that is kinder than the player it stands in for is a fake that makes the
-suite agree with itself and disagree with reality. Two of these were found the
-expensive way -- by a feature working here and not working at all on a real
-foobar2000 -- and both are now modelled:
-
-- **A request body over 1 MiB is refused by hanging up**, not answered with a
-  status. The fake destroys the socket at the same threshold. Before it did,
-  naming all 30,441 tracks to play All Music passed every test and reached the
-  player never.
-- **`foo_jean` is a second listener on its own port, not another route.** The component
-  runs *beside* the player, so every call to it is cross-origin, is preceded by a CORS
-  preflight for the `Authorization` header, and can fail by not answering at all. None
-  of those exist on a same-origin route, and all three are what the feature has to
-  survive -- so `fake-api/fooJean.ts` gets its own `http.Server`, started and stopped by
-  the same worker fixture that owns the beefweb one. `test.use({ fooJean: ... })` puts
-  it into any of its states and `fooJeanToken` seeds the credential.
-  Two consequences worth knowing before writing an assertion. **The unreachable state
-  destroys the connection rather than answering 500** -- a refused socket and an error
-  response are different events in the browser, and the app has to tell them apart:
-  "installed, advertised, healthy, unreachable" is a real state that a hardened
-  `bindAddress` or a firewall produces, and it must never render as "not installed". And **the preflights land in `player.requests`**: both
-  servers record into one log, so counting writes means filtering to `POST`. An
-  `OPTIONS` the browser sent on its own is not a request the app made.
-- **A stream is a second listener's worth of things going wrong, and the fake
-  does all of them.** `fooJean.streamBehaviour` is `short` (ends after what it has
-  sent, for reconnect) and `quiet` (opens, sends the container header, and then
-  nothing -- the case with **no error to catch**, which is what a stopped player
-  looks like from the stream and what the stall watchdog is the only answer to).
-  `playableFormats` names which of `streamFormats` actually get bytes of the
-  declared type, so the codec fall-through is exercised rather than assumed.
-  `failTickets` with `ticketError` separates a 503 that means "busy" from one that
-  means "not supported" -- the component distinguishes them in the error string
-  alone. `expireTickets` answers 401 at `GET /stream` the way an expired one does.
-- **The timeline carries a history, and the clock starts before the fake does.**
-  `state.streamMarks` records where each of the last few tracks began, backdated
-  by the position the player was at -- a listener is always *behind* the live
-  edge, so the track it is hearing is one the player has already left, and a
-  timeline describing only what is playing now cannot say so. `startedAt` is
-  likewise set a minute in the past: the component starts with foobar2000, long
-  before any client connects, and a clock beginning at zero the instant the test
-  did would put the audible point before any stream the fake admits to having
-  served. Both exist so a spec can set up a lag without waiting one out.
-- **`streamPrime` decides whether this fake has a lag at all**, and the default
-  removes it. The component hands a listener the *live edge*, so a listener falls
-  behind only by what the browser buffers before it starts -- and the 15-second
-  prime, which exists because Chromium needs about twelve seconds of a
-  non-seekable WAV before it will begin, hands over everything at once and leaves
-  it never behind. A spec about the lag asks for `streamPrime: 6`, waits while
-  Chromium accumulates the rest at real time, and gets a six-second lag arrived
-  at the way a real one is. **`12 - prime`** is the arithmetic; size a fixture's
-  margin against a loaded machine buffering slower, never against the nominal
-  figure.
-- **A set added from the library comes back in the media library's browse
-  order** -- album artist, album, track -- and not in the order it was given, nor
-  in the file-path order the library endpoint pages in. The fake used to preserve
-  whatever order it was handed, which quietly made every "play this set, starting
-  here" position correct here and wrong on a real player, for search, shelves and
-  All Music alike.
-
-**The one place the fake is deliberately kinder**, and it is worth knowing why.
-The stream serves WAV rather than Ogg Opus -- there is no encoder in a Node fake
--- and *measured* in Chromium, a non-seekable WAV does not fire `loadedmetadata`
-until roughly twelve **seconds of content** have arrived. Not bytes: raising the
-primed burst from 2s to 15s moved playback start from 12.7 s to 287 ms with the
-byte rate unchanged. That is a property of PCM in a container never meant to be
-streamed, not of live streaming -- Ogg and ADTS are designed for it. So the
-healthy stream hands over 15 s up front and then feeds at 1x, which starts sooner
-than a real one would. What that could hide -- a long gap between asking and
-hearing -- is covered by `quiet` instead, which is that gap with no end to it.
-
-The captured fixture cannot show the second one on its own: its folders match its
-tags, so both orders agree. `mediaLibrarySize` synthesises a library where they
-do not.
-
-## Touch is a gesture, not a narrow mouse
-
-`sliders.spec.ts` drove both faders with the mouse and skipped on mobile --
-"dragging a fader is a mouse gesture" -- which quietly encoded the assumption that
-nobody drags the volume with a thumb. The touch tests there go through CDP
-`Input.dispatchTouchEvent` rather than dispatching DOM events, because what is
-under test is the browser's own decision about who the gesture belongs to: without
-`touch-action: none` it decides the finger is panning the page and stops
-delivering moves, and a swipe aimed at 25% lands at 74%. A dispatched
-`pointermove` sails straight past that and passes either way.
+1. **Parameterise over the layouts, not just the viewports.** Compact and album are not one code path with a different stylesheet: album virtualises groups rather than rows, and on a phone the cover stacks above its tracks. Loop a describe over `['compact', 'album']` and seed `jean.layout`.
+2. **`test.use` goes *inside* a describe, never beside one.** At file scope it applies to the whole file however many times it is called, so a loop writing it once per layout runs every case under whichever it wrote last — green, correctly named, and covering the same thing twice.
+3. **`inSequence` and `times` rather than a loop.** Playwright assertions share one page, so steps must be awaited in order. `times` is a `reduce` in `fixtures.ts`; `inSequence` is re-exported from `src/shared/lib/sequence.ts`.
+4. **Drive timing-sensitive input from inside the page.** Anything racing an animation cannot be driven over the wire — three round trips land after the animation has finished, so the test passes whether the behaviour works or not. Dispatch from `page.evaluate`, one frame apart. A synthetic wheel event scrolls nothing, which is usually the point: what is under test is the listener.
+5. **Wait on the player, not on the render that looks right.** `isRowOnScreen` is true as soon as an animated scroll brings a row into view, hundreds of milliseconds before it stops moving; `settle()` in `follow.spec.ts` takes two equal scroll readings first. And mutations write to the query cache before the request goes out, so the UI flips before the stream agrees. Prefer the fake's own state — `player.player.playbackMode` has no optimism in it — and **assert the property rather than the exact traffic**: "nothing it sends ever asks for a different order" survives a duplicated idempotent request where `toEqual([4])` does not.
+6. **Touch is a gesture, not a narrow mouse.** Touch tests go through CDP `Input.dispatchTouchEvent` rather than dispatching DOM events, because what is under test is the browser's own decision about who the gesture belongs to: without `touch-action: none` it decides the finger is panning and stops delivering moves, and a swipe aimed at 25% lands at 74%. A dispatched `pointermove` sails past that and passes either way.
+7. **Check an injection more than once.** A guard that fails on one run and passes on the next is flaky, not covered.
+8. **A test that cannot fail is worse than no test.** When one covers a guard rather than a feature — "a long press plays nothing", "a desktop click does not play" — delete the guard, watch it go red, and put the guard back.
+9. **Anywhere the fake supplies both sides of a comparison, it is only testing that a string equals itself.** Path joins between the stream timeline and beefweb's `%path%` are the case in point, and have to be verified against a real player.

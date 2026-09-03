@@ -8,10 +8,6 @@ import {
 	test,
 } from "./fixtures.ts";
 
-// Pairing exists so nobody types 64 hex characters on a television remote, so most of
-// what is asserted here is that the button alone is enough and that the failures say
-// which button to press instead.
-
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
 const pairButton = (page: Page) =>
@@ -21,22 +17,20 @@ const pairRequests = (player: FakePlayer) =>
 	requestsTo(player, "/api/pair").filter((entry) => entry.method === "POST");
 
 test.describe("pairing a device", () => {
-	// Installed, running, and no token here yet -- which is every device but the first.
+	// Installed, running, and no token stored here yet.
 	test.use({ fooJean: { pairingOpen: true } });
 
 	test("one press replaces the whole token", async ({ page, player }) => {
 		await openSettings(page);
 
-		// The state before: nothing to write with.
 		await expect(settingsDialog(page)).toContainText("Needs token");
 
 		await pairButton(page).click();
 
-		// The token arrived and the pane re-ran discovery against it.
 		await expect(settingsDialog(page)).toContainText("Connected");
 		await expect.poll(() => pairRequests(player).length).toBe(1);
 
-		// Stored where a pasted one would be, and nowhere else.
+		// Stored where a pasted one would be.
 		const stored = await page.evaluate(() =>
 			window.localStorage.getItem("jean.fooJeanToken"),
 		);
@@ -48,7 +42,6 @@ test.describe("pairing a device", () => {
 		await pairButton(page).click();
 		await expect(settingsDialog(page)).toContainText("Connected");
 
-		// The body is sent, and carries no name, because none was given.
 		const sent = pairRequests(player)[0];
 		expect(sent.body).toEqual({});
 	});
@@ -72,8 +65,8 @@ test.describe("pairing a device", () => {
 		await pairButton(page).click();
 		await expect(settingsDialog(page)).toContainText("Connected");
 
-		// beefweb serves clientconfig unauthenticated, so syncing the credential through
-		// it would recreate the exact escalation the credential prevents.
+		// beefweb serves clientconfig unauthenticated, so syncing the credential
+		// through it would recreate the escalation the credential prevents.
 		const written = requestsTo(player, "/api/clientconfig").filter(
 			(entry) => entry.method === "POST",
 		);
@@ -94,8 +87,7 @@ test.describe("pairing a device", () => {
 });
 
 test.describe("when no window is open", () => {
-	// The common case by a distance: the user pressed Pair here before pressing it on
-	// the player.
+	// The common case: Pair pressed here before it was pressed on the player.
 	test.use({ fooJean: {} });
 
 	test("it says which button to press, by menu path", async ({ page }) => {
@@ -109,7 +101,6 @@ test.describe("when no window is open", () => {
 			"File → Preferences → Tools → Jean",
 		);
 
-		// And it did not pretend to succeed.
 		await expect(settingsDialog(page)).toContainText("Needs token");
 	});
 
@@ -145,7 +136,6 @@ test.describe("a caller outside the local network", () => {
 		await expect(settingsDialog(page)).toContainText(
 			"not on the player’s own network",
 		);
-		// The remedy is different, and it is the one that still works.
 		await expect(settingsDialog(page)).toContainText("Paste the token instead");
 	});
 });
@@ -184,9 +174,8 @@ test.describe("with no component at all", () => {
 });
 
 test.describe("a component that is advertised but unreachable", () => {
-	// The port never answered `/api/status`, so it was never proven to be foo_jean --
-	// and pairing is a write, so it must not be offered against a port a forgeable
-	// record named.
+	// The port never answered `/api/status`, so it was never proven to be
+	// foo_jean, and the advertisement that named it is forgeable.
 	test.use({ fooJean: { reachable: false } });
 
 	test("is not offered a pair button either", async ({ page }) => {

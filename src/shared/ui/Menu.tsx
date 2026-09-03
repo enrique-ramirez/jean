@@ -11,12 +11,9 @@ import { useDismissable } from "@/shared/hooks/useDismissable";
 import styles from "./Menu.module.css";
 import { handleMenuKeys, useFocusCapture } from "./menuKeys";
 
-// How close a popover may come to the edge of the window before it is pushed
-// back in.
 const GUTTER = 8;
 
-// A dropdown anchored under a button you can see, as opposed to a menu summoned
-// at the pointer -- that one is `ActionMenu`. Both own every key while open.
+// A dropdown anchored under its trigger; a menu summoned at the pointer is ActionMenu. Both own every key while open.
 export function Menu({
 	isOpen,
 	onDismiss,
@@ -39,27 +36,21 @@ export function Menu({
 
 	useFocusCapture(menuRef, isOpen);
 
-	// A trigger near an edge puts a wide popover off screen, and nothing in
-	// `left: 0` / `right: 0` can know that -- only the layout can.
-	//
-	// Written to the element rather than into state: this runs on every resize, and
-	// a render per event would repaint whatever the menu sits over.
+	// A trigger near an edge puts a wide popover off screen, and only the layout can know that.
+	// Written to the element rather than into state: this runs on every resize, and a render per event would repaint whatever the menu sits over.
 	const clamp = useCallback(() => {
 		const element = menuRef.current;
 		if (!element) return;
 
-		// Read with no correction in place, or each pass measures the previous
-		// pass's shift and compounds it.
+		// Read with no correction in place, or each pass measures the previous pass's shift and compounds it.
 		element.style.setProperty("--menu-shift", "0px");
 		const rect = element.getBoundingClientRect();
 
-		// clientWidth, not innerWidth: it excludes a classic scrollbar, which
-		// innerWidth counts as space the menu is allowed to sit under.
+		// clientWidth, not innerWidth: it excludes a classic scrollbar, which innerWidth counts as space the menu is allowed to sit under.
 		const pastLeft = GUTTER - rect.left;
 		const pastRight =
 			rect.right - (document.documentElement.clientWidth - GUTTER);
-		// Left wins when the menu is too wide for the window to hold either way:
-		// reading the start of it beats reading the end.
+		// Left wins when the menu is too wide for the window to hold either way: reading the start of it beats reading the end.
 		const shift = pastLeft > 0 ? pastLeft : pastRight > 0 ? -pastRight : 0;
 
 		element.style.setProperty("--menu-shift", `${shift}px`);
@@ -77,8 +68,7 @@ export function Menu({
 		<div className={styles.anchor} ref={ref}>
 			{trigger}
 			{isOpen ? (
-				// Same as ActionMenu: while a menu is open every key belongs to it, and
-				// the panel is where that is enforced.
+				// While a menu is open every key belongs to it, and the panel is where that is enforced.
 				// biome-ignore lint/a11y/noStaticElementInteractions: menu panel, see above
 				<div
 					ref={menuRef}

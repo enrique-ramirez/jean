@@ -13,14 +13,7 @@ import type { TrackBrowserHandle } from "./listTypes";
 import styles from "./useFinder.module.css";
 import { search, useSearchIndex } from "./useSearchIndex";
 
-// Find-in-this-list, for any view that renders a `TrackBrowser`.
-//
-// Not the search in the top bar: that filters the library down to matches and
-// takes you to `#/search`, while this walks you to a track inside the list
-// already on screen. The button names the list, so the two are never confused.
-//
-// Returns the node rather than the pieces: a caller that assembles its own is
-// the one that will assemble it wrongly.
+// Find-in-this-list, for any view that renders a `TrackBrowser`. Not the top-bar search, which filters the library down to matches and navigates to `#/search`.
 export function useFinder({
 	rows,
 	browserRef,
@@ -33,10 +26,7 @@ export function useFinder({
 	const [isFinding, setIsFinding] = useState(false);
 	const [query, setQuery] = useState("");
 
-	// The field updates instantly; the scan runs off the deferred copy. Without it a
-	// keystroke carried a scan of the whole list, a new match set for every mounted
-	// row and a scroll before the character could paint -- which is how a phone
-	// keyboard starts dropping and reordering what you type.
+	// The field updates instantly; the scan runs off the deferred copy, or a keystroke carries a scan of the whole list before the character can paint and a phone keyboard starts dropping and reordering input.
 	const deferredQuery = useDeferredValue(query);
 	const haystacks = useSearchIndex(rows, isFinding);
 	const { matches, results } = useMemo(
@@ -73,7 +63,6 @@ export function useFinder({
 		</Button>
 	);
 
-	// `isFinding` is here because the list has to stop answering to the keyboard
-	// while a field has it -- otherwise typing a track name seeks the player.
+	// `isFinding` is returned because the list has to stop answering to the keyboard while a field has it, or typing a track name seeks the player.
 	return { isFinding, matches, open, close, toolbarLeading };
 }

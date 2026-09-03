@@ -2,8 +2,7 @@ import type { APIRequestContext } from "@playwright/test";
 import type { LibraryItem } from "../../src/shared/api/types.ts";
 
 // A node of `/library/items/by-path`: a folder with a recursive count, or a
-// track with its columns. Documented in API.md; nothing in the app reads it
-// yet, so the shape lives here with the spec that pins it.
+// track with its columns. Documented in API.md.
 interface LibraryNode {
 	type: "D" | "F";
 	name: string;
@@ -16,27 +15,23 @@ interface LibraryNode {
 import { expect, inSequence, test } from "./fixtures.ts";
 
 // The fake's media library, checked against the shapes measured on a live
-// foobar2000 running beefweb 0.11~git.dc0fdfc. Nothing in Jean uses these
-// endpoints yet -- this exists so that when it does, the thing it is tested
-// against is not an invention.
-//
-// The measurements these assertions come from are in API.md, under "The media
-// library API". Where the OpenAPI spec and the live player disagreed, the
-// player won: there is no `pathSeparator` on the by-path response, and `range`
-// is a query parameter rather than a path segment.
+// foobar2000 running beefweb 0.11~git.dc0fdfc and written down in API.md under
+// "The media library API". Where the OpenAPI spec and the live player
+// disagreed, the player won: there is no `pathSeparator` on the by-path
+// response, and `range` is a query parameter rather than a path segment.
 
-// Pinned on rather than inherited: this file is *about* the library endpoints,
-// so it has to exercise them even on a run that sends the rest of the suite
-// down the autoplaylist fallback (JEAN_NO_LIBRARY_API=1).
+// Pinned on rather than inherited, so the library endpoints are still exercised
+// on a run that sends the rest of the suite down the autoplaylist fallback
+// (JEAN_NO_LIBRARY_API=1).
 test.use({ library: { supported: true, enabled: true } });
 
 const api = (request: APIRequestContext, path: string) =>
 	request.get(`/api${path}`);
 
-// `player` is destructured in every test even where it goes unread: it is the
-// fixture that resets the fake to this test's state, and Playwright only builds
-// the fixtures a test actually asks for. A test taking only `request` runs
-// against whatever the previous one left behind.
+// `player` is destructured in every test even where it goes unread: Playwright
+// only builds the fixtures a test asks for, and it is the fixture that resets
+// the fake. A test taking only `request` runs against whatever the previous one
+// left behind.
 test.describe("the library the fake serves", () => {
 	test("info reports a supported, enabled library that agrees with the tracks", async ({
 		request,
@@ -62,7 +57,7 @@ test.describe("the library the fake serves", () => {
 		expect(libraryItems.items).toHaveLength(3);
 
 		// Relative to the media library folder and '/'-separated, even though the
-		// captured paths are absolute Windows ones. The live player reports
+		// captured paths are absolute Windows ones: the live player reports
 		// pathSeparator as '\' and library paths still are not separated that way.
 		libraryItems.items.forEach((item: LibraryItem) => {
 			expect(item.path).not.toContain("\\");
@@ -198,9 +193,6 @@ test.describe("adding from the library to a playlist", () => {
 		);
 		expect(response.status()).toBe(204);
 
-		// The whole rename/empty/refill/play sequence, with no client-side count
-		// arithmetic left to get wrong -- which is the thing that made the scratch
-		// playlist play the wrong track.
 		const after = player.playlists.find((entry) => entry.id === "p2")!;
 		expect(after.items).toHaveLength(2);
 		expect(after.items[0]["%title%"]).toBe("Los Calientes");
@@ -219,8 +211,8 @@ test.describe("adding from the library to a playlist", () => {
 	});
 });
 
-// A player with no library support is not a broken player -- it is DeaDBeeF,
-// and it is the state that has to send Jean back to the autoplaylist.
+// DeaDBeeF, rather than a broken player: the state that sends Jean back to the
+// autoplaylist.
 test.describe("a player with no media library", () => {
 	test.use({ library: { supported: false } });
 
@@ -254,9 +246,8 @@ test.describe("a player with no media library", () => {
 });
 
 test.describe("a player whose library is switched off", () => {
-	// foobar2000 with no media library configured. A different problem from "this
-	// player has no library API", with a different fix, so it must not collapse
-	// into the same state.
+	// foobar2000 with no media library configured, which is a different state
+	// from a player that has no library API.
 	test.use({ library: { supported: true, enabled: false } });
 
 	test("it is supported but empty, and the endpoints still work", async ({
@@ -272,7 +263,6 @@ test.describe("a player whose library is switched off", () => {
 	});
 });
 
-// The two things the fake deliberately refuses rather than approximating.
 test.describe("what the fake will not pretend to do", () => {
 	test("the player query syntax", async ({ request, player }) => {
 		const response = await api(
@@ -280,8 +270,8 @@ test.describe("what the fake will not pretend to do", () => {
 			"/library/items?columns=%25title%25&query=artist%20HAS%20x",
 		);
 
-		// Jean should be addressing adds by explicit items anyway -- the two filters
-		// do not return the same set, so a fake that guessed would hide that.
+		// A guessed filter would not return the player's set, so the fake refuses
+		// rather than approximating it.
 		expect(response.status()).toBe(400);
 	});
 

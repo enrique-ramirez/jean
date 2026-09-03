@@ -1,96 +1,57 @@
 # Contributing
 
-Everything a person needs to work on Jean. If you only want to *use* it, the
-[README](./README.md) is the whole story.
+How to write code in this repo. To *use* Jean, read the [README](./README.md).
 
-Three other documents, and they do not overlap:
+Three other documents, and they do not overlap: [API.md](./API.md) is the reference for what beefweb and foobar2000 return; [CLAUDE.md](./CLAUDE.md) holds what a coding agent cannot infer from the code, with a `CLAUDE.md` beside each part of the app for what is local to it; [test/README.md](./test/README.md) is the suite and the fake player.
 
-- **[API.md](./API.md)** — what beefweb and foobar2000 actually do, measured. Response
-  shapes, what returns `?`, what hangs up, what the endpoints cost.
-- **[CLAUDE.md](./CLAUDE.md)** — why Jean is built the way it is. Design decisions and
-  the reasoning behind them, for coding agents and for anyone who wants the argument
-  rather than the rule. It carries what holds everywhere; anything specific to one
-  part of the app is in a `CLAUDE.md` next to that part (`src/domain/track/`,
-  `src/shared/ui/`, and so on).
-- **[test/README.md](./test/README.md)** — the suite, the fake player, and why there
-  are no unit tests.
+## 1. The development loop
 
-## Development
-
-**You do not deploy to Windows to develop.** The UI is a static SPA that talks to
-beefweb over HTTP; it does not need to be served *by* beefweb to work. Vite runs on
-the Mac and proxies `/api` to the real player, so the app is same-origin, there is no
-CORS to configure, and nothing changes on the Windows side.
+You do not deploy to a player to develop. Jean is a static SPA that talks to beefweb over HTTP; it does not need to be served *by* beefweb. Vite proxies `/api` to a real player, so the app is same-origin, there is no CORS to configure, and nothing changes on the player side.
 
 ```sh
 pnpm install
 pnpm dev            # http://localhost:8123
-pnpm typecheck      # tsc across app, fake player and specs
-pnpm lint           # biome check
 ```
 
-That is the whole loop: edit a file, HMR updates the browser, and it is controlling
-the actual foobar2000 instance with real playlists and real playback the entire time.
-
-Point it somewhere else when needed:
+Point it at a player with `BEEFWEB_URL`, in the environment or in `.env.local` (copy `.env.example`):
 
 ```sh
-BEEFWEB_URL=http://10.100.100.20:8880 pnpm dev
+BEEFWEB_URL=http://<player-host>:8880 pnpm dev
 ```
 
-The dev server also binds on the LAN (`host: true`), so a phone can load
-`http://Enriques-MacBook-Pro-2.local:8123` and hit the same proxy — real-device
-testing without a build either.
+The dev server binds on the LAN (`host: true`), so a phone can load `http://<your-machine>.local:8123` and hit the same proxy. The port is `strictPort`: `foo_jean` matches the dev origin against an exact allowlist, so sliding to the next free port would report the component unreachable with nothing on screen saying why.
 
-Deploying is therefore only for making it permanent, or for using the UI when the
-Mac is off.
+## 2. The commands
 
-### `foo_jean` is the one thing the proxy does not cover
+```sh
+pnpm dev            # dev server, HMR, /api proxied
+pnpm build          # typecheck, then bundle into dist/
+pnpm typecheck      # tsc across app, fake player and specs
+pnpm lint           # biome check
+pnpm lint:fix       # biome check --write
+pnpm format         # biome format --write
+pnpm test           # playwright, desktop and mobile
+pnpm test:ui        # pick and watch tests interactively
+pnpm fake           # the fake player alone, on :8880
+pnpm demo           # build the live demo into dist-demo/
+pnpm demo:preview   # serve that
+```
 
-Every other request Jean makes is a root-relative `/api` path, which the dev proxy
-forwards to the player. The optional tag-writing component is not: it listens on a
-port of its own, so its address is a *host* and a port rather than a path, and on the
-dev server that host is your machine rather than the player's. `vite.config.ts` takes
-it from `BEEFWEB_URL` and injects it as `__PLAYER_HOST__`, so there is nothing extra
-to configure here — but the request is then genuinely cross-origin in a way it never
-is in a build, and the component has to be told to accept it.
+`pnpm lint` and `pnpm typecheck` MUST pass. `pnpm test` MUST pass before a change is called done; see `test/README.md`.
 
-*Measured*: it answers `200` to `Origin: http://localhost:8123` and sends **no**
-`Access-Control-Allow-Origin` header at all, so the browser discards a perfectly good
-response and Jean reports the component as unreachable. Left to defaults it only
-reflects an origin whose host matches the host it was addressed to, which is exactly
-the production case and deliberately not this one.
+## 3. `foo_jean` is the one thing the proxy does not cover
 
-So add the dev server to `<profile>/foo_jean/config.json` and restart foobar2000:
+Every other request is a root-relative `/api` path the dev proxy forwards. The optional tag-writing and streaming component listens on a port of its own, so its address is a *host* and a port rather than a path, and on the dev server that host is your machine rather than the player's. `vite.config.ts` takes it from `BEEFWEB_URL` and injects it as `__PLAYER_HOST__`.
+
+The request is then genuinely cross-origin in a way it never is in a build, and the component must be told to accept it. Add the dev server to `<profile>/foo_jean/config.json` and restart the player:
 
 ```jsonc
 "allowedOrigins": ["http://localhost:8123"]
 ```
 
-Add the LAN name too if you test on a phone against the dev server. None of this
-applies to a build, where beefweb serves Jean from the player and the hosts match.
+Add the LAN name too if you test on a phone against the dev server. None of this applies to a build, where beefweb serves Jean and the hosts match.
 
-### The development player runs a pre-release beefweb
-
-`0.11~git.dc0fdfc` — CI's merge of
-[PR #382](https://github.com/hyperblast/beefweb/pull/382), which adds the media
-library API, into master. Taken from the GitHub Actions artifact for that run rather
-than built locally; the foobar2000 component is an MSVC target and cannot be built
-from macOS.
-
-Jean is developed against it as though it had shipped, **and still has to work
-without it** — released beefweb is 0.10, DeaDBeeF will never have it, and both are
-covered by the same `supported` / `enabled` / 404 detection. See `CLAUDE.md`, "The
-library API".
-
-To install it on a portable foobar2000: close the player, replace
-`profile\user-components-x64\foo_beefweb\` with the contents of the
-`.fb2k-component` (it is a zip — `x64/foo_beefweb.dll` plus `beefweb.root/`), and
-restart. Back up that folder and `profile\beefweb\` first; the latter holds
-beefweb's `config.json` and Jean's own `clientconfig`, which is where server-side
-settings live.
-
-## Where things live
+## 4. Where things live
 
 ```
 src/
@@ -99,125 +60,62 @@ src/
   domain/     what Jean is about, as data and behaviour with no route of its own
     track/    rows, refs, the source seam, the virtualised list machinery
     library/  the library as one array, its search, and what plays a set
-    player/   player state, position interpolation, the volume curve
+    player/   player state, position interpolation, the volume curve, the listener
   features/   one folder per thing a user can do: home, search, library, playlist,
-              now-playing
+              now-playing, queue, settings
   app/        the shell: App, Sidebar, CommandPalette, theme, hash routing
 test/
   fake-api/   an in-memory foobar2000: portable route tables, plus the node
               sockets that serve them
   e2e/        the specs, in a real browser against that fake
-demo/         the live demo -- the same fake, in a service worker, so the app
-              runs with no player behind it. See demo/CLAUDE.md
+demo/         the live demo -- the same fake, in a service worker
 ```
 
-**Imports run one way: `app -> features -> domain -> shared`.** Biome enforces it, so
-a violation is an error at `pnpm lint` rather than something a reviewer has to catch.
-Within `domain` the slices form a DAG (`library -> track -> player`); sideways is
-allowed there, a cycle is not.
+1. **Imports run one way: `app → features → domain → shared`.** Biome's `noRestrictedImports` enforces it per tier, so a violation fails `pnpm lint`.
+2. Within `domain` the slices form a DAG (`library → track → player`). Sideways is allowed; a cycle is not.
+3. Import anything outside its own folder through the `@/` alias (`@/domain/track/fields`). Same-folder imports stay relative.
+4. A file whose home is unclear is usually in the wrong tier. Shared infrastructure is not a feature; a domain concept is not one view of it.
 
-Anything outside its own folder is imported through the `@/` alias
-(`@/domain/track/fields`). Same-folder imports stay relative.
+## 5. Naming
 
-### The demo runs the fake too
+1. **Never name a store, a parser or a helper after the component beside it.** A case-insensitive filesystem cannot tell `toasts.ts` from `Toasts.tsx`, so TypeScript resolves `'./Toasts'` to the wrong file silently. Hence `toastStore.ts`, `lyricsFormat.ts`, `volumeScale.ts`.
+2. **Never name a declaration file after the module beside it.** `fooJean.d.ts` next to `fooJean.ts` is read as that file's own declarations. The generated component types are `fooJeanSchema.d.ts`.
+3. Components are `PascalCase.tsx`, hooks are `useThing.ts`, everything else is `camelCase.ts`.
+4. Stylesheets are `Component.module.css`, beside the component.
 
-```sh
-pnpm demo           # build it into dist-demo/
-pnpm demo:preview   # serve that
-```
+## 6. Styling
 
-The published demo is the app with `test/fake-api/` answering from a service
-worker, deployed on every push to `main`. It matters here for one reason: the
-route tables in `test/fake-api/routes.ts` and `fooJean.ts` **must stay free of
-node**. Anything that needs a socket, a file or a `Buffer` goes in `server.ts`
-or `agentServer.ts`, which are the suite's half, and reaches the routes as a
-function the host passes in -- `artwork` is the worked example.
+1. **CSS Modules, colocated with the component.** The only global stylesheets are `shared/styles/tokens.css` (the palette and scale, as custom properties) and `base.css`. Re-theming Jean SHOULD mean editing about thirty custom properties and nothing else.
+2. **A rule in one module that overrides another's MUST outrank it on specificity, never merely follow it.** Module order in the bundle follows import order, and import sorting can flip two rules of equal specificity.
+3. Anything spatial belongs to a media query, not to a JS breakpoint flag.
+4. Animate compositor properties only — `transform`, `scale`, `rotate`, `opacity`.
 
-## Conventions
+## 7. Comments
 
-Short sentences. RFC 2119 keywords for obligations. Commit = imperative subject; body only for a fact the diff cannot show. Comments only where code needs clarification — never narration.
+Comments are a **last resort**. Prefer an intention-revealing name, or extract a function whose name says what the comment would have said.
 
-**Styling is CSS Modules, colocated with the component.** The only global stylesheets
-are `shared/styles/tokens.css` (the palette and scale, as custom properties) and
-`base.css`. Re-theming Jean should mean editing about thirty custom properties and
-nothing else.
+A comment is justified only when it records one of:
 
-**Biome is the linter and the formatter**, on its own defaults. Where a rule fires on
-something deliberate, the suppression carries its reason.
+- a **trap** — something the next reader would otherwise revert into;
+- an **external constraint** — what the player, the browser or a library actually does;
+- a **non-obvious invariant** no name could carry.
 
-**Tag hygiene is the library owner's business.** Jean reads tags and never writes or
-normalises them to make its own life easier.
+Never narrate what the code does. Never date a comment, never sign one, never record what the code used to be. Git holds history.
 
+Where a lint rule fires on something deliberate, the suppression carries its reason.
 
-## How the data flows
+## 8. Writing
 
-beefweb pushes player state over SSE, and pushes **only when something changes** —
-roughly once per track, not once per second. Measured: one message in eight seconds
-during steady playback.
+Short sentences. RFC 2119 keywords for obligations. Commit messages take an imperative subject; add a body only for a fact the diff cannot show.
 
-- `usePlayerStream()` runs one `EventSource` at the app root and writes each message
-  into the TanStack Query cache under `['player']`.
-- Components read that with an ordinary `useQuery`. The `queryFn` only covers first
-  paint and reconnect; the stream owns the key from then on.
-- `usePlayPause()` is a `useMutation` with an optimistic flip, so the button responds
-  immediately and the stream confirms a moment later.
+## 9. Tag hygiene is the library owner's business
 
-Because position only arrives on change events, the progress bar **interpolates**:
-every snapshot is stamped with `performance.now()` on arrival, and `positionAt()`
-projects forward from that anchor. `<SeekBar>` runs the animation frame loop and is
-deliberately a leaf — that state must never be lifted, or it would repaint a
-30,000-row virtualised track list sixty times a second.
+Jean reads tags. It never writes or normalises them to make its own life easier. A genre spelled two ways is two rows in a list; the fix belongs in the player, where it sticks for every other client too.
 
-Playlist contents are a separate path. They arrive in chunks, rendered as they land, so
-the list is usable long before the tail arrives. The shape of that chunking is measured
-rather than guessed: a request costs about 270 ms before it returns a single row and only
-30 ms more to return 2,000 rows instead of 500, so what matters is how many requests there
-are, not how big they are. One modest chunk lands first to paint something, then four
-concurrent large ones finish the job — a 30,441-track library shows its first rows at
-~730 ms and is fully loaded in ~1.5 s, where sixteen sequential chunks of 2,000 took 5.5 s.
+## 10. Stack
 
-Rows are kept as the raw positional arrays beefweb returns rather than being turned into
-objects, and play-count "heat" is precomputed into typed arrays alongside them. One load
-is shared by everything that needs it, so opening the library playlist and searching it do
-not fetch it twice.
+React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual · TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright.
 
-Searching is a **view, not a playlist**: a filter over the rows already in memory, matching
-every word of the query against title, artist and album in any order. Typing writes nothing
-to the player.
+TypeScript is strict, in three scopes: `tsconfig.app.json` (the browser), `tsconfig.node.json` (the fake player, run by node stripping types — imports name `.ts` explicitly and `erasableSyntaxOnly` makes an enum a compile error), and `tsconfig.test.json` (the specs). `pnpm build` typechecks before it bundles; Vite never does.
 
-**Playing does**, and it has to. beefweb plays from playlists and knows nothing else, so
-playing a result in place would leave the player carrying on from *there* — the next track
-would be the library's next track, and with shuffle on a random one out of everything.
-Neither is what a list of matches promises. So the first time you play from a set of
-results they become a real playlist named `#Jean [your query]`, and playback happens inside
-it: shuffle shuffles your matches, and the end of the results is the end of playback.
-
-**You will see that playlist in foobar2000**, sitting next to its own `#Quicksearch [...]`
-ones. There is no hidden-playlist concept in the API and beefweb cannot fake one, so Jean
-hides it from its own sidebar and leaves it visible in yours. It is reused rather than
-piling up: one playlist, renamed and refilled per search. Dismissing the search deletes it,
-unless it is what you are currently listening to.
-
-It is also how a search survives a reload and reaches your phone — the query is in the
-title, and every client can see the player's playlists.
-
-Keeping results takes an explicit click, and when they are already playing it costs no copy
-at all: the playlist they are playing from *is* what you are saving, so it is renamed and
-stops being Jean's. Playback carries straight on through it. Otherwise
-`POST /playlists/add` returns the new playlist id, and
-`POST /playlists/{src}/{dst}/items/copy` copies by **index** — no `%path%` lookup, no
-upload beyond a list of numbers. Measured: 15,000 indices in a single request, 323 ms. The
-button is hidden entirely when the player reports `changePlaylists: false`, and disabled
-while the library is still loading, since a partial result set would save as if it were the
-whole answer.
-
-## Stack
-
-React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual ·
-TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright. No unit
-tests and no jsdom, on purpose: the things that break here need real layout, real
-pointers and a real viewport. See `test/README.md`.
-
-Styling is CSS Modules per component, with the palette in `src/shared/styles/tokens.css` as
-custom properties — re-theming Jean means editing about thirty values there, with no
-build step required to know what they do.
+`noUncheckedIndexedAccess` is off: every read of a dictionary-encoded column or a typed array of refs is indexed by construction, so it would demand a guard on each one and teach nothing.

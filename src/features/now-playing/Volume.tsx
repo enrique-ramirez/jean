@@ -15,8 +15,7 @@ const iconFor = (percent: number, isMuted?: boolean) => {
 	return percent < 50 ? Volume1 : Volume2;
 };
 
-// The label and the press are the caller's: on desktop it mutes, on a phone it
-// opens the fader, and the icon says the same thing either way.
+// The press is the caller's: it mutes on desktop and opens the fader on a phone.
 function VolumeButton({
 	volume,
 	onPress,
@@ -25,9 +24,7 @@ function VolumeButton({
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
 	volume: VolumeState | null;
 	onPress?: () => void;
-	// Which volume this is. The control retargets to whichever device the sound
-	// is coming out of, and a fader that changed target silently would be the
-	// same drawing meaning two different things.
+	/** Which volume this is: the control retargets to whichever device the sound is coming out of. */
 	label?: string;
 }) {
 	const percent = volumePercent(volume);
@@ -48,8 +45,6 @@ function VolumeButton({
 	);
 }
 
-// Exported for the listen picker, which points it at this device's own level
-// rather than the player's. Same law, same gesture, different target.
 export function VolumeSlider({
 	volume,
 	onChange,
@@ -111,9 +106,7 @@ export function VolumeSlider({
 	);
 }
 
-// Mobile. A column above the button rather than taking over the row: the track
-// name stays readable, and dragging to the bottom is the mute gesture -- which
-// is why the button here only opens and closes.
+// Mobile. A column above the button rather than taking over the row, so the button here only opens and closes.
 export function VolumePopover({
 	volume,
 	onChange,

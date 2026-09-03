@@ -1,138 +1,41 @@
 # Talking to the player
 
-`API.md` is the full measured surface. These are the traps that have already cost
-time:
+`API.md` is the full surface. These are the traps that have already cost time.
 
-- **The column list is split on commas before evaluation**, so any title-format function
-  taking more than one argument is unusable — `$if(a,b,c)` arrives as three columns.
-  **Single-argument functions do nest**, though: `$len($meta(unsynced lyrics))` works. Use
-  that for cheap server-side computation.
-- **`%added%` does not exist** — it returns `?` on every track, so there is no
-  date-added field at any price. `%date%` is a different story and the previous note
-  here was wrong: *measured* over 30,441 tracks it resolves on 30,347 of them —
-  26,891 year-only (`2010`), **3,022 full ISO dates** (`1992-10-13`), and 434 untidy
-  (`1997, 1997-02-10`, `2011-00`, `2010-09-28T07:00:00Z`). It is an ordinary messy
-  user tag, not a mangled constant. **Still sort and group by `%year%`**, which is
-  clean and integer-shaped; reach for `%date%` only where a real release date is worth
-  having, and parse it leniently.
-- **There is no play *history*, only a last play.** `%lastfm_play_count%` is the
-  lifetime total and `%lastfm_last_played%` is the most recent play and nothing
-  else, so a track played today and again three weeks ago reports only today. Any
-  per-day or per-week chart built on it undercounts every older bucket and slopes
-  upward whatever the listening actually did, and any "vs. last month" delta
-  compares a full window against a decayed one. A window can honestly report how
-  many *distinct tracks* were touched since a date, and must say so in those words.
-  See `features/home/CLAUDE.md`, which is where this keeps being proposed.
-- **`%last_modified%` is not a date-added field.** Playback can rewrite tags, which bumps
-  the file mtime — measured, the mtime moves ~55 s before the scrobble lands, and 21% of
-  played tracks have an mtime within ten minutes of their last play. It is
-  `max(added, last played or retagged)`, and it is wrong precisely at the recent end. Build
-  "recently added" from Jean's own first-seen index instead, seeded from mtime on first
-  sync.
-- **Lyrics are `$meta(unsynced lyrics)`** — with a space, and it holds LRC-timestamped
-  content despite the name. Reading them needs **no component**; they're an ordinary tag.
-  `%lyrics%` returns `?` and `$meta(unsyncedlyrics)` finds nothing.
-- **`GET /api/player` ignores `trcolumns`** and returns `"columns": []`. Use
-  `GET /api/query?player=true&trcolumns=…`.
-- **The play queue's columns parameter has two names**, and each endpoint ignores the
-  other's. `GET /api/playqueue` takes **`columns`**; `/api/query` and
-  `/api/query/updates` take **`qcolumns`**. Sending the wrong one is a 200 with
-  `"columns": []` on every entry, which reaches the UI as a panel full of blank rows
-  rather than as an error. Jean asks through `/api/query` in both places so that
-  first paint and every push evaluate the same expressions.
-- **A play queue entry holds a track, not a position, and `itemIndex: -1` is an
-  orphan.** *Measured*: removing a playlist row above a queued one renumbers the
-  reported `itemIndex` rather than stranding the entry, and removing the queued track
-  itself leaves the entry in place with `itemIndex: -1` and **garbage in `columns`**
-  — one probe came back titled `NEIN`. Test the index; never read the columns of an
-  orphan.
-- **`queueIndex` is honoured on `/playqueue/remove` and silently ignored on
-  `/playqueue/add`.** So removal is exact and insertion does not exist: a reorder is a
-  remove-and-re-append of the queue's tail. The add returns **204**, not 400, so there
-  is nothing to feature-detect it with.
-- **Deleting a playlist that the play queue points into crashes `foo_beefweb`** and
-  takes foobar2000 with it. `dequeuePlaylist` clears the entries first and
-  `usePlaylistActions` abandons the delete if they will not clear. Full crash report
-  in `API.md`.
-- **Volume is decibels** (`-100..0`), not a percentage, and `volume.type` says so --
-  another player may report a linear range. How the fader maps onto that range is
-  in `src/domain/player/CLAUDE.md`.
-- **`itemCount` in `PlaylistInfo` goes stale and nothing corrects it.** *Measured*:
-  the update stream pushes `playlists` when a playlist is added, renamed or deleted,
-  and pushes nothing at all when its *items* change. So a cached count is wrong from
-  the first `items/copy` onwards. Re-read it from the player before doing arithmetic
-  with it — how many rows to remove, whether a cached view still matches, whether an
-  undo range is still the range it was. Trusting it emptied 99 rows out of a 113-row
-  playlist and then played whatever had drifted into the row that was clicked. A
-  one-item `playlistItems` subscription is a cheap tripwire if you need to notice;
-  see `API.md`.
-- **A set arrives in an order of the player's choosing, never the order you asked
-  for.** `items/copy` returns playlist indices ascending, so the playlist source is
-  safe once refs are sorted. `add-from-library` is **not**: it returns the
-  media library's *browse* order -- album artist, album, track -- which is not the
-  file-path order `/library/items` pages in. *Measured* on 30,441 tracks: of 100 sent
-  in path order 10 landed elsewhere, of 1,000 426 did, of 8,000 3,945 did. Sorting
-  refs ascending is necessary and **not sufficient**; see "Filling a playlist from the
-  library" in `src/domain/library/CLAUDE.md` for what is.
-- **Playlist items have no ID.** Index is identity, so any mutation invalidates indices
-  you were holding.
-- **SSE is change-driven, not a ticker.** Long silences are normal; `position` alone never
-  triggers a message.
-- **The static server has no SPA fallback** — `/playlists/p2` is a 404. Use hash routing.
-- **`GET /clientconfig/{id}` answers `200` with a body of `null` for an id nobody has
-  written**, not a 404. That is the "not installed" signal for `foo_jean` and is the
-  common case, so it is not an error path. Nothing on that route is authenticated and
-  `changeClientConfig` defaults to on, which is why a record read from it is a hint and
-  never evidence; see the root `CLAUDE.md`.
+## beefweb
 
-**One discovery, two seams.** `discoverFooJean()` lives here rather than beside
-either of the things that use it: tag writing is in `domain/track` and listening
-is in `domain/player`, tiers that may not import each other, and each running its
-own probe would send two `status` calls and two `capabilities` calls to answer one
-question. The states are `FooJeanState` for the same reason -- they describe the
-*component*, not either seam. `shared/hooks/useFooJean.ts` is the react-query
-dedupe over it: every caller names one key, so the second to mount reads the
-first one's result. `TOKEN_KEY` moved here with it, and the rule on it is
-unchanged: **it may never move to `/api/clientconfig`**, because beefweb serves
-that namespace unauthenticated.
+- **The column list is split on commas before evaluation**, so any title-format function taking more than one argument is unusable — `$if(a,b,c)` arrives as three columns. **Single-argument functions do nest**: `$len($meta(unsynced lyrics))` works, which is how to ask about a large field without downloading it.
+- **`GET /api/player` ignores `trcolumns`** and returns `"columns": []`. Use `GET /api/query?player=true&trcolumns=…`.
+- **The play queue's columns parameter has two names.** `GET /api/playqueue` takes **`columns`**; `/api/query` and `/api/query/updates` take **`qcolumns`**. Sending the wrong one is a 200 with `"columns": []` on every entry, which reaches the UI as a panel of blank rows rather than as an error. Jean asks through `/api/query` in both places so first paint and every push evaluate the same expressions.
+- **A play queue entry holds a track, not a position, and `itemIndex: -1` is an orphan.** Removing a playlist row above a queued one renumbers the reported index rather than stranding the entry; removing the queued track itself leaves the entry with `itemIndex: -1` and **garbage in `columns`**. Test the index; never read an orphan's columns.
+- **`queueIndex` is honoured on `/playqueue/remove` and silently ignored on `/playqueue/add`.** So removal is exact and insertion does not exist: a reorder is a remove-and-re-append of the tail. The add returns **204**, not 400, so there is nothing to feature-detect it with.
+- **Deleting a playlist the play queue points into crashes `foo_beefweb`** and takes foobar2000 with it. `dequeuePlaylist` clears the entries first and `usePlaylistActions` abandons the delete if they will not clear. Crash report in `API.md`.
+- **`itemCount` in `PlaylistInfo` goes stale and nothing corrects it.** The update stream pushes `playlists` when a playlist is added, renamed or deleted, and pushes nothing when its *items* change. Re-read it from the player before doing arithmetic with it — how many rows to remove, whether a cached view still matches, whether an undo range is still that range. Trusting it emptied 99 rows out of a 113-row playlist and then played whatever had drifted into the row that was clicked.
+- **A set arrives in an order of the player's choosing, never the order asked for.** `items/copy` returns playlist indices ascending, so the playlist source is safe once refs are sorted. `add-from-library` is **not**: it returns the media library's *browse* order — album artist, album, track — which is not the file-path order `/library/items` pages in. Sorting refs ascending is necessary and not sufficient; see "Filling a playlist from the library" in `src/domain/library/CLAUDE.md`.
+- **Playlist items have no id.** Index is identity, so any mutation invalidates indices being held.
+- **SSE is change-driven, not a ticker.** Long silences are normal; `position` alone never triggers a message.
+- **The static server has no SPA fallback** — `/playlists/p2` is a 404. Hence hash routing.
+- **`%added%` does not exist**, so there is no date-added field at any price. **`%date%` is an ordinary messy user tag** — year-only on most tracks, full ISO on some, untidy (`1997, 1997-02-10`, `2011-00`) on a few. Sort and group by `%year%`, which is clean and integer-shaped; parse `%date%` leniently only where a real release date is worth having.
+- **`%last_modified%` is not a date-added field.** Playback can rewrite tags, which bumps the mtime — it moves ~55 s before the scrobble lands, and 21% of played tracks have an mtime within ten minutes of their last play. It is `max(added, last played or retagged)` and wrong precisely at the recent end.
+- **There is no play *history*, only a last play.** `%lastfm_play_count%` is a lifetime total and `%lastfm_last_played%` is the most recent play and nothing else. Any per-day or per-week chart undercounts every older bucket and slopes upward whatever the listening did; any "vs. last month" delta compares a full window against a decayed one. A window can honestly report how many *distinct tracks* were touched since a date, and must say so in those words.
+- **Lyrics are `$meta(unsynced lyrics)`** — with a space, and it holds LRC-timestamped content despite the name. Reading needs **no component**. `%lyrics%` returns `?` and `$meta(unsyncedlyrics)` finds nothing.
+- **Volume is decibels** (`-100..0`), not a percentage, and `volume.type` says so — another player may report a linear range. How the fader maps onto it is in `src/domain/player/CLAUDE.md`.
+- **`GET /clientconfig/{id}` answers `200` with a body of `null` for an id nobody has written**, not a 404. That is the "not installed" signal for `foo_jean` and is the common case, so it is not an error path. Nothing on that route is authenticated and `changeClientConfig` defaults to on, which is why a record read from it is a hint and never evidence; see the root `CLAUDE.md`.
 
-**`POST /pair` is the other route with no bearer token, and the only one that emits
-one.** It answers during a window opened at the player, to a caller on the local network,
-once. Two failures matter to a client and they are different sentences: a 403 saying
-*pairing is not open* is a button somebody has to press and the message must name the
-menu path, while a 403 saying *local network only* is a fact no pressing will change. A
-404 is a component too old to have the route. **`Content-Type: application/json` is
-mandatory** — the component refuses anything else, because a simple POST needs no CORS
-preflight and could be fired blind by a page to spend the single grant.
+## `foo_jean`
 
-`discovery.origin` is non-null exactly when `/api/status` answered as `foo_jean` at a
-supported version, which makes it the proof that a port is safe to post to. Pairing needs
-that before it has a token, so it cannot be gated on `ready`.
+**One discovery, two seams.** `discoverFooJean()` lives here rather than beside either consumer: tag writing is in `domain/track` and listening is in `domain/player`, tiers that may not import each other, and each running its own probe would send two `status` calls and two `capabilities` calls to answer one question. `FooJeanState` describes the *component*, not either seam. `shared/hooks/useFooJean.ts` is the react-query dedupe over it: every caller names one key, so the second to mount reads the first one's result.
 
-**`GET /stream` is the one route that takes no bearer token**, because an
-`<audio>` element cannot send a header. The ticket is the credential and it
-travels in the query string, which is exactly why it expires in minutes; the
-token must never go there. All three 401 causes -- no ticket, unknown, expired --
-answer identically on purpose, so a client cannot sort guesses into "wrong" and
-"too late", and cannot tell any of them from an undecodable codec either. A 503
-is *two* conditions distinguished only by the `error` string: this install does
-not stream, or it is already serving as many listeners as it allows. The second
-must read as "busy" and retry.
+**`TOKEN_KEY` lives here, and may never move to `/api/clientconfig`**, because beefweb serves that namespace unauthenticated.
 
-**`foo_jean`'s types are generated, and not into `fooJean.d.ts`.** The component ships
-an OpenAPI document and it is the contract, so `shared/api/fooJeanSchema.d.ts` comes out
-of `npx openapi-typescript ../foo_jean/docs/openapi.yaml`, committed, with no codegen
-step in `pnpm build` — that would make the build depend on a sibling repo being checked
-out. The name is the trap: **`fooJean.d.ts` beside `fooJean.ts` is read by TypeScript as
-that file's own declarations**, so every import of it is circular and the error says
-neither of those things. Same family as naming a store after the component beside it.
-The hand-written `types.ts` stays hand-written for beefweb, for the reasons below.
+**`POST /pair` is the other route with no bearer token, and the only one that emits one.** It answers during a window opened at the player, to a caller on the local network, once. Two failures matter and are different sentences: a 403 saying *pairing is not open* is a button somebody has to press and the message must name the menu path, while a 403 saying *local network only* is a fact no pressing will change. A 404 is a component too old to have the route. **`Content-Type: application/json` is mandatory** — the component refuses anything else, because a simple POST needs no CORS preflight and could otherwise be fired blind by a page to spend the single grant.
 
-**`shared/api/types.ts` is hand-written and is the contract.** Not generated: beefweb
-ships an OpenAPI document, but it describes 0.10, and the parts Jean leans on
-hardest -- the media library API, and the fields that are *absent* rather than
-empty -- are either newer than it or not expressible in it. The fake player is
-checked against these same types, which is the point: a response shape that
-drifts from what the app expects is exactly the bug the suite exists to catch.
-It has already earned it twice -- the captured player sends `info.title` and
-`options[].name`, neither of which API.md's summaries mention.
+**`discovery.origin` is non-null exactly when `/api/status` answered as `foo_jean` at a supported version**, which makes it the proof that a port is safe to post to. Pairing needs that before it has a token, so it cannot be gated on `ready`.
+
+**`GET /stream` takes no bearer token**, because an `<audio>` element cannot send a header. The ticket is the credential and it travels in the query string, which is why it expires in minutes; **the token must never go there**. All three 401 causes — no ticket, unknown, expired — answer identically on purpose, so a client cannot sort guesses into "wrong" and "too late", and cannot tell any of them from an undecodable codec either. A 503 is *two* conditions distinguished only by the `error` string: this install does not stream, or it is already serving as many listeners as it allows. The second must read as "busy" and retry.
+
+## Types
+
+**`foo_jean`'s types are generated, and not into `fooJean.d.ts`.** The component ships an OpenAPI document and it is the contract, so `fooJeanSchema.d.ts` comes out of `npx openapi-typescript ../foo_jean/docs/openapi.yaml`, committed, with no codegen step in `pnpm build` — that would make the build depend on a sibling repo being checked out. **The name is the trap**: `fooJean.d.ts` beside `fooJean.ts` is read by TypeScript as that file's own declarations, so every import of it is circular and the error says neither of those things.
+
+**`types.ts` is hand-written and is the contract for beefweb.** Not generated: beefweb's OpenAPI document describes 0.10, and the parts Jean leans on hardest — the media library API, and fields that are *absent* rather than empty — are either newer than it or not expressible in it. The fake player is checked against these same types, which is the point: a response shape drifting from what the app expects is the bug the suite exists to catch. The captured player sends `info.title` and `options[].name`, which no summary of the API mentions.

@@ -9,21 +9,17 @@ import { append, clear, type Entry, load } from "./journal.ts";
 import { type CapturedLibrary, demoLibrary } from "./library.ts";
 import { answer } from "./responder.ts";
 
-// The demo's player, on the same routes the suite runs against. Everything Jean
-// asks beefweb for is answered here rather than over a network, so the page can
-// be a handful of static files on GitHub Pages and still be the whole app.
+// The demo's player, on the same routes the suite runs against, so the page can
+// be static files and still be the whole app.
 //
-// A service worker rather than a patched `fetch`, and the reason is one line of
-// the app: covers are `<img src="/api/artwork/...">`. Only a worker catches
-// those, and catching them is what lets the app run **unmodified** -- it still
-// believes it is talking to beefweb, same origin, exactly as when beefweb is
-// serving it.
+// A service worker rather than a patched `fetch` because covers are
+// `<img src="/api/artwork/...">`, and only a worker catches those. The app runs
+// unmodified, still believing it is talking to beefweb on the same origin.
 
 declare const self: ServiceWorkerGlobalScope;
 
-// The port the component advertises. Nothing listens on it -- the requests are
-// answered here, before they reach a network -- but the number has to be a real
-// one, because the app is entitled to build a URL out of it.
+// The port the component advertises. Nothing listens on it, but the app is
+// entitled to build a URL out of it, so it has to be a real port number.
 const AGENT_PORT = 8881;
 
 // beefweb refuses a body over 1 MiB by hanging up. `Response.error()` is that
@@ -50,16 +46,13 @@ const build = (library: CapturedLibrary) => {
 	const demo = demoLibrary(library);
 	return withClock(
 		createState({
-			// Playlists somebody would have, and the same library behind both
-			// sources -- the media library API and the `#Jean Library`
-			// autoplaylist -- exactly as a real 0.11 player reports it.
+			// The same library behind both sources, the media library API and the
+			// `#Jean Library` autoplaylist, as a real 0.11 player reports it.
 			playlists: demo.playlists,
 			mediaLibrary: demo.tracks,
 			artworkOf: demo.artworkOf,
-			// Installed, listening, and paired -- see `demo/CLAUDE.md` for why the
-			// demo shows the component present rather than absent. Streaming is off:
-			// there is no audio here, and `canStream: false` is a real state the app
-			// already draws correctly rather than a hole in the fake.
+			// Installed, listening and paired; see `demo/CLAUDE.md`. `canStream:
+			// false` is a real state the app draws rather than a hole in the fake.
 			fooJean: {
 				port: AGENT_PORT,
 				allowedFields: ["rating"],
@@ -69,8 +62,8 @@ const build = (library: CapturedLibrary) => {
 	);
 };
 
-// Null until the library has been fetched, which is why everything below waits
-// on `ready` before it reads this.
+// Null until the library has been fetched, so everything below awaits `booted`
+// before reading it.
 let state: ReturnType<typeof build> | null = null;
 
 const headersOf = (request: Request): RequestHeaders => {
@@ -99,10 +92,9 @@ const readBody = async (request: Request) => {
 
 // ---- artwork ---------------------------------------------------------------
 
-// Real sleeves, captured with the tracks and copied into the build beside
-// `sw.js`. Answered with the player's own cache terms, which is not decoration:
-// without them the browser refetches a cover it drew a moment ago, and twelve
-// rows of one album are twelve requests whatever the app does.
+// Answered with the player's own cache terms. Without them the browser refetches
+// a cover it drew a moment ago, and the rows of one album are one request each
+// whatever the app does.
 const artwork: ArtworkServer = async (name, headers, response) => {
 	const etag = `"${name}"`;
 	const cached = {
@@ -135,9 +127,8 @@ const artwork: ArtworkServer = async (name, headers, response) => {
 const isAgent = (url: URL) =>
 	url.hostname === self.location.hostname && url.port === String(AGENT_PORT);
 
-// Replayed on the way up, so a reload -- or the browser having shut the worker
-// down between two clicks -- keeps what somebody did rather than quietly
-// starting over.
+// Replayed on the way up, so a reload or a worker shut down between two clicks
+// keeps what was done to the player.
 const dispatch = async (
 	player: NonNullable<typeof state>,
 	entry: Entry,
@@ -167,9 +158,8 @@ const dispatch = async (
 		});
 };
 
-// One gate in front of everything: the library has to arrive before there is a
-// player to answer with, and the journal has to be replayed into it before the
-// page is told what is in it.
+// The library has to arrive before there is a player to answer with, and the
+// journal has to be replayed into it before the page is told what is in it.
 const start = async () => {
 	const player = build(await fetchLibrary());
 	for (const entry of await load())
@@ -177,22 +167,20 @@ const start = async () => {
 	state = player;
 };
 
-// Named `booted` rather than `ready` on purpose: `serve` destructures a `ready`
-// out of `answer()`, and a module binding of the same name would be shadowed by
-// it -- `await ready` at the top of that function would then land in the
-// temporal dead zone of the `const` below it and throw.
+// Named `booted` rather than `ready`: `serve` destructures a `ready` out of
+// `answer()`, so a module binding of that name would be shadowed by it, and
+// awaiting it at the top of that function would hit the temporal dead zone.
 let booted = start();
 
 // ---- serving ---------------------------------------------------------------
 
 async function serve(request: Request, url: URL): Promise<Response> {
 	await booted;
-	// Non-null by construction: `ready` is what assigns it.
+	// Non-null by construction: `start` is what assigns it.
 	const player = state as NonNullable<typeof state>;
 
-	// Both halves of the fake record into this one log, and nothing here reads
-	// it: a demo left open all afternoon would otherwise grow an entry per
-	// keystroke of search.
+	// Nothing here reads the log, and a demo left open all afternoon would grow an
+	// entry per keystroke of search.
 	if (player.requests.length > REQUEST_LOG_LIMIT)
 		player.requests.splice(0, player.requests.length - REQUEST_LOG_LIMIT);
 
@@ -203,8 +191,7 @@ async function serve(request: Request, url: URL): Promise<Response> {
 			: { refused: false, body: null };
 	if (refused) return Response.error();
 
-	// A write, and therefore worth keeping. Reads rebuild themselves from the
-	// state the writes produced.
+	// Only writes are journalled; reads rebuild from the state the writes made.
 	if (method === "POST") append({ method, path: url.href, body });
 
 	const { response, ready } = answer();
@@ -240,13 +227,12 @@ async function serve(request: Request, url: URL): Promise<Response> {
 	);
 }
 
-// The demo's own control surface, which the app knows nothing about. One route:
-// putting the library back the way it was found.
+// The demo's own control surface, which the app knows nothing about.
 async function control(url: URL): Promise<Response> {
 	if (url.pathname.endsWith("/reset")) {
 		await clear();
-		// Rebuilt from the held capture rather than refetched: the library is the
-		// same library, and a reset is about the writes on top of it.
+		// Rebuilt from the held capture rather than refetched: a reset is about the
+		// writes on top of the library, not the library.
 		state = build(await fetchLibrary());
 		booted = Promise.resolve();
 		return new Response(null, { status: 204 });
@@ -255,8 +241,8 @@ async function control(url: URL): Promise<Response> {
 }
 
 self.addEventListener("install", () => {
-	// A demo nobody can update is a demo of whatever it was in March. The page
-	// registers with `updateViaCache: 'none'` for the other half of this.
+	// The page registers with `updateViaCache: 'none'` for the other half of
+	// this.
 	self.skipWaiting();
 });
 
@@ -271,8 +257,8 @@ self.addEventListener("fetch", (event) => {
 	if (here && url.pathname.startsWith("/__demo/"))
 		return event.respondWith(control(url));
 
-	// Everything else -- the app's own files, and the artist lookup, which is
-	// genuinely on the internet -- goes to the network untouched.
+	// Everything else, including the artist lookup that is genuinely on the
+	// internet, goes to the network untouched.
 	if (!isAgent(url) && !(here && url.pathname.startsWith("/api/"))) return;
 
 	event.respondWith(serve(event.request, url));

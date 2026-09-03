@@ -1,10 +1,7 @@
 import type { TrackColumns } from "@/shared/api/types";
 
-// Which rows an action applies to, given where the pointer went down.
-//
-// The file-manager rule, shared by the context menu and by dragging because they
-// must never disagree. Rows are found through the DOM rather than per-row
-// handlers: the list is virtualised and its rows must not each carry a closure.
+// Which rows an action applies to, given where the pointer went down. Shared by the context menu and by dragging, which must never disagree.
+// Rows are found through the DOM rather than per-row handlers: the list is virtualised and its rows must not each carry a closure.
 export function targetsFrom(
 	event: { target: EventTarget | null },
 	rows: TrackColumns[],

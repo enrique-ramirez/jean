@@ -10,8 +10,7 @@ import type { PlaylistInfo } from "@/shared/api/types";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./CommandPalette.module.css";
 
-// Jumping between playlists, not searching them: tracks are the library
-// field's job, up in the top bar, where it is visible on a phone as well.
+// Jumps between playlists rather than searching their tracks, which is the library field's job up in the top bar.
 export function CommandPalette({
 	playlists,
 	onSelect,
@@ -25,9 +24,7 @@ export function CommandPalette({
 	const [query, setQuery] = useState("");
 	const [active, setActive] = useState(0);
 
-	// The same rule as every other list you can type at, through the same
-	// fold(): a palette that could not find `Babasónicos` from `babasonicos`
-	// would be the one place in the app where accents suddenly matter.
+	// Through the same `fold()` as every other typeable list, so accented titles are still found from unaccented input.
 	const tokens = tokenize(query);
 	const results =
 		tokens.length === 0
@@ -63,8 +60,7 @@ export function CommandPalette({
 	};
 
 	return (
-		// A dismissal scrim, not a control: Escape is the keyboard route out and the
-		// panel above owns it.
+		// A dismissal scrim, not a control: Escape is the keyboard route out and the panel above owns it.
 		// biome-ignore lint/a11y/noStaticElementInteractions: scrim, see above
 		<div
 			className={styles.backdrop}

@@ -16,10 +16,9 @@ import {
 // desktop and the phone viewport.
 const FAR = { index: 40, title: "Goodnite, Noises Everywhere" };
 
-// Where the view came to rest. Polling "is the row visible yet" is not the same
-// question: an animated jump brings the row on screen well before it stops
-// moving, so measuring where it landed at that moment measures a frame of the
-// animation instead. Two equal readings mean nothing is still running.
+// Where the view came to rest. An animated jump brings the row on screen well
+// before it stops moving, so "is the row visible yet" is not the same question.
+// Two equal readings mean nothing is still running.
 const settle = async (page: Page) => {
 	await page.waitForTimeout(900);
 	const first = await scrollTop(page);
@@ -28,8 +27,7 @@ const settle = async (page: Page) => {
 	return first;
 };
 
-// How far the playing row's middle is from the view's, in pixels. Zero is
-// centred; a whole row height away is not.
+// How far the playing row's middle is from the view's, in pixels.
 const offCentre = (page: Page) =>
 	page.evaluate(() => {
 		const scroller = document.querySelector("main");
@@ -42,10 +40,9 @@ const offCentre = (page: Page) =>
 		);
 	});
 
-// Centred, unless the list has run out of room to centre it. Near either end
-// the scroll clamps and the track simply cannot reach the middle -- asserting
-// otherwise would be asserting that scrollTop can go negative. What still has
-// to hold there is that it is on screen at all.
+// Centred, unless the list has run out of room. Near either end the scroll
+// clamps and the track cannot reach the middle; what still has to hold there is
+// that it is on screen at all.
 const expectCentredOrClamped = async (page: Page, index: number) => {
 	const distance = await offCentre(page);
 	expect(distance, `track ${index} was not mounted`).not.toBeNull();
@@ -71,8 +68,7 @@ const expectCentredOrClamped = async (page: Page, index: number) => {
 	).toBeLessThan(2);
 };
 
-// The first fully visible row at or past the middle of the view. Which index
-// that is depends on the layout and the viewport, so it is measured.
+// The first fully visible row at or past the middle of the view.
 const rowInTheMiddle = (page: Page) =>
 	page.evaluate(() => {
 		const scroller = document.querySelector("main");
@@ -90,9 +86,9 @@ const rowInTheMiddle = (page: Page) =>
 		return null;
 	});
 
-// The shared openLibrary waits for row 0 to be *attached*, which overscan makes
+// The shared openLibrary waits for row 0 to be attached, which overscan makes
 // true well above the fold. Everything below measures where the view came to
-// rest, so it has to start from one that has settled at the top.
+// rest, so it has to start from one settled at the top.
 const openAtTheTop = async (page: Page) => {
 	await openLibrary(page);
 	await expect(isRowOnScreen(page, 0)).resolves.toBe(true);
@@ -106,10 +102,8 @@ test.describe("following playback", () => {
 		await openAtTheTop(page);
 		expect(await isRowOnScreen(page, FAR.index)).toBe(false);
 
-		// Driven on the player rather than through the UI, because that is the case
-		// this has to get right: the track ended, or someone pressed next on the
-		// desktop. Nothing was clicked here, so the only thing that can move the
-		// view is the SSE push.
+		// Driven on the player rather than through the UI: nothing is clicked here,
+		// so the only thing that can move the view is the SSE push.
 		player.playItem("p7", FAR.index);
 
 		await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);
@@ -117,7 +111,6 @@ test.describe("following playback", () => {
 			"data-active",
 			"true",
 		);
-		// Nothing was played from here -- the scroll is a reaction, not a request.
 		expect(requestsTo(player, "/player/play/")).toEqual([]);
 	});
 
@@ -128,19 +121,16 @@ test.describe("following playback", () => {
 		await openAtTheTop(page);
 		player.playItem("p7", FAR.index);
 		await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);
-		// The follow animation is still running at this point -- the row comes into
-		// view well before it stops moving -- and scrolling away mid-flight just
-		// gets undone by the next frame of it.
+		// The follow animation is still running at this point, and scrolling away
+		// mid-flight is undone by the next frame of it.
 		await settle(page);
 
 		await scrollTo(page, 0);
 		await expect.poll(() => scrollTop(page)).toBe(0);
 
 		// Rows arriving is what re-runs the follow, and at library size they arrive
-		// in chunks -- so without a record of which track has already been followed,
-		// every chunk drags the view back to it and the list cannot be read while it
-		// loads. Appending one track is that same event with one chunk instead of
-		// sixteen, and it is the only way to provoke it against a 54-track fixture.
+		// in chunks. Appending one track is that same event with one chunk instead
+		// of sixteen, and the only way to provoke it against a 54-track fixture.
 		player.copyItems("p5", "p7", [0]);
 		// Item changes are not pushed by a real player, so the growth has to be
 		// announced the way a landing chunk announces itself. See state.js.
@@ -159,9 +149,8 @@ test.describe("with following turned off", () => {
 		await openAtTheTop(page);
 
 		player.playItem("p7", FAR.index);
-		// The track really did change -- the status bar proves the push landed. So
-		// the view staying put is the setting working, not the update never
-		// arriving, which is the way this test would otherwise pass for free.
+		// The status bar proves the push landed, so the view staying put is the
+		// setting working rather than the update never arriving.
 		await expect(statusBar(page)).toContainText(FAR.title);
 		await page.waitForTimeout(400);
 
@@ -175,14 +164,11 @@ test.describe("the jump survives a coasting list", () => {
 	test.skip(({ isMobile }) => isMobile, "wheel is a pointer input");
 
 	// Both the key and the wheel are dispatched from inside the page, one frame
-	// apart. Driving them over the wire instead means two round trips against a
-	// 240ms animation, and under parallel workers those land after it has already
-	// finished -- so the test passes whether or not the cancelling works. That
-	// version was not wrong so much as unreliable, which is worse: it failed
-	// correctly when run alone and passed in a full run.
+	// apart. Driving them over the wire is two round trips against a 240ms
+	// animation, which under parallel workers land after it has finished.
 	//
-	// A dispatched wheel event does not scroll anything, which is the point. All
-	// that is under test is whether the listener treats it as a decision.
+	// A dispatched wheel event scrolls nothing; all that is under test is whether
+	// the listener treats it as a decision.
 	const jumpAndWheel = async (page: Page, deltaY: number) =>
 		page.evaluate((delta) => {
 			document.dispatchEvent(
@@ -204,10 +190,7 @@ test.describe("the jump survives a coasting list", () => {
 		await scrollTo(page, 0);
 		await expect.poll(() => scrollTop(page)).toBe(0);
 
-		// Momentum from a flick that ended before the jump was even asked for. One
-		// pixel used to be enough to kill the animation and leave the view parked
-		// between where it started and where it was going, with the track not
-		// merely off centre but not rendered at all.
+		// Momentum from a flick that ended before the jump was asked for.
 		await jumpAndWheel(page, 1);
 
 		await settle(page);
@@ -219,8 +202,8 @@ test.describe("the jump survives a coasting list", () => {
 		player.playItem("p7", FAR.index);
 		await expect(statusBar(page)).toContainText(FAR.title);
 
-		// What an uninterrupted jump settles on, measured rather than assumed, so
-		// the interrupted one can be compared against something real.
+		// What an uninterrupted jump settles on, so the interrupted one has
+		// something measured to be compared against.
 		await scrollTo(page, 0);
 		await expect.poll(() => scrollTop(page)).toBe(0);
 		await jumpAndWheel(page, 0);
@@ -229,8 +212,7 @@ test.describe("the jump survives a coasting list", () => {
 
 		await scrollTo(page, 0);
 		await expect.poll(() => scrollTop(page)).toBe(0);
-		// Deliberate, and well past the threshold. An animation that keeps hauling
-		// the view back while someone is scrolling feels broken, so this must win.
+		// Well past the threshold, so the scroll wins over the animation.
 		await jumpAndWheel(page, 400);
 		const interrupted = await settle(page);
 
@@ -245,9 +227,7 @@ test.describe("at library scale", () => {
 		page,
 		player,
 	}) => {
-		// The whole point of the chunked load and the virtualiser is this size, and
-		// scroll offsets are arithmetic over a list 1.4 million pixels tall. None of
-		// the other specs would notice if that arithmetic broke past a few thousand.
+		// Scroll offsets here are arithmetic over a list 1.4 million pixels tall.
 		await page.goto("/#/p7");
 		await expect
 			.poll(() => page.getByRole("grid").getAttribute("aria-rowcount"), {
@@ -262,12 +242,10 @@ test.describe("at library scale", () => {
 	});
 });
 
-// The two layouts are not one code path with a different stylesheet. Album mode
-// virtualises groups rather than rows, so the index handed to the virtualiser is
-// not the index being centred; on a phone the cover stacks above its tracks
-// instead of sitting beside them, which changes every group's height; and the
-// row heights differ between them. Both projects run every spec, so each
-// assertion below is made four times -- list and album, desktop and phone.
+// Album mode virtualises groups rather than rows, so the index handed to the
+// virtualiser is not the index being centred; on a phone the cover stacks above
+// its tracks instead of sitting beside them, changing every group's height; and
+// the row heights differ between the two layouts.
 ["compact", "album"].forEach((layout) => {
 	test.describe(`following playback in ${layout} layout`, () => {
 		test.use({ settings: { "jean.layout": layout } });
@@ -283,10 +261,8 @@ test.describe("at library scale", () => {
 			await settle(page);
 			await expectCentredOrClamped(page, FAR.index);
 
-			// Back up the list. Minimal scrolling used to tuck this one under the
-			// sticky toolbar -- in view by the letter, and needing a nudge of the
-			// wheel to be seen. Centre has no edge to land on, so direction stops
-			// mattering.
+			// Back up the list: centre has no edge to land on, so a row arrived at
+			// from below must not end up tucked under the sticky toolbar.
 			player.playItem("p7", 15);
 			await expect.poll(() => isRowOnScreen(page, 15)).toBe(true);
 			await settle(page);
@@ -299,15 +275,13 @@ test.describe("at library scale", () => {
 		}) => {
 			await openAtTheTop(page);
 
-			// Centred somewhere with room on both sides first, so "it did not move"
-			// is a different sentence from "it was at the top and could not".
+			// Centred with room on both sides first, so "it did not move" is a
+			// different sentence from "it was at the top and could not".
 			player.playItem("p7", FAR.index);
 			await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);
 			const resting = await settle(page);
 			expect(resting).toBeGreaterThan(0);
 
-			// This used to re-centre on every one of these, so the list crept by a
-			// row per track and whatever you were reading moved out from under you.
 			await times(3, async (step) => {
 				const next = FAR.index + 1 + step;
 				player.next();
@@ -335,9 +309,6 @@ test.describe("at library scale", () => {
 			await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);
 			await settle(page);
 
-			// Staying put is only right while the row is on screen. Away from it,
-			// the next track has to come back -- otherwise not scrolling stops being
-			// restraint and becomes the view never following at all.
 			await scrollTo(page, 0);
 			await expect.poll(() => scrollTop(page)).toBe(0);
 			expect(await isRowOnScreen(page, FAR.index + 1)).toBe(false);
@@ -360,8 +331,8 @@ test.describe("at library scale", () => {
 			await scrollTo(page, 300);
 			await expect.poll(() => scrollTop(page)).toBe(300);
 
-			// Read off the page rather than named: which index is halfway down the
-			// view depends on the layout's row heights and on the viewport.
+			// Which index is halfway down the view depends on the layout's row
+			// heights and on the viewport, so it is read off the page.
 			const index = await rowInTheMiddle(page);
 			expect(index, "no fully visible row past the middle").not.toBeNull();
 
@@ -372,8 +343,6 @@ test.describe("at library scale", () => {
 			);
 			await page.waitForTimeout(600);
 
-			// The whole complaint: asking for a track you are looking at should not
-			// take the list away from you.
 			expect(await scrollTop(page)).toBe(300);
 		});
 
@@ -384,9 +353,7 @@ test.describe("at library scale", () => {
 			await openAtTheTop(page);
 
 			// The end of the list is where centring is impossible and the scroll
-			// clamps. That is also where the original offset bug hid: the clamp
-			// absorbed the error, so those tracks looked fine while the middle of the
-			// list did not.
+			// clamps, absorbing any offset error with it.
 			player.playItem("p7", 53);
 			await expect.poll(() => isRowOnScreen(page, 53)).toBe(true);
 			await settle(page);
@@ -402,12 +369,8 @@ test.describe("at library scale", () => {
 			settings: { "jean.layout": layout, "jean.followPlayback": false },
 		});
 
-		// The bug this covers: the virtualiser was told nothing about the view
-		// header and toolbar above the list, so every scrollToIndex landed short by
-		// their combined height. It read as "centring is a bit off" on a tall
-		// window, as "it does not scroll at all" on a short one -- there the error
-		// was the whole distance -- and as "it works sometimes" near the end of the
-		// list, where the clamp absorbed it.
+		// The virtualiser has to be told about the view header and toolbar above
+		// the list, or every scrollToIndex lands short by their combined height.
 		test("n centres it", async ({ page, player }) => {
 			test.skip(
 				test.info().project.name === "mobile",
@@ -435,9 +398,8 @@ test.describe("at library scale", () => {
 			await scrollTo(page, 0);
 			await expect.poll(() => scrollTop(page)).toBe(0);
 
-			// The pill only exists while the playing track is off screen, which is
-			// itself the assertion: it is measured against the scroll container
-			// rather than inferred from what the virtualiser rendered.
+			// The pill only exists while the playing track is off screen, measured
+			// against the scroll container rather than against what was rendered.
 			const pill = page.getByRole("button", { name: "Now playing" });
 			await expect(pill).toBeVisible();
 			await pill.click();

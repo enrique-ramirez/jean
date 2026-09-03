@@ -14,16 +14,10 @@ import {
 	type Track,
 } from "../fake-api/state.ts";
 
-// The fake player a spec is handed, for the helpers specs write of their own.
 export type FakePlayer = FakeServer["state"];
 
-// The shape a spec states with `test.use({ libraryShape: ... })`. Mirrors
-// `libraryOfShape`'s options; see the fixture below for why it is a description
-// rather than the built tracks.
 type LibraryShape = Parameters<typeof libraryOfShape>[0];
 
-// Everything a spec can pin with `test.use()`, plus what the fixtures build
-// from it.
 // Worker-scoped: one fake player per worker, so specs never share playlists.
 interface JeanWorkerFixtures {
 	fakeServer: FakeServer;
@@ -50,21 +44,15 @@ interface JeanFixtures {
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), "../../dist");
 
-// Settings live in localStorage until they move to /api/clientconfig, and one of
-// them changes what is on screen everywhere: the play-count shading introduces
-// itself on first sight and would otherwise cover the toolbar in every test that
-// never asked about it. Seeded by default and merged with whatever a spec adds,
-// so a spec states only the setting it cares about. `firstRun` opts out of the
-// seed entirely, for the tests that are about meeting Jean for the first time.
+// The play-count shading introduces itself on first sight and would otherwise
+// cover the toolbar in every test that never asked about it. `firstRun` opts
+// out of the seed entirely.
 const SEEDED_SETTINGS = {
 	"jean.heatIntroSeen": true,
 	"jean.settingsSeen": true,
 };
 
 export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
-	// One fake player per worker, on a port the OS picks. Workers never share a
-	// player, so the suite stays parallel without tests seeing each other's
-	// playlists.
 	fakeServer: [
 		// Playwright reads a fixture's dependencies off this pattern, so an empty
 		// one is how it says it has none.
@@ -72,8 +60,8 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 		async ({}, use) => {
 			const server = createServer({ serveDir: DIST });
 			await new Promise<void>((resolve) => server.listen(0, () => resolve()));
-			// Listens for every test whether or not one asks for it; what makes it
-			// absent is the discovery record beefweb serves.
+			// Listens for every test whether or not one asks for it; what makes the
+			// component absent is the discovery record beefweb serves.
 			await new Promise<void>((resolve) =>
 				server.agent.listen(0, () => resolve()),
 			);
@@ -84,77 +72,57 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 		{ scope: "worker" },
 	],
 
-	// How many tracks the Library playlist holds. The captured 54 are enough for
-	// anything about one screen of rows; past a few thousand the app behaves
-	// differently -- rows arrive in chunks rather than one response, and scroll
-	// offsets are computed over a list taller than any hand-written fixture.
+	// How many tracks the Library playlist holds. Past a few thousand the app
+	// behaves differently: rows arrive in chunks rather than one response.
 	librarySize: [null, { option: true }],
 
-	// How big the *media library* is, which is what `#/all` and search read on a
-	// 0.11 player. Separate from `librarySize` above, which inflates an ordinary
-	// playlist. The synthesised tracks deliberately do not sit in tag order:
-	// their track numbers cycle independently of their paths, so the library's
-	// path order and the player's browse order disagree -- which is the whole
-	// point, because the captured fixture's folders match its tags and cannot
-	// tell the two apart.
+	// How big the media library is, which is what `#/all` and search read on a
+	// 0.11 player. The synthesised tracks deliberately do not sit in tag order,
+	// so path order and browse order disagree.
 	mediaLibrarySize: [null, { option: true }],
 
-	// The *shape* of the media library rather than its size:
+	// The shape of the media library rather than its size:
 	// test.use({ libraryShape: { tracks: 4, albums: 1, omit: ['%year%'] } }).
-	// The capture is one tidy, mid-sized, thoroughly tagged collection, which is
-	// exactly the library in which a bug about small, one-artist or untagged ones
-	// cannot show up. Replaces the `#Jean Library` autoplaylist too, so both
-	// sources still describe the same library. See `libraryOfShape`.
+	// Replaces the `#Jean Library` autoplaylist too, so both sources still
+	// describe the same library.
 	//
-	// A description rather than the built tracks, because an option's *top level*
+	// A description rather than the built tracks, because an option's top level
 	// does not survive the trip to the worker as an array -- it arrives as
-	// `{0: ..., 1: ...}`, with no `.map` on it. Nested arrays are fine, which is
-	// why `omit` inside the object works and a bare array of tracks would not.
+	// `{0: ..., 1: ...}`. Nested arrays are fine, which is why `omit` works.
 	libraryShape: [null, { option: true }],
 
-	// Everything except Jean's own, dropped. A player with no user playlists on
-	// it at all is a fresh install, and nothing else reaches that state.
+	// Everything except Jean's own, dropped: a fresh install.
 	withoutPlaylists: [false, { option: true }],
 
-	// Title-formatting expressions this player cannot resolve, so a spec can ask
-	// for a bare install: test.use({ withoutFields: ['%lastfm_play_count%'] }) is
-	// foobar2000 with no playback-statistics component, and everything built on
-	// play counts should disappear rather than break.
+	// Title-formatting expressions this player cannot resolve.
+	// test.use({ withoutFields: ['%lastfm_play_count%'] }) is foobar2000 with no
+	// playback-statistics component.
 	withoutFields: [[], { option: true }],
 
-	// Removes the playlist Jean resolves as the library, so the first-run path is
-	// reachable. Nothing else can get there: an install that already has a
-	// `#Jean Library` never sees the setup screen, and the capture always has one.
+	// Removes the playlist Jean resolves as the library, which is the only way to
+	// reach the first-run path.
 	withoutLibraryPlaylist: [false, { option: true }],
 
 	// The media library's state, as beefweb 0.11+ reports it.
-	// test.use({ library: { supported: false } }) is DeaDBeeF, where every
-	// library endpoint answers 501; { enabled: false } is foobar2000 with no
-	// media library configured. Both send Jean back to the autoplaylist, but for
-	// different reasons and with different fixes.
+	// { supported: false } is DeaDBeeF, where every library endpoint answers 501;
+	// { enabled: false } is foobar2000 with no media library configured. Both
+	// send Jean back to the autoplaylist, for different reasons.
 	//
 	// JEAN_NO_LIBRARY_API=1 runs the whole suite against the autoplaylist
-	// fallback instead. The app is supposed to behave identically either way --
-	// that is what the source seam is for -- so the same assertions should hold
-	// with the data coming from somewhere else entirely.
+	// fallback instead. The same assertions should hold either way.
 	library: [
 		process.env.JEAN_NO_LIBRARY_API ? { supported: false } : {},
 		{ option: true },
 	],
 
-	// Whether this run has the media library API, for the handful of specs that
-	// genuinely cannot assert the same thing both ways. Asked of the fixture
-	// rather than of the environment, so there is one answer to the question and
-	// a spec that pins `library` gets the right one.
+	// Asked of the fixture rather than of the environment, so a spec that pins
+	// `library` gets the right answer.
 	hasLibraryApi: async ({ library }, use) => {
 		await use(library.supported !== false && library.enabled !== false);
 	},
 
 	// Tag values the capture does not carry, keyed by track title:
 	// test.use({ retagged: { Bloodhail: { '%artist%': 'Have a Nice Life feat. X' } } }).
-	// The captured library has no featured artist and no compilation on it, and
-	// both change what a row renders -- so a test states the tag rather than the
-	// fixture growing an invented album for it.
 	retagged: [{}, { option: true }],
 
 	// The optional tag-writing component and the states it can present; absent by
@@ -165,9 +133,8 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 	// never travel through beefweb's clientconfig.
 	fooJeanToken: [null, { option: true }],
 
-	// Overrides merged onto the captured player state, for the things that vary
-	// between installs and are not in the fixture: permissions, the volume range,
-	// which playback orders the player actually offers.
+	// Overrides merged onto the captured player state: permissions, the volume
+	// range, which playback orders the player offers.
 	playerState: [null, { option: true }],
 
 	// A fresh player per test. The previous test's page is closed by now, so no
@@ -188,10 +155,8 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 		},
 		use,
 	) => {
-		// Drops the `#Jean Library` autoplaylist, which is the only thing that makes
-		// Jean's library resolve on a player without the media library API -- so
-		// this is the first run. The ordinary playlist called 'Library' stays, and
-		// must not be mistaken for it.
+		// The ordinary playlist called 'Library' stays, and must not be mistaken
+		// for the `#Jean Library` autoplaylist.
 		const playlists = DEFAULT_PLAYLISTS().filter(
 			(playlist) =>
 				!(withoutLibraryPlaylist && playlist.title === "#Jean Library") &&
@@ -222,23 +187,18 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 		);
 	},
 
-	// Merged over SEEDED_SETTINGS above, so a spec names only what it changes.
+	// Merged over SEEDED_SETTINGS, so a spec names only what it changes.
 	settings: [{}, { option: true }],
 
 	// Nothing seeded at all, for the tests about a first run.
 	firstRun: [false, { option: true }],
 
-	// The app animates deliberately and without stopping: the play/pause toggle
-	// layers scale and rotate on coprime durations for as long as something is
-	// playing. Neither moves it, but both change its bounding box every frame,
-	// and Playwright waits for a box that holds still across two frames before it
-	// will click. Against a permanently moving target that wait can only time out
-	// -- so the suite asks for the preference the app already honours in
-	// tokens.css rather than forcing clicks past the checks that catch genuinely
-	// unclickable elements.
-	//
-	// The cost is that these tests say nothing about the motion itself. A spec
-	// that wants to assert on it opts out with test.use({ motion: 'allow' }).
+	// The play/pause toggle layers scale and rotate on coprime durations for as
+	// long as something is playing, so its bounding box changes every frame.
+	// Playwright waits for a box that holds still across two frames before it
+	// will click, and against a permanently moving target that wait can only time
+	// out. A spec that asserts on the motion itself opts out with
+	// test.use({ motion: 'allow' }).
 	motion: ["reduce", { option: true }],
 
 	page: async (
@@ -264,16 +224,13 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 	},
 });
 
-// Re-exported so a spec writing a helper of its own has one place to import
-// from, the same as it does for `test` and the locators below.
 export type { Locator, Page } from "@playwright/test";
 export { expect };
 
 // ---- finding things on screen ----------------------------------------------
 
-// The row the virtualiser has mounted for a given position in the view. Rows
-// carry data-row, which is their index in the view rather than in the playlist
-// -- the two differ the moment anything is filtered.
+// data-row is the row's index in the view rather than in the playlist; the two
+// differ the moment anything is filtered.
 export const trackRow = (page: Page, index: number) =>
 	page.locator(`[role="row"][data-row="${index}"]`);
 
@@ -287,13 +244,13 @@ export const statusBar = (page: Page) => page.locator("footer");
 export const nowPlayingScreen = (page: Page) =>
 	page.getByRole("region", { name: "Current track" });
 
-// `data-open` is the *drawer*, not the desktop sidebar: on a desktop the toggle
+// `data-open` is the drawer, not the desktop sidebar: on a desktop the toggle
 // sets `isSidebarCollapsed` and this stays false, so closing here is a no-op
-// there rather than something that collapses a sidebar the spec wanted.
+// there.
 //
-// Worth knowing on its own: a bare `page.goto('/#/p5')` is a hashchange rather
-// than a load, so React state survives it and the drawer does *not* close the
-// way it does when a row inside it is clicked.
+// A bare `page.goto('/#/p5')` is a hashchange rather than a load, so React state
+// survives it and the drawer does not close the way it does when a row inside it
+// is clicked.
 export const closeSidebar = async (page: Page) => {
 	// Not `sidebar()`: a closed drawer is `display: none`, so the role query does
 	// not resolve at all and asking it for an attribute waits out the timeout.
@@ -301,16 +258,15 @@ export const closeSidebar = async (page: Page) => {
 	if ((await nav.count()) === 0) return;
 	if ((await nav.getAttribute("data-open")) !== "true") return;
 	// The scrim, not the toggle in the top bar: an open drawer overlaps its own
-	// toggle, so clicking that waits for a button the drawer is sitting on. The
-	// scrim is what a finger reaches for anyway.
+	// toggle, so clicking that waits for a button the drawer is sitting on.
 	await page.getByRole("button", { name: "Close menu" }).click();
 	await expect(nav).toHaveAttribute("data-open", "false");
 };
 
-// Idempotent, and it has to be: on a phone the screen *replaces* the status
-// bar, so a second call would look for the button that opened it in the one
-// place it is guaranteed not to be. Closes the drawer first, which covers the
-// status bar on a phone and swallows the click.
+// Idempotent, and it has to be: on a phone the screen replaces the status bar,
+// so a second call would look for the button that opened it in the one place it
+// is guaranteed not to be. Closes the drawer first, which covers the status bar
+// on a phone and swallows the click.
 export const openNowPlaying = async (page: Page) => {
 	if (await nowPlayingScreen(page).isVisible()) return;
 	await closeSidebar(page);
@@ -322,15 +278,10 @@ export const openNowPlaying = async (page: Page) => {
 
 /**
  * Where the global playback controls are, which is a question about the
- * viewport rather than about the control.
+ * viewport rather than about the control. The compact status bar is Play and
+ * volume and nothing else; on a desktop everything is in the status bar.
  *
- * The compact status bar is Play and volume and nothing else -- shuffle,
- * skipping and the queue are full-sized targets on the now-playing screen
- * instead of 32px ones wedged around Play. On a desktop they are all still in
- * the status bar, which is on every screen.
- *
- * Opens the screen as a side effect on mobile, so a spec that only wants to
- * *find* a control reads the same on both projects.
+ * Opens the now-playing screen as a side effect on mobile.
  */
 export async function globalControls(page: Page, isCompact: boolean) {
 	if (!isCompact) return statusBar(page);
@@ -352,9 +303,6 @@ export const openSettings = async (page: Page) => {
 
 export const viewHeader = (page: Page) => page.locator("main header").first();
 
-// Where the sound is coming from. It used to be a third line in the status bar
-// and is now the now-playing screen's header, which is the only place with room
-// for it. Same claim, asked of the surface that makes it.
 export const expectPlayingFrom = async (page: Page, name: string) => {
 	await openNowPlaying(page);
 	// The header rather than the line: "Playing from" and the set's name are two
@@ -371,12 +319,10 @@ export const expectPlayingFrom = async (page: Page, name: string) => {
 export const sidebar = (page: Page) =>
 	page.getByRole("navigation", { name: "Playlists" });
 
-// On a phone the sidebar is a drawer -- display:none until asked for, and every
-// route change closes it again. On a desktop it is simply there. The toggle's
-// label cannot tell the two apart: it reads 'Show playlists' on a desktop as
-// well, because `isSidebarOpen` is only the drawer's business and is false there
-// too, so asking for it by name collapses a sidebar that was already open. Ask
-// the sidebar itself instead.
+// On a phone the sidebar is a drawer; on a desktop it is simply there. The
+// toggle's label cannot tell the two apart -- it reads 'Show playlists' on a
+// desktop as well -- so asking for it by name collapses a sidebar that was
+// already open. Ask the sidebar itself instead.
 export const openSidebar = async (page: Page) => {
 	const home = sidebar(page).getByRole("button", { name: "Home" });
 	if (await home.isVisible()) return;
@@ -384,8 +330,8 @@ export const openSidebar = async (page: Page) => {
 	await expect(home).toBeVisible();
 };
 
-// The captured `Library` playlist, which most specs use simply as a list long
-// enough to scroll. Not `#Jean Library`, which is Jean's own.
+// The captured `Library` playlist, which most specs use as a list long enough to
+// scroll. Not `#Jean Library`, which is Jean's own.
 export const openLibrary = async (page: Page) => {
 	await page.goto("/#/p7");
 	await expect(
@@ -396,8 +342,7 @@ export const openLibrary = async (page: Page) => {
 
 // ---- reading the player -----------------------------------------------------
 
-// What the app sent, so a test can assert on the wire rather than only on the
-// screen. Reads the fake's own log, not the browser's.
+// What the app sent, from the fake's own log rather than the browser's.
 export const requestsTo = (player: FakePlayer, pattern: string) =>
 	player.requests.filter((entry) => entry.path.includes(pattern));
 
@@ -406,8 +351,8 @@ export const requestsTo = (player: FakePlayer, pattern: string) =>
 export const scratchOf = (player: FakePlayer) =>
 	player.playlists.find((entry) => entry.title.startsWith("#Jean ["));
 
-// The last thing the player was told to play.
-// '' / api / player / play / {plref} / {index}
+// The last thing the player was told to play, from
+// /api/player/play/{plref}/{index}.
 export const playedFrom = (player: FakePlayer) => {
 	const play = requestsTo(player, "/player/play/").at(-1);
 	if (!play) return null;
@@ -415,9 +360,9 @@ export const playedFrom = (player: FakePlayer) => {
 	return { plref, index: Number(index) };
 };
 
-// The track that request actually names, resolved through the playlist it names
-// it in. The whole class of bug here is that a position and a track agree on a
-// number and disagree on a song, so nothing short of resolving it says anything.
+// The track that request names, resolved through the playlist it names it in. A
+// position and a track can agree on a number and disagree on a song, so nothing
+// short of resolving it says anything.
 export const trackPlayed = (player: FakePlayer) => {
 	const at = playedFrom(player);
 	if (!at) return null;
@@ -428,9 +373,9 @@ export const trackPlayed = (player: FakePlayer) => {
 // ---- gestures ---------------------------------------------------------------
 
 // Press-and-hold, which is touch's right-click. Dispatched rather than driven by
-// page.touchscreen, which has no way to hold -- and the synthetic click at the
-// end is part of the gesture rather than scaffolding: a hold that stopped
-// swallowing it would also activate whatever it opened the menu over.
+// page.touchscreen, which has no way to hold. The synthetic click at the end is
+// part of the gesture: a hold that stopped swallowing it would also activate
+// whatever it opened the menu over.
 export const pressAndHold = async (page: Page, target: Locator) => {
 	const box = (await target.boundingBox()) as {
 		x: number;
@@ -454,18 +399,13 @@ export const pressAndHold = async (page: Page, target: Locator) => {
 
 // ---- scrolling --------------------------------------------------------------
 
-// Whether a row is actually on screen, which is not the same question as
-// whether it rendered: overscan deliberately mounts rows past the fold, and an
-// album group is tall enough that its rows can be mounted while sitting well
-// below the viewport. Measured against the scroll container, the same way
-// TrackList decides which way the "Now playing" pill points.
-//
-// The tolerance is not slack, it is the unit the browser works in. Row heights,
-// the scroll offset and the container's own rect are all fractional, so a row
-// scrolled exactly to the bottom edge lands a few tenths of a pixel past it.
-// Asserting exact containment fails on geometry nobody can see.
+// Row heights, the scroll offset and the container's own rect are all
+// fractional, so a row scrolled exactly to the bottom edge lands a few tenths of
+// a pixel past it.
 const EDGE_TOLERANCE_PX = 1;
 
+// Whether a row is on screen, which is not the same as whether it rendered:
+// overscan deliberately mounts rows past the fold.
 export const isRowOnScreen = (page: Page, index: number) =>
 	page.evaluate(
 		({ row, slack }) => {
@@ -479,17 +419,15 @@ export const isRowOnScreen = (page: Page, index: number) =>
 		{ row: index, slack: EDGE_TOLERANCE_PX },
 	);
 
-// The virtualiser only mounts what is near the viewport, so a row further down
-// a playlist does not exist to be located until the list has been scrolled to
-// it. A screenful at a time rather than a jump to the end: the row wanted is as
-// often in the middle as at the bottom, and in album mode the total height is an
+// The virtualiser only mounts what is near the viewport, so a row further down a
+// playlist does not exist to be located until the list has been scrolled to it.
+// A screenful at a time rather than a jump: in album mode the total height is an
 // estimate until the groups have been measured, so any single jump is aimed at
-// the wrong place anyway.
+// the wrong place.
 export const scrollUntilMounted = async (page: Page, locator: Locator) => {
-	// Wait for the view before scrolling it. Without this the poll below starts
-	// against an empty list, scrolls a container with nothing in it to scroll,
-	// and spends its whole budget before the rows have even arrived -- which is
-	// why it failed only in a full parallel run and never on its own.
+	// Wait for the view before scrolling it. Without this the poll below scrolls
+	// a container with nothing in it and spends its whole budget before the rows
+	// arrive, which shows up only in a full parallel run.
 	await expect(page.locator('[role="row"]').first()).toBeAttached();
 
 	await expect
@@ -519,9 +457,7 @@ export const scrollTo = (page: Page, offset: number) =>
 // ---- running steps one after the next ---------------------------------------
 
 // Playwright assertions share one page, so a list of steps has to be awaited in
-// order rather than mapped into Promise.all. The app has the same need for its
-// own reasons -- see `shared/lib/sequence.ts` -- and there is no version of this
-// worth having two of.
+// order rather than mapped into Promise.all.
 export { inSequence };
 
 export const times = (count: number, run: (index: number) => unknown) =>

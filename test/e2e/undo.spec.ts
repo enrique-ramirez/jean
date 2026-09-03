@@ -8,13 +8,8 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// Undo is the app's answer to everything that writes, so this is about the
-// promise rather than the mechanism: what was added comes back off, and when it
-// cannot be taken off safely, nothing is.
-//
-// Adding is done through the row menu rather than by dragging, because the menu
-// is the route that exists on both surfaces and the one a selection travels
-// through. sidebar.spec.js covers the drag.
+// Adding goes through the row menu rather than a drag: the menu is the route
+// that exists on both surfaces. sidebar.spec.ts covers the drag.
 
 const FAVORITES = { id: "p2", title: "Favorites", itemCount: 7 };
 const LIBRARY = "p7";
@@ -44,10 +39,9 @@ const addToFavorites = async (page: Page, index: number, isMobile: boolean) => {
 		.click();
 };
 
-// An autoplaylist, which the API gives no way to recognise: the six fields of
-// PlaylistInfo say nothing about it and the write comes back 204 either way.
-// The fake refuses it exactly as the player does -- by accepting it and doing
-// nothing. See `useAddTracks`.
+// An autoplaylist, which the API gives no way to recognise: PlaylistInfo says
+// nothing about it and the write comes back 204 either way. The fake refuses it
+// as the player does, by accepting it and doing nothing. See `useAddTracks`.
 const AUTO = { id: "p9", title: "Recently Added", itemCount: 5 };
 
 const addTo = async (
@@ -71,8 +65,7 @@ test.describe("a playlist that takes the write and ignores it", () => {
 	}) => {
 		await addTo(page, 0, isMobile, AUTO.title);
 
-		// The request really is sent and really does answer 204 -- there is no way
-		// to know beforehand, so trying is the only test there is.
+		// The request is sent and answers 204; there is no way to know beforehand.
 		await expect
 			.poll(() => requestsTo(player, "/items/").length)
 			.toBeGreaterThan(0);
@@ -122,9 +115,6 @@ test.describe("adding tracks to a playlist", () => {
 	}) => {
 		await addToFavorites(page, 0, isMobile);
 
-		// Confirm only what is not already visible. Forty tracks landing in a
-		// playlist on another screen is exactly that, and the toast is also where
-		// the undo has to live.
 		await expect(toast(page)).toContainText(
 			`Added 1 track to ${FAVORITES.title}`,
 		);
@@ -148,7 +138,6 @@ test.describe("adding tracks to a playlist", () => {
 
 		await addToFavorites(page, 1, isMobile);
 
-		// Indices go up, nothing else does -- one request whatever the count.
 		await expect.poll(() => requestsTo(player, "/items/copy")).toHaveLength(1);
 		const copy = requestsTo(player, "/items/copy")[0];
 		expect(copy.path).toBe(
@@ -182,8 +171,8 @@ test.describe("undoing it", () => {
 
 		await toast(page).getByRole("button", { name: "Undo" }).click();
 
-		// The appended range, computed from the itemCount that was already in
-		// PlaylistInfo -- no %path% fetched, no matching, one request.
+		// The appended range, computed from the itemCount already in PlaylistInfo:
+		// no %path% fetched, no matching, one request.
 		await expect
 			.poll(() => requestsTo(player, "/items/remove"))
 			.toHaveLength(1);
@@ -226,9 +215,8 @@ test.describe("undoing it", () => {
 		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
 	});
 
-	// The reason undo can be this cheap at all, and the reason it has to check.
-	// The indices are only ours while nothing else has touched the playlist; the
-	// desktop is a second writer Jean cannot see coming.
+	// The indices are only ours while nothing else has touched the playlist, and
+	// the desktop is a second writer Jean cannot see coming.
 	test("it abandons itself when the playlist changed underneath", async ({
 		page,
 		player,
@@ -258,8 +246,7 @@ test.describe("undoing it", () => {
 			`${FAVORITES.title} has changed since then`,
 		);
 
-		// Not "it removed the wrong rows and told you" -- it removed nothing.
-		// Removing the wrong three is far worse than not offering the undo.
+		// It removed nothing, rather than removing the wrong rows and reporting it.
 		await page.waitForTimeout(200);
 		expect(requestsTo(player, "/items/remove")).toHaveLength(0);
 		expect(titlesIn(player, FAVORITES.id)).toEqual(after);
@@ -284,9 +271,6 @@ test.describe("undoing it", () => {
 	});
 });
 
-// The other half of the same rule: a message about something already on screen
-// is noise. Creating a playlist puts a named row in the sidebar, waiting to be
-// renamed, so there is nothing a toast could add.
 test.describe("what does not get a toast", () => {
 	test("creating a playlist says nothing, because the row is right there", async ({
 		page,

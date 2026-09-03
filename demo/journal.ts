@@ -1,16 +1,10 @@
-// What somebody did to the demo, so that it survives the page being reloaded
-// and the worker being shut down.
+// The writes made to the demo player, replayed against a new one on the way up.
 //
-// **A service worker is not a server.** The browser stops an idle one after
-// about thirty seconds and starts a fresh one for the next request, and
-// everything the player held goes with it -- the ratings written, the queue,
-// the playlist somebody reordered. The library itself is rebuilt from a seed
-// and costs nothing, so what is worth keeping is only the difference: the
-// writes, in the order they were made, replayed against a new player on the way
-// up. It is the same list `state.requests` already holds, for the same reason.
+// The browser stops an idle service worker after about thirty seconds and starts
+// a fresh one for the next request, taking everything the player held with it.
+// The library is rebuilt from a seed, so only the difference is worth keeping.
 //
-// Kept in the Cache API rather than IndexedDB because it is one JSON blob under
-// one key, and that is the whole of what a cache entry is.
+// In the Cache API rather than IndexedDB: it is one JSON blob under one key.
 
 export interface Entry {
 	method: string;
@@ -21,10 +15,7 @@ export interface Entry {
 const CACHE = "jean-demo";
 const KEY = "/__demo/journal";
 
-// Bounded, and the bound is a judgement rather than a limit anyone hit: a demo
-// session that has sent four hundred writes has told us everything about what
-// it was doing, and replaying a longer one costs the visitor a slower first
-// paint for state they have long forgotten. The oldest go first.
+// Replaying a longer journal costs a slower first paint. The oldest go first.
 const LIMIT = 400;
 
 let entries: Entry[] = [];
@@ -46,8 +37,7 @@ const save = async () => {
 export function append(entry: Entry) {
 	entries.push(entry);
 	if (entries.length > LIMIT) entries.splice(0, entries.length - LIMIT);
-	// Debounced: a drag sends a burst of writes and the journal is worth one
-	// serialisation, not forty.
+	// Debounced: a drag sends a burst of writes and is worth one serialisation.
 	if (!saving) saving = setTimeout(save, 500);
 }
 

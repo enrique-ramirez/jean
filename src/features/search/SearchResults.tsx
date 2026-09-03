@@ -22,10 +22,7 @@ import { Button } from "@/shared/ui/Button";
 import { SavePlaylistButton } from "./SavePlaylistButton";
 import styles from "./SearchResults.module.css";
 
-// A view over the library, never a playlist. Typing and refining write nothing:
-// the player only hears about a result set once somebody asks to hear it, and
-// then it is materialised into the scratch so playback stays inside the
-// matches. See jeanPlaylists.js for why that is not optional.
+// A view over the library, never a playlist: typing and refining write nothing, and a result set is materialised into the scratch playlist only when somebody asks to hear it.
 export function SearchResults({
 	search,
 	library,
@@ -45,9 +42,7 @@ export function SearchResults({
 	const [isSaving, setIsSaving] = useState(false);
 
 	const isPlaying = useIsPlaying();
-	// A read-only instance gets a read-only Jean: no button that would 403, and
-	// no Shuffle, which without a scratch playlist would shuffle the whole
-	// library rather than these results.
+	// A read-only instance gets a read-only Jean: no button that would 403, and no Shuffle, which without a scratch playlist would shuffle the whole library rather than these results.
 	const canSavePlaylists = usePermissions().changePlaylists === true;
 
 	const { rows, indices, heat, patina, playedCount } = search.results;
@@ -87,9 +82,7 @@ export function SearchResults({
 				<Search size={26} strokeWidth={1.5} aria-hidden="true" />
 				<h1 className={styles.idleTitle}>Search your library</h1>
 				<p className={styles.idleBody}>
-					{/* "Your library", never the name of whatever is standing in for it.
-              Which source answered is Jean's business, and with a media library
-              API there is no playlist to name at all. */}
+					{/* "Your library", never the name of whatever is standing in for it: with the media library API there is no playlist to name at all. */}
 					{library.count.toLocaleString()} tracks in your library. Title, artist
 					and album, as you type -- every word has to match, in any order.
 				</p>
@@ -118,8 +111,7 @@ export function SearchResults({
 			isCompactViewport={isCompactViewport}
 			keysEnabled={!search.isFocused}
 			onPlay={playAt}
-			// The library search is this list's filter, so `/` belongs to the field
-			// rather than to a second finder nested inside the results.
+			// The library search is this list's filter, so `/` belongs to the field rather than to a second finder nested inside the results.
 			onOpenFinder={search.focus}
 			emptyNotice="Nothing in your library matches that."
 			header={

@@ -9,8 +9,7 @@ import { inSequence } from "@/shared/lib/sequence";
 export const QUEUE_KEY = ["playQueue"];
 export const QUEUE_DROP_TARGET = "jean:queue";
 
-// Here rather than in `useQueue` so that `usePlayer` can consult it without the
-// two importing each other. A counter, because two mutations can overlap.
+// Here rather than in `useQueue` so `usePlayer` can consult it without the two importing each other. A counter, because two mutations can overlap.
 let held = 0;
 
 export const isQueueStreamHeld = () => held > 0;
@@ -33,9 +32,7 @@ export interface QueueEntry {
 	artist: string;
 	duration: number;
 	offset: number;
-	// beefweb reports `itemIndex: -1` for a track removed from its playlist, and
-	// leaves `columns` holding whatever fell into the freed slot -- one probe came
-	// back titled 'NEIN'. Branch on the index; never on the columns.
+	// beefweb reports `itemIndex: -1` for a track removed from its playlist and leaves `columns` holding whatever fell into the freed slot, so branch on the index and never on the columns.
 	isOrphan: boolean;
 }
 
@@ -93,8 +90,7 @@ export const sameQueue = (
 			item.itemIndex === b?.[at]?.itemIndex,
 	);
 
-// Deleting a playlist the queue points into crashes foo_beefweb and takes
-// foobar2000 with it, so this runs first and its answer gates the delete.
+// Deleting a playlist the queue points into crashes foo_beefweb and takes foobar2000 with it, so this runs first and its answer gates the delete.
 export async function dequeuePlaylist(playlistId: string) {
 	const queued = await fetchPlayQueue().catch(() => null);
 	if (!queued) return false;

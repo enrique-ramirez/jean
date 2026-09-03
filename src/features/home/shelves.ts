@@ -11,8 +11,7 @@ export interface Shelf {
 	caption: (album: Album) => string | null;
 }
 
-// Generic in the album, so a shelf built from covered albums still says so
-// downstream: the picks only filter and sort.
+// Generic in the album, so a shelf built from covered albums stays covered downstream: the picks only filter and sort.
 export interface FilledShelf<A extends Album = Album> extends Shelf {
 	albums: A[];
 	total: number;
@@ -25,18 +24,10 @@ type WithRating = Album & { rating: number };
 const LIMIT = 24;
 const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 
-// A shelf yielding fewer than this is dropped rather than shown thin: a row of
-// two covers reads as something failing to load.
+// A shelf yielding fewer than this is dropped rather than shown thin.
 const MINIMUM = 4;
 
-// A filter over the albums, a title, and a sentence it can say about each entry.
-// That last part is the point: "437 albums matching a predicate" is a query
-// result, "32 plays a track and not since 2016" is a reason to press play.
-//
-// Thresholds are percentiles, so a shelf fills whether you have three plays a
-// track or three hundred -- but a percentile only promises something qualifies,
-// never that the title is true, so a shelf claiming something about time carries
-// an absolute floor too. A shelf that cannot fill honestly does not render.
+// Thresholds are percentiles, so a shelf fills at any scale of play counts. A percentile only promises something qualifies, so a shelf claiming something about time carries an absolute floor too.
 const shelf = (
 	id: string,
 	title: string,
@@ -49,19 +40,14 @@ const byPlays = (a: Album, b: Album) => b.plays - a.plays;
 const byRecent = (a: Album, b: Album) => b.lastPlayed - a.lastPlayed;
 const plays = (count: number) => plural(Math.round(count), "play");
 
-// Decorate, sort, undecorate. `sort(() => Math.random() - 0.5)` is biased: the
-// result depends on the comparison order the engine happens to use.
+// Decorate, sort, undecorate. `sort(() => Math.random() - 0.5)` is biased: the result depends on the comparison order the engine happens to use.
 const shuffled = <T>(items: T[]): T[] =>
 	items
 		.map((item) => ({ item, at: Math.random() }))
 		.sort((a, b) => a.at - b.at)
 		.map(({ item }) => item);
 
-// Order is tab order, and the first two are the two anybody wants: what you play
-// most, then what you marked yourself. The titles are written to be worth
-// pressing rather than to describe a predicate -- "Never opened" was a fact
-// about a file and "Never listened" is a fact about you. **The ids are
-// deliberately not renamed with them**: they are the `#/shelf/<id>` route.
+// Order is tab order. The ids are the `#/shelf/<id>` route, so renaming one breaks a link a title change does not.
 export const SHELVES: Shelf[] = [
 	shelf(
 		"recent",
@@ -79,8 +65,7 @@ export const SHELVES: Shelf[] = [
 		(album) => plays(album.plays),
 	),
 
-	// Ratings are sparse and lopsided, so sorting by average alone sorts a flat tie.
-	// The second key is how many tracks were actually starred.
+	// Ratings are sparse and lopsided, so an average alone sorts a flat tie; the second key is how many tracks were starred.
 	shelf(
 		"rated",
 		"Your favourites",
@@ -102,8 +87,7 @@ export const SHELVES: Shelf[] = [
 		(album) =>
 			`${(album as WithRating).rating.toFixed(1)} stars, ${album.ratedCount} rated`,
 	),
-	// Plays *per track*, or a long soundtrack wins on volume alone -- but captioned
-	// with the year, which is the part that stings.
+	// Plays per track, or a long soundtrack wins on volume alone.
 	shelf(
 		"loved",
 		"Remember these?",
@@ -119,8 +103,7 @@ export const SHELVES: Shelf[] = [
 				played.map((album) => album.playsPerTrack),
 				0.75,
 			);
-			// The floor is what makes the title true. Without it this shelf offers
-			// records from last year and calls them forgotten.
+			// The floor is what makes the title true: without it the shelf offers records from last year and calls them forgotten.
 			const silent = Date.now() - 1.5 * YEAR_MS;
 
 			return played
@@ -132,8 +115,6 @@ export const SHELVES: Shelf[] = [
 		(album) => `Not since ${yearOf(album.lastPlayed)}`,
 	),
 
-	// Costs nothing: %codec% and %bitrate% are already fetched for every row. An
-	// album you play constantly and only own as a bad rip is worth knowing about.
 	shelf(
 		"upgrade",
 		"Time for an upgrade",
@@ -170,8 +151,7 @@ export const SHELVES: Shelf[] = [
 		"Never listened",
 		"In your library, never played",
 		(albums) =>
-			// With no playback-statistics component every album reads as zero, so this would
-			// offer the whole library and call it untouched.
+			// With no playback-statistics component every album reads as zero, so this would offer the whole library and call it untouched.
 			albums.some((album) => album.plays > 0)
 				? albums
 						.filter((album) => album.plays === 0)
@@ -181,8 +161,7 @@ export const SHELVES: Shelf[] = [
 	),
 ];
 
-// Needs no history, no ratings and no play counts, so a library Jean knows
-// nothing about still opens on something to press rather than an apology.
+// Needs no history, no ratings and no play counts, so a library Jean knows nothing about still opens on something to press.
 const STARTER = shelf(
 	"starter",
 	"Start somewhere",
@@ -209,15 +188,11 @@ export function buildShelves<A extends Album>(albums: A[]): FilledShelf<A>[] {
 	);
 	if (built.length > 0) return built;
 
-	// Nothing qualified -- a brand new install, or a player with no playback
-	// statistics at all. One row of the library beats an empty screen.
+	// Nothing qualified: a new install, or a player with no playback statistics at all.
 	return [fill(STARTER, albums)].filter((entry) => entry !== null);
 }
 
-// Ascending, which is not the order the shelf is drawn in and has to be said out
-// loud: `add-from-library` ignores the order of `items` and adds them in the
-// library's own, so a set concatenated in shelf order arrives sorted and every
-// position computed against it addresses a different track.
+// Ascending, which is not the order the shelf is drawn in: beefweb's `add-from-library` ignores the order of `items` and adds them in the library's own, so a position computed against shelf order would address a different track.
 export function refsOfShelf(shelf: FilledShelf<Album>) {
 	return Int32Array.from(
 		shelf.albums.flatMap((album) => [...album.refs]),

@@ -1,12 +1,9 @@
 import type { Locator } from "./fixtures.ts";
 import { expect, rowByTitle, scrollUntilMounted, test } from "./fixtures.ts";
 
-// Jar Of Flies, retagged. The captured library has no featured artist on it and
-// no compilation, and both are what an album row has to tell apart.
-//
-// 'No Excuses' and "Don't Follow" are the pair worth having: the same two words,
-// 'Mad Season', rendered two different ways because on one of them it is the
-// album artist plus a guest and on the other it is somebody else.
+// Jar Of Flies, retagged: the captured library has no featured artist on it and
+// no compilation. 'No Excuses' and "Don't Follow" both name Mad Season -- on one
+// it is a guest beside the album artist, on the other it is the artist.
 const ALBUM_ARTIST = "Alice in Chains";
 
 const GUESTS = "Nutshell";
@@ -21,8 +18,8 @@ const RETAGGED = {
 	[SOMEONE_ELSE]: { "%artist%": "Mad Season" },
 };
 
-// The names cell says which shape it took: one line with the guests beside the
-// title, or two with the artist under it.
+// data-inline is the shape the names cell took: one line with the guests beside
+// the title, or two with the artist under it.
 const names = (row: Locator) => row.locator("[data-inline]");
 const inlineNames = (row: Locator) => row.locator('[data-inline="true"]');
 
@@ -40,8 +37,6 @@ test.describe("guests on an album row", () => {
 			"feat. Ozzy Osbourne & Travis Scott",
 		);
 
-		// The caption two inches to the left already says Alice in Chains. Saying it
-		// again on every other row is the clutter this replaced.
 		await expect(names(row)).not.toContainText(ALBUM_ARTIST);
 	});
 
@@ -66,8 +61,8 @@ test.describe("guests on an album row", () => {
 		await expect(names(row)).toHaveAttribute("data-inline", "false");
 		await expect(names(row)).toContainText("Mad Season");
 
-		// Same two words as the row above, drawn differently, because there they
-		// were something added to the album artist and here they replace them.
+		// The same two words as the row above, drawn differently: there they add to
+		// the album artist, here they replace them.
 		await expect(names(rowByTitle(page, JOINED_BY_COMMA))).toHaveAttribute(
 			"data-inline",
 			"true",
@@ -87,10 +82,9 @@ test.describe("guests on an album row", () => {
 		await page.goto("/#/p7");
 		await scrollUntilMounted(page, rowByTitle(page, GUESTS));
 
-		// A short title against a long guest list. Sharing the shrink between them
-		// is the obvious flexbox default and it is wrong: it cut 'Nutshell' to
-		// 'Nuts...' on a phone while drawing most of the guests. The title is the
-		// row's identity, so the guests are what gives.
+		// A short title against a long guest list. The flexbox default shares the
+		// shrink between them, which cuts 'Nutshell' to 'Nuts...' on a phone while
+		// drawing most of the guests.
 		const title = inlineNames(rowByTitle(page, GUESTS)).locator("span").first();
 		await expect(title).toHaveText(GUESTS);
 
@@ -101,9 +95,8 @@ test.describe("guests on an album row", () => {
 	});
 });
 
-// Outside a group there is no caption naming the album artist, so the row is the
-// only thing that can, and it says the artist in full on its own line -- which
-// is what it did before any of this and must keep doing.
+// Outside a group there is no caption naming the album artist, so the row is
+// the only thing that can.
 test.describe("the same track in the list layout", () => {
 	test.use({
 		retagged: RETAGGED,
@@ -134,10 +127,9 @@ test.describe("the same track in the list layout", () => {
 	});
 });
 
-// A compilation gives every row a second line, and two lines of type in an album
-// row that was sized for one left the text of one row all but touching the next.
-// Measured rather than looked at, because it is
-// half a pixel, and it reads as "cluttered" rather than as anything nameable.
+// A compilation gives every row a second line, and an album row sized for one
+// leaves the two all but touching. The slack is half a pixel, so it is measured
+// rather than looked at.
 test.describe("an album row with two lines has room for them", () => {
 	test.use({
 		retagged: { [SOMEONE_ELSE]: { "%artist%": "Mad Season" } },
@@ -161,8 +153,7 @@ test.describe("an album row with two lines has room for them", () => {
 		);
 		expect(slack).toBeGreaterThanOrEqual(6);
 
-		// And a one-line row is left exactly where it was: 34px, so an album of
-		// them keeps the rhythm the grown row is the exception to!.
+		// A one-line row stays at its usual 34px; only the two-line row grows.
 		const single = await rowByTitle(page, "Rotten Apple").evaluate(
 			(row: HTMLElement) => row.getBoundingClientRect().height,
 		);

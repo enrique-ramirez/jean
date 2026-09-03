@@ -7,19 +7,12 @@ import {
 	requestArtwork,
 } from "./artworkQueue";
 
-// Waiting for a turn in the queue, granted one, or settled either way.
 type ArtworkState = "waiting" | "granted" | ArtworkOutcome;
 
 import styles from "./Artwork.module.css";
 
-// The artwork endpoint 404s when a track has no embedded cover, which is common
-// enough that it is a normal state rather than an error.
-// Takes a URL, not an address: where artwork lives is the source's business.
-//
-// Loading goes through the artwork queue rather than `loading="lazy"`, whose
-// answer to "is this visible" is yes for every row a jump scrolls past. Three
-// states rather than two -- waiting for a turn is a bare tile, and the disc icon
-// means the player has said there is no cover.
+// The artwork endpoint 404s when a track has no embedded cover, which is common enough to be a normal state rather than an error. Takes a URL, not an address: where artwork lives is the source's business.
+// Loading goes through the artwork queue rather than loading="lazy", whose answer to "is this visible" is yes for every row a jump scrolls past.
 export function Artwork({
 	src,
 	size,
@@ -27,11 +20,7 @@ export function Artwork({
 	className,
 }: {
 	src: string | null | undefined;
-	// Omit to let the caller's stylesheet own the box. A number is right for a
-	// list, where every tile is the same known size; the now-playing cover is
-	// sized against the space it has, and an inline `width`/`height` would beat
-	// the class that works that out -- which is how a square cover came to be
-	// stretched into an oblong and cropped by `object-fit`.
+	// Omit to let the caller's stylesheet own the box: an inline width/height beats the class that sizes the now-playing cover against the space it has.
 	size?: number | string;
 	alt?: string;
 	className?: string;
@@ -53,8 +42,7 @@ export function Artwork({
 		release.current = requestArtwork(src as string, () => setState("granted"));
 
 		return () => {
-			// Detaching an <img> mid-load does not stop the request -- the socket stays busy
-			// until the response arrives. Clearing the src is what abandons it.
+			// Detaching an <img> mid-load does not stop the request; the socket stays busy until the response arrives, and clearing the src is what abandons it.
 			if (image.current && !image.current.complete)
 				image.current.removeAttribute("src");
 			release.current?.();
@@ -96,8 +84,7 @@ export function Artwork({
 			style={style}
 			src={src ?? undefined}
 			alt={alt}
-			// The queue governs how many Jean starts; this governs where the browser puts
-			// them among everything else on the same six connections.
+			// The queue governs how many requests start; this governs where the browser puts them among everything else on the same six connections.
 			fetchPriority="low"
 			decoding="async"
 			draggable="false"

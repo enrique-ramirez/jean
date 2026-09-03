@@ -59,8 +59,7 @@ import { useTheme } from "./useTheme";
 
 const SEEK_STEP = 5;
 
-// Wraps the shell so the control in a row and the screen that configures it read
-// one resolution.
+// Wraps the shell so the control in a row and the screen that configures it read one resolution.
 export function App() {
 	return (
 		<TagWriterProvider>
@@ -93,8 +92,7 @@ function Shell() {
 		"jean.settingsSeen",
 		false,
 	);
-	// Split by breakpoint as the sidebar's is: on a desktop it is furniture worth
-	// restoring, on a phone it covers the app and should not come back on its own.
+	// Restored on a desktop, where it is furniture; not on a phone, where it covers the app.
 	const [isQueueDocked, setIsQueueDocked] = useStoredState(
 		"jean.queueOpen",
 		false,
@@ -103,9 +101,7 @@ function Shell() {
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
-	// Now playing is a layer over whatever you were looking at rather than a
-	// replacement for it, so the shell keeps resolving the route *underneath*.
-	// That is what lets it slide: there is something behind it to slide over.
+	// Now playing is a layer, so the shell keeps resolving the route underneath for it to slide over.
 	const isNowPlaying = route === ROUTE.playing;
 	const [openedFrom, setOpenedFrom] = useState("");
 	const shellRoute = isNowPlaying ? openedFrom : route;
@@ -113,9 +109,7 @@ function Shell() {
 	const { shelf, genre, isSearch, isAll, isHome, isLibrary } =
 		resolveRoute(shellRoute);
 
-	// The library is loaded for the views that show it. Search asks for it
-	// separately, on focus, because reaching for the field is the ask and the
-	// route cannot know.
+	// Loaded for the views that show it. Search asks separately, on focus, because reaching for the field is the ask and the route cannot know.
 	const library = useLibrary(playlists, {
 		wanted: isHome || isAll || Boolean(shelf) || Boolean(genre),
 	});
@@ -126,12 +120,7 @@ function Shell() {
 	const playing = usePlayingFrom();
 	const playingFrom = useMemo(() => routeOfPlayingSet(playing), [playing]);
 
-	// All music is the library itself, unprojected. A shelf is its albums' refs,
-	// in shelf order.
-	//
-	// Both depend on the snapshot rather than on `library`, which is rebuilt every
-	// render: keyed on the latter these never hit, and a full pass over every row
-	// runs on each of App's renders -- one per SSE message and per volume write.
+	// Keyed on the snapshot rather than on `library`, which is rebuilt every render: keyed on the latter these never hit and a full pass over every row runs on each of App's renders.
 	const { snapshot } = library;
 	const allMusic = useMemo(() => wholeLibrary(snapshot), [snapshot]);
 	const shelfView = useMemo(() => {
@@ -142,18 +131,13 @@ function Shell() {
 		return built ? project(snapshot, refsOfShelf(built)) : null;
 	}, [shelf, snapshot]);
 
-	// A genre is a filter over rows Jean already holds, not a playlist and not
-	// anything the player knows about -- so opening one costs a pass and no
-	// request. Depends on `snapshot.rows` rather than the snapshot, for the reason
-	// the two above do.
+	// A genre is a filter over rows Jean already holds, so opening one costs a pass and no request.
 	const genreView = useMemo(
 		() => (genre ? project(snapshot, refsOfGenre(snapshot.rows, genre)) : null),
 		[genre, snapshot],
 	);
 
-	// One description of the library view on screen, rather than the same three-way
-	// branch spelled out across five props -- which is how `kind` and `label` come
-	// to disagree, and a set filled under one name is marked against another.
+	// One description of the library view on screen, so `kind` and `label` cannot disagree across five props.
 	const listView = shelf
 		? {
 				view: shelfView,
@@ -178,18 +162,12 @@ function Shell() {
 					title: ALL_MUSIC,
 				};
 
-	// Jean's own scratch playlist is not somewhere to browse to. Playing a set of
-	// search results makes it the current playlist, and landing there would show
-	// those results stripped of the search that made them, under a name nobody
-	// chose.
+	// Jean's own scratch playlists are not somewhere to browse to: playing search results makes one current, and landing there would show them stripped of the search that made them.
 	const browsable = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
 	const routedId = browsable.some((entry) => entry.id === route) ? route : null;
 
-	// A reload lands back on #/search with an empty field and the results gone
-	// with it -- the query was only ever in memory. The player still knows what
-	// it was, because the playlist it is holding is named after it. Once per
-	// mount: clearing the search navigates away, but not before a render where
-	// both conditions still hold.
+	// A reload lands on #/search with the query gone, since it was only ever in memory. The playlist the player holds is named after it.
+	// Once per mount: clearing the search navigates away, but not before a render where both conditions still hold.
 	const restoredSearch = useRef(false);
 	const {
 		hasQuery,
@@ -203,17 +181,13 @@ function Shell() {
 		restoreSearch();
 	}, [isSearch, hasQuery, rememberedQuery, restoreSearch]);
 
-	// Where leaving the search puts you back. Held rather than derived: while the
-	// results are on screen the route no longer names a playlist.
+	// Where leaving the search returns to. Held rather than derived: while results are on screen the route no longer names a playlist.
 	const lastPlaylistId = useRef<string | null>(null);
 	useEffect(() => {
 		if (routedId) lastPlaylistId.current = routedId;
 	}, [routedId]);
 
-	// Checked against the live list rather than trusted: a playlist you were last
-	// looking at can be deleted, from here or from the desktop. The final
-	// fallback is whatever the player is on, so opening Jean lands somewhere
-	// meaningful rather than on an arbitrary playlist.
+	// Checked against the live list rather than trusted: a remembered playlist can have been deleted, here or on the desktop.
 	const selectedId =
 		routedId ??
 		(browsable.some((entry) => entry.id === lastPlaylistId.current)
@@ -227,8 +201,7 @@ function Shell() {
 		[browsable, selectedId],
 	);
 
-	// Each result set is its own view, so refining a query starts at the top
-	// while stepping back into a playlist returns to the row you left.
+	// Each result set is its own view, so refining a query starts at the top while stepping back into a playlist returns to the row it left.
 	useScrollMemory(
 		scrollRef,
 		isSearch
@@ -266,10 +239,7 @@ function Shell() {
 
 	const openSearch = useCallback(() => openRoute(ROUTE.search), [openRoute]);
 
-	// Somewhere other than the field asking for a search: a genre bar, a stat
-	// card naming an artist. The elements that call this are anchors to
-	// `#/search`, so the navigation would happen without this -- what it adds is
-	// the query itself, and closing the drawer on a phone.
+	// For callers that are already anchors to `#/search`: what this adds is the query itself, and closing the drawer on a phone.
 	const searchFor = useCallback(
 		(query: string) => {
 			search.setQuery(query);
@@ -278,18 +248,12 @@ function Shell() {
 		[search.setQuery, openSearch],
 	);
 
-	// Where dismissing the screen goes, and what the shell draws behind it.
-	// `history.back()` is wrong here: a reload lands directly on `#/playing` with
-	// no entry behind it, and back would leave Jean altogether. State rather than
-	// a ref because it decides what renders, and it only changes when you
-	// navigate somewhere that is not this screen.
+	// Where dismissing the screen goes. `history.back()` is wrong: a reload lands directly on `#/playing` with no entry behind it, and back would leave Jean altogether.
 	useEffect(() => {
 		if (!isNowPlaying) setOpenedFrom(route);
 	}, [isNowPlaying, route]);
 
-	// Once, so the switches are met rather than found. It waits for the library:
-	// an install with no `#Jean Library` has a setup step on screen, and that is
-	// the one thing to do first.
+	// Waits for the library: an install with no `#Jean Library` has a setup step on screen, and that is the one thing to do first.
 	useEffect(() => {
 		if (settingsSeen || !hasPlaylists || library.needsSetup) return;
 		setIsSettingsOpen(true);
@@ -306,8 +270,7 @@ function Shell() {
 		[isNowPlaying, closeNowPlaying, navigate],
 	);
 
-	// Registered apart from the rest, which go quiet while settings holds the
-	// keyboard. This one must survive the dialog it opens.
+	// Registered apart from the rest, which go quiet while settings holds the keyboard. This one must survive the dialog it opens.
 	useKeymap(
 		SCOPE.global,
 		{ openSettings: () => setIsSettingsOpen((current) => !current) },
@@ -370,8 +333,7 @@ function Shell() {
 					library={library}
 					onChange={(value) => {
 						search.setQuery(value);
-						// Typing is the navigation. Waiting for Enter would leave the first
-						// keystrokes filtering a page nobody is looking at.
+						// Typing is the navigation; waiting for Enter would filter a page nobody is looking at.
 						if (value.trim()) openSearch();
 					}}
 					onDismiss={() => {
@@ -414,10 +376,7 @@ function Shell() {
 			>
 				<Sidebar
 					playlists={playlists}
-					// Only a playlist route selects a playlist. `selectedId` falls back to
-					// the remembered or current one so leaving the search has somewhere to
-					// return to, and passing that through here lit a playlist row while
-					// you were on Home, beside the Home row that was also lit.
+					// Only a playlist route selects a playlist: `selectedId` falls back to a remembered one, which would otherwise light a playlist row while Home is showing.
 					selectedId={isLibrary ? null : selectedId}
 					onSelect={openPlaylist}
 					search={search}
@@ -437,9 +396,7 @@ function Shell() {
 							library={library}
 							playlists={playlists}
 							onPlayAlbum={home.playShelf}
-							// The whole library, which App already holds for the All music
-							// route -- the front door plays exactly the set that route shows,
-							// so it must be exactly the same refs.
+							// The front door plays exactly the set the All music route shows, so it must be exactly the same refs.
 							onPlayTrack={(ref) => home.playTrack(allMusic.indices, ref)}
 							onPlayEverything={() => home.playEverything(allMusic.indices)}
 							onShuffleEverything={() =>
@@ -486,9 +443,7 @@ function Shell() {
 					)}
 				</main>
 
-				{/* A layer over the content, not a replacement for it -- which is what
-            lets it slide up and down over the view you came from. A sibling of
-            `main` inside `.body`, exactly as the queue panel is. */}
+				{/* A sibling of `main` inside `.body`, as the queue panel is, so it can slide over the view it was opened from. */}
 				<NowPlaying
 					isOpen={isNowPlaying}
 					isCompactViewport={isCompactViewport}
@@ -508,17 +463,10 @@ function Shell() {
 				/>
 			</div>
 
-			{/* A sibling of the body, not a child of it -- it shares the body's cell
-          in the app grid, which is what puts it above the status bar without
-          anyone having to know how tall the status bar is. */}
+			{/* A sibling of the body, sharing its grid cell, which puts it above the status bar without anyone knowing how tall that is. */}
 			<Toasts />
 
-			{/* The one route that replaces the status bar rather than sitting above
-          it, and only on a phone: there the now-playing screen is the whole
-          viewport and carries its own transport, so leaving the strip below it
-          puts two Play buttons and the same cover on screen at once. The
-          desktop keeps it -- there the screen is a pane inside the shell and
-          the status bar is the only transport there is. */}
+			{/* On a phone the now-playing screen is the whole viewport and carries its own transport, so the strip below it would be a second Play button. */}
 			{isCompactViewport && isNowPlaying ? null : (
 				<StatusBar
 					isQueueOpen={isQueueOpen}

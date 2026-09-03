@@ -3,8 +3,7 @@ import { type ReactNode, useState } from "react";
 
 import styles from "./HelpHint.module.css";
 
-// A fragment: the caller's head row must wrap, so the text takes the line below
-// the button. A popover was clipped by the settings dialog's scroller.
+// A fragment rather than a popover, which the settings dialog's scroller clips: the caller's head row wraps, so the text takes the line below the button.
 export function HelpHint({
 	label,
 	children,

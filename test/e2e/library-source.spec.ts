@@ -1,10 +1,8 @@
 import type { APIRequestContext } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 
-// Detection only: which library Jean decides it is talking to, and that the
-// three outcomes stay three rather than collapsing into two. Nothing is wired
-// to the source yet -- this is the seam, checked before the call sites move
-// onto it.
+// Detection only: nothing is wired to the source yet, so this checks the seam
+// before the call sites move onto it.
 
 const info = async (request: APIRequestContext) =>
 	(await request.get("/api/library/info")).json();
@@ -34,7 +32,7 @@ test.describe("a player with the media library API", () => {
 test.describe("a player without it", () => {
 	test.use({ library: { supported: false } });
 
-	test("detection still answers, which is the whole point of it", async ({
+	test("detection still answers when there is no API", async ({
 		request,
 		player,
 	}) => {
@@ -52,8 +50,8 @@ test.describe("a player whose library is switched off", () => {
 	}) => {
 		const { library } = await info(request);
 
-		// The distinction that decides what the user is told: "make an
-		// autoplaylist" versus "switch your media library on in foobar2000".
+		// The distinction decides what is offered: make an autoplaylist, or switch
+		// the media library on in foobar2000.
 		expect(library!.supported).toBe(true);
 		expect(library!.enabled).toBe(false);
 	});

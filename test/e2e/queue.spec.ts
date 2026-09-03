@@ -16,9 +16,8 @@ import {
 const queuePanel = (page: Page) =>
 	page.getByRole("complementary", { name: "Queue" });
 
-// The status bar on a desktop; the now-playing screen's header on a phone,
-// where the compact strip is down to Play and volume. The drop target is only
-// ever the status-bar one -- dragging is mouse-only, so it is desktop-only too.
+// The status-bar button, which is also the only drop target: dragging is
+// mouse-only. On a phone the button lives on the now-playing screen instead.
 const queueButton = (page: Page) =>
 	statusBar(page).getByRole("button", { name: /^Queue/ });
 
@@ -47,8 +46,8 @@ const queueTracks = async (page: Page, isMobile: boolean, index = 0) => {
 	await expect(item).toHaveCount(0);
 };
 
-// Off the playlist, because what the queue promises is a playlist and a
-// position -- the control surface resolves no columns.
+// Read off the playlist: a queue entry is a playlist and a position, and the
+// control surface resolves no columns.
 const queuedTitles = (player: FakePlayer) =>
 	player.playQueue.map((entry) => {
 		const playlist = player.playlists.find(
@@ -94,9 +93,6 @@ test.describe("putting things in the queue", () => {
 		for (const add of adds) expect(typeof add.body?.itemIndex).toBe("number");
 	});
 
-	// The other half of the drag that already ends on a sidebar playlist. Tested
-	// here rather than beside that one because what it asserts is the queue: the
-	// gesture is the sidebar's, the destination is this file's.
 	test("a track dropped on the queue button is queued", async ({
 		page,
 		player,
@@ -126,8 +122,7 @@ test.describe("putting things in the queue", () => {
 
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
 		expect(requestsTo(player, "/playqueue/add")).toHaveLength(1);
-		// The drop is the same route the menu takes, undo and all, and the queue
-		// panel is shut -- so it has to say something.
+		// The queue panel is shut, so the drop has to say something.
 		await expect(page.getByRole("status")).toContainText("Queued 1 track");
 	});
 
@@ -149,8 +144,7 @@ test.describe("putting things in the queue", () => {
 		await page.mouse.move(source!.x + 90, source!.y + 40, { steps: 8 });
 
 		await expect(queueButton(page)).toHaveAttribute("data-drop-target");
-		// Armed is not the same as under the pointer: the button says it takes
-		// tracks without claiming this one is landing on it.
+		// Armed is not the same as under the pointer.
 		await expect(queueButton(page)).not.toHaveAttribute("data-drop-over");
 
 		await page.mouse.up();
@@ -179,8 +173,8 @@ test.describe("putting things in the queue", () => {
 		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
-		// And it goes with the drag: at rest that point is not the button's, so
-		// nothing beside it has quietly lost a strip of itself for the session.
+		// At rest that point is not the button's, so nothing beside it has lost a
+		// strip of itself for the session.
 		const stillCaught = await page.evaluate(
 			(point) =>
 				Boolean(
@@ -216,9 +210,8 @@ test.describe("putting things in the queue", () => {
 	}) => {
 		await openLibrary(page);
 
-		// Read wherever the button lives, and come back to the list afterwards --
-		// on a phone it is on the now-playing screen, and the tracks being queued
-		// are in the list behind it.
+		// On a phone the button is on the now-playing screen and the tracks being
+		// queued are in the list behind it, so close it again after reading.
 		const badge = async () => {
 			const button = await anyQueueButton(page);
 			const name = await button.getAttribute("aria-label");
@@ -317,8 +310,7 @@ test.describe("the panel", () => {
 
 		await openQueue(page);
 
-		// An empty queue has no rows, so nothing else on this panel is ticking --
-		// which is exactly how the origin label came to be drawn once and left.
+		// An empty queue has no rows, so nothing else on this panel is ticking.
 		const label = queuePanel(page).getByText(/left of this track/);
 		const first = await label.textContent();
 		await expect
@@ -388,7 +380,7 @@ test.describe("what the player does with it", () => {
 		await queueTracks(page, isMobile, 9);
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
 
-		// Through the player, not the UI: Next is desktop-only now.
+		// Through the player, not the UI: Next is desktop-only.
 		await page.evaluate(() => fetch("/api/player/next", { method: "POST" }));
 
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(0);

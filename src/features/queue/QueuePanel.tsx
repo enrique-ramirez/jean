@@ -15,8 +15,7 @@ import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./QueuePanel.module.css";
 import { useQueueClock } from "./queueClock";
 
-// How much rail a second of music buys. Ordinary songs sit at the same rhythm;
-// only a genuinely long one pushes its neighbours down the panel.
+// How much rail a second of music buys: ordinary songs sit at the same rhythm and only a long one pushes its neighbours down the panel.
 const STRETCH_FROM_SECONDS = 120;
 const STRETCH_PX_PER_SECOND = 0.1;
 const STRETCH_MAX_PX = 40;
@@ -27,8 +26,19 @@ const stretchOf = (seconds: number) =>
 		STRETCH_MAX_PX,
 	);
 
-// Null when nothing is playing: the first entry then starts whenever somebody
-// presses play, which is not a number the rows can count down to.
+// Identities, never positions: these are React's keys, so a reorder would otherwise remount every row below the drop and re-request its artwork.
+// The occurrence counter is what lets the same track be queued twice.
+const rowKeys = (entries: QueueEntry[]) => {
+	const seen = new Map<string, number>();
+	return entries.map((entry) => {
+		const id = `${entry.playlistId}:${entry.itemIndex}`;
+		const nth = seen.get(id) ?? 0;
+		seen.set(id, nth + 1);
+		return `${id}#${nth}`;
+	});
+};
+
+// Null when nothing is playing: the first entry then starts whenever somebody presses play, which is not a number the rows can count down to.
 function remainingOf(snapshot: PlayerSnapshot | null | undefined) {
 	const item = snapshot?.player?.activeItem;
 	if (!item || item.index < 0) return null;
@@ -38,9 +48,7 @@ function remainingOf(snapshot: PlayerSnapshot | null | undefined) {
 	);
 }
 
-// A leaf, for the same reason StartsIn is one -- and it has to subscribe to the
-// clock itself: with an empty queue there are no rows to tick, so a value read in
-// the panel body froze the moment it was drawn.
+// Subscribes to the clock itself rather than taking a tick from the panel body: with an empty queue there are no rows to tick, so the value would never move.
 function Remaining({
 	snapshot,
 	isPlaying,
@@ -102,8 +110,7 @@ const QueueRow = memo(function QueueRow({
 	handleProps: PropBag;
 	itemProps: PropBag;
 }) {
-	// Drawn rather than hidden: it still occupies a place the player honours, and
-	// a silently missing row is a gap Jean could not explain.
+	// Drawn rather than hidden: it still occupies a place the player honours, so a silently missing row would be an unexplained gap.
 	if (entry.isOrphan) {
 		return (
 			<li className={styles.row} data-orphan="true" {...itemProps}>
@@ -134,8 +141,7 @@ const QueueRow = memo(function QueueRow({
 		<li
 			className={styles.row}
 			{...merged}
-			// After the spread and composed, not replacing: the sortable hook owns
-			// `transform` on this element for the length of a drag.
+			// After the spread and composed rather than replacing: the sortable hook owns `transform` on this element for the length of a drag.
 			style={
 				{
 					...style,
@@ -205,18 +211,7 @@ export function QueuePanel({
 
 	const isPlaying = snapshot?.player?.playbackState === "playing";
 
-	// Identities, never positions: these are also React's keys, so a reorder would
-	// otherwise remount every row below the drop and re-request its artwork. The
-	// occurrence counter is what lets the same track be queued twice.
-	const keys = useMemo(() => {
-		const seen = new Map<string, number>();
-		return entries.map((entry) => {
-			const id = `${entry.playlistId}:${entry.itemIndex}`;
-			const nth = seen.get(id) ?? 0;
-			seen.set(id, nth + 1);
-			return `${id}#${nth}`;
-		});
-	}, [entries]);
+	const keys = useMemo(() => rowKeys(entries), [entries]);
 
 	const { scrollRef, itemProps, dragProps, handleProps } = useSortableList({
 		keys,
@@ -270,8 +265,7 @@ export function QueuePanel({
 
 				{/* A section, not a div, so the hook's HTMLElement ref can land on it. */}
 				<section className={styles.scroller} ref={scrollRef}>
-					{/* Every countdown below is measured from the end of this track, so
-              the rail starts here rather than at the first queued row. */}
+					{/* Every countdown below is measured from the end of this track, so the rail starts here rather than at the first queued row. */}
 					<div className={styles.origin} data-live={isPlaying}>
 						<span className={styles.pip} aria-hidden="true" />
 						<Remaining snapshot={snapshot} isPlaying={isPlaying} />

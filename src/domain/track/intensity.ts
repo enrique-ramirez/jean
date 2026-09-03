@@ -6,12 +6,8 @@ import { FIELD, number, timestamp } from "./fields";
 const PATINA_YEARS = 6;
 const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 
-// Play count and recency, precomputed into typed arrays.
-//
-// Heat is logarithmic because play counts are heavily skewed: on a linear scale
-// almost every track sits at zero and one outlier takes the whole range. Patina
-// applies only to tracks that were played at all -- a never-played track is
-// flat, not faded, and dimming it would say something untrue about it.
+// Heat is logarithmic because play counts are heavily skewed: on a linear scale almost every track sits at zero and one outlier takes the whole range.
+// Patina applies only to tracks that were played at all: a never-played track is flat rather than faded.
 export function deriveIntensity(rows: TrackColumns[]) {
 	const playCounts = Int32Array.from(
 		rows,

@@ -26,9 +26,7 @@ export function PlaylistView({
 	const { rows, loaded, total, isLoading, error, heat, patina, playedCount } =
 		usePlaylistItems(playlist?.id, playlist?.itemCount);
 
-	// A playlist is addressed by index whatever the media library situation is:
-	// playlists are playlists, and the library source only ever stands in for the
-	// *library*.
+	// A playlist is addressed by index whatever the media library situation is; the library source only ever stands in for the library.
 	const source = useMemo(
 		() =>
 			librarySourceOf({ kind: "playlist", playlistId: playlist?.id as string }),
@@ -47,8 +45,7 @@ export function PlaylistView({
 	});
 
 	const stats = useMemo(
-		// itemCount rather than rows.length: the header should state what the
-		// playlist holds, not how much of it has arrived.
+		// itemCount rather than rows.length: the header states what the playlist holds, not how much of it has arrived.
 		() => ({
 			...summarise(rows, playedCount),
 			trackCount: playlist?.itemCount ?? rows.length,

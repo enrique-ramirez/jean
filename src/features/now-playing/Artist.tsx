@@ -3,10 +3,7 @@ import styles from "./Artist.module.css";
 import { useArtistInfo, useArtistInfoEnabled } from "./artistInfo";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 
-// The one panel whose contents do not come from the player, which is why it is
-// the one panel that has to be turned on. Off, it says what it would do and
-// where the switch is -- a tab that is simply empty reads as broken, and a tab
-// that quietly starts making outbound requests is worse.
+// The one panel whose contents do not come from the player, and so the one that has to be turned on first.
 export function Artist() {
 	const { track } = useNowPlayingTrack();
 	const [isEnabled] = useArtistInfoEnabled();
@@ -32,9 +29,7 @@ export function Artist() {
 			</p>
 		);
 
-	// Not an error state with a retry button: no connection, no match and no
-	// article are all ordinary, and the player being offline is the normal case
-	// for a machine in a cupboard.
+	// Not an error state with a retry: no connection, no match and no article are all ordinary outcomes here.
 	if (isError || !data)
 		return (
 			<div className={styles.notice}>
@@ -57,9 +52,6 @@ export function Artist() {
 
 			{data.summary ? <p className={styles.summary}>{data.summary}</p> : null}
 
-			{/* Named, because an encyclopaedia entry about somebody's band should say
-          which encyclopaedia -- and because it is the only text on this screen
-          Jean did not get from the user's own files. */}
 			<a
 				className={styles.source}
 				href={data.sourceUrl}

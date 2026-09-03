@@ -13,18 +13,10 @@ export interface Toast {
 	tone: "default" | "error";
 }
 
-// A toast says what happened somewhere the user was not looking, and carries the
-// undo for it. Confirming something already visible is noise.
-//
-// A module-level store rather than a context: a provider holding the list would
-// re-render everything beneath it whenever a toast appeared or expired,
-// including the virtualised track list.
+// A module-level store rather than a context: a provider holding the list would re-render everything beneath it whenever a toast appeared or expired, including the virtualised track list.
 
-// Older ones are dropped rather than stacked past this: a column of them covers
-// the thing the user is being told about.
+// Older ones are dropped rather than stacked past this: a column of them covers the thing being reported.
 const MAX_VISIBLE = 3;
-// Long enough to read and reach for the undo, which is the only reason any of
-// these stay on screen at all.
 const WITH_ACTION_MS = 9000;
 const PLAIN_MS = 5000;
 

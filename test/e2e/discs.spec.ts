@@ -2,13 +2,12 @@ import type { Locator, Page } from "./fixtures.ts";
 import { expect, rowByTitle, scrollUntilMounted, test } from "./fixtures.ts";
 
 // Deathconsciousness is the fixture's two-disc album and the last one in the
-// Library, which is why everything here scrolls to the end first. Both discs
-// number their tracks from 01, so a track number alone cannot tell them apart
-// -- that is the whole reason either half of this feature exists.
+// Library, so everything here scrolls to the end first. Both discs number their
+// tracks from 01, so a track number alone cannot tell them apart.
 const DISC_ONE = "A Quick One Before The Eternal Worm Devours Connecticut";
 const DISC_TWO = "Waiting For Black Metal Records To Come In The Mail";
 
-// Jar Of Flies is one disc, so it must look exactly as it did before.
+// Jar Of Flies is the fixture's single-disc album.
 const SINGLE_DISC_ALBUM = "Jar Of Flies";
 const SINGLE_DISC_TRACK = "Nutshell";
 
@@ -29,8 +28,6 @@ test.describe("a multi-disc album in the album layout", () => {
 		await expect(heading(page, "Disc 1")).toBeVisible();
 		await expect(heading(page, "Disc 2")).toBeVisible();
 
-		// One cover and one caption. Two headings inside a group is the point --
-		// two groups would be the bug, and both look the same from a distance.
 		const album = page
 			.locator("section")
 			.filter({ hasText: "Deathconsciousness" });
@@ -78,9 +75,7 @@ test.describe("a multi-disc album in the list layout", () => {
 		await page.goto("/#/p7");
 		await scrollUntilMounted(page, rowByTitle(page, DISC_ONE));
 
-		// Four characters where the column was drawn for two. Overflow here is
-		// invisible in a screenshot on a wide window and lands on the artwork on a
-		// phone, so it is measured rather than looked at.
+		// Four characters where the column was drawn for two.
 		const fits = await rowByTitle(page, DISC_ONE).evaluate(
 			(row: HTMLElement) => {
 				const cell = row.firstElementChild;
@@ -100,9 +95,7 @@ test.describe("a multi-disc album in the list layout", () => {
 	});
 });
 
-// %discnumber% is a tag like any other, and a library that never wrote it is
-// the ordinary case rather than a broken one. Nothing may appear when it is
-// absent -- not a heading, not a '?.01' where a number used to be.
+// %discnumber% is a tag like any other, and plenty of libraries never wrote it.
 ["compact", "album"].forEach((layout) => {
 	test.describe(`a library with no disc tags (${layout})`, () => {
 		test.use({

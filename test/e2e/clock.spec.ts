@@ -1,8 +1,8 @@
 import type { Page } from "./fixtures.ts";
 import { expect, openLibrary, statusBar, test, trackRow } from "./fixtures.ts";
 
-// The elapsed / total readout, which is also a button: pressing it swaps the
-// left-hand figure for how much of the track is left.
+// The elapsed / total readout is also a button: pressing it swaps the left-hand
+// figure for how much of the track is left.
 
 test.describe("the clock in the status bar", () => {
 	const clock = (page: Page) =>
@@ -26,7 +26,6 @@ test.describe("the clock in the status bar", () => {
 		await clock(page).click();
 		await expect(clock(page)).toContainText("-");
 
-		// Kept, so it is a preference rather than a thing you re-press per track.
 		await page.reload();
 		await expect(clock(page)).toContainText("-");
 
@@ -62,8 +61,8 @@ test.describe("the clock in the status bar", () => {
 		const down = await read();
 
 		expect(down.total).toBe(up.total);
-		// The two readings are the same instant seen from either end, so they add
-		// up to the track -- give or take the second that passed between them.
+		// The two readings are the same instant from either end, so they add up to
+		// the track -- give or take the second that passed between them.
 		expect(Math.abs(up.left + down.left - up.total)).toBeLessThanOrEqual(1);
 	});
 });

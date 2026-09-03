@@ -7,10 +7,8 @@ import {
 	test,
 } from "./fixtures.ts";
 
-// Counts taken from the captured library rather than guessed. Jessico is twelve
-// Babasónicos tracks at the top of the list, Lafcadio eleven further down -- so
-// a query can match a block that is entirely off screen, which is the case that
-// matters for a finder that does not filter.
+// Counts taken from the captured library. Jessico is twelve Babasónicos tracks
+// at the top of the list, Lafcadio eleven further down and entirely off screen.
 const ACCENTED = {
 	query: "babasonicos",
 	matches: 12,
@@ -30,13 +28,12 @@ const openFinder = async (page: Page) => {
 	await expect(finder(page)).toBeVisible();
 };
 
-// Both layouts: the results dropdown is the same either way, but what it marks
-// is rows, and album mode renders those inside groups.
+// Both layouts: the dropdown is the same either way, but what it marks is rows,
+// and album mode renders those inside groups.
 //
 // `test.use` goes inside a describe, not beside one. At file scope it applies to
-// the whole file however many times it is called, so a loop that wrote it once
-// per layout ran every case under whichever layout it wrote last -- and the
-// describes named `(compact)` were quietly running in album mode.
+// the whole file however many times it is called, so a per-layout loop that
+// wrote it outside the describe would run every case under the last layout.
 ["compact", "album"].forEach((layout) => {
 	test.describe(`the finder in ${layout} layout`, () => {
 		test.use({ settings: { "jean.layout": layout } });
@@ -49,18 +46,14 @@ const openFinder = async (page: Page) => {
 			}) => {
 				await openFinder(page);
 
-				// Opening a search you then have to click into is a search you did not
-				// really open.
 				await expect(finder(page)).toBeFocused();
 			});
 
 			test("the first result is the active one, wherever the pointer is", async ({
 				page,
 			}) => {
-				// The results render exactly where the button that opened them was, so the
-				// pointer is left sitting on top of them without having gone anywhere. A
-				// mouseenter earned that way handed the active result to whatever landed
-				// under the cursor, and Enter then played that instead of the first match.
+				// The results render exactly where the button that opened them was, so
+				// the pointer ends up over them without having moved.
 				await openFinder(page);
 				await finder(page).fill(OFF_SCREEN.query);
 				await expect(results(page)).toHaveCount(OFF_SCREEN.matches);
@@ -70,7 +63,7 @@ const openFinder = async (page: Page) => {
 					"true",
 				);
 
-				// And the same again for a second query typed under the same still pointer.
+				// And again for a second query typed under the same still pointer.
 				await finder(page).fill(ACCENTED.query);
 				await expect(results(page)).toHaveCount(ACCENTED.matches);
 				await expect(results(page).first()).toHaveAttribute(
@@ -94,14 +87,9 @@ const openFinder = async (page: Page) => {
 				const target = results(page).nth(6);
 				const box = await target.boundingBox();
 
-				// Somewhere else first, because that is what a pointer does and what this
-				// is asking about. The first enter after the finder opens is rejected by
-				// design -- there is no earlier position to compare it against -- so a
-				// single synthetic move onto a result proves nothing either way. This test
-				// used to get its movement for free: typing previewed the leading match,
-				// that scrolled the list, and Chrome dispatches a mousemove at the
-				// stationary pointer when content moves under it. Typing no longer scrolls
-				// anything, so the move has to be real.
+				// Somewhere else first: the first mouseenter after the finder opens is
+				// rejected, there being no earlier position to compare it against, so a
+				// single synthetic move onto a result proves nothing either way.
 				await page.mouse.move(4, 4);
 				await page.mouse.move(
 					box!.x + box!.width / 2,
@@ -127,7 +115,7 @@ const openFinder = async (page: Page) => {
 				expect(await list.evaluate((node) => node.scrollTop)).toBe(0);
 
 				// The dropdown is 320px over eleven results, so the last of them starts
-				// below the fold. Walking there used to move a cursor nobody could see.
+				// below the fold.
 				const last = results(page).nth(OFF_SCREEN.matches - 1);
 				for (let at = 1; at < OFF_SCREEN.matches; at += 1)
 					await page.keyboard.press("ArrowDown");
@@ -137,8 +125,7 @@ const openFinder = async (page: Page) => {
 					0,
 				);
 
-				// Inside the scroller's own box, not merely inside the page: it is the
-				// dropdown that has to have moved, and nothing outside it may.
+				// Inside the scroller's own box, not merely inside the page.
 				const listBox = await list.boundingBox();
 				const activeBox = await last.boundingBox();
 				expect(activeBox!.y).toBeGreaterThanOrEqual(listBox!.y - 1);
@@ -157,7 +144,7 @@ const openFinder = async (page: Page) => {
 
 				await expect(finder(page)).toBeVisible();
 				await expect(finder(page)).toBeFocused();
-				// And the key that opened it is not left in the field.
+				// The key that opened it is not left in the field.
 				await expect(finder(page)).toHaveValue("");
 			});
 		});
@@ -169,9 +156,6 @@ const openFinder = async (page: Page) => {
 			});
 
 			test("finds without filtering the playlist", async ({ page }) => {
-				// The whole design decision in one assertion: the playlist keeps every
-				// track and its order, and matching only marks rows. A finder that filtered
-				// would change what the playlist *is*, and the count below would drop!.
 				await expect(page.getByRole("grid")).toHaveAttribute(
 					"aria-rowcount",
 					"54",
@@ -188,9 +172,7 @@ const openFinder = async (page: Page) => {
 			});
 
 			test("matches through the accents, not around them", async ({ page }) => {
-				// Typing the accents in your own library is a tax on exactly the tracks you
-				// are most likely to be hunting for, and from outside it does not look
-				// strict, it looks broken. Both sides fold, so both spellings work.
+				// Both sides fold, so both spellings work.
 				await finder(page).fill(ACCENTED.query);
 				await expect(results(page)).toHaveCount(ACCENTED.matches);
 				await expect(results(page).first()).toContainText(ACCENTED.firstTitle);
@@ -204,9 +186,8 @@ const openFinder = async (page: Page) => {
 			});
 
 			test("every token has to appear, in any order", async ({ page }) => {
-				// One word from the title, one from the album. Neither row matches on its
-				// own field alone, which is the point of tokenising rather than substring
-				// matching the whole query.
+				// One word from the title, one from the album: neither field matches the
+				// whole query as a substring.
 				await finder(page).fill("jessico calientes");
 				await expect(results(page)).toHaveCount(1);
 				await expect(results(page).first()).toContainText("Los Calientes");
@@ -242,8 +223,6 @@ const openFinder = async (page: Page) => {
 				page,
 				player,
 			}) => {
-				// Browsing must never hijack what is playing. Arrowing scrolls the list so
-				// each hit is seen in place; only Enter starts a track.
 				await finder(page).fill(OFF_SCREEN.query);
 				await expect(results(page)).toHaveCount(OFF_SCREEN.matches);
 
@@ -259,8 +238,8 @@ const openFinder = async (page: Page) => {
 				expect(requestsTo(player, "/player/play/")).toEqual([]);
 				await expect(statusBar(page)).toContainText("Nothing playing");
 
-				// It did move the list, though: the block being previewed starts well below
-				// the fold and the cursor is now inside it.
+				// It did move the list: the previewed block starts well below the fold
+				// and the cursor is now inside it.
 				await expect(
 					page.locator(`[role="row"][data-cursor="true"]`),
 				).toHaveAttribute("data-row", String(OFF_SCREEN.firstRow + 2));
@@ -275,8 +254,8 @@ const openFinder = async (page: Page) => {
 				await page.keyboard.press("ArrowDown");
 				await page.waitForTimeout(300);
 
-				// If the playlist's own cursor keys were still live, this would have moved
-				// one row down the playlist instead of one result down the finder.
+				// With the playlist's own cursor keys still live, this would move one row
+				// down the playlist instead of one result down the finder.
 				await expect(results(page).nth(1)).toHaveAttribute(
 					"aria-selected",
 					"true",
@@ -289,11 +268,9 @@ const openFinder = async (page: Page) => {
 			test("the list stays suspended even after focus leaves the field", async ({
 				page,
 			}) => {
-				// The field being focused is not what protects the list -- bindings already
-				// ignore keys typed at an input!. What `keysEnabled` covers is the gap after
-				// that: click a track and focus leaves the field, but the finder is still
-				// open and Escape, Enter and the arrows still belong to it. Without it the
-				// list quietly takes its shortcuts back while a search is on screen.
+				// Bindings already ignore keys typed at an input. `keysEnabled` covers
+				// the gap after focus leaves the field while the finder is still open:
+				// Escape, Enter and the arrows still belong to it.
 				const flame = page.getByRole("button", {
 					name: "Show play-count heat",
 				});
@@ -309,9 +286,8 @@ const openFinder = async (page: Page) => {
 			});
 
 			test("letters typed at the field stay in the field", async ({ page }) => {
-				// h toggles the play-count shading and v switches the layout -- both single
-				// keys, both live in the list behind this. Typing a word with either in it
-				// must not reach them.
+				// h toggles the play-count shading and v switches the layout: both single
+				// keys bound in the list behind this, and both letters of "have".
 				const flame = page.getByRole("button", {
 					name: "Show play-count heat",
 				});
@@ -321,7 +297,7 @@ const openFinder = async (page: Page) => {
 
 				await expect(finder(page)).toHaveValue("have");
 				await expect(flame).toHaveAttribute("aria-pressed", "true");
-				// Still the compact list, not the album view v would have switched to!.
+				// Still the compact list, not the album view v would have switched to.
 				await expect(page.getByRole("grid")).toHaveAttribute(
 					"aria-rowcount",
 					"54",
@@ -398,7 +374,7 @@ const openFinder = async (page: Page) => {
 				await expect(finder(page)).toHaveCount(0);
 				await expect(matchedRows(page)).toHaveCount(0);
 
-				// Reopening starts fresh rather than resuming a search you already left.
+				// Reopening starts fresh rather than resuming the closed search.
 				await openFinder(page);
 				await expect(finder(page)).toHaveValue("");
 				await expect(page.getByRole("listbox")).toHaveCount(0);
@@ -421,10 +397,8 @@ const openFinder = async (page: Page) => {
 				await openFinder(page);
 				await finder(page).fill("babasonicos");
 
-				// The dropdown is capped -- rendering thousands of buttons for a query that
-				// is still being typed is the kind of thing that makes a search feel broken
-				// -- while the playlist itself keeps marking every hit, because that is
-				// what "finds without filtering" has to mean at this size too.
+				// The dropdown is capped at 60 while the playlist keeps marking every
+				// hit.
 				await expect(results(page)).toHaveCount(60);
 				await expect(page.getByRole("grid")).toHaveAttribute(
 					"aria-rowcount",
@@ -459,10 +433,9 @@ test.describe("the field is one field", () => {
 			};
 		});
 
-		// The input is chromeless by construction. The global :focus-visible rule
-		// drew a second rounded rectangle around it anyway -- a bare `.input` ties
-		// with `:focus-visible` on specificity and loses on source order -- so the
-		// pill ended up containing a visibly separate box!.
+		// The input is chromeless by construction, and a bare `.input` ties with
+		// the global `:focus-visible` rule on specificity and loses on source
+		// order, so the ring is easily drawn on the input instead of the field.
 		expect(rings.input).toBe(0);
 		expect(rings.field).toBeGreaterThan(0);
 	});
@@ -485,15 +458,13 @@ test.describe("typing does not drag the list around", () => {
 		await openFinder(page);
 		const parked = await scrollTop(page);
 
-		// Every one of these narrows to a different leading match, so the old
-		// preview fired on all of them, and each jump was thousands of rows --
-		// a full unmount and remount of the virtualised window, plus a scroll of
-		// the container the sticky finder is inside. Android's keyboard lost its
-		// composition to exactly that, and typed "Guster" came back scrambled.
+		// Every keystroke narrows to a different leading match thousands of rows
+		// away. Scrolling there remounts the virtualised window and moves the
+		// container the sticky finder sits in, and Android's keyboard loses its
+		// composition to that -- typed "Guster" comes back scrambled.
 		await finder(page).pressSequentially("guster", { delay: 60 });
 		await page.waitForTimeout(600);
 
-		// You are reading the dropdown while you type, not the list behind it.
 		expect(Math.abs((await scrollTop(page)) - parked)).toBeLessThan(24);
 	});
 });
@@ -518,13 +489,9 @@ test.describe("the field has room to type in", () => {
 			return { gap: flame.left - field.right, width: field.width };
 		});
 
-		// The field is as wide as it is allowed to be. Which limit binds depends on
-		// the viewport: a phone runs out of toolbar, a desktop hits the 400px
-		// measure the field caps itself at, and leftover room there is deliberate.
+		// Which limit binds depends on the viewport: a phone runs out of toolbar, a
+		// desktop hits the 400px measure the field caps itself at.
 		if (width < 396) {
-			// The toolbar's spacer also grows, so the field used to split the free
-			// space with it, leaving the field and the button roughly equal --
-			// nothing.
 			expect(gap).toBeLessThan(40);
 		} else {
 			expect(width).toBeGreaterThanOrEqual(396);
@@ -532,15 +499,9 @@ test.describe("the field has room to type in", () => {
 	});
 });
 
-// The finder used to live inside `PlaylistView`, so the two longest lists in
-// the app -- All music and a shelf -- did not have one, and a whole library is
-// not something anybody scrolls through looking for a record.
 test.describe("finding in the library views", () => {
 	test.use({ mediaLibrarySize: 4000 });
 
-	// The button and the field it opens have to say the same thing. They did not:
-	// the button was named for the list and the field said "Find in this
-	// playlist" on a view that is not one.
 	const field = (page: Page, name: string) =>
 		page.getByRole("textbox", { name });
 
@@ -550,8 +511,6 @@ test.describe("finding in the library views", () => {
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
 
-		// Named for the list, not for "a playlist": All music is not one, and the
-		// label is what separates this from the library search above it.
 		await page.getByRole("button", { name: /Find in all music/ }).click();
 		await expect(field(page, "Find in all music")).toBeFocused();
 
@@ -566,9 +525,7 @@ test.describe("finding in the library views", () => {
 			"4000",
 		);
 
-		// And arrowing walks the list to a match rather than pulling matches out of
-		// it -- which is the whole difference between this and the library search.
-		// Asserted after moving, because a match in a 4,000-row list is very
+		// Asserted after arrowing, because a match in a 4,000-row list is very
 		// probably nowhere near the rows currently mounted.
 		await page.keyboard.press("ArrowDown");
 		await expect(
@@ -598,8 +555,8 @@ test.describe("finding in the library views", () => {
 		await page.keyboard.press("/");
 		await expect(field(page, "Find in all music")).toBeFocused();
 
-		// The list stops answering to the keyboard while a field holds it, or
-		// typing a track name seeks and pauses the player mid-word.
+		// The list stops answering the keyboard while a field holds it, or typing a
+		// track name seeks and pauses the player mid-word.
 		await field(page, "Find in all music").fill("nutshell");
 		await page.keyboard.press("ArrowRight");
 		expect(requestsTo(player, "/player")).toHaveLength(0);

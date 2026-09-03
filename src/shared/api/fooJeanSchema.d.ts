@@ -12,13 +12,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Who we are. The only route that needs no credential at all.
-         * @description Exists so a client can tell "foo_jean is here" from "nothing is listening"
-         *     without spending a credential on the question, and so the port named in a
-         *     discovery record can be checked before the token is sent to it.
+         * Identify the component. Needs no credential.
+         * @description Tells "foo_jean is here" from "nothing is listening" without spending a credential, so the port named in a discovery record can be checked before a token is sent to it.
          *
-         *     It says nothing a port scan would not. Notably absent is the field allowlist,
-         *     which describes what may be done to somebody's files and needs authentication.
+         *     It reports nothing a port scan would not. The field allowlist is absent from it and requires authentication.
          */
         get: operations["getStatus"];
         put?: never;
@@ -39,36 +36,16 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Read the token, during a window a person opened at the player.
-         * @description The token is 64 hex characters and every device that reads Jean needs it. Typing
-         *     that on a phone is unpleasant and on a television remote it is not reasonable, so
-         *     this is the way out: press **Pair a device** in
-         *     `File → Preferences → Tools → Jean`, then press Pair in the client. Hue's link
-         *     button, and the same trade — before this an attacker needed a credential that is
-         *     never transmitted, after it they need to be probing this port during a window the
-         *     owner opened seconds earlier.
+         * Read the token, during a window opened at the player.
+         * @description Returns the bearer token, so a device need not have 64 hex characters typed into it. The owner presses **Pair a device** in `File → Preferences → Tools → Jean`, then the user presses Pair in the client. The window is open for 120 seconds.
          *
-         *     Three bounds make that trade acceptable, and none of them is optional:
+         *     Three bounds apply, and none is optional:
          *
-         *     - **Single grant.** The first success closes the window. Two devices means two
-         *       presses, which is cheap and makes a pairing nobody performed visible rather
-         *       than plausible.
-         *     - **Private source addresses only.** RFC1918, loopback and link-local, and their
-         *       IPv6 equivalents. A forwarded port or a tunnel cannot be paired through, which
-         *       is where "local network only" otherwise quietly stops being true. This is
-         *       checked *before* the window, so a caller from outside learns nothing about
-         *       whether one is open and cannot spend a grant the owner opened.
-         *     - **The history is kept and shown in the pane.** A pairing the owner did not
-         *       perform has to be discoverable afterwards.
+         *     - Single grant. The first success closes the window. Pairing a second device takes a second press.
+         *     - Private source addresses only: RFC1918, loopback and link-local, and their IPv6 equivalents. A forwarded port or a tunnel cannot be paired through. The address is checked before the window is consulted, so a caller from outside learns nothing about whether a window is open and cannot spend a grant.
+         *     - The pairing history is recorded and shown in the preferences pane, so a pairing the owner did not perform is discoverable afterwards.
          *
-         *     **`Content-Type: application/json` is required**, and that is a security control
-         *     rather than pedantry. A simple `POST` — `text/plain`, no custom headers — needs no
-         *     CORS preflight, so a page on any origin could fire one blind and spend the grant
-         *     without ever reading the answer. Requiring JSON forces every cross-origin caller
-         *     to be preflighted, and this route answers a preflight for far fewer origins than
-         *     the rest of the API does: with no `allowedOrigins` configured, only an origin on
-         *     the host the request was addressed to. That is what stops a page the owner
-         *     happens to be visiting from reading a token out of this response.
+         *     `Content-Type: application/json` is required. A simple `POST` needs no CORS preflight, so without this requirement a page on any origin could fire one blind and spend the grant. Requiring JSON forces every cross-origin caller to be preflighted, and with no `allowedOrigins` configured this route answers a preflight only for an origin on the host the request was addressed to.
          */
         post: operations["pair"];
         delete?: never;
@@ -86,9 +63,7 @@ export interface paths {
         };
         /**
          * What this install permits.
-         * @description The write allowlist, discovered rather than configured separately. A client
-         *     should render controls for the fields named here and nothing else — two places
-         *     to state the same thing is one place to get out of step.
+         * @description The write allowlist and the streaming and autoplaylist limits for this install. A client SHOULD render controls for the fields named here and nothing else, rather than being configured with its own copy of the list.
          */
         get: operations["getCapabilities"];
         put?: never;
@@ -110,27 +85,17 @@ export interface paths {
         put?: never;
         /**
          * Write metadata to one track.
-         * @description The player performs the write, through `metadb_io_v2`, so foobar2000's own
-         *     database is current the instant this returns. That is the entire reason this
-         *     component exists rather than a tagging library in a service beside the player:
-         *     anything writing tags from outside leaves the database stale until a rescan, and
-         *     the rating a client just set does not come back when it asks.
+         * @description The player performs the write, through `metadb_io_v2`, so foobar2000's own database is current when this returns and a client re-reading the value through beefweb sees the new one.
          *
-         *     Three things must be true, and they fail differently on purpose:
+         *     Three conditions must hold, and they fail with different statuses:
          *
-         *     1. **Every field is on the allowlist** (`403`). Compared case-insensitively — an
-         *        allowlist of `rating` that let `RATING` through would not be one.
-         *     2. **The path is a plain absolute local path** (`400`). No relative paths, no
-         *        `..` segment, no UNC share, no URL scheme.
-         *     3. **foobar2000 already manages the track** (`404`) — it is in the Media Library
-         *        or in an open playlist. Being on the allowlist is not the same as being
-         *        something this player knows: the SDK will build a handle for any path at all.
+         *     1. Every field is on the allowlist (`403`). Names are compared case-insensitively.
+         *     2. The path is a plain absolute local path (`400`). No relative path, no `..` segment, no UNC share, no URL scheme.
+         *     3. foobar2000 already manages the track (`404`): it is in the Media Library or in an open playlist. The SDK will build a handle for any path at all, so a path being well-formed says nothing about the player knowing it.
          *
-         *     The first two are decided before the player is involved at all.
+         *     The first two are decided before the player is involved.
          *
-         *     Only the named fields are touched; everything else in the file is left alone. An
-         *     empty string **removes** a field rather than setting it to empty, which is how a
-         *     rating is cleared rather than set to `"0"`.
+         *     Only the named fields are touched; everything else in the file is left alone. An empty string removes a field rather than setting it to empty, which is how a rating is cleared rather than set to `"0"`.
          *
          *     Writes are not batched. One track per request.
          */
@@ -149,22 +114,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Which playlists are autoplaylists, and which ones we made.
-         * @description **Not a playlist listing.** beefweb answers that at
-         *     `GET http://<player>:8880/api/playlists`, with titles, item counts, total time
-         *     and which one is current. This answers only what beefweb has no way to say, and
-         *     deliberately repeats none of it.
+         * Which playlists are autoplaylists, and which this component created.
+         * @description Not a playlist listing. beefweb answers that at `GET http://<player>:8880/api/playlists`, with titles, item counts, total time and which playlist is current. This route reports only what beefweb cannot, and repeats none of it.
          *
-         *     One entry per playlist, in playlist order. Join it to beefweb's answer on
-         *     `beefwebId`, falling back to `index`; `title` is there to check a join against
-         *     rather than to display.
+         *     One entry per playlist, in playlist order. Join it to beefweb's answer on `beefwebId`, falling back to `index`. `title` is for checking a join, not for display.
          *
          *     ### Ask beefweb first
          *
-         *     beefweb assigns its playlist ids lazily, when it next rebuilds its map. A
-         *     playlist this component has only just created therefore has `beefwebId: null`
-         *     until beefweb looks again — which our creating it is enough to make it do.
-         *     Requesting beefweb's playlists before this one is what makes the join complete.
+         *     beefweb assigns its playlist ids lazily, when it next rebuilds its map. A playlist this component has just created therefore reports `beefwebId: null` until beefweb looks again, and creating it is enough to make beefweb do so. A client MUST request beefweb's playlists before this route for the join to be complete.
          */
         get: operations["getPlaylists"];
         put?: never;
@@ -186,26 +143,13 @@ export interface paths {
         put?: never;
         /**
          * Create an autoplaylist.
-         * @description Creates a new playlist and hands it to foobar2000's own autoplaylist client, so
-         *     the core keeps it filled and keeps it after this component is uninstalled.
+         * @description Creates a playlist and hands it to foobar2000's own autoplaylist client, so the core keeps it filled and keeps it after this component is uninstalled.
          *
-         *     Three things are worth knowing before calling it.
+         *     An autoplaylist filters the Media Library and nothing else. On an install with no Media Library configured every autoplaylist is empty and nothing in the player says why. Call `POST /autoplaylists/preview` first and read its `libraryEnabled`.
          *
-         *     **An autoplaylist filters the Media Library and nothing else.** On an install
-         *     with no Media Library configured, every autoplaylist is empty and nothing says
-         *     why. `POST /autoplaylists/preview` reports `libraryEnabled` for exactly this
-         *     reason; call it first.
+         *     The playlist is real and visible in foobar2000's own playlist tabs. Prefixing `title` with `#Jean ` is this project's convention for showing where a playlist came from. It is a message to the person at the player: nothing in this API reads the title, and the user may rename it freely.
          *
-         *     **The playlist is real and visible.** It appears in foobar2000's own playlist
-         *     tabs, where somebody may be sitting looking at them. Prefixing `title` with
-         *     `#Jean ` is the convention this project uses so that person can tell where a
-         *     playlist came from — a message to them rather than a requirement here. Nothing
-         *     in this API reads the title, and the user may rename it freely.
-         *
-         *     **Existing playlists are never converted.** There is no route that turns a
-         *     playlist you already have into an autoplaylist, because the core replaces the
-         *     contents when it takes one over, and a request that can silently empty a
-         *     hand-built playlist is not one this component will offer.
+         *     Existing playlists are never converted. There is no route that turns an existing playlist into an autoplaylist, because the core replaces the contents of a playlist when it takes one over.
          */
         post: operations["createAutoPlaylist"];
         delete?: never;
@@ -225,20 +169,11 @@ export interface paths {
         put?: never;
         /**
          * Try a query without creating anything.
-         * @description Compiles the query with foobar2000's own parser and counts what it matches in the
-         *     Media Library. Nothing is created and nothing changes.
+         * @description Compiles the query with foobar2000's own parser and counts what it matches in the Media Library. Nothing is created and nothing changes.
          *
-         *     **A query that does not parse is a `200` here**, carrying `valid: false` and the
-         *     player's own message. This is the route a client calls while somebody is still
-         *     typing, so an unreadable query is the answer rather than an error. Creating with
-         *     the same query is a `400`, because there it is an instruction rather than data.
+         *     A query that does not parse is a `200` here, carrying `valid: false` and the player's own message. This is the route a client calls while somebody is typing, so an unreadable query is data rather than an error. Creating with the same query is a `400`.
          *
-         *     Two things a client should do with this. Debounce it: it runs on foobar2000's
-         *     main thread, and while it is no more expensive than the player's own search box,
-         *     one request per keystroke is still one request per keystroke. And read
-         *     `libraryEnabled` — `matches: 0` with `libraryEnabled: false` means the install
-         *     has no Media Library, which is worth saying out loud before somebody creates a
-         *     folder that cannot fill.
+         *     A client SHOULD debounce this: it runs on foobar2000's main thread, and one request per keystroke is one main-thread callback per keystroke. A client SHOULD also read `libraryEnabled` — `matches: 0` with `libraryEnabled: false` means the install has no Media Library, and any autoplaylist created from the query will be empty.
          */
         post: operations["previewQuery"];
         delete?: never;
@@ -253,8 +188,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower
-                 *     case, dashed, no braces. Not beefweb's id, which belongs to beefweb.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -265,32 +199,20 @@ export interface paths {
         put?: never;
         /**
          * Point an autoplaylist at a different query.
-         * @description **Replaces the specification.** `query`, `sort`, `key` and `forceSort` end up
-         *     exactly as this request states them, so send the whole record rather than only
-         *     the parts being changed — omitting `key` clears it. The `managed` object from
-         *     `GET /playlists` is exactly that shape, which makes read-modify-write the natural
-         *     way to call this.
+         * @description Replaces the specification. `query`, `sort`, `key` and `forceSort` end up exactly as this request states them, so a client MUST send the whole record rather than only the parts being changed; omitting `key` clears it. The `managed` object from `GET /playlists` has that shape, so read-modify-write is the way to call this.
          *
-         *     `title` is the exception: **omit it to leave the name alone**. Resending a title
-         *     the client happens to remember would silently undo a rename made in the player,
-         *     and renaming is a visible act that deserves to be asked for rather than implied.
+         *     `title` is the exception: omit it to leave the name alone. Resending a remembered title would undo a rename made in the player.
          *
-         *     This keeps the playlist itself, and therefore its id, its position and beefweb's
-         *     id for it. Deleting and recreating would change all three and move it in the
-         *     sidebar.
+         *     The playlist itself is kept, and with it its id, its position and beefweb's id for it. Deleting and recreating changes all three.
          *
-         *     Only playlists this component created can be updated; anything else is a `403`.
+         *     Only playlists this component created can be updated. Anything else is a `403`.
          */
         post: operations["updateAutoPlaylist"];
         /**
          * Delete an autoplaylist this component created.
          * @description Removes the playlist and the autoplaylist client with it.
          *
-         *     **Only playlists this component created.** Anything else is a `403`, including
-         *     an autoplaylist somebody made in foobar2000 itself. beefweb will delete any
-         *     playlist for anyone who can reach it, and that is beefweb's decision to have
-         *     made; this component does not borrow it. A client that genuinely wants to delete
-         *     an arbitrary playlist should ask beefweb and say so to the person first.
+         *     Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself. A client that needs to delete an arbitrary playlist MUST ask beefweb, which will delete any playlist for any caller that can reach it.
          */
         delete: operations["removeAutoPlaylist"];
         options?: never;
@@ -309,20 +231,11 @@ export interface paths {
         put?: never;
         /**
          * Get a short-lived credential for one stream connection.
-         * @description An `<audio>` element cannot send an `Authorization` header, so the credential for
-         *     `GET /stream` travels in the query string instead. That makes it a capability URL,
-         *     and this route is what keeps it survivable: a ticket expires in minutes and buys
-         *     nothing but audio that is already being broadcast on the network it came from.
+         * @description An `<audio>` element cannot send an `Authorization` header, so the credential for `GET /stream` travels in the query string. That makes it a capability URL, and a short lifetime is what bounds it: a ticket expires in `expiresIn` seconds and grants nothing but the audio already being played.
          *
-         *     **A ticket is not single-use**, and that is measured rather than lax. Safari's
-         *     media element probes a source with a `Range: bytes=0-1` request before fetching it
-         *     for real, so one playback start is two requests; a ticket good once cannot serve
-         *     Safari at all. It is good until it expires, and how many streams one ticket can
-         *     open at a time is bounded by `maxConcurrentStreams` instead.
+         *     A ticket is not single-use. Safari's media element probes a source with a `Range: bytes=0-1` request before fetching it for real, so one playback start is two requests and a single-use ticket cannot serve Safari at all. A ticket is good until it expires; `maxConcurrentStreams` bounds how many streams may be open at once.
          *
-         *     Call this immediately before opening the stream, not at page load, and ask for a
-         *     fresh one when reconnecting. Clients MUST NOT store a ticket, log it, or put it
-         *     anywhere a `foo_jean` bearer token would not go.
+         *     A client SHOULD call this immediately before opening the stream rather than at page load, and MUST request a fresh ticket when reconnecting. Clients MUST NOT store a ticket, log it, or put it anywhere a bearer token would not go.
          */
         post: operations["issueStreamTicket"];
         delete?: never;
@@ -340,14 +253,9 @@ export interface paths {
         };
         /**
          * What is audible, in the stream's own clock.
-         * @description The player's reported position is **not** what a listener is hearing: the stream is
-         *     a second or two behind it, so a progress bar or lyrics driven from
-         *     `GET /player` on beefweb will run ahead of the audio. This is how to correct that,
-         *     and the correction is exact rather than an estimate.
+         * @description The player's reported position is not what a listener is hearing: the stream runs a second or two behind it, so a progress bar or lyrics driven from beefweb's `GET /player` run ahead of the audio. This route is how a client corrects that.
          *
-         *     `audio.currentTime` counts *rendered* audio — it advances only as sound actually
-         *     leaves the speaker. So the only unknown is the stream time of the first sample the
-         *     element played, and that is recoverable:
+         *     `audio.currentTime` counts rendered audio: it advances only as sound leaves the speaker. The only unknown is the stream time of the first sample the element played, and it is recoverable:
          *
          *     ```js
          *     // once, when the element starts playing
@@ -361,14 +269,9 @@ export interface paths {
          *     const position = mark ? mark.position + (audible - mark.at) : null;
          *     ```
          *
-         *     Re-anchor after every reconnect: `currentTime` restarts. A client MAY re-poll
-         *     occasionally and re-derive `anchor` to shed clock drift; over a few minutes the
-         *     difference is milliseconds.
+         *     A client MUST re-anchor after every reconnect, because `currentTime` restarts. It MAY re-poll occasionally and re-derive `anchor` to shed clock drift, which is milliseconds over a few minutes.
          *
-         *     Note that browsers differ over whether `currentTime` starts at zero or at the
-         *     stream's own granule position, which for a listener joining a long-running stream
-         *     is a large number. Deriving `anchor` as above works either way, and a client can
-         *     tell which it got by checking whether `anchor` came out near zero.
+         *     Browsers differ over whether `currentTime` starts at zero or at the stream's own granule position, which is a large number for a listener joining a long-running stream. Deriving `anchor` as above works either way, and a client can tell which it got from whether `anchor` came out near zero.
          */
         get: operations["getStreamTimeline"];
         put?: never;
@@ -388,20 +291,11 @@ export interface paths {
         };
         /**
          * Listen to what foobar2000 is playing.
-         * @description A single unbounded response carrying the player's own output — the same audio the
-         *     speakers get, with its DSP chain and ReplayGain already applied. There is no
-         *     length, no `Range`, and no seeking: seeking means asking foobar2000 to seek, which
-         *     moves every listener at once.
+         * @description A single unbounded response carrying the player's own output: the same audio the speakers get, with its DSP chain and ReplayGain applied. There is no length, no `Range` and no seeking. Seeking means asking foobar2000 to seek, which moves every listener at once.
          *
-         *     The response is chunked and ends only when the client disconnects, the component
-         *     stops, or the listener falls too far behind to be sent contiguous audio. A client
-         *     MUST reconnect on any of those rather than treat the end as a stop — a dropped
-         *     connection is the ordinary case on a wireless network, and an `<audio>` element
-         *     will not retry by itself.
+         *     The response is chunked and ends when the client disconnects, the component stops, or the listener falls too far behind to be sent contiguous audio. A client MUST reconnect rather than treat the end as a stop: a dropped connection is ordinary on a wireless network, and an `<audio>` element does not retry by itself.
          *
-         *     This is the one route that does not take a bearer token, because it cannot. It is
-         *     not unauthenticated: without a valid ticket it answers `401`, and a bearer token is
-         *     not accepted in its place.
+         *     This route takes a ticket rather than a bearer token, because an `<audio>` element cannot send a header. Without a valid ticket it answers `401`, and a bearer token is not accepted in its place.
          */
         get: operations["openStream"];
         put?: never;
@@ -418,24 +312,22 @@ export interface components {
     schemas: {
         Status: {
             /**
-             * @description Always this. A client following a discovery record **must** check it before
-             *     sending a token: the record can be forged, and this is what proves the port
-             *     it named is really us.
+             * @description Always this value. A client following a discovery record MUST check it before sending a token: the record can be forged, and this is what confirms the port it named is running foo_jean.
              * @constant
              */
             name: "foo_jean";
             /**
-             * @description The component's own version. Informational; branch on apiVersion.
+             * @description The component's own version. Informational; branch on apiVersion instead.
              * @example 0.1.0
              */
             version: string;
             /**
-             * @description The shape of this API. Refuse a number you do not understand.
+             * @description The shape of this API. A client MUST refuse a number it does not understand.
              * @example 1
              */
             apiVersion: number;
             /**
-             * @description Always true. There is no unauthenticated mode to discover.
+             * @description Always true. There is no unauthenticated mode.
              * @constant
              */
             authRequired: true;
@@ -444,45 +336,29 @@ export interface components {
             /** @example 1 */
             apiVersion: number;
             /**
-             * @description Tag names this install permits, lower-case by convention but matched
-             *     case-insensitively. Anything not named here is refused with a `403`.
+             * @description Tag names this install permits, lower case by convention and matched case-insensitively. Anything not named here is refused with a `403`.
              * @example [
              *       "rating"
              *     ]
              */
             allowedFields: string[];
-            /**
-             * @description False when the allowlist is empty. A convenience for the common branch, not
-             *     a second source of truth — it is exactly `allowedFields.length > 0`.
-             */
+            /** @description Exactly `allowedFields.length > 0`. A convenience, not a second source of truth. */
             canWrite: boolean;
             /**
-             * @description How many autoplaylists this component will keep at once, counting only the
-             *     ones it created. `0` switches creation off.
+             * @description How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
              *
-             *     It is a cap because the failure worth guarding against is a client bug: whoever
-             *     holds the token can already rewrite tags, but nobody should open foobar2000 to
-             *     find four hundred playlist tabs they did not make.
+             *     The cap bounds a client bug rather than an attacker; whoever holds the token can already write tags.
              * @example 100
              */
             maxAutoPlaylists: number;
             /** @description Exactly `maxAutoPlaylists > 0`. The same kind of convenience as `canWrite`. */
             canCreateAutoPlaylists: boolean;
-            /**
-             * @description Exactly `streamFormats.length > 0`. The same kind of convenience as `canWrite`.
-             *     False on an install where the component loaded but no encoder started, and on
-             *     any version older than this one — a client MUST hide the listen control rather
-             *     than offer it and fail.
-             */
+            /** @description Exactly `streamFormats.length > 0`. False on an install where the component loaded but no encoder started, where `streamingEnabled` is false, and on any component version that predates streaming. A client MUST hide the listen control when it is false rather than offer it and fail. */
             canStream: boolean;
             /**
-             * @description What `GET /stream?format=` accepts, **best first**. `opus` is Ogg Opus and is
-             *     what every current browser except older Safari takes; `aac` is AAC-LC in ADTS
-             *     and exists for Safari, which did not read Ogg Opus before 18.4.
+             * @description What `GET /stream?format=` accepts, best first. `opus` is Ogg Opus, which every current browser except older Safari plays. `aac` is AAC-LC in ADTS, for Safari before 18.4.
              *
-             *     A client SHOULD send no `format` and take the first, unless it knows the
-             *     browser needs otherwise. The list is not fixed: an install whose Windows has no
-             *     AAC encoder reports `opus` alone.
+             *     A client SHOULD omit `format` and take the first entry unless it knows the browser needs otherwise. The list varies by install: one whose Windows has no AAC encoder reports `opus` alone.
              * @example [
              *       "opus",
              *       "aac"
@@ -491,51 +367,38 @@ export interface components {
             streamFormats?: string[];
         };
         StreamTimeline: {
-            /**
-             * @description Seconds of audio encoded since the component started. Not wall-clock, and not
-             *     the player's position — it is the clock `marks[].at` is expressed in.
-             */
+            /** @description Seconds of audio encoded since the component started. Not wall-clock time and not the player's position. It is the clock `marks[].at` is expressed in. */
             streamTime: number;
             /**
-             * @description Where each of the last few tracks began, oldest first. Bounded, so a player
-             *     left running for a day does not grow this: a client only ever needs the marks
-             *     around what it is currently hearing.
+             * @description Where the stream last changed what a given stream time means, oldest first: a track starting, or a seek within one. The list is bounded, so a player left running for a day does not grow it; a client needs only the marks around what it is currently hearing.
+             *
+             *     A seek produces a mark because the track does not change but its position does. Without one a client goes on deriving positions from before the jump.
              */
             marks: {
                 /** @description Stream time at which this track's audio began. */
                 at: number;
                 /**
-                 * @description As the player reports it. On a portable install this can be a
-                 *     `file-relative://` URL rather than an absolute path, so a client
-                 *     matching these against beefweb's answers MUST compare what beefweb
-                 *     reports rather than assume a drive letter.
+                 * @description A plain absolute local path, the same form beefweb reports for `%path%` and the same form `POST /tags` accepts, so a client can join the two on equality.
+                 *
+                 *     Not the form the player stores: on a portable install foobar2000's canonical path is `file-relative://..\Music\x.mp3` for the file beefweb calls `C:\Music\x.mp3`. This route resolves it.
                  */
                 path: string;
                 subsong: number;
-                /**
-                 * @description Where the player was within the track at `at`. Usually zero, but not
-                 *     when a listener connects mid-track or somebody seeks.
-                 */
+                /** @description Where the player was within the track at `at`. Zero except when a listener connects mid-track or somebody seeks. */
                 position: number;
             }[];
         };
         Paired: {
-            /**
-             * @description The bearer token, in full. A client MUST store it where it would store one
-             *     pasted by hand and MUST NOT log it or put it in a URL.
-             */
+            /** @description The bearer token, in full. A client MUST store it where it would store one pasted by hand, and MUST NOT log it or put it in a URL. */
             token: string;
             /**
-             * @description The shape of this API, so a client can refuse one it does not know.
+             * @description The shape of this API, so a client can refuse a version it does not know.
              * @example 1
              */
             apiVersion: number;
         };
         StreamTicket: {
-            /**
-             * @description Opaque. Send it as the `ticket` query parameter, use it for as long as the
-             *     connection attempt takes, and then forget it.
-             */
+            /** @description Opaque. Send it as the `ticket` query parameter and discard it once the connection is open. */
             ticket: string;
             /**
              * @description Seconds from now.
@@ -545,31 +408,20 @@ export interface components {
         };
         TagWriteRequest: {
             /**
-             * @description The track's path, exactly as beefweb reports `%path%` — a plain absolute
-             *     local path. No URL scheme (not even `file://`), no UNC share, no `..`
-             *     segment, no relative path.
+             * @description The track's path, exactly as beefweb reports `%path%`: a plain absolute local path. No URL scheme, not even `file://`, no UNC share, no `..` segment, no relative path.
              *
-             *     This is the whole of a track's identity together with `subsong`. Playlist
-             *     items have no id and any mutation invalidates indices, so a path is the only
-             *     stable handle a client has.
-             * @example F:\Musica\A\Artist\Album\01. Track.mp3
+             *     With `subsong`, this is the whole of a track's identity. Playlist items have no id and any mutation invalidates indices, so a path is the only stable handle a client has.
+             * @example C:\Music\Fictional Artist\Imaginary Album\01 Track.mp3
              */
             path: string;
             /**
-             * @description Which track inside the file, for cue sheets and disc images. Omit it for an
-             *     ordinary file, which is nearly always; the component reads a missing value
-             *     as 0.
+             * @description Which track inside the file, for cue sheets and disc images. Omit it for an ordinary file; a missing value is read as 0.
              *
-             *     Deliberately no `default:` here. openapi-typescript treats a property that
-             *     has one as always present and emits it non-optional, which is right for a
-             *     response and wrong for a request body — it would force every caller to pass
-             *     a subsong it does not have.
+             *     No `default:` is declared here. openapi-typescript treats a property that has one as always present and emits it non-optional, which would force every caller to pass a subsong it does not have.
              */
             subsong?: number;
             /**
-             * @description Tag name to value. Every name must be on the allowlist. Two names differing
-             *     only in case is refused rather than guessed at, since foobar2000 tag names
-             *     are case-insensitive and that would be two instructions for one tag.
+             * @description Tag name to value. Every name MUST be on the allowlist. Two names differing only in case are refused rather than guessed at, since foobar2000 tag names are case-insensitive and that is two instructions for one tag.
              * @example {
              *       "rating": "4"
              *     }
@@ -588,10 +440,7 @@ export interface components {
                 [key: string]: string;
             };
         };
-        /**
-         * @description A refusal the client can act on: the request was understood and declined before
-         *     the player was involved.
-         */
+        /** @description A refusal the client can act on. The request was understood and declined before the player was involved. */
         TagRefused: {
             /** @constant */
             written: false;
@@ -600,129 +449,75 @@ export interface components {
              * @enum {string}
              */
             error: "malformed request" | "missing path" | "unacceptable path" | "no fields to write" | "field not allowed";
-            /**
-             * @description What specifically was wrong, and safe to show a person: every one of these
-             *     describes the request the client just sent, never anything on the player's
-             *     disk. For a body that is not JSON it carries the parser's own message,
-             *     which quotes the client's own text back at it.
-             */
+            /** @description What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text. */
             detail: string;
-            /**
-             * @description Present only when `error` is `field not allowed`, naming the field. A client
-             *     should use it to stop offering that control rather than to keep failing.
-             */
+            /** @description Present only when `error` is `field not allowed`, naming the field. A client SHOULD use it to stop offering that control. */
             field?: string;
         };
-        /** @description The request was fine; the attempt was not. */
+        /** @description The request was acceptable and the attempt failed. */
         TagFailed: {
             /** @constant */
             written: false;
             /** @enum {string} */
             error: "foobar2000 does not know that track" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available";
         };
-        /**
-         * @description Everything this component knows about one playlist that beefweb does not report,
-         *     and nothing else. Title, item count, total time and which playlist is current all
-         *     come from beefweb.
-         */
+        /** @description What this component knows about one playlist that beefweb does not report, and nothing else. Title, item count, total time and which playlist is current all come from beefweb. */
         PlaylistAnnotation: {
             /**
-             * @description foobar2000's own playlist GUID, lower case and dashed. Stable across renames,
-             *     reordering and restarts, and never reused — so it is what the routes here
-             *     address, and what a client should store when it wants to find a playlist
-             *     again later.
+             * @description foobar2000's own playlist GUID, lower case and dashed. Stable across renames, reordering and restarts, and never reused. It is what the routes here address, and what a client SHOULD store to find a playlist again later.
              * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
              */
             id: string;
             /**
-             * @description beefweb's id for the same playlist, read from the property beefweb keeps it
-             *     in. This is the join key between the two APIs: exact, unlike matching on
-             *     titles that foobar2000 permits duplicates of, or on an index that changes
-             *     underneath both of us.
+             * @description beefweb's id for the same playlist, read from the property beefweb keeps it in. This is the join key between the two APIs, and it is exact, unlike matching on a title foobar2000 permits duplicates of or on an index that changes under both.
              *
-             *     `null` when beefweb has not assigned one yet, which is the case for a
-             *     playlist just created here until beefweb next rebuilds its map. Ask beefweb
-             *     for its playlists first and this will be filled in.
+             *     `null` when beefweb has not assigned one yet, which is the case for a playlist just created here until beefweb next rebuilds its map. Request beefweb's playlists first and this is filled in.
              *
-             *     Read but never written: it is another component's bookkeeping.
+             *     Read, never written: it is another component's bookkeeping.
              * @example p3
              */
             beefwebId: string | null;
-            /**
-             * @description Position in the player, and the fallback join key when `beefwebId` is null.
-             *     Not identity: creating, deleting or reordering a playlist changes it.
-             */
+            /** @description Position in the player, and the fallback join key when `beefwebId` is null. Not identity: creating, deleting or reordering a playlist changes it. */
             index: number;
-            /**
-             * @description For checking a join against rather than for display — beefweb's answer is the
-             *     one to show, and this one is a snapshot from a different request.
-             */
+            /** @description For checking a join rather than for display. beefweb's answer is the one to show; this is a snapshot from a different request. */
             title: string;
-            /**
-             * @description The question beefweb cannot answer, and the reason this endpoint exists. True
-             *     for any autoplaylist, including ones made in foobar2000 long before this
-             *     component was installed.
-             */
+            /** @description Whether the playlist is an autoplaylist. This is the question beefweb cannot answer. True for any autoplaylist, including ones made in foobar2000 before this component was installed. */
             isAutoPlaylist: boolean;
             /**
-             * @description What this component stored when it created the playlist, or `null` for every
-             *     playlist it did not create — which includes autoplaylists somebody made in
-             *     the player. That distinction is the one a client needs to tell "a folder I
-             *     manage" from "an autoplaylist that was already here".
+             * @description What this component stored when it created the playlist, or `null` for every playlist it did not create, including autoplaylists made in the player. This is how a client tells a folder it manages from an autoplaylist that was already there.
              *
-             *     It is kept as a foobar2000 playlist property, the same mechanism beefweb uses
-             *     for its ids, so it travels with the playlist through renames and restarts and
-             *     is gone when the playlist is.
+             *     It is kept as a foobar2000 playlist property, the same mechanism beefweb uses for its ids, so it travels with the playlist through renames and restarts and is removed with the playlist.
              */
             managed: components["schemas"]["ManagedAutoPlaylist"] | null;
         };
         ManagedAutoPlaylist: {
             /** @description Whatever the client sent, handed back verbatim. Empty when none was given. */
             key: string;
-            /**
-             * @description The query the playlist was **created with**. If somebody edits the query in
-             *     foobar2000's own dialog this goes stale, and there is no way to detect that:
-             *     the SDK offers no way to read an autoplaylist's current query back.
-             */
+            /** @description The query the playlist was created with. Editing the query in foobar2000's own dialog makes this stale, and the component cannot detect that: the SDK offers no way to read an autoplaylist's current query back. */
             query: string;
             sort: string;
             forceSort: boolean;
         };
         AutoPlaylistRequest: {
             /**
-             * @description What the playlist is called in foobar2000's own tabs. **Required when
-             *     creating, optional when updating** — omitting it on an update leaves the name
-             *     alone, rather than renaming the playlist to whatever the client last knew.
+             * @description What the playlist is called in foobar2000's own tabs. Required when creating, optional when updating; omitting it on an update leaves the name alone rather than renaming the playlist to whatever the client last knew.
              *
-             *     Prefix it with `#Jean ` by convention, so that somebody looking at the player
-             *     can see where the playlist came from. That is a message to a person: nothing
-             *     in this API reads the title, and the user may rename it freely without
-             *     anything breaking.
+             *     Prefix it with `#Jean ` by convention, so that somebody looking at the player can see where the playlist came from. That is a message to a person. Nothing in this API reads the title, and the user may rename it freely.
              *
              *     No control characters, which would be line breaks in a playlist tab.
              */
             title?: string;
             /**
-             * @description Opaque to this component: stored, handed back, and compared for equality,
-             *     never interpreted. A client puts whatever lets it recognise its own playlists
-             *     later — `folder:genre:Rock` — instead of encoding a convention in the title,
-             *     which the user can edit.
+             * @description Opaque to this component: stored, handed back and compared for equality, never interpreted. A client puts here whatever lets it recognise its own playlists later, such as `folder:genre:Rock`, rather than encoding a convention in the title, which the user can edit.
              *
-             *     Must be unique across the playlists this component created; a second playlist
-             *     with the same key is a `409` rather than a duplicate, which makes "toggle this
-             *     folder on" safe to send twice.
+             *     MUST be unique across the playlists this component created. A second playlist with the same key is a `409` rather than a duplicate, so the same create request is safe to send twice.
              * @example folder:genre:Rock
              */
             key?: string;
             /**
-             * @description foobar2000's own query syntax, passed through untouched. This component never
-             *     composes or interprets it: the player owns that language and is the only thing
-             *     that can say whether a query parses.
+             * @description foobar2000's own query syntax, passed through untouched. This component never composes or interprets it; the player owns that language and is the only thing that can say whether a query parses.
              *
-             *     Which means **quoting is the client's job**. A value taken from library data
-             *     and pasted into a query unquoted produces a valid-but-wrong query, and no
-             *     amount of validation here can catch that. Compose carefully, and use
-             *     `POST /autoplaylists/preview` to see what a query actually matches.
+             *     Quoting is therefore the client's responsibility. A value taken from library data and pasted in unquoted can produce a valid query that is not the one intended, and no validation here can catch that. Use `POST /autoplaylists/preview` to see what a query matches.
              * @example %genre% IS Rock
              */
             query: string;
@@ -731,88 +526,47 @@ export interface components {
              * @example %album artist%|%date%|%album%
              */
             sort?: string;
-            /**
-             * @description Keep the playlist sorted, and stop the user reordering it by hand. Optional;
-             *     defaults to false.
-             */
+            /** @description Keep the playlist sorted, and stop the user reordering it by hand. Optional, and false when absent. */
             forceSort?: boolean;
         };
         QueryPreview: {
             /** @description Whether foobar2000 could read the query. Check this before `matches`. */
             valid: boolean;
-            /**
-             * @description The player's own message when `valid` is false, and empty otherwise. Safe to
-             *     show a person: it describes the query they typed, not anything on the disk.
-             */
+            /** @description The player's own message when `valid` is false, and empty otherwise. Safe to show a person: it describes the query they typed, not anything on the disk. */
             error: string;
             /** @description How many tracks in the Media Library the query matches. `0` when invalid. */
             matches: number;
-            /**
-             * @description Whether this install has a Media Library configured. Autoplaylists filter the
-             *     Media Library and nothing else, so `false` here means every autoplaylist will
-             *     be empty however good the query is — which is worth saying to somebody before
-             *     they create one, and is why this is reported here rather than on
-             *     `/capabilities`.
-             */
+            /** @description Whether this install has a Media Library configured. Autoplaylists filter the Media Library and nothing else, so `false` means every autoplaylist is empty whatever the query. A client SHOULD say so before somebody creates one, which is why this is reported here rather than on `/capabilities`. */
             libraryEnabled: boolean;
         };
-        /**
-         * @description A refusal the client can act on: the request was understood and declined before
-         *     the player was involved.
-         */
+        /** @description A refusal the client can act on. The request was understood and declined before the player was involved. */
         PlaylistRefusal: {
             /** @enum {string} */
             error: "malformed request" | "unacceptable title" | "unacceptable key" | "unacceptable query" | "unacceptable sort" | "unacceptable playlist id" | "too many requests";
-            /**
-             * @description What specifically was wrong, and safe to show a person: every one of these
-             *     describes the request the client just sent, never anything on the player's
-             *     disk. For a body that is not JSON it carries the parser's own message,
-             *     which quotes the client's own text back at it.
-             */
+            /** @description What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text. */
             detail: string;
         };
-        /** @description The request was fine; the attempt was not. */
+        /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
             error: "foobar2000 could not read that query" | "no such playlist" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available";
-            /**
-             * @description Empty for everything except a query foobar2000 could not read, where it
-             *     carries the player's own parse error — which is about text the client sent
-             *     rather than anything on this disk, and is therefore safe to relay and worth
-             *     showing.
-             */
+            /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
-        /**
-         * @description The shape every failing response carries at least. Deliberately incurious: what
-         *     broke inside is the component's business, and error text is a reliable way to
-         *     leak filesystem paths.
-         */
+        /** @description The minimum shape every failing response carries. It says nothing about what broke inside the component, because error text leaks filesystem paths. */
         Error: {
             error: string;
         };
         /**
-         * @description **Served by beefweb, not by this component**, at
-         *     `GET http://<player>:8880/api/clientconfig/foo_jean` — same origin as a client
-         *     beefweb is already serving, so finding us is one request folded into connect
-         *     rather than a port scan. It is written on every start of the component and
-         *     removed on a clean shutdown.
+         * @description Served by beefweb, not by this component, at `GET http://<player>:8880/api/clientconfig/foo_jean`. It is same-origin for anything beefweb serves, so finding the component is one request rather than a port scan. The component writes it on every start and removes it on a clean shutdown.
          *
-         *     `null` is the answer when the component is not installed, and is the common case.
+         *     `null` means the component is not installed.
          *
          *     ### This record is not evidence
          *
-         *     `POST /api/clientconfig/{id}` is a real beefweb route, `changeClientConfig`
-         *     defaults to on, and beefweb ships with no authentication. So **anyone who can
-         *     reach beefweb can overwrite this and name any port they like**, and the forgery
-         *     lasts until the component next starts. A client that read a port from here and
-         *     posted its bearer token to it would be handing the token to whoever wrote the
-         *     file.
+         *     `POST /api/clientconfig/{id}` is a documented beefweb route, `changeClientConfig` defaults to on, and beefweb ships with no authentication. Anyone who can reach beefweb can therefore overwrite this record and name any port, and the forgery lasts until the component next starts. A client that read a port from here and posted its bearer token to it would hand the token to whoever wrote the file.
          *
-         *     Treat it as a hint. Call unauthenticated `GET /status` on the advertised port
-         *     first, require `name` to be `foo_jean` and an `apiVersion` you understand, and
-         *     only then send the token. That reduces the attack to somebody who can already
-         *     run a listener on the player, which is a different and much larger problem.
+         *     A client MUST treat this record as a hint. Call unauthenticated `GET /status` on the advertised port first, require `name` to be `foo_jean` and an `apiVersion` the client understands, and only then send the token.
          */
         DiscoveryRecord: {
             /** @constant */
@@ -828,31 +582,19 @@ export interface components {
             port: number;
             /** @constant */
             authRequired: true;
-            /**
-             * @description False when the component loaded but could not bind. **Not the same as
-             *     absent**, and worth showing: "installed but could not start on port 8881" is
-             *     something a person can act on, where silently disabling the feature is not.
-             */
+            /** @description False when the component loaded but could not bind. Not the same as an absent record, and a client SHOULD report it: "installed but could not start on port 8881" is something a person can act on, where a silently disabled feature is not. */
             listening: boolean;
             /**
              * @description Present only when `listening` is false. Safe to show a person.
              * @example could not bind 0.0.0.0:8881; the port is in use
              */
             error?: string;
-            /**
-             * @description Present only when `listening` is false. Separated from other failures because
-             *     it has a specific remedy: change `port` in `<profile>/foo_jean/config.json`.
-             *     The usual cause is another server already on that port.
-             */
+            /** @description Present only when `listening` is false, and separated from other failures because it has a specific remedy: change `port` in `<profile>/foo_jean/config.json`. The usual cause is another server on that port. */
             portInUse?: boolean;
         };
     };
     responses: {
-        /**
-         * @description The request was understood and declined before the player was involved: a body
-         *     that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, or an
-         *     id that is not one this component issued.
-         */
+        /** @description The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, or an id this component did not issue. */
         PlaylistRefused: {
             headers: {
                 [name: string]: unknown;
@@ -861,10 +603,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistRefusal"];
             };
         };
-        /**
-         * @description The playlist exists and this component did not create it. Retrying will never
-         *     work; it is not a permission that can be granted, it is a boundary.
-         */
+        /** @description The playlist exists and this component did not create it. Retrying will never work, and no configuration grants it. */
         NotOurs: {
             headers: {
                 [name: string]: unknown;
@@ -882,10 +621,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /**
-         * @description The request conflicts with what is already there: another playlist has that
-         *     `key`, or this install is already at `maxAutoPlaylists`.
-         */
+        /** @description Another playlist already has that `key`, or this install is at `maxAutoPlaylists`. */
         PlaylistConflict: {
             headers: {
                 [name: string]: unknown;
@@ -895,14 +631,9 @@ export interface components {
             };
         };
         /**
-         * @description Playlist changes are arriving faster than this component will make them. It is a
-         *     bound on how fast a mistake can happen rather than a security control: a client
-         *     looping should leave a handful of playlists and a log line, not hundreds of tabs
-         *     in somebody's player.
+         * @description Playlist changes are arriving faster than this component will make them. The limit bounds how fast a client bug can fill the player with playlists; it is not a security control.
          *
-         *     A burst of about thirty is allowed, refilling at roughly one a second, shared
-         *     across creating, updating and deleting. Reading and previewing are not limited.
-         *     `Retry-After` is sent in seconds.
+         *     A burst of thirty is allowed, refilling at one a second, shared across creating, updating and deleting. Reading and previewing are not limited. `Retry-After` is sent in seconds.
          */
         TooManyRequests: {
             headers: {
@@ -914,10 +645,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistRefusal"];
             };
         };
-        /**
-         * @description foobar2000 would not do it. Nothing is said about why; error text is a reliable
-         *     way to leak filesystem paths.
-         */
+        /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
         PlayerRefused: {
             headers: {
                 [name: string]: unknown;
@@ -926,10 +654,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /**
-         * @description The player did not finish within 30 seconds. The work may still complete
-         *     afterwards, so re-read `GET /playlists` rather than assuming it did not.
-         */
+        /** @description The player did not finish within 30 seconds. The work MAY still complete afterwards, so a client MUST re-read `GET /playlists` rather than assume it did not. */
         PlayerTooSlow: {
             headers: {
                 [name: string]: unknown;
@@ -938,11 +663,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /**
-         * @description Autoplaylists are not available in this install — either the component could not
-         *     reach that part of the player, or `maxAutoPlaylists` is `0` in `config.json`,
-         *     which switches creation off. `GET /capabilities` says which before you ask.
-         */
+        /** @description Autoplaylists are not available in this install, either because the component could not reach that part of the player or because `maxAutoPlaylists` is `0` in `config.json`. `GET /capabilities` reports this in advance. */
         PlaylistUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -951,13 +672,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /**
-         * @description Either this install does not stream — no encoder started, or `streamingEnabled`
-         *     is false, and `GET /capabilities` says so before you ask — or it is already
-         *     serving as many listeners as `maxConcurrentStreams` allows. The `error` string
-         *     distinguishes them; a client SHOULD show the second as "busy" and retry rather
-         *     than as "not supported".
-         */
+        /** @description Either this install does not stream, because no encoder started or `streamingEnabled` is false, or it is already serving as many connections as `maxConcurrentStreams` allows. The `error` string distinguishes them, and a client SHOULD present the second as busy and retry rather than as unsupported. `GET /capabilities` reports the first in advance. */
         StreamUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -969,9 +684,7 @@ export interface components {
         /**
          * @description No token, the wrong token, or the wrong scheme.
          *
-         *     No `WWW-Authenticate` header is sent, deliberately: it would raise a native
-         *     browser credential dialog in the middle of the client's own UI, and this is a
-         *     bearer scheme no browser can satisfy anyway.
+         *     No `WWW-Authenticate` header is sent. It would raise a native browser credential dialog over the client's own UI, and no browser can satisfy this scheme.
          */
         Unauthorized: {
             headers: {
@@ -1019,19 +732,13 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    /**
-                     * @description What to call this device in the pairing history. Optional, and it
-                     *     MUST stay optional: requiring a name would reintroduce the typing
-                     *     this route exists to remove. Display text only — a value with control
-                     *     characters in it is stored as empty rather than refused, because it
-                     *     is written to a log where a newline would forge a line.
-                     */
+                    /** @description What to call this device in the pairing history. Optional, and it MUST stay optional: requiring a name reintroduces the typing this route removes. Display text only. A value containing control characters is stored as empty rather than refused, since it is written to a log where a newline would forge a line. */
                     name?: string;
                 };
             };
         };
         responses: {
-            /** @description The token. This is the only response in the API that carries it. */
+            /** @description The token. The only response in this API that carries it. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1049,14 +756,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /**
-             * @description No window is open, or the caller is not on the local network. The two are
-             *     distinguishable in the `error` string on purpose: one is a button the owner
-             *     has to press and the message should say which, the other is a fact about the
-             *     network that no amount of pressing will change. A caller from outside is
-             *     answered before the window is consulted, so it cannot infer one from the
-             *     other.
-             */
+            /** @description No window is open, or the caller is not on the local network. The `error` string distinguishes them: the first is fixed by a press at the player, the second is a fact about the network. A caller from outside is answered before the window is consulted, so it cannot infer one from the other. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -1065,10 +765,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /**
-             * @description Not `application/json`. See the description: this is what keeps a
-             *     cross-origin caller from reaching the route without a preflight.
-             */
+            /** @description The request was not `application/json`. This requirement is what forces a cross-origin caller to be preflighted. */
             415: {
                 headers: {
                     [name: string]: unknown;
@@ -1077,10 +774,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /**
-             * @description Pairing attempts are rate-limited separately from every other route, because
-             *     this is the only unauthenticated one that does anything.
-             */
+            /** @description Pairing attempts are rate-limited on a budget of their own, separate from every other route. A burst of ten is allowed, refilling at one every six seconds. */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -1125,10 +819,7 @@ export interface operations {
             };
         };
         responses: {
-            /**
-             * @description Written, and foobar2000's database knows. The body echoes what was written
-             *     so a client that updated its own view optimistically can reconcile.
-             */
+            /** @description Written, and foobar2000's database is current. The body echoes what was written, so a client that updated its own view optimistically can reconcile. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1137,10 +828,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagWritten"];
                 };
             };
-            /**
-             * @description The request is malformed, names no path, names an unacceptable path, or has
-             *     nothing to write. Retrying it unchanged will not help.
-             */
+            /** @description The request is malformed, names no path, names an unacceptable path, or has nothing to write. Retrying it unchanged will not help. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1150,11 +838,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /**
-             * @description Understood perfectly, and not permitted — the field is not on this install's
-             *     allowlist. A `403` rather than a `400` because retrying unchanged will never
-             *     work; the client should stop offering the control. `field` names the offender.
-             */
+            /** @description The field is not on this install's allowlist. A `403` rather than a `400` because the request was understood and retrying it unchanged will never work. `field` names the offending field, and a client SHOULD stop offering that control. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -1163,10 +847,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagRefused"];
                 };
             };
-            /**
-             * @description foobar2000 does not manage that track. Either the path names nothing, or it
-             *     names a real file the player has never been told about. Nothing was written.
-             */
+            /** @description foobar2000 does not manage that track: the path names nothing, or it names a real file the player has not been told about. Nothing was written. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1176,12 +857,9 @@ export interface operations {
                 };
             };
             /**
-             * @description The body exceeds 256 KB and was refused before it was parsed. Note that the
-             *     component answers and closes while the rest of the body may still be in
-             *     flight, so a client sending something very large may see a dropped
-             *     connection instead of this response. Both mean refused.
+             * @description The body exceeds 256 KB and was refused before it was parsed. The component answers and closes while the rest of the body may still be in flight, so a client sending something very large may see a dropped connection instead of this response. Both mean refused.
              *
-             *     This is one of two failures that does **not** carry `written`.
+             *     One of the two failures that does not carry `written`; the other is the `401`.
              */
             413: {
                 headers: {
@@ -1191,7 +869,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description The player could not write the tags. Nothing is said about why; error text leaks paths. */
+            /** @description The player could not write the tags. No reason is given, because error text leaks filesystem paths. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -1209,10 +887,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagFailed"];
                 };
             };
-            /**
-             * @description The player did not finish within 30 seconds. The write may still complete
-             *     afterwards, so re-read the value rather than assuming it did not.
-             */
+            /** @description The player did not finish within 30 seconds. The write MAY still complete afterwards, so a client MUST re-read the value rather than assume it did not. */
             504: {
                 headers: {
                     [name: string]: unknown;
@@ -1289,11 +964,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /**
-                     * @description foobar2000 query syntax. Must not be empty: the player reads an empty
-                     *     query as "everything", and "your whole library matches" is a
-                     *     confusing thing to show for a box nobody has typed in yet.
-                     */
+                    /** @description foobar2000 query syntax. MUST NOT be empty: the player reads an empty query as matching everything. */
                     query: string;
                 };
             };
@@ -1320,8 +991,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower
-                 *     case, dashed, no braces. Not beefweb's id, which belongs to beefweb.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -1349,12 +1019,7 @@ export interface operations {
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistConflict"];
             429: components["responses"]["TooManyRequests"];
-            /**
-             * @description The player refused. One case is worth knowing: if the new query compiles but
-             *     the core then declines to attach it, the playlist is left as an ordinary
-             *     playlist that this component still recognises as its own. Sending the same
-             *     request again with a query the player accepts puts it back.
-             */
+            /** @description The player refused. If the new query compiles but the core then declines to attach it, the playlist is left as an ordinary playlist that this component still recognises as its own; sending the request again with a query the player accepts restores it. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -1373,8 +1038,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower
-                 *     case, dashed, no braces. Not beefweb's id, which belongs to beefweb.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -1415,7 +1079,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description A ticket, good once. */
+            /** @description A ticket, good until it expires. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1453,14 +1117,9 @@ export interface operations {
     openStream: {
         parameters: {
             query: {
-                /** @description From `POST /stream/ticket`. Consumed by this request. */
+                /** @description From `POST /stream/ticket`. Valid until it expires, not consumed by this request. */
                 ticket: string;
-                /**
-                 * @description One of `GET /capabilities`'s `streamFormats`. Omit it to get the first, which
-                 *     is the best this install has. A format the install does not encode is a `400`
-                 *     rather than a silent substitution — a client that asked for `aac` and got Opus
-                 *     would play silence on the browser it asked for `aac` for.
-                 */
+                /** @description One of the `streamFormats` from `GET /capabilities`. Omit it to get the first, which is the best this install offers. A format the install does not encode is a `400` rather than a silent substitution. */
                 format?: string;
             };
             header?: never;
@@ -1493,11 +1152,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /**
-             * @description No ticket, an unknown ticket, or an expired one. All three answer identically
-             *     and deliberately: distinguishing them would let a caller sort guesses into
-             *     "wrong" and "too late".
-             */
+            /** @description No ticket, an unknown ticket, or an expired one. All three answer identically, so a caller cannot sort guesses into wrong and too late. */
             401: {
                 headers: {
                     [name: string]: unknown;

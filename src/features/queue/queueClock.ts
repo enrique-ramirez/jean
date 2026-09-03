@@ -2,16 +2,13 @@ import { useSyncExternalStore } from "react";
 
 import { subscribers } from "@/shared/lib/store";
 
-// One timer for every countdown on screen. A module-level store rather than
-// state in the panel, so a tick re-renders the spans and not the rows.
+// One timer for every countdown on screen. A module-level store rather than state in the panel, so a tick re-renders the spans and not the rows.
 
 const listeners = subscribers();
 let timer: ReturnType<typeof setInterval> | null = null;
 let tick = 0;
 
-// The interval is the store's own resource: started by the first countdown to
-// arrive and stopped after the last one leaves, so a Jean with no queue on
-// screen is not waking up once a second to tell nobody.
+// Started by the first countdown to arrive and stopped after the last one leaves, so nothing ticks while no countdown is on screen.
 const subscribe = (listener: () => void) => {
 	const unsubscribe = listeners.subscribe(listener);
 	timer ??= setInterval(() => {

@@ -13,8 +13,9 @@ import capturedPlayer from "./player.json" with { type: "json" };
 // detection, so it is modelled by absence rather than by a sentinel.
 export type Track = Record<string, string>;
 
-// Where a track began, in wall-clock milliseconds. Held as wall time so the
-// state box does not need the listener half's epoch.
+// Where the stream last changed what a given stream time means, in wall-clock
+// milliseconds. Held as wall time so the state box does not need the listener
+// half's epoch.
 export interface StreamMark {
 	atMs: number;
 	path: string;
@@ -483,17 +484,17 @@ export function createState({
 	};
 
 	// A track began, or the player moved within one. Both change what a given
-	// stream time means, so both are a mark.
+	// stream time means, so the component marks both.
 	const mark = (track: Track, position: number) => {
 		state.streamMarks = [
 			...state.streamMarks.slice(1 - STREAM_MARKS),
 			{
-				// Backdated by where the player is in the track: a track at 0:30 began
-				// thirty seconds ago. Lets a spec set up a lag without waiting one out.
-				atMs: Date.now() - position * 1000,
+				atMs: Date.now(),
 				path: String(evaluate(track, "%path%") ?? ""),
 				subsong: 0,
-				position: 0,
+				// Where the player landed, which for a seek is the only thing that
+				// makes the mark worth anything -- the track did not change.
+				position,
 			},
 		];
 	};
@@ -711,8 +712,8 @@ export function createState({
 					item.duration,
 				);
 			}
-			// A seek is a new mark: the same stream time now means a different place
-			// in the track.
+			// A seek is a mark: the same stream time now means a different place in
+			// the track.
 			if (item.position !== before) {
 				const track = byId(item.playlistId)?.items[item.index];
 				if (track) mark(track, item.position);

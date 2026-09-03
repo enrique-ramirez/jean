@@ -32,6 +32,13 @@ const currentTime = (page: Page) =>
 		return audio ? audio.currentTime : null;
 	});
 
+// The elapsed side of the status bar's `mm:ss/mm:ss` readout, in seconds.
+const elapsedSeconds = async (page: Page) => {
+	const text = (await statusBar(page).innerText()).replace(/\s+/g, " ");
+	const match = /(\d+):(\d\d)\s*\/\s*\d+:\d\d/.exec(text);
+	return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+};
+
 const streamRequests = (player: FakePlayer) =>
 	player.requests.filter((entry) => entry.path === "/api/stream");
 
@@ -301,6 +308,43 @@ test.describe("what is audible, not what the player is doing", () => {
 		await expect(statusBar(page)).toContainText(NEXT.title, {
 			timeout: 60_000,
 		});
+	});
+
+	test("the readout runs behind the player, by the buffer", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the readout is desktop-only");
+		await page.goto("/");
+		// Wall clock is the reference: the fake pushes on change and never on a
+		// timer, so its stored `position` stays where the last push left it while
+		// the player it stands for goes on playing.
+		const startedAt = Date.now();
+		player.playItem("p7", HEARD.index);
+
+		await startListening(page);
+		await expect
+			.poll(() => currentTime(page), { timeout: 60_000, intervals: TICK })
+			.toBeGreaterThan(0);
+
+		// The bound is wide because what is asserted is that a correction is applied
+		// at all, and in the right direction. Its size is the browser's business,
+		// and on the fake it comes to about six seconds.
+		await expect
+			.poll(
+				async () => {
+					const shown = await elapsedSeconds(page);
+					return shown === null
+						? null
+						: (Date.now() - startedAt) / 1000 - shown;
+				},
+				{ timeout: 60_000, intervals: TICK },
+			)
+			.toBeGreaterThan(2);
+
+		const shown = await elapsedSeconds(page);
+		expect((Date.now() - startedAt) / 1000 - (shown ?? 0)).toBeLessThan(20);
 	});
 
 	test("a pause pressed here still answers at once", async ({

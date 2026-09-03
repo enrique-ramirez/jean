@@ -1,284 +1,180 @@
-import { allTracks, type Track } from "../test/fake-api/state.ts";
+import type { FakePlaylist, Track } from "../test/fake-api/state.ts";
 
-// The library the demo browses: the five captured albums, plus enough
-// synthesised ones to make the app behave the way it does in front of a real
-// collection. Both halves matter. The capture is what keeps the covers, the
-// accents and the play counts honest -- it is bytes a real foobar2000 produced
-// -- and the filler is what makes the shelves scroll, the search have more than
-// one answer, and the virtualiser hold a screenful rather than the whole list.
+// The library the demo browses: a hundred and fifty-two real albums, captured
+// off a real foobar2000 by `test/fake-api/capture.ts --albums demo/albums.ts`.
+// Which records, and why those, is in `albums.ts`.
 //
-// Everything here is derived from a seed, so every visitor gets the same
-// library and a reload rebuilds it exactly. The demo replays what somebody did
-// on top of it (see `journal.ts`), which only works if what they did it to is
-// the same library each time.
+// **Nothing here is synthesised any more, and that is the point.** It used to
+// be five captured albums plus two hundred invented ones with drawn covers,
+// which demonstrated the app on a library nobody has: the play counts came out
+// of a random number generator, so the home screen's shelves were a picture of
+// that generator, and the genre bars were a picture of a word list. Now the
+// counts, the last-played dates, the lyrics, the ratings, the two- and
+// three-disc sets and the four codecs are one person's actual collection, and
+// every shelf on the front door is a true statement about it.
+//
+// The file is *fetched* rather than bundled: it is 1.9 MB of JSON, the service
+// worker is revalidated on every visit, and a worker carrying the whole library
+// would be re-downloaded whenever anything else in it changed.
 
-const SEED = 0x1e_a2_10_c3;
+export interface CapturedAlbum {
+	albumArtist: string;
+	album: string;
+	slug: string;
+	artwork: string | null;
+	tracks: Track[];
+}
 
-// mulberry32: small, fast, and the same sequence in every engine, which is the
-// only property being asked of it.
-const random = (seed: number) => {
-	let state = seed >>> 0;
-	return () => {
-		state = (state + 0x6d_2b_79_f5) >>> 0;
-		let t = state;
-		t = Math.imul(t ^ (t >>> 15), t | 1);
-		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-		return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
-	};
+export interface CapturedLibrary {
+	capturedFrom: string;
+	albums: CapturedAlbum[];
+}
+
+const albumKey = (track: Track) =>
+	`${track["%album artist%"]} ${track["%album%"]}`;
+
+// ---- recency ---------------------------------------------------------------
+
+// Half of what the home screen draws is *when*: a shelf of what you have been
+// playing lately, and a shading that fades a row by how long it has been. A
+// capture is a photograph of one afternoon, so a demo still serving it a year
+// later says "last played: a year ago" about everything, and the shelves
+// quietly stop meaning anything.
+//
+// So the whole capture is slid forward once, on load. Relative distances are
+// untouched -- what was played that morning is still hours ahead of what was
+// played the spring before -- and no date is invented: the newest one in the
+// file becomes today, and the rest follow it.
+const DATE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+const FIELD = "%lastfm_last_played%";
+
+const parse = (value: string | undefined) => {
+	const parts = DATE.exec(value ?? "");
+	if (!parts) return null;
+	const [, year, month, day, hour, minute, second] = parts;
+	return new Date(
+		Number(year),
+		Number(month) - 1,
+		Number(day),
+		Number(hour),
+		Number(minute),
+		Number(second),
+	);
 };
 
-// Invented, and meant to read as invented: a demo library that borrowed real
-// bands would be claiming to hold music it does not have. Assembled rather than
-// listed so a few dozen words cover a couple of hundred records.
-const FIRST = [
-	"Paper",
-	"Neon",
-	"Ivory",
-	"Slow",
-	"Winter",
-	"Radio",
-	"Velvet",
-	"Hollow",
-	"Gold",
-	"Quiet",
-	"Marble",
-	"Amber",
-	"Coastal",
-	"Iron",
-	"Lunar",
-	"Static",
-	"Sable",
-	"Northern",
-	"Glass",
-	"Wilder",
-	"Halcyon",
-	"Salt",
-	"Copper",
-	"Vast",
-];
-const SECOND = [
-	"Harbour",
-	"Machines",
-	"Foxes",
-	"Cinema",
-	"Cathedral",
-	"Arcade",
-	"Divers",
-	"Lantern",
-	"Orchard",
-	"Signals",
-	"Parade",
-	"Kingdom",
-	"Weather",
-	"Atlas",
-	"Choir",
-	"Motel",
-	"Mountain",
-	"Anthem",
-	"Circuit",
-	"Garden",
-];
-const TITLES = [
-	"Small Hours",
-	"The Long Way Round",
-	"Everything Louder",
-	"Blue Hour",
-	"Nothing Rhymes with Orange",
-	"Held Together",
-	"Low Ceilings",
-	"Tape Hiss",
-	"A Better Map",
-	"Weather for Ducks",
-	"Second Language",
-	"Sleeping Cities",
-	"Not for Nothing",
-	"The Quiet Part",
-	"Rooms We Left",
-	"Half Measures",
-	"Signal to Noise",
-	"Come Back Later",
-	"Paper Weather",
-	"Tall Grass",
-	"Under the Overpass",
-	"Distance in Miles",
-	"Loose Threads",
-	"First Light",
-];
-const WORDS = [
-	"Anywhere",
-	"Ceiling",
-	"Radio",
-	"Autumn",
-	"Static",
-	"Harbour",
-	"Telephone",
-	"Cassette",
-	"Boulevard",
-	"Foxglove",
-	"Overture",
-	"Marigold",
-	"Streetlight",
-	"Undertow",
-	"Lighthouse",
-	"Paperback",
-	"Saltwater",
-	"Firelight",
-	"Nightshift",
-	"Clockwork",
-	"Driftwood",
-	"Moonlight",
-	"Sundial",
-	"Wintering",
-];
-const GENRES = [
-	"Indie Rock",
-	"Post-Punk",
-	"Shoegaze",
-	"Ambient",
-	"Folk",
-	"Electronic",
-	"Jazz",
-	"Dream Pop",
-	"Post-Rock",
-	"Alternative",
-	"Soul",
-	"Rock En Español",
-];
-
-const ALBUMS = 214;
-const TRACKS_PER_ALBUM = [6, 13] as const;
-
-const pad = (value: number) => String(value).padStart(2, "0");
-const clock = (seconds: number) =>
-	`${Math.floor(seconds / 60)}:${pad(seconds % 60)}`;
-
-// A play count worth drawing. A flat distribution makes the heat shading and
-// the top-tracks shelf meaningless -- everything is equally warm, which is the
-// one thing no real library is. So most tracks are cold, a few are played to
-// death, and the shape in between is what the front door is a picture of.
-const playCount = (roll: number) => {
-	if (roll < 0.34) return 0;
-	if (roll < 0.78) return Math.round(roll * 24);
-	if (roll < 0.97) return Math.round(roll * 140);
-	return Math.round(roll * 480);
-};
-
-// Heavily played tracks were played recently, which is the correlation that
-// makes a listening history look like one rather than like noise. Squaring the
-// roll pulls the whole set towards the recent end; the play count pulls the
-// well-worn ones further.
-const DAY = 24 * 60 * 60 * 1000;
-
-const lastPlayed = (roll: number, plays: number) => {
-	const reach = plays > 90 ? 45 : plays > 20 ? 240 : 700;
-	const at = new Date(Date.now() - roll * roll * reach * DAY);
+const format = (at: Date) => {
+	const pad = (value: number) => String(value).padStart(2, "0");
 	return (
 		`${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ` +
 		`${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`
 	);
 };
 
-let cached: Track[] | null = null;
-
-export function demoLibrary(): Track[] {
-	if (cached) return cached;
-
-	const next = random(SEED);
-	const template = allTracks()[0];
-	const tracks: Track[] = [...allTracks()];
-
-	for (let album = 0; album < ALBUMS; album += 1) {
-		const artist = `${FIRST[Math.floor(next() * FIRST.length)]} ${
-			SECOND[Math.floor(next() * SECOND.length)]
-		}`;
-		const title =
-			next() < 0.55
-				? TITLES[Math.floor(next() * TITLES.length)]
-				: `${WORDS[Math.floor(next() * WORDS.length)]} ${
-						WORDS[Math.floor(next() * WORDS.length)]
-					}`;
-		const year = 1993 + Math.floor(next() * 33);
-		const genre = GENRES[Math.floor(next() * GENRES.length)];
-		const flac = next() < 0.22;
-		const count =
-			TRACKS_PER_ALBUM[0] +
-			Math.floor(next() * (TRACKS_PER_ALBUM[1] - TRACKS_PER_ALBUM[0] + 1));
-
-		// One album, one set of titles: a record with the same song on it twice is
-		// a mistake nobody's tagger makes, and it is the first thing the eye finds
-		// in a list.
-		const used = new Set<string>();
-
-		for (let number = 1; number <= count; number += 1) {
-			const seconds = 96 + Math.floor(next() * 340);
-			const plays = playCount(next());
-			const letter = artist[0].toUpperCase();
-			let name = "";
-			do {
-				const first = WORDS[Math.floor(next() * WORDS.length)];
-				const second = WORDS[Math.floor(next() * WORDS.length)];
-				name = next() < 0.4 && second !== first ? `${first} ${second}` : first;
-			} while (used.has(name));
-			used.add(name);
-
-			const track: Track = {
-				...template,
-				"%tracknumber%": pad(number),
-				"%title%": name,
-				"%artist%": artist,
-				"%album artist%": artist,
-				"%album%": `${title}${album % 37 === 0 ? " (Deluxe)" : ""}`,
-				"%year%": String(year),
-				"%genre%": genre,
-				"%length_seconds%": String(seconds),
-				"%length%": clock(seconds),
-				"%lastfm_play_count%": String(plays),
-				"%codec%": flac ? "FLAC" : "MP3",
-				"%bitrate%": flac ? "1006" : next() < 0.5 ? "320" : "256",
-				"%samplerate%": "44100",
-				"%filesize%": String(seconds * (flac ? 125_000 : 40_000)),
-				// Exists and is empty, rather than missing. A missing field is a
-				// player that cannot resolve it at all, which is a different state and
-				// the one the whole capability detection rests on -- so the filler
-				// must not accidentally claim this install has no lyrics component.
-				"$len($meta(unsynced lyrics))": next() < 0.28 ? "1140" : "0",
-				"%path%": `F:\\Musica\\${letter}\\${artist}\\(${year}) ${title}\\${pad(
-					number,
-				)}. ${name}.mp3`,
-			};
-
-			// Played at all, and only then dated -- a last-played on a track with no
-			// plays is the kind of contradiction a real library never has. Dated
-			// backwards from today rather than from a year written into the source,
-			// because half of what the home screen draws is *recency*: a fixture
-			// stamped 2024 makes "recently played" mean "two years ago" the moment
-			// the demo is a year old, and the shelf goes quietly wrong rather than
-			// empty.
-			if (plays === 0) delete track["%lastfm_last_played%"];
-			else track["%lastfm_last_played%"] = lastPlayed(next(), plays);
-
-			// Sparse, and *rated at all*. `%rating%` answering `?` is a player that
-			// cannot resolve the field, which is what the capture holds and what
-			// renders a row's stars read-only -- correct there, and the wrong thing
-			// to fill a demo with. So the synthesised half is an install where the
-			// tag exists: mostly unrated, a few rated. **Measured** on a real
-			// library, `%rating%` answers on 500 of 30,441 tracks, which is why this
-			// is 2% rather than a screenful of stars.
-			track["%rating%"] =
-				next() < 0.02 ? String(3 + Math.floor(next() * 3)) : "0";
-
-			tracks.push(track);
-		}
+const slideForward = (tracks: Track[]) => {
+	let newest = 0;
+	for (const track of tracks) {
+		const at = parse(track[FIELD]);
+		if (at) newest = Math.max(newest, at.getTime());
 	}
+	if (newest === 0) return;
 
-	cached = tracks;
-	return tracks;
+	// A few hours short of now, so the most-played record was played this
+	// morning rather than this second -- which is what a real one looks like.
+	const shift = Date.now() - 3 * 60 * 60 * 1000 - newest;
+	if (shift <= 0) return;
+
+	for (const track of tracks) {
+		const at = parse(track[FIELD]);
+		if (at) track[FIELD] = format(new Date(at.getTime() + shift));
+	}
+};
+
+// ---- the library -----------------------------------------------------------
+
+export interface DemoLibrary {
+	tracks: Track[];
+	playlists: FakePlaylist[];
+	artworkOf: (track: Track) => string | null;
 }
 
-// What `createState`'s `artworkOf` asks for: the captured albums answer with
-// their own file before this is reached, so everything arriving here is
-// synthesised and gets a cover drawn for it. Keyed by album rather than by
-// track, so the twelve rows of one record share a URL and therefore a cache
-// entry -- which is the same reason `albumCoverRows` exists in the app.
-export const coverOf = (track: Track) =>
-	track["%album%"] ? `album:${track["%album%"]}` : null;
+// Playlists somebody would actually have, drawn from what was captured. The
+// names are ordinary on purpose, and one of them is `Library`: Jean used to
+// adopt anything loosely called that as the whole collection, and an ordinary
+// playlist with that name sitting beside the real one is what keeps that from
+// coming back -- the same reason the test fixture has one.
+//
+// The ids are `p1 p7 p2 p5`, not contiguous and not in index order, because
+// that is what a real install looks like.
+const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
+	const of = (...slugs: string[]) =>
+		slugs.flatMap((slug) => byAlbum.get(slug)?.tracks ?? []);
+
+	return [
+		{
+			id: "p1",
+			title: "Default Playlist",
+			isCurrent: false,
+			items: of("nirvana-nevermind").slice(0, 6),
+		},
+		{
+			id: "p7",
+			title: "Library",
+			isCurrent: true,
+			items: of(
+				"radiohead-ok-computer",
+				"the-strokes-is-this-it",
+				"daft-punk-discovery",
+			),
+		},
+		{
+			id: "p2",
+			title: "Favorites",
+			isCurrent: false,
+			items: [
+				...of("brand-new-deja-entendu").slice(0, 4),
+				...of("queen-a-night-at-the-opera").slice(0, 3),
+				...of("bad-bunny-un-verano-sin-ti").slice(0, 3),
+				...of("the-beatles-abbey-road").slice(0, 2),
+			],
+		},
+		{
+			id: "p5",
+			title: "Loud",
+			isCurrent: false,
+			items: of("metallica-metallica", "korn-issues"),
+		},
+		// Jean's own, hidden from the sidebar, and what the library resolves to on
+		// a player with no media library API. `mediaLibrary` fills it.
+		{ id: "p8", title: "#Jean Library", isCurrent: false, items: [] },
+		// An autoplaylist with an ordinary name, which is what one looks like from
+		// the API: writes to it are accepted and ignored.
+		{
+			id: "p9",
+			title: "Recently Added",
+			isCurrent: false,
+			isAuto: true,
+			items: of("bad-bunny-yhlqmdlg").slice(0, 8),
+		},
+	];
+};
+
+export function demoLibrary(captured: CapturedLibrary): DemoLibrary {
+	const tracks = captured.albums.flatMap((album) => album.tracks);
+	slideForward(tracks);
+
+	const byAlbum = new Map(captured.albums.map((album) => [album.slug, album]));
+
+	// Keyed by album rather than by track: twelve rows of one record share a
+	// cover, so they share the file name the worker is asked for.
+	const covers = new Map<string, string>();
+	for (const album of captured.albums) {
+		const first = album.tracks[0];
+		if (album.artwork && first) covers.set(albumKey(first), album.artwork);
+	}
+
+	return {
+		tracks,
+		playlists: playlistsOf(byAlbum),
+		artworkOf: (track) => covers.get(albumKey(track)) ?? null,
+	};
+}

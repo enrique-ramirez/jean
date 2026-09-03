@@ -263,13 +263,6 @@ function tone(seconds: number, phase: number) {
 const PRERUN_MS = 60_000;
 const startedAt = Date.now() - PRERUN_MS;
 
-// **The component does not name a file the way beefweb does**, and a fake that
-// echoed beefweb's string would compare a path with itself and never fail. On a
-// portable install beefweb answers `F:\Musica\...` and the component answers
-// `file-relative://..\Musica\...` for the identical track.
-const componentPath = (path: string) =>
-	path.replace(/^[A-Za-z]:\\/, "file-relative://..\\");
-
 function timelineOf(state: FakeState) {
 	const streamTime = (Date.now() - startedAt) / 1000;
 
@@ -280,7 +273,7 @@ function timelineOf(state: FakeState) {
 			streamTime,
 			marks: state.streamMarks.map((entry) => ({
 				at: Math.max(0, (entry.atMs - startedAt) / 1000),
-				path: componentPath(entry.path),
+				path: entry.path,
 				subsong: entry.subsong,
 				position: entry.position,
 			})),
@@ -299,7 +292,7 @@ function timelineOf(state: FakeState) {
 		marks: [
 			{
 				at: Math.max(0, streamTime - item.position),
-				path: componentPath(String(track["%path%"] ?? "")),
+				path: String(track["%path%"] ?? ""),
 				subsong: 0,
 				position: 0,
 			},

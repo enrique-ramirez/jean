@@ -5,9 +5,8 @@ import type { RequestHeaders } from "../test/fake-api/http.ts";
 import { type ArtworkServer, handleApi } from "../test/fake-api/routes.ts";
 import { createState } from "../test/fake-api/state.ts";
 import { withClock } from "./clock.ts";
-import { coverSvg } from "./cover.ts";
 import { append, clear, type Entry, load } from "./journal.ts";
-import { coverOf, demoLibrary } from "./library.ts";
+import { type CapturedLibrary, demoLibrary } from "./library.ts";
 import { answer } from "./responder.ts";
 
 // The demo's player, on the same routes the suite runs against. Everything Jean
@@ -33,13 +32,30 @@ const MAX_BODY_BYTES = 1024 * 1024;
 
 const REQUEST_LOG_LIMIT = 200;
 
-const build = () =>
-	withClock(
+// The capture, fetched once per worker. Held so a reset can rebuild the player
+// without going back to the network for a library that has not changed.
+let captured: CapturedLibrary | null = null;
+
+const fetchLibrary = async () => {
+	if (captured) return captured;
+	const response = await fetch(
+		new URL("library.json", self.registration.scope),
+	);
+	if (!response.ok) throw new Error(`demo library.json -> ${response.status}`);
+	captured = (await response.json()) as CapturedLibrary;
+	return captured;
+};
+
+const build = (library: CapturedLibrary) => {
+	const demo = demoLibrary(library);
+	return withClock(
 		createState({
-			// Both sources describe the same library, as they do on a real 0.11
-			// player: the media library API and the `#Jean Library` autoplaylist.
-			mediaLibrary: demoLibrary(),
-			artworkOf: coverOf,
+			// Playlists somebody would have, and the same library behind both
+			// sources -- the media library API and the `#Jean Library`
+			// autoplaylist -- exactly as a real 0.11 player reports it.
+			playlists: demo.playlists,
+			mediaLibrary: demo.tracks,
+			artworkOf: demo.artworkOf,
 			// Installed, listening, and paired -- see `demo/CLAUDE.md` for why the
 			// demo shows the component present rather than absent. Streaming is off:
 			// there is no audio here, and `canStream: false` is a real state the app
@@ -51,8 +67,11 @@ const build = () =>
 			},
 		}),
 	);
+};
 
-let state = build();
+// Null until the library has been fetched, which is why everything below waits
+// on `ready` before it reads this.
+let state: ReturnType<typeof build> | null = null;
 
 const headersOf = (request: Request): RequestHeaders => {
 	const headers: RequestHeaders = {};
@@ -80,11 +99,10 @@ const readBody = async (request: Request) => {
 
 // ---- artwork ---------------------------------------------------------------
 
-// The five captured sleeves are files, copied into the build beside `sw.js`;
-// everything else is drawn. Both answer with the player's own cache terms,
-// which is not decoration: without them the browser refetches a cover it drew a
-// moment ago, and twelve rows of one album are twelve requests whatever the app
-// does.
+// Real sleeves, captured with the tracks and copied into the build beside
+// `sw.js`. Answered with the player's own cache terms, which is not decoration:
+// without them the browser refetches a cover it drew a moment ago, and twelve
+// rows of one album are twelve requests whatever the app does.
 const artwork: ArtworkServer = async (name, headers, response) => {
 	const etag = `"${name}"`;
 	const cached = {
@@ -95,12 +113,6 @@ const artwork: ArtworkServer = async (name, headers, response) => {
 	if (headers["if-none-match"] === etag) {
 		response.writeHead(304, cached);
 		response.end();
-		return true;
-	}
-
-	if (name.startsWith("album:")) {
-		response.writeHead(200, { ...cached, "Content-Type": "image/svg+xml" });
-		response.end(coverSvg(name.slice("album:".length)));
 		return true;
 	}
 
@@ -126,11 +138,15 @@ const isAgent = (url: URL) =>
 // Replayed on the way up, so a reload -- or the browser having shut the worker
 // down between two clicks -- keeps what somebody did rather than quietly
 // starting over.
-const dispatch = async (entry: Entry, url: URL) => {
+const dispatch = async (
+	player: NonNullable<typeof state>,
+	entry: Entry,
+	url: URL,
+) => {
 	const { response } = answer();
 	if (isAgent(url))
 		await handleAgent({
-			state,
+			state: player,
 			method: entry.method,
 			url,
 			headers: { host: self.location.host, origin: self.location.origin },
@@ -139,7 +155,7 @@ const dispatch = async (entry: Entry, url: URL) => {
 		});
 	else
 		await handleApi({
-			state,
+			state: player,
 			method: entry.method,
 			path: url.pathname,
 			url,
@@ -151,21 +167,34 @@ const dispatch = async (entry: Entry, url: URL) => {
 		});
 };
 
-let restored = (async () => {
+// One gate in front of everything: the library has to arrive before there is a
+// player to answer with, and the journal has to be replayed into it before the
+// page is told what is in it.
+const start = async () => {
+	const player = build(await fetchLibrary());
 	for (const entry of await load())
-		await dispatch(entry, new URL(entry.path, self.location.origin));
-})();
+		await dispatch(player, entry, new URL(entry.path, self.location.origin));
+	state = player;
+};
+
+// Named `booted` rather than `ready` on purpose: `serve` destructures a `ready`
+// out of `answer()`, and a module binding of the same name would be shadowed by
+// it -- `await ready` at the top of that function would then land in the
+// temporal dead zone of the `const` below it and throw.
+let booted = start();
 
 // ---- serving ---------------------------------------------------------------
 
 async function serve(request: Request, url: URL): Promise<Response> {
-	await restored;
+	await booted;
+	// Non-null by construction: `ready` is what assigns it.
+	const player = state as NonNullable<typeof state>;
 
 	// Both halves of the fake record into this one log, and nothing here reads
 	// it: a demo left open all afternoon would otherwise grow an entry per
 	// keystroke of search.
-	if (state.requests.length > REQUEST_LOG_LIMIT)
-		state.requests.splice(0, state.requests.length - REQUEST_LOG_LIMIT);
+	if (player.requests.length > REQUEST_LOG_LIMIT)
+		player.requests.splice(0, player.requests.length - REQUEST_LOG_LIMIT);
 
 	const method = request.method;
 	const { refused, body } =
@@ -182,7 +211,7 @@ async function serve(request: Request, url: URL): Promise<Response> {
 
 	if (isAgent(url)) {
 		await handleAgent({
-			state,
+			state: player,
 			method,
 			url,
 			headers: headersOf(request),
@@ -193,7 +222,7 @@ async function serve(request: Request, url: URL): Promise<Response> {
 	}
 
 	const handled = await handleApi({
-		state,
+		state: player,
 		method,
 		path: url.pathname,
 		url,
@@ -216,8 +245,10 @@ async function serve(request: Request, url: URL): Promise<Response> {
 async function control(url: URL): Promise<Response> {
 	if (url.pathname.endsWith("/reset")) {
 		await clear();
-		state = build();
-		restored = Promise.resolve();
+		// Rebuilt from the held capture rather than refetched: the library is the
+		// same library, and a reset is about the writes on top of it.
+		state = build(await fetchLibrary());
+		booted = Promise.resolve();
 		return new Response(null, { status: 204 });
 	}
 	return new Response(null, { status: 404 });

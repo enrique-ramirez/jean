@@ -192,28 +192,57 @@ test.describe("a lyric read through the stream", () => {
 		).toHaveText("And I don't mind");
 	});
 
-	test("follows the audible position while listening", async ({
+	test("a line clicked while listening lands when the audio does", async ({
 		page,
-		player,
 	}) => {
 		await openLibrary(page);
 		await trackRow(page, 0).dblclick();
-
-		// Before the screen goes up, because on a phone it covers the status bar
-		// the control lives in.
 		await listenHere(page);
-
-		// Set after the stream is running: the player goes on playing through the
-		// seconds it takes to start, and a position set before that has the wait
-		// added back to it.
-		player.patchPlayer({ position: PAST_THE_END });
 
 		await openNowPlaying(page);
 		await tab(page, "Lyrics").click();
+		const active = nowPlayingScreen(page).locator('[data-state="active"]');
 
-		await expect(
-			nowPlayingScreen(page).locator('[data-state="active"]'),
-		).toHaveText("Give you all my time");
+		// Played to, not seeked to: this is the setup, and it has to hold whether or
+		// not a seek is marked at all.
+		await expect(active).toHaveText("Give you all my time", {
+			timeout: 90_000,
+		});
+
+		// **Backwards is the case that matters.** A position counting on from a
+		// stale mark reaches any *later* line by simply playing, so a forward seek
+		// passes either way; only a line already sung cannot be arrived at.
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "I never meant to" })
+			.click();
+
+		// The component marks a seek as it marks a track change, so the timeline
+		// says where the stream jumped to.
+		await expect(active).toHaveText("I never meant to", { timeout: 60_000 });
+	});
+
+	test("a clicked line answers at once, before the audio reaches it", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		await listenHere(page);
+
+		await openNowPlaying(page);
+		await tab(page, "Lyrics").click();
+		const active = nowPlayingScreen(page).locator('[data-state="active"]');
+		await expect(active).toHaveText("Give you all my time", {
+			timeout: 90_000,
+		});
+
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "I never meant to" })
+			.click();
+
+		// **Well inside the fake's six-second lag.** The audio has not arrived, and
+		// the control still has to hold where it was put -- falling back to what is
+		// audible reads as the click having been refused.
+		await expect(active).toHaveText("I never meant to", { timeout: 2500 });
 	});
 });
 

@@ -165,6 +165,21 @@ The cover art is real, downscaled to 320px. If shipping five album covers in a
 public repo is a problem, replace the files in `artwork/`; nothing reads them
 but the fake.
 
+**The same tool captures the demo's library, and the two must not be
+confused.** `capture.ts --albums demo/albums.ts --out demo` writes a hundred
+and fifty albums into `demo/`, chosen to be *recognised* rather than for the
+branches they cover; see `demo/CLAUDE.md`. The fixture here is the one the specs
+are written against, so a spec's row index means what it meant when it was
+written. Nothing in `demo/` is read by a test, and nothing here is read by the
+demo.
+
+Two differences fall out of that. A named album this tool cannot find is fatal
+for the fixture -- a spec depends on each of the five -- and merely skipped and
+reported for the demo, where losing one of a hundred and fifty to a typo should
+not cost the other hundred and forty-nine. And `player.json`, the idle state the
+fake starts in, belongs to the fake rather than to a library, so a demo capture
+leaves it alone.
+
 ## Writing a test
 
 `test/e2e/fixtures.ts` gives every test its own player, on its own port, and

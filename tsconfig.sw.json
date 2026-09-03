@@ -18,7 +18,6 @@
 	"include": [
 		"demo/sw.ts",
 		"demo/clock.ts",
-		"demo/cover.ts",
 		"demo/journal.ts",
 		"demo/library.ts",
 		"demo/responder.ts",

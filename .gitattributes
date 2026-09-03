@@ -1,0 +1,38 @@
+# Line endings, normalised on the way in. A no-op today -- nothing tracked here
+# has a CRLF in it -- and a guard for the day somebody edits on Windows, which
+# is not far-fetched: the player this controls runs there.
+* text=auto eol=lf
+
+# ---- cover art -------------------------------------------------------------
+#
+# `binary` is `-diff -merge -text` in one word, which is all three of the things
+# that should never happen to a JPEG: no textual diff, no line-ending
+# translation, and no attempt to merge two versions of a photograph. Git guesses
+# this correctly on its own; saying it means the guess is not load-bearing.
+*.jpg binary
+
+# ---- captured libraries ----------------------------------------------------
+#
+# Both of these come out of `test/fake-api/capture.ts` and are committed so that
+# neither the suite nor the demo ever touches a real player. **Neither is ever
+# edited by hand**, which is what the attributes below are really recording.
+#
+# `linguist-generated` on both: GitHub then collapses them in a pull request
+# rather than opening 55,000 lines of it, and leaves them out of the language
+# bar -- without it this reads as a JSON project with some TypeScript in it.
+#
+# `-merge` on both, because a conflict in captured data has no correct
+# resolution. Git leaves the local copy and marks it conflicted; the fix is to
+# re-capture, never to reconcile two halves of one photograph of a library.
+
+# `-diff` as well, and only here: a re-capture rewrites nearly every one of this
+# file's 54,000 lines, since play counts and last-played dates move whenever the
+# owner listens to something. `git diff` says the files differ and stops, which
+# is more use than a diff no one can read.
+demo/library.json -diff -merge linguist-generated
+
+# Deliberately still diffable, unlike the demo's. It is 1,300 lines, and a
+# re-capture changes what every spec in the suite runs against -- which is
+# exactly the diff a reviewer should be able to open and read.
+test/fake-api/library.json -merge linguist-generated
+test/fake-api/player.json -merge linguist-generated

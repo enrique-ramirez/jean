@@ -35,10 +35,41 @@ and come back through beefweb on a reload. `canStream: false`, because there is
 no audio in the bundle and never will be -- that is a real state the app already
 draws, rather than a hole in the fake.
 
-The library is the five captured albums plus about two hundred synthesised ones
-(`library.ts`), which is what makes the shelves scroll and the virtualiser hold
-a screenful rather than a list. Covers for the synthesised half are drawn
-(`cover.ts`); the captured five keep their own sleeves, copied into the build.
+## The library is real, and that is the whole point
+
+152 albums, 2,317 tracks, six and a half days of music, captured off a real
+foobar2000 by the same tool that captures the test fixture:
+
+```sh
+node test/fake-api/capture.ts --url http://your-player:8880 \
+     --albums demo/albums.ts --out demo
+```
+
+`albums.ts` names them and says why each is there; `library.json` and
+`artwork/` are what came back, and both are committed.
+
+It used to be five captured albums plus two hundred synthesised ones with drawn
+covers, and **that was worse in a way worth remembering.** The app's front door
+is a set of claims about a collection -- what you play most, what you played to
+death and put down, what you have never opened, how the genres divide, what
+percentage is played -- and against generated data every one of those was a
+picture of the generator rather than of a library. Real records also mean the
+things nobody would think to invent: an album tagged `Alternative rock, blues
+rock, psychedelic rock, hard rock`, another spelled `Alternative rock` where its
+neighbour says `Alternative Rock`, a three-disc live set, an album half in AAC
+and half in FLAC. The genre list showing two spellings of one genre is Jean
+being right -- see the tag-hygiene rule in the root CLAUDE.md -- and it took a
+real library to show it.
+
+**Two things are adjusted, both deliberately.** The last-played dates are slid
+forward on load so the newest becomes today, because a capture is a photograph
+of one afternoon and a demo still serving it a year later says "a year ago"
+about everything and its recency shelves stop meaning anything; relative
+distances are untouched. And lyrics are captured for **six albums only**,
+flagged in `albums.ts` -- enough to show the tab, the scroll-in-time and
+tapping a line to seek, without a public repo carrying a thousand licensed
+lyrics. Everywhere else the Lyrics tab shows its empty state, which is what an
+install without `foo_openlyrics` looks like.
 
 ## The clock is the one thing added to the player
 
@@ -56,9 +87,10 @@ It wraps rather than lives in `fake-api/`: the tests want none of this.
 
 **The browser stops an idle worker after about thirty seconds** and starts a
 fresh one for the next request, taking the player's state with it. So the
-library is rebuilt from a seed -- deterministic, same for every visitor -- and
-the *writes* are journalled to the Cache API and replayed on the way up
-(`journal.ts`). A reload keeps your ratings and your playlists; so does a worker
+library is re-read from `library.json` -- fetched rather than bundled, because
+2.5 MB inside a worker that is revalidated on every visit would be 2.5 MB
+re-downloaded for every change to anything else in it -- and the *writes* are
+journalled to the Cache API and replayed on the way up (`journal.ts`). A reload keeps your ratings and your playlists; so does a worker
 the browser decided to shut down mid-session. The journal is capped, and the
 chip's **Reset** button (or `?reset`) clears it.
 
@@ -68,7 +100,7 @@ puts a track back at its start, and nothing about that is worth the machinery.
 ## Building it
 
 ```sh
-pnpm demo           # two Vite builds into dist-demo/, plus the covers
+pnpm demo           # two Vite builds into dist-demo/, plus the library and covers
 pnpm demo:preview   # serve it
 ```
 
@@ -87,3 +119,8 @@ Nothing, usually. A feature becomes demoable when its routes land in
 demo only needs touching when a feature needs *state* the fake has no route for,
 or when it needs a seeded setting to be worth looking at -- `main.ts` holds
 those, and holds nothing else.
+
+Adding a record is one line in `albums.ts` and a re-capture, which needs the
+player in reach. Nothing in the suite depends on this library, so getting it
+wrong costs a rebuild rather than a red suite -- and `capture.ts` skips an album
+it cannot find here, rather than failing the way it does for the fixture.

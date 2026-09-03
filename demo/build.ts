@@ -52,11 +52,15 @@ await build({
 	},
 });
 
-// The five captured sleeves, verbatim and unhashed: the worker asks for them by
-// the name the fake's own state answers with, resolved against its scope. The
-// other two hundred covers are drawn rather than fetched -- see `cover.ts`.
-await cp(resolve(ROOT, "test/fake-api/artwork"), resolve(OUT, "artwork"), {
+// The captured library and its sleeves, verbatim and unhashed. Unhashed
+// because the worker asks for both by name, resolved against its own scope:
+// the covers by the file name the fake's state answers with, and `library.json`
+// because it is fetched rather than bundled -- 1.9 MB inside a worker that is
+// revalidated on every visit would be 1.9 MB re-downloaded for every change to
+// anything else in it.
+await cp(resolve(HERE, "artwork"), resolve(OUT, "artwork"), {
 	recursive: true,
 });
+await cp(resolve(HERE, "library.json"), resolve(OUT, "library.json"));
 
 console.log(`demo built into ${OUT}`);

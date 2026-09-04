@@ -1,4 +1,3 @@
-const SOURCE = "/favicon.svg";
 const SIZE = 32;
 
 const FRAMES = 12;
@@ -28,6 +27,8 @@ let timer: number | undefined;
 let badge: PlaybackBadge = "idle";
 
 let angle = 0;
+
+const sourceUrl = () => new URL("favicon.svg", document.baseURI).href;
 
 function apply(href: string, type: string) {
 	icon ??= document.querySelector("link[rel='icon']") as HTMLLinkElement;
@@ -82,7 +83,7 @@ function load() {
 		const image = new Image();
 		image.onload = () => resolve(image);
 		image.onerror = reject;
-		image.src = SOURCE;
+		image.src = sourceUrl();
 	});
 	return pending;
 }

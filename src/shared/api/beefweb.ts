@@ -166,8 +166,35 @@ export const sortPlaylistItems = (playlistId: string, by: string) =>
 	post(`/api/playlists/${id(playlistId)}/items/sort`, { by });
 
 export const playPause = () => post("/api/player/play-pause");
-export const nextTrack = () => post("/api/player/next");
-export const previousTrack = () => post("/api/player/previous");
+
+// Which way the last skip this client asked for was going. The player's answer says a track changed and never which
+// direction it moved -- under any shuffle order there is nothing to work it out from -- so anything animating a skip
+// has to be told rather than infer it. Recorded at the request because that is the one place every path meets: the
+// screen's transport, the status bar's, the keyboard's and the media session's.
+//
+// Taken rather than read, and stale after a moment: a skip the player never answers must not turn the next track that
+// ends of its own accord into a step backwards.
+const ASKED_MS = 4000;
+let asked: { by: number; at: number } | null = null;
+
+export function takeSkipAsked() {
+	const last = asked;
+	asked = null;
+	return last && Date.now() - last.at < ASKED_MS ? last.by : null;
+}
+
+const skipping = (by: number) => {
+	asked = { by, at: Date.now() };
+};
+
+export const nextTrack = () => {
+	skipping(1);
+	return post("/api/player/next");
+};
+export const previousTrack = () => {
+	skipping(-1);
+	return post("/api/player/previous");
+};
 export const stop = () => post("/api/player/stop");
 export const playItem = (playlistId: string, index: number) =>
 	post(`/api/player/play/${id(playlistId)}/${index}`);

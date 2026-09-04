@@ -1,0 +1,78 @@
+/* Sleeves on the rim of a wheel whose centre is far below the screen. Every slot
+   is the whole stage box, pivoted about that centre: rotating one swings it along
+   the rim and tilts it by the same angle, which is what a thing bolted to a wheel
+   does. Rotating the wheel moves all three at once.
+
+   --pivot is 50% (the middle of the stage) plus the radius, both as a proportion
+   of the stage's height -- and the sleeve is as tall as the stage, so the radius
+   reads directly in sleeve widths. It is set by what it has to hide rather than
+   by taste: at 22deg a neighbour has to clear the edge of the viewport, and a
+   shorter radius leaves a corner of the next sleeve in shot at rest. */
+.wheel {
+	--step: 22deg;
+	--pivot: 400%;
+
+	position: absolute;
+	inset: 0;
+	/* The gesture belongs to the box around it. `Artwork` swaps its own element as
+	   a cover resolves, and a touch whose target leaves the document stops being
+	   delivered at all -- so nothing here may be the target. */
+	pointer-events: none;
+	transform-origin: 50% var(--pivot);
+	transform: rotate(var(--turn, 0deg));
+	transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Under a finger the rim must not lag it. */
+.wheel[data-free] {
+	transition: none;
+}
+
+.slot {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	justify-content: center;
+	transform-origin: 50% var(--pivot);
+	transform: rotate(calc(var(--at) * var(--step)));
+}
+
+.cover {
+	width: auto;
+	height: 100%;
+	max-width: 100%;
+	aspect-ratio: 1;
+	border-radius: var(--radius);
+	object-fit: cover;
+	box-shadow: var(--shadow);
+}
+
+/* The wheel has turned to a track the player has not named yet. Sleeve-shaped,
+   because the shape is known and only the picture is missing; the sheen is the
+   global `.loading`, which this only has to give a box to. */
+.pending {
+	width: auto;
+	height: 100%;
+	aspect-ratio: 1;
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+}
+
+/* The turn is the whole statement, so there is nothing to keep when it is refused
+   -- what is left is one sleeve replacing another, which is what a cross-fade is
+   for. The neighbours have nowhere to be, so they are not drawn. */
+@media (prefers-reduced-motion: reduce) {
+	.wheel,
+	.slot {
+		transform: none;
+	}
+
+	.slot {
+		opacity: 0;
+		transition: opacity 200ms linear;
+	}
+
+	.slot[data-current] {
+		opacity: 1;
+	}
+}

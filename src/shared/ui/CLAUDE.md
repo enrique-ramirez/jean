@@ -77,7 +77,13 @@ Icons come from `lucide-react`, imported per-icon so they tree-shake.
 
 ## Swipes and scrolling
 
-**A flick is not a drag**, and `useSwipe.ts` is deliberately neither `useDragFraction` nor `useSortableList`. Those track a value or a position for the length of a gesture; a swipe answers one question at the end — which way, if any — so nothing follows the finger, nothing renders per frame, and there is no pointer to capture. Touch only, for the same reason only a mouse drags a row.
+**A flick is not a drag, and `useSwipe.ts` answers one question at the end** — which way, if any. Four callers want exactly that and nothing follows the finger for them. Touch only, for the same reason only a mouse drags a row.
+
+**`onDrag` is how a caller takes the horizontal axis back**, and giving it changes three things at once, which is why it is one option rather than three. The axis is decided **during** the gesture instead of at the end — once at the first 8px of movement, and held, because re-deciding per move hands a wheel back and forth under a drifting thumb. `onLeft` and `onRight` stop firing for a gesture it tracked, since a caller watching the whole drag knows how far round it got and the hook does not. And the flick clock stops applying: a drag that followed the finger for two seconds was deliberate for all of it, where an untracked one that slow is a scroll that ended somewhere.
+
+**The tracked surface must be told the gesture ended even when the browser took it away**, so `onDragEnd` fires from `touchcancel` too. Without that it sits wherever the finger left it, forever.
+
+**A tracked surface writes its own transform and does not re-render per move.** `useDragFraction` holds the fraction in state and is right to — it drives a 26px column — but the now-playing wheel is the whole player, and sixty renders a second there would repaint the transport, the seek bar and the identity to move one `rotate()`.
 
 **It reads touch events, not pointer events, and that is the design.** The browser cancels the pointer stream the moment it claims a gesture for scrolling — a downward flick inside a scrollable panel arrives as `pointercancel` and never a `pointerup` — so a pointer-based swipe can only see gestures on regions that do not scroll. Touch events keep firing through a scroll, which is what lets one handler cover a whole surface that also scrolls.
 

@@ -1,5 +1,5 @@
 import { ChevronDown, Mic2, MoreHorizontal, Shuffle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { formatTime } from "@/domain/player/position";
@@ -7,6 +7,7 @@ import { useAudibleVolume } from "@/domain/player/useListener";
 import {
 	useAudiblePlayer,
 	usePlaybackOrder,
+	usePlayer,
 	usePlayPause,
 	useSeek,
 	useTransport,
@@ -29,6 +30,7 @@ import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
+import { CoverWheel, useCoverWheel } from "./CoverWheel";
 import { ListenHere } from "./ListenHere";
 import { LyricsScreen } from "./LyricsScreen";
 import { parseLyrics } from "./lyricsFormat";
@@ -118,6 +120,7 @@ export function NowPlaying({
 	}, [isOpen]);
 
 	const snapshot = useAudiblePlayer();
+	const { data: live } = usePlayer();
 	const { track, details } = useNowPlayingTrack();
 	const from = usePlayingFrom();
 
@@ -156,19 +159,10 @@ export function NowPlaying({
 	);
 	const settledPath = details?.path ?? null;
 
-	const skip = (by: number) =>
-		by > 0 ? transport.next.mutate() : transport.previous.mutate();
-
-	// On a phone this screen *is* the track: sideways is the next one, up is what is written about it. The gatefold keeps the dismissal alone — its panels carry their own strip and their own swipe.
-	const swipe = useSwipe(
-		isCompactViewport
-			? {
-					onDown: onDismiss,
-					onUp: () => setIsInfoOpen(true),
-					onLeft: () => skip(1),
-					onRight: () => skip(-1),
-				}
-			: { onDown: onDismiss },
+	const sendSkip = useCallback(
+		(by: number) =>
+			by > 0 ? transport.next.mutate() : transport.previous.mutate(),
+		[transport.next.mutate, transport.previous.mutate],
 	);
 
 	const player = snapshot?.player;
@@ -183,6 +177,51 @@ export function NowPlaying({
 
 	const album = readValue(details?.row[NOW_PLAYING_FIELD.album]);
 	const year = readValue(details?.row[NOW_PLAYING_FIELD.year]);
+
+	// The artwork endpoint is addressed by position, so the sleeves either side cost a lookup and no request of Jean's
+	// own -- but only under Default, where the next row really is the next track. Anything else leaves them absent,
+	// which the wheel draws as loading.
+	const neighbours =
+		order.isInOrder && hasTrack && item
+			? {
+					nextArtwork: artworkUrl(item.playlistId, item.index + 1),
+					previousArtwork:
+						item.index > 0 ? artworkUrl(item.playlistId, item.index - 1) : null,
+				}
+			: { nextArtwork: null, previousArtwork: null };
+
+	// The player's own track, which is never delayed. Only the wheel's undo reads it, to tell a skip the player refused
+	// from one whose sound has not arrived yet.
+	const liveItem = live?.player?.activeItem;
+
+	const wheel = useCoverWheel({
+		audibleTrackKey: hasTrack ? artworkKey : null,
+		playerTrackKey:
+			liveItem && liveItem.index >= 0
+				? `${liveItem.playlistId}:${liveItem.index}`
+				: null,
+		artwork,
+		alt: album ? `${album} cover` : "",
+		...neighbours,
+		onSkip: sendSkip,
+	});
+
+	// On a phone this screen *is* the track: sideways turns the wheel to the next one, up is what is written about it.
+	// The horizontal axis belongs to the wheel rather than to `useSwipe`, because it follows the finger and only it
+	// knows how far round the turn got. The gatefold keeps the dismissal alone — its panels carry their own swipe.
+	const swipe = useSwipe(
+		isCompactViewport
+			? {
+					onDown: onDismiss,
+					onUp: () => setIsInfoOpen(true),
+					onDrag: wheel.onDrag,
+					onDragEnd: wheel.onDragEnd,
+				}
+			: { onDown: onDismiss },
+	);
+
+	// The global sheen, on whichever of the identity's lines are waiting for a name. See `base.css`.
+	const loading = wheel.isAwaiting ? " loading" : "";
 
 	const fromLine = from?.isPlaying ? (
 		<>
@@ -258,21 +297,26 @@ export function NowPlaying({
 				</header>
 
 				<div className={styles.spread}>
-					{/* Not keyed on the track, for the same reason `.cover` below ignores pointer events: `Artwork` swaps its own element as a cover loads. */}
+					{/* A wheel on a phone, where sideways means the next track; the gatefold has no such gesture and keeps the plain sleeve. Neither is keyed on the track: `Artwork` swaps its own element as a cover loads. */}
 					{isCompactViewport ? (
-						<div className={styles.stage}>{cover}</div>
+						<div className={styles.stage}>
+							<CoverWheel ref={wheel.ref} slots={wheel.slots} />
+						</div>
 					) : null}
 
-					<div className={styles.identity}>
+					<div className={styles.identity} data-awaiting={wheel.isAwaiting}>
 						{isCompactViewport ? null : (
 							<div className={styles.stage}>{cover}</div>
 						)}
 
-						<h1 className={styles.title}>
-							{track?.title ?? "Nothing playing"}
+						{/* Loading, not stopped: the wheel has turned to a track the player has not named yet, and saying "Nothing playing" there would be a different and untrue thing. The text stays, invisible, to hold the line boxes open at the height they will settle at. */}
+						<h1 className={`${styles.title}${loading}`}>
+							{wheel.isAwaiting ? " " : (track?.title ?? "Nothing playing")}
 						</h1>
-						<p className={styles.artist}>{track?.artist ?? "—"}</p>
-						{album ? (
+						<p className={`${styles.artist}${loading}`}>
+							{wheel.isAwaiting ? " " : (track?.artist ?? "—")}
+						</p>
+						{album && !wheel.isAwaiting ? (
 							<p className={styles.album}>
 								{album}
 								{year ? <span className={styles.year}> · {year}</span> : null}
@@ -340,7 +384,7 @@ export function NowPlaying({
 									type="button"
 									className={styles.skip}
 									aria-label="Previous track"
-									onClick={() => skip(-1)}
+									onClick={() => wheel.skip(-1)}
 								>
 									<SkipBackIcon size={22} />
 								</button>
@@ -355,7 +399,7 @@ export function NowPlaying({
 									type="button"
 									className={styles.skip}
 									aria-label="Next track"
-									onClick={() => skip(1)}
+									onClick={() => wheel.skip(1)}
 								>
 									<SkipForwardIcon size={22} />
 								</button>

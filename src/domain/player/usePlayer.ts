@@ -338,6 +338,12 @@ function findShuffleIndex(names: string[]) {
 	);
 }
 
+// Same reasoning as shuffle: found by name, not assumed to sit at index 0, even though it does on every enum seen so far.
+function findDefaultIndex(names: string[]) {
+	const at = names.findIndex((name) => name.toLowerCase() === "default");
+	return at >= 0 ? at : 0;
+}
+
 // Global player state rather than a property of the playlist on screen, so toggling it must not disturb what is playing.
 export function usePlaybackOrder() {
 	const { data } = usePlayer();
@@ -352,6 +358,7 @@ export function usePlaybackOrder() {
 
 	const shuffleIndex = useMemo(() => findShuffleIndex(names), [names]);
 	const isShuffle = shuffleIndex >= 0 && value === shuffleIndex;
+	const defaultIndex = useMemo(() => findDefaultIndex(names), [names]);
 
 	// Turning shuffle off restores the previous order, so a repeat setting survives a shuffle detour. Session-scoped: after a reload the best guess is the first.
 	const previousOrder = useRef(0);
@@ -382,6 +389,8 @@ export function usePlaybackOrder() {
 		isShuffle,
 		canShuffle: shuffleIndex >= 0,
 		orderName: names[value] ?? null,
+		// Default is the one order under which the next track is the next row.
+		isInOrder: value === defaultIndex,
 		toggleShuffle,
 		enableShuffle,
 	};

@@ -54,6 +54,14 @@
      a cover fading into black needs no help to keep its shape. */
 	--album-ground: oklch(0.1722 0.007 258);
 
+	/* A hold standing in for content that has not arrived. It has to read as a
+     shape at a glance, which `--surface` does not: at 0.04 lightness above the
+     page it is a hole rather than a placeholder. The sweep goes lighter on both
+     themes, but from opposite sides -- on light the hold sits below the page and
+     the sweep returns to it, on dark both sit above. */
+	--loading: oklch(0.245 0.012 260);
+	--loading-sheen: oklch(0.33 0.016 260);
+
 	--on-accent: oklch(0.18 0.01 260);
 	/* Destructive actions. Pulled towards the warm end of red so it reads as part
      of the same palette as the accent rather than as a browser default. */
@@ -96,6 +104,9 @@
 	--text: oklch(0.26 0.012 260);
 	--muted: oklch(0.5 0.014 258);
 	--faint: oklch(0.62 0.012 258);
+
+	--loading: oklch(0.925 0.007 262);
+	--loading-sheen: oklch(0.985 0.003 262);
 
 	/* Light needs the opposite of nothing. The page is all but white, so a pale
      sleeve dissolving into it took the card with it -- no bottom edge, no

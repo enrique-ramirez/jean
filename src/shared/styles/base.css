@@ -56,3 +56,35 @@ input {
 	font-variant-numeric: tabular-nums;
 	font-size: 0.8125rem;
 }
+
+/* Something whose shape is known and whose content is not yet. A hold in the
+   shape of the thing rather than a spinner, so nothing moves but the sheen and
+   nothing resizes when the content lands. Callers own the box; this owns the
+   surface, so it goes on the element that is waiting rather than beside it. */
+.loading {
+	background:
+		linear-gradient(
+			100deg,
+			transparent 20%,
+			var(--loading-sheen) 50%,
+			transparent 80%
+		)
+		var(--loading) 0 0 / 250% 100% no-repeat;
+	animation: loading-sheen 1400ms ease-in-out infinite;
+	border-radius: var(--radius-sm);
+	/* Callers keep their text in place to hold the line box open, so it has to go
+     invisible rather than be removed. */
+	color: transparent;
+}
+
+@keyframes loading-sheen {
+	to {
+		background-position: 100% 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.loading {
+		animation: none;
+	}
+}

@@ -36,6 +36,12 @@
 	--head-offset: 50px;
 
 	overflow-y: auto;
+	/* The wheel's neighbours are parked a sleeve-and-a-bit either side, well past
+     this box, and `overflow-y: auto` alone resolves the other axis to `auto` --
+     which is a horizontal scrollbar across the player. `clip` rather than
+     `hidden` so no second scroll container appears for `scrollParentOf` to
+     find. The menu and the popovers are portalled and are not clipped by it. */
+	overflow-x: clip;
 	overscroll-behavior: contain;
 	/* Keeps the horizontal axis from becoming a browser gesture -- an edge swipe
      is back-navigation on Android Chrome, and that would beat a tab change to
@@ -279,6 +285,17 @@
 
 .year {
 	color: var(--faint);
+}
+
+/* Bars the width a title and an artist tend to be, rather than the full column:
+   a hold that spans the whole measure reads as a very long title arriving, and
+   then everything shifts when a short one does. */
+.identity[data-awaiting="true"] .title {
+	width: 62%;
+}
+
+.identity[data-awaiting="true"] .artist {
+	width: 38%;
 }
 
 /* `Stars` sizes itself from `--star-size`, so this raises it rather than

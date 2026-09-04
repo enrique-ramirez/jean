@@ -5,6 +5,9 @@ import { scrollParentOf } from "@/shared/lib/scrollParent";
 // Longer than this and the gesture is a scroll that happened to end somewhere else, not an instruction.
 const FLICK_MS = 600;
 
+// Movement worth reading an axis off. Below it a finger is still settling and the dominant axis is noise.
+const AXIS_LOCK = 8;
+
 // A directional flick on a surface that also has to scroll.
 // Touch events rather than pointer events: the browser cancels the pointer stream the moment it claims a gesture for scrolling, so a pointer-based version only ever sees gestures on regions that do not scroll.
 export function useSwipe({
@@ -12,12 +15,17 @@ export function useSwipe({
 	onRight,
 	onUp,
 	onDown,
+	onDrag,
+	onDragEnd,
 	distance = 60,
 }: {
 	onLeft?: () => void;
 	onRight?: () => void;
 	onUp?: () => void;
 	onDown?: () => void;
+	/** Live horizontal offset, for a surface that follows the finger. Giving this hands the horizontal axis over: `onLeft` and `onRight` are not called for a gesture it tracked, because the caller is deciding. */
+	onDrag?: (dx: number) => void;
+	onDragEnd?: (dx: number, wasFlick: boolean) => void;
 	distance?: number;
 }) {
 	const from = useRef<{
@@ -27,6 +35,8 @@ export function useSwipe({
 		// Whether the thing under the finger had anywhere left to scroll, either way, when the gesture began. See onTouchEnd.
 		wasAtTop: boolean;
 		wasAtBottom: boolean;
+		// Decided once, at the first movement worth reading, and held for the rest of the gesture. Null where nothing is tracking, which is what leaves every other caller on the original path.
+		axis: "x" | "y" | null;
 	} | null>(null);
 
 	return {
@@ -52,7 +62,24 @@ export function useSwipe({
 					!scroller ||
 					scroller.scrollTop + scroller.clientHeight >=
 						scroller.scrollHeight - 1,
+				axis: null,
 			};
+		},
+
+		onTouchMove: (event: ReactTouchEvent) => {
+			const start = from.current;
+			const touch = event.touches[0];
+			if (!start || !touch || !onDrag) return;
+
+			const dx = touch.clientX - start.x;
+			const dy = touch.clientY - start.y;
+
+			if (start.axis === null) {
+				if (Math.abs(dx) < AXIS_LOCK && Math.abs(dy) < AXIS_LOCK) return;
+				start.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+			}
+
+			if (start.axis === "x") onDrag(dx);
 		},
 
 		onTouchEnd: (event: ReactTouchEvent) => {
@@ -63,8 +90,15 @@ export function useSwipe({
 
 			const dx = touch.clientX - start.x;
 			const dy = touch.clientY - start.y;
+			const wasFlick = event.timeStamp - start.at <= FLICK_MS;
 
-			if (event.timeStamp - start.at > FLICK_MS) return;
+			// A tracked gesture is the caller's to settle: it watched the whole drag and knows how far round it got, which is a question about the surface rather than about the finger.
+			if (start.axis === "x") {
+				onDragEnd?.(dx, wasFlick);
+				return;
+			}
+
+			if (!wasFlick) return;
 
 			// The dominant axis wins outright rather than both firing: a diagonal flick that dismissed the screen and changed tab would be two things nobody asked for.
 			if (Math.abs(dx) > Math.abs(dy)) {
@@ -83,6 +117,8 @@ export function useSwipe({
 		},
 
 		onTouchCancel: () => {
+			// A tracked surface is sitting wherever the finger left it, so it has to be told even when the browser took the gesture away.
+			if (from.current?.axis === "x") onDragEnd?.(0, false);
 			from.current = null;
 		},
 	};

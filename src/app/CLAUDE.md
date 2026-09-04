@@ -39,7 +39,7 @@ The queue is deliberately **not** an action sheet, though the app has one. A she
 
 **The cover-and-names block is the way in**, on both surfaces — a ~200px target rather than a 44px one.
 
-**On a phone `#/playing` replaces the status bar**, the one place in the app where a route does: the screen is the whole viewport and carries its own transport, and leaving the strip below it puts two Play buttons and the same cover on screen at once. The desktop keeps it, where the screen is a pane inside the shell.
+**On a phone `#/playing` replaces the status bar**, the one place in the app where a route does: the screen is the whole viewport and carries its own transport, and leaving the strip below it puts two Play buttons and the same cover on screen at once. It covers the top bar as well — **the one layer in `.body` that goes `position: fixed` at a breakpoint rather than always** — because "the whole viewport" is not true of anything positioned in `.body`, which starts below the chrome. The desktop keeps both, where the screen is a pane inside the shell.
 
 Model **what is playing** separately from **where it is playing**. Output is a named target, not an assumption that audio comes from the remote player.
 

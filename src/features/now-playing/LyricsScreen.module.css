@@ -13,16 +13,15 @@
    What was taken from the references is the *scrim-less* treatment: neither
    floats its control over the text, and neither should this. */
 .screen {
-	/* **Fixed, not absolute**, and it is the only thing in Jean that is. Every
-     other layer -- the now-playing screen, the queue panel -- is positioned in
-     `.body`, which sits *below* the top bar and beside the sidebar; a layer
-     there covers the view and leaves the search field, the settings gear and
-     the theme switch on screen above it. That is right for a screen you are
-     still navigating and wrong for this one, where the whole request is that
-     the lyrics are the only thing on it. Nothing between here and the viewport
-     establishes a containing block -- `.body` is `position: relative` with
-     `overflow: hidden`, and neither clips a fixed descendant -- so this is the
-     viewport.
+	/* **Fixed, not absolute**, and at every width -- the now-playing screen is
+     fixed only on a phone, and the queue panel never is. A layer positioned in
+     `.body` sits *below* the top bar and beside the sidebar, so it covers the
+     view and leaves the search field, the settings gear and the theme switch on
+     screen above it. That is right for a screen you are still navigating and
+     wrong for this one, where the whole request is that the lyrics are the only
+     thing on it. Nothing between here and the viewport establishes a containing
+     block -- `.body` is `position: relative` with `overflow: hidden`, and
+     neither clips a fixed descendant -- so this is the viewport.
 
      45 puts it over the app chrome, the queue panel (30) and the now-playing
      screen (25), and deliberately under toasts (50) and menus (70): a write

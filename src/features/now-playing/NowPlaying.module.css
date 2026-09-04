@@ -409,12 +409,37 @@
 	color: var(--faint);
 }
 
+/* Three groups rather than an evenly spread row: shuffle, the transport keys,
+   and where the sound goes. The outer columns are equal, so Play sits in the
+   middle of the screen however many controls the outer two end up holding --
+   which spacing them apart cannot promise, and Play is the one control aimed at
+   without looking. */
 .transport {
-	display: flex;
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
 	align-items: center;
-	justify-content: space-between;
+	/* Each group sits at the start of its column, so the shuffle button keeps its
+     own width instead of stretching across a whole 1fr. The trailing group
+     turns this around for itself. */
+	justify-items: start;
 	gap: 8px;
 	margin-top: 6px;
+}
+
+/* The keys hug: they are one control in three parts, and the space between them
+   is what says so. Symmetrical on purpose -- an uneven pair would take the
+   centre off Play again. */
+.keys {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.outputs {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	justify-self: end;
 }
 
 .order,
@@ -445,6 +470,14 @@
 /* ---- compact ----------------------------------------------------------- */
 
 .screen[data-compact="true"] {
+	/* **Fixed, not absolute, and only here.** The gatefold is a pane inside the
+     shell and belongs in `.body`; on a phone this screen *is* the phone, and a
+     layer in `.body` starts below the top bar — which leaves the search field,
+     the gear and the theme switch on screen above something meant to be the
+     whole viewport. Nothing between here and the viewport establishes a
+     containing block. The z-index is unchanged: the queue panel still comes
+     over this, which is what the queue button in the header opens. */
+	position: fixed;
 	/* Rows: header / spread / transport. The spread is the only part that
      flexes, so the transport is at a constant distance from the bottom edge
      whatever tab is open. */
@@ -459,7 +492,11 @@
      this gap, the identity's lead, the star size and the art panel's own
      padding. Cheaper than shrinking the cover, and nothing else notices. */
 	gap: 10px;
-	padding: 10px 20px calc(16px + env(safe-area-inset-bottom));
+	/* The top inset is the notch's, now that this reaches the top of the glass.
+     `.head` pulls itself up by 20px and pads the same amount back, so whatever
+     is set here is where the chevron lands. */
+	padding: max(10px, env(safe-area-inset-top)) 20px
+		calc(16px + env(safe-area-inset-bottom));
 	/* The panel scrolls itself here, so the screen must not, or a flick scrolls
      both. */
 	overflow: hidden;

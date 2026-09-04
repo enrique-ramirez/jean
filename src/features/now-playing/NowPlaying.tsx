@@ -390,44 +390,47 @@ export function NowPlaying({
 								<Shuffle size={18} strokeWidth={2} />
 							</button>
 
-							<button
-								type="button"
-								className={styles.skip}
-								aria-label="Previous track"
-								onClick={() => transport.previous.mutate()}
-							>
-								<SkipBackIcon size={22} />
-							</button>
+							<div className={styles.keys}>
+								<button
+									type="button"
+									className={styles.skip}
+									aria-label="Previous track"
+									onClick={() => transport.previous.mutate()}
+								>
+									<SkipBackIcon size={22} />
+								</button>
 
-							<PlayToggle
-								isPlaying={isPlaying}
-								onToggle={() => playPause.mutate()}
-								variant="screen"
-							/>
-
-							<button
-								type="button"
-								className={styles.skip}
-								aria-label="Next track"
-								onClick={() => transport.next.mutate()}
-							>
-								<SkipForwardIcon size={22} />
-							</button>
-
-							{/* Left of the fader, as in the status bar: where the sound comes out has to be answered before how loud there means anything. */}
-							{player ? (
-								<ListenHere
-									playerName={player.info.title ?? player.info.name}
+								<PlayToggle
+									isPlaying={isPlaying}
+									onToggle={() => playPause.mutate()}
+									variant="screen"
 								/>
-							) : null}
 
-							{hasFader ? (
-								<VolumePopover
-									volume={volume}
-									onChange={setValue}
-									label={isHere ? "Volume on this device" : "Volume"}
-								/>
-							) : null}
+								<button
+									type="button"
+									className={styles.skip}
+									aria-label="Next track"
+									onClick={() => transport.next.mutate()}
+								>
+									<SkipForwardIcon size={22} />
+								</button>
+							</div>
+
+							<div className={styles.outputs}>
+								{player ? (
+									<ListenHere
+										playerName={player.info.title ?? player.info.name}
+									/>
+								) : null}
+
+								{hasFader ? (
+									<VolumePopover
+										volume={volume}
+										onChange={setValue}
+										label={isHere ? "Volume on this device" : "Volume"}
+									/>
+								) : null}
+							</div>
 						</div>
 					</div>
 				)}

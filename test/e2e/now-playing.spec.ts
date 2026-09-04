@@ -344,6 +344,42 @@ test.describe("the set it is playing from", () => {
 	});
 });
 
+test.describe("the screen a phone gets", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"the gatefold is a pane inside the shell, which is the point of it",
+	);
+
+	test("is the whole viewport, the app chrome included", async ({ page }) => {
+		await openLibrary(page);
+		await openNowPlaying(page);
+
+		const box = (await nowPlayingScreen(page).boundingBox())!;
+		const view = page.viewportSize()!;
+		expect(box.y, "the screen starts below the top bar").toBe(0);
+		expect(box.height).toBeGreaterThanOrEqual(view.height);
+	});
+
+	test("Play is in the middle of the row, whatever flanks it", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+
+		const screen = nowPlayingScreen(page);
+		const play = (await screen
+			.getByRole("button", { name: /^(Play|Pause)$/ })
+			.boundingBox())!;
+		// The screen's padding is symmetrical, so the middle of the row is the
+		// middle of the viewport.
+		const view = page.viewportSize()!;
+		const centre = play.x + play.width / 2;
+		expect(
+			Math.abs(centre - view.width / 2),
+			`Play is centred at ${Math.round(centre)}px of ${view.width}px`,
+		).toBeLessThanOrEqual(1);
+	});
+});
+
 // The screen's own transport holds two controls that follow a finger, and both
 // sit inside the surface the dismiss and tab gestures are read from.
 test.describe("a control that follows the finger keeps the gesture", () => {

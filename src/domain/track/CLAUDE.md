@@ -56,7 +56,13 @@ Two boundaries are genuinely ambiguous: `5` is full marks natively and half mark
 
 *Centred*, when it does move. Minimal scrolling brings a row in from whichever edge it crossed and leaves it there, which parks the playing track on the status bar going forwards and tucks it under the sticky toolbar going backwards. Centre has no edge to land on, so direction stops mattering. Note that `ifNeeded` is **not** the virtualiser's `align: "auto"`, which is that same minimal scroll under another name; the two are opposites here.
 
-`ifNeeded` is on the follow effect and nowhere else. `N`, the "Now playing" pill and the finder are all somebody asking to be taken to the track, and centring is the whole of what they asked for.
+`ifNeeded` is on the follow effect and nowhere else. `N`, the "Now playing" pill, the finder and the now-playing screen's "Playing from" line are all somebody asking to be taken to the track, and centring is the whole of what they asked for.
+
+**That last one is asked from outside the list, so it travels as a store** — `jumpToPlaying.ts`, one boolean, raised by `App` and answered by whichever `TrackBrowser` the route lands on. Three things about it:
+
+- **Raised when the route lands, never at the click.** More than one view can locate the playing row — All music finds the track the search results are playing — so a click that asked immediately would be answered by the view being left, and the view being opened would find nothing outstanding.
+- **The ask stands until a list can act on it.** A route opens before its rows arrive, and a browser that cannot answer yet must not swallow it; it is cleared by the jump itself, which is what stops a later track change reading as a second ask.
+- **Independent of the follow settings and of `canFollowPlayback`.** Following is a standing preference about tracks changing; this is one instruction, given once. It is also the only thing that takes the search results to a row.
 
 **It moves the cursor as well**, or `0`-`5` would rate a track chosen an hour ago while a different one plays. Cursor follows playback is on by default, under `jean.followPlayback`.
 

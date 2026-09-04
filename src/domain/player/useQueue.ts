@@ -9,7 +9,6 @@ import {
 } from "@/shared/api/beefweb";
 import type { PlayQueueItem } from "@/shared/api/types";
 import { descending, inSequence } from "@/shared/lib/sequence";
-import { plural } from "@/shared/lib/text";
 import { pushToast } from "@/shared/ui/toastStore";
 import {
 	holdQueue,
@@ -19,6 +18,7 @@ import {
 	rebuildFrom,
 	sameQueue,
 } from "./queue";
+import { askToShowQueue } from "./showQueue";
 import { usePermissions } from "./usePlayer";
 
 export function useQueue() {
@@ -80,41 +80,14 @@ export function useQueueActions() {
 		async (pairs: { playlistId: string; itemIndex: number }[]) => {
 			if (!canQueue || pairs.length === 0) return;
 
-			const before = (await fetchPlayQueue().catch(() => null))?.length ?? null;
+			// Before the write rather than after it, so what opens is the queue as it was and the tracks are watched landing in it.
+			askToShowQueue();
 
 			await write(() =>
 				inSequence(pairs, (pair) =>
 					addToPlayQueue(pair.playlistId, pair.itemIndex),
 				),
 			);
-
-			const undo =
-				before === null
-					? undefined
-					: async () => {
-							// Those positions are only ours while nothing else has touched the queue, and a track starting consumes the head of it.
-							const current = await fetchPlayQueue().catch(() => null);
-							if (!current || current.length !== before + pairs.length) {
-								pushToast({
-									tone: "error",
-									message:
-										"The queue has changed since then, so nothing was removed.",
-								});
-								return;
-							}
-							// Highest first: every removal renumbers the ones after it.
-							await write(() =>
-								inSequence(
-									descending(current.length - 1, before),
-									removeFromPlayQueue,
-								),
-							);
-						};
-
-			pushToast({
-				message: `Queued ${plural(pairs.length, "track")}`,
-				action: undo ? { label: "Undo", run: undo } : undefined,
-			});
 		},
 		[canQueue, write],
 	);

@@ -2,10 +2,14 @@ import { KEYMAP } from "../../src/shared/keyboard/keymap.ts";
 import type { Locator, Page } from "./fixtures.ts";
 import {
 	expect,
+	isRowOnScreen,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
 	requestsTo,
+	scrollTo,
+	scrollTop,
+	scrollUntilMounted,
 	statusBar,
 	test,
 	touchDrag,
@@ -493,6 +497,63 @@ test.describe("the set it is playing from", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
+	});
+
+	// Following is off throughout, so nothing but the header can be moving the
+	// view: on arrival the follow would centre the playing row by itself.
+	test.describe("it lands on the track, not at the top of the set", () => {
+		test.use({
+			mediaLibrarySize: 400,
+			librarySize: 400,
+			settings: { "jean.followPlayback": false },
+		});
+
+		// Far enough down a 400-track library to be nowhere near the fold.
+		const FAR = 120;
+
+		const playFarAndLeaveTheTop = async (page: Page) => {
+			await page.goto("/#/all");
+			await expect(
+				page.getByRole("heading", { level: 1, name: "All music" }),
+			).toBeVisible();
+			await scrollUntilMounted(page, trackRow(page, FAR));
+			await trackRow(page, FAR).dblclick();
+			await expect(trackRow(page, FAR)).toHaveAttribute("data-active", "true");
+
+			// The set is left at the top, so the offset it remembers is not the
+			// track and arriving at it proves something.
+			await scrollTo(page, 0);
+			await expect.poll(() => scrollTop(page)).toBe(0);
+		};
+
+		const openThePlayingSet = async (page: Page) => {
+			await openNowPlaying(page);
+			await nowPlayingScreen(page)
+				.getByRole("button", { name: /Playing from/ })
+				.click();
+			await expect(nowPlayingScreen(page)).toBeHidden();
+		};
+
+		test("from another view", async ({ page }) => {
+			await playFarAndLeaveTheTop(page);
+			await page.goto("/#/p5");
+			await expect(page.getByRole("grid")).toBeVisible();
+
+			await openThePlayingSet(page);
+
+			await expect.poll(() => isRowOnScreen(page, FAR)).toBe(true);
+			await expect(trackRow(page, FAR)).toHaveAttribute("data-active", "true");
+		});
+
+		test("and from the set it is already showing", async ({ page }) => {
+			await playFarAndLeaveTheTop(page);
+
+			// Nothing to navigate to: the screen closes onto the list it was opened
+			// over, and the row still has to be found.
+			await openThePlayingSet(page);
+
+			await expect.poll(() => isRowOnScreen(page, FAR)).toBe(true);
+		});
 	});
 
 	test("it is a line and not a button when the set has nowhere to open", async ({

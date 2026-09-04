@@ -279,10 +279,6 @@ export function NowPlaying({
 					)}
 
 					<div className={styles.headActions}>
-						{isCompactViewport ? (
-							<QueueButton isOpen={isQueueOpen} onToggle={onToggleQueue} />
-						) : null}
-
 						<button
 							type="button"
 							className={styles.more}
@@ -363,21 +359,30 @@ export function NowPlaying({
 
 						{/* Three groups, so Play sits in the middle of the row whatever the outer two hold. */}
 						<div className={styles.transport}>
-							<button
-								type="button"
-								className={styles.order}
-								aria-label="Shuffle"
-								aria-pressed={order.isShuffle}
-								disabled={!order.canShuffle}
-								title={
-									order.orderName
-										? `Playback order: ${order.orderName}`
-										: "Shuffle"
-								}
-								onClick={order.toggleShuffle}
-							>
-								<Shuffle size={18} strokeWidth={2} />
-							</button>
+							{/* What plays next: the order the player takes tracks in, and the tracks asked for by name. Both belong under a thumb, which the header is not. */}
+							<div className={styles.next}>
+								<button
+									type="button"
+									className={styles.order}
+									aria-label="Shuffle"
+									aria-pressed={order.isShuffle}
+									disabled={!order.canShuffle}
+									title={
+										order.orderName
+											? `Playback order: ${order.orderName}`
+											: "Shuffle"
+									}
+									onClick={order.toggleShuffle}
+								>
+									<Shuffle size={18} strokeWidth={2} />
+								</button>
+
+								<QueueButton
+									isOpen={isQueueOpen}
+									onToggle={onToggleQueue}
+									variant="screen"
+								/>
+							</div>
 
 							<div className={styles.keys}>
 								<button

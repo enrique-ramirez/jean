@@ -8,7 +8,9 @@ import { usePlayer } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { artworkUrl } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useSortableList } from "@/shared/hooks/useSortableList";
+import { useSwipe } from "@/shared/hooks/useSwipe";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
 import { plural } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";
@@ -178,6 +180,8 @@ const QueueRow = memo(function QueueRow({
 						className={styles.grip}
 						aria-label={`Reorder ${entry.title}`}
 						tabIndex={-1}
+						// The one thing in here that takes the vertical axis for itself; without this a row dragged up the panel reads as the flick that closes it.
+						data-owns-touch=""
 						{...handleProps}
 					>
 						<GripVertical size={15} strokeWidth={2} />
@@ -219,6 +223,15 @@ export function QueuePanel({
 		disabled: !canQueue,
 	});
 
+	// A press anywhere else puts the queue away, at every width: it is a glance at what happens next, opened around whatever you were doing. The toggle is a panel away in the status bar, so it is named rather than contained -- and Escape stays where it is, since this leaves the app behind it live and never claims the keyboard.
+	const ref = useDismissable<HTMLElement>(isOpen, onDismiss, {
+		ignore: "[data-queue-toggle]",
+		onEscape: false,
+	});
+
+	// Either direction, and only from the end of the scroll it would otherwise be. The panel enters from the right and a horizontal flick is left to the list behind it, which is where sideways already means something.
+	const swipe = useSwipe({ onUp: onDismiss, onDown: onDismiss });
+
 	return (
 		<>
 			{isCompactViewport && isOpen ? (
@@ -231,9 +244,11 @@ export function QueuePanel({
 			) : null}
 
 			<aside
+				ref={ref}
 				className={styles.panel}
 				data-open={isOpen}
 				aria-label="Queue"
+				{...swipe}
 				// Closed, the grid column is zero-width but still in the tab order.
 				inert={isOpen ? undefined : true}
 			>

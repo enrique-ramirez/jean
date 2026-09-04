@@ -10,6 +10,7 @@ import {
 	sidebar,
 	statusBar,
 	test,
+	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -27,11 +28,13 @@ const anyQueueButton = async (page: Page) => {
 	return nowPlayingScreen(page).getByRole("button", { name: /^Queue/ });
 };
 
+// Idempotent: queueing a track opens the panel by itself, so a spec that queues
+// before it looks would otherwise toggle the open one shut. Closed, the panel is
+// parked off the right edge rather than hidden, which no visibility check sees.
 const openQueue = async (page: Page) => {
-	(await anyQueueButton(page)).click();
-	await expect(
-		queuePanel(page).getByRole("heading", { name: "Queue" }),
-	).toBeVisible();
+	if ((await queuePanel(page).getAttribute("data-open")) !== "true")
+		(await anyQueueButton(page)).click();
+	await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 };
 
 const queueRows = (page: Page) => queuePanel(page).getByRole("listitem");
@@ -122,8 +125,9 @@ test.describe("putting things in the queue", () => {
 
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
 		expect(requestsTo(player, "/playqueue/add")).toHaveLength(1);
-		// The queue panel is shut, so the drop has to say something.
-		await expect(page.getByRole("status")).toContainText("Queued 1 track");
+		// A drop lands away from the pointer, so it has to show what it did: the panel opens on a drop as it does on the menu action.
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+		await expect(queueRows(page)).toHaveCount(1);
 	});
 
 	test("the button announces itself only while a drag is in flight", async ({
@@ -203,6 +207,33 @@ test.describe("putting things in the queue", () => {
 		expect(labels[labels.indexOf("Next track") + 1]).toBe("Queue");
 	});
 
+	test("on a phone it sits with the transport too, beside Shuffle", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(
+			!isMobile,
+			"the desktop transport is the status bar, tested above",
+		);
+		await openLibrary(page);
+		await openNowPlaying(page);
+
+		// Not the header: the top of a screen this tall is nowhere near a thumb, and the queue is a thing you press while listening.
+		await expect(
+			nowPlayingScreen(page)
+				.locator("header")
+				.getByRole("button", { name: /^Queue/ }),
+		).toHaveCount(0);
+
+		const labels = await nowPlayingScreen(page)
+			.getByRole("button")
+			.evaluateAll((buttons) =>
+				buttons.map((button) => button.getAttribute("aria-label")),
+			);
+
+		expect(labels[labels.indexOf("Shuffle") + 1]).toBe("Queue");
+	});
+
 	test("the badge counts what is queued", async ({
 		page,
 		player,
@@ -233,6 +264,89 @@ test.describe("putting things in the queue", () => {
 		await queueTracks(page, isMobile, 1);
 		expect((await badge()).name).toBe("Queue, 2 tracks");
 		expect(player.playQueue).toHaveLength(2);
+	});
+});
+
+test.describe("queueing opens the panel", () => {
+	test("and that is the whole of what it says about it", async ({
+		page,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile);
+
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+		await expect(queueRows(page)).toHaveCount(1);
+		// The panel is the confirmation and the row is the undo, so nothing is announced on top of it.
+		await expect(page.getByRole("status")).toHaveCount(0);
+	});
+
+	test("a press outside puts it away", async ({ page, isMobile }) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile);
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+		// A point left of the panel, whatever is there to take it: on a phone that is the scrim, on a desktop the list itself.
+		const box = (await queuePanel(page).boundingBox())!;
+		await page.mouse.click(box.x / 2, box.y + 120);
+
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+	});
+
+	test("the button that opened it still closes it", async ({
+		page,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile);
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+		// The press outside fires first and the click after it: without the toggle being named to the dismissal, the two cancel out and the button stops closing what it opened.
+		(await anyQueueButton(page)).click();
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+	});
+
+	test("but a row dragged by its grip is not a flick", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(!isMobile, "the grip is the coarse-pointer path");
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await expect(queueRows(page)).toHaveCount(2);
+
+		const grip = queueRows(page)
+			.first()
+			.getByRole("button", { name: /^Reorder/ });
+		const box = (await grip.boundingBox())!;
+		const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+		// Well past the distance a flick is read at, which is the whole point: the grip owns the axis it is dragged on.
+		await touchDrag(page, from, { x: from.x, y: from.y + 120 }, 8);
+
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+	});
+
+	test("a flick up or down puts it away", async ({ page, isMobile }) => {
+		test.skip(!isMobile, "a flick is a touch gesture");
+		await openLibrary(page);
+
+		for (const [dy, name] of [
+			[-160, "up"],
+			[160, "down"],
+		] as const) {
+			await queueTracks(page, isMobile);
+			await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+			const box = (await queuePanel(page).boundingBox())!;
+			const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+			await touchDrag(page, from, { x: from.x, y: from.y + dy });
+
+			await expect(
+				queuePanel(page),
+				`a flick ${name} left it open`,
+			).toHaveAttribute("data-open", "false");
+		}
 	});
 });
 

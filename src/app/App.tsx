@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
+import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
 	useIsPlaying,
@@ -17,6 +18,7 @@ import {
 	SCRATCH_KIND,
 	withoutJeanPlaylists,
 } from "@/domain/track/jeanPlaylists";
+import { askToJump } from "@/domain/track/jumpToPlaying";
 import {
 	EMPTY_VIEW,
 	project,
@@ -217,22 +219,53 @@ function Shell() {
 		[browsable, selectedId],
 	);
 
+	// The set the now-playing screen was sent back to, until its route lands. The ask is raised on arrival rather than at
+	// the click because the playing track is locatable from more than one view -- All music finds a row the search results
+	// are playing -- so the view being left would answer an ask meant for the one being opened.
+	const jumpTo = useRef<string | null>(null);
+	const arrivingAtPlayingTrack = jumpTo.current === route;
+
+	useEffect(() => {
+		// Cleared on every landing, matched or not — otherwise a jump abandoned by a second, faster
+		// navigation would sit armed and fire on whatever ordinary visit next reached that route.
+		if (jumpTo.current === route) askToJump();
+		jumpTo.current = null;
+	}, [route]);
+
 	// Each result set is its own view, so refining a query starts at the top while stepping back into a playlist returns to the row it left.
+	// The route underneath, not the route: the now-playing screen is a layer over a view that has not changed, and keyed on `#/playing` opening it would scroll the list behind it to the top and closing it would restore the offset a jump had just replaced.
 	useScrollMemory(
 		scrollRef,
 		isSearch
 			? search.viewKey
 			: isLibrary
-				? `library:${route}`
+				? `library:${shellRoute}`
 				: `playlist:${selectedId}`,
+		{ restore: !arrivingAtPlayingTrack },
 	);
 
 	const isQueueOpen = isCompactViewport ? isQueueDrawerOpen : isQueueDocked;
 
-	const toggleQueue = useCallback(() => {
-		if (isCompactViewport) setIsQueueDrawerOpen((current) => !current);
-		else setIsQueueDocked((current) => !current);
-	}, [isCompactViewport, setIsQueueDocked]);
+	const setQueueOpen = useCallback(
+		(open: boolean) => {
+			if (isCompactViewport) setIsQueueDrawerOpen(open);
+			else setIsQueueDocked(open);
+		},
+		[isCompactViewport, setIsQueueDocked],
+	);
+
+	const toggleQueue = useCallback(
+		() => setQueueOpen(!isQueueOpen),
+		[setQueueOpen, isQueueOpen],
+	);
+
+	// Queueing a track asks for the panel, because the panel is what says the track was queued.
+	const showQueueAsked = useShowQueueAsked();
+	useEffect(() => {
+		if (!showQueueAsked) return;
+		queueShown();
+		setQueueOpen(true);
+	}, [showQueueAsked, setQueueOpen]);
 
 	const toggleSidebar = () => {
 		if (isCompactViewport) setIsSidebarOpen((current) => !current);
@@ -251,6 +284,16 @@ function Shell() {
 			setIsSidebarOpen(false);
 		},
 		[navigate],
+	);
+
+	// The way back to the set, from the now-playing screen. The route alone lands at the top of a long list, or wherever
+	// that view was last left, so the row is asked for as well and whichever list resolves the route answers it.
+	const openPlayingFrom = useCallback(
+		(next: string) => {
+			jumpTo.current = next;
+			openRoute(next);
+		},
+		[openRoute],
 	);
 
 	const openSearch = useCallback(() => openRoute(ROUTE.search), [openRoute]);
@@ -338,7 +381,7 @@ function Shell() {
 		toggleQueue,
 		toggleNowPlaying,
 		goToPlayingFrom: () => {
-			if (playingRoute) openRoute(playingRoute);
+			if (playingRoute) openPlayingFrom(playingRoute);
 		},
 		toggleTheme,
 		rate0: () => rateShortcut(0),
@@ -495,7 +538,7 @@ function Shell() {
 					onToggleQueue={toggleQueue}
 					// Only for a set with somewhere to go: opening the route is what dismisses the screen, so there is nothing else for the header to do.
 					onOpenPlayingFrom={
-						playingRoute ? () => openRoute(playingRoute) : undefined
+						playingRoute ? () => openPlayingFrom(playingRoute) : undefined
 					}
 					onDismiss={closeNowPlaying}
 				/>

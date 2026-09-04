@@ -13,6 +13,16 @@
 		scale 0.12s var(--ease);
 }
 
+/* The transport row's own target size, which every control in it shares. The
+   badge follows the glyph in rather than staying in the button's corner, and its
+   ring is the screen's background rather than the status bar's -- both below,
+   with the other rules that reach into it. */
+.queue[data-size="screen"] {
+	width: 44px;
+	height: 44px;
+	padding: 0;
+}
+
 .queue:hover {
 	background: var(--surface-sunken);
 	color: var(--text);
@@ -47,6 +57,12 @@
 	font-variant-numeric: tabular-nums;
 	/* Once: a notification, not motion the eye is meant to live with. */
 	animation: pop 0.34s var(--ease) 1;
+}
+
+.queue[data-size="screen"] .badge {
+	top: 5px;
+	right: 4px;
+	box-shadow: 0 0 0 2px var(--bg);
 }
 
 .queue:hover .badge,

@@ -8,7 +8,13 @@ What the user has explicitly queued, drawn as the stretch of time it occupies. T
 
 **Nothing in here is what is playing.** By the time a track is playing it has left the queue, so the head of the rail is the *current track's remaining time* instead — which is also what the first countdown is measured from. Without that origin the first `in 3:42` looks invented.
 
+**Queueing opens it, which is why there is no toast about queueing.** Reasoning in `src/domain/player/CLAUDE.md`. The cost is that queueing several tracks one at a time is now press, queue, press away, queue — a fair trade for the confirmation being the thing itself, and the press away is the same gesture at every width.
+
 **The empty state is the feature, not the fallback.** An empty queue means nothing has been *asked for*, not that nothing will play, and the panel says so in words. It is always openable. The gesture hint is chosen by `(pointer: coarse)` rather than by width: a narrow desktop window still has a right mouse button and a phone at any width does not.
+
+**A press anywhere outside puts it away, at every width, and so does a flick up or down.** The panel is opened around whatever you were doing — by the button, or by queueing a track — so the way out is wherever you look next rather than a target to find. On a phone the scrim takes that press; on a desktop the press lands on the app behind, which stays live. The flick fires only from the end of the scroll it would otherwise be, the app's rule everywhere, and either direction works because a panel with a short queue is at both ends at once. **The grip is marked `data-owns-touch`** — without it a row dragged up the panel is read as the flick that closes it.
+
+**It does not take Escape.** Taking Escape and claiming the keyboard are one job, and this panel deliberately leaves the app behind it live; `Q` closes it from the keyboard. That is what `useDismissable`'s `onEscape: false` is for, and its `ignore` is the other half — the toggle is in the status bar, a panel away, so the press outside would close what the click then reopened.
 
 **The status bar button and the menu action share one glyph, `ListEnd`.** Its mirror `ListStart` would draw the one thing foobar2000 will not do — `queueIndex` is ignored on add, so there is no inserting at the front — and its arrow sits exactly where the badge does. One glyph means *the queue*; what it does is given by where it is.
 

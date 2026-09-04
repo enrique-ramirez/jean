@@ -14,6 +14,8 @@ The **action** lives in a playlist header next to Play, where it reads as "play 
 
 **That constraint is what makes the panel's one real idea possible.** The queue is finite, ordered and exhaustive — foobar2000 takes all of it before returning to the playlist — so the time until any entry plays is exact arithmetic rather than an estimate. The rail in `features/queue` is drawn to that scale.
 
+**Queueing opens the panel, and says nothing else.** The confirmation is watching the track land on the rail, which is worth more than a sentence describing it, and the row it lands on is the undo — one press to take it off, no window to catch. So `queue()` raises the ask in `showQueue.ts`, the shell answers it at whatever width it is, and there is no toast and no undo action to keep honest. There was one, and it could not be: each toast's undo was a range built from the queue length before its own write, so with three of them on screen only the newest could still be applied. Errors still toast, because a queue that refused the write is exactly the thing you cannot see.
+
 **The queue is consumed, so what is playing is never in it.** An entry leaves the moment its track starts. There is no "now playing" row to draw and no risk of the panel disagreeing with the status bar.
 
 **A reorder is a rebuild, because there is no insert.** `queueIndex` is accepted and *silently ignored* on `/playqueue/add` — 204, appended anyway — so moving an entry means removing everything from the earlier of the two positions and adding it back in the new order. Three things follow, all in `useQueue`:

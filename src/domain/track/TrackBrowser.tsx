@@ -29,6 +29,7 @@ import {
 } from "./followSettings";
 import { groupByAlbum } from "./grouping";
 import { HeatLegend } from "./HeatLegend";
+import { jumpAnswered, useJumpAsked } from "./jumpToPlaying";
 import type { LibrarySource } from "./librarySource";
 import type {
 	ActiveDirection,
@@ -301,6 +302,19 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		setRatingTarget({ source, ref, row: cursorRow });
 		return () => setRatingTarget(null);
 	}, [source, indices, selection.cursor, cursorRow]);
+
+	// Somebody asked for the playing track from outside the list, and the route they asked from has just landed here.
+	// Independent of the follow settings and of `canFollowPlayback`: this is the ask `N` makes, arriving from elsewhere.
+	// Answered on the first render that has the row, which on a cold view is several chunks after the ask.
+	const jumpAsked = useJumpAsked();
+	useEffect(() => {
+		if (!jumpAsked) return;
+		if (activeIndex < 0 || activeIndex >= rows.length) return;
+		jumpAnswered();
+		moveCursorTo(activeIndex);
+		// Unanimated, unlike `N` on a list already being looked at: the view is arriving, and there is no position to travel from that means anything.
+		scrollToTrack(activeIndex, { align: "center" });
+	}, [jumpAsked, activeIndex, rows.length, moveCursorTo, scrollToTrack]);
 
 	// The cursor as it stood when the track changed. A dependency would re-run the effect on every arrow key.
 	const cursorAt = useRef(selection.cursor);

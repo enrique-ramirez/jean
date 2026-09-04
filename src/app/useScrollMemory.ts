@@ -10,9 +10,15 @@ const RESTORE_FRAMES = 60;
 export function useScrollMemory(
 	scrollRef: RefObject<HTMLElement | null>,
 	viewKey: string,
+	// Off for a view being opened to be taken somewhere in particular: where it was last left is not what was asked for, and the two would fight for as long as rows keep arriving -- the restore re-forces its offset on every frame that grows the list.
+	{ restore = true }: { restore?: boolean } = {},
 ) {
 	const offsets = useRef(new Map<string, number>());
 	const activeKey = useRef(viewKey);
+
+	// Through a ref: this describes the view change rather than the render, and as a dependency the restore would re-run the moment it went back to true and undo the scroll it stood aside for.
+	const restoring = useRef(restore);
+	restoring.current = restore;
 
 	useEffect(() => {
 		const element = scrollRef.current;
@@ -36,6 +42,12 @@ export function useScrollMemory(
 
 		const element = scrollRef.current;
 		if (!element) return undefined;
+
+		// The top, rather than the offset held for the view being left: what is asked for next may take a moment to arrive.
+		if (!restoring.current) {
+			element.scrollTop = 0;
+			return undefined;
+		}
 
 		const target = offsets.current.get(viewKey) ?? 0;
 		element.scrollTop = target;

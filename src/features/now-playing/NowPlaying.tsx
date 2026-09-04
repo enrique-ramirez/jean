@@ -3,13 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { formatTime } from "@/domain/player/position";
+import { useAudibleVolume } from "@/domain/player/useListener";
 import {
 	useAudiblePlayer,
 	usePlaybackOrder,
 	usePlayPause,
 	useSeek,
 	useTransport,
-	useVolume,
 } from "@/domain/player/usePlayer";
 import { readValue } from "@/domain/track/fields";
 import {
@@ -129,7 +129,8 @@ export function NowPlaying({
 	const seek = useSeek();
 	const transport = useTransport();
 	const order = usePlaybackOrder();
-	const { volume, setValue } = useVolume();
+	// The audible fader, the one the status bar draws: pointed at the player while a stream is attached, it would move nothing anyone can hear.
+	const { isHere, volume, setValue, hasFader } = useAudibleVolume();
 	const menu = useNowPlayingMenu();
 
 	const panelRef = useRef<HTMLDivElement | null>(null);
@@ -398,7 +399,13 @@ export function NowPlaying({
 								<SkipForwardIcon size={22} />
 							</button>
 
-							<VolumePopover volume={volume} onChange={setValue} />
+							{hasFader ? (
+								<VolumePopover
+									volume={volume}
+									onChange={setValue}
+									label={isHere ? "Volume on this device" : "Volume"}
+								/>
+							) : null}
 						</div>
 					</div>
 				)}

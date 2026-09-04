@@ -3,13 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
+import { useAudibleVolume } from "@/domain/player/useListener";
 import {
 	useIsPlaying,
 	usePlayerStream,
 	usePlaylists,
 	usePlayPause,
 	useSeekBy,
-	useVolume,
 } from "@/domain/player/usePlayer";
 import {
 	ALL_MUSIC,
@@ -76,7 +76,8 @@ function Shell() {
 	const isPlaying = useIsPlaying();
 	const playPause = usePlayPause();
 	const seekBy = useSeekBy();
-	const volume = useVolume();
+	// The audible fader, not the player's: while a stream is attached the player's volume sits before the capture and moves nothing anyone can hear.
+	const volume = useAudibleVolume();
 	const { theme, toggle: toggleTheme } = useTheme();
 	const isCompactViewport = useIsCompactViewport();
 	const [route, navigate] = useHashRoute();
@@ -286,7 +287,7 @@ function Shell() {
 		seekForward: () => seekBy.mutate(SEEK_STEP),
 		volumeUp: () => volume.up(),
 		volumeDown: () => volume.down(),
-		toggleMute: () => volume.setMuted(!volume.volume?.isMuted),
+		toggleMute: () => volume.toggleMute(),
 		globalSearch: () => {
 			search.focus();
 			if (search.hasQuery) openSearch();

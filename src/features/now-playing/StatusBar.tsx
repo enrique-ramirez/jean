@@ -1,6 +1,6 @@
 import { Shuffle } from "lucide-react";
 import { formatTime } from "@/domain/player/position";
-import { useListener } from "@/domain/player/useListener";
+import { useAudibleVolume } from "@/domain/player/useListener";
 import {
 	useAudiblePlayer,
 	usePlaybackOrder,
@@ -8,7 +8,6 @@ import {
 	usePlayPause,
 	useSeek,
 	useTransport,
-	useVolume,
 } from "@/domain/player/usePlayer";
 import { artworkUrl, readTrack } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
@@ -68,18 +67,15 @@ export function StatusBar({
 	const { isPending, isError, error } = usePlayer();
 	const snapshot = useAudiblePlayer();
 	const isCompactViewport = useIsCompactViewport();
-	const { volume, setValue, setMuted } = useVolume();
-	const listener = useListener();
-
 	// While the sound is on this device the player's volume sits before the capture, so a fader pointed at it would move and change nothing audible.
 	// Where the platform gives no level at all, as iOS does, the control is dropped rather than drawn dead.
-	const isHere = listener.isOn;
-	const shownVolume = isHere ? listener.volume : volume;
-	const changeVolume = isHere ? listener.setVolume : setValue;
-	const toggleMute = isHere
-		? listener.toggleMute
-		: () => setMuted(!volume?.isMuted);
-	const hasFader = !isHere || Boolean(listener.volume);
+	const {
+		isHere,
+		volume: shownVolume,
+		setValue: changeVolume,
+		toggleMute,
+		hasFader,
+	} = useAudibleVolume();
 
 	// On the row rather than the footer, so it starts below the seek bar: that strip owns the vertical axis, and a swipe beginning there is a scrub.
 	const swipeUp = useSwipe({ onUp: onRevealNowPlaying });

@@ -125,6 +125,9 @@ export function audiblePosition(
 // The same decibel scale the player's fader uses, so one gesture is the same change in loudness whichever target the control points at. `audio.volume` is the amplitude end of this conversion.
 export const DEVICE_VOLUME_FLOOR_DB = -60;
 
+// What one press of the volume keys moves, standing in for the player's own `/volume/up` where that endpoint is inaudible. Thirty presses across the range.
+export const DEVICE_VOLUME_STEP_DB = 2;
+
 export const amplitudeOf = (db: number) =>
 	db <= DEVICE_VOLUME_FLOOR_DB ? 0 : clamp(10 ** (db / 20), 0, 1);
 

@@ -26,6 +26,7 @@ export interface Binding {
 
 export const SCOPE = {
 	global: "global",
+	nowPlaying: "now playing",
 	sidebar: "sidebar",
 	playlist: "playlist",
 	finder: "finder",
@@ -186,7 +187,13 @@ export const KEYMAP: Binding[] = [
 		name: "Show / hide what's playing",
 		keys: ["W"],
 	},
-	// At risk of being taken by a browser menu item on macOS.
+	{
+		id: "goToPlayingFrom",
+		scope: SCOPE.global,
+		group: "Navigation",
+		name: "Go to what is playing",
+		keys: ["P"],
+	},
 	{
 		id: "openSettings",
 		scope: SCOPE.global,
@@ -211,6 +218,31 @@ export const KEYMAP: Binding[] = [
 		group: "Appearance",
 		name: "Switch light / dark",
 		keys: ["T"],
+	},
+
+	// On the now-playing screen ---------------------------------------------
+	// Each key is the initial of the tab it opens, and the tab strip underlines
+	// it. Rename a tab and the letter moves with it, or the hint lies.
+	{
+		id: "showLyrics",
+		scope: SCOPE.nowPlaying,
+		group: "While what's playing is open",
+		name: "Lyrics",
+		keys: ["L"],
+	},
+	{
+		id: "showDetails",
+		scope: SCOPE.nowPlaying,
+		group: "While what's playing is open",
+		name: "Details",
+		keys: ["D"],
+	},
+	{
+		id: "showArtist",
+		scope: SCOPE.nowPlaying,
+		group: "While what's playing is open",
+		name: "Artist",
+		keys: ["A"],
 	},
 
 	// In the sidebar -------------------------------------------------------

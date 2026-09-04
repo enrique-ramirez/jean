@@ -1,5 +1,5 @@
-import { ChevronDown, Maximize2, MoreHorizontal, Shuffle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Mic2, MoreHorizontal, Shuffle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { formatTime } from "@/domain/player/position";
@@ -22,14 +22,13 @@ import {
 import { useTagWriting } from "@/domain/track/useTagWriter";
 import { artworkUrl } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { usePresence } from "@/shared/hooks/usePresence";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
-import { Artist } from "./Artist";
-import { Details } from "./Details";
 import { ListenHere } from "./ListenHere";
-import { Lyrics } from "./Lyrics";
 import { LyricsScreen } from "./LyricsScreen";
 import { parseLyrics } from "./lyricsFormat";
 import styles from "./NowPlaying.module.css";
@@ -37,19 +36,12 @@ import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import { PlayToggle } from "./PlayToggle";
 import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsed } from "./SeekBar";
+import { INFO_EXIT_MS, TrackInfo } from "./TrackInfo";
+import { TrackPanels } from "./TrackPanels";
+import { useEscapeCapture } from "./useEscapeCapture";
 import { useNowPlayingMenu } from "./useNowPlayingMenu";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
-import { usePanelScroll } from "./usePanelScroll";
 import { VolumePopover } from "./Volume";
-
-type Tab = "art" | "lyrics" | "details" | "artist";
-
-const TABS: { id: Tab; label: string; compactOnly?: boolean }[] = [
-	{ id: "art", label: "Playing", compactOnly: true },
-	{ id: "lyrics", label: "Lyrics" },
-	{ id: "details", label: "Details" },
-	{ id: "artist", label: "Artist" },
-];
 
 // Its own leaf, so the animation-frame loop repaints two spans rather than the whole screen.
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
@@ -115,14 +107,14 @@ export function NowPlaying({
 	onDismiss: () => void;
 }) {
 	// Unmounted rather than hidden once the exit finishes: the lyric panel runs an animation-frame loop.
-	const [isPresent, setIsPresent] = useState(isOpen);
+	const isPresent = usePresence(isOpen, SLIDE_MS);
+	// What the Lyrics button opens on a phone, and the only place the tabs live there.
+	const [isInfoOpen, setIsInfoOpen] = useState(false);
+	const isInfoPresent = usePresence(isInfoOpen, INFO_EXIT_MS);
+
+	// Reopening the screen lands on the player: the layer over it was about the track you were looking at then.
 	useEffect(() => {
-		if (isOpen) {
-			setIsPresent(true);
-			return undefined;
-		}
-		const timer = setTimeout(() => setIsPresent(false), SLIDE_MS);
-		return () => clearTimeout(timer);
+		if (!isOpen) setIsInfoOpen(false);
 	}, [isOpen]);
 
 	const snapshot = useAudiblePlayer();
@@ -137,63 +129,47 @@ export function NowPlaying({
 	const { isHere, volume, setValue, hasFader } = useAudibleVolume();
 	const menu = useNowPlayingMenu();
 
-	const panelRef = useRef<HTMLDivElement | null>(null);
-
-	const tabs = useMemo(
-		() => TABS.filter((tab) => isCompactViewport || !tab.compactOnly),
-		[isCompactViewport],
-	);
-
-	const [tab, setTab] = useState<Tab>(() =>
-		isCompactViewport ? "art" : "lyrics",
-	);
-
 	const [isLyricsFull, setIsLyricsFull] = useState(false);
 
+	const keyboardOwner = useKeyboardOwner();
+
+	// Escape belongs to whatever is in front. The layers this screen opens take it first, and a dialog that has claimed the keyboard has taken it already — capture beats both, so the screen stands down rather than reaching over them.
+	// `isOpen` first: the component is mounted whether or not the screen is up, and a listener registered while it is down eats every Escape in the app.
+	const ownsEscape =
+		isOpen &&
+		!isInfoOpen &&
+		!isLyricsFull &&
+		!menu.isOpen &&
+		keyboardOwner === null;
+	useEscapeCapture(ownsEscape ? onDismiss : null);
+
+	// The gatefold keeps the panels in a leaf of its own, so a resize must not leave a layer over one.
+	useEffect(() => {
+		if (!isCompactViewport) setIsInfoOpen(false);
+	}, [isCompactViewport]);
+
 	// `readValue` rather than truthiness: an unresolved beefweb field answers `?`, which is truthy.
+	// Parsed here rather than in the panel, because the full-screen copy reads the same result and an 8.5 KB tag should not be parsed twice.
 	const lyrics = useMemo(
 		() => parseLyrics(readValue(details?.row[NOW_PLAYING_FIELD.lyrics])),
 		[details],
 	);
-	const hasLyrics = lyrics.kind !== "none";
 	const settledPath = details?.path ?? null;
 
-	// Restoring an offset writes `scrollTop`, which the synced-lyric follow reads as a manual scroll and stops following.
-	usePanelScroll(panelRef, `${tab}:${settledPath ?? ""}`, {
-		enabled: !(tab === "lyrics" && lyrics.kind === "synced"),
-	});
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the path settling fires this, hasLyrics is only read
-	useEffect(() => {
-		if (isCompactViewport || settledPath === null) return;
-		setTab(hasLyrics ? "lyrics" : "details");
-	}, [isCompactViewport, settledPath]);
+	const skip = (by: number) =>
+		by > 0 ? transport.next.mutate() : transport.previous.mutate();
 
-	useEffect(() => {
-		if (!tabs.some((entry) => entry.id === tab))
-			setTab(isCompactViewport ? "art" : "lyrics");
-	}, [tabs, tab, isCompactViewport]);
-
-	// Which way the panel came from, so it slides in from that side.
-	const [direction, setDirection] = useState(1);
-
-	const select = (next: Tab) => {
-		const from = tabs.findIndex((entry) => entry.id === tab);
-		const to = tabs.findIndex((entry) => entry.id === next);
-		setDirection(to > from ? 1 : -1);
-		setTab(next);
-	};
-
-	const step = (by: number) => {
-		const at = tabs.findIndex((entry) => entry.id === tab);
-		const next = tabs[at + by];
-		if (next) select(next.id);
-	};
-
-	const swipe = useSwipe({
-		onDown: onDismiss,
-		onLeft: () => step(1),
-		onRight: () => step(-1),
-	});
+	// On a phone this screen *is* the track: sideways is the next one, up is what is written about it. The gatefold keeps the dismissal alone — its panels carry their own strip and their own swipe.
+	const swipe = useSwipe(
+		isCompactViewport
+			? {
+					onDown: onDismiss,
+					onUp: () => setIsInfoOpen(true),
+					onLeft: () => skip(1),
+					onRight: () => skip(-1),
+				}
+			: { onDown: onDismiss },
+	);
 
 	const player = snapshot?.player;
 	const item = player?.activeItem;
@@ -207,9 +183,6 @@ export function NowPlaying({
 
 	const album = readValue(details?.row[NOW_PLAYING_FIELD.album]);
 	const year = readValue(details?.row[NOW_PLAYING_FIELD.year]);
-
-	// On a phone the identity block shares the screen with the panel, so it drops to title and artist.
-	const isSlim = isCompactViewport && tab !== "art";
 
 	const fromLine = from?.isPlaying ? (
 		<>
@@ -228,24 +201,6 @@ export function NowPlaying({
 			className={styles.cover}
 		/>
 	);
-
-	// Nothing while the full-screen copy is up: two mounted `Lyrics` are two animation-frame loops, and the hidden one still scrolls this panel.
-	const panel =
-		tab === "lyrics" ? (
-			isLyricsFull ? null : (
-				<Lyrics
-					lyrics={lyrics}
-					snapshot={snapshot}
-					onSeek={(at) => seek.mutate(at)}
-				/>
-			)
-		) : tab === "details" ? (
-			<Details />
-		) : tab === "artist" ? (
-			<Artist />
-		) : (
-			<div className={styles.stage}>{cover}</div>
-		);
 
 	if (!isPresent) return null;
 
@@ -303,7 +258,12 @@ export function NowPlaying({
 				</header>
 
 				<div className={styles.spread}>
-					<div className={styles.identity} data-slim={isSlim}>
+					{/* Not keyed on the track, for the same reason `.cover` below ignores pointer events: `Artwork` swaps its own element as a cover loads. */}
+					{isCompactViewport ? (
+						<div className={styles.stage}>{cover}</div>
+					) : null}
+
+					<div className={styles.identity}>
 						{isCompactViewport ? null : (
 							<div className={styles.stage}>{cover}</div>
 						)}
@@ -312,59 +272,43 @@ export function NowPlaying({
 							{track?.title ?? "Nothing playing"}
 						</h1>
 						<p className={styles.artist}>{track?.artist ?? "—"}</p>
-						{album && !isSlim ? (
+						{album ? (
 							<p className={styles.album}>
 								{album}
 								{year ? <span className={styles.year}> · {year}</span> : null}
 							</p>
 						) : null}
 
-						{isSlim ? null : (
-							<div className={styles.rating}>
-								<Rating />
-							</div>
-						)}
-					</div>
+						{/* Rate it on the left, read about it on the right: one line of things to do with the track, and the right end of it is where a thumb already is. */}
+						<div className={styles.rating}>
+							<Rating />
 
-					<div className={styles.panel}>
-						<nav className={styles.tabs} aria-label="Track views">
-							{tabs.map((entry) => (
-								<button
-									key={entry.id}
-									type="button"
-									className={styles.tab}
-									aria-current={tab === entry.id}
-									data-active={tab === entry.id}
-									onClick={() => select(entry.id)}
-								>
-									{entry.label}
-								</button>
-							))}
-
-							{/* Positioned over the panel but a child of the strip: `.panelBody` carries an edge fade that would dim it on scroll. */}
-							{tab === "lyrics" && hasLyrics ? (
+							{isCompactViewport ? (
 								<button
 									type="button"
-									className={styles.expand}
-									aria-label="Full-screen lyrics"
-									onClick={() => setIsLyricsFull(true)}
+									className={styles.lyricsButton}
+									aria-expanded={isInfoOpen}
+									onClick={() => setIsInfoOpen(true)}
 								>
-									<Maximize2 size={16} strokeWidth={2} />
+									<Mic2 size={15} strokeWidth={2} aria-hidden="true" />
+									Lyrics
 								</button>
 							) : null}
-						</nav>
-
-						{/* Keyed on the tab so the entrance animation replays on every change. */}
-						<div
-							key={tab}
-							ref={panelRef}
-							className={styles.panelBody}
-							data-tab={tab}
-							data-direction={direction}
-						>
-							{panel}
 						</div>
 					</div>
+
+					{/* The gatefold's right leaf. On a phone the same panels are a layer of their own, which is what leaves this screen's horizontal axis free to mean the next track. */}
+					{isCompactViewport ? null : (
+						<TrackPanels
+							variant="gatefold"
+							lyrics={lyrics}
+							snapshot={snapshot}
+							onSeek={(at) => seek.mutate(at)}
+							trackKey={settledPath ?? ""}
+							onExpand={() => setIsLyricsFull(true)}
+							isExpanded={isLyricsFull}
+						/>
+					)}
 				</div>
 
 				{/* Compact only; the desktop status bar carries these. Not rendered rather than hidden, so `Times` stops ticking. */}
@@ -373,6 +317,7 @@ export function NowPlaying({
 						<SeekBar snapshot={snapshot} onSeek={(at) => seek.mutate(at)} />
 						<Times snapshot={snapshot} />
 
+						{/* Three groups, so Play sits in the middle of the row whatever the outer two hold. */}
 						<div className={styles.transport}>
 							<button
 								type="button"
@@ -395,7 +340,7 @@ export function NowPlaying({
 									type="button"
 									className={styles.skip}
 									aria-label="Previous track"
-									onClick={() => transport.previous.mutate()}
+									onClick={() => skip(-1)}
 								>
 									<SkipBackIcon size={22} />
 								</button>
@@ -410,12 +355,13 @@ export function NowPlaying({
 									type="button"
 									className={styles.skip}
 									aria-label="Next track"
-									onClick={() => transport.next.mutate()}
+									onClick={() => skip(1)}
 								>
 									<SkipForwardIcon size={22} />
 								</button>
 							</div>
 
+							{/* Where the sound goes, in the status bar's own order: the picker left of the fader, because where has to be answered before how loud there means anything. */}
 							<div className={styles.outputs}>
 								{player ? (
 									<ListenHere
@@ -438,7 +384,20 @@ export function NowPlaying({
 				{menu.element}
 			</section>
 
-			{/* A sibling of the screen, not a child: inside it every flick would also step the tabs underneath. */}
+			{/* Siblings of the screen, not children: inside it, every flick in one of them would skip a track underneath. */}
+			{isCompactViewport && isInfoPresent ? (
+				<TrackInfo
+					isOpen={isInfoOpen}
+					title={track?.title ?? "Nothing playing"}
+					artist={track?.artist ?? "—"}
+					lyrics={lyrics}
+					snapshot={snapshot}
+					onSeek={(at) => seek.mutate(at)}
+					trackKey={settledPath ?? ""}
+					onClose={() => setIsInfoOpen(false)}
+				/>
+			) : null}
+
 			{isLyricsFull ? (
 				<LyricsScreen
 					lyrics={lyrics}

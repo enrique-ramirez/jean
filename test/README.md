@@ -25,6 +25,12 @@ JEAN_NO_LIBRARY_API=1 pnpm test    # the autoplaylist fallback
 
 Both are green at the same count. If a change makes one pass and the other fail, something outside `librarySource.ts` has learned which source it is talking to. Three specs are source-aware: `fake-library.spec.ts` and one describe in `library-source.spec.ts` **pin the API on** because they are about it, and `navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and* `library: { supported: false }`, because the setup screen exists only when there is no API **and** no autoplaylist.
 
+## Touch gestures
+
+`touchDrag` in `fixtures.ts` drives a finger through CDP rather than dispatching DOM events, because most of these tests are about *the browser's* decision on who a gesture belongs to and a dispatched `touchmove` sails past that.
+
+Two things it does that are not optional. **Every point carries a timestamp**, twenty milliseconds apart: `useSwipe` reads anything slower than 600 ms as a scroll rather than a flick, and a gesture is one round trip per point, so on a loaded machine an unstamped drag silently stops being a flick. And **one CDP session per page, never one per drag**: detaching a session while the next is dispatching drops the moves in between, and the gesture arrives as a tap where it started.
+
 ## The fake player
 
 `test/fake-api/` is a small in-memory foobar2000. It implements the routes the app uses, holds real playlists, and pushes SSE the way beefweb does — a full snapshot on connect, then only what changed, and **never on a timer**. Position advances in the app's own interpolation, so a test depending on the fake ticking would be testing behaviour the real player does not have.

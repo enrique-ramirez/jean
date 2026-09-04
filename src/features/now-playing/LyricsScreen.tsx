@@ -1,11 +1,11 @@
 import { X } from "lucide-react";
-import { useEffect } from "react";
 
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { Lyrics } from "./Lyrics";
 import styles from "./LyricsScreen.module.css";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
+import { useEscapeCapture } from "./useEscapeCapture";
 
 // The lyric with everything else taken away. Reuses `Lyrics` so the follow, the pill and the empty states cannot come to mean two different things.
 export function LyricsScreen({
@@ -19,17 +19,7 @@ export function LyricsScreen({
 	onSeek: (at: number) => void;
 	onClose: () => void;
 }) {
-	// Capture, and stopped: the playlist scope binds Escape to clearing a selection and is still mounted behind this.
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key !== "Escape") return;
-			event.stopPropagation();
-			onClose();
-		};
-		window.addEventListener("keydown", onKey, { capture: true });
-		return () =>
-			window.removeEventListener("keydown", onKey, { capture: true });
-	}, [onClose]);
+	useEscapeCapture(onClose);
 
 	// `useSwipe` reads touch events rather than pointer ones, so it still sees a flick the browser claimed for scrolling, and only fires `onDown` at the top of the scroll.
 	const swipe = useSwipe({ onDown: onClose });

@@ -81,7 +81,9 @@ Icons come from `lucide-react`, imported per-icon so they tree-shake.
 
 **It reads touch events, not pointer events, and that is the design.** The browser cancels the pointer stream the moment it claims a gesture for scrolling — a downward flick inside a scrollable panel arrives as `pointercancel` and never a `pointerup` — so a pointer-based swipe can only see gestures on regions that do not scroll. Touch events keep firing through a scroll, which is what lets one handler cover a whole surface that also scrolls.
 
-**A gesture that competes with scrolling is settled by scroll *position*, not by region.** Down dismisses only when the thing under the finger had nowhere left to scroll up to; halfway through a list the same flick means "back to the top". Carving out the parts of a surface that happen not to scroll leaves whatever the user is actually reading as the one place the gesture does not work.
+**A gesture that competes with scrolling is settled by scroll *position*, not by region.** Down fires only when the thing under the finger had nowhere left to scroll up to, and up only when it had nowhere left to scroll down to; halfway through a list either flick is just scrolling. Carving out the parts of a surface that happen not to scroll leaves whatever the user is actually reading as the one place the gesture does not work. **A surface with nothing to scroll is at both ends at once**, which is what lets one panel answer to both directions and a long lyric answer to neither until it is read.
+
+**A gesture whose target leaves the document stops being delivered.** React listens at the root, and touch events after `touchstart` go to the node the finger landed on — so when that node is replaced mid-gesture the moves never reach the handler and the flick arrives as a tap where it began. Anything a swipe surface swaps out under the finger — a cover resolving from placeholder to image is the one that bit — needs `pointer-events: none`, which hands the touch to a box that stays put. **Do not key such an element on the thing that changes**, either: the key is a second way to detach it.
 
 **A control that follows the finger is not part of the surface it sits on.** `useDragFraction` marks everything it makes with `data-owns-touch` and `useSwipe` records nothing when a touch begins under that mark, so a fader dragged down inside a swipeable screen changes the volume rather than dismissing it. Scroll position cannot settle this one — the drag is on a control that never scrolls, so the flick reads as deliberate every time.
 
@@ -90,6 +92,8 @@ Icons come from `lucide-react`, imported per-icon so they tree-shake.
 **An animated scroll must not treat every wheel event as a decision.** Trackpad and mouse momentum keep emitting for a second or more after the fingers have left, so a jump asked for at the end of a flick gets cancelled by the tail of the gesture that preceded it — a single delta of one pixel is enough to strand the scroll and leave the target row unmounted. `animateScrollTo` accumulates wheel delta and gives up at 40px, which deliberate scrolling passes in one or two events and a decaying tail never reaches. A touch still cancels on contact, because a finger on the glass is unambiguous where a wheel event is not.
 
 ## Animation
+
+**A layer that animates out has to outlive its own close.** `usePresence` holds it mounted for the length of the exit and no longer — unmounting on the close cuts the animation, and leaving it mounted leaves whatever it was running running. The number it is given has to match the stylesheet, because it is timing that exit.
 
 **Compositor-only by default** — `transform`, `scale`, `rotate`, `opacity`. `border-radius` and layout properties repaint every frame: acceptable for a single small element, not for anything in a list. Continuous motion should layer animations with coprime durations rather than repeat one short loop, and **must never move an element's position on screen**.
 

@@ -2,6 +2,7 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	inSequence,
+	nowPlayingScreen,
 	openLibrary,
 	requestsTo,
 	sidebar,
@@ -17,6 +18,7 @@ import {
 //
 //   /  ArrowUp/Down  Enter  Escape   finder.spec.ts   (the finder's own scope)
 //   n                                follow.spec.ts   (jump to playing)
+//   l  d  a                          now-playing.spec.ts (the panels they open)
 //   h                                heat.spec.ts     (and finder.spec, where
 //                                                      it must NOT fire)
 //   Mod+Shift+p                      search-playback.spec.ts
@@ -169,6 +171,33 @@ test.describe("navigation and appearance", () => {
 			.filter({ hasText: /^Keyboard shortcuts/ })
 			.last();
 		await expect(shortcuts.locator("kbd")).toHaveText(["?"]);
+	});
+
+	test("w shows what is playing and hides it again", async ({ page }) => {
+		await page.keyboard.press("w");
+		await expect(nowPlayingScreen(page)).toBeVisible();
+
+		// The hash rather than the element: dismissing navigates at once and takes
+		// the exit animation to leave.
+		await page.keyboard.press("w");
+		await expect(page).toHaveURL(/#\/p7$/);
+	});
+
+	test("p goes to what is playing", async ({ page, player }) => {
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+		await trackRow(page, 0).dblclick();
+		await expect
+			.poll(() => player.player.activeItem.index)
+			.toBeGreaterThanOrEqual(0);
+
+		await page.goto("/#/p2");
+		await page.keyboard.press("p");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
 	});
 
 	test("t switches the theme", async ({ page }) => {

@@ -24,8 +24,9 @@ export function useSwipe({
 		x: number;
 		y: number;
 		at: number;
-		// Whether the thing under the finger had anywhere to scroll up to when the gesture began. See onTouchEnd.
+		// Whether the thing under the finger had anywhere left to scroll, either way, when the gesture began. See onTouchEnd.
 		wasAtTop: boolean;
+		wasAtBottom: boolean;
 	} | null>(null);
 
 	return {
@@ -46,6 +47,11 @@ export function useSwipe({
 				y: touch.clientY,
 				at: event.timeStamp,
 				wasAtTop: !scroller || scroller.scrollTop <= 0,
+				// A pixel of slack: a box scrolled to its end lands a fraction short of it, because row heights and the scrollport are both fractional.
+				wasAtBottom:
+					!scroller ||
+					scroller.scrollTop + scroller.clientHeight >=
+						scroller.scrollHeight - 1,
 			};
 		},
 
@@ -67,12 +73,12 @@ export function useSwipe({
 				return;
 			}
 
+			// Each vertical direction fires only from the end of the scroll it would otherwise be: part-way through a scrollable region, pulling down means scroll up and nothing else, and pushing up means read on.
 			if (dy <= -distance) {
-				onUp?.();
+				if (start.wasAtBottom) onUp?.();
 				return;
 			}
 
-			// Down dismisses only from the top of whatever was under the finger: part-way through a scrollable region, pulling down means scroll up and nothing else.
 			if (dy >= distance && start.wasAtTop) onDown?.();
 		},
 

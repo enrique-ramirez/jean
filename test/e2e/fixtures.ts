@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { Locator, Page } from "@playwright/test";
+import type { CDPSession, Locator, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
 import type { LibraryInfo, PlayerState } from "../../src/shared/api/types.ts";
 import { inSequence } from "../../src/shared/lib/sequence.ts";
@@ -378,18 +378,27 @@ export const trackPlayed = (player: FakePlayer) => {
 // A finger dragged between two points, driven through CDP rather than
 // dispatched as DOM events: what these tests are usually about is the browser's
 // own decision about who the gesture belongs to, and a dispatched `touchmove`
-// sails past that and passes either way.
-//
-// Few steps on purpose. `useSwipe` reads anything slower than 600ms as a scroll
-// that ended somewhere else rather than as a flick, so a drag padded out with
-// round trips stops being the gesture under test.
+// sails past that and passes either way. Why every point is stamped and why the
+// session is one per page rather than one per drag: test/README.md.
+const sessions = new WeakMap<Page, Promise<CDPSession>>();
+
+const sessionFor = (page: Page) => {
+	const held = sessions.get(page);
+	if (held) return held;
+	const session = page.context().newCDPSession(page);
+	sessions.set(page, session);
+	return session;
+};
+
 export const touchDrag = async (
 	page: Page,
 	from: { x: number; y: number },
 	to: { x: number; y: number },
 	steps = 4,
 ) => {
-	const cdp = await page.context().newCDPSession(page);
+	const cdp = await sessionFor(page);
+	const at = Date.now() / 1000;
+	let tick = 0;
 	const send = (
 		type: "touchStart" | "touchMove" | "touchEnd",
 		point: { x: number; y: number },
@@ -397,6 +406,7 @@ export const touchDrag = async (
 		cdp.send("Input.dispatchTouchEvent", {
 			type,
 			touchPoints: type === "touchEnd" ? [] : [point],
+			timestamp: at + 0.02 * tick++,
 		});
 
 	await send("touchStart", from);
@@ -408,7 +418,6 @@ export const touchDrag = async (
 		});
 	});
 	await send("touchEnd", to);
-	await cdp.detach();
 };
 
 // Press-and-hold, which is touch's right-click. Dispatched rather than driven by

@@ -28,6 +28,10 @@ So: **a shifted character is declared twice**, `Shift+X` and bare `X`, so it wor
 
 **Escape in an overlay MUST be caught in the capture phase.** The hotkey manager binds `keydown` on the document at bubble, and `Escape` in the playlist scope clears the track selection — so a later listener would close the overlay *and* wipe the selection in one keystroke.
 
+## Mnemonics
+
+**A binding drawn on its own control has to be read off the same declaration.** The now-playing tabs answer to their initials and underline the letter, so the label and the key are one fact rather than two that drift; the hint is hidden on a coarse pointer, where there is no key to press.
+
 ## Documenting
 
 **`hidden: true` is registered but not documented**, and it is not a way to hide a binding you have not thought about. It is for bindings that only meet an expectation a list already sets: `Shift`+arrow extending a selection, `Escape` dropping it, the arrows and `Enter` inside the finder. Anything a person would not guess belongs in the sheet — and the corollary is that **a binding not worth documenting is usually not worth having.**

@@ -328,6 +328,9 @@ function Shell() {
 		toggleSidebar,
 		toggleQueue,
 		toggleNowPlaying,
+		goToPlayingFrom: () => {
+			if (playingRoute) openRoute(playingRoute);
+		},
 		showShortcuts: () => setIsSheetOpen((current) => !current),
 		toggleTheme,
 		rate0: () => rateShortcut(0),

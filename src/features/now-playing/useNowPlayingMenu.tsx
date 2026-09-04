@@ -109,6 +109,7 @@ export function useNowPlayingMenu() {
 
 	return {
 		element,
+		isOpen,
 		open: (event: { currentTarget: HTMLElement }) => {
 			const box = event.currentTarget.getBoundingClientRect();
 			setAnchor({ x: box.left, y: box.bottom });

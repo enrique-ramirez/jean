@@ -26,6 +26,7 @@
 		"src/shared/api/types.ts",
 		"src/shared/api/fieldTable.ts",
 		"src/shared/lib/sequence.ts",
+		"src/shared/keyboard/keymap.ts",
 		"src/domain/track/fields.ts",
 		"playwright.config.ts"
 	]

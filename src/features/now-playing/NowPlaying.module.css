@@ -161,9 +161,7 @@
 }
 
 /* The same line, made pressable: the set it names is a place, and the header is
-   the only route back to it from here. Not a chevron or an underline -- the
-   name is already the loudest thing on the line, so the affordance is that it
-   comes up to `--text` under a finger and stays a sentence. */
+   the only route back to it from here. */
 .fromLink {
 	padding: 0;
 	border: 0;
@@ -190,8 +188,17 @@
 	white-space: nowrap;
 }
 
-.fromLink:hover b {
-	color: var(--text);
+/* The mark, not the ink: the alternative state here is `--muted` body copy with
+   no shape of its own, which is the test for `--accent-text`. Only the name
+   takes it -- "Playing from" is the label and stays `--faint` -- and only where
+   there is a route to open, since a set with nowhere to go is a sentence. */
+.fromLink b {
+	color: var(--accent-text);
+}
+
+.fromLink:hover b,
+.fromLink:focus-visible b {
+	text-decoration: underline;
 }
 
 /* ---- the spread ------------------------------------------------------- */
@@ -207,8 +214,8 @@
 
      This half: `.screen` is a grid, and a grid item's automatic minimum is its
      *min-content* size, so the leaf refuses to be narrower than the widest
-     unbreakable thing in it. On the slim strip that is the title, set
-     `nowrap`. The block-axis twin of this is already on the compact rule. */
+     unbreakable thing in it -- a title with no space to break at, most often.
+     The block-axis twin of this is already on the compact rule. */
 	min-width: 0;
 }
 
@@ -283,115 +290,6 @@
 	margin-top: 16px;
 	--stars-size: 22px;
 	--stars-gap: 5px;
-}
-
-/* ---- the panel -------------------------------------------------------- */
-
-.panel {
-	display: flex;
-	flex-direction: column;
-	min-height: 0;
-	min-width: 0;
-}
-
-.tabs {
-	/* The containing block for `.expand`, which hangs below it. `sticky` already
-     positions this, so nothing else changes. */
-	position: sticky;
-	display: flex;
-	gap: 4px;
-	flex: none;
-	border-bottom: 1px solid var(--border);
-	/* Under the header, which is why the offset is the header's height rather
-     than zero. */
-	top: var(--head-offset);
-	z-index: 1;
-	background: var(--bg);
-}
-
-.tab {
-	position: relative;
-	padding: 10px 14px;
-	border: none;
-	background: none;
-	color: var(--faint);
-	font-size: 0.75rem;
-	font-weight: 620;
-	letter-spacing: 0.09em;
-	text-transform: uppercase;
-	transition: color 0.15s var(--ease);
-}
-
-.tab:hover {
-	color: var(--muted);
-}
-
-.tab[data-active="true"] {
-	color: var(--text);
-}
-
-/* The accent budget here is the same two-pixel rail the menu spends it on, and
-   it scales from its own centre rather than fading in. */
-.tab::after {
-	content: "";
-	position: absolute;
-	inset: auto 8px -1px;
-	height: 2px;
-	border-radius: 2px;
-	background: var(--accent);
-	transform: scaleX(0);
-	transition: transform 0.18s var(--ease);
-}
-
-.tab[data-active="true"]::after {
-	transform: scaleX(1);
-}
-
-/* Hangs off the *bottom* of the tab strip rather than sitting in it. `top: 100%`
-   resolves against `.tabs`, which is already `position: sticky` and therefore a
-   containing block -- so on the gatefold the button rides the sticky strip and
-   stays with the lyric instead of scrolling off the top of it, and no second
-   sticky rule is needed to say so.
-
-   Out of flow, so the four tabs are laid out as though it were not there: on
-   compact they are `space-around` across the full width and a real flex child
-   here would push ARTIST off its own spacing.
-
-   It has a surface and a border because lyrics scroll under it. A bare glyph
-   over running text reads as a mark *in* the lyric rather than as a control on
-   top of one -- which is the same reason `.resume` is a pill. */
-.expand {
-	position: absolute;
-	top: 100%;
-	/* Clear of a compact scrollbar, which is an overlay on the panel body. */
-	right: 4px;
-	margin-top: 8px;
-	z-index: 1;
-
-	display: grid;
-	place-items: center;
-	width: 34px;
-	height: 34px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-pill);
-	background: var(--surface);
-	color: var(--muted);
-	transition:
-		color 0.15s var(--ease),
-		background 0.15s var(--ease),
-		border-color 0.15s var(--ease);
-}
-
-.expand:hover {
-	background: var(--surface-raised);
-	border-color: var(--border-strong);
-	color: var(--text);
-}
-
-.panelBody {
-	position: relative;
-	display: flex;
-	flex-direction: column;
 }
 
 /* ---- transport (compact only) ----------------------------------------- */
@@ -478,165 +376,43 @@
      containing block. The z-index is unchanged: the queue panel still comes
      over this, which is what the queue button in the header opens. */
 	position: fixed;
-	/* Rows: header / spread / transport. The spread is the only part that
-     flexes, so the transport is at a constant distance from the bottom edge
-     whatever tab is open. */
+	/* Rows: header / the track / transport. The middle is the only part that
+     flexes, so the transport is at a constant distance from the bottom edge and
+     the thing being aimed at never moves. */
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr) auto;
 	height: 100%;
-	/* Tightened from 14/12. The Playing tab is the one panel that must never
-     scroll, and on a 2400px-tall handset the artwork was arriving a couple of
-     dozen pixels over the space left for it -- so the square went short and the
-     bottom of the sleeve sat under the title. Every number on this screen that
-     is between the top of the viewport and the cover gives some of it back:
-     this gap, the identity's lead, the star size and the art panel's own
-     padding. Cheaper than shrinking the cover, and nothing else notices. */
-	gap: 10px;
+	/* The artwork is the one thing here that must never be cut off, and on a
+     2400px-tall handset it was arriving a couple of dozen pixels over the space
+     left for it. Every number between the top of the viewport and the cover
+     gives some of it back: this gap, the identity's lead and the star size. */
+	gap: 12px;
 	/* The top inset is the notch's, now that this reaches the top of the glass.
      `.head` pulls itself up by 20px and pads the same amount back, so whatever
      is set here is where the chevron lands. */
 	padding: max(10px, env(safe-area-inset-top)) 20px
 		calc(16px + env(safe-area-inset-bottom));
-	/* The panel scrolls itself here, so the screen must not, or a flick scrolls
-     both. */
+	/* Nothing here scrolls: what would is a layer of its own, one press away. */
 	overflow: hidden;
 }
 
+/* The sleeve, then what it is: the reading order and the DOM order are the same
+   one here, where the gatefold's is a grid of two leaves. */
 .screen[data-compact="true"] .spread {
 	display: flex;
-	/* Reversed so the panel -- second in the DOM -- draws above the identity,
-     which is where the reading order wants it: what you are looking at, then
-     what it is about, then the controls. */
-	flex-direction: column-reverse;
+	flex-direction: column;
 	/* Explicitly, because the gatefold's grid sets `align-items: start` and in a
      *flex column* that means the cross axis too: every child shrank to its own
-     content width, so the tab strip and the artwork stopped ~58px short of the
-     right edge while the title and the transport ran full width. */
+     content width, so the artwork stopped ~58px short of the right edge while
+     the title and the transport ran full width. */
 	align-items: stretch;
-	gap: 0;
+	/* The sleeve and its caption are one block and the slack goes outside it:
+     centred by the container rather than by auto margins on the stage, which
+     would put half the free space *between* the picture and the title. */
+	justify-content: center;
+	gap: 12px;
 	flex: 1;
 	min-height: 0;
-}
-
-/* Must grow. Left at `flex: 0 1 auto` it sized to its content and, in a
-   column-reverse container, all the free space collected *above* it -- which is
-   what pinned every tab's content to the bottom of a tall window. */
-.screen[data-compact="true"] .panel {
-	flex: 1;
-	min-height: 0;
-}
-
-/* The tabs sit at the top on a phone as well as on the gatefold, so the two
-   layouts read the same way and the panel below them is one uninterrupted
-   region. They were at the bottom, on the argument that a control belongs where
-   the thumb is -- which the swipe repealed: left and right change tab without
-   reaching for anything, so the strip is now a label of where you are more than
-   a control you aim at. */
-.screen[data-compact="true"] .tabs {
-	justify-content: space-around;
-}
-
-.screen[data-compact="true"] .panelBody {
-	flex: 1;
-	min-height: 0;
-	/* The one place a panel still scrolls itself: the transport below it is
-     pinned to the bottom edge, so the screen as a whole cannot be the scroller
-     without taking the controls off the viewport. */
-	overflow-y: auto;
-	overscroll-behavior: contain;
-	/* The fade belongs to whatever actually scrolls, and on the gatefold that is
-     the whole screen rather than the panel -- left on the panel there it dimmed
-     the first and last row permanently, on content that was never clipped.
-     Both prefixes: Safari only took the unprefixed form in 15.4. */
-	-webkit-mask-image: linear-gradient(
-		to bottom,
-		transparent 0,
-		#000 30px,
-		#000 calc(100% - 30px),
-		transparent 100%
-	);
-	mask-image: linear-gradient(
-		to bottom,
-		transparent 0,
-		#000 30px,
-		#000 calc(100% - 30px),
-		transparent 100%
-	);
-}
-
-/* No fade at all on this tab, and that is a reversal of half a decision rather
-   than a new one. The top stop went first, because with nothing to scroll there
-   is nothing above for a fade to promise and all it did was soften the cover's
-   own rounded corners -- which reads as the image being clipped. The bottom
-   stop was kept on the argument that the edge meets the title below it and
-   wants softening.
-
-   That argument is wrong for the same reason the first one was. When the
-   artwork is height-constrained -- a tall phone, which is most of them -- the
-   bottom of the sleeve *is* the bottom 30px of the panel, so the fade is not
-   softening a boundary between two things, it is dissolving the last inch of
-   the picture. Reported as the cover being "slightly covered up", which is
-   exactly what it looks like. A mask belongs to a scroller; this is not one. */
-.screen[data-compact="true"] .panelBody[data-tab="art"] {
-	overflow: hidden;
-	padding-top: 8px;
-	padding-bottom: 4px;
-	-webkit-mask-image: none;
-	mask-image: none;
-}
-
-/* The panel arrives from the side the gesture came from, which is most of what
-   makes the swipe discoverable: content that simply replaces itself gives no
-   sign that a flick did anything. Compact only -- the gatefold's tabs are
-   clicked, where the pointer already says which one you chose.
-
-   `transform` and `opacity` only, so it stays on the compositor; nothing here
-   moves the element's laid-out box, so the tab strip above holds still. */
-.screen[data-compact="true"] .panelBody {
-	animation: panel-in-right 0.24s var(--ease);
-}
-
-.screen[data-compact="true"] .panelBody[data-direction="-1"] {
-	animation-name: panel-in-left;
-}
-
-@keyframes panel-in-right {
-	from {
-		opacity: 0;
-		transform: translateX(14%);
-	}
-}
-
-@keyframes panel-in-left {
-	from {
-		opacity: 0;
-		transform: translateX(-14%);
-	}
-}
-
-/* The direction is the information; without the movement a crossfade still says
-   the panel changed, which is the part that has to survive. */
-@media (prefers-reduced-motion: reduce) {
-	.screen[data-compact="true"] .panelBody,
-	.screen[data-compact="true"] .panelBody[data-direction="-1"] {
-		animation: panel-fade 0.14s var(--ease);
-	}
-
-	@keyframes panel-fade {
-		from {
-			opacity: 0;
-		}
-	}
-}
-
-/* Centred when it fits, scrolled from the top when it does not -- and `margin:
-   auto` is what does both. `justify-content: center` is the trap here: it
-   centres identically and then clips the overflow *above* the scrollport, where
-   nothing can scroll back to it. Auto margins collapse to zero once the content
-   is taller than the box. */
-.screen[data-compact="true"] .panelBody > * {
-	flex: none;
-	margin-block: auto;
 }
 
 .screen[data-compact="true"] .identity {
@@ -651,10 +427,10 @@
      `stretch` on `.spread` above never reached this.
 
      Both halves are needed and neither is decoration: without them a
-     65-character title took the tab strip and the details grid out past the
-     right edge, where `overflow: hidden` cut them off rather than letting
-     anything scroll back to them. Covered at 480px, which is a width neither
-     test project runs at -- see `now-playing.spec.ts`. */
+     65-character title took the rating row out past the right edge, where
+     `overflow: hidden` cut it off rather than letting anything scroll back to
+     it. Covered at 480px, which is a width neither test project runs at -- see
+     `now-playing.spec.ts`. */
 	align-self: stretch;
 }
 
@@ -662,74 +438,76 @@
 	font-size: 1.375rem;
 }
 
-/* `margin: auto`, not `0` -- it is the `.panelBody > *` rule above that does the
-   centring, and an equally specific `margin` here overrides it on source order
-   alone, which parked the artwork at the top of a tall panel. */
-/* `margin: auto`, not `0` -- it is the `.panelBody > *` rule above that does the
-   centring, and an equally specific `margin` here overrides it on source order
-   alone, which parked the artwork at the top of a tall panel.
+/* A square that shrinks, never one that stretches. `flex: 0 1 auto` keeps the
+   base rule's `aspect-ratio` as the size it wants to be and lets the space it
+   is given take it below that; `flex: 1` instead would hand it every spare
+   pixel of a tall handset, and the cover -- sized from the *height*, clamped by
+   `max-width` -- would come out oblong and cropped.
 
-   `max-height: 100%` is what stops a scrollbar appearing on a narrow window:
-   the stage is `aspect-ratio: 1; width: 100%`, so on a screen narrower than the
-   panel is tall it was taller than the space and overflowed. Capped, the box
-   goes short and wide and the cover inside -- sized from the *height* -- shrinks
-   to fit and stays square. Artwork is the one panel that should always fit; the
-   other three have content that genuinely runs on. */
+   The artwork is the one thing on this screen that must always fit whole: it is
+   what a sideways flick is aimed at, and a sleeve running under the title reads
+   as the app being broken rather than as a tall phone. */
+/* The sleeve is scenery here, not a control, and letting it take the touch is
+   what breaks the flick: `Artwork` replaces its own element when a cover
+   arrives, and a gesture whose target leaves the document stops being delivered
+   half way through. Handing the touch to the box instead costs nothing -- there
+   is nothing on this screen to press the artwork *for*. */
+.screen[data-compact="true"] .cover {
+	pointer-events: none;
+}
+
 .screen[data-compact="true"] .stage {
+	flex: 0 1 auto;
+	min-height: 0;
 	max-height: 100%;
-	margin: auto;
-	flex: none;
+	margin: 0;
 	align-items: center;
 }
 
-/* 22px, down from 26. Still a thumb target -- 22px of glyph plus the 6px gap
-   and the button's own padding clears 44px -- and the four pixels come off the
-   only stack of margins between the tab strip and the bottom of the cover. */
+/* One row of things to do with the track: rate it at the left, read about it at
+   the right. Nothing is added to the height for the button -- it sits in the
+   line the stars were already on, at the end a right thumb is nearest.
+
+   22px of star, down from 26. Still a thumb target -- 22px of glyph plus the 6px
+   gap and the button's own padding clears 44px -- and the four pixels come off
+   the only stack of margins between the header and the bottom of the cover. */
 .screen[data-compact="true"] .rating {
-	margin-top: 10px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-top: 12px;
 	--stars-size: 22px;
 	--stars-gap: 6px;
 }
 
-/* ---- the slim strip ----------------------------------------------------- */
-
-/* On Lyrics, Details and Artist the identity is not the caption to a picture,
-   it is the answer to "what is this" while you read something else -- so it is
-   the smallest thing that answers it: title, artist, one line each, truncated.
-   No stars (rating is a deliberate act, and the Playing tab and the ⋯ menu both
-   offer it), no album and no year (Details lists both, two rows down).
-
-   Reference pass: every mini-player worth copying -- Apple Music's, Music
-   Assistant's -- is artwork plus two lines. The artwork is what was rejected:
-   it is one swipe away at full size, a 40px copy of it beside the title is the
-   Spotify bar exactly, and this screen's identity is set flush left like a
-   sleeve back rather than as a row with a thumbnail in it.
-
-   Outranks the compact `.title` rule rather than merely following it -- both
-   would otherwise be (0,3,0) and decided by source order, which is the trap
-   recorded in the root CLAUDE.md. */
-.screen[data-compact="true"] .identity[data-slim="true"] {
-	padding-top: 8px;
-}
-
-.screen[data-compact="true"] .identity[data-slim="true"] .title {
-	font-size: 1.0625rem;
-	line-height: 1.3;
-	letter-spacing: -0.015em;
-	/* One line. A wrapping title is precisely the space this strip gives back --
-     "Magnetizing feat. Del tha Funkee Homosapien" took two lines and the best
-     part of an inch off the artist biography under it. */
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.screen[data-compact="true"] .identity[data-slim="true"] .artist {
-	margin-top: 1px;
+/* A pill, and named rather than a bare glyph: the panel it opens is the second
+   thing anyone comes to this screen for, and an icon alone would have to be
+   learned. It stays put on a track with no lyric tag -- the empty state is where
+   finding one will go, and a control that comes and goes with the file is one
+   nobody can build a habit around. */
+.lyricsButton {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	/* Vertical padding to a 44px target with the row's own line-height. */
+	padding: 9px 14px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--muted);
 	font-size: 0.8125rem;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	transition:
+		color 0.15s var(--ease),
+		border-color 0.15s var(--ease);
+}
+
+.lyricsButton:hover {
+	color: var(--text);
+	border-color: var(--border-strong);
 }
 
 @media (max-width: 720px) {

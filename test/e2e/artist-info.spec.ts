@@ -18,8 +18,14 @@ const ARTIST_SWITCH = "Look up artists on MusicBrainz and Wikipedia";
 const artistTab = (page: Page) =>
 	page.getByRole("button", { name: "Artist", exact: true });
 
-const openArtistTab = async (page: Page) => {
+// The tab is in the gatefold's right leaf on a desktop and in the layer a phone
+// opens from the Lyrics button. Both end on the same panel.
+const openArtistTab = async (page: Page, isMobile: boolean) => {
 	await openNowPlaying(page);
+	if (isMobile)
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Lyrics" })
+			.click();
 	await artistTab(page).click();
 };
 
@@ -35,15 +41,16 @@ const playSomething = async (page: Page) => {
 test.describe("artist information", () => {
 	test("is off by default, and the tab says so rather than looking broken", async ({
 		page,
+		isMobile,
 	}) => {
 		await playSomething(page);
-		await openArtistTab(page);
+		await openArtistTab(page, isMobile);
 
 		await expect(page.getByText("Artist information is off.")).toBeVisible();
 		await expect(page.getByText(/Settings . Artist information/)).toBeVisible();
 	});
 
-	test("asks nobody anything while it is off", async ({ page }) => {
+	test("asks nobody anything while it is off", async ({ page, isMobile }) => {
 		const outbound: string[] = [];
 		page.on("request", (request) => {
 			const url = request.url();
@@ -51,7 +58,7 @@ test.describe("artist information", () => {
 		});
 
 		await playSomething(page);
-		await openArtistTab(page);
+		await openArtistTab(page, isMobile);
 		await expect(page.getByText("Artist information is off.")).toBeVisible();
 
 		expect(outbound).toEqual([]);
@@ -77,13 +84,20 @@ test.describe("artist information", () => {
 		).toHaveAttribute("aria-checked", "true");
 	});
 
-	test("turning it on is what puts the panel in reach", async ({ page }) => {
+	test("turning it on is what puts the panel in reach", async ({
+		page,
+		isMobile,
+	}) => {
 		await playSomething(page);
-		await openArtistTab(page);
+		await openArtistTab(page, isMobile);
 		await expect(page.getByText("Artist information is off.")).toBeVisible();
 
-		// The now-playing screen covers the top bar the gear lives in, so it has to
-		// be dismissed before Settings can be opened.
+		// The layer first on a phone, the screen next: both cover the top bar the
+		// gear lives in, and Settings is where the switch is.
+		if (isMobile)
+			await page
+				.getByRole("button", { name: "Close track information" })
+				.click();
 		await page.getByRole("button", { name: "Close now playing" }).click();
 		await expect(nowPlayingScreen(page)).toBeHidden();
 
@@ -92,7 +106,7 @@ test.describe("artist information", () => {
 		await page.keyboard.press("Escape");
 		await expect(settingsDialog(page)).toBeHidden();
 
-		await openArtistTab(page);
+		await openArtistTab(page, isMobile);
 		// Looking up or nothing found, depending on what the lookup can reach: only
 		// the off state can be asserted against without calling a third party.
 		await expect(page.getByText("Artist information is off.")).toBeHidden();

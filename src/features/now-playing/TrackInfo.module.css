@@ -1,0 +1,136 @@
+/* The reading surface, on a phone. It arrives the way the now-playing screen
+   arrives -- up from the bottom edge, dismissed by a chevron-down or a flick in
+   the same direction -- because it is the same kind of thing one layer deeper,
+   and a second dismissal idiom in the same stack is one to learn for nothing. */
+.screen {
+	/* Fixed, like the screen under it: `.body` starts below the top bar, and a
+     reading surface with the search field still on top of it is not one. */
+	position: fixed;
+	inset: 0;
+	/* Over the now-playing screen (25) and the queue panel (30), under toasts
+     (50) and menus (70) -- a write that failed still has to be able to say so.
+     The same level as `LyricsScreen`, which a phone never reaches: the Lyrics
+     tab is already full screen here. */
+	z-index: 45;
+	background: var(--bg);
+
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	/* **No horizontal padding on the layer, and that is about the scrollbar.**
+     The panel below is the scroller, and an overlay scrollbar draws at the
+     right edge of whatever scrolls -- inset by the layer's padding, it floats a
+     finger's width inside the screen and reads as a second bar beside the
+     browser's own. The inset moves onto the header and the panel's own box
+     instead, so the bar lands where a page's does. */
+	padding: max(10px, env(safe-area-inset-top)) 0
+		calc(12px + env(safe-area-inset-bottom));
+
+	/* The horizontal axis belongs to the tab strip below, not to Android
+     Chrome's back gesture. The vertical stays the panel's. */
+	touch-action: pan-y;
+	overflow: hidden;
+
+	animation: info-in 0.24s var(--ease);
+}
+
+/* It leaves the way it was sent. A flick names a direction and throwing the
+   layer that way is the whole of the feedback that the flick was read; the
+   chevron names none, so it gets the way it came in. */
+.screen[data-leaving="down"],
+.screen[data-leaving="up"] {
+	/* Nothing here is worth pressing on the way out, and a press landing on a
+     control halfway off screen is a mis-tap by construction. */
+	pointer-events: none;
+}
+
+.screen[data-leaving="down"] {
+	animation: info-out-down 0.22s var(--ease) forwards;
+}
+
+.screen[data-leaving="up"] {
+	animation: info-out-up 0.22s var(--ease) forwards;
+}
+
+@keyframes info-in {
+	from {
+		transform: translateY(100%);
+	}
+}
+
+@keyframes info-out-down {
+	to {
+		transform: translateY(100%);
+	}
+}
+
+@keyframes info-out-up {
+	to {
+		transform: translateY(-100%);
+	}
+}
+
+/* The movement says where it went; without it there is nothing to say the flick
+   was read at all, so reduced motion keeps a fade rather than a hard cut. */
+@media (prefers-reduced-motion: reduce) {
+	.screen {
+		animation: info-fade 0.16s var(--ease);
+	}
+
+	.screen[data-leaving="down"],
+	.screen[data-leaving="up"] {
+		animation: info-fade 0.16s var(--ease) reverse forwards;
+	}
+
+	@keyframes info-fade {
+		from {
+			opacity: 0;
+		}
+	}
+}
+
+.head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 0 20px 4px;
+}
+
+.dismiss {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--muted);
+}
+
+.identity {
+	min-width: 0;
+}
+
+/* One line each and truncated. A wrapping title is precisely the space this
+   header gives back -- and what is under it is the reason anyone is here. */
+.title {
+	margin: 0;
+	font-size: 1.0625rem;
+	font-weight: 660;
+	line-height: 1.3;
+	letter-spacing: -0.015em;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.artist {
+	margin: 1px 0 0;
+	font-size: 0.8125rem;
+	color: var(--muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}

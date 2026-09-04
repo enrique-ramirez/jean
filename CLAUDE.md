@@ -8,6 +8,7 @@ This file holds what an agent cannot read off the code. How to *write* code here
 
 - **Never run a git command that writes.** No `commit`, `add`, `push`, `branch`, `tag`, `rebase`, `reset`. Read-only git (`status`, `diff`, `log`) is fine.
 - **A general-purpose UI meant for public release, not a personal dashboard.** Nothing may assume a particular library: no hardcoded playlist ids, no assumed paths, no assumed scale, no assumed components.
+- **A LAN, though, is assumed.** Jean and `foo_jean` are for a player on the same network, never across the internet — beefweb has no authentication of its own and `foo_jean` pairs only with private source addresses. So bandwidth is cheap, round trips are short, and a design may spend both: a 256 kbps stream and a quarter-second buffer are reasonable here and would not be over a WAN. What this does **not** buy is a perfect link — wifi at the edge of a house is a LAN condition, and a phone in the garden is the case to keep honest.
 - **The primary axis of quality is UX/UI, and performance is part of UX.** A feature that makes the interface slower has to justify itself.
 - **Fully responsive**, one codebase, no separate mobile build. Desktop is keyboard-first; mobile is aggressively optimised for touch targets, safe-area insets and payload.
 - **Light and dark themes, both designed.** Neither is `#000` / `#fff`.

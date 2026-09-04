@@ -80,6 +80,8 @@ The neutrals follow the accent's hue rather than a warm one: warm greys under a 
 
 **A CSS-animated SVG favicon only animates in Firefox.** Chrome, Edge and Safari draw one static frame. So `favicon.ts` rasterises `public/favicon.svg` onto a 32px canvas at twelve angles and swaps `link.href` between them — twelve frames at 150 ms is a 1.8 s revolution, which is 33⅓ rpm. Frames render once, lazily, and are cached; the loop assigns an href and does no drawing.
 
+**The source is fetched, so it is resolved against the document and never written root-relative.** beefweb serves Jean under a subpath through `urlMappings`, where `/favicon.svg` belongs to whatever is at the root rather than to this app. Written absolute it 404s in the only deployment that matters, the image never loads, and the record simply never spins — while dev, served at the root, looks perfect. Vite's `base: "./"` covers the tag in `index.html`; anything the code fetches for itself is on the code.
+
 **Everything in the file except the sheen is centred and circular**, so rotating the whole image is the same picture as rotating the sheen alone. That is what lets one SVG be both the static icon and the animation source.
 
 **State is the label's colour and never the motion.** A background tab's timers are clamped to about a second, so a spinning icon freezes exactly when the tab strip is the only thing visible. The accent means audio is coming out and nothing else; paused and stopped are one appearance, and unreachable is a third in `--danger`. (A page that is itself playing audio is exempt from throttling — which is a reason to leave the colour doing the work rather than to rely on motion when Jean streams.)

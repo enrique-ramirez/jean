@@ -1,11 +1,11 @@
 import { X } from "lucide-react";
 
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { Lyrics } from "./Lyrics";
 import styles from "./LyricsScreen.module.css";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
-import { useEscapeCapture } from "./useEscapeCapture";
 
 // The lyric with everything else taken away. Reuses `Lyrics` so the follow, the pill and the empty states cannot come to mean two different things.
 export function LyricsScreen({

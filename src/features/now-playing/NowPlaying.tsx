@@ -22,6 +22,7 @@ import {
 import { useTagWriting } from "@/domain/track/useTagWriter";
 import { artworkUrl } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { usePresence } from "@/shared/hooks/usePresence";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
@@ -38,7 +39,6 @@ import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsed } from "./SeekBar";
 import { INFO_EXIT_MS, TrackInfo } from "./TrackInfo";
 import { TrackPanels } from "./TrackPanels";
-import { useEscapeCapture } from "./useEscapeCapture";
 import { useNowPlayingMenu } from "./useNowPlayingMenu";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 import { VolumePopover } from "./Volume";

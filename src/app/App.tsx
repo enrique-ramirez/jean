@@ -44,7 +44,10 @@ import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { SCOPE } from "@/shared/keyboard/keymap";
-import { ShortcutSheet } from "@/shared/keyboard/ShortcutSheet";
+import {
+	SHORTCUTS_KEYBOARD,
+	ShortcutSheet,
+} from "@/shared/keyboard/ShortcutSheet";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
 import { DragGhost } from "@/shared/ui/DragGhost";
@@ -303,11 +306,17 @@ function Shell() {
 		[isNowPlaying, closeNowPlaying, navigate],
 	);
 
-	// Registered apart from the rest, which go quiet while settings holds the keyboard. This one must survive the dialog it opens.
+	// Registered apart from the rest, which go quiet while an overlay holds the keyboard. Each of these must survive the one it opens.
 	useKeymap(
 		SCOPE.global,
 		{ openSettings: () => setIsSettingsOpen((current) => !current) },
 		{ owner: SETTINGS_KEYBOARD },
+	);
+
+	useKeymap(
+		SCOPE.global,
+		{ showShortcuts: () => setIsSheetOpen((current) => !current) },
+		{ owner: SHORTCUTS_KEYBOARD },
 	);
 
 	useKeymap(SCOPE.global, {
@@ -331,7 +340,6 @@ function Shell() {
 		goToPlayingFrom: () => {
 			if (playingRoute) openRoute(playingRoute);
 		},
-		showShortcuts: () => setIsSheetOpen((current) => !current),
 		toggleTheme,
 		rate0: () => rateShortcut(0),
 		rate1: () => rateShortcut(1),

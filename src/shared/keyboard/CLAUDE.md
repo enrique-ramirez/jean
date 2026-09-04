@@ -26,7 +26,9 @@ So: **a shifted character is declared twice**, `Shift+X` and bare `X`, so it wor
 
 **An overlay owns the keyboard** (`keyboardOwner.ts`). A dialog leaves the app behind it mounted, so `V` would still switch the layout of a list nobody can see and `Space` on a focused switch would both flip it and pause the music — a `<button role="switch">` is not an input element, so `ignoreInputs` does not cover it. `useKeymap` takes an `owner`, and while an overlay holds the keyboard only registrations naming it stay enabled. **The binding that opens the overlay MUST be one of them**, or it cannot close it again.
 
-**Escape in an overlay MUST be caught in the capture phase.** The hotkey manager binds `keydown` on the document at bubble, and `Escape` in the playlist scope clears the track selection — so a later listener would close the overlay *and* wipe the selection in one keystroke.
+**Escape in an overlay MUST be caught in the capture phase**, which is what `useEscapeCapture` is. The hotkey manager binds `keydown` on the document at bubble, and `Escape` in the playlist scope clears the track selection — so a later listener would close the overlay *and* wipe the selection in one keystroke.
+
+**Claiming the keyboard and taking Escape are one job, not two.** A capture listener does not stop its siblings on the same node, so an overlay that takes Escape without claiming the keyboard leaves every layer under it taking the same keystroke — the now-playing screen stands down on `keyboardOwner`, which is only true of an overlay that claimed it.
 
 ## Mnemonics
 

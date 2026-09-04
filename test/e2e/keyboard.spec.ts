@@ -200,6 +200,37 @@ test.describe("navigation and appearance", () => {
 		).toBeVisible();
 	});
 
+	test("Escape closes the sheet, and so does ? again", async ({ page }) => {
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+
+		await page.keyboard.press("Shift+?");
+		await expect(sheet).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(sheet).toBeHidden();
+
+		// The binding that opened it is the one registration that survives its own
+		// hold on the keyboard, or it could not close what it opened.
+		await page.keyboard.press("Shift+?");
+		await expect(sheet).toBeVisible();
+		await page.keyboard.press("Shift+?");
+		await expect(sheet).toBeHidden();
+	});
+
+	test("the app behind the sheet is quiet", async ({ page, player }) => {
+		await page.keyboard.press("Shift+?");
+		await expect(
+			page.getByRole("dialog", { name: "Keyboard shortcuts" }),
+		).toBeVisible();
+
+		// A list nobody can see must not switch layout, and the music must not
+		// start, because a key was pressed at the sheet.
+		await page.keyboard.press("Space");
+		await page.keyboard.press("v");
+		await expect
+			.poll(() => paths(player, "/player/play-pause"))
+			.toHaveLength(0);
+	});
+
 	test("t switches the theme", async ({ page }) => {
 		const theme = () => page.locator("html").getAttribute("data-theme");
 		const before = await theme();

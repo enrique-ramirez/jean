@@ -1,7 +1,11 @@
 import { formatForDisplay } from "@tanstack/react-hotkeys";
 
+import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
+import { useKeyboardOwnership } from "./keyboardOwner";
 import { type Binding, bindingsIn, KEYMAP_GROUPS } from "./keymap";
 import styles from "./ShortcutSheet.module.css";
+
+export const SHORTCUTS_KEYBOARD = "shortcuts";
 
 // formatForDisplay returns a whole chord in one string, space-joined, and a keycap is a key, so it is split back into its parts. The Space key comes back as ␣ rather than as a gap, which is what makes a space a safe separator.
 const capsOf = (binding: Binding) =>
@@ -10,8 +14,12 @@ const capsOf = (binding: Binding) =>
 	);
 
 export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
+	// The sheet holds the keyboard while it is up, or `V` switches the layout of a list nobody can see. Only the binding that opened it survives, so `?` still shuts it.
+	useKeyboardOwnership(SHORTCUTS_KEYBOARD);
+	useEscapeCapture(onDismiss);
+
 	return (
-		// A dismissal scrim, not a control: Escape is the keyboard route out and the panel above owns it.
+		// A dismissal scrim, not a control: Escape is the keyboard route out.
 		// biome-ignore lint/a11y/noStaticElementInteractions: scrim, see above
 		<div
 			className={styles.backdrop}

@@ -2,11 +2,11 @@ import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
 import styles from "./TrackInfo.module.css";
 import { TrackPanels } from "./TrackPanels";
-import { useEscapeCapture } from "./useEscapeCapture";
 
 /** Must match the exit animation in TrackInfo.module.css. */
 export const INFO_EXIT_MS = 220;

@@ -425,6 +425,11 @@ export function handleControl({
 		return empty(response);
 	}
 
+	if (action === "skipGap") {
+		state.skipGapMs = Number(input?.ms) || 0;
+		return empty(response);
+	}
+
 	if (action === "requests") {
 		state.requests.length = 0;
 		return empty(response);

@@ -149,6 +149,12 @@ Three facts this rests on, read off Ogg granule positions on the wire: **`stream
 
 **`__jeanStream()` in a dev console prints the whole clock** — anchor, `currentTime`, the buffered range, the marks and `lagSeconds`. It exists because this is the one part of Jean whose correctness cannot be read off the screen: too early and exactly right look identical unless the lag is already known. Dev only, stripped from a build.
 
+## The gap a skip leaves
+
+**A skip empties `activeItem` until the player has opened the next file, and says `playing` the whole time** — so a client that draws each field as it arrives shows every empty state it has at once, for as long as the skip takes. `holdThroughGap` in `usePlayer.ts` holds the last item until a real one lands. See `API.md` for the shape and why `columns` rather than `index` is what says "empty".
+
+**It sits at the stream bridge rather than on the screen**, which is what makes it one hold instead of four: the status bar, the media session, `usePlayingFrom` and the now-playing screen all read the corrected snapshot, and `rememberSnapshot` never sees a gap to lay a mark against. The held `syncedAt` travels with the item it anchors, for the same reason it does in `audible.ts` — paired with a fresh one, the seek bar rewinds by the width of the gap.
+
 ## Position
 
 **Position updates arrive only on change events, so the progress display interpolates locally** (`position.ts`). `<SeekBar>` runs the animation-frame loop and is deliberately a leaf — that state must never be lifted, or it will repaint a virtualised 30k-row list sixty times a second.

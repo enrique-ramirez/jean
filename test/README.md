@@ -151,6 +151,7 @@ Pairing is **single-grant in the fake as in the component**: the first success c
 
 - **`POST /__control/play`** drives the player the way the desktop would — the case Jean has to survive and cannot provoke reliably against a real one. **`/__control/append`** is the same for playlists: the desktop adding tracks while Jean holds a range of indices.
 - **`POST /__control/latency`** holds writes for N milliseconds. On localhost every request settles before the next pointer event, so a control coalescing forty moves into three looks identical to one sending forty. `useCoalescedWrite` is untestable without it.
+- **`POST /__control/skipGap`** spends N milliseconds reporting an empty `activeItem` on a skip, as the real player does while it opens the next file. Off by default, because the gap makes `next` asynchronous and no other spec should have to wait one out.
 
 ### Rules
 

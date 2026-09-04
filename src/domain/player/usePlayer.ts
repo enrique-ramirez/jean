@@ -50,9 +50,35 @@ import {
 const PLAYER_KEY = ["player"];
 export const PLAYLISTS_KEY = ["playlists"];
 
+// What was playing before the gap, with the anchor it arrived on: paired, because
+// pairing the held item with a fresh `syncedAt` rewinds the seek bar by the width
+// of the gap.
+let held: { item: ActiveItem; syncedAt: number } | null = null;
+
+// See API.md for why a skip needs this. Held here, rather than in the screen, so
+// the status bar, the media session and `usePlayingFrom` all read through one hold.
+const holdThroughGap = (player: PlayerState, syncedAt: number) => {
+	if (player.playbackState === "stopped") {
+		held = null;
+		return { player, syncedAt };
+	}
+
+	const item = player.activeItem;
+	if (item?.columns?.length) {
+		held = { item, syncedAt };
+		return { player, syncedAt };
+	}
+
+	if (!held) return { player, syncedAt };
+	return {
+		player: { ...player, activeItem: held.item },
+		syncedAt: held.syncedAt,
+	};
+};
+
 // Player state is pushed rather than fetched, so each snapshot carries its arrival time as the interpolation anchor.
 const snapshot = (player: PlayerState): PlayerSnapshot => {
-	const next = { player, syncedAt: performance.now() };
+	const next = holdThroughGap(player, performance.now());
 	rememberSnapshot(next);
 	return next;
 };

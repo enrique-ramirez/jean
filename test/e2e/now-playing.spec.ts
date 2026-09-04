@@ -907,6 +907,90 @@ test.describe("skipping with a flick", () => {
 	});
 });
 
+test.describe("the gap a skip leaves", () => {
+	// See API.md for what foobar2000 does during a skip and why.
+
+	// Every title the screen showed, in order, caught as it changed: the gap is far too short to poll for.
+	const watchTitles = (page: Page) =>
+		page.evaluate(() => {
+			const screen = document.querySelector("[data-now-playing]");
+			if (!screen) throw new Error("the now playing screen is not mounted");
+
+			const seen: string[] = [];
+			const record = () => {
+				const title = screen.querySelector("h1")?.textContent ?? "";
+				if (title && title !== seen[seen.length - 1]) seen.push(title);
+			};
+
+			record();
+			new MutationObserver(record).observe(screen, {
+				subtree: true,
+				childList: true,
+				characterData: true,
+			});
+			Object.assign(window, { __titles: seen });
+		});
+
+	const titlesSeen = (page: Page) =>
+		page.evaluate(() => (window as { __titles?: string[] }).__titles ?? []);
+
+	test("the screen holds the track it has rather than emptying", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 0);
+		await page.request.post("/__control/skipGap", { data: { ms: 300 } });
+		await watchTitles(page);
+
+		// The skip is asked of the player rather than pressed: the transport is on the screen on a phone and in the
+		// status bar on a desktop, and the gap is the same push either way.
+		player.next();
+		await expect.poll(() => player.player.activeItem.index).toBe(1);
+
+		// Two titles and nothing between them: the one that was playing, then the one that is.
+		const titles = await titlesSeen(page);
+		expect(titles).not.toContain("Nothing playing");
+		expect(titles).toHaveLength(2);
+	});
+
+	test("a real stop still says nothing is playing", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 0);
+		await watchTitles(page);
+
+		// The gap and a stop are told apart by `playbackState`, so the empty state has to survive the hold.
+		player.stop();
+
+		await expect(nowPlayingScreen(page).locator("h1")).toHaveText(
+			"Nothing playing",
+		);
+	});
+
+	test("the header keeps the set it is playing from", async ({
+		page,
+		player,
+	}) => {
+		// All music, because a playlist played straight from has no set to name and the header would say nothing anyway.
+		await page.goto("/#/all");
+		await trackRow(page, 0).dblclick();
+		await openNowPlaying(page);
+
+		const header = nowPlayingScreen(page).locator("header");
+		await expect(header).toContainText("Playing from");
+
+		await page.request.post("/__control/skipGap", { data: { ms: 300 } });
+		await watchTitles(page);
+		player.next();
+
+		// `usePlayingFrom` reads the active item's `playlistId`, which the gap blanks: unheld, the header falls back to
+		// the contextless "Now playing" for as long as the skip takes.
+		await expect(header).toContainText("Playing from");
+		expect(await titlesSeen(page)).not.toContain("Nothing playing");
+	});
+});
+
 test.describe("the identity on a phone", () => {
 	test.use(TAGGED);
 

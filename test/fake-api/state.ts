@@ -79,6 +79,17 @@ const IDLE_ITEM = {
 	position: -1,
 };
 
+// What a manual skip pushes while the player opens the next file. Not `IDLE_ITEM`: the two agree on `index: -1` and
+// disagree on the rest, and the gap is reported with `playbackState` still `playing`. See API.md.
+const GAP_ITEM = {
+	columns: [],
+	duration: 0,
+	index: -1,
+	playlistId: "",
+	playlistIndex: -1,
+	position: 0,
+};
+
 const tracksOf = (album: string) =>
 	LIBRARY.albums.find((entry) => entry.slug === album)?.tracks ?? [];
 const allTracks = () => LIBRARY.albums.flatMap((album) => album.tracks);
@@ -370,6 +381,9 @@ export function createState({
 		library: { supported: true, enabled: true, ...library },
 		// Milliseconds to hold a write before answering. See POST /__control/latency.
 		latency: 0,
+		// Milliseconds a skip spends reporting `GAP_ITEM`. Off by default: the gap is asynchronous, and a spec that
+		// does not assert on it should not have to wait for one. See POST /__control/skipGap.
+		skipGapMs: 0,
 		// Every request the app made, in order.
 		requests: [] as RecordedRequest[],
 		// Where each of the last few tracks began, in wall-clock milliseconds;
@@ -439,6 +453,14 @@ export function createState({
 		notify({ player: true, playlists: true, playQueue: dequeued });
 	};
 
+	// See GAP_ITEM.
+	const withSkipGap = (play: () => void) => {
+		if (state.skipGapMs <= 0) return play();
+		state.player.activeItem = { ...GAP_ITEM };
+		notify({ player: true });
+		setTimeout(play, state.skipGapMs);
+	};
+
 	const step = (delta: number) => {
 		// The queue outranks both playback order and the playlist.
 		const queued = delta > 0 ? state.playQueue[0] : null;
@@ -446,7 +468,7 @@ export function createState({
 			const from = byId(queued.playlistId);
 			const at = from?.items.indexOf(queued.track) ?? -1;
 			if (from && at >= 0) {
-				setActive(from, at, "playing");
+				withSkipGap(() => setActive(from, at, "playing"));
 				return;
 			}
 			// A queued track whose row has gone: the player skips it.
@@ -459,7 +481,7 @@ export function createState({
 		if (!playlist || item.index < 0) return;
 		const next = item.index + delta;
 		if (next < 0 || next >= playlist.items.length) return;
-		setActive(playlist, next, "playing");
+		withSkipGap(() => setActive(playlist, next, "playing"));
 	};
 
 	// An orphan's columns are still the removed track's: the real player hands back
@@ -482,6 +504,13 @@ export function createState({
 		// On the facade as well as the inner state: the router reads it before every
 		// write and the control surface assigns to it.
 		latency: state.latency,
+		// Accessors rather than a copy: `step` reads this from inside the closure, long after the control surface set it.
+		get skipGapMs() {
+			return state.skipGapMs;
+		},
+		set skipGapMs(ms: number) {
+			state.skipGapMs = ms;
+		},
 		// What the player would report, rather than the track objects held inside.
 		get playQueue() {
 			return queuePayload();

@@ -17,6 +17,7 @@ import {
 	DEVICE_VOLUME_FLOOR_DB,
 	decibelsOf,
 	type ListenTarget,
+	playsNatively,
 } from "./listener";
 import { canUseMse, type MseStream, openMseStream } from "./mseStream";
 
@@ -219,12 +220,20 @@ function sourceFor(
 			if (isListening()) scheduleReconnect();
 		},
 		// Another connection would meet the same stream, so the path goes rather than retrying.
-		onUnusable: () => {
-			lowLatencyFailed = true;
-			restartListening();
-		},
+		onUnusable: retireLowLatency,
 	});
 	return mse.src;
+}
+
+// Retiring the remux can retire a format with it. Where the element cannot play the container
+// the component actually sent -- Ogg, which is every browser for Opus in an element, and
+// Safari for Opus altogether -- the remux was the only way to reach it, so the format goes too
+// and the reconnect picks the next one rather than offering bytes nothing can decode.
+function retireLowLatency() {
+	lowLatencyFailed = true;
+	stalls = [];
+	if (format && !playsNatively(format)) dead.add(format);
+	restartListening();
 }
 
 // The short buffer running dry, which is the one way this path is worse than the browser's own.
@@ -240,9 +249,7 @@ function onWaiting() {
 
 	// Kept for the session rather than written to the setting: the preference says what to
 	// try, and this says what this connection turned out to be able to hold.
-	lowLatencyFailed = true;
-	stalls = [];
-	restartListening();
+	retireLowLatency();
 }
 
 function onPlaying() {
@@ -449,8 +456,7 @@ async function watch() {
 	// cannot cover this: it needs a first sample to know the difference between a stream
 	// running dry and one that was never going to play.
 	if (mse && !hasRendered && performance.now() - connectAt > MSE_START_MS) {
-		lowLatencyFailed = true;
-		restartListening();
+		retireLowLatency();
 		return;
 	}
 
@@ -668,8 +674,12 @@ export function configureListening(next: ListenTarget | null) {
 // the source is chosen when a connection opens.
 export function restartListening() {
 	if (!isListening()) return;
-	const wanted = format;
+	// The current format may have just been retired along with the path that reached it.
+	const wanted =
+		format && !dead.has(format) ? format : (liveFormats()[0] ?? null);
 	stopStream();
 	attempt = 0;
 	if (wanted) void open(wanted);
+	else
+		setPhase({ kind: "failed", message: "Nothing here can play this stream." });
 }

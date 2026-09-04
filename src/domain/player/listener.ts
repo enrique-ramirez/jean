@@ -7,6 +7,8 @@ import { clamp } from "@/shared/lib/math";
 
 // Ask the platform what it will play rather than branching on the user agent.
 // The codecs parameter is not optional for Ogg: bare `audio/ogg` can answer for Vorbis alone, and `audio/aac` is the string browsers answer to for ADTS.
+import { canUseMse } from "./mseStream";
+
 const MIME: Record<string, string[]> = {
 	opus: ['audio/ogg; codecs="opus"'],
 	aac: ["audio/aac", "audio/aacp"],
@@ -15,12 +17,19 @@ const MIME: Record<string, string[]> = {
 let probe: HTMLAudioElement | null = null;
 
 // `canPlayType` returns `''`, `'maybe'` or `'probably'`; only `''` is a real answer, and the rest is not a ranking.
-const isPlayable = (format: string) => {
+export const playsNatively = (format: string) => {
 	probe ??= document.createElement("audio");
 	const types = MIME[format];
 	if (!types) return false;
 	return types.some((type) => probe?.canPlayType(type) !== "");
 };
+
+// Ogg is not a container any browser takes, in an element or in MSE, so Safari answers `''`
+// for Opus and would never be offered it. The remux reaches it anyway: the element is handed
+// WebM and never sees the Ogg the component sent. So a format is reachable by either route,
+// and the two are not the same question.
+const isPlayable = (format: string) =>
+	playsNatively(format) || (format === "opus" && canUseMse());
 
 // The server's order is the quality order and this only excludes: a format the component does not offer is never requested, since `?format=` outside `streamFormats` is a 400.
 export const playableFormats = (offered: readonly string[] | undefined) =>

@@ -78,7 +78,19 @@ The two obvious alternatives both fail on a range reaching -100 dB. Squaring the
 
 **On wherever the browser can decode the container, per device, and it changes the container rather than the audio.** `mseStream.ts` fetches the same Ogg stream, demuxes the Opus packets back out (`oggDemux.ts`) and re-wraps them in WebM (`webmMux.ts`) for MSE. The packets are untouched, so this costs nothing in fidelity — what it buys is that the buffer is Jean's rather than the browser's, and on a stream delivered at 1x whatever the browser decides to gather before starting is lag for the rest of the session.
 
-**Ogg is not an MSE container in any browser**, which is the whole reason a muxer exists. Measured with `MediaSource.isTypeSupported`: Chromium and Firefox both refuse `audio/ogg; codecs="opus"` and accept `audio/webm; codecs="opus"`, `audio/mp4; codecs="mp4a.40.2"` and `audio/mp4; codecs="flac"`. Safari needs fMP4 and is not on this path yet, so the format decides as well as the toggle.
+**Ogg is not an MSE container in any browser**, which is the whole reason a muxer exists. Measured with `MediaSource.isTypeSupported`:
+
+| | `webm; opus` | `mp4; mp4a.40.2` | `mp4; flac` | `ogg; opus` |
+|---|---|---|---|---|
+| Chromium | yes | yes | yes | no |
+| Firefox | yes | yes | yes | no |
+| Safari (macOS, real) | **yes** | yes | no | no |
+
+**Safari takes WebM/Opus in MSE even though it will not play Opus in an element at all**, so one muxer serves all three and there is no fMP4 path to write. Do not take this from Playwright's WebKit, which reports Ogg as supported and is not Safari; the row above came from Safari's own console. Lossless is the exception — `mp4; flac` is Chromium and Firefox only.
+
+**Two questions, not one: what the element can play, and what can be reached.** `playsNatively` asks the first and `isPlayable` asks the second, because the element is handed WebM and never sees the Ogg the component sent. Collapsing them is what kept Safari on AAC: `canPlayType('audio/ogg; codecs="opus"')` is `''` there, so Opus was filtered out before the remux could be offered it.
+
+**Retiring the remux can retire a format with it.** Where a format was reachable only through the remux, falling back to the element would hand it a container it cannot decode, so `retireLowLatency` marks that format dead and the reconnect picks the next one.
 
 **Measured against the real component**, 250 ms target, over 25 s: Chromium settles at **0.32 s** of lag with 0.24–0.42 s buffered ahead and no underruns; Firefox at **0.54 s** with 0.38–0.86 s. Against roughly 3 s for the plain `<audio src="…">` path. Time from opening to first sound is 280–460 ms.
 

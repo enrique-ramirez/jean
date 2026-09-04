@@ -147,21 +147,51 @@
 	border-color: var(--border-strong);
 }
 
-.from {
+.from,
+.fromLink {
+	display: flex;
+	align-items: baseline;
+	/* The name below truncates, and a flex item refuses to shrink under its own
+     content without this. */
+	min-width: 0;
 	margin: 0;
 	font-size: 0.8125rem;
 	color: var(--faint);
 	letter-spacing: 0.01em;
 }
 
+/* The same line, made pressable: the set it names is a place, and the header is
+   the only route back to it from here. Not a chevron or an underline -- the
+   name is already the loudest thing on the line, so the affordance is that it
+   comes up to `--text` under a finger and stays a sentence. */
+.fromLink {
+	padding: 0;
+	border: 0;
+	background: none;
+	font-family: inherit;
+	text-align: left;
+	transition: color 0.15s var(--ease);
+}
+
 .fromLabel {
+	flex: none;
 	color: var(--faint);
 }
 
-.from b {
+.from b,
+.fromLink b {
 	color: var(--muted);
 	font-weight: 600;
 	margin-left: 0.35em;
+	/* The header is one row and the name can be a long search: it truncates
+     rather than pushing the track actions off the end of it. */
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fromLink:hover b {
+	color: var(--text);
 }
 
 /* ---- the spread ------------------------------------------------------- */

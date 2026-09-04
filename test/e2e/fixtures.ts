@@ -375,6 +375,42 @@ export const trackPlayed = (player: FakePlayer) => {
 
 // ---- gestures ---------------------------------------------------------------
 
+// A finger dragged between two points, driven through CDP rather than
+// dispatched as DOM events: what these tests are usually about is the browser's
+// own decision about who the gesture belongs to, and a dispatched `touchmove`
+// sails past that and passes either way.
+//
+// Few steps on purpose. `useSwipe` reads anything slower than 600ms as a scroll
+// that ended somewhere else rather than as a flick, so a drag padded out with
+// round trips stops being the gesture under test.
+export const touchDrag = async (
+	page: Page,
+	from: { x: number; y: number },
+	to: { x: number; y: number },
+	steps = 4,
+) => {
+	const cdp = await page.context().newCDPSession(page);
+	const send = (
+		type: "touchStart" | "touchMove" | "touchEnd",
+		point: { x: number; y: number },
+	) =>
+		cdp.send("Input.dispatchTouchEvent", {
+			type,
+			touchPoints: type === "touchEnd" ? [] : [point],
+		});
+
+	await send("touchStart", from);
+	await times(steps, (step) => {
+		const at = (step + 1) / steps;
+		return send("touchMove", {
+			x: from.x + (to.x - from.x) * at,
+			y: from.y + (to.y - from.y) * at,
+		});
+	});
+	await send("touchEnd", to);
+	await cdp.detach();
+};
+
 // Press-and-hold, which is touch's right-click. Dispatched rather than driven by
 // page.touchscreen, which has no way to hold. The synthetic click at the end is
 // part of the gesture: a hold that stopped swallowing it would also activate

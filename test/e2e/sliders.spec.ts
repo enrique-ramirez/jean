@@ -1,16 +1,13 @@
 // The box Playwright hands back from boundingBox(), which it does not name.
 type BoundingBox = { x: number; y: number; width: number; height: number };
 
-// CDP's own vocabulary for a touch phase.
-type TouchEventType = "touchStart" | "touchMove" | "touchEnd" | "touchCancel";
-
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
 	openLibrary,
 	requestsTo,
 	test,
-	times,
+	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -228,25 +225,15 @@ test.describe("dragging the fader with a finger", () => {
 		from: number,
 		to: number,
 	) => {
-		const cdp = await page.context().newCDPSession(page);
 		const at = (fraction: number) => ({
-			x: box!.x + box!.width / 2,
+			x: box.x + box.width / 2,
 			// The column runs bottom-up: the top of the track is the maximum.
-			y: box!.y + box!.height * (1 - fraction),
+			y: box.y + box.height * (1 - fraction),
 		});
 
-		const send = (type: TouchEventType, point: { x: number; y: number }) =>
-			cdp.send("Input.dispatchTouchEvent", {
-				type,
-				touchPoints: type === "touchEnd" ? [] : [{ x: point.x, y: point.y }],
-			});
-
-		await send("touchStart", at(from));
-		await times(12, (step) =>
-			send("touchMove", at(from + ((to - from) * (step + 1)) / 12)),
-		);
-		await send("touchEnd", at(to));
-		await cdp.detach();
+		// More steps than the default: what is under test here is that every move
+		// arrives, not what the gesture is read as at the end of it.
+		await touchDrag(page, at(from), at(to), 12);
 	};
 
 	test("the target is big enough to aim at", async ({ page }) => {

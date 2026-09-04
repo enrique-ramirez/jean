@@ -21,6 +21,8 @@ The status bar is **one component with two shapes**. So is the screen, and the t
 
 **"Playing from", not "from".** The bare preposition reads as a fragment of a sentence that never arrives, especially next to a name like "All music". `usePlayingFrom` is unchanged and the sidebar still uses it.
 
+**On the screen's header that line is a button, and the whole line is the target** — on a phone the label is half of what there is to aim at. It is drawn as a button only when `App` hands it a route, which is the same resolution the sidebar's temporary row uses, so a set with nowhere to open stays a sentence rather than a control that does nothing. Opening the route *is* the dismissal, and no chevron or underline is added: the name is already the loudest thing on the line.
+
 **Where the sound comes out sits between the readout and the fader** on desktop, and left of the fader on a phone: *where* has to be answered before *how loud there* means anything. It is read far more often than pressed — the collapsed icon says where the sound is without being opened, and a count rides on it when somebody else is listening. **The fader beside it retargets rather than doubling.** While the sound is on this device the player's volume sits *before* the capture, so pointing the control at it leaves a slider that moves and changes nothing audible. One control, one target at a time, and its label says which. On iOS there is no target at all, so it is not drawn and the picker says the hardware keys own it. Reasoning and probe in `src/domain/player/CLAUDE.md`.
 
 **The picker is two outputs and then a roster, and the two halves are drawn as different kinds of thing.** The reference is AirPlay 2 in Apple Music — checkmarked rows that go multi-select, each growing its own fader once more than one is on. Rejected: Spotify Connect's flat list of devices you push audio to, because Jean cannot push to any of them; and the macOS Sound menu's pure single-select, which has nowhere to put the others. So the top is toggles you press and the bottom is a plain list with no hover and no target padding — **a row that lights up under the cursor promises an action this list does not have.**
@@ -31,7 +33,7 @@ The status bar is **one component with two shapes**. So is the screen, and the t
 
 **The player's fader lives in the player's row and only while this device is listening.** Elsewhere the status bar's own still points at the player, and a second one beside it would be the same control twice. **The status bar fader never mode-switches for this**: it stays on this device, and the row's fader is what the extra output brought with it.
 
-**The picker is not on the now-playing screen**, on either layout: it is a property of the device rather than of the track, and the compact screen's transport is the five controls that act on the sound.
+**The picker is on the compact screen's transport, left of the fader as it is in the bar, and nowhere else.** On a phone `#/playing` replaces the status bar, so without a copy there the one control that says where the sound is going is unreachable for as long as the screen is up. The desktop screen draws no transport at all — the bar under it carries the picker and the fader both, and a second copy would be the same control twice.
 
 ## The identity block
 
@@ -58,6 +60,8 @@ The status bar is **one component with two shapes**. So is the screen, and the t
 ## Gestures
 
 **Horizontal steps through the tabs**, not previous and next: the skip buttons are on screen and unambiguous, while the tabs are the thing you would otherwise aim a 40px target at. **Down dismisses from the top of whatever is under the finger**, on every tab. Halfway through a lyric a downward flick means "scroll back up"; once there is no further up to go it means "close". Restricting the gesture to the *regions* that do not scroll leaves the tab you are most likely to be reading as the one you cannot swipe away. That is what forces touch events over pointer events — see `useSwipe` in `shared/ui/CLAUDE.md`.
+
+**A control that follows the finger keeps its gesture, and says so with `data-owns-touch`.** The transport sits inside the swipe surface, so without that mark a drag down the fader dismisses the screen and a scrub across the seek bar steps a tab. `useDragFraction` writes the attribute on every fader and scrubber it makes, the two popovers carry it themselves, and `useSwipe` records nothing when the touch begins under one. Marking the *popover* and not only the track is deliberate: a finger that strays off a 26px column mid-drag is still the fader's.
 
 **`touch-action: pan-y` keeps the horizontal axis from becoming a browser gesture**: an edge swipe is back-navigation on Android Chrome, and that would beat a tab change to it. The vertical axis stays the scroller's. **The panel slides in from the side the gesture came from**, compact only. Content that simply replaces itself gives no sign a flick did anything. The wrapper is keyed on the tab so the entrance replays; without the key it persists across a change and only its children swap — which is exactly the "nothing happened" the animation exists to fix. `transform` and `opacity` only, so the tab strip holds still.
 

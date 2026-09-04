@@ -27,6 +27,8 @@ The queue is deliberately **not** an action sheet, though the app has one. A she
 
 **The test is whether the thing is a *place*.** Now playing has a subject, survives a reload, and Back means something. Settings is a drawer you open over your work and shut; a route would have to answer "what is behind this" and "where does dismissing it go", and both answers are "wherever you already were". Settings is therefore not linkable and does not survive a reload. **A fifth surface anything needs to point at SHOULD be a route.**
 
+**The front door opens where the sound is.** Landing on `#/` with a track loaded goes to `#/playing` and points the view under the layer at whatever is playing — the set Jean materialised for it, or the playlist the player holds it in. It happens once per load and waits for the player and the playlists, since neither has answered on the first render; a stopped player reports `index` of -1 and the front door stays the front door. **`#/home` is exempt**: an empty hash is where a bookmark and the player's own link land, while `#/home` is somewhere the user asked to be. **Set `openedFrom` before the hash, never after** — `useHashRoute` reads the new hash in the same render, so the effect that records the route sees `#/playing` and leaves it alone; written the other way round it overwrites the set with the front door and dismissing goes to the wrong place.
+
 **An overlay leaves the app behind it live, where a route unmounted it.** See `shared/keyboard/CLAUDE.md` for what that costs and how `keyboardOwner` answers it.
 
 ## The status bar

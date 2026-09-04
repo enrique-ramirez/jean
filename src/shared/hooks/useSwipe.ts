@@ -33,6 +33,9 @@ export function useSwipe({
 			const touch = event.touches[0];
 			if (!touch) return;
 
+			// A fader, a scrubber or the popover one opens in has already claimed the axis: a drag down the volume track is not a flick at the screen behind it. Nothing is recorded, so the end of the gesture has nothing to read.
+			if ((event.target as Element).closest("[data-owns-touch]")) return;
+
 			// Bounded by the surface this handler is attached to: unbounded, a gesture starting on the header finds the track list scrolling behind it, which mid-list reports not at the top and silently refuses to dismiss.
 			const scroller = scrollParentOf(
 				event.target as Element,

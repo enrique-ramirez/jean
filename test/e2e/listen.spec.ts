@@ -1,6 +1,8 @@
 import {
 	expect,
 	type FakePlayer,
+	nowPlayingScreen,
+	openNowPlaying,
 	type Page,
 	requestsTo,
 	statusBar,
@@ -212,6 +214,48 @@ test.describe("an install with no encoder", () => {
 	});
 });
 
+test.describe("the picker on the now-playing screen", () => {
+	test.use({ fooJean: {}, fooJeanToken: TOKEN });
+
+	// The phone's screen replaces the status bar, so without a copy here the one
+	// control that says where the sound is going is unreachable while it is open.
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"the desktop screen draws no transport: the status bar under it carries both",
+	);
+
+	test("is beside the fader, and opens onto the same two outputs", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await openNowPlaying(page);
+		await expect(statusBar(page)).toHaveCount(0);
+
+		const screen = nowPlayingScreen(page);
+		await screen
+			.getByRole("button", { name: /Choose where to play|Playing on this/ })
+			.click();
+
+		await expect(picker(page)).toBeVisible();
+		await expect(thePlayer(page)).toBeVisible();
+		await expect(thisDevice(page)).toBeVisible();
+	});
+
+	test("hands the sound to this device from there", async ({ page }) => {
+		await page.goto("/");
+		await openNowPlaying(page);
+
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: /Choose where to play|Playing on this/ })
+			.click();
+		await thisDevice(page).click();
+
+		await expect
+			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
+			.toBeGreaterThan(0);
+	});
+});
+
 test.describe("with no component at all", () => {
 	test("is exactly the app it was before", async ({ page }) => {
 		await page.goto("/");
@@ -309,7 +353,10 @@ test.describe("what is audible, not what the player is doing", () => {
 		page,
 		player,
 	}) => {
-		await page.goto("/");
+		// `#/home` rather than the front door throughout this describe: the front
+		// door reopens the now-playing screen over whatever is playing, and every
+		// test here starts playback the moment the app has loaded.
+		await page.goto("/#/home");
 		player.playItem("p7", HEARD.index);
 		// Two minutes in, so the audible point lands inside this track.
 		player.patchPlayer({ position: 120 });
@@ -344,7 +391,7 @@ test.describe("what is audible, not what the player is doing", () => {
 		isMobile,
 	}) => {
 		test.skip(isMobile, "the readout is desktop-only");
-		await page.goto("/");
+		await page.goto("/#/home");
 		// Wall clock is the reference: the fake pushes on change and never on a
 		// timer, so its stored `position` stays where the last push left it.
 		const startedAt = Date.now();
@@ -377,7 +424,7 @@ test.describe("what is audible, not what the player is doing", () => {
 		page,
 		player,
 	}) => {
-		await page.goto("/");
+		await page.goto("/#/home");
 		player.playItem("p7", HEARD.index);
 		player.patchPlayer({ position: 120 });
 

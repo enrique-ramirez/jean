@@ -28,6 +28,7 @@ import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
 import { Artist } from "./Artist";
 import { Details } from "./Details";
+import { ListenHere } from "./ListenHere";
 import { Lyrics } from "./Lyrics";
 import { LyricsScreen } from "./LyricsScreen";
 import { parseLyrics } from "./lyricsFormat";
@@ -102,12 +103,15 @@ export function NowPlaying({
 	isCompactViewport,
 	isQueueOpen,
 	onToggleQueue,
+	onOpenPlayingFrom,
 	onDismiss,
 }: {
 	isOpen: boolean;
 	isCompactViewport: boolean;
 	isQueueOpen: boolean;
 	onToggleQueue: () => void;
+	/** Given only when the set being played has a route to open, which is what makes the header a link. */
+	onOpenPlayingFrom?: () => void;
 	onDismiss: () => void;
 }) {
 	// Unmounted rather than hidden once the exit finishes: the lyric panel runs an animation-frame loop.
@@ -207,6 +211,15 @@ export function NowPlaying({
 	// On a phone the identity block shares the screen with the panel, so it drops to title and artist.
 	const isSlim = isCompactViewport && tab !== "art";
 
+	const fromLine = from?.isPlaying ? (
+		<>
+			<span className={styles.fromLabel}>Playing from</span>
+			<b>{from.name}</b>
+		</>
+	) : (
+		<span className={styles.fromLabel}>Now playing</span>
+	);
+
 	const cover = (
 		<Artwork
 			key={artworkKey}
@@ -258,16 +271,18 @@ export function NowPlaying({
 						<ChevronDown size={20} strokeWidth={2} />
 					</button>
 
-					<p className={styles.from}>
-						{from?.isPlaying ? (
-							<>
-								<span className={styles.fromLabel}>Playing from</span>
-								<b>{from.name}</b>
-							</>
-						) : (
-							<span className={styles.fromLabel}>Now playing</span>
-						)}
-					</p>
+					{/* The whole line is the way back to the set, not just the name: on a phone the label is half of what there is to aim at. A sentence where there is no route to open. */}
+					{from?.isPlaying && onOpenPlayingFrom ? (
+						<button
+							type="button"
+							className={styles.fromLink}
+							onClick={onOpenPlayingFrom}
+						>
+							{fromLine}
+						</button>
+					) : (
+						<p className={styles.from}>{fromLine}</p>
+					)}
 
 					<div className={styles.headActions}>
 						{isCompactViewport ? (
@@ -398,6 +413,13 @@ export function NowPlaying({
 							>
 								<SkipForwardIcon size={22} />
 							</button>
+
+							{/* Left of the fader, as in the status bar: where the sound comes out has to be answered before how loud there means anything. */}
+							{player ? (
+								<ListenHere
+									playerName={player.info.title ?? player.info.name}
+								/>
+							) : null}
 
 							{hasFader ? (
 								<VolumePopover

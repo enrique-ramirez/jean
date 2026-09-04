@@ -122,7 +122,8 @@ export function ListenHere({ playerName }: { playerName: string }) {
 	return (
 		<div className={styles.anchor} ref={ref}>
 			{isOpen ? (
-				<div className={styles.popover}>
+				// On the now-playing screen this opens inside the swipe surface, and a flick down a roster is not a dismissal of the screen under it.
+				<div className={styles.popover} data-owns-touch="">
 					{/* Toggles rather than a radio group, because both outputs can be on at once. Pressing one still hands the sound over -- that is what the buttons do -- but the state underneath is two booleans, and saying otherwise would leave a reader hearing "1 of 2" while it plays in two rooms. */}
 					{/* biome-ignore lint/a11y/useSemanticElements: a fieldset would bring a form control's styling and legend into a menu that is neither */}
 					<div role="group" aria-labelledby="listen-here-heading">

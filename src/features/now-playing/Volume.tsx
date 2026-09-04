@@ -122,7 +122,8 @@ export function VolumePopover({
 	return (
 		<div className={styles.popoverAnchor} ref={ref}>
 			{isOpen ? (
-				<div className={styles.popover}>
+				// The whole panel, not just the track: a finger that strays off the fader mid-drag is still the fader's, and `useSwipe` must not read the tail of it as a flick at whatever the popover is sitting on.
+				<div className={styles.popover} data-owns-touch="">
 					<VolumeSlider
 						volume={volume}
 						onChange={onChange}

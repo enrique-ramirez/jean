@@ -7,6 +7,7 @@ import {
 	requestsTo,
 	statusBar,
 	test,
+	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -302,6 +303,111 @@ test.describe("the way in and the way out", () => {
 			.click();
 		await expect(nowPlayingScreen(page)).toBeHidden();
 		await expect(page.locator("main")).toBeVisible();
+	});
+});
+
+test.describe("the set it is playing from", () => {
+	test("the header takes you back to it, and closes on the way", async ({
+		page,
+	}) => {
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+		await trackRow(page, 0).dblclick();
+		await openNowPlaying(page);
+
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: /Playing from/ })
+			.click();
+
+		await expect(nowPlayingScreen(page)).toBeHidden();
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+	});
+
+	test("it is a line and not a button when the set has nowhere to open", async ({
+		page,
+	}) => {
+		// A playlist the user is playing straight from is not a set Jean
+		// materialised, so the header says "Now playing" and offers nothing.
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		await openNowPlaying(page);
+
+		const header = nowPlayingScreen(page).locator("header");
+		await expect(header).toContainText("Now playing");
+		await expect(
+			header.getByRole("button", { name: /Playing from/ }),
+		).toHaveCount(0);
+	});
+});
+
+// The screen's own transport holds two controls that follow a finger, and both
+// sit inside the surface the dismiss and tab gestures are read from.
+test.describe("a control that follows the finger keeps the gesture", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"the transport is compact-only, and this is touch",
+	);
+
+	test("the fader can be dragged down without dismissing the screen", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		const screen = nowPlayingScreen(page);
+
+		await screen.getByRole("button", { name: "Show volume" }).click();
+		const fader = page.getByRole("slider", { name: /Volume/ });
+		const box = (await fader.boundingBox())!;
+		const x = box.x + box.width / 2;
+
+		// Well past the 60px a flick has to travel, downwards, which is the
+		// gesture that dismisses the screen everywhere else on it.
+		await touchDrag(
+			page,
+			{ x, y: box.y + box.height * 0.15 },
+			{ x, y: box.y + box.height * 0.85 },
+		);
+
+		// The hash rather than the element: dismissing navigates at once but takes
+		// the length of the exit animation to leave the screen, so a visible
+		// screen alone would pass with the dismissal already in flight.
+		await expect(page).toHaveURL(/#\/playing$/);
+		await expect(screen).toBeVisible();
+
+		const landed = Number(await fader.getAttribute("aria-valuenow"));
+		expect(landed, `fader landed at ${landed}%, aimed at 15%`).toBeLessThan(40);
+	});
+
+	test("the seek bar can be scrubbed without stepping the tabs", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 0);
+		const screen = nowPlayingScreen(page);
+		await expect(tab(page, "Playing")).toHaveAttribute("aria-current", "true");
+
+		const bar = screen.getByRole("slider", { name: "Playback position" });
+		const box = (await bar.boundingBox())!;
+		const y = box.y + box.height / 2;
+		await touchDrag(
+			page,
+			{ x: box.x + box.width * 0.75, y },
+			{ x: box.x + box.width * 0.2, y },
+		);
+
+		await expect(tab(page, "Playing")).toHaveAttribute("aria-current", "true");
+		// The scrub itself still landed: the gesture belongs to the bar, not to
+		// nobody.
+		await expect
+			.poll(() =>
+				requestsTo(player, "/api/player").filter(
+					(entry) => entry.body?.position !== undefined,
+				),
+			)
+			.toHaveLength(1);
 	});
 });
 

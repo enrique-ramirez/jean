@@ -45,6 +45,8 @@ export function useDragFraction({
 
 	const handlers = {
 		style: GRABBABLE,
+		// A control that follows the finger owns the gesture outright: `useSwipe` skips anything under this mark, or dragging a fader down dismisses the screen behind it and scrubbing across the seek bar changes tab.
+		"data-owns-touch": "",
 
 		// Belt to the CSS braces: a native drag must not start even if something above ever becomes selectable.
 		onDragStart: (event: { preventDefault: () => void }) =>

@@ -1,6 +1,7 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
+	nowPlayingScreen,
 	openLibrary,
 	openSidebar,
 	requestsTo,
@@ -250,6 +251,75 @@ test.describe("where a view puts you when you come back to it", () => {
 		// the offset at the moment the view comes back; the restore keeps trying
 		// for about a second.
 		await expect.poll(() => scrollTop(page)).toBe(900);
+	});
+});
+
+test.describe("landing on the front door", () => {
+	test("with nothing playing it is the front door", async ({ page }) => {
+		await page.goto("/");
+		await expect(page.locator("main")).toBeVisible();
+		await expect(nowPlayingScreen(page)).toBeHidden();
+	});
+
+	test("with a track loaded it opens that track, over the set it came from", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+		await trackRow(page, 0).dblclick();
+		// Polled on playback rather than on the click: the set is written to the
+		// scratch playlist first and played a round trip later, and a reload before
+		// then lands on a player with nothing playing.
+		await expect
+			.poll(() => player.player.activeItem.index)
+			.toBeGreaterThanOrEqual(0);
+
+		await page.goto("/");
+		await expect(nowPlayingScreen(page)).toBeVisible();
+		// The view is drawn under the screen rather than left at home, which is
+		// what dismissing lands on.
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeAttached();
+
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Close now playing" })
+			.click();
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+	});
+
+	test("a playlist is a set too", async ({ page, player }) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		await expect
+			.poll(() => player.player.activeItem.index)
+			.toBeGreaterThanOrEqual(0);
+
+		await page.goto("/");
+		await expect(nowPlayingScreen(page)).toBeVisible();
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Close now playing" })
+			.click();
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Library" }),
+		).toBeVisible();
+	});
+
+	test("asking for home is not the front door", async ({ page, player }) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		await expect
+			.poll(() => player.player.activeItem.index)
+			.toBeGreaterThanOrEqual(0);
+
+		// Somewhere the user asked to be, so nothing opens over it.
+		await page.goto("/#/home");
+		await expect(nowPlayingScreen(page)).toBeHidden();
 	});
 });
 

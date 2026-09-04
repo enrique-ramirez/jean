@@ -308,7 +308,9 @@ test.describe("opening a shelf from its heading", () => {
 			.toBeGreaterThanOrEqual(0);
 
 		const playing = player.player.activeItem.index;
-		await page.goto("/");
+		// `#/home` rather than the front door, which reopens the now-playing screen
+		// over whatever is playing. What this test is about is the heading link.
+		await page.goto("/#/home");
 		await expect(shelf(page, "Recently played")).toBeVisible();
 		await page.getByRole("link", { name: "Recently played" }).click();
 		await expect(

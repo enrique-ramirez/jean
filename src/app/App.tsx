@@ -6,6 +6,7 @@ import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
 	useIsPlaying,
+	usePlayer,
 	usePlayerStream,
 	usePlaylists,
 	usePlayPause,
@@ -73,6 +74,9 @@ function Shell() {
 	useDocumentIdentity();
 
 	const { data: playlists = [], isSuccess: hasPlaylists } = usePlaylists();
+	// The player's own state rather than the audible copy: what this reads is whether there is a track at all, which the stream's lag does not change.
+	const { data: playerState, isSuccess: hasPlayer } = usePlayer();
+	const activeItem = playerState?.player?.activeItem;
 	const isPlaying = useIsPlaying();
 	const playPause = usePlayPause();
 	const seekBy = useSeekBy();
@@ -165,6 +169,14 @@ function Shell() {
 
 	// Jean's own scratch playlists are not somewhere to browse to: playing search results makes one current, and landing there would show them stripped of the search that made them.
 	const browsable = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
+
+	// Where the sound is coming from, as a route to open: the set Jean materialised for it, or the playlist the player holds the track in. Null for the queue's holding playlist and anything else with nowhere to browse to.
+	const playingRoute = playingFrom?.isPlaying
+		? playingFrom.route
+		: activeItem &&
+				browsable.some((entry) => entry.id === activeItem.playlistId)
+			? activeItem.playlistId
+			: null;
 	const routedId = browsable.some((entry) => entry.id === route) ? route : null;
 
 	// A reload lands on #/search with the query gone, since it was only ever in memory. The playlist the player holds is named after it.
@@ -253,6 +265,26 @@ function Shell() {
 	useEffect(() => {
 		if (!isNowPlaying) setOpenedFrom(route);
 	}, [isNowPlaying, route]);
+
+	// Landing on the front door with a track already loaded opens what it is playing from, and the screen over it: Jean opens where the sound is rather than at a page nobody chose.
+	// Once per load and only from `#/` — `#/home` is somewhere the user asked to be. It waits for the player and the playlists, neither of which has answered on the first render.
+	const resumed = useRef(false);
+	useEffect(() => {
+		if (resumed.current || !hasPlayer || !hasPlaylists) return;
+		// Spent on the first settled answer whatever it says, so this is the moment the app loaded and never a later return to the front door.
+		resumed.current = true;
+		// `index` is -1 whenever the player is stopped, which is the whole of "nothing is playing".
+		if (route !== "" || !activeItem || activeItem.index < 0) return;
+
+		if (playingRoute) {
+			// Set before the hash, so the screen has the set to be dismissed to rather than the front door. `useHashRoute` reads the new hash in the same render, so the effect above sees `#/playing` and leaves this alone.
+			setOpenedFrom(playingRoute);
+			// Which playlist the view underneath resolves to, since the route itself now names the screen. `isCurrent` is the playlist selected in foobar rather than the one playing, so it is the wrong thing to fall back to here.
+			if (playingRoute === activeItem.playlistId)
+				lastPlaylistId.current = playingRoute;
+		}
+		navigate(`/${ROUTE.playing}`);
+	}, [route, hasPlayer, hasPlaylists, activeItem, playingRoute, navigate]);
 
 	// Waits for the library: an install with no `#Jean Library` has a setup step on screen, and that is the one thing to do first.
 	useEffect(() => {
@@ -450,6 +482,10 @@ function Shell() {
 					isCompactViewport={isCompactViewport}
 					isQueueOpen={isQueueOpen}
 					onToggleQueue={toggleQueue}
+					// Only for a set with somewhere to go: opening the route is what dismisses the screen, so there is nothing else for the header to do.
+					onOpenPlayingFrom={
+						playingRoute ? () => openRoute(playingRoute) : undefined
+					}
 					onDismiss={closeNowPlaying}
 				/>
 

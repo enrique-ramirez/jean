@@ -98,6 +98,20 @@ A tab ellipsises at around forty characters and a narrow one shows nearer fiftee
 
 ### Not built here
 
-`navigator.mediaSession` wants exactly what `useDocumentIdentity` already derives — title, artist, artwork, playback state — and would buy the OS media keys, the lock screen and Chrome's media hub. It does nothing until the page is itself audible, so it stays unwritten while Jean only controls a remote player. When Jean streams it belongs in that hook as a third consumer of those values, not a second derivation.
-
 There is no `apple-touch-icon`. `index.html` sets `mobile-web-app-capable`, and iOS ignores SVG icons on a home screen — it wants a 180px PNG.
+
+## The media session
+
+The Android lock screen, macOS Now Playing and the media keys, iOS Control Centre, Bluetooth and car head units, Chrome's media hub. `useMediaSession` is a third consumer of what `useDocumentIdentity` derives, beside the title and the favicon, so nothing about the current track is worked out twice.
+
+**Two things gate it, and neither is optional.** `navigator.mediaSession` is **secure-context only**, so an install served over plain HTTP on a LAN — which is the normal one — has no session at all and must go on working. And a session belongs to whatever is *audible*: the metadata takes effect only while this page holds media the OS can see, which is while the stream is attached here. As a remote for a player in another room Jean has no element, claims nothing, and should not — a lock screen offering buttons for sound coming out of a different machine is a lie about which device it controls. **A silent looping element to claim the controls anyway is rejected**: it badges every Jean tab as audible and spends a phone's battery for a notification.
+
+**Everything it publishes is the audible copy.** `useDocumentIdentity` reads `useAudiblePlayer`, so the lock screen changes track when the speaker does rather than a second and a half early, and `setPositionState` is fed `audibleAt` for the same reason. Position is published on a push and never per frame — the OS interpolates from `playbackRate` between calls, so a frame loop would buy nothing and cost everything.
+
+**The handlers drive the player, never the element.** Pausing the element would cut the second of sound still draining out of the buffer; the rule and the measurement are in `src/domain/player/CLAUDE.md`. So `playbackState` is set from the player while the stream runs on underneath, and `play` and `pause` each check before pressing beefweb's single `play-pause`, because the OS sends `play` freely including when it already is playing. `seekto` goes through the ordinary patch, which calls `beginSeek`, so the OS scrubber holds at the target instead of snapping back to the audio still buffered.
+
+**Stopping ends the listening session as well.** A lock screen's stop means "I am done with this", and a stopped player with the stream still attached would hold the component's mute for audio nobody is hearing.
+
+Two traps worth keeping: Chrome throws a **`TypeError` on a position past the duration**, which a live stream's own clock will produce, and `setActionHandler` **throws for an action the browser does not know** rather than ignoring it. Both are caught — losing the scrubber is not worth losing the session.
+
+`%album%` is the one field on the lock screen that the update stream does not carry, and it must not join it: `UPDATES_URL` re-evaluates its `trcolumns` on every push. It comes from `useNowPlayingTrack`, whose `enabled` flag exists for this — one shared query, so the screen and the lock screen never ask twice.

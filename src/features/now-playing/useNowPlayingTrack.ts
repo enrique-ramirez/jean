@@ -18,15 +18,19 @@ export interface NowPlayingDetails {
 	path: string;
 }
 
-/** The playing track's lyric tag and detail fields: one request per track change, never off the update stream, which re-evaluates its expressions on every push. */
-export function useNowPlayingTrack() {
+/**
+ * The playing track's lyric tag and detail fields: one request per track change, never off the update stream, which re-evaluates its expressions on every push.
+ *
+ * `enabled` is for a caller that wants the values only some of the time, and costs nothing where another caller is already asking: the two share one query.
+ */
+export function useNowPlayingTrack({ enabled = true } = {}) {
 	const snapshot = useAudiblePlayer();
 	const track = readTrack(snapshot?.player);
 	const path = track?.path ?? null;
 
 	const query = useQuery({
 		queryKey: keyOf(track),
-		enabled: path !== null,
+		enabled: enabled && path !== null,
 		queryFn: async (): Promise<NowPlayingDetails | null> => {
 			const row = await fetchActiveItemColumns(NOW_PLAYING_EXPRESSIONS);
 			if (!row) return null;
@@ -64,7 +68,7 @@ export function useNowPlayingTrack() {
 	return {
 		track,
 		details: query.data ?? null,
-		isPending: query.isPending && path !== null,
+		isPending: enabled && query.isPending && path !== null,
 		setRating,
 	};
 }

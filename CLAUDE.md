@@ -55,7 +55,7 @@ Everything specific to one part of the app sits next to that part:
 | `src/features/now-playing/CLAUDE.md` | the status bar, the screen, lyrics and details |
 | `src/features/queue/CLAUDE.md` | the play queue panel |
 | `src/features/search/CLAUDE.md` | the search control |
-| `src/app/CLAUDE.md` | the shell, breakpoints, themes, the tab |
+| `src/app/CLAUDE.md` | the shell, breakpoints, themes, the tab, the media session |
 | `demo/CLAUDE.md` | the live demo: the fake player in a service worker |
 
 ## Capability detection

@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
 import { readTrack } from "@/shared/api/beefweb";
 import { type PlaybackBadge, setFavicon } from "./favicon";
+import { useMediaSession } from "./useMediaSession";
 
 const NAME = "Jean";
 
@@ -35,4 +36,6 @@ export function useDocumentIdentity() {
 	useEffect(() => {
 		setFavicon(badge);
 	}, [badge]);
+
+	useMediaSession(snapshot, track, hasTrack);
 }

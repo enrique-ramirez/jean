@@ -74,6 +74,26 @@ The two obvious alternatives both fail on a range reaching -100 dB. Squaring the
 
 **Everything that moves the volume goes through `useAudibleVolume`**, and nothing else asks which target it holds. The status bar, the screen's popover and the `=` / `-` / `M` keys all point at one fader, so a key cannot end up moving a control the ear cannot reach. The keys carry their own step because the player's `/volume/up` is inaudible while the sound is here; the player's own row in the picker is the deliberate exception and still reads `useVolume` directly.
 
+### The low-latency path
+
+**On wherever the browser can decode the container, per device, and it changes the container rather than the audio.** `mseStream.ts` fetches the same Ogg stream, demuxes the Opus packets back out (`oggDemux.ts`) and re-wraps them in WebM (`webmMux.ts`) for MSE. The packets are untouched, so this costs nothing in fidelity — what it buys is that the buffer is Jean's rather than the browser's, and on a stream delivered at 1x whatever the browser decides to gather before starting is lag for the rest of the session.
+
+**Ogg is not an MSE container in any browser**, which is the whole reason a muxer exists. Measured with `MediaSource.isTypeSupported`: Chromium and Firefox both refuse `audio/ogg; codecs="opus"` and accept `audio/webm; codecs="opus"`, `audio/mp4; codecs="mp4a.40.2"` and `audio/mp4; codecs="flac"`. Safari needs fMP4 and is not on this path yet, so the format decides as well as the toggle.
+
+**Measured against the real component**, 250 ms target, over 25 s: Chromium settles at **0.32 s** of lag with 0.24–0.42 s buffered ahead and no underruns; Firefox at **0.54 s** with 0.38–0.86 s. Against roughly 3 s for the plain `<audio src="…">` path. Time from opening to first sound is 280–460 ms.
+
+**The demuxer and the muxer MUST survive a flush.** OpusHead arrives once, at the top of the stream, so a demuxer started again mid-stream waits for a header that is never coming and the pump goes silent for good — which looks exactly like a stall. A flush drops the buffered range and nothing else.
+
+**Removing the buffer leaves the playhead in the hole it made**, and the element will sit there waiting for audio that was thrown away on purpose. The next append has to move `currentTime` to the new `buffered.start(0)`. Firefox rebuffers two or three times over the few seconds after a flush where Chromium recovers in one.
+
+**The origin is known on this path rather than measured.** `deriveAnchor` reads `buffered.start(0)` as its timebase everywhere else, but the trim moves that forward every few seconds, so a timeline answer arriving after the first trim would anchor against a number that had already moved. The muxer's clock starts at zero on connect, so the low-latency path passes zero and the race does not exist.
+
+**On by default means it has to fail over, and there are two ways it can fail.** A stream it cannot demux never produces a first sample, so the stall counter — which needs one, to tell a buffer running dry from a stream that was never going to play — cannot see it. `NOT_OGG_BYTES` catches that in a fraction of a second by noticing no page ever arrived, and a `MSE_START_MS` deadline in the watchdog is the backstop for everything else. Three stalls in thirty seconds retires the path for the session; a flush empties the buffer on purpose, so stalls within `AFTER_FLUSH_MS` of one are not counted, and neither is the first fill.
+
+**A fallback is held for the session and never written to the setting.** The stored key says what to try and `lowLatencyFellBack` says what happened, because rewriting somebody's preference to record a bad network is how a setting comes to mean nothing. Settings says so rather than showing a switch that is on while the plain path is running.
+
+**The e2e fake serves WAV, so it exercises the fallback and not the path.** `fixtures.ts` seeds the key off for the suite at large and `listen.spec.ts` turns it on for the two tests that check the failover. The demuxer and the muxer are covered by `pnpm test:unit`, which is `node --test` over `test/unit/` — no runner and no dependency, because both modules import nothing.
+
 **The toggle is per device and is never synced**, not through `clientconfig` and not through anything `useStoredState` might one day sync. One device's button must never silence another's. It is not persisted across a reload either, since autoplay policy would block the reconnect.
 
 **Jean must not pause the element when the player pauses**, however much the handoff argues for it. Pressing pause leaves a second or so of sound coming out of this device — the buffer draining — and pausing the element would stop it dead. The component **keeps encoding at 1x through a pause** (5.52 s of audio over 5.58 s of wall clock with the player stopped), so a paused element would go on filling and resume however long the pause lasted further behind. The tail is the buffer, and it is the component's to shorten.

@@ -1,13 +1,20 @@
 import { DEVICE_NAME_KEY, defaultDeviceName } from "@/domain/player/device";
+import {
+	LOW_LATENCY_KEY,
+	restartListening,
+} from "@/domain/player/listenerStore";
+import { canUseMse } from "@/domain/player/mseStream";
 import { useListener } from "@/domain/player/useListener";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { HelpHint } from "@/shared/ui/HelpHint";
+import { Switch } from "@/shared/ui/Switch";
 import styles from "./Settings.module.css";
 
 // The one setting in here that describes the machine rather than the library, which is why it says so and why it never syncs.
 export function ThisDevice() {
-	const { canListen } = useListener();
+	const { canListen, lowLatencyFellBack: fellBack } = useListener();
 	const [name, setName] = useStoredState(DEVICE_NAME_KEY, defaultDeviceName);
+	const [isLowLatency, setLowLatency] = useStoredState(LOW_LATENCY_KEY, true);
 
 	// Nothing can listen without the component, and with nobody to be named to this is a field about nothing.
 	if (!canListen) return null;
@@ -52,6 +59,24 @@ export function ThisDevice() {
 					What the other devices call this one while it is listening.
 				</p>
 			</div>
+
+			{canUseMse() ? (
+				<div className={styles.field}>
+					<Switch
+						checked={isLowLatency}
+						onChange={(next) => {
+							setLowLatency(next);
+							restartListening();
+						}}
+						label="Use a short buffer"
+					/>
+					<p className={styles.detail}>
+						{fellBack
+							? "This connection kept running dry, so Jean went back to the browser's own buffer. It will try the short one again next time you listen."
+							: "Playback starts almost at once and runs under half a second behind the player, rather than the seconds this browser would hold on its own. The sound is identical either way — the same audio in a different wrapper. Turn it off if the stream breaks up; Jean does the same by itself when a connection cannot hold it. Reconnects while listening."}
+					</p>
+				</div>
+			) : null}
 		</section>
 	);
 }

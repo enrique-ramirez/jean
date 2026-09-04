@@ -164,6 +164,43 @@ test.describe("choosing a codec", () => {
 	});
 });
 
+// The short buffer is what every browser that can decode WebM/Opus gets by default. What is
+// tested here is the other half of that promise: a stream it cannot read must cost a moment,
+// not the session's audio.
+test.describe("a stream the short-buffer path cannot read", () => {
+	test.use({
+		fooJean: {},
+		settings: { "jean.lowLatencyStream": true },
+		fooJeanToken: TOKEN,
+	});
+
+	test("falls back to the browser's own buffer rather than going silent", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await startListening(page);
+
+		// The fake stream is not Ogg, so nothing can be demuxed out of it. Sound still has to
+		// arrive, by the path that does not need to understand the container.
+		await expect
+			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
+			.toBeGreaterThan(0);
+	});
+
+	test("says so, rather than leaving the setting looking untouched", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await startListening(page);
+		await expect
+			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
+			.toBeGreaterThan(0);
+
+		await page.getByRole("button", { name: "Settings" }).click();
+		await expect(page.getByText(/kept running dry/i)).toBeVisible();
+	});
+});
+
 test.describe("an install with no encoder", () => {
 	test.use({ fooJean: { canStream: false }, fooJeanToken: TOKEN });
 

@@ -50,6 +50,9 @@ const DIST = join(dirname(fileURLToPath(import.meta.url)), "../../dist");
 const SEEDED_SETTINGS = {
 	"jean.heatIntroSeen": true,
 	"jean.settingsSeen": true,
+	// The fake stream is not Ogg, so the short-buffer path cannot demux it and would fall
+	// back on every test that listens. Off here, and tested on its own in `listen.spec.ts`.
+	"jean.lowLatencyStream": false,
 };
 
 export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({

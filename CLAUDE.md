@@ -12,7 +12,7 @@ This file holds what an agent cannot read off the code. How to *write* code here
 - **Fully responsive**, one codebase, no separate mobile build. Desktop is keyboard-first; mobile is aggressively optimised for touch targets, safe-area insets and payload.
 - **Light and dark themes, both designed.** Neither is `#000` / `#fff`.
 - **Minimum required components: beefweb alone.** Everything beyond is optional, auto-detected and individually toggleable in Settings. A bare install MUST get a complete, coherent app — never a dead panel or an empty shelf. Keep the component table in `README.md` current.
-- **Run the suite before claiming a change works.** `pnpm lint`, `pnpm typecheck` and `pnpm test` must pass.
+- **Run the suite before claiming a change works.** `pnpm lint`, `pnpm typecheck` and `pnpm test` must pass. `test` is `test:unit` then `test:e2e`: `node --test` over `test/unit/` for the few modules that are pure enough to need no browser, then Playwright for everything else.
 
 ## Look it up before you draw it
 

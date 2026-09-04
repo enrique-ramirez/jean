@@ -58,6 +58,8 @@ export function useListener() {
 
 	return {
 		canListen: listener.canListen,
+		// The connection gave up on the short buffer. Distinct from the setting, which says what to try.
+		lowLatencyFellBack: live.lowLatencyFellBack,
 		formats: listener.formats,
 		phase: live.phase,
 		format: live.format,

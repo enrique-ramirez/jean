@@ -18,11 +18,15 @@ import {
 	decibelsOf,
 	type ListenTarget,
 } from "./listener";
+import { canUseMse, type MseStream, openMseStream } from "./mseStream";
 
 // The live connection: one `<audio>` element, the reconnect loop, the codec fall-through and the stream clock.
 
 // Per device, never synced: one device's fader must not move another's.
 const VOLUME_KEY = "jean.listenVolume";
+// Which source the element is given. Per device for the same reason: what a machine can
+// decode, and how far behind it runs, is a fact about that machine.
+export const LOW_LATENCY_KEY = "jean.lowLatencyStream";
 
 const RECONNECT_MS = [500, 1000, 2000, 4000, 8000];
 const BUSY_RETRY_MS = 5000;
@@ -34,6 +38,15 @@ const START_MS = 25_000;
 // Floor for a pending seek, reached only when no mark ever arrives to end it.
 const SEEK_WAIT_MS = 20_000;
 const WATCHDOG_MS = 1000;
+// A short buffer that keeps emptying is worse than a long one. A flush empties it on purpose,
+// so those are not counted.
+const STALLS_ALLOWED = 3;
+const STALL_WINDOW_MS = 30_000;
+const AFTER_FLUSH_MS = 3000;
+// How long the short-buffer path gets to produce a first sample before it is written off for
+// the session. It normally starts inside 300 ms, and a stream it cannot demux never starts at
+// all -- which, uncaught, is silence rather than the fallback the plain path would have been.
+const MSE_START_MS = 5000;
 const TIMELINE_POLL_MS = 10_000;
 
 // A stopped player and a broken stream look identical from the stream: headers arrive and then nothing.
@@ -60,6 +73,9 @@ export interface ListenSnapshot {
 	canSetVolume: boolean;
 	// Which track is coming out of the speaker. Published on change only, never per frame.
 	audiblePath: string | null;
+	// True once this connection has given up on the short buffer. The stored preference is
+	// left alone: it says what to try, and this says what happened.
+	lowLatencyFellBack: boolean;
 }
 
 const listeners = subscribers();
@@ -91,6 +107,11 @@ let audiblePath: string | null = null;
 // A seek the player has taken and this device has not heard yet, with the audible mark current when it was asked for.
 // The control holds where it was put rather than snapping back to what is still audible.
 let pendingSeek: number | null = null;
+let mse: MseStream | null = null;
+// Per session, never stored: a downgrade describes this connection, not a decision the user made.
+let lowLatencyFailed = false;
+let stalls: number[] = [];
+let flushedAt = 0;
 let pendingMarkAt = 0;
 let pendingAt = 0;
 let lastTime = 0;
@@ -103,7 +124,15 @@ let generation = 0;
 let snapshot: ListenSnapshot = build();
 
 function build(): ListenSnapshot {
-	return { phase, format, volumeDb, isMuted, canSetVolume, audiblePath };
+	return {
+		phase,
+		format,
+		volumeDb,
+		isMuted,
+		canSetVolume,
+		audiblePath,
+		lowLatencyFellBack: lowLatencyFailed,
+	};
 }
 
 function publish() {
@@ -144,6 +173,7 @@ function ensureElement() {
 	audio.muted = isMuted;
 
 	audio.addEventListener("playing", onPlaying);
+	audio.addEventListener("waiting", onWaiting);
 	audio.addEventListener("timeupdate", onTimeUpdate);
 	audio.addEventListener("error", onError);
 	audio.addEventListener("ended", onEnded);
@@ -154,6 +184,65 @@ function ensureElement() {
 
 	element = audio;
 	return audio;
+}
+
+// Ogg is not an MSE container anywhere, so the low-latency path demuxes it and re-wraps the
+// same Opus packets in WebM. The audio is untouched: this changes who owns the buffer, not
+// what is in it. AAC has no such path yet, which is why the format decides too.
+function wantsLowLatency(forFormat: string) {
+	if (forFormat !== "opus" || !canUseMse() || lowLatencyFailed) return false;
+	try {
+		// Absent is on: a browser that supports the container gets the short buffer, and the
+		// fallback below is what protects a connection that cannot hold it.
+		return localStorage.getItem(LOW_LATENCY_KEY) !== "false";
+	} catch {
+		return false;
+	}
+}
+
+function sourceFor(
+	audio: HTMLAudioElement,
+	origin: string,
+	ticket: string,
+	forFormat: string,
+) {
+	const url = streamUrl(origin, ticket, forFormat);
+	if (!wantsLowLatency(forFormat)) return url;
+
+	mse = openMseStream(url, audio, {
+		// The element cannot start before there is something to decode, and how much that is
+		// is the whole question this path exists to answer.
+		onReady: () => {
+			if (audio.paused) void audio.play().catch(() => undefined);
+		},
+		onError: () => {
+			if (isListening()) scheduleReconnect();
+		},
+		// Another connection would meet the same stream, so the path goes rather than retrying.
+		onUnusable: () => {
+			lowLatencyFailed = true;
+			restartListening();
+		},
+	});
+	return mse.src;
+}
+
+// The short buffer running dry, which is the one way this path is worse than the browser's own.
+// A flush empties it deliberately and the first fill is not a stall, so neither is counted.
+function onWaiting() {
+	if (!mse || !hasRendered) return;
+	if (performance.now() - flushedAt < AFTER_FLUSH_MS) return;
+
+	const now = performance.now();
+	stalls = stalls.filter((at) => now - at < STALL_WINDOW_MS);
+	stalls.push(now);
+	if (stalls.length < STALLS_ALLOWED) return;
+
+	// Kept for the session rather than written to the setting: the preference says what to
+	// try, and this says what this connection turned out to be able to hold.
+	lowLatencyFailed = true;
+	stalls = [];
+	restartListening();
 }
 
 function onPlaying() {
@@ -260,6 +349,7 @@ async function open(next: string) {
 	marks = [];
 	audiblePath = null;
 	pendingSeek = null;
+	stalls = [];
 	setPhase(
 		attempt > 0 ? { kind: "reconnecting", attempt } : { kind: "connecting" },
 	);
@@ -289,7 +379,7 @@ async function open(next: string) {
 
 	const audio = ensureElement();
 	connectAt = performance.now();
-	audio.src = streamUrl(target.origin, issued.ticket.ticket, next);
+	audio.src = sourceFor(audio, target.origin, issued.ticket.ticket, next);
 	audio.volume = amplitudeOf(volumeDb);
 
 	startWatchdog();
@@ -355,6 +445,15 @@ async function watch() {
 	if (!audio || !isListening()) return;
 	if (phase.kind === "blocked" || phase.kind === "busy") return;
 
+	// Nothing has been heard and the short-buffer path had its chance. The stall counter
+	// cannot cover this: it needs a first sample to know the difference between a stream
+	// running dry and one that was never going to play.
+	if (mse && !hasRendered && performance.now() - connectAt > MSE_START_MS) {
+		lowLatencyFailed = true;
+		restartListening();
+		return;
+	}
+
 	if (audio.currentTime !== lastTime) {
 		lastTime = audio.currentTime;
 		lastAdvance = performance.now();
@@ -389,7 +488,11 @@ async function watch() {
 function deriveAnchor() {
 	if (anchor !== null || timelineStreamTime === null || !element) return;
 
-	const origin = bufferedStart(element);
+	// On the low-latency path the muxer's own clock starts at zero on connect, so the origin
+	// is known rather than measured. Read from `buffered` it would be a race: the trim moves
+	// `start(0)` forward every few seconds, and a timeline answer arriving after the first
+	// one would anchor against a number that had already moved.
+	const origin = mse ? 0 : bufferedStart(element);
 	if (origin === null) return;
 
 	const atConnect = timelineStreamTime - (timelineAt - connectAt) / 1000;
@@ -425,6 +528,11 @@ export function listeningPosition(
 
 export function beginSeek(position: number) {
 	if (!isListening() || !element) return;
+
+	if (mse) {
+		flushedAt = performance.now();
+		mse.flush();
+	}
 
 	pendingSeek = position;
 	pendingMarkAt =
@@ -514,6 +622,9 @@ function stopStream() {
 	audiblePath = null;
 	pendingSeek = null;
 
+	mse?.stop();
+	mse = null;
+
 	const audio = element;
 	if (audio) {
 		audio.pause();
@@ -550,4 +661,15 @@ export function configureListening(next: ListenTarget | null) {
 	if (isListening()) disconnect();
 	target = next;
 	dead.clear();
+}
+
+// Whether this device is on the low-latency path. The toggle writes the key through
+// `useStoredState` like any other setting; this is what makes the change take effect, since
+// the source is chosen when a connection opens.
+export function restartListening() {
+	if (!isListening()) return;
+	const wanted = format;
+	stopStream();
+	attempt = 0;
+	if (wanted) void open(wanted);
 }

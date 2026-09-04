@@ -105,9 +105,7 @@ export function useAudibleVolume() {
 		volume,
 		setValue,
 		hasFader: !isHere || Boolean(listener.volume),
-		toggleMute: isHere
-			? listener.toggleMute
-			: () => player.setMuted(!player.volume?.isMuted),
+		toggleMute: isHere ? listener.toggleMute : player.toggleMuted,
 		up: () => nudge(DEVICE_VOLUME_STEP_DB),
 		down: () => nudge(-DEVICE_VOLUME_STEP_DB),
 	};

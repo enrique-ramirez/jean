@@ -401,11 +401,22 @@ export function useVolume() {
 		[send],
 	);
 
+	const askedMuted = useRef<boolean | null>(null);
+	const reportedMuted = reported?.isMuted ?? false;
+
+	if (askedMuted.current === reportedMuted) askedMuted.current = null;
+
+	const toggleMuted = useCallback(() => {
+		const next = !(askedMuted.current ?? reportedMuted);
+		askedMuted.current = next;
+		mute.mutate(next);
+	}, [mute.mutate, reportedMuted]);
+
 	return {
 		volume:
 			reported && pending !== null ? { ...reported, value: pending } : reported,
 		setValue,
-		setMuted: mute.mutate,
+		toggleMuted,
 		up: nudgeUp.mutate,
 		down: nudgeDown.mutate,
 	};

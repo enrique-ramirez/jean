@@ -424,6 +424,29 @@ export const touchDrag = async (
 // page.touchscreen, which has no way to hold. The synthetic click at the end is
 // part of the gesture: a hold that stopped swallowing it would also activate
 // whatever it opened the menu over.
+// Driven with the real mouse rather than dispatched events: pointer capture and
+// the element's own rect are what is under test.
+export const dragTo = async (
+	page: Page,
+	slider: Locator,
+	fraction: number,
+	steps = 20,
+) => {
+	const box = await slider.boundingBox();
+	const vertical = box!.height > box!.width;
+	const start = vertical
+		? { x: box!.x + box!.width / 2, y: box!.y + box!.height }
+		: { x: box!.x, y: box!.y + box!.height / 2 };
+	const end = vertical
+		? { x: box!.x + box!.width / 2, y: box!.y + box!.height * (1 - fraction) }
+		: { x: box!.x + box!.width * fraction, y: box!.y + box!.height / 2 };
+
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y, { steps });
+	await page.mouse.up();
+};
+
 export const pressAndHold = async (page: Page, target: Locator) => {
 	const box = (await target.boundingBox()) as {
 		x: number;

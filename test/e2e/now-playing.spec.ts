@@ -62,7 +62,7 @@ const listenHere = async (page: Page) => {
 			name: /Choose where to play|Playing on this device/,
 		})
 		.click();
-	await page.getByRole("button", { name: /This device/ }).click();
+	await page.getByRole("button", { name: "Listen here" }).click();
 	// `listeningPosition` answers null until audio is rendering.
 	await page.waitForFunction(
 		() => {

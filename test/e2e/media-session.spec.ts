@@ -24,7 +24,7 @@ const startListening = async (page: Page) => {
 			name: /Choose where to play|Playing on this device/,
 		})
 		.click();
-	await page.getByRole("button", { name: /This device/ }).click();
+	await page.getByRole("button", { name: "Listen here" }).click();
 	// The session follows the sound, and there is none until the element renders.
 	await page.waitForFunction(
 		() => {
@@ -36,10 +36,12 @@ const startListening = async (page: Page) => {
 	);
 };
 
+// By its name rather than by its role: the row is a button only where pressing it
+// would do something, which here it does -- this device is the only listener.
 const thePlayer = (page: Page) =>
 	page
 		.getByRole("group", { name: "Playing on" })
-		.getByRole("button", { name: /foobar2000/ });
+		.getByText("foobar2000", { exact: true });
 
 const session = (page: Page) =>
 	page.evaluate(() => ({

@@ -525,8 +525,9 @@ export function createState({
 		// Which `?format=` each stream was opened with, in order; `requests` records
 		// paths without their query.
 		streamFormats: [] as string[],
-		// Set by `DELETE /api/stream/hold`: somebody asked to hear the player
-		// alongside the listeners.
+		// Somebody asked to hear the player alongside the listeners, either by
+		// raising its fader — which is what `patchPlayer` watches for — or through
+		// `DELETE /api/stream/hold`. Cleared when the last listener leaves.
 		holdReleased: false,
 		// Devices this fake is streaming to, keyed by the id they named themselves
 		// with. Grouped, because one device routinely holds more than one socket.
@@ -694,7 +695,14 @@ export function createState({
 				const track = byId(item.playlistId)?.items[item.index];
 				if (track) mark(track, item.position);
 			}
-			if (body.volume != null) state.player.volume.value = body.volume;
+			if (body.volume != null) {
+				state.player.volume.value = body.volume;
+				// Mute is the volume, so a fader moved off the floor is how the
+				// component learns the mute it took is no longer its own -- and it
+				// never takes it again inside the same spell of listening.
+				if (body.volume > state.player.volume.min && this.playerHeld)
+					this.holdReleased = true;
+			}
 			if (body.isMuted != null) state.player.volume.isMuted = body.isMuted;
 			if (body.playbackState) state.player.playbackState = body.playbackState;
 			for (const option of body.options ?? []) {

@@ -1,6 +1,8 @@
 import {
+	dragTo,
 	expect,
 	type FakePlayer,
+	type Locator,
 	nowPlayingScreen,
 	openNowPlaying,
 	type Page,
@@ -22,7 +24,7 @@ const listenButton = (page: Page) =>
 	});
 
 const thisDevice = (page: Page) =>
-	page.getByRole("button", { name: /This device/ });
+	page.getByRole("button", { name: /^(Listen here|Stop listening here)$/ });
 
 // The element is created by the store and never mounted in the tree.
 const currentTime = (page: Page) =>
@@ -55,10 +57,15 @@ const startListening = async (page: Page) => {
 
 const picker = (page: Page) => page.getByRole("group", { name: "Playing on" });
 
-// By the player's name rather than by its note: the note is the whole point of
+// By its name rather than by its role: the row is a button only where pressing
+// it would do something, and by its note never -- the note is the whole point of
 // that row and says something different in every state it has.
 const thePlayer = (page: Page) =>
-	picker(page).getByRole("button", { name: /foobar2000/ });
+	picker(page).getByText("foobar2000", { exact: true });
+
+// One per device the sound reaches, and the same bars a playing row carries in a
+// track list.
+const marks = (within: Locator) => within.locator("[data-paused]");
 
 test.describe("listening on this device", () => {
 	test.use({ fooJean: {}, fooJeanToken: TOKEN });
@@ -110,6 +117,33 @@ test.describe("listening on this device", () => {
 		// Released, not merely paused: the connection has to go, or the component
 		// keeps counting this device against `maxConcurrentStreams`.
 		await expect.poll(() => currentTime(page)).toBe(0);
+	});
+
+	test("the row says it is listening, says how to stop, and is the stop", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await listenButton(page).click();
+
+		// Off, the row is an invitation rather than a description of a state.
+		await expect(picker(page)).toContainText("Listen here");
+		await expect(marks(picker(page))).toHaveCount(1);
+
+		await thisDevice(page).click();
+		await expect
+			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
+			.toBeGreaterThan(0);
+
+		// The mark moves rather than multiplying: the player goes silent for the
+		// length of the stream, so there is still exactly one device with the sound.
+		await expect(picker(page)).toContainText("Listening here");
+		await expect(picker(page)).toContainText("Stop");
+		await expect(marks(picker(page))).toHaveCount(1);
+
+		// Pressing the row it is on, rather than hunting for the player's.
+		await thisDevice(page).click();
+		await expect.poll(() => currentTime(page)).toBe(0);
+		await expect(picker(page)).toContainText("Listen here");
 	});
 
 	test("the toggle is this device's alone", async ({ page, player }) => {
@@ -504,37 +538,46 @@ test.describe("who else is listening", () => {
 		// Nothing is listening from here, so the reason is somebody else's doing
 		// and the row has to say whose.
 		await expect(page.getByRole("group", { name: "Playing on" })).toContainText(
-			"Muted while 3 devices are listening",
+			"Silent while 3 devices are listening",
 		);
 	});
 
-	test("asking for both outputs unmutes the player and does not stop anybody", async ({
+	test("the player's own fader is what gives it its sound back", async ({
 		page,
-		player,
+		isMobile,
 	}) => {
+		test.skip(isMobile, "dragging a fader is a mouse gesture");
+
 		await page.goto("/");
 		await listenButton(page).click();
 
-		// Named for its target: the status bar's own mute button answers to
-		// "Unmute" as well whenever the player is silent.
-		await page.getByRole("button", { name: "Unmute foobar2000" }).click();
+		// There is no mute button in this picker: the player's mute is its fader at
+		// the bottom of its travel, and the fader is how anyone comes back from it.
+		const fader = page.getByRole("slider", { name: "Volume on foobar2000" });
+		await expect(fader).toHaveAttribute("aria-valuenow", "0");
+		await expect(marks(picker(page))).toHaveCount(0);
 
-		await expect(picker(page)).toContainText("Where the player is");
-		await expect(
-			page.getByRole("button", { name: "Unmute foobar2000" }),
-		).toHaveCount(0);
+		await dragTo(page, fader, 0.6);
+
+		// The component reads the fader moving as the mute no longer being its own,
+		// so the row stops explaining a silence that is over.
+		await expect(picker(page)).not.toContainText("Silent while");
+		await expect(marks(picker(page))).toHaveCount(1);
 
 		// It adds an output rather than taking one away: everybody who was
 		// listening still is.
 		const roster = page.getByRole("list", { name: "Also listening" });
 		await expect(roster.getByRole("listitem")).toHaveCount(3);
+	});
 
-		// The preflight is a request too: this is a cross-origin call carrying a
-		// bearer token, so every one of them is two entries.
-		const released = requestsTo(player, "/api/stream/hold").filter(
-			(entry) => entry.method === "DELETE",
-		);
-		expect(released.length).toBe(1);
+	test("every device the sound reaches carries the same mark", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await listenButton(page).click();
+
+		const roster = page.getByRole("list", { name: "Also listening" });
+		await expect(marks(roster)).toHaveCount(3);
 	});
 });
 

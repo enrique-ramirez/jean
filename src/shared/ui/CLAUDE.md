@@ -6,7 +6,7 @@ Menus, gestures, drag and drop, notifications and animation — the pieces every
 
 **Anything ambient enough to need explaining gets explained once, where it happens.** The play-count shading introduces itself the first time it is actually on screen, in a popover anchored to its own control, and any click dismisses it for good. Not a modal on first run — that teaches things before there is anything to attach them to. It also needs a permanent home for whoever meets it later, which is the columns menu.
 
-Icons come from `lucide-react`, imported per-icon so they tree-shake.
+Icons come from `lucide-react`, imported per-icon so they tree-shake. **The playing mark is not one of them**: `Equalizer.tsx` is three animated bars and one component, shared by the track list's playing row and the output picker's rows, because "sound is coming out of this" has to look the same wherever it is said.
 
 ## Menus
 

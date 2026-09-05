@@ -1,23 +1,24 @@
-import { Check, Loader2, MonitorSpeaker, Play, RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { Loader2, MonitorSpeaker, Play, RotateCcw } from "lucide-react";
+import { useId, useState } from "react";
 
 import {
 	otherListeners,
 	playerHeld,
-	releasePlayer,
 	useAudience,
 	type Watching,
 } from "@/domain/player/audience";
 import { type ListenPhase, useListener } from "@/domain/player/useListener";
-import { useVolume } from "@/domain/player/usePlayer";
+import { useIsPlaying, useVolume } from "@/domain/player/usePlayer";
 import { useDismissable } from "@/shared/hooks/useDismissable";
+import { Equalizer } from "@/shared/ui/Equalizer";
 import styles from "./ListenHere.module.css";
-import { VolumeSlider } from "./Volume";
+import { VolumeGlyph, VolumeSlider } from "./Volume";
 
 // An output picker, and under it a roster.
 // The two are different kinds of thing and are drawn as such: the top rows move this device's sound, and the rest is who else has it. Audio cannot be sent to a device that is not already asking for it -- starting playback in a browser takes a gesture on that browser -- so there is nothing in the roster to press.
+// Every row that has the sound is marked with the same bars a playing track carries, which makes "where is it coming out" one glance rather than a vocabulary. Taken from AirPlay's card, along with the fader per row; the checkmark it marks the chosen device with is what was left behind, because two outputs can be live at once and a tick says one was picked.
 
-// What the row under "This device" says, in the states where it has something to say.
+// What the row under "Listen here" says, in the states where it has something to say.
 function explain(phase: ListenPhase): string | null {
 	switch (phase.kind) {
 		case "off":
@@ -39,16 +40,15 @@ function explain(phase: ListenPhase): string | null {
 	}
 }
 
-// Why the player is silent, in the words of whoever is reading it. The component says the silence is its doing; who it is doing it for comes off the roster.
-function explainSilence(
-	held: boolean,
+// Why the player's fader is sitting at the bottom, in the words of whoever is reading it. The component silences it for the audience, so who it is silent for comes off the roster.
+function silentFor(
 	isHere: boolean,
 	others: readonly { label: string }[],
 ): string {
-	if (!held) return "Muted";
-	if (isHere) return "Muted while you listen here";
-	if (others.length === 1) return `Muted while ${others[0].label} is listening`;
-	return `Muted while ${others.length} devices are listening`;
+	if (isHere) return "Silent while you and others listen";
+	if (others.length === 1)
+		return `Silent while ${others[0].label} is listening`;
+	return `Silent while ${others.length} devices are listening`;
 }
 
 const isBusy = (phase: ListenPhase) =>
@@ -76,6 +76,12 @@ const withOthers = (label: string, others: number) =>
 const roughly = (seconds: number) =>
 	seconds < 1.5 ? "about a second" : `about ${Math.round(seconds)} seconds`;
 
+// Only worth saying while both are audible, which is the one arrangement where the gap can be heard as an echo.
+const drift = (lagSeconds: number | null) =>
+	lagSeconds === null
+		? "Runs ahead of this device."
+		: `Runs ${roughly(lagSeconds)} ahead of this device.`;
+
 // Rounded to what the sentence can carry. Minutes past a minute, because "127 seconds" is nobody's unit.
 function forHowLong(seconds: number): string {
 	if (seconds < 60) return "just now";
@@ -99,8 +105,15 @@ export function ListenHere({ playerName }: { playerName: string }) {
 	const [isOpen, setIsOpen] = useState(false);
 	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false));
 
+	// Two of these are mounted at once on a screen that has both a status bar and a now-playing panel, so the ids a row points at cannot be spelled out.
+	const headingId = useId();
+	const othersId = useId();
+	const playerNoteId = useId();
+	const deviceNoteId = useId();
+
 	const { volume, setValue } = useVolume();
 	const playerMuted = volume?.isMuted === true;
+	const isPlaying = useIsPlaying();
 
 	const audience = useAudience(
 		audienceMode(canListen, isOpen || isOn, playerMuted),
@@ -113,104 +126,116 @@ export function ListenHere({ playerName }: { playerName: string }) {
 
 	const note = explain(phase);
 
-	// The tick means the sound comes out there, which stays literally true on a device that is not listening to anything.
+	// The sound comes out of the player unless something took it away, which stays true on a player nobody is listening to.
 	const playerAudible = !playerMuted;
 
-	// Only while this device is listening: elsewhere the status bar's own fader still points at the player, and a second one beside it would be the same control twice.
-	const showPlayerFader = isOn && playerAudible && Boolean(volume);
+	// Only the last device holding the sound can hand it back by stopping, and only where the player is silent is there anything to hand back. Anybody else stopping would leave it exactly as silent as it was, and a player already playing has nothing to be given.
+	const canHandBack = isOn && others.length === 0 && !playerAudible;
+
+	// What pressing the row would do, why its fader is at the bottom, or how far ahead of this device it runs -- at most one of the three is ever true at once, which is what keeps a pressable row from being drawn with no sign of what it does.
+	let playerNote: string | null = null;
+	if (playerAudible) playerNote = isOn ? drift(audience.lagSeconds) : null;
+	else if (canHandBack) playerNote = `Move the sound back to ${playerName}`;
+	else if (held && others.length > 0) playerNote = silentFor(isOn, others);
+
+	// The name and its mark, pressable or not: the row is a control only where pressing it would do something.
+	const playerFace = (
+		<>
+			<span className={styles.mark}>
+				{playerAudible ? (
+					<Equalizer label={`Playing on ${playerName}`} paused={!isPlaying} />
+				) : null}
+			</span>
+			<span className={styles.name}>{playerName}</span>
+		</>
+	);
 
 	return (
 		<div className={styles.anchor} ref={ref}>
 			{isOpen ? (
 				// On the now-playing screen this opens inside the swipe surface, and a flick down a roster is not a dismissal of the screen under it.
 				<div className={styles.popover} data-owns-touch="">
-					{/* Toggles rather than a radio group, because both outputs can be on at once. Pressing one still hands the sound over -- that is what the buttons do -- but the state underneath is two booleans, and saying otherwise would leave a reader hearing "1 of 2" while it plays in two rooms. */}
+					{/* Toggles rather than a radio group, because both outputs can be on at once. Pressing one still hands the sound over -- that is what the rows do -- but the state underneath is two booleans, and saying otherwise would leave a reader hearing "1 of 2" while it plays in two rooms. */}
 					{/* biome-ignore lint/a11y/useSemanticElements: a fieldset would bring a form control's styling and legend into a menu that is neither */}
-					<div role="group" aria-labelledby="listen-here-heading">
+					<div role="group" aria-labelledby={headingId}>
 						{/* Labelled by the heading rather than carrying a copy, or the group announces its own name twice. */}
-						<p className={styles.heading} id="listen-here-heading">
+						<p className={styles.heading} id={headingId}>
 							Playing on
 						</p>
 
-						{/* Two controls side by side rather than one inside the other: a button nested in a button is neither valid nor reachable. */}
+						{/* The fader is a control of its own beside the row rather than inside it: a slider nested in a button is neither valid nor reachable. */}
 						<div className={styles.row}>
-							<button
-								type="button"
-								className={styles.option}
-								aria-pressed={playerAudible}
-								onClick={() => (isOn ? disconnect() : undefined)}
-							>
-								<span className={styles.mark}>
-									{playerAudible ? <Check size={14} strokeWidth={2.5} /> : null}
-								</span>
-								<span className={styles.optionText}>
-									<span className={styles.optionName}>{playerName}</span>
-									<span className={styles.optionNote}>
-										{playerAudible
-											? "Where the player is"
-											: explainSilence(held, isOn, others)}
-									</span>
-								</span>
-							</button>
-
-							{/* Never stops anybody: it adds an output rather than taking one away, which is why a device that is not listening itself may press it too. */}
-							{held ? (
+							{canHandBack ? (
 								<button
 									type="button"
-									className={styles.inlineAction}
-									// Named for its target, because the status bar's own mute
-									// button is called "Unmute" too whenever the player is silent
-									// -- and pressing that one is the same act by accident.
-									aria-label={`Unmute ${playerName}`}
-									onClick={() => releasePlayer()}
+									className={`${styles.face} ${styles.option}`}
+									aria-label={`Move the sound back to ${playerName}`}
+									aria-describedby={playerNote ? playerNoteId : undefined}
+									onClick={() => disconnect()}
 								>
-									Unmute
+									{playerFace}
 								</button>
+							) : (
+								<div className={styles.face}>{playerFace}</div>
+							)}
+
+							{/* Always drawn, and never a mute button beside it: the player's mute is its fader at the bottom, and a control that disappears at zero is one there is no way back from. */}
+							{volume ? (
+								<span className={styles.fader}>
+									<VolumeGlyph volume={volume} />
+									<VolumeSlider
+										volume={volume}
+										onChange={setValue}
+										className={styles.slider}
+										label={`Volume on ${playerName}`}
+									/>
+								</span>
+							) : null}
+
+							{playerNote ? (
+								<p className={styles.note} id={playerNoteId}>
+									{playerNote}
+								</p>
 							) : null}
 						</div>
 
-						{showPlayerFader ? (
-							<div className={styles.alongside}>
-								<VolumeSlider
-									volume={volume}
-									onChange={setValue}
-									label={`Volume on ${playerName}`}
-								/>
-								{/* The real figure off the audible clock rather than a hedge, because "a second or two" is the difference between a room away and an echo. */}
-								<p className={styles.drift}>
-									{audience.lagSeconds === null
-										? "Runs ahead of this device."
-										: `Runs ${roughly(audience.lagSeconds)} ahead of this device.`}
-								</p>
-							</div>
-						) : null}
+						<div className={styles.row}>
+							<button
+								type="button"
+								className={`${styles.face} ${styles.option}`}
+								aria-pressed={isOn}
+								aria-label={isOn ? "Stop listening here" : "Listen here"}
+								aria-describedby={note ? deviceNoteId : undefined}
+								onClick={() => (isOn ? disconnect() : connect())}
+							>
+								<span className={styles.mark}>
+									{isBusy(phase) ? (
+										<Loader2
+											size={14}
+											strokeWidth={2.5}
+											className={styles.spin}
+										/>
+									) : phase.kind === "playing" ? (
+										<Equalizer paused={!isPlaying} />
+									) : null}
+								</span>
+								<span className={styles.name}>
+									{isOn ? "Listening here" : "Listen here"}
+								</span>
+								{/* Inside the row rather than beside it, because it is not a second action: the row is the switch, and this is what says which way it throws. */}
+								{isOn ? <span className={styles.stop}>Stop</span> : null}
+							</button>
 
-						<button
-							type="button"
-							className={styles.option}
-							aria-pressed={isOn}
-							onClick={() => (isOn ? undefined : connect())}
-						>
-							<span className={styles.mark}>
-								{isBusy(phase) ? (
-									<Loader2
-										size={14}
-										strokeWidth={2.5}
-										className={styles.spin}
-									/>
-								) : isOn ? (
-									<Check size={14} strokeWidth={2.5} />
-								) : null}
-							</span>
-							<span className={styles.optionText}>
-								<span className={styles.optionName}>This device</span>
-								{note ? (
-									<span className={styles.optionNote} data-tone={phase.kind}>
-										{note}
-									</span>
-								) : null}
-							</span>
-						</button>
+							{note ? (
+								<p
+									className={styles.note}
+									id={deviceNoteId}
+									data-tone={phase.kind}
+								>
+									{note}
+								</p>
+							) : null}
+						</div>
 					</div>
 
 					{/* Called straight out of the click with no await in front of it: an await loses the user gesture browsers require to start audio. */}
@@ -245,16 +270,16 @@ export function ListenHere({ playerName }: { playerName: string }) {
 
 					{others.length > 0 ? (
 						<>
-							<p className={styles.heading} id="listen-here-others">
+							<p className={styles.heading} id={othersId}>
 								Also listening
 							</p>
 							{/* A list and not a menu: there is nothing here to press. */}
-							<ul
-								className={styles.roster}
-								aria-labelledby="listen-here-others"
-							>
+							<ul className={styles.roster} aria-labelledby={othersId}>
 								{others.map((device) => (
 									<li className={styles.listener} key={device.deviceId}>
+										<span className={styles.mark}>
+											<Equalizer paused={!isPlaying} />
+										</span>
 										<span className={styles.listenerName}>{device.label}</span>
 										<span className={styles.listenerFor}>
 											{forHowLong(device.listeningFor)}

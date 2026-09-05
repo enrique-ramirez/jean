@@ -2,7 +2,6 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import {
 	fetchStreamListeners,
-	releaseOutputHold,
 	type StreamListener,
 	type StreamListeners,
 } from "@/shared/api/fooJean";
@@ -94,21 +93,6 @@ export function useAudience(watching: Watching): Audience {
 		[watching],
 	);
 	return useSyncExternalStore(store.subscribe, read, read);
-}
-
-// Optimistic, because the roster is on a four-second poll and a button that takes four seconds to answer reads as broken. The next poll is what confirms it.
-export function releasePlayer() {
-	const target = listenTarget();
-	if (!target) return;
-
-	if (snapshot.listeners) {
-		publish({
-			...snapshot,
-			listeners: { ...snapshot.listeners, playerMuted: false },
-		});
-	}
-
-	void releaseOutputHold(target.origin, target.token).then(() => void poll());
 }
 
 export interface LabelledListener extends StreamListener {

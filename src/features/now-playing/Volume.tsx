@@ -15,6 +15,18 @@ const iconFor = (percent: number, isMuted?: boolean) => {
 	return percent < 50 ? Volume1 : Volume2;
 };
 
+// The level as a glyph: two arcs, one arc, or a crossed speaker at the bottom of the travel. Never a control on its own -- where a fader is visible, a mute is only ever the fader at zero.
+export function VolumeGlyph({
+	volume,
+	size = 15,
+}: {
+	volume: VolumeState | null;
+	size?: number;
+}) {
+	const Icon = iconFor(volumePercent(volume), volume?.isMuted);
+	return <Icon size={size} strokeWidth={2} aria-hidden="true" />;
+}
+
 // The press is the caller's: it mutes on desktop and opens the fader on a phone.
 function VolumeButton({
 	volume,
@@ -28,7 +40,6 @@ function VolumeButton({
 	label?: string;
 }) {
 	const percent = volumePercent(volume);
-	const Icon = iconFor(percent, volume?.isMuted);
 
 	return (
 		<button
@@ -40,7 +51,7 @@ function VolumeButton({
 			title={volume?.isMuted ? "Muted" : `${label} ${percent}%`}
 			{...props}
 		>
-			<Icon size={17} strokeWidth={2} aria-hidden="true" />
+			<VolumeGlyph volume={volume} size={17} />
 		</button>
 	);
 }

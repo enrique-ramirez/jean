@@ -1,8 +1,9 @@
 // The box Playwright hands back from boundingBox(), which it does not name.
 type BoundingBox = { x: number; y: number; width: number; height: number };
 
-import type { FakePlayer, Locator, Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	dragTo,
 	expect,
 	openLibrary,
 	requestsTo,
@@ -27,29 +28,6 @@ const volumesSent = (player: FakePlayer) =>
 	requestsTo(player, "/api/player")
 		.map((entry) => entry.body?.volume)
 		.filter((value) => value !== undefined);
-
-// Driven with the real mouse rather than dispatched events: pointer capture and
-// the element's own rect are what is under test.
-const dragTo = async (
-	page: Page,
-	slider: Locator,
-	fraction: number,
-	steps = 20,
-) => {
-	const box = await slider.boundingBox();
-	const vertical = box!.height > box!.width;
-	const start = vertical
-		? { x: box!.x + box!.width / 2, y: box!.y + box!.height }
-		: { x: box!.x, y: box!.y + box!.height / 2 };
-	const end = vertical
-		? { x: box!.x + box!.width / 2, y: box!.y + box!.height * (1 - fraction) }
-		: { x: box!.x + box!.width * fraction, y: box!.y + box!.height / 2 };
-
-	await page.mouse.move(start.x, start.y);
-	await page.mouse.down();
-	await page.mouse.move(end.x, end.y, { steps });
-	await page.mouse.up();
-};
 
 test.describe("the volume slider", () => {
 	test.skip(({ isMobile }) => isMobile, "dragging a fader is a mouse gesture");

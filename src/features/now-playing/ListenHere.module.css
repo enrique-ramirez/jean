@@ -40,9 +40,9 @@
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	/* Wide enough that "Muted while you listen here" and the Unmute beside it
-	   share one line, which is the longest thing a row has to hold. */
-	width: 288px;
+	/* Wide enough for a name and a fader on one line, and narrow enough to clear
+	   both edges of the smallest phone it is right-aligned in. */
+	width: min(320px, calc(100vw - 24px));
 	padding: 8px;
 	border: 1px solid var(--border-strong);
 	border-radius: var(--radius-md);
@@ -74,26 +74,33 @@
 	color: var(--faint);
 }
 
-/* Holds the option and, where there is one, the Unmute beside it. The option
-   still takes the whole width it is not using, so the names stay in one column. */
+/* The name and the fader are one line and the note is the next, so the row is a
+   grid rather than two nested boxes: the note lines up under the name whichever
+   of the two above it is drawn. */
 .row {
-	display: flex;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: center;
-	gap: 4px;
 }
 
-.option {
+.face {
 	display: flex;
-	align-items: flex-start;
+	align-items: center;
 	gap: 8px;
-	width: 100%;
+	min-width: 0;
 	padding: 7px 8px;
+	color: var(--text);
+}
+
+/* A row is pressable only where pressing it would do something, so the hover and
+   the button reset are their own class. */
+.option {
+	width: 100%;
 	border: 0;
 	border-radius: var(--radius-sm);
 	background: none;
 	font: inherit;
 	text-align: left;
-	color: var(--text);
 	transition: background 0.12s var(--ease);
 }
 
@@ -101,13 +108,8 @@
 	background: var(--surface-sunken);
 }
 
-.row > .option {
-	flex: 1 1 auto;
-	min-width: 0;
-}
-
-/* A fixed column so the two names line up whether or not either is ticked --
-   a checkmark that shifts the label is the list jumping as you choose. */
+/* A fixed column so every name lines up whether or not the sound reaches it --
+   a mark that shifts the label is the list jumping as you choose. */
 .mark {
 	display: grid;
 	place-items: center;
@@ -117,19 +119,35 @@
 	color: var(--accent-text);
 }
 
-.optionText {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-	min-width: 0;
-}
-
-.optionName {
+.name {
+	overflow: hidden;
 	font-size: 0.8125rem;
 	font-weight: 550;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.optionNote {
+/* Pushed to the far end of the row it stops, and quiet: the row is the switch,
+   so this says which way it throws rather than offering a second thing to aim at. */
+.stop {
+	flex: 0 0 auto;
+	margin-left: auto;
+	padding-left: 8px;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.option:hover .stop {
+	color: var(--text);
+}
+
+/* The second line of the row, indented to where the name starts: 8px of popover,
+   8px of row padding and the 16px mark column. */
+.note {
+	grid-column: 1 / -1;
+	margin: -2px 0 4px;
+	padding: 0 8px 0 32px;
 	font-size: 0.6875rem;
 	line-height: 1.35;
 	color: var(--muted);
@@ -137,44 +155,21 @@
 
 /* The states where something has gone wrong say so in the colour as well as in
    the words. `busy` is deliberately not among them: it is a queue, not a fault. */
-.optionNote[data-tone="failed"] {
+.note[data-tone="failed"] {
 	color: var(--danger, var(--accent-text));
 }
 
-/* Secondary by construction: it adds an output rather than choosing one, so it
-   reads as a link beside the row rather than as a second thing to aim at. */
-.inlineAction {
-	flex: 0 0 auto;
-	align-self: center;
-	padding: 6px 8px;
-	border: 0;
-	border-radius: var(--radius-sm);
-	background: none;
-	font: inherit;
-	font-size: 0.6875rem;
-	font-weight: 600;
-	color: var(--accent-text);
-}
-
-.inlineAction:hover {
-	background: var(--surface-sunken);
-}
-
-/* Indented under the row it belongs to, by exactly the width of the checkmark
-   column, so the fader starts where the name does. */
-.alongside {
+.fader {
 	display: flex;
-	flex-direction: column;
+	align-items: center;
+	flex: 0 0 auto;
 	gap: 6px;
-	margin: 2px 0 6px;
-	padding: 0 8px 0 32px;
+	padding-right: 8px;
+	color: var(--muted);
 }
 
-.drift {
-	margin: 0;
-	font-size: 0.6875rem;
-	line-height: 1.35;
-	color: var(--muted);
+.slider {
+	width: 104px;
 }
 
 .roster {
@@ -190,10 +185,9 @@
    that lights up under the cursor promises an action this list does not have. */
 .listener {
 	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
+	align-items: center;
 	gap: 8px;
-	padding: 5px 8px 5px 32px;
+	padding: 5px 8px;
 	font-size: 0.8125rem;
 }
 
@@ -207,6 +201,7 @@
 
 .listenerFor {
 	flex: 0 0 auto;
+	margin-left: auto;
 	font-size: 0.6875rem;
 	font-variant-numeric: tabular-nums;
 	color: var(--faint);
@@ -285,15 +280,17 @@
 		touch-action: none;
 	}
 
-	.option {
+	.face {
 		padding: 10px 8px;
 	}
 
-	.inlineAction {
-		padding: 10px 8px;
+	/* A thumb is about 44px of contact and the fader shares its line with a name,
+     so the travel gives up what the target needs. */
+	.slider {
+		width: 88px;
 	}
 
 	.listener {
-		padding: 8px 8px 8px 32px;
+		padding: 8px;
 	}
 }

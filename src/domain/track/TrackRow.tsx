@@ -6,6 +6,7 @@ import {
 import { formatTime } from "@/domain/player/position";
 import type { TrackColumns } from "@/shared/api/types";
 import { Artwork } from "@/shared/ui/Artwork";
+import { Equalizer } from "@/shared/ui/Equalizer";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
 import type { Column } from "./columns";
 import { FIELD, number, timestamp, value } from "./fields";
@@ -125,16 +126,6 @@ function Cell({
 	return <span className={className}>{value(row, column.field) ?? "--"}</span>;
 }
 
-function NowPlayingBars() {
-	return (
-		<span className={styles.equalizer} role="img" aria-label="Now playing">
-			<i />
-			<i />
-			<i />
-		</span>
-	);
-}
-
 function TrackRowComponent({
 	row,
 	index,
@@ -211,7 +202,7 @@ function TrackRowComponent({
 		>
 			<span className={`${styles.index} tabular`}>
 				{isActive && isPlaying ? (
-					<NowPlayingBars />
+					<Equalizer label="Now playing" />
 				) : disc !== null ? (
 					`${disc}.${trackNumber}`
 				) : (

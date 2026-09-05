@@ -405,26 +405,6 @@ export function leaveStream(origin: string, token: string, deviceId: string) {
 	}).catch(() => {});
 }
 
-// Asks for the player to be audible alongside the listeners, which is what turns the handoff into two outputs at once.
-// There is no call that takes the hold back: when the two should be one is the component's to decide, and it decides again as soon as everybody stops listening.
-export async function releaseOutputHold(
-	origin: string,
-	token: string,
-): Promise<boolean> {
-	try {
-		const response = await withTimeout(PROBE_TIMEOUT_MS, (signal) =>
-			fetch(`${origin}/api/stream/hold`, {
-				method: "DELETE",
-				headers: bearer(token),
-				signal,
-			}),
-		);
-		return response.ok;
-	} catch {
-		return false;
-	}
-}
-
 // ---- pairing -----------------------------------------------------------------
 
 // Named for what the user has to do about it: the common failure is a window nobody opened.

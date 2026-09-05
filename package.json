@@ -16,7 +16,8 @@
 		"test:unit": "node --test \"test/unit/*.test.ts\"",
 		"test:e2e": "playwright test",
 		"test:ui": "playwright test --ui",
-		"fake": "node test/fake-api/main.ts --port 8880"
+		"fake": "node test/fake-api/main.ts --port 8880",
+		"test:live": "playwright test --project=live"
 	},
 	"dependencies": {
 		"@tanstack/react-hotkeys": "^0.10.0",

@@ -107,6 +107,22 @@ PLAYER=<player-host>:8880 node test/measure-library.ts
 
 It compares the library read against the playlist read, sweeps range sizes to separate per-call cost from per-item cost, and tries the chunking strategies. Answers go in a `CLAUDE.md` or in `API.md`, never in a comment.
 
+## Against a real player
+
+`test/live/` is a second, much smaller suite that drives a player that is actually running foobar2000, and it replaces the fake suite rather than joining it: setting `LIVE` swaps the projects in `playwright.config.ts` for a single serial one, so `pnpm test` is untouched.
+
+```sh
+LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='D:\SomeFolder' pnpm test:live
+```
+
+`LIVE` is the url the app is served at, not the origin — beefweb serves its own client at the root and Jean under a `urlMappings` prefix — and the api origin is taken from it.
+
+**It exists for rule 9 below.** These are the comparisons where that matters: the join between the `%path%` the player reports playing and the row Jean drew, a cover that has to decode rather than merely have a `src`, an update that arrives on a real SSE stream, `fold()` against tags read off real files, and the `foo_jean` discovery chain against a real component rather than a second node server.
+
+**Nothing here may assume what is in the library.** Counts, titles, which row carries a rating and whether any artist is accented are all read off the player first and asserted against; a spec that cannot be satisfied skips itself and says why. That is why the suite is short: an assertion that survives an unknown library has to be about a relationship rather than a value.
+
+**`LIVE_LIBRARY_ROOT` is required and has no default.** These specs play tracks, write the play queue and can write rating tags, so the worker fixture reads the whole library first and refuses to start if one track sits outside the named folder. The check runs before any page is opened, so a wrong answer costs nothing.
+
 ## Writing a spec
 
 `test/e2e/fixtures.ts` gives every test its own player, on its own port, and carries the helpers every spec would otherwise write for itself — `openLibrary`, `openSidebar`, `trackRow`, `scratchOf`, `playedFrom`, `trackPlayed`, `pressAndHold`, `statusBar`, `viewHeader`. Anything more than one spec needs belongs there.

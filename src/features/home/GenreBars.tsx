@@ -8,8 +8,6 @@ export interface GenreBar {
 	share: number;
 }
 
-// A distribution rather than a time series, because `%lastfm_last_played%` records only the most recent play and there is no history to plot.
-// Bars are scaled against the largest genre rather than against the whole library, where the top few genres differ by a percentage point and would draw as identical slivers.
 export function GenreBars({ genres }: { genres: GenreBar[] }) {
 	const largest = genres.reduce(
 		(most, genre) => Math.max(most, genre.count),
@@ -19,9 +17,6 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 
 	return (
 		<section className={styles.block} aria-labelledby="home-genres">
-			{/* The heading opens the index, exactly as a shelf's heading opens the shelf. Fourteen bars are
-			    a distribution and not a list of everywhere you can go: on a real library that is fourteen
-			    of a hundred and forty, and without this the other hundred and twenty-six have no door. */}
 			<h2 className={styles.heading} id="home-genres">
 				<a className={styles.open} href={GENRES_HREF}>
 					Genres
@@ -37,7 +32,7 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 			<ul className={styles.bars}>
 				{genres.map((genre) => (
 					<li key={genre.name}>
-						{/* A route rather than a search: beefweb's search index covers title, artist and album and not genre. */}
+						{/* A route rather than a search: beefweb's search index covers title, artist and album, not genre. */}
 						<a
 							className={styles.bar}
 							href={genreHref(genre.name)}

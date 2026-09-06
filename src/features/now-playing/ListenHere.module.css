@@ -22,16 +22,10 @@
 	color: var(--text);
 }
 
-/* Where the sound is, readable without opening anything -- the one idea worth
-   taking from Sonos's room tray. Same accent the shuffle mode uses, and for the
-   same reason: this is a state to read at a glance, not a button to aim at. */
 .button[data-listening="true"] {
 	color: var(--accent-text);
 }
 
-/* A menu rather than the fader's pill: this has rows to pick between, and a
-   pill-shaped panel around a list reads as a chip that grew. Right-aligned to
-   the button, which sits near the edge of the screen. */
 .popover {
 	position: absolute;
 	bottom: calc(100% + 10px);
@@ -40,20 +34,11 @@
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	/* Wide enough for a name and a fader on one line, and narrow enough to clear
-	   both edges of the smallest phone it is right-aligned in. */
 	width: min(320px, calc(100vw - 24px));
 	padding: 8px;
 	border: 1px solid var(--border-strong);
-	/* The app's panel radius, as the action menu and the dropdown both use. This
-     asked for a `--radius-md` that has never existed, so it resolved to nothing
-     and came out square -- the one panel in Jean with hard corners, which is
-     most of what read as it not belonging here. */
 	border-radius: var(--radius);
 	background: var(--surface-raised);
-	/* A hairline of light along the top edge, the same one `ActionMenu` carries:
-     it is what stops a dark panel on a dark page reading as a hole rather than
-     as something lying on top of the page. */
 	box-shadow:
 		var(--shadow),
 		inset 0 1px 0 oklch(1 0 0 / 0.05);
@@ -83,9 +68,6 @@
 	color: var(--faint);
 }
 
-/* The name and the fader are one line and the note is the next, so the row is a
-   grid rather than two nested boxes: the note lines up under the name whichever
-   of the two above it is drawn. */
 .row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
@@ -101,8 +83,6 @@
 	color: var(--text);
 }
 
-/* A row is pressable only where pressing it would do something, so the hover and
-   the button reset are their own class. */
 .option {
 	width: 100%;
 	border: 0;
@@ -117,8 +97,6 @@
 	background: var(--surface-sunken);
 }
 
-/* A fixed column so every name lines up whether or not the sound reaches it --
-   a mark that shifts the label is the list jumping as you choose. */
 .mark {
 	display: grid;
 	place-items: center;
@@ -136,8 +114,6 @@
 	white-space: nowrap;
 }
 
-/* Pushed to the far end of the row it stops, and quiet: the row is the switch,
-   so this says which way it throws rather than offering a second thing to aim at. */
 .stop {
 	flex: 0 0 auto;
 	margin-left: auto;
@@ -151,8 +127,6 @@
 	color: var(--text);
 }
 
-/* The second line of the row, indented to where the name starts: 8px of popover,
-   8px of row padding and the 16px mark column. */
 .note {
 	grid-column: 1 / -1;
 	margin: -2px 0 4px;
@@ -162,8 +136,6 @@
 	color: var(--muted);
 }
 
-/* The states where something has gone wrong say so in the colour as well as in
-   the words. `busy` is deliberately not among them: it is a queue, not a fault. */
 .note[data-tone="failed"] {
 	color: var(--danger, var(--accent-text));
 }
@@ -190,8 +162,6 @@
 	list-style: none;
 }
 
-/* Nothing here is pressable, so it carries no hover and no target padding: a row
-   that lights up under the cursor promises an action this list does not have. */
 .listener {
 	display: flex;
 	align-items: center;
@@ -216,8 +186,6 @@
 	color: var(--faint);
 }
 
-/* Sits on the icon rather than beside it: the strip has no room for a second
-   glyph, and the number is only ever one digit short of maxConcurrentStreams. */
 .badge {
 	position: absolute;
 	top: 0;
@@ -282,10 +250,6 @@
 	}
 }
 
-/* Right-aligned to the screen rather than to the button, and vertically still
-   against the button. `--listen-gap` is how far the button's own right edge is
-   from the screen's, measured when the panel opens, so subtracting it walks the
-   panel out to the margin. Why, in `CLAUDE.md`. */
 @media (max-width: 720px) {
 	.popover {
 		right: calc(10px - var(--listen-gap, 4px));
@@ -294,8 +258,6 @@
 }
 
 @media (hover: none), (pointer: coarse) {
-	/* The panel claims the gesture, so a thumb straying off the track mid-drag is
-     still the fader's. Same rule as the volume popover. */
 	.popover {
 		touch-action: none;
 	}
@@ -304,8 +266,6 @@
 		padding: 10px 8px;
 	}
 
-	/* A thumb is about 44px of contact and the fader shares its line with a name,
-     so the travel gives up what the target needs. */
 	.slider {
 		width: 88px;
 	}

@@ -16,7 +16,6 @@ const iconFor = (percent: number, isMuted?: boolean) => {
 	return percent < 50 ? Volume1 : Volume2;
 };
 
-// The level as a glyph: two arcs, one arc, or a crossed speaker at the bottom of the travel. Never a control on its own -- where a fader is visible, a mute is only ever the fader at zero.
 export function VolumeGlyph({
 	volume,
 	size = 15,
@@ -28,7 +27,6 @@ export function VolumeGlyph({
 	return <Icon size={size} strokeWidth={2} aria-hidden="true" />;
 }
 
-// The press is the caller's: it mutes on desktop and opens the fader on a phone.
 function VolumeButton({
 	volume,
 	onPress,
@@ -37,7 +35,6 @@ function VolumeButton({
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
 	volume: VolumeState | null;
 	onPress?: () => void;
-	/** Which volume this is: the control retargets to whichever device the sound is coming out of. */
 	label?: string;
 }) {
 	const percent = volumePercent(volume);
@@ -118,7 +115,6 @@ export function VolumeSlider({
 	);
 }
 
-// Mobile. A column above the button rather than taking over the row, so the button here only opens and closes.
 export function VolumePopover({
 	volume,
 	onChange,
@@ -134,7 +130,6 @@ export function VolumePopover({
 	return (
 		<div className={styles.popoverAnchor} ref={ref}>
 			{isOpen ? (
-				// The whole panel, not just the track: a finger that strays off the fader mid-drag is still the fader's, and `useSwipe` must not read the tail of it as a flick at whatever the popover is sitting on.
 				<div className={styles.popover} data-owns-touch="">
 					<VolumeSlider
 						volume={volume}

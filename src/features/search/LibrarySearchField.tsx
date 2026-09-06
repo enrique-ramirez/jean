@@ -5,7 +5,6 @@ import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { Input } from "@/shared/ui/Input";
 import styles from "./LibrarySearchField.module.css";
 
-// Persistent and always visible rather than a shortcut with an icon bolted on: a phone has no keyboard, so the bindings are the shortcut and not the interface.
 export function LibrarySearchField({
 	search,
 	library,
@@ -27,7 +26,6 @@ export function LibrarySearchField({
 			return;
 		}
 
-		// Hands the results over to the list: the cursor and every playlist binding are inert while a text field holds focus.
 		if (event.key === "Enter" || event.key === "ArrowDown") {
 			event.preventDefault();
 			event.currentTarget.blur();
@@ -46,7 +44,6 @@ export function LibrarySearchField({
 			onFocus={search.onFocus}
 			onBlur={search.onBlur}
 			onKeyDown={onKeyDown}
-			// Keyed on whether there is a library at all, not on whether a playlist stands in for one: with the media library API there is no playlist and nothing to set up.
 			placeholder={
 				library.needsSetup ? "Set up your library" : "Search your library"
 			}

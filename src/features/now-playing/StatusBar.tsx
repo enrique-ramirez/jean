@@ -23,7 +23,6 @@ import { ShuffleToggle } from "./ShuffleToggle";
 import styles from "./StatusBar.module.css";
 import { Volume, VolumePopover } from "./Volume";
 
-// Its own leaf so the animation frame loop repaints two spans rather than the whole bar.
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	const [showRemaining, setShowRemaining] = useStoredState(
 		"jean.timeRemaining",
@@ -32,7 +31,6 @@ function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	const elapsed = useElapsedSeconds(snapshot);
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
 
-	// The player reports no duration for a stream, so only the reading falls back; the preference is kept either way.
 	const isCountingDown = showRemaining && duration > 0;
 
 	return (
@@ -67,8 +65,7 @@ export function StatusBar({
 	const { isPending, isError, error } = usePlayer();
 	const snapshot = useAudiblePlayer();
 	const isCompactViewport = useIsCompactViewport();
-	// While the sound is on this device the player's volume sits before the capture, so a fader pointed at it would move and change nothing audible.
-	// Where the platform gives no level at all, as iOS does, the control is dropped rather than drawn dead.
+	// iOS exposes no level to set, so the fader is dropped rather than drawn dead.
 	const {
 		isHere,
 		volume: shownVolume,
@@ -77,7 +74,6 @@ export function StatusBar({
 		hasFader,
 	} = useAudibleVolume();
 
-	// On the row rather than the footer, so it starts below the seek bar: that strip owns the vertical axis, and a swipe beginning there is a scrub.
 	const swipeUp = useSwipe({ onUp: onRevealNowPlaying });
 
 	const playPause = usePlayPause();

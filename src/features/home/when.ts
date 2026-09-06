@@ -1,6 +1,5 @@
 const DAY = 24 * 60 * 60 * 1000;
 
-// `numeric: 'auto'` is what turns "1 day ago" into "yesterday".
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 const monthAndYear = new Intl.DateTimeFormat(undefined, {
 	month: "long",

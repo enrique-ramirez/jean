@@ -8,7 +8,6 @@ import { useNowPlayingTrack } from "./useNowPlayingTrack";
 const read = (row: TrackColumns, field: number) =>
 	readValue(readNowPlaying(row, field));
 
-// `n of m` where the total is known, `n` where it is not. Both halves happen: `%totaltracks%` is far rarer in tags than `%totaldiscs%`.
 function counted(row: TrackColumns, position: number, total: number) {
 	const at = read(row, position);
 	if (!at) return null;
@@ -16,12 +15,10 @@ function counted(row: TrackColumns, position: number, total: number) {
 	return of && of !== at ? `${at} of ${of}` : at;
 }
 
-// A date tag is a messy user field: mostly year-only, sometimes a full ISO date, sometimes neither (`1997, 1997-02-10`, `2011-00`).
 function released(row: TrackColumns) {
 	const year = read(row, F.year);
 	const date = read(row, F.date);
 	if (!date || date === year) return year;
-	// Parsed only where it is a full ISO date: rendering `2011-00` would invent a month nobody tagged.
 	return /^\d{4}-\d{2}-\d{2}$/.test(date)
 		? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
 				year: "numeric",
@@ -31,7 +28,6 @@ function released(row: TrackColumns) {
 		: date;
 }
 
-// The raw string where it will not parse: a tag Jean cannot read is still something the owner can act on, which a row drawn as blank would not be.
 function played(raw: string | null) {
 	if (!raw) return null;
 	const at = readTimestamp(raw);
@@ -47,7 +43,6 @@ function played(raw: string | null) {
 interface Row {
 	label: string;
 	value: string | null;
-	/** Where the value is somewhere to go rather than something to read. */
 	href?: string;
 }
 
@@ -56,7 +51,6 @@ interface Group {
 	rows: Row[];
 }
 
-// A tag with nothing in it is not a link, and neither is a field the player answered `?` for.
 const genreOf = (genre: string | null) =>
 	genre ? genreHref(genre) : undefined;
 
@@ -73,8 +67,6 @@ function groupsOf(row: TrackColumns): Group[] {
 				{ label: "Album", value: read(row, F.album) },
 				{ label: "Album artist", value: read(row, F.albumArtist) },
 				{ label: "Released", value: released(row) },
-				// The one value in here that is also a place. `genreHref` takes the tag whole, the way
-				// `refsOfGenre` matches it, so what opens is exactly the set this track is counted in.
 				{
 					label: "Genre",
 					value: read(row, F.genre),
@@ -110,7 +102,6 @@ function groupsOf(row: TrackColumns): Group[] {
 		{
 			title: "Listening",
 			rows: [
-				// `readValue` reads `'0'` as a value rather than absence, so this row shows a never-played track and vanishes where no component supplies play counts.
 				{
 					label: "Plays",
 					value: read(row, F.playCount) === null ? null : String(plays),
@@ -128,7 +119,6 @@ export function Details() {
 	if (isPending) return <p className={styles.notice}>Reading the tags…</p>;
 	if (!details) return <p className={styles.notice}>Nothing playing.</p>;
 
-	// Empty rows are dropped and a group with none left goes whole: which tags a file carries varies too much for a fixed table.
 	const groups = groupsOf(details.row)
 		.map((group) => ({
 			...group,

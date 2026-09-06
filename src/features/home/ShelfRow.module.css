@@ -1,11 +1,4 @@
 .shelf {
-	/* Two numbers own the row. The cards, the snap edge, the fade and the arrows
-     all derive from them, so a breakpoint changes a value rather than a rule --
-     and the heading and the first cover cannot drift out of line. */
-	/* Width and height are separate because the card is deliberately taller than
-     the sleeve is square. The artwork fills it and loses a little from each
-     side, which costs less than it sounds: the extra height goes to the words,
-     and the bottom of the picture is dissolving there anyway. */
 	--cover: 180px;
 	--cover-h: 192px;
 	--gutter: 24px;
@@ -30,10 +23,6 @@
 	color: var(--text);
 }
 
-/* Hover turns the words accent, which is what an album's name already does on
-   the card below it -- one rule for "this piece of text goes somewhere",
-   learned once. No underline: it would be the only one on the screen, and the
-   chevron is doing the work. */
 .open {
 	display: inline-flex;
 	align-items: center;
@@ -45,15 +34,9 @@
 
 .open:hover,
 .open:focus-visible {
-	/* Base is `inherit`, which is `--text`. Same reason as the album card. */
 	color: var(--accent-text);
 }
 
-/* Present rather than revealed. A chevron that only appears under the pointer
-   is invisible on a phone, which is half of where this is used, and a row of
-   headings that each grow a mark on approach is busier than one that simply
-   has them. Quiet enough at --faint that six of them down the page read as
-   punctuation. */
 .chevron {
 	color: var(--faint);
 	transition:
@@ -78,8 +61,6 @@
 	position: relative;
 }
 
-/* Centred on the artwork rather than on the card: the caption under the cover
-   would pull them off the optical centre of the thing they scroll. */
 .arrow {
 	position: absolute;
 	top: calc(4px + var(--cover-h) / 2);
@@ -108,8 +89,6 @@
 	right: calc(var(--gutter) - 17px);
 }
 
-/* Only where there is something to reach. An arrow at the end of a row that
-   cannot move is a control that lies about being available. */
 .shelf:hover .arrow:not(:disabled),
 .arrow:focus-visible {
 	opacity: 1;
@@ -123,26 +102,17 @@
 .scroller {
 	display: flex;
 	gap: 18px;
-	/* The gutter is padding rather than margin so the first and last cards can
-     scroll clear of the edge instead of being clipped against it. */
 	padding: 4px var(--gutter) 4px;
 	overflow-x: auto;
 	overflow-y: hidden;
 	scroll-snap-type: x proximity;
-	/* Without this the row opens with its cards jammed against the sidebar,
-     out of line with the heading above them. `scroll-snap-align: start` aligns
-     an item to the *scrollport* edge, which sits inside the padding -- so the
-     browser scrolls the padding away to satisfy the snap before anyone has
-     touched it. `scroll-padding` moves the snap edge back to where the text
-     starts, which is the line the whole row should hang from. */
+	/* `scroll-snap-align: start` aligns an item to the scrollport edge, which sits
+	   inside the padding -- so the browser scrolls the gutter away to satisfy the snap
+	   before anyone has touched the row. This moves the snap edge back. */
 	scroll-padding-inline: var(--gutter);
 	scrollbar-width: none;
 	overscroll-behavior-x: contain;
 
-	/* Fades to transparent rather than to a colour, so it needs no knowledge of
-     the background and is correct in both themes. Only on the side that has
-     something hidden behind it: a permanent fade on a row you have already
-     scrolled to the end of is decoration pretending to be information. */
 	--fade-start: 0px;
 	--fade-end: 0px;
 	mask-image: linear-gradient(
@@ -166,7 +136,6 @@
 	display: none;
 }
 
-/* Touch has the gesture already; the arrows would only cover artwork. */
 @media (hover: none), (pointer: coarse) {
 	.arrow {
 		display: none;
@@ -181,10 +150,6 @@
 		gap: 8px;
 	}
 
-	/* The blurb goes. On a phone the shelves are stacked close enough that a
-     second line of grey under every title turns the screen into more reading
-     than looking -- and the titles already say it. "Most played" needs no gloss;
-     "Worth a better copy" earns its one on a desktop, where there is room. */
 	.blurb {
 		display: none;
 	}

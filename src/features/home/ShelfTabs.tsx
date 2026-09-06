@@ -6,7 +6,6 @@ import { ShelfScroller } from "./ShelfScroller";
 import tabs from "./ShelfTabs.module.css";
 import type { FilledShelf } from "./shelves";
 
-// Every shelf that is not Recently played, in one row. The heading is the link and opens whichever tab is showing.
 export function ShelfTabs({
 	shelves,
 	onPlayAlbum,
@@ -14,7 +13,6 @@ export function ShelfTabs({
 	shelves: FilledShelf<CoveredAlbum>[];
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 }) {
-	// Validated against what actually filled: a library that has stopped qualifying for the stored shelf falls back to the first rather than rendering nothing.
 	const [chosen, choose] = useStoredState<string | null>(
 		"jean.homeShelf",
 		null,

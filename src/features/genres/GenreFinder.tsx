@@ -4,8 +4,6 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Input } from "@/shared/ui/Input";
 import styles from "./GenreFinder.module.css";
 
-// The centre of the page rather than a control in a corner: an index of a hundred and forty is
-// reached by typing, and everything else here is for the visit where you do not know what you want.
 export function GenreFinder({
 	query,
 	onChange,
@@ -37,8 +35,6 @@ export function GenreFinder({
 			return;
 		}
 
-		// The one place Jean takes Tab, and only while there is something to accept, so an empty field
-		// still tabs onward.
 		const caretAtEnd =
 			event.currentTarget.selectionStart === query.length &&
 			event.currentTarget.selectionEnd === query.length;
@@ -70,7 +66,6 @@ export function GenreFinder({
 			inputRef={inputRef}
 			leading={<Search size={17} strokeWidth={2} aria-hidden="true" />}
 			underlay={
-				// Hidden from readers: the input's own value is what a reader should hear.
 				<span className={styles.ghost} aria-hidden="true">
 					<span className={styles.typed}>{query}</span>
 					{completion}
@@ -93,7 +88,6 @@ export function GenreFinder({
 						</button>
 					</>
 				) : (
-					// The binding, shown where the field is: the page is reached without a keyboard too.
 					<kbd className={styles.hint}>/</kbd>
 				)
 			}

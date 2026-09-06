@@ -3,7 +3,6 @@ import styles from "./Artist.module.css";
 import { useArtistInfo, useArtistInfoEnabled } from "./artistInfo";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 
-// The one panel whose contents do not come from the player, and so the one that has to be turned on first.
 export function Artist() {
 	const { track } = useNowPlayingTrack();
 	const [isEnabled] = useArtistInfoEnabled();
@@ -29,7 +28,6 @@ export function Artist() {
 			</p>
 		);
 
-	// Not an error state with a retry: no connection, no match and no article are all ordinary outcomes here.
 	if (isError || !data)
 		return (
 			<div className={styles.notice}>

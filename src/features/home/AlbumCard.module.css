@@ -3,9 +3,6 @@
 	display: block;
 	flex: 0 0 auto;
 	width: var(--cover);
-	/* The card *is* the sleeve. The words go on it, not under it -- and it is
-     taller than it is wide, so they have somewhere to sit that is mostly
-     dissolved picture rather than the middle of the artwork. */
 	height: var(--cover-h);
 	padding: 0;
 	border: 0;
@@ -26,16 +23,9 @@
 	inset: 0;
 	display: block;
 	border-radius: var(--radius);
-	/* Only ever seen where the sleeve has dissolved, which is exactly where the
-     card would otherwise stop existing. */
 	background: var(--album-ground);
 }
 
-/* The sleeve dissolves rather than stopping. Masked to transparent, not covered
-   by a scrim: a scrim has to know the background colour and would need a second
-   hand-tuned value for the light theme, while a mask reveals whatever is behind
-   it and is therefore correct in both by construction.
-   Never cropped -- the fade starts below the middle, so the artwork is whole. */
 .art {
 	width: 100%;
 	height: 100%;
@@ -43,18 +33,8 @@
 	object-fit: cover;
 	background: var(--surface);
 
-	/* A hairline inside the sleeve, because a pale cover on the light theme is
-     otherwise a white square on a white page with no edge at all -- measured,
-     four of six sleeves on one row simply disappeared. It is drawn *on* the
-     image so the mask below fades it out along with everything else, rather
-     than leaving a rectangle floating around a dissolved picture. */
 	box-shadow: inset 0 0 0 1px oklch(0.5 0.02 260 / 0.22);
 
-	/* The sleeve dissolves rather than stopping, which is what makes room for the
-     words. Masked to transparent, not covered by a scrim: a scrim has to know
-     the background colour and would need a second hand-tuned value for the
-     light theme, while a mask reveals whatever is behind it and is therefore
-     correct in both by construction. */
 	mask-image: linear-gradient(
 		180deg,
 		#000 0%,
@@ -65,9 +45,6 @@
 	);
 }
 
-/* Two lines now that the caption has moved onto the sleeve. Sits in the
-   dissolved part, so it reads against the page rather than against whatever the
-   artwork happens to be doing down there. */
 .meta {
 	position: absolute;
 	inset: auto 0 0;
@@ -77,11 +54,6 @@
 	padding: 0 10px 10px;
 }
 
-/* Belt and braces. The mask alone leaves the artwork around 50% opaque where
-   the title sits, which is fine on a dark sleeve and marginal on a pale one --
-   measured on a white cover, the title was white-on-grey. This grounds the
-   words in the page colour underneath. `--bg` is a token, so it is still one
-   rule for both themes rather than a hand-tuned value each. */
 .meta::before {
 	content: "";
 	position: absolute;
@@ -108,8 +80,6 @@
 
 .card:hover .album,
 .card:focus-visible .album {
-	/* The base is `--text`, so on light the ink accent is a hover that changes
-     nothing. This is the whole of the card's pointer feedback. */
 	color: var(--accent-text);
 }
 
@@ -122,10 +92,6 @@
 	white-space: nowrap;
 }
 
-/* The reason this album is on this shelf: the one line here that is about you
-   rather than about the record. On the sleeve, top right, where the artwork is
-   still fully opaque -- so it carries its own ground rather than relying on the
-   picture underneath being quiet. */
 .caption {
 	position: absolute;
 	top: 9px;
@@ -136,12 +102,6 @@
 	padding: 3px 8px;
 	border: 1px solid oklch(1 0 0 / 0.12);
 	border-radius: var(--radius-pill);
-	/* Deliberately the same in both themes. This is the one element on the page
-     that does not sit on the theme -- it sits on a photograph, and a sleeve has
-     no idea whether the app is light or dark. A chip that flipped with the
-     theme would be answering the wrong question, and thirty filled accent pills
-     turned out to be most of Jean's accent budget spent on captions. Frosted
-     rather than flat so it belongs to the artwork instead of being pasted on. */
 	background: oklch(0.16 0.012 260 / 0.58);
 	backdrop-filter: blur(10px) saturate(1.3);
 	font-size: 0.6875rem;

@@ -11,19 +11,16 @@ import {
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useLibraryInfo } from "./useLibrarySource";
 
-// The library as one array in memory, from either source. Every view over it is a filter producing refs into this.
 export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 	const permissions = usePermissions();
 	const { hasLibraryApi, info } = useLibraryInfo();
 
-	// Megabytes, and most sessions never need it. `request` exists because the search field is the one consumer the route cannot know about.
 	const [requested, setRequested] = useState(false);
 	const request = useCallback(() => setRequested(true), []);
 	const isWanted = wanted || requested;
 
 	const canWrite = canChangePlaylists(permissions);
 
-	// Not simply dropped when there is an API: playing a set always needs a playlist to play it in, so a player that refuses playlist writes browses through the API but plays through the autoplaylist.
 	const playlist = useMemo(
 		() => (hasLibraryApi && canWrite ? null : findLibraryPlaylist(playlists)),
 		[hasLibraryApi, canWrite, playlists],
@@ -39,7 +36,6 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 	);
 	const library = readsFromApi ? viaApi : viaPlaylist;
 
-	// Carries the count, so an edited library indexes afresh rather than inheriting rows that have moved.
 	const key = readsFromApi
 		? libraryKey(info.itemCount)
 		: playlist
@@ -51,7 +47,6 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 			readsFromApi
 				? librarySourceOf({
 						kind: "library",
-						// Non-null by construction: only the media library load has them.
 						paths: library.paths as PathTable,
 						subsongs: library.subsongs as number[],
 					})
@@ -64,7 +59,7 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 
 	return {
 		...library,
-		// Depend on this, not on the returned object: that is rebuilt every render, so a `useMemo` keyed on it never hits and re-runs its pass over every row.
+		// Depend on this, not on the object this hook returns: that is rebuilt every render, so a `useMemo` keyed on it never hits.
 		snapshot: library,
 		key,
 		source,
@@ -72,7 +67,6 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 		request,
 		isWanted,
 		canWrite,
-		// `total` stays zero until a load starts, so it cannot answer how big the library is before anything has arrived.
 		count: readsFromApi ? info.itemCount : (playlist?.itemCount ?? 0),
 		needsSetup: !readsFromApi && !playlist,
 	};

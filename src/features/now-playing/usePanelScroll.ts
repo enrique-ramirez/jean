@@ -2,12 +2,10 @@ import { type RefObject, useLayoutEffect, useRef } from "react";
 
 import { scrollParentOf } from "@/shared/lib/scrollParent";
 
-// Bounded rather than growing for the life of the tab.
 const MAX_REMEMBERED = 40;
 
 const offsets = new Map<string, number>();
 
-/** Where each panel was left. Not `app/useScrollMemory`: the scroller here is a different element per layout and is rebuilt on every tab change, so it is re-resolved each time. */
 export function usePanelScroll(
 	panelRef: RefObject<HTMLElement | null>,
 	key: string,
@@ -19,12 +17,10 @@ export function usePanelScroll(
 		active.current = key;
 		if (!enabled) return undefined;
 
-		// Bounded at the layer, or a short panel resolves to the track list scrolling behind the screen and this would restore that instead.
 		const element = panelRef.current;
 		const scroller =
 			element &&
 			(scrollParentOf(element, element.closest("[data-now-playing]")) ??
-				// The panel may be the scroller itself, which `scrollParentOf` never answers with: it only looks at ancestors.
 				(element.scrollHeight > element.clientHeight ? element : null));
 		if (!scroller) return undefined;
 

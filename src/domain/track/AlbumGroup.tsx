@@ -8,11 +8,9 @@ import type { TrackRenderProps } from "./listTypes";
 import { refAt } from "./project";
 import { TrackRow } from "./TrackRow";
 
-// One fixed cover size per breakpoint: scaling it to the run length makes the column jitter between groups.
 export const ALBUM_COVER = 160;
 export const ALBUM_COVER_COMPACT = 72;
 
-// One contiguous album run: beside the cover on desktop, beneath a compact header on a narrow viewport.
 export function AlbumGroup({
 	group,
 	rows,
@@ -33,12 +31,10 @@ export function AlbumGroup({
 	const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER;
 	const itemIndexOf = (position: number) => refAt(indices, position);
 
-	// A single-disc album is one unlabelled run, so the ordinary case renders through the same loop rather than through a branch around it.
 	const runs = group.discs ?? [
 		{ number: null, start: group.start, count: group.count },
 	];
 
-	// The caption already names the album artist, so a row whose artist is that name plus a guest only has to say the guest. A row whose artist is someone else is a compilation and keeps its own line.
 	const track = (index: number) => {
 		const artist = value(rows[index], FIELD.artist);
 		const guest = featuring(artist, group.albumArtist);
@@ -88,7 +84,6 @@ export function AlbumGroup({
 			<div className={styles.tracks}>
 				{runs.map((run) => (
 					<Fragment key={run.start}>
-						{/* Above disc one as well as the rest, since the first run is what establishes what these headings mean. */}
 						{run.number === null ? null : (
 							<h3 className={styles.disc}>Disc {run.number}</h3>
 						)}

@@ -1,15 +1,3 @@
-/* The play button, and the app's one piece of continuous motion.
-
-   Extracted so the status bar and the now-playing screen are the *same* button
-   at two sizes rather than two buttons that look alike -- the animation is the
-   whole personality of the thing, and a second copy of it would drift.
-
-   Sized from `--play-size` so there is one set of rules: everything below is in
-   proportion or in percentages, and the blob's radii are percentages precisely
-   so they scale. The sizes live here rather than in a prop because the button
-   also shrinks at the 720px breakpoint, and anything spatial belongs to the
-   media query. */
-
 .toggle {
 	--play-size: 42px;
 	--play-icon: calc(var(--play-size) * 0.45);
@@ -30,8 +18,6 @@
 	box-shadow: var(--shadow);
 }
 
-/* Beats the width and height lucide writes as presentation attributes, so the
-   glyph tracks the button at every size without a second number in JS. */
 .toggle svg {
 	width: var(--play-icon);
 	height: var(--play-icon);
@@ -42,15 +28,11 @@
 		--play-size: 38px;
 	}
 
-	/* The screen's stays large: it is the primary action on a phone and the one
-     thing on that surface sized for a thumb rather than for a strip. */
 	.toggle[data-size="screen"] {
 		--play-size: 62px;
 	}
 }
 
-/* `scale` is its own property here so hover and press compose with the
-   `transform` the breathing animation owns, instead of overwriting it. */
 .toggle:hover {
 	transform: scale(1.06);
 }
@@ -59,20 +41,6 @@
 	transform: scale(0.95);
 }
 
-/* Playing-state motion.
-   Two styles alternate every 8s. Both are built the same way: several
-   animations on INDEPENDENT properties (`scale`, `rotate`, `border-radius`)
-   with coprime durations. CSS has no randomness, but layers whose periods share
-   no common factor only realign after their least common multiple -- minutes,
-   not seconds -- so the combined motion never visibly loops.
-   Nothing may animate `translate`: the button stays where it is.
-   Hover and press use `transform`, which composes with those instead of
-   fighting them for the same property. The global reduced-motion rule flattens
-   all of it. */
-
-/* --- equalizer -------------------------------------------------------------
-   The icon is already two bars, so it dances on its own. Unequal durations
-   matter more than the keyframes: matched bars march, drifting bars play. */
 .toggle[data-motion="equalizer"][data-playing="true"] rect {
 	transform-box: fill-box;
 	transform-origin: center;
@@ -86,9 +54,6 @@
 	animation: dance-b 829ms ease-in-out infinite;
 }
 
-/* The beat. Nothing here may translate: the button holds its position, so the
-   layers are limited to scale (about its own centre) and rotation. Durations
-   are coprime, so they only realign after ~23 minutes. */
 .toggle[data-motion="equalizer"][data-playing="true"] {
 	animation:
 		pump 731ms ease-in-out infinite,
@@ -159,12 +124,6 @@
 	}
 }
 
-/* --- fluid -----------------------------------------------------------------
-   Something thick sitting on a speaker cone. No rotation on the button: it
-   drags the icon around and reads as a glitch. Border-radius is the one thing
-   here that costs paint rather than compositing -- acceptable for a single
-   small element, and the reason this is not the only style. There is exactly
-   one of these on screen at a time, at either size. */
 .toggle[data-motion="fluid"][data-playing="true"] {
 	animation:
 		blob 2297ms ease-in-out infinite,

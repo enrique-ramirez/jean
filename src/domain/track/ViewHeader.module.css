@@ -8,15 +8,8 @@
 	align-content: start;
 	gap: 13px 24px;
 	padding: 28px 24px 20px;
-	/* Deliberately not clipped, and it must stay that way.
-     This was `overflow: hidden`, which clipped nothing -- the mosaic already
-     clips itself and nothing else here reaches an edge -- while making the
-     header a scroll container, which `hidden` still is. The save-playlist
-     popover opens 100px past the header's bottom, so focusing its field had the
-     browser scroll it into view by scrolling *the header inside itself*,
-     carrying the title and the mosaic up out of sight while the page had not
-     moved at all. `clip` would have stopped the scrolling and then cut the
-     popover's buttons off instead. */
+	/* Stays visible: `overflow: hidden` makes this a scroll container, and focusing a field in the
+	 save-playlist popover then scrolls the header inside itself. */
 	overflow: visible;
 	border-bottom: 1px solid var(--border);
 }
@@ -33,8 +26,6 @@
 	pointer-events: none;
 }
 
-/* Wide: naming and meta stack into one column beside the mosaic, on the same 13px gaps as
-   the compact layout. */
 .naming {
 	position: relative;
 	grid-area: naming;
@@ -132,9 +123,6 @@
 }
 
 @media (max-width: 720px) {
-	/* The mosaic moves up beside the name instead of sitting on a row of its own
-     with nothing to its right. Everything that wants the full width -- the
-     stats, the chips, the buttons -- keeps it. */
 	.header {
 		grid-template-columns: auto minmax(0, 1fr);
 		grid-template-areas:
@@ -144,8 +132,6 @@
 		padding: 20px 16px 16px;
 	}
 
-	/* Against a square, a two-line name reads better centred than hung from the
-     top with the space left underneath it. */
 	.aside,
 	.naming {
 		align-self: center;
@@ -155,21 +141,10 @@
 		gap: 6px;
 	}
 
-	/* Two is the gist. Four wrap onto a second row, and a second row of
-     percentages is not worth the height it costs on a phone. The way out to the
-     genres index is exempt: it is not a percentage, and on a phone the sidebar
-     that also carries it is a drawer. */
 	.chips > *:nth-child(n + 3):not(.wayOut) {
 		display: none;
 	}
 
-	/* The block had no right edge: every row was some natural length and stopped
-     wherever it stopped, so the whole header hung off the left margin. Two rows
-     reach the margin now and give the rest something to be ragged against --
-     the meter by stretching, since a progress bar is happiest as long as it can
-     be, and the buttons by moving apart rather than growing. Bookends, not a
-     filled bar: they keep the size they have everywhere else, so the pair still
-     reads as one primary action and one secondary rather than as two equals. */
 	.meter {
 		flex-basis: 100%;
 		margin-left: 0;
@@ -180,14 +155,11 @@
 		width: auto;
 	}
 
-	/* Works for whatever a view puts here: two actions land at the two margins,
-     and a lone one simply stays at the left. */
 	.actions {
 		justify-content: space-between;
 	}
 }
 
-/* Only a marker for the rule above, which needs something to exempt. */
 .wayOut {
 	order: 1;
 }

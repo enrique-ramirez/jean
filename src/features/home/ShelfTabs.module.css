@@ -1,13 +1,6 @@
-/* Sits beside `ShelfRow.module.css`, which owns the row itself -- the covers,
-   the arrows, the fades -- and this file **never re-declares a property that
-   file also sets on a class it shares**. That is not tidiness: two rules of
-   equal specificity in different modules are decided by the order their
-   components import them, and sorting imports has already silently broken a
-   stylesheet in this project once. So the header, the heading and the tabs are
-   declared here in full rather than layered on top of `.header` and `.title`.
-
-   What it does share is `.shelf`, `.open` and `.chevron`, and it sets no
-   property on any of them. */
+/* Two rules of equal specificity in different CSS modules are decided by the order
+   their components import them. This file shares `.shelf`, `.open` and `.chevron`
+   with `ShelfRow.module.css` and declares no property that file also sets. */
 .header {
 	display: flex;
 	flex-direction: column;
@@ -15,9 +8,6 @@
 	padding: 0 var(--gutter);
 }
 
-/* The size of "Your top tracks" and "Genres" at the foot of the page, because
-   these are the same rank of thing: a section of the front door. The tabs under
-   it are deliberately smaller -- they are the contents, not another heading. */
 .heading {
 	margin: 0;
 	font-size: 1.0625rem;
@@ -26,11 +16,6 @@
 	color: var(--text);
 }
 
-/* The now-playing panel's strip, to the pixel: same size, weight, tracking and
-   two-pixel accent rail. Scrolls rather than wraps, at every width -- five
-   uppercase titles are wider than a phone, and a strip that wraps to two lines
-   stops reading as one control. Full-bleed, so what is cut is cut by the edge of
-   the glass and the partial title hanging off it is the affordance. */
 .strip {
 	display: flex;
 	gap: 4px;
@@ -75,8 +60,6 @@
 	color: var(--text);
 }
 
-/* The accent budget here is the same two-pixel rail the now-playing tabs and the
-   menu spend it on, and it scales from its own centre rather than fading in. */
 .tab::after {
 	content: "";
 	position: absolute;

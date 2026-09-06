@@ -15,15 +15,13 @@ import { findQueuePlaylist, QUEUE_TITLE } from "./jeanPlaylists";
 import type { HoldingPlaylist, LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
-// The player takes one request per track and has no bulk form, so the cost is linear.
+// The player takes one request per track and has no bulk form.
 export const QUEUE_LIMIT = 100;
 
 export function useQueueTracks() {
 	const queryClient = useQueryClient();
 	const { queue, canQueue } = useQueueActions();
 
-	// Emptied on the way in, never deleted, and only while the queue is provably empty: deleting a playlist the queue points into crashes the player.
-	// The count goes back with the id, because it is where the caller's tracks will land and the caller would otherwise ask the player for a number already in hand.
 	const holding = useCallback(async (): Promise<HoldingPlaylist | null> => {
 		const cached =
 			queryClient.getQueryData<PlaylistInfo[]>(PLAYLISTS_KEY) ?? [];
@@ -34,7 +32,8 @@ export function useQueueTracks() {
 
 		const queued = held ? await fetchPlayQueue().catch(() => null) : null;
 
-		// From the player: item changes are never pushed, so a cached count is stale from the first append onwards.
+		// From the player: item changes are never pushed, so a cached count is stale from the first
+		// append on.
 		const playlists = await fetchPlaylists();
 		const itemCount =
 			playlists.find((entry) => entry.id === target.id)?.itemCount ?? 0;

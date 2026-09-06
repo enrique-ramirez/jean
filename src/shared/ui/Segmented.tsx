@@ -19,8 +19,7 @@ export function Segmented<T extends string>({
 	label?: string;
 }) {
 	return (
-		// A fieldset wants a legend and brings its own styling; these are aria-pressed toggles in a toolbar rather than form fields.
-		// biome-ignore lint/a11y/useSemanticElements: not a fieldset, see above
+		// biome-ignore lint/a11y/useSemanticElements: aria-pressed toggles in a toolbar, not form fields in a fieldset
 		<div className={styles.segmented} role="group" aria-label={label}>
 			{options.map((option) => (
 				<button

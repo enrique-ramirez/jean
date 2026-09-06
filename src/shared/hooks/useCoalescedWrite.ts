@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 
-// Sends the first value immediately, then keeps only the newest while a request is in flight.
-// A debounce would delay the first change, and a request per pointer move can complete out of order, so the value that lands last would win rather than the one sent last.
+// A request per pointer move can complete out of order, so the value that lands last would win
+// rather than the one sent last.
 export function useCoalescedWrite<T>(write: (value: T) => unknown) {
 	const writeRef = useRef(write);
 	writeRef.current = write;
@@ -22,7 +22,8 @@ export function useCoalescedWrite<T>(write: (value: T) => unknown) {
 			// Leave the local value alone; the player's next push corrects it.
 		} finally {
 			inFlight.current = false;
-			// Not guarded on being mounted: a mounted flag reset in an effect cleanup is never restored by StrictMode's remount, which would drop every coalesced write in development.
+			// Not guarded on being mounted: a flag reset in an effect cleanup is never set back by
+			// StrictMode's remount, so the guard would be permanently on in development.
 			flush();
 		}
 	}, []);

@@ -1,6 +1,3 @@
-/* Two surfaces, one list. Everything that differs between the popover and the
-   tray is a custom property set on the surface, so `.item` is written once. */
-
 .popover,
 .sheet {
 	--menu-pad: 5px;
@@ -15,8 +12,6 @@
 	border: 1px solid var(--border-strong);
 	border-radius: var(--radius);
 	background: var(--surface-raised);
-	/* A hairline of light along the top edge. It is what stops a dark panel on a
-     dark page from reading as a hole rather than as something lying on top. */
 	box-shadow:
 		var(--shadow),
 		inset 0 1px 0 oklch(1 0 0 / 0.05);
@@ -27,13 +22,8 @@
 	z-index: 70;
 	min-width: 216px;
 	max-width: 300px;
-	/* Placement is measured from the rendered box, so the first frame has to
-     exist before it can be positioned. Invisible for that frame -- a menu that
-     fades in from the wrong corner is worse than one that appears.
-     *Transparent* rather than `visibility: hidden`, because a hidden element
-     cannot take focus and this one has to: focusing it on the frame it is
-     placed in silently did nothing, which left the arrow keys navigating
-     nothing and every key still belonging to the app behind the menu. */
+	/* Transparent rather than `visibility: hidden`: placement needs a rendered box, and a hidden
+	 element cannot take focus. */
 	opacity: 0;
 	pointer-events: none;
 }
@@ -51,16 +41,11 @@
 	}
 }
 
-/* Mobile: an action sheet, not a bottom sheet -- detached from every edge, all
-   four corners rounded. It sits on the page rather than growing out of it. */
 .scrim {
 	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
-	/* Only the fallback. useVisualViewport overwrites top and height with the
-     visual viewport's, which is what keeps the sheet above the keyboard --
-     `align-items: flex-end` then means "above the keyboard" for free. */
 	height: 100dvh;
 	z-index: 70;
 	display: flex;
@@ -74,13 +59,10 @@
 	animation: fade 0.2s var(--ease) backwards;
 }
 
-/* A separate keyframe name rather than `reverse` on the same one: flipping
-   animation-direction on an animation that has already finished updates it in
-   place instead of running it again, so the exit would never play. */
+/* A separate keyframe name rather than `animation-direction: reverse`: flipping direction on a
+   finished animation updates it in place instead of running it again. */
 .scrim[data-state="closed"] {
 	animation: unfade 0.2s var(--ease) forwards;
-	/* On the way out it is only a picture. Leaving it live would swallow the
-     next tap for a fifth of a second. */
 	pointer-events: none;
 }
 
@@ -104,8 +86,6 @@
 	--menu-icon: 19px;
 
 	width: 100%;
-	/* 100% is of the scrim, which is the visual viewport -- so with a keyboard up
-     the sheet shrinks to what is left rather than running off the top. */
 	max-height: min(76dvh, 100%);
 	border-radius: calc(var(--radius) + 8px);
 }
@@ -120,7 +100,6 @@
 
 @keyframes rise {
 	from {
-		/* Past the bottom of the scrim's padding, so no corner is left behind. */
 		transform: translate3d(0, calc(100% + 16px), 0);
 	}
 }
@@ -131,8 +110,6 @@
 	}
 }
 
-/* Released mid-pull: spring back rather than snap. While the finger is down the
-   transform is driven per event and must not be smoothed, or it lags behind. */
 .sheet {
 	transition: transform 0.24s var(--ease);
 }
@@ -155,8 +132,6 @@
 	background: var(--border-strong);
 }
 
-/* Header ------------------------------------------------------------------ */
-
 .header {
 	display: flex;
 	align-items: center;
@@ -173,9 +148,6 @@
 	display: none;
 }
 
-/* The tray is opened from a gesture rather than from a labelled button, so it
-   has to say what it is acting on. The popover appears next to the row it
-   belongs to and only needs to confirm it. */
 .sheet .headerIcon {
 	display: grid;
 	flex: 0 0 auto;
@@ -249,15 +221,12 @@
 	font-size: 0.875rem;
 }
 
-/* Pages ------------------------------------------------------------------- */
-
 .viewport {
 	min-height: 0;
 	overflow-x: hidden;
 	overflow-y: auto;
-	/* The scrim deliberately does not set touch-action: none. It would intersect
-     with this subtree's and leave a long list unscrollable on touch, and it was
-     never needed -- the scrim portals to <body>, which has nothing to scroll. */
+	/* The scrim must not set `touch-action: none`; it would intersect with this subtree's and leave
+	 a long list unscrollable on touch. */
 	touch-action: pan-y;
 	overscroll-behavior: contain;
 	transition: height 0.26s var(--ease);
@@ -274,17 +243,12 @@
 	padding: var(--menu-pad);
 }
 
-/* Pinned rather than scrolling away with the list it filters. Bled out to the
-   page edges, because the page's padding is for the items, not for this. */
 .filter {
-	/* Pinned rather than scrolling away with the list it filters. The box itself is `Input`. */
 	position: sticky;
 	top: 0;
 	z-index: 1;
 	margin-bottom: 4px;
 }
-
-/* Items ------------------------------------------------------------------- */
 
 .item {
 	position: relative;
@@ -322,9 +286,6 @@
 	cursor: not-allowed;
 }
 
-/* The whole accent budget of the menu: a two-pixel mark on the item you are
-   about to choose. Scaled rather than faded so it grows out of its own centre,
-   and scale is the one transform a row of these can afford. */
 .rail {
 	position: absolute;
 	top: 50%;
@@ -333,8 +294,6 @@
 	height: 15px;
 	border-radius: 1px;
 	background: var(--accent);
-	/* Centred here rather than left to the flex container: an absolutely
-     positioned flex child's static position is not something to rely on. */
 	transform: translateY(-50%) scaleY(0);
 	transition: transform 0.16s var(--ease);
 }

@@ -5,8 +5,6 @@ import type { CoveredAlbum } from "./albums";
 import styles from "./ShelfRow.module.css";
 import type { FilledShelf } from "./shelves";
 
-// A native horizontal scroller rather than a carousel, so it flicks on a phone and shift-wheels on a desktop for nothing.
-// Its stylesheet is `ShelfRow.module.css` because `.shelf:hover .arrow` reaches across the two: the arrows appear on the parent's section element.
 export function ShelfScroller({
 	shelf,
 	onPlayAlbum,
@@ -34,13 +32,11 @@ export function ShelfScroller({
 		return () => window.removeEventListener("resize", measure);
 	}, [measure, shelf.albums]);
 
-	// Switching tabs is a different row of covers in the same box, so the old offset would open the new shelf halfway along itself.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the shelf changing is what resets it
 	useEffect(() => {
 		scrollerRef.current?.scrollTo({ left: 0 });
 	}, [shelf.id]);
 
-	// A page is whatever is visible, less a little overlap so nothing is skipped between presses.
 	const page = (direction: number) => {
 		const element = scrollerRef.current;
 		if (!element) return;
@@ -50,7 +46,6 @@ export function ShelfScroller({
 		});
 	};
 
-	// The rail exists so the arrows sit somewhere the scroller's own overflow cannot clip them.
 	return (
 		<div className={styles.rail}>
 			<button

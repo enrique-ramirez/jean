@@ -4,7 +4,6 @@ import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
 import type { FilledShelf } from "./shelves";
 
-// One shelf, drawn under its own name. The tabbed row beside it holds the rest.
 export function ShelfRow({
 	shelf,
 	onPlayAlbum,
@@ -14,8 +13,6 @@ export function ShelfRow({
 }) {
 	return (
 		<section className={styles.shelf} aria-labelledby={`shelf-${shelf.id}`}>
-			{/* The heading opens the shelf and the blurb under it does not: a sentence that navigates when brushed is a trap.
-          An anchor rather than a button, so cmd- and middle-click open it in a tab. */}
 			<header className={styles.header}>
 				<h2 className={styles.title} id={`shelf-${shelf.id}`}>
 					<a className={styles.open} href={`#/shelf/${shelf.id}`}>

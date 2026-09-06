@@ -19,7 +19,6 @@ import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./QueuePanel.module.css";
 import { useQueueClock } from "./queueClock";
 
-// How much rail a second of music buys: ordinary songs sit at the same rhythm and only a long one pushes its neighbours down the panel.
 const STRETCH_FROM_SECONDS = 120;
 const STRETCH_PX_PER_SECOND = 0.1;
 const STRETCH_MAX_PX = 40;
@@ -30,8 +29,8 @@ const stretchOf = (seconds: number) =>
 		STRETCH_MAX_PX,
 	);
 
-// Identities, never positions: these are React's keys, so a reorder would otherwise remount every row below the drop and re-request its artwork.
-// The occurrence counter is what lets the same track be queued twice.
+// Identities, never positions: these are React's keys, so a reorder would otherwise remount every row below the
+// drop and re-request its artwork.
 const rowKeys = (entries: QueueEntry[]) => {
 	const seen = new Map<string, number>();
 	return entries.map((entry) => {
@@ -42,7 +41,6 @@ const rowKeys = (entries: QueueEntry[]) => {
 	});
 };
 
-// Null when nothing is playing: the first entry then starts whenever somebody presses play, which is not a number the rows can count down to.
 function remainingOf(snapshot: PlayerSnapshot | null | undefined) {
 	const item = snapshot?.player?.activeItem;
 	if (!item || item.index < 0) return null;
@@ -52,7 +50,6 @@ function remainingOf(snapshot: PlayerSnapshot | null | undefined) {
 	);
 }
 
-// Subscribes to the clock itself rather than taking a tick from the panel body: with an empty queue there are no rows to tick, so the value would never move.
 function Remaining({
 	snapshot,
 	isPlaying,
@@ -73,7 +70,6 @@ function Remaining({
 	);
 }
 
-// Its own leaf so a second passing repaints one span per row, not the rows.
 function StartsIn({
 	entry,
 	snapshot,
@@ -114,7 +110,6 @@ const QueueRow = memo(function QueueRow({
 	handleProps: PropBag;
 	itemProps: PropBag;
 }) {
-	// Drawn rather than hidden: it still occupies a place the player honours, so a silently missing row would be an unexplained gap.
 	if (entry.isOrphan) {
 		return (
 			<li className={styles.row} data-orphan="true" {...itemProps}>
@@ -145,7 +140,8 @@ const QueueRow = memo(function QueueRow({
 		<li
 			className={styles.row}
 			{...merged}
-			// After the spread and composed rather than replacing: the sortable hook owns `transform` on this element for the length of a drag.
+			// After the spread and composed rather than replacing: the sortable hook owns `transform` on this element for
+			// the length of a drag.
 			style={
 				{
 					...style,
@@ -176,13 +172,11 @@ const QueueRow = memo(function QueueRow({
 
 			{canQueue ? (
 				<span className={styles.controls}>
-					{/* Coarse pointers only; a mouse drags the row itself. */}
 					<button
 						type="button"
 						className={styles.grip}
 						aria-label={`Reorder ${entry.title}`}
 						tabIndex={-1}
-						// The one thing in here that takes an axis for itself; without this the sideways drift of a row dragged down the panel reads as the flick that closes it.
 						data-owns-touch=""
 						{...handleProps}
 					>
@@ -225,8 +219,6 @@ export function QueuePanel({
 		disabled: !canQueue,
 	});
 
-	// A press anywhere else puts the queue away, at every width: it is a glance at what happens next, opened around whatever you were doing. The toggle is a panel away in the status bar, so it is named rather than contained.
-	// `onEscape: false` hands that key to the capture listener below rather than declining it: the hook's own is a bubbling one, which the playlist scope would have answered first.
 	const ref = useDismissable<HTMLElement>(isOpen, onDismiss, {
 		ignore: "[data-queue-toggle]",
 		onEscape: false,
@@ -234,10 +226,8 @@ export function QueuePanel({
 
 	const keyboardOwner = useKeyboardOwner();
 
-	// Escape peels one layer, and this panel is the front one whenever it is up -- it opens over the now-playing screen and over the list, and both stand down for it. It stands down in turn for a dialog that has claimed the keyboard, which is in front of everything.
 	useEscapeCapture(isOpen && keyboardOwner === null ? onDismiss : null);
 
-	// It leaves the way it arrived: the panel slides in from the right edge, so the flick that puts it back is the one aimed at that edge. The vertical axis stays the scroller's, which is what a queue long enough to scroll is doing with it.
 	const swipe = useSwipe({ onRight: onDismiss });
 
 	return (
@@ -257,7 +247,6 @@ export function QueuePanel({
 				data-open={isOpen}
 				aria-label="Queue"
 				{...swipe}
-				// Closed, the grid column is zero-width but still in the tab order.
 				inert={isOpen ? undefined : true}
 			>
 				<header className={styles.header}>
@@ -286,9 +275,7 @@ export function QueuePanel({
 					</button>
 				</header>
 
-				{/* A section, not a div, so the hook's HTMLElement ref can land on it. */}
 				<section className={styles.scroller} ref={scrollRef}>
-					{/* Every countdown below is measured from the end of this track, so the rail starts here rather than at the first queued row. */}
 					<div className={styles.origin} data-live={isPlaying}>
 						<span className={styles.pip} aria-hidden="true" />
 						<Remaining snapshot={snapshot} isPlaying={isPlaying} />

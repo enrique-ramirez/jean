@@ -1,6 +1,3 @@
-/* The box. Sized by the caller, either through `size` or through its own class,
-   and everything inside fills it -- so the placeholder and the cover are the
-   same shape and the swap between them moves nothing. */
 .artwork {
 	position: relative;
 	flex: 0 0 auto;
@@ -14,17 +11,10 @@
 	inset: 0;
 	display: grid;
 	place-items: center;
-	/* Both undo something `.loading` does to a caller that is holding a line of
-     text open: it rounds its own corners, which inside an already-clipped box
-     leaves the ground showing through four of them, and it sets `color:
-     transparent`, which would take the icon with it. */
 	border-radius: inherit;
 	color: var(--faint);
 }
 
-/* Proportional, because one component draws this at 32px in a row and at half a
-   phone on the now-playing screen. Capped so the largest sleeve does not get an
-   icon the size of a record label. */
 .placeholder svg {
 	color: var(--faint);
 	width: 42%;
@@ -39,9 +29,6 @@
 	width: 100%;
 	height: 100%;
 	object-fit: cover;
-	/* Held back until it has actually decoded: an <img> with a src and no bytes
-     paints its alt text, which is how a list of albums came to read as a list of
-     the words "cover". */
 	opacity: 0;
 	transition: opacity 0.16s var(--ease);
 }

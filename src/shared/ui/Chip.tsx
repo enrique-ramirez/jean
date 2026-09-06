@@ -4,8 +4,6 @@ import { classNames } from "@/shared/lib/classNames";
 
 import styles from "./Chip.module.css";
 
-// A small labelled figure. Given an `href` it becomes somewhere to go rather than something to read,
-// which is the difference between a genre chip that reports a share and one that opens the genre.
 export function Chip({
 	label,
 	value,

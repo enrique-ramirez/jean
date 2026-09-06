@@ -1,12 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
-/**
- * Whether a `mouseenter` was earned by the pointer moving, as against the element under a stationary
- * pointer being replaced. A list drawn where the pointer already rests gets one on every open and
- * every keystroke, so acting on it hands the active row to wherever the mouse happens to be sitting.
- *
- * `results` re-arms the guard: pass whatever identity changes when the list is redrawn.
- */
+// Tells a `mouseenter` earned by the pointer moving from one raised by the element under a stationary
+// pointer being replaced. `results` re-arms the guard: pass whatever identity changes on a redraw.
 export function useEarnedHover(results: unknown) {
 	const moved = useRef(false);
 	const lastSeen = useRef<{ x: number; y: number } | null>(null);
@@ -26,9 +21,8 @@ export function useEarnedHover(results: unknown) {
 		moved.current = false;
 	}, [results]);
 
-	// The flag covers the ordinary case; comparing coordinates covers the first move onto a result,
-	// where mouseenter arrives before the mousemove that would have set it. That first enter has no
-	// earlier position to compare against, so it is refused and its coordinates become the reference.
+	// The coordinates are the second half, not spare: on the first move onto a result `mouseenter`
+	// arrives before the `mousemove` that would have set the flag.
 	return (event: { clientX: number; clientY: number }) => {
 		if (moved.current) return true;
 		const previous = lastSeen.current;

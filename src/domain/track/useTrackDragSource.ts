@@ -13,7 +13,6 @@ import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
 
-// The drop runs the same `useAddTracks` and `useQueueTracks` the context menu does, so a drag can do nothing the menu cannot.
 export function useTrackDragSource({
 	rows,
 	indices,
@@ -38,7 +37,6 @@ export function useTrackDragSource({
 			if (!aimed) return null;
 			const { index, positions } = aimed;
 
-			// The row under the pointer, not the lowest-numbered one in the selection: the ghost should name what was picked up.
 			const grabbed = titleOf(rows[index]);
 
 			return {
@@ -51,7 +49,6 @@ export function useTrackDragSource({
 			};
 		},
 
-		// The source playlist is excluded because its tracks are already in it; the queue is never the source, so it is never excluded here.
 		canDrop: (id) => id !== source.playlistId,
 
 		onDrop: (id, payload) => {

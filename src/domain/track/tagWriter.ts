@@ -7,7 +7,7 @@ import {
 } from "@/shared/api/fooJean";
 import type { TrackIdentity } from "@/shared/api/types";
 
-// Where a tag write goes: nowhere, or `foo_jean`. Nothing outside this file may ask which.
+// Nothing outside this file may ask which implementation it is holding.
 export interface TagWriter {
 	kind: "none" | "agent";
 	canWrite: boolean;
@@ -20,7 +20,7 @@ export interface TagWriter {
 	) => Promise<WriteResult>;
 }
 
-// `write` answers rather than throwing: a caller that had to guard would be a caller that knows which writer it holds.
+// `write` answers rather than throwing, so no caller needs to know which writer it holds.
 export const NO_WRITER: TagWriter = {
 	kind: "none",
 	canWrite: false,
@@ -62,7 +62,6 @@ const agentWriter = (
 	};
 };
 
-// How a field leaves the writer, whether refused by the component or switched off in settings. The rest of the app cannot tell the two apart.
 export const withoutField = (writer: TagWriter, field: string): TagWriter => {
 	const remaining = writer.allowedFields.filter(
 		(name) => name.toLowerCase() !== field.toLowerCase(),
@@ -86,7 +85,6 @@ export interface TagWriterResolution {
 	writer: TagWriter;
 }
 
-// A `ready` component with an empty allowlist is indistinguishable from no component at all, which is correct.
 export function tagWriterOf({
 	state,
 	origin,

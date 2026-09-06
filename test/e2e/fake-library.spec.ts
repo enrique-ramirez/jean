@@ -2,7 +2,7 @@ import type { APIRequestContext } from "@playwright/test";
 import type { LibraryItem } from "../../src/shared/api/types.ts";
 
 // A node of `/library/items/by-path`: a folder with a recursive count, or a
-// track with its columns. Documented in API.md.
+// track with its columns. Documented in ../../src/shared/api/README.md.
 interface LibraryNode {
 	type: "D" | "F";
 	name: string;
@@ -15,7 +15,7 @@ interface LibraryNode {
 import { expect, inSequence, test } from "./fixtures.ts";
 
 // The fake's media library, checked against the shapes measured on a live
-// foobar2000 running beefweb 0.11~git.dc0fdfc and written down in API.md under
+// foobar2000 running beefweb 0.11~git.dc0fdfc and written down in ../../src/shared/api/README.md under
 // "The media library API". Where the OpenAPI spec and the live player
 // disagreed, the player won: there is no `pathSeparator` on the by-path
 // response, and `range` is a query parameter rather than a path segment.

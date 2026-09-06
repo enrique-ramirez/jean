@@ -2,14 +2,13 @@ import type { TrackColumns } from "@/shared/api/types";
 import { plural } from "@/shared/lib/text";
 import { FIELD, numberOf, tagKey, value } from "./fields";
 
-// What a header's row of chips has room for; callers wanting more pass their own.
 const TOP_GENRES = 4;
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// A genre is the tag taken whole, since foobar joins multiple values with '; ', and it is counted through `tagKey` so `Rock` and `rock` are not two genres.
-// One pass with a mutable accumulator: this runs over the whole library again for every chunk that lands.
+// A genre is the tag taken whole, since foobar joins multiple values with '; '. `refsOfGenre`
+// matches by the same rule and the two have to stay in step.
 export function summarise(
 	rows: TrackColumns[],
 	playedCount = 0,
@@ -73,7 +72,6 @@ const breakDown = (seconds: number) =>
 			}
 		: null;
 
-// Human units, biggest first, never more than two. Days rather than months, which are not a fixed length.
 export function spellDuration(seconds: number) {
 	const parts = breakDown(seconds);
 	if (!parts) return null;

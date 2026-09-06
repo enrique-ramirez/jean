@@ -8,7 +8,6 @@ import type { PlaylistInfo } from "@/shared/api/types";
 import type { Album } from "./albums";
 import { type FilledShelf, refsOfShelf } from "./shelves";
 
-// The two things the home screen can start. Both navigate as well as play, to the view of the set they started.
 export function useHomePlayback({
 	library,
 	playlists,
@@ -21,13 +20,11 @@ export function useHomePlayback({
 	const { play, canPlaySets } = usePlaySet({ library, playlists });
 	const order = usePlaybackOrder();
 
-	// Clicking an album plays the shelf, starting at that album: playing the album alone leaves playback falling out into whatever the player finds next.
 	const playShelf = useCallback(
 		async (shelf: FilledShelf<Album>, album: Album) => {
 			const refs = refsOfShelf(shelf);
 			const position = Math.max(0, refs.indexOf(album.refs[0]));
 
-			// Navigate first: the fill is a round trip, and the view it opens already follows whatever ends up playing.
 			navigate(`/shelf/${shelf.id}`);
 			await play({
 				kind: SCRATCH_KIND.shelf,
@@ -53,14 +50,12 @@ export function useHomePlayback({
 		[startEverything],
 	);
 
-	// The position is searched for rather than assumed equal to the ref: the whole library happens to be ascending, and anything else passed here would not be.
 	const playTrack = useCallback(
 		(refs: Refs, ref: number) =>
 			startEverything(refs, Math.max(0, refs.indexOf(ref))),
 		[startEverything],
 	);
 
-	// The mode first, then a track. Play never turns shuffle back off: playback order is global player state and the status bar owns it.
 	const shuffleEverything = useCallback(
 		(refs: Refs) => {
 			if (refs.length === 0) return undefined;

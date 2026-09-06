@@ -2,8 +2,6 @@ import type { TrackColumns } from "@/shared/api/types";
 import { fold } from "@/shared/lib/text";
 import { FIELD, sameTagValue, value } from "./fields";
 
-// One folded haystack per row, so a keystroke costs a single includes(). Per-track-unique, so it is built only for a list somebody is searching.
-// The album artist is merged in only when it differs from the track artist, which on most rows is the same string twice.
 export function rowHaystack(row: TrackColumns) {
 	const artist = value(row, FIELD.artist);
 	const albumArtist = value(row, FIELD.albumArtist);

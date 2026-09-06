@@ -1,18 +1,11 @@
-// The media library's own address for a row. `%path%` is left out of `TRACK_EXPRESSIONS` because it
-// is the largest field, and holding a full copy of every one here would give that saving straight
-// back: the library source needs an address for artwork, identity and queueing, not a string per row.
+// Two facts about strings decide the shape here:
 //
-// So a path is kept as the directory it sits in plus what is left, and directories are shared. Two
-// facts about strings decide how:
-//
-//   - Slicing a string keeps the whole original alive, so a table of remainders sliced out of the
-//     responses would hold every response string and save nothing. Joining a run of them into one
-//     string is what lets the originals go.
+//   - Slicing a string keeps the whole original alive, so remainders sliced out of the responses
+//     would hold every response string and save nothing. Joining a run of them into one string is
+//     what lets the originals go.
 //   - A string is held one byte per character only if every character in it fits, so one accented
 //     filename doubles whatever it is joined to. The remainders are joined in blocks to bound that.
 
-// Remainders per joined block: what one accented name costs, and what is re-joined on a read while
-// the last block is still open.
 const BLOCK = 256;
 
 const grownTo = (indices: Int32Array<ArrayBuffer>, length: number) => {
@@ -22,7 +15,6 @@ const grownTo = (indices: Int32Array<ArrayBuffer>, length: number) => {
 	return grown;
 };
 
-// An append-only list of strings held as joined blocks, addressed by the order they arrived in.
 interface TextBlocks {
 	add: (text: string) => number;
 	read: (index: number) => string;
@@ -32,7 +24,6 @@ function textBlocks(): TextBlocks {
 	const closed: string[] = [];
 	let open: string[] = [];
 	let openText: string | null = null;
-	// Where each piece ends inside its own block.
 	let ends = new Int32Array(BLOCK);
 	let count = 0;
 
@@ -61,7 +52,6 @@ function textBlocks(): TextBlocks {
 	};
 }
 
-// A fixed-length reading of the paths interned so far. `at` answers the path back byte for byte.
 export interface PathTable {
 	readonly length: number;
 	at: (index: number) => string;
@@ -69,8 +59,8 @@ export interface PathTable {
 
 export interface PathCollector {
 	add: (path: string) => void;
-	// A view over everything added so far. Later additions do not reach it, so a view published
-	// mid-load goes on describing the rows it was published with.
+	// Later additions do not reach a view already handed out, so one published mid-load goes on
+	// describing the rows it was published with.
 	table: () => PathTable;
 }
 
@@ -85,9 +75,6 @@ export function pathCollector(): PathCollector {
 	let directoryOf = new Int32Array(BLOCK);
 	let count = 0;
 
-	// Runs rather than a dictionary: the library is read in path order, so one directory's tracks
-	// arrive together. Out of that order the table holds a directory more than once, which costs
-	// memory and never an answer.
 	let openDirectory = "";
 	let openDirectoryIndex = -1;
 

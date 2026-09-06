@@ -18,7 +18,6 @@ export function useQueue() {
 	const { data } = useQuery({
 		queryKey: QUEUE_KEY,
 		queryFn: fetchPlayQueue,
-		// The stream owns this key; the fetch only covers first paint and reconnect.
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
 	});
@@ -35,10 +34,12 @@ export function useQueueActions() {
 	const queryClient = useQueryClient();
 	const permissions = usePermissions();
 
-	// beefweb publishes no permission for the queue itself, and an instance refusing playlist writes cannot hold a queue either.
+	// beefweb publishes no permission for the queue itself, and an instance refusing playlist writes
+	// cannot hold a queue either.
 	const canQueue = permissions.changePlaylists !== false;
 
-	// The player passes through every intermediate state of a queue mutation and pushes each one, so the pushes are held until the truth has been read back.
+	// The player passes through every intermediate state of a queue mutation and pushes each one, so
+	// the pushes are held until the truth has been read back.
 	const underQueueHold = useCallback(
 		async (run: () => Promise<unknown>) => {
 			const release = holdQueue();
@@ -69,12 +70,12 @@ export function useQueueActions() {
 		[queryClient],
 	);
 
-	// Sequential, and it has to be: fired concurrently these arrive in whatever order the network settles on, and the order is the point of a queue.
+	// Sequential, and it has to be: fired concurrently these land in whatever order the network
+	// settles on, and the order is the point of a queue.
 	const queue = useCallback(
 		async (pairs: { playlistId: string; itemIndex: number }[]) => {
 			if (!canQueue || pairs.length === 0) return;
 
-			// Before the write rather than after it, so what opens is the queue as it was and the tracks are watched landing in it.
 			askToShowQueue();
 
 			await underQueueHold(() =>
@@ -105,7 +106,8 @@ export function useQueueActions() {
 		async (from: number, to: number) => {
 			if (!canQueue || from === to) return;
 
-			// A track ending mid-drag consumes the head and shifts every index the plan is built from, so a queue that moved is refused rather than half-applied.
+			// A track ending mid-drag consumes the head and shifts every index the plan is built from, so
+			// a queue that moved is refused rather than half-applied.
 			const current = await fetchPlayQueue().catch(() => null);
 			const shown = queryClient.getQueryData<PlayQueueItem[]>(QUEUE_KEY);
 			if (!current || !sameQueue(current, shown)) {

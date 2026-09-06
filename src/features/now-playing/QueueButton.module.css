@@ -13,10 +13,6 @@
 		scale 0.12s var(--ease);
 }
 
-/* The transport row's own target size, which every control in it shares. The
-   badge follows the glyph in rather than staying in the button's corner, and its
-   ring is the screen's background rather than the status bar's -- both below,
-   with the other rules that reach into it. */
 .queue[data-size="screen"] {
 	width: 44px;
 	height: 44px;
@@ -28,15 +24,11 @@
 	color: var(--text);
 }
 
-/* Same vocabulary as the shuffle toggle beside it: quiet until it is on. */
 .queue[data-open="true"] {
 	background: var(--surface-sunken);
 	color: var(--text);
 }
 
-/* The ring is the status bar's own background, not a border colour: without it
-   the badge and the icon's strokes touch and the number stops being legible.
-   min-width plus a pill radius, so 1 is a circle and 12 a capsule. */
 .badge {
 	position: absolute;
 	top: 1px;
@@ -55,7 +47,6 @@
 	font-weight: 700;
 	line-height: 1;
 	font-variant-numeric: tabular-nums;
-	/* Once: a notification, not motion the eye is meant to live with. */
 	animation: pop 0.34s var(--ease) 1;
 }
 

@@ -15,8 +15,6 @@
 	color: var(--text);
 }
 
-/* Only a chip that goes somewhere reacts to the pointer. One that reports a figure and nothing else
-   must not look pressable. */
 .chip[data-link] {
 	text-decoration: none;
 	transition:

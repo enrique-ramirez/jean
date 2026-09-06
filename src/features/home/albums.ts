@@ -11,10 +11,8 @@ import type { TrackColumns } from "@/shared/api/types";
 
 const LOSSLESS = new Set(["FLAC", "ALAC", "WAV", "APE", "WAVPACK", "TAK"]);
 
-// Through `tagKey`, so an album groups here exactly as it does in the track list.
 const keyOf = (artist: string, album: string) => tagKey(`${artist} ${album}`);
 
-// Takes the title rather than reading it back off the row, which is what would make `Album['album']` nullable for every consumer.
 const blankAlbum = (key: string, album: string, row: TrackColumns) => ({
 	key,
 	album,
@@ -50,7 +48,6 @@ const absorb = (album: AlbumDraft, ref: number, row: TrackColumns) => {
 	const codec = value(row, FIELD.codec);
 	if (codec && !LOSSLESS.has(codec.toUpperCase())) album.lossless = false;
 
-	// Averaged unrounded: the display rounds to the nearest half star, but a shelf comparing albums wants the real numbers.
 	const rating = ratingOf(row);
 	if (rating !== null) album.ratings.push(rating);
 
@@ -72,15 +69,12 @@ const summed = (album: AlbumDraft) => ({
 			: null,
 });
 
-// `bitrate` and `rating` are null on an album the player could not answer for, so a shelf leaning on either narrows first.
 export type Album = ReturnType<typeof summed>;
 
-// `albumsOf` walks rows and cannot know where artwork lives, so the home screen attaches it once and the shelves carry it through.
 export interface CoveredAlbum extends Album {
 	artworkUrl: string;
 }
 
-/** Albums across the whole library, unlike `groupByAlbum`, which groups only contiguous runs. Takes rows rather than the snapshot so a caller's `useMemo` can depend on the rows alone. */
 export function albumsOf(rows: TrackColumns[]): Album[] {
 	const byKey = rows.reduce((into, row, ref) => {
 		const album = value(row, FIELD.album);
@@ -102,7 +96,6 @@ export function albumsOf(rows: TrackColumns[]): Album[] {
 	return [...byKey.values()].map(summed);
 }
 
-// Percentiles of this library, never constants: one whose busiest album has three plays still has a top quartile.
 export function percentile(values: number[], fraction: number): number {
 	if (values.length === 0) return 0;
 	const sorted = Float64Array.from(values).sort();

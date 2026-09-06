@@ -12,14 +12,12 @@ import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import { Input } from "@/shared/ui/Input";
 import styles from "./CommandPalette.module.css";
 
-/** Somewhere to go, addressed the way the hash addresses it: a playlist's route is its id, so views and playlists share one space and one handler. */
 export interface PaletteEntry {
 	route: string;
 	title: string;
 	count?: number;
 }
 
-// Jumps between the places the sidebar lists rather than searching their tracks, which is the library field's job up in the top bar.
 export function CommandPalette({
 	views,
 	playlists,
@@ -35,8 +33,6 @@ export function CommandPalette({
 	const [query, setQuery] = useState("");
 	const [active, setActive] = useState(0);
 
-	// Through the same `fold()` as every other typeable list, so accented titles are still found from unaccented input.
-	// Memoised because the hover guard below re-arms on this identity: rebuilt every render it would re-arm on an arrow key too, which is not a redraw of the rows.
 	const { matchedViews, matchedPlaylists, results } = useMemo(() => {
 		const tokens = tokenize(query);
 		const matching = (entries: PaletteEntry[]) =>
@@ -49,12 +45,10 @@ export function CommandPalette({
 		return {
 			matchedViews,
 			matchedPlaylists,
-			// The arrow keys and Enter run down the whole panel, so the sections are two lists on screen and one everywhere else.
 			results: [...matchedViews, ...matchedPlaylists],
 		};
 	}, [query, views, playlists]);
 
-	// The palette opens under wherever the pointer was resting and redraws under it on every keystroke, so an unearned `mouseenter` would hand the active row to whatever now sits there and Enter would open that.
 	const aimedAt = useEarnedHover(results);
 
 	useEffect(() => {
@@ -109,8 +103,7 @@ export function CommandPalette({
 	);
 
 	return (
-		// A dismissal scrim, not a control: Escape is the keyboard route out and the panel above owns it.
-		// biome-ignore lint/a11y/noStaticElementInteractions: scrim, see above
+		// biome-ignore lint/a11y/noStaticElementInteractions: a dismissal scrim, not a control
 		<div
 			className={styles.backdrop}
 			role="presentation"
@@ -147,7 +140,6 @@ export function CommandPalette({
 								row(entry, position, true),
 							)}
 
-							{/* Headed like the sidebar is, and for the same reason: without it the playlists run straight on from the views above them. Drawn only when the filter left something under it. */}
 							{matchedPlaylists.length > 0 ? (
 								<p className={styles.heading}>Playlists</p>
 							) : null}

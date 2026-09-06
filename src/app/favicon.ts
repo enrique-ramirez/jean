@@ -3,7 +3,7 @@ const SIZE = 32;
 const FRAMES = 12;
 const FRAME_MS = 150;
 
-// The label is the one part a state repaints, so its geometry is the one thing duplicated from favicon.svg.
+// The label is the one part a state repaints, so its geometry is duplicated from `favicon.svg`.
 const LABEL_R = 5;
 const HOLE_R = 1;
 const HOLE_FILL = "#0e1013";

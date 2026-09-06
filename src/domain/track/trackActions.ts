@@ -7,8 +7,6 @@ import type { LibrarySource } from "./librarySource";
 import { MAX_STARS } from "./rating";
 import { QUEUE_LIMIT } from "./useQueueTracks";
 
-// Plain entries with a check on the current value, since `ActionMenu` has no checkable row.
-// Null is "no rating" and is passed as null: a zero standing for it is a sentinel every caller would have to decode, and one of them would decode it wrongly.
 export const ratingItems = (
 	current: number | null,
 	onRate: (stars: number | null) => void,
@@ -31,8 +29,6 @@ export const ratingItems = (
 	},
 ];
 
-// Shared by the list's context menu and the now-playing screen, so the two cannot drift into offering different things.
-// The rating submenu is passed in rather than built here, because the two callers hold a rating in different shapes.
 export function trackActions({
 	count,
 	source,
@@ -59,10 +55,8 @@ export function trackActions({
 		target: PlaylistInfo;
 		itemIndices: number[];
 	}) => void;
-	// Null where the track's scale is somebody else's, or nothing can write.
 	rating: ActionNode | null;
 }): ActionNode[] {
-	// Not Jean's own playlists: the scratch is where results are put to be played, and the next search would empty it anyway.
 	const targets = withoutJeanPlaylists(playlists).filter(
 		(entry) => entry.id !== source.playlistId,
 	);

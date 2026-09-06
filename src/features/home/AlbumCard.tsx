@@ -2,7 +2,6 @@ import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./AlbumCard.module.css";
 import type { CoveredAlbum } from "./albums";
 
-// The caption is the reason the album is on this shelf, which is what makes a shelf different from a query result.
 export function AlbumCard({
 	album,
 	caption,
@@ -33,7 +32,6 @@ export function AlbumCard({
 				<span className={styles.artist}>{album.artist}</span>
 			</span>
 
-			{/* Last in the DOM, first on the sleeve: the pill is positioned, so this order is only what a screen reader reads. */}
 			{caption ? <span className={styles.caption}>{caption}</span> : null}
 		</button>
 	);

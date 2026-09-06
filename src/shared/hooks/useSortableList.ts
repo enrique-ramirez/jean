@@ -15,7 +15,6 @@ import {
 	targetFor,
 } from "@/shared/lib/dragGeometry";
 
-// The gesture in progress. tops is null until it turns out to be a drag rather than a click, because measuring is what the threshold buys.
 interface Drag {
 	from: number;
 	to: number;
@@ -30,17 +29,12 @@ interface Drag {
 	tops: RowBox[] | null;
 }
 
-// settled marks the window between letting go and keys changing, during which the transforms are held rather than cleared.
 interface SortState extends Drag {
 	tops: RowBox[];
 	settled?: boolean;
 }
 
-// Reordering a short list by dragging it, on pointer events rather than HTML5 drag-and-drop. Rows are measured once, on drag start, so variable heights need no special case.
-
-// Generous for a mouse: the row body is both the drag target and a link, so a click that wanders must not quietly rewrite the order.
 const THRESHOLD_PX: Record<string, number> = { mouse: 6, touch: 8 };
-// If the reorder never lands, stop holding the transforms rather than freezing the list in place.
 const SETTLE_TIMEOUT_MS = 600;
 
 export function useSortableList({
@@ -59,13 +53,14 @@ export function useSortableList({
 	const drag = useRef<Drag | null>(null);
 	const frame = useRef<number | null>(null);
 	const settledAt = useRef<string | null>(null);
-	// The row is a link: without swallowing the click that ends the drag, reordering a playlist also navigates to it.
 	const justDragged = useRef(false);
 
-	// State rather than a ref: the rows have to re-render to follow, and writing transforms imperatively fights React over the same style attribute.
+	// State rather than a ref: writing the transforms imperatively fights React over the same style
+	// attribute.
 	const [state, setState] = useState<SortState | null>(null);
 
-	// Cached per index: a fresh closure every render would detach and reattach every row's ref on every pointer move.
+	// Cached per index: a fresh closure every render detaches and reattaches every row's ref on every
+	// pointer move.
 	const setItemRef = (index: number) => {
 		refCallbacks.current[index] ??= (element: HTMLElement | null) => {
 			itemRefs.current[index] = element;
@@ -177,7 +172,8 @@ export function useSortableList({
 			return;
 		}
 
-		// Held rather than cleared: the reorder is a round trip through the query cache, and letting go must not undo the drag while that runs.
+		// Held rather than cleared: the reorder is a round trip through the query cache, and letting go
+		// must not undo the drag while that runs.
 		settledAt.current = order;
 		setState({
 			...(current as SortState),
@@ -188,15 +184,15 @@ export function useSortableList({
 		onReorder(current.from, to);
 	};
 
-	// A handle claims the pointer up front, being small enough to be left behind inside the threshold distance.
-	// The row must not: capture retargets the compatibility mousedown and mouseup, so click fires on the row rather than on the link inside it and navigation silently stops working.
+	// A handle claims the pointer up front; the row must not. Capture retargets the compatibility
+	// mousedown and mouseup, so click fires on the row rather than on the link inside it and
+	// navigation silently stops working.
 	const begin = (
 		index: number,
 		event: ReactPointerEvent,
 		captureNow: boolean,
 	) => {
 		if (event.pointerType === "mouse" && event.button !== 0) return;
-		// Cleared here rather than on a timer: a gesture that produced no click must not leave the guard armed for the next one.
 		justDragged.current = false;
 		if (captureNow)
 			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -215,7 +211,6 @@ export function useSortableList({
 		};
 	};
 
-	// Mouse only: on touch the vertical axis is already the scroller's, so taking it needs something explicit to grab, which is what handleProps is.
 	const dragProps = (index: number) =>
 		disabled
 			? {}
@@ -235,7 +230,6 @@ export function useSortableList({
 					},
 				};
 
-	// Only starts the gesture; the move and release are tracked by dragProps on the row, which the events bubble to.
 	const handleProps = (index: number) =>
 		disabled
 			? {}
@@ -244,7 +238,8 @@ export function useSortableList({
 						begin(index, event, true),
 				};
 
-	// No transform at rest: a translate3d of zero on every row would still hand each one its own compositing layer for the whole life of the list.
+	// No transform at rest: a translate3d of zero still hands every row its own compositing layer, for
+	// the whole life of the list.
 	const itemProps = (index: number) => ({
 		ref: setItemRef(index),
 		style: state

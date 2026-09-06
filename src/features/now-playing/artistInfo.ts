@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
-// The only outbound request in Jean, so it is off until switched on. Kept in `localStorage` rather than `/api/clientconfig`, which beefweb serves unauthenticated.
 export const ARTIST_INFO_KEY = "jean.artistInfo";
 
 export const useArtistInfoEnabled = () =>
@@ -13,17 +12,16 @@ export interface ArtistInfo {
 	summary: string;
 	sourceName: string;
 	sourceUrl: string;
-	// MusicBrainz's own facts, which Wikipedia's summary does not reliably carry.
 	kind: string | null;
 	area: string | null;
 	years: string | null;
 }
 
-// Both answer `Access-Control-Allow-Origin: *` with no key and no proxy. Deezer does not, which is why there are no artist images.
 const MUSICBRAINZ = "https://musicbrainz.org/ws/2";
 const WIKIPEDIA = "https://en.wikipedia.org/api/rest_v1/page/summary";
 
-// MusicBrainz asks for a descriptive `User-Agent`, which a browser cannot send: it is a forbidden header name and `fetch` drops it silently, so this relies on the browser's own.
+// MusicBrainz asks for a descriptive `User-Agent` and a browser cannot send one: it is a forbidden header name and
+// `fetch` drops it silently.
 
 interface MbArtist {
 	id: string;
@@ -42,7 +40,6 @@ const lifeSpan = (artist: MbArtist) => {
 	return end ? `${begin}–${end}` : `${begin}–`;
 };
 
-// The Wikipedia article title, out of the URL MusicBrainz links to. MusicBrainz prefers linking Wikidata, hence the second hop.
 async function wikipediaTitle(
 	relations: MbArtist["relations"],
 	signal: AbortSignal,
@@ -50,7 +47,6 @@ async function wikipediaTitle(
 	const urlOf = (type: string) =>
 		relations?.find((relation) => relation.type === type)?.url?.resource;
 
-	// Usually absent on modern entries, but it saves the second hop where it is there.
 	const direct = urlOf("wikipedia");
 	if (direct) return decodeURIComponent(direct.split("/wiki/")[1] ?? "");
 
@@ -70,14 +66,13 @@ async function wikipediaTitle(
 	return link.title ?? null;
 }
 
-/** What the open internet knows about an artist, or null. No connection, no match and no article are all ordinary outcomes rather than errors. */
 export function useArtistInfo(artist: string | null | undefined) {
 	const [isEnabled] = useArtistInfoEnabled();
 
 	return useQuery({
 		queryKey: ["artistInfo", artist],
 		enabled: isEnabled && Boolean(artist),
-		// MusicBrainz caps the service at roughly one request a second, and one artist costs three requests plus Wikipedia's.
+		// MusicBrainz rate-limits to roughly one request a second, and one artist costs several.
 		staleTime: 24 * 60 * 60 * 1000,
 		gcTime: 24 * 60 * 60 * 1000,
 		retry: false,
@@ -90,7 +85,7 @@ export function useArtistInfo(artist: string | null | undefined) {
 
 			const { artists } = (await found.json()) as { artists?: MbArtist[] };
 			const match = artists?.[0];
-			// MusicBrainz scores out of 100 and an exact name is 100; anything under this is a name that merely shares a word.
+			// MusicBrainz scores a match out of 100, and an exact name scores 100.
 			if (!match || (match.score ?? 0) < 90) return null;
 
 			const detailed = await fetch(

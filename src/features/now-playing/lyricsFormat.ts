@@ -1,10 +1,7 @@
 // Not named `lyrics.ts`: on a case-insensitive filesystem `'./Lyrics'` resolves here instead of to `Lyrics.tsx`.
-// The `unsynced lyrics` tag holds either plain text or LRC timestamps; this tells the two apart and normalises neither.
 
 export interface LyricLine {
-	/** Seconds from the start of the track. */
 	at: number;
-	/** Empty for a timed gap. Kept rather than dropped: the gap says the next line is not imminent. */
 	text: string;
 }
 
@@ -15,13 +12,12 @@ export type Lyrics =
 
 export const NO_LYRICS: Lyrics = { kind: "none" };
 
-// `[mm:ss]`, `[mm:ss.xx]` and `[mm:ss:xx]` are all in circulation, and the fraction runs to two or three digits.
 const TIMESTAMP = /^\[(\d{1,3}):([0-5]?\d)(?:[.:](\d{1,3}))?\]/;
 
-// The `[xx:...]` metadata tags. Only `offset` changes what is drawn, and it is milliseconds to subtract rather than add.
 const ID_TAG = /^\[([a-z]{2,8}):(.*)\]$/i;
 
-// A fraction is not always hundredths: `[00:12.5]` is five tenths, `[00:12.500]` five hundred milliseconds. Pad, never divide by a guessed power of ten.
+// An LRC fraction is not always hundredths: `[00:12.5]` is five tenths, `[00:12.500]` five hundred milliseconds.
+// Pad, never divide by a guessed power of ten.
 const fractionSeconds = (digits: string | undefined) =>
 	digits ? Number(digits.padEnd(3, "0")) / 1000 : 0;
 
@@ -30,7 +26,6 @@ interface SourceLine {
 	text: string;
 }
 
-// One tag line can carry several timestamps: `[00:02.68][00:13.88]I never meant to` is a refrain sung twice.
 function peel(raw: string): SourceLine {
 	let rest = raw;
 	const times: number[] = [];
@@ -47,11 +42,8 @@ function peel(raw: string): SourceLine {
 	return { times, text: rest.trim() };
 }
 
-// The floor rejects `[Chorus]`-style headers on an untimed lyric; the share rejects a file where one line was timed by accident.
 const SYNCED_MINIMUM = 3;
 const SYNCED_SHARE = 0.5;
-
-// Counts alone misclassify credit-only lyrics whose few timestamps all sit in the opening seconds: followable timing needs span, not just count.
 const SYNCED_MIN_SPAN = 20;
 
 export function parseLyrics(raw: string | null | undefined): Lyrics {
@@ -66,7 +58,6 @@ export function parseLyrics(raw: string | null | undefined): Lyrics {
 		const trimmed = row.trim();
 		const line = peel(trimmed);
 
-		// A metadata tag only counts as one where no timestamp was peeled off: a timed line's text can hold a colon too.
 		if (line.times.length === 0) {
 			const tag = ID_TAG.exec(trimmed);
 			if (tag) {
@@ -94,7 +85,6 @@ export function parseLyrics(raw: string | null | undefined): Lyrics {
 	) {
 		const lines = timed
 			.flatMap(({ times, text }) =>
-				// Clamped at zero: an offset past the first timestamp would sort a line before the track starts, where nothing can make it current.
 				times.map((at) => ({ at: Math.max(0, at - offset), text })),
 			)
 			.sort((a, b) => a.at - b.at);
@@ -103,7 +93,6 @@ export function parseLyrics(raw: string | null | undefined): Lyrics {
 		if (span >= SYNCED_MIN_SPAN) return { kind: "synced", lines };
 	}
 
-	// Trims rather than filters: interior blanks are stanza breaks and stay.
 	const text = source.map((line) => line.text);
 	const first = text.findIndex(Boolean);
 	const last = text.findLastIndex(Boolean);
@@ -113,7 +102,6 @@ export function parseLyrics(raw: string | null | undefined): Lyrics {
 		: { kind: "plain", lines: text.slice(first, last + 1) };
 }
 
-/** Which line is current at `position`, or -1 before the first. Called on every animation frame, so it binary-searches. */
 export function activeLineAt(lines: LyricLine[], position: number): number {
 	let low = 0;
 	let high = lines.length - 1;

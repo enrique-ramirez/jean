@@ -23,12 +23,10 @@ import {
 	withoutField,
 } from "./tagWriter";
 
-// The only field Jean writes, of whatever the component's allowlist names.
 export const RATING_FIELD = "rating";
 
 const FIELDS_KEY = "jean.fooJeanFields";
 
-// Unknown names fall through to the tag's own spelling: the component's allowlist may name fields Jean has no label for.
 const FIELD_LABELS: Record<string, string> = { rating: "Ratings" };
 
 export const labelOfField = (field: string) =>
@@ -36,7 +34,6 @@ export const labelOfField = (field: string) =>
 
 export interface RateTarget {
 	source: LibrarySource;
-	// The ref the source addresses the row by, which is not its position in a filtered view.
 	ref: number;
 	row: TrackColumns;
 }
@@ -45,7 +42,6 @@ interface TagWriting {
 	state: TagWriterState;
 	isChecking: boolean;
 	canRate: boolean;
-	// Whether the row carries the control, decided by the input device rather than the viewport: a mouse on a narrow window keeps the stars.
 	canRateInline: boolean;
 	token: string;
 	setToken: (token: string) => void;
@@ -54,7 +50,8 @@ interface TagWriting {
 	setFieldEnabled: (field: string, enabled: boolean) => void;
 	recheck: () => void;
 	rate: (target: RateTarget, stars: number | null) => void;
-	// For a track with no row to overlay: the playing one, rated from the now-playing screen or from the keyboard. `label` is only used on failure, and `restore` undoes the caller's own optimistic value on the failures that rule it out -- the same rollback `clearWrittenRating` is for on a row.
+	// For a track with no row to overlay. `restore` undoes the caller's own optimistic value on the
+	// failures that rule it out, the same rollback `clearWrittenRating` is for on a row.
 	rateTrack: (
 		track: TrackIdentity,
 		label: string,
@@ -88,7 +85,6 @@ const tagValueOf = (stars: number | null) =>
 
 export function TagWriterProvider({ children }: { children: ReactNode }) {
 	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
-	// Absent means on, so the stored value only records a decision actually made.
 	const [fieldPrefs, setFieldPrefs] = useStoredState<Record<string, boolean>>(
 		FIELDS_KEY,
 		{},
@@ -97,7 +93,6 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 
 	const resolution = useMemo(() => tagWriterOf(discovery), [discovery]);
 
-	// Fields a 403 has taken off the table for this session.
 	const [refused, setRefused] = useState<string[]>([]);
 
 	const permitted = useMemo(
@@ -105,7 +100,8 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 		[resolution, refused],
 	);
 
-	// Narrowing only: the component's allowlist is the ceiling, since a client that could widen it would not be bounded by it.
+	// Narrowing only: the component's allowlist is the ceiling, since a client that could widen it
+	// would not be bounded by it.
 	const writer = useMemo(
 		() =>
 			permitted.allowedFields
@@ -128,7 +124,8 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 		[setFieldPrefs],
 	);
 
-	// Coalesced per row rather than through `useCoalescedWrite`, which holds one pending value and would lose an edit whenever two rows are rated in turn.
+	// Coalesced per row rather than through `useCoalescedWrite`, which holds one pending value and
+	// would lose an edit whenever two rows are rated in turn.
 	const pending = useRef(new Map<TrackColumns, RateTarget & { raw: string }>());
 	const isWriting = useRef(false);
 	const writerRef = useRef(writer);
@@ -147,7 +144,6 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			await sendRating(target, writerRef.current, setRefused);
 		} finally {
 			isWriting.current = false;
-			// Not guarded on being mounted: a queued write must still drain after the row goes.
 			drain();
 		}
 	}, []);
@@ -171,12 +167,10 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 		) => {
 			const raw = tagValueOf(stars);
 			writerRef.current.write(track, { [RATING_FIELD]: raw }).then((result) => {
-				// Success is silent: a rating is a small, reversible act with a visible result.
 				if (result.ok) return;
 
-				// A failure names the track, because this path can be reached with the track nowhere on screen.
 				if (result.reason === "timeout") {
-					// The write may still land, so a timeout keeps the value it wrote, exactly as a row does.
+					// The write may still land, so a timeout is never rolled back.
 					pushToast({
 						message: `${label} may not have been rated. ${result.message}`,
 						tone: "error",
@@ -203,7 +197,8 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 				writer.canWrite && writer.allows(RATING_FIELD) && hasFinePointer,
 			token,
 			setToken,
-			// The component's list, not the narrowed one: settings draws a switch per permitted field, including the ones switched off.
+			// The component's list, not the narrowed one: Settings draws a switch per permitted field,
+			// including the ones switched off.
 			allowedFields: permitted.allowedFields,
 			isFieldEnabled,
 			setFieldEnabled,
@@ -254,7 +249,6 @@ async function sendRating(
 	});
 
 	if (result.ok) {
-		// The component echoes what it wrote, normalised.
 		setWrittenRating(row, result.written.fields[RATING_FIELD] ?? raw);
 		return;
 	}
@@ -277,7 +271,6 @@ async function sendRating(
 	clearWrittenRating(row);
 
 	if (result.reason === "not-allowed") {
-		// Logged as well as shown: it means the capability check and the component disagree, which is a bug rather than a condition.
 		console.error(
 			`foo_jean refused '${result.field ?? RATING_FIELD}': ${result.message}`,
 		);

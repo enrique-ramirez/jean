@@ -9,9 +9,6 @@ import type { LibrarySource } from "./librarySource";
 import styles from "./Mosaic.module.css";
 import { type Refs, refAt } from "./project";
 
-// One, four or nine, and the count is **albums** rather than tracks. Counted by tracks a 21-track
-// single-album playlist drew the same cover four times, and two albums drew one of them four times
-// while the other never appeared at all.
 const tileCountFor = (albums: number) =>
 	albums === 0 ? 0 : albums >= 9 ? 9 : albums >= 4 ? 4 : 1;
 
@@ -23,8 +20,6 @@ const hash = (text: string) => {
 	return accumulated;
 };
 
-// Evenly spaced across the albums rather than randomly sampled. The offset is derived from the seed,
-// so two lists of the same length still differ and a given list looks the same on every render.
 const pickPositions = (seed: string | null, count: number, tiles: number) => {
 	if (tiles === 0) return [];
 	const stride = count / tiles;
@@ -34,13 +29,6 @@ const pickPositions = (seed: string | null, count: number, tiles: number) => {
 	);
 };
 
-/**
- * One ref per album, in the order the rows are in.
- *
- * Identity is album artist and title through `tagKey`, never the picture: comparing bytes would mean
- * downloading them, which is the cost this exists to avoid. A row with no album tag is its own entry
- * -- a folder of loose singles is a wall of different covers, not one album repeated.
- */
 function albumRefs(rows: TrackColumns[], indices: Refs | null): number[] {
 	const seen = new Set<string>();
 	const refs: number[] = [];
@@ -50,25 +38,16 @@ function albumRefs(rows: TrackColumns[], indices: Refs | null): number[] {
 		const album = value(row, FIELD.album);
 		const artist =
 			value(row, FIELD.albumArtist) ?? value(row, FIELD.artist) ?? "";
-		// A separator no tag can contain, rather than a space: `Blur / Think Tank` and `Blur Think / Tank` are different albums. Escaped rather than typed, or git reads the file as binary and shows no diff for it at all.
 		const key = album ? `${tagKey(artist)}\u0000${tagKey(album)}` : `#${at}`;
 		if (seen.has(key)) continue;
 
 		seen.add(key);
-		// The first track of the album, which is the one most likely to carry the embedded sleeve.
 		refs.push(refAt(indices, at));
 	}
 
 	return refs;
 }
 
-/**
- * The covers of a set, as one picture.
- *
- * Takes `rows` rather than a count, because the whole of the drawing depends on how many distinct
- * albums are in there. `indices` maps a position in the set back to the ref the source addresses
- * artwork by; without it the set is the whole list and the two are the same.
- */
 export function Mosaic({
 	source,
 	rows,
@@ -93,10 +72,6 @@ export function Mosaic({
 		[seed, albums, tiles],
 	);
 
-	// The mosaic holds as one picture rather than as four or nine. `Artwork`'s own placeholder is
-	// right for a single cover and wrong here: a grid of nine identical disc icons reads as a fault,
-	// not as a cover on its way. So the tiles are hidden until the last has answered, and what shows
-	// until then is one hold at the size of the whole thing -- the same shape a single album has.
 	const [answered, setAnswered] = useState(0);
 	const settled = useCallback(() => setAnswered((count) => count + 1), []);
 	const isReady = tiles > 0 && answered >= tiles;
@@ -121,8 +96,7 @@ export function Mosaic({
 		>
 			{positions.map((index, position) => (
 				<Artwork
-					// The tiles are a fixed grid picked by stride and never reordered, so the slot is the identity.
-					// biome-ignore lint/suspicious/noArrayIndexKey: fixed grid, see above
+					// biome-ignore lint/suspicious/noArrayIndexKey: a fixed grid of tiles, never reordered, so the slot is the identity
 					key={`${index}-${position}`}
 					src={source.artworkUrl(index)}
 					size="100%"
@@ -131,8 +105,6 @@ export function Mosaic({
 				/>
 			))}
 
-			{/* Only where the picture is not the whole answer: four tiles for four albums says everything,
-			    and `4 albums` under it would be repeating the tiles back. */}
 			{isReady && albums.length !== tiles ? (
 				<span className={styles.count}>{plural(albums.length, "album")}</span>
 			) : null}
@@ -140,8 +112,6 @@ export function Mosaic({
 			{isReady ? null : (
 				<span
 					className={`${styles.hold} loading`}
-					// Named, because `Artwork` draws its own hold with the same `loading` class and this
-					// exists precisely to stand in for several of those.
 					data-mosaic-hold=""
 					aria-hidden="true"
 				>

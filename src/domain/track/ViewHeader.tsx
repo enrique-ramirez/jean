@@ -19,7 +19,6 @@ function PlayedMeter({ share }: { share: number }) {
 	);
 }
 
-// One header for anything that is a list of tracks: a playlist, a shelf or a set of search results.
 export function ViewHeader({
 	eyebrow,
 	title,
@@ -27,7 +26,6 @@ export function ViewHeader({
 	hasPlayCounts,
 	actions,
 	aside,
-	/** Where the chips end, on a view whose genres are the whole library's. See below. */
 	allGenresHref,
 }: {
 	eyebrow?: ReactNode;
@@ -47,7 +45,6 @@ export function ViewHeader({
 			: null;
 
 	return (
-		// Three grid areas rather than one column, so on a narrow viewport the naming can sit beside the mosaic while the rest stays full width.
 		<header className={styles.header}>
 			<div className={styles.naming}>
 				<p className={styles.eyebrow}>{eyebrow}</p>
@@ -77,13 +74,6 @@ export function ViewHeader({
 					{hasPlayCounts ? <PlayedMeter share={stats.playedShare} /> : null}
 				</div>
 
-				{/* Every chip opens its genre: the share is what this list is made of, and the tag is where
-				    the rest of it lives. On a playlist that is a change of scope -- 34% of these tracks,
-				    then all 2,667 in the library -- and the destination's own header says `Genre` first,
-				    which is what keeps the jump legible on arrival.
-				    The last chip is the way out to the index, and it is drawn only where the count beside
-				    it and the page behind it are the same set. On a playlist they are not: the header
-				    would say 23 and the index would list 141. */}
 				{stats.topGenres.length > 0 ? (
 					<div className={styles.chips}>
 						{stats.topGenres.map((genre) => (

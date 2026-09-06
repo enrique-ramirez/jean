@@ -4,7 +4,6 @@ import {
 	useLayoutEffect,
 } from "react";
 
-// What a surface adds on top of the shared roving behaviour. Returning true means it took the key.
 type BeyondHandler = (context: {
 	event: ReactKeyboardEvent;
 	items: HTMLElement[];
@@ -18,7 +17,6 @@ const itemsIn = (container: HTMLElement | null | undefined): HTMLElement[] => [
 	...(container?.querySelectorAll<HTMLElement>(ITEMS) ?? []),
 ];
 
-// Wrapping, and -1 is the last one.
 const ROVE: Record<string, (at: number) => number> = {
 	ArrowDown: (at) => at + 1,
 	ArrowUp: (at) => (at < 0 ? -1 : at - 1),
@@ -26,8 +24,9 @@ const ROVE: Record<string, (at: number) => number> = {
 	End: () => -1,
 };
 
-// Focus returns on close only if the panel still holds it: an action may send focus somewhere deliberately, and must not have it taken back.
-// isReady is load-bearing: a popover is invisible for the frame it is measured in, and focusing an invisible element puts focus nowhere. A layout effect, so the cleanup runs while the panel is still in the DOM.
+// `isReady` is load-bearing: a popover is invisible for the frame it is measured in, and focusing an
+// invisible element puts focus nowhere. A layout effect, so the cleanup runs while the panel is
+// still in the DOM.
 export function useFocusCapture(
 	ref: RefObject<HTMLElement | null>,
 	isReady = true,
@@ -38,7 +37,6 @@ export function useFocusCapture(
 		const panel = ref.current;
 		if (!panel) return undefined;
 		const previous = document.activeElement as HTMLElement | null;
-		// Unless the panel has already placed it: a page that autofocuses its own field has said where focus belongs.
 		if (!panel.contains(previous)) panel.focus({ preventScroll: true });
 
 		return () => {
@@ -48,8 +46,8 @@ export function useFocusCapture(
 	}, [ref, isReady]);
 }
 
-// Nothing typed at an open menu belongs to the app behind it: without the stopPropagation the arrows seek the player and space toggles playback mid-menu.
-// Tab is the exception: leaving by keyboard is the browser's business.
+// Nothing typed at an open menu belongs to the app behind it: without the `stopPropagation` the
+// arrows seek the player and space toggles playback mid-menu. Tab is the exception.
 export function handleMenuKeys(
 	event: ReactKeyboardEvent,
 	{
@@ -81,13 +79,13 @@ export function handleMenuKeys(
 		return;
 	}
 
-	// Everything else belongs to the field while a field has focus: Home, End and the horizontal arrows are caret keys there, and every printable character is just typing.
 	if (event.target instanceof HTMLInputElement) return;
 
 	const rove = ROVE[event.key];
 	if (!rove) return;
 
-	// Enter and Space on a focused item are deliberately not here: it is a real button, and preventing the default is what would stop it being pressed.
+	// Enter and Space are deliberately absent: the item is a real button, and preventing the default
+	// is what would stop it being pressed.
 	focus(rove(at));
 	event.preventDefault();
 }

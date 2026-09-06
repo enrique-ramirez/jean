@@ -28,8 +28,6 @@
 	color: var(--muted);
 }
 
-/* Bottom-aligned, because the two are different heights and always will be: the field is a field and
-   the order control is a pair of buttons under a label. A baseline is the only thing they can share. */
 .controls {
 	display: flex;
 	align-items: flex-end;
@@ -37,8 +35,6 @@
 	margin-bottom: 24px;
 }
 
-/* Pushed to the far end rather than trailing the field, so the row reads as one thing on the left and
-   one on the right instead of two controls that happened to stop where the field did. */
 .sort {
 	display: flex;
 	flex-direction: column;
@@ -56,8 +52,6 @@
 	color: var(--faint);
 }
 
-/* `auto-fill` rather than a column count per breakpoint: the sidebar collapses and the queue panel
-   docks, so the space this grid gets changes without the viewport changing at all. */
 .grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -79,23 +73,17 @@
 		font-size: 25px;
 	}
 
-	/* Two columns, always: `auto-fill` at this width gives one, and a single column of tiles is a
-	   list of headings with a picture stuck to each. */
 	.grid {
 		grid-template-columns: 1fr 1fr;
 		gap: 12px;
 	}
 
-	/* One row, the way a playlist's toolbar is one row: the field takes what is left and the order
-	   control drops to its icons. A second row for two buttons costs more vertical space on the
-	   smallest screen than the labels were worth. */
 	.controls {
 		align-items: center;
 		gap: 10px;
 		margin-bottom: 18px;
 	}
 
-	/* The label goes with the words. Icons beside a field need no heading to say they sort it. */
 	.sortLabel {
 		display: none;
 	}

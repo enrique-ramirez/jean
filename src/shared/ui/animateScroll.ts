@@ -3,10 +3,12 @@ import { clamp } from "@/shared/lib/math";
 const easeInOutCubic = (t: number) =>
 	t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
 
-// Native behavior: 'smooth' has a browser-decided duration that grows with distance, so a jump across a library-sized list crawls for seconds.
-// getTarget is re-read every frame rather than captured, because rows measured during the flight move where the destination actually sits.
+// `scroll-behavior: smooth` takes a browser-decided duration that grows with distance, so a jump
+// across a long list crawls. `getTarget` is re-read every frame rather than captured, because rows
+// measured during the flight move where the destination sits.
 
-// A wheel event is not by itself a decision: trackpad and mouse momentum keep emitting for a second after the fingers leave, and a decaying tail never passes this while deliberate scrolling does so in one or two events.
+// Trackpad and mouse momentum keep emitting wheel events after the fingers leave, so one event is
+// not a decision; a decaying tail never reaches this and deliberate scrolling does at once.
 const CANCEL_DELTA_PX = 40;
 
 export function animateScrollTo(
@@ -50,7 +52,6 @@ export function animateScrollTo(
 		else cancel();
 	};
 
-	// A touch is unambiguous where a wheel event is not, so only touch cancels on its own.
 	element.addEventListener("wheel", onWheel, { passive: true });
 	element.addEventListener("touchstart", cancel, { passive: true });
 	frame = requestAnimationFrame(step);

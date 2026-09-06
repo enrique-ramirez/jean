@@ -8,8 +8,6 @@ import { PlayIcon } from "@/shared/ui/icons";
 import styles from "./HomeHeader.module.css";
 import type { LibraryStats } from "./libraryStats";
 
-// A claim, then three doors.
-// A destination is an anchor and an action is a button: `#/search` carries the route and not what was typed, so a search door has to be a button or it promises a tab that opens on an empty field.
 interface Door {
 	id: string;
 	label: string;
@@ -18,9 +16,7 @@ interface Door {
 	onOpen?: () => void;
 	hint: string | null;
 	name: string | null;
-	/** The sleeve of the record this card names. Null on a card that names a destination rather than a record. */
 	cover: string | null;
-	/** Dropped on a phone when there is another card to show. */
 	minor?: boolean;
 }
 
@@ -47,14 +43,12 @@ export function HomeHeader({
 			? `${stats.earliest}–${stats.latest}`
 			: (stats.earliest ?? null);
 
-	// A figure at nothing is not drawn: zero albums means no album tag rather than a library without albums. The named half drops the same way where the player keeps no play counts.
 	const doors: Door[] = [
 		{
 			id: "tracks",
 			label: "track",
 			count: stats.trackCount,
 			href: "#/all",
-			// Carries a hint like the other two, or its link sits a line higher than theirs and the row reads as one card having failed to load.
 			hint: "browse",
 			name: "All music",
 			cover: null,
@@ -84,16 +78,10 @@ export function HomeHeader({
 			id: "genres",
 			label: "genre",
 			count: stats.genreCount,
-			// A destination, like the tracks card, so the row is two doors and two records rather than
-			// three records and an odd one out. No sleeve: a cover means the thing named is *in* your
-			// library, and "All genres" is not a record.
 			href: GENRES_HREF,
 			hint: "browse",
 			name: "All genres",
 			cover: null,
-			// Dropped on a phone, like the tracks card: three cards there leave a lone one on a second
-			// row, and this screen carries two other doors to the same place -- the sidebar row and the
-			// `Genres` heading further down.
 			minor: true,
 		},
 	].filter((door) => door.count > 0);
@@ -148,14 +136,12 @@ export function HomeHeader({
 				</div>
 			) : null}
 
-			{/* The rows arrive in chunks, so every figure above is provisional until the last one lands. */}
 			{isLoading ? <p className={styles.counting}>still counting</p> : null}
 		</header>
 	);
 }
 
 function Doorway({ door }: { door: Door }) {
-	// Spans rather than a `dl`: a definition list is flow content, legal inside the anchor and illegal inside the button, and one markup has to serve both.
 	const body = (
 		<>
 			<span className={styles.figure}>
@@ -178,7 +164,6 @@ function Doorway({ door }: { door: Door }) {
 							<span className={styles.hint}>{door.hint}</span>
 						) : null}
 						<span className={styles.name}>
-							{/* Its own element: `text-overflow` acts on a block's own text, not on an anonymous text node sitting beside a flex sibling. */}
 							<span className={styles.nameText}>{door.name}</span>
 							<ChevronRight
 								className={styles.nameChevron}

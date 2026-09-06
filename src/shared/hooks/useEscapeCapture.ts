@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 
-// A field owns Escape while it holds the caret: cancelling a rename and clearing the search field are both this key, and a capture listener runs before either of them.
 const isTyping = (target: EventTarget | null) => {
 	const element = target as HTMLElement | null;
 	return (
@@ -10,7 +9,8 @@ const isTyping = (target: EventTarget | null) => {
 	);
 };
 
-/** Escape, taken on the way down and stopped there. The playlist scope binds it to clearing a selection and stays mounted under every layer this screen opens, so a bubbling handler arrives second and clears a selection nobody could see. Pass `null` to stand down: capture beats every overlay above, so a layer that is no longer the front one has to say so. */
+// Escape, taken on the way down and stopped there. Pass `null` to stand down: capture beats every
+// overlay above, so a layer that is no longer the front one has to say so.
 export function useEscapeCapture(onEscape: (() => void) | null) {
 	useEffect(() => {
 		if (!onEscape) return undefined;

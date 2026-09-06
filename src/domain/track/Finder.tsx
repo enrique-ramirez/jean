@@ -15,7 +15,6 @@ import { Input } from "@/shared/ui/Input";
 import styles from "./Finder.module.css";
 import { artistOf, titleOf } from "./fields";
 
-// Finds without filtering: the list keeps every track and its order, and only Enter starts playback.
 export function Finder({
 	inputRef,
 	rows,
@@ -28,7 +27,6 @@ export function Finder({
 	onConfirm,
 	onClose,
 }: {
-	// The hook's, and so is the caret: it puts it here when the field appears and again on every later `/`, which is one rule in one place rather than a mount effect that only ever answers the first of them.
 	inputRef: RefObject<HTMLInputElement | null>;
 	rows: TrackColumns[];
 	label: string;
@@ -44,11 +42,11 @@ export function Finder({
 	const [active, setActive] = useState(0);
 	const debouncedActive = useDebounced(active, 90);
 
-	// Held in a ref: the parent passes a new closure every render, and depending on it directly would make previewing re-run itself forever.
+	// Held in a ref: the parent passes a new closure every render, and depending on it directly would
+	// make previewing re-run itself forever.
 	const previewRef = useRef(onPreview);
 	previewRef.current = onPreview;
 
-	// Whether the active result is where the user put it, or merely where a new query reset it. Only the first previews.
 	const navigated = useRef(false);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: a new query resets the cursor, not a read
@@ -59,7 +57,9 @@ export function Finder({
 
 	const aimedAt = useEarnedHover(results);
 
-	// Follows the cursor, deliberately not the query: previewing per keystroke relays out the sticky toolbar the field sits in, and Android's keyboard then loses its composition and returns the letters scrambled.
+	// Follows the cursor, deliberately not the query: previewing per keystroke relays out the sticky
+	// toolbar the field sits in, and Android's keyboard then loses its composition and returns the
+	// letters scrambled.
 	const previewIndex = results[debouncedActive];
 
 	useEffect(() => {
@@ -79,7 +79,6 @@ export function Finder({
 
 		const above = option.offsetTop - list.scrollTop;
 		const below = above + option.offsetHeight - list.clientHeight;
-		// One branch each way, and neither when the row is already whole: scrolling a visible row to an edge is motion that answers nothing.
 		if (above < 0) list.scrollTop += above;
 		else if (below > 0) list.scrollTop += below;
 	}, [active]);
@@ -87,7 +86,8 @@ export function Finder({
 	const step = (delta: number) => {
 		if (results.length === 0) return;
 		navigated.current = true;
-		// Only a key scrolls: a hover already proves the row is on screen, and scrolling under a stationary pointer fires mouseenter, which moves the cursor, which scrolls again.
+		// Only a key scrolls: scrolling under a stationary pointer fires mouseenter, which moves the
+		// cursor, which scrolls again.
 		revealActive.current = true;
 		setActive((current) => (current + delta + results.length) % results.length);
 	};
@@ -103,7 +103,6 @@ export function Finder({
 	});
 
 	return (
-		// The panel is positioned against this, so the field sits inside it rather than being it.
 		<div className={styles.finder}>
 			<Input
 				size="sm"

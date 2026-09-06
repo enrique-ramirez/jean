@@ -13,10 +13,8 @@ import { buildShelves, type FilledShelf } from "./shelves";
 import { TopTracks } from "./TopTracks";
 import { topTracksOf } from "./tracks";
 
-// The shelf that stays a row of its own; every other one is behind a tab.
 const FREE_SHELF = "recent";
 
-// Sized against `GENRE_BARS` in `libraryStats.ts`, which sits beside this block: change one and the other wants changing with it.
 const TOP_TRACKS = 10;
 
 export function HomeView({
@@ -40,7 +38,6 @@ export function HomeView({
 	canPlay: boolean;
 	canShuffle: boolean;
 }) {
-	// Once per library, not per render: the aggregation is a pass over every row, and the header counts off the same pass rather than making its own.
 	const albums = useMemo(
 		() =>
 			library.rows.length === 0
@@ -79,10 +76,8 @@ export function HomeView({
 	const free = shelves.find((shelf) => shelf.id === FREE_SHELF) ?? null;
 	const tabbed = shelves.filter((shelf) => shelf !== free);
 
-	// Either half of the closing band can be absent, and the survivor takes the whole width.
 	const hasBand = tracks.length > 0 || stats.topGenres.length > 0;
 
-	// Not a spinner over an empty screen: the shelves appear under the heading as the chunks arrive.
 	return (
 		<div className={styles.home}>
 			<HomeHeader

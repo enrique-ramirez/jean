@@ -1,13 +1,5 @@
 .track {
 	--heat-alpha: calc(var(--heat, 0) * 0.22 * (1 - var(--patina, 0) * 0.62));
-	/* One knob for the row's horizontal inset, because the heat wash has to be
-     derived from it rather than stated again. Hardcoded, the two drift: album
-     rows set their own gutter and the wash kept the list layout's, so it began
-     *inside* the content and left the track number stranded outside the tint.
-     Gutter = the view's content line + the lead, which puts the wash's edge on
-     that line and the number a little way inside it. Three things want that
-     line -- the number, the wash, and a gap between them -- and only two of
-     them can have it. The wash is the larger shape, so it takes the line. */
 	--row-gutter: 32px;
 	--heat-lead: 8px;
 	--row-pad-block: 0px;
@@ -21,18 +13,9 @@
 	user-select: none;
 }
 
-/* Play count as texture rather than a number you have to read. The wash fades
-   out to the right so titles stay legible over it, and it is painted on a
-   pseudo-element so hover and selection backgrounds can sit above it.
-
-   `--tint`, not `--accent`, and that is the whole reason the two exist
-   separately: on light the accent is a charcoal, and a row washed in 22% of a
-   near-black is grey -- which reads as *disabled*, the opposite of what a
-   heavily played track is. See the note at the top of `tokens.css`. */
 .track::before {
 	content: "";
 	position: absolute;
-	/* Clamped: a row with a gutter smaller than the lead has nowhere to put it. */
 	inset: 2px max(0px, calc(var(--row-gutter) - var(--heat-lead)));
 	border-radius: var(--radius-sm);
 	background: linear-gradient(
@@ -70,9 +53,6 @@
 }
 
 .track[data-active="true"] .title {
-	/* The equalizer marks this row too, but only where the index column is
-     drawn -- and on light the ink accent is indistinguishable from every
-     other title. */
 	color: var(--accent-text);
 	font-weight: 600;
 }
@@ -84,12 +64,6 @@
 	text-underline-offset: 3px;
 }
 
-/* Left, not right. Right-aligning a number inside a column wide enough for the
-   longest one parks every short number away from the edge, and the edge is the
-   line the title, the buttons and the toolbar all start on -- so the first
-   thing in the row was the only thing not aligned to anything. The cost is a
-   ragged right on mixed-width numbers, which the gap before the artwork
-   absorbs. */
 .index {
 	text-align: left;
 	color: var(--faint);
@@ -102,8 +76,6 @@
 	min-width: 0;
 }
 
-/* A guest artist rides on the title's line rather than under it. Baselines
-   rather than centres: the two are different sizes, and it is one sentence. */
 .names[data-inline="true"] {
 	flex-direction: row;
 	align-items: baseline;
@@ -118,12 +90,6 @@
 	white-space: nowrap;
 }
 
-/* Basis 0, so the note lives in whatever the title leaves rather than competing
-   with it. Sharing the shrink is what it looked like at first and it is wrong:
-   flexbox takes space out of both in proportion to what they hold, so a long
-   guest list won against a short title -- 'Nutshell' became 'Nuts...' next to a
-   fully-drawn 'feat. Ozzy Osbourne & Tra...', on a phone, which is the one place
-   it matters. The title is the row's identity and truncates last. */
 .note {
 	overflow: hidden;
 	flex: 1 1 0;
@@ -135,8 +101,6 @@
 	opacity: calc(1 - var(--patina, 0) * 0.32);
 }
 
-/* Patina quiets tracks you have not come back to. Applied only where the track
-   was played at all -- intensity.js leaves patina at 0 for unplayed tracks. */
 .artist {
 	overflow: hidden;
 	font-size: 0.78125rem;
@@ -158,12 +122,9 @@
 	text-align: right;
 }
 
-/* Tighter gutters and gaps on a phone: every pixel here comes straight out of
-   the title. */
 @media (max-width: 720px) {
 	.track {
 		gap: 9px;
-		/* 16px content line + the same 8px lead. */
 		--row-gutter: 24px;
 	}
 

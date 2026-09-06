@@ -1,14 +1,10 @@
 import { readStoredState } from "@/shared/hooks/useStoredState";
 
-// What this device calls itself when it listens, so the picker on somebody's phone can say who else has the sound.
-
-// Per device and never synced; the root CLAUDE.md holds that list.
 export const DEVICE_ID_KEY = "jean.deviceId";
 export const DEVICE_NAME_KEY = "jean.deviceName";
 
-// ---- the id ------------------------------------------------------------------
-
-// `crypto.randomUUID` is secure-context only, and Jean is served over plain HTTP from beefweb on a LAN, so it is routinely absent. `getRandomValues` is not restricted that way.
+// `crypto.randomUUID` is secure-context only, and Jean is routinely served over plain HTTP on a LAN.
+// `getRandomValues` is not restricted that way.
 const randomId = () => {
 	const bytes = new Uint8Array(16);
 	crypto.getRandomValues(bytes);
@@ -19,7 +15,6 @@ const randomId = () => {
 
 let id: string | null = null;
 
-// Stable for as long as this browser keeps its storage, which is what makes a reconnect the same listener rather than a new one. Never derived from anything about the person.
 export function deviceId(): string {
 	if (id) return id;
 
@@ -30,17 +25,15 @@ export function deviceId(): string {
 			localStorage.setItem(DEVICE_ID_KEY, id);
 		}
 	} catch {
-		// Private mode: a fresh id per page load, which reports one device as several rather than refusing to listen.
 		id ??= randomId();
 	}
 
 	return id;
 }
 
-// ---- the name ----------------------------------------------------------------
-
-// A browser cannot learn the name of the machine it runs on. There is no API for it, so this guesses at the *kind* of device and Settings is where anyone who cares writes "Kitchen speaker" instead.
-// That is what separates it from the user-agent detection this codebase does not do: nothing branches on this. Detection that picks behaviour is banned because a wrong answer breaks the feature silently; a label is wrong in a way its owner can see and fix in one field.
+// A browser cannot learn the name of the machine it runs on, so this guesses at the kind of device
+// and Settings is where anyone who cares writes something better. Nothing branches on the answer,
+// which is what separates it from the user-agent detection this codebase does not do.
 
 interface ClientHints {
 	platform?: string;
@@ -68,7 +61,7 @@ export function defaultDeviceName(): string {
 		}
 	}
 
-	// Safari and Firefox publish no client hints, and `navigator.platform` is what is left. Deprecated, present everywhere, and read here for a word rather than for a decision.
+	// Safari and Firefox publish no client hints, so `navigator.platform` is what is left.
 	const platform = navigator.platform ?? "";
 	const touch = navigator.maxTouchPoints ?? 0;
 
@@ -84,11 +77,9 @@ export function defaultDeviceName(): string {
 	return "Browser";
 }
 
-// Read outside React by the connection, and through `useStoredState` by Settings, which is why it goes through the one store rather than straight to `localStorage`.
 export const deviceName = () =>
 	readStoredState(DEVICE_NAME_KEY, defaultDeviceName);
 
-// What the component is told when a ticket is asked for. The name is a label and the id is what groups this device's connections.
 export const deviceIdentity = () => ({
 	deviceId: deviceId(),
 	name: deviceName(),

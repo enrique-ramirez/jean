@@ -13,9 +13,6 @@ export interface Toast {
 	tone: "default" | "error";
 }
 
-// A module-level store rather than a context: a provider holding the list would re-render everything beneath it whenever a toast appeared or expired, including the virtualised track list.
-
-// Older ones are dropped rather than stacked past this: a column of them covers the thing being reported.
 const MAX_VISIBLE = 3;
 const WITH_ACTION_MS = 9000;
 const PLAIN_MS = 5000;

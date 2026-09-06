@@ -32,8 +32,6 @@
 	color: var(--muted);
 }
 
-/* Zero height, so an always-mounted pill reserves nothing at the end of the
-   list. Sticky still works at height 0. */
 .pillSlot {
 	position: sticky;
 	bottom: 16px;
@@ -42,8 +40,6 @@
 	pointer-events: none;
 }
 
-/* Transitions rather than a keyframe, so it slides both ways: up on the way in,
-   back down on the way out. */
 .pill {
 	position: absolute;
 	bottom: 0;
@@ -75,51 +71,6 @@
 	pointer-events: none;
 }
 
-/* The arrow leans the way it points rather than bobbing evenly about its
-   centre: an even bob is a thing vibrating, and this one is meant to be
-   indicating. Just over two thirds of the travel goes in the direction of
-   travel -- 1.66px of 2.4px -- which is enough to catch the eye at the edge of
-   it and not enough to look at.
-   Two animations on near-coprime durations rather than one loop, per the rule
-   the play/pause toggle follows: 850ms and 900ms are 17:18, so they come back
-   into phase once every 15 seconds and the motion never quite repeats or reads
-   as a mechanism.
-
-   The shape is a sine sampled into six stops and interpolated linearly, and
-   that is the whole of why it is smooth. It replaced a two-stop `ease-in-out`,
-   which read as two frames -- up, then down -- rather than as movement, and the
-   reason is worth keeping: **any easing applied to a two-stop keyframe brings
-   the element to a complete stop at 0%, 50% and 100%.** Velocity is zero three
-   times a cycle and near-zero for a while either side, so *measured* on that
-   curve 18% of frames moved less than 0.02px -- visually nothing -- and the eye
-   integrated the rest into two resting positions with a flick between them.
-   Piecewise-linear segments have no such thing: every segment has a constant
-   non-zero slope, so the arrow is always moving. Same measurement on this one:
-   2% still frames, and the fastest frame moves 0.141px against 0.108px before.
-
-   Sub-pixel rasterisation was the other suspect and was ruled out first, by
-   pausing the animation at 34 phases and hashing the rendered icon: 31 distinct
-   images at 1x DPR. The browser was drawing the in-between positions perfectly
-   well. Nothing was there to draw.
-
-   The travel went 1.6px -> 2.4px, which is a sixth of the 14px arrow and still
-   a lean rather than a bounce -- a bounce is a character, an overshoot that
-   settles, not an amplitude. Speed went 3.8px/s -> 5.6px/s at the same 850ms
-   cycle, so the tempo nobody complained about is unchanged.
-   Per *second*, not per frame, on purpose: the same animation moves half as far
-   per frame on a 120Hz display, so a per-frame figure describes the monitor
-   rather than the motion -- which is exactly the trap that made an earlier
-   pass here look conclusive while being wrong. The per-frame figures above are
-   comparisons between two curves on one display, which is the one thing they
-   are good for.
-
-   `linear` is load-bearing and not a default: it is what makes the six stops
-   interpolate into a sine instead of six little ease-in-outs with a stop at
-   each end, which is the bug this fixed, six times over.
-
-   On the icon rather than the pill, because the pill is a button: the transform
-   lands on a child, and the pill's own box is laid out, so a transform on a
-   child leaves it exactly where it was. */
 @keyframes nod-up {
 	0%,
 	100% {
@@ -142,7 +93,6 @@
 	}
 }
 
-/* The mirror of it, stop for stop. */
 @keyframes nod-down {
 	0%,
 	100% {
@@ -165,10 +115,6 @@
 	}
 }
 
-/* Linear here too, and for the same reason: an eased two-stop breath dwells at
-   both ends, and two layers that both hold still at their extremes reinforce
-   each other into the stepping this whole block exists to remove. A triangle
-   wave in opacity has no visible corner at the turn. */
 @keyframes nod-breath {
 	from,
 	to {
@@ -183,9 +129,6 @@
 	color: var(--accent);
 }
 
-/* Only while it is on screen. The pill stays mounted so it can animate out, and
-   a compositor animation ticking away behind an invisible element for the whole
-   session is a cost with nothing to show for it. */
 .pill[data-visible="true"] svg {
 	animation:
 		nod-up 850ms linear infinite,
@@ -198,21 +141,16 @@
 
 @media (max-width: 720px) {
 	.toolbar {
-		/* 16px, matching ViewHeader. The two disagreed, so nothing below them had a
-       single line to line up with. */
 		padding: 8px 16px;
 	}
 }
 
-/* Wraps the virtualised list so one element can carry the context-menu
-   gestures for every row in it. Nothing else -- it must not become a
-   containing block or the virtualiser's absolute positioning moves. */
+/* `display: contents` and nothing else: a containing block here would move the virtualiser's
+   absolutely positioned rows. */
 .rows {
 	display: contents;
 }
 
-/* The legend sets its own width; the menu's default min-width would only fight
-   it, and its padding is the legend's to spend. */
 .heatInfo {
 	min-width: 0;
 	padding: 6px;

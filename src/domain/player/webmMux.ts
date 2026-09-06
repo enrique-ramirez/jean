@@ -1,19 +1,18 @@
-// Wraps Opus packets in the smallest WebM that MSE will accept. Chrome and Firefox both
-// take `audio/webm; codecs="opus"`; neither takes Ogg, which is the whole reason this exists.
+// The smallest WebM that MSE will accept. Chrome and Firefox both take
+// `audio/webm; codecs="opus"`, and neither takes Ogg.
 
 // Timecodes are milliseconds, so a cluster's own 16-bit block offsets reach half a minute.
 const TIMECODE_SCALE_NS = 1_000_000;
 
-// Opus needs 80 ms of audio decoded before the output is right, and the container is where
-// that is declared. A player that trusts a missing value glitches after every seek.
+// Opus needs 80 ms of audio decoded before the output is right and the container is where that is
+// declared. A player that trusts a missing value glitches after every seek.
 const SEEK_PREROLL_NS = 80_000_000;
 
-// Short enough that a flush lands promptly, long enough not to spend headers on it.
 const CLUSTER_MS = 1000;
 
 const bytes = (...values: number[]) => Uint8Array.from(values);
 
-// EBML sizes are a length in unary followed by the value. Only the widths this needs.
+// An EBML size is a length in unary followed by the value. Only the widths this needs.
 function size(value: number): Uint8Array {
 	if (value < 0x7f) return bytes(0x80 | value);
 	if (value < 0x3fff) return bytes(0x40 | (value >> 8), value & 0xff);
@@ -63,16 +62,13 @@ function join(...parts: Uint8Array[]): Uint8Array {
 }
 
 export interface WebmTrack {
-	// The OpusHead the stream opened with, which is also what the container carries.
 	codecPrivate: Uint8Array;
 	sampleRate: number;
 	channels: number;
 }
 
-// The bytes MSE wants before any media: everything up to the first cluster.
-//
-// The Segment is opened with the reserved unknown length, because a live stream has no end
-// to measure. Every parser accepts it; a length written and then outgrown is what breaks.
+// Everything MSE wants before any media. The Segment is opened with the reserved unknown length: a
+// live stream has no end to measure, and a length written and then outgrown is what breaks.
 export function initSegment({
 	codecPrivate,
 	sampleRate,
@@ -122,7 +118,6 @@ export function initSegment({
 
 	const tracks = element([0x16, 0x54, 0xae, 0x6b], track);
 
-	// Unknown-size Segment: the id, then the reserved all-ones length.
 	const segment = bytes(
 		0x18,
 		0x53,
@@ -141,15 +136,11 @@ export function initSegment({
 	return join(header, segment, info, tracks);
 }
 
-// Turns packets into clusters. One instance per connection: it owns the running timecode,
-// so a reconnect or a flush needs a new one and the element's own clock stays the truth.
 export class WebmMuxer {
 	private elapsed = 0;
 	private clusterAt = -1;
 	private parts: Uint8Array[] = [];
 
-	// Milliseconds of audio handed over so far, which is what the caller waits on before
-	// starting playback.
 	get buffered(): number {
 		return this.elapsed;
 	}
@@ -158,8 +149,8 @@ export class WebmMuxer {
 		if (this.clusterAt < 0 || this.elapsed - this.clusterAt >= CLUSTER_MS) {
 			this.clusterAt = Math.round(this.elapsed);
 			this.parts.push(
-				// A cluster is opened unknown-size too, so blocks can be appended without
-				// going back to write a length.
+				// A cluster is opened unknown-size too, so blocks can be appended without going back to
+				// write a length.
 				bytes(
 					0x1f,
 					0x43,
@@ -191,7 +182,6 @@ export class WebmMuxer {
 		this.elapsed += duration;
 	}
 
-	// Everything gathered since the last call, or null when nothing has been added.
 	take(): Uint8Array | null {
 		if (this.parts.length === 0) return null;
 		const out = join(...this.parts);

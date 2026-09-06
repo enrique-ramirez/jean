@@ -11,11 +11,6 @@ import styles from "./Settings.module.css";
 
 const asMB = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-// The one place the artwork cache is visible, and the only remedy for the one thing it gets wrong:
-// a sleeve re-tagged on disk after Jean has kept a copy.
-// Absent rather than disabled where the browser cannot do it at all -- `caches` is secure-context
-// only, so an install served over plain HTTP has no cache, and a panel explaining a feature that
-// cannot exist there is worse than no panel.
 export function CachedArtwork() {
 	const [held, setHeld] = useState<{
 		count: number;
@@ -28,7 +23,6 @@ export function CachedArtwork() {
 		artworkHeld().then(setHeld);
 	}, []);
 
-	// Counting walks every entry, so it happens when this panel is opened and never on a schedule.
 	useEffect(read, [read]);
 
 	if (!canCacheArtwork()) return null;
@@ -63,7 +57,6 @@ export function CachedArtwork() {
 				</HelpHint>
 			</div>
 
-			{/* One row: what is held, and the one thing you can do about it, on the same line. */}
 			<div className={styles.panelActions}>
 				<p className={styles.note}>
 					{held === null

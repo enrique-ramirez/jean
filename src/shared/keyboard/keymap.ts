@@ -1,25 +1,20 @@
-// Every binding in the app is declared here and nowhere else: `useKeymap` registers them and `ShortcutSheet` renders the help from the same array.
-//
-// Punctuation is declared as the character typed, never as the unshifted key plus Shift.
-// The matcher compares `event.key` first and only falls back to `event.code` through a QWERTY punctuation map, so `Shift+/` means "the ? on the physical slash key", which is true on US QWERTY and false on Dvorak, Spanish and French.
-// A shifted character therefore needs both spellings: `Shift+?` for layouts that shift to reach it, and the bare character for those that do not. Letters are safe either way.
+// Punctuation is declared as the character typed, never as the unshifted key plus Shift. The matcher
+// compares `event.key` first and falls back to `event.code` through a QWERTY punctuation map, so
+// `Shift+/` means "the ? on the physical slash key" -- true on US QWERTY and false on Dvorak, Spanish
+// and French. A shifted character therefore needs both spellings. Letters are safe either way.
 
 import type { RegisterableHotkey } from "@tanstack/react-hotkeys";
 
-// The hotkeys type excludes Shift+punctuation for the reason above, so the cast is spelled once, here.
+// The hotkeys type excludes Shift+punctuation, so the cast is spelled once, here.
 const shifted = (key: string) => `Shift+${key}` as RegisterableHotkey;
 
-// `ignoreInputs: false` is how a binding stays live inside a text field.
 export interface Binding {
 	id: string;
 	scope: string;
 	group: string;
 	name: string;
-	// Typed by the hotkeys manager, so a chord spelled wrong is a compile error rather than a binding that never fires.
 	keys: RegisterableHotkey[];
-	// What the sheet draws when the registrations are not what a person should be told: two spellings of `?` are one key to press.
 	shown?: string[];
-	// Registered, not documented: bindings that only meet the expectation a list sets anyway, and so teach nothing in the sheet.
 	hidden?: boolean;
 	options?: { ignoreInputs?: boolean };
 }
@@ -35,7 +30,6 @@ export const SCOPE = {
 };
 
 export const KEYMAP: Binding[] = [
-	// Playback -------------------------------------------------------------
 	{
 		id: "playPause",
 		scope: SCOPE.global,
@@ -64,7 +58,6 @@ export const KEYMAP: Binding[] = [
 		name: "Stop",
 		keys: ["Mod+."],
 	},
-	// Both spellings: `=` is unshifted on US and Shift+0 on Spanish, French and German.
 	{
 		id: "volumeUp",
 		scope: SCOPE.global,
@@ -89,9 +82,6 @@ export const KEYMAP: Binding[] = [
 		keys: ["M"],
 	},
 
-	// Rating ----------------------------------------------------------------
-	//
-	// Global rather than per-list: the target is the cursor row when a list has one and the playing track otherwise, which is one question with one answer.
 	{
 		id: "rate0",
 		scope: SCOPE.global,
@@ -135,7 +125,6 @@ export const KEYMAP: Binding[] = [
 		keys: ["5"],
 	},
 
-	// Only the vertical arrows move the list cursor, so the horizontal pair is free to seek everywhere.
 	{
 		id: "seekBack",
 		scope: SCOPE.global,
@@ -151,7 +140,6 @@ export const KEYMAP: Binding[] = [
 		keys: ["ArrowRight"],
 	},
 
-	// Navigation -----------------------------------------------------------
 	{
 		id: "globalSearch",
 		scope: SCOPE.global,
@@ -159,7 +147,7 @@ export const KEYMAP: Binding[] = [
 		name: "Search the library",
 		keys: ["Mod+K"],
 	},
-	// A bare letter: `Mod+Shift+P` opens a private window in Firefox and never reaches the page, and every modifier combination worth having is spoken for by some browser.
+	// A bare letter: `Mod+Shift+P` opens a private window in Firefox and never reaches the page.
 	{
 		id: "openPalette",
 		scope: SCOPE.global,
@@ -174,7 +162,6 @@ export const KEYMAP: Binding[] = [
 		name: "Show / hide sidebar",
 		keys: ["Mod+B"],
 	},
-	// The same letter without the modifier, because the two are one idea: `Mod+B` decides whether the sidebar is there, `B` goes to it.
 	{
 		id: "focusSidebar",
 		scope: SCOPE.global,
@@ -215,12 +202,10 @@ export const KEYMAP: Binding[] = [
 		scope: SCOPE.global,
 		group: "Navigation",
 		name: "Keyboard shortcuts",
-		// Shown as one key because it is one key; see the note at the top.
 		keys: [shifted("?"), "?" as RegisterableHotkey],
 		shown: ["?"],
 	},
 
-	// Appearance -----------------------------------------------------------
 	{
 		id: "toggleTheme",
 		scope: SCOPE.global,
@@ -229,9 +214,8 @@ export const KEYMAP: Binding[] = [
 		keys: ["T"],
 	},
 
-	// On the now-playing screen ---------------------------------------------
-	// Each key is the initial of the tab it opens, and the tab strip underlines
-	// it. Rename a tab and the letter moves with it, or the hint lies.
+	// Each key is the initial of the tab it opens and the tab strip underlines it. Rename a tab and
+	// the letter moves with it, or the hint lies.
 	{
 		id: "showLyrics",
 		scope: SCOPE.nowPlaying,
@@ -254,8 +238,6 @@ export const KEYMAP: Binding[] = [
 		keys: ["A"],
 	},
 
-	// In the sidebar -------------------------------------------------------
-	// Registered only while a playlist row has focus.
 	{
 		id: "movePlaylistUp",
 		scope: SCOPE.sidebar,
@@ -271,7 +253,6 @@ export const KEYMAP: Binding[] = [
 		keys: ["Alt+ArrowDown"],
 	},
 
-	// On the genres page ---------------------------------------------------
 	{
 		id: "findGenre",
 		scope: SCOPE.genres,
@@ -287,7 +268,6 @@ export const KEYMAP: Binding[] = [
 		keys: ["S"],
 	},
 
-	// In a playlist --------------------------------------------------------
 	{
 		id: "openFinder",
 		scope: SCOPE.playlist,
@@ -344,7 +324,6 @@ export const KEYMAP: Binding[] = [
 		name: "Play the selected track",
 		keys: ["Enter"],
 	},
-	// Registered by `PlayActions` rather than by the list, so the key and the button cannot drift and every view with a Shuffle button gets it.
 	{
 		id: "shufflePlay",
 		scope: SCOPE.playlist,
@@ -405,7 +384,6 @@ export const KEYMAP: Binding[] = [
 		keys: ["H"],
 	},
 
-	// In search results ----------------------------------------------------
 	{
 		id: "saveSearch",
 		scope: SCOPE.search,
@@ -414,8 +392,6 @@ export const KEYMAP: Binding[] = [
 		keys: ["Mod+S"],
 	},
 
-	// Finder ---------------------------------------------------------------
-	// These fire while a text input holds focus, so `ignoreInputs` has to be off.
 	{
 		id: "finderNext",
 		hidden: true,
@@ -454,7 +430,6 @@ export const KEYMAP: Binding[] = [
 	},
 ];
 
-// Both are the sheet's: a group whose every binding is hidden must not leave a heading with nothing under it.
 const documented = KEYMAP.filter((binding) => !binding.hidden);
 
 export const KEYMAP_GROUPS = [

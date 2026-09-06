@@ -26,7 +26,6 @@ export function PlaylistView({
 	const { rows, loaded, total, isLoading, error, heat, patina, playedCount } =
 		usePlaylistItems(playlist?.id, playlist?.itemCount);
 
-	// A playlist is addressed by index whatever the media library situation is; the library source only ever stands in for the library.
 	const source = useMemo(
 		() =>
 			librarySourceOf({ kind: "playlist", playlistId: playlist?.id as string }),
@@ -45,7 +44,6 @@ export function PlaylistView({
 	});
 
 	const stats = useMemo(
-		// itemCount rather than rows.length: the header states what the playlist holds, not how much of it has arrived.
 		() => ({
 			...summarise(rows, playedCount),
 			trackCount: playlist?.itemCount ?? rows.length,
@@ -82,7 +80,6 @@ export function PlaylistView({
 			isCompactViewport={isCompactViewport}
 			keysEnabled={!finder.isFinding}
 			canFollowPlayback
-			// In place, by index. Nothing is written: the playlist already is the set.
 			onPlay={(index) => playItem(playlist.id, index)}
 			onOpenFinder={finder.open}
 			emptyNotice="This playlist is empty."

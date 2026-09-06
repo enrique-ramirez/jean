@@ -1,5 +1,3 @@
-/* Full-bleed across the top of the status bar. The hit area is taller than the
-   visible rail so it is grabbable without being a thick line. */
 .bar {
 	position: relative;
 	display: flex;

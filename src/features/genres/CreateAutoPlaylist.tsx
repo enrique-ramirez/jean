@@ -13,8 +13,6 @@ import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
 import styles from "./CreateAutoPlaylist.module.css";
 
-// The preview runs on foobar2000's main thread, so it is asked once the dialog opens and not again:
-// the query is derived from the genre and does not change while somebody edits the *name*.
 export function CreateAutoPlaylist({
 	genre,
 	onOpenPlaylist,
@@ -25,8 +23,6 @@ export function CreateAutoPlaylist({
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
 	const { origin, token, state } = discovery;
-	// `capabilities` exist only once the component is paired and answering, which is the same condition
-	// this button needs anyway.
 	const canCreate =
 		state.kind === "ready" && state.capabilities.canCreateAutoPlaylists;
 
@@ -36,15 +32,11 @@ export function CreateAutoPlaylist({
 
 	const query = genreQuery(genre);
 
-	// The name follows the genre until the dialog is opened, then stops moving under the cursor.
 	useEffect(() => {
 		if (!isOpen) setTitle(genre);
 	}, [isOpen, genre]);
 
-	// Through react-query rather than an effect, and the reason is the component's own advice: the
-	// preview runs on foobar2000's main thread, so one request per keystroke is one main-thread
-	// callback per keystroke. A bare effect fires twice per open under StrictMode and again on every
-	// reopen; keyed on the query, this asks once and remembers the answer.
+	// The preview runs on foobar2000's main thread, so it is asked once per query rather than once per keystroke.
 	const { data: preview } = useQuery({
 		queryKey: ["fooJeanPreview", origin, query],
 		queryFn: () =>
@@ -58,17 +50,14 @@ export function CreateAutoPlaylist({
 	const create = useMutation({
 		mutationFn: async () => {
 			if (!origin || !token) throw new Error("foo_jean is not reachable.");
-			// No `key`. A key would make this Jean's to recognise and manage, and a genre autoplaylist is
-			// the user's music -- theirs to rename, keep or delete. It also 409s on the second one, which
-			// would refuse a perfectly reasonable request.
+			// No `key`: the component 409s on a second playlist carrying one, and a genre autoplaylist is the
+			// user's to rename or delete.
 			const made = await createAutoPlaylist(origin, token, {
 				title: title.trim(),
 				query,
 			});
 			if (!made.ok) throw new Error(made.message);
 
-			// Refetched rather than invalidated: the route that follows resolves against this list, and
-			// beefweb assigns its id lazily -- asking is what makes it look.
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			return made.playlist;
 		},
@@ -78,8 +67,6 @@ export function CreateAutoPlaylist({
 		},
 	});
 
-	// Absent rather than disabled: without the component this is not a thing Jean can do, and a dead
-	// button explaining a component somebody has not installed is worse than no button.
 	if (!origin || !token || !canCreate) return null;
 
 	const submit = (event: ReactFormEvent) => {
@@ -117,12 +104,9 @@ export function CreateAutoPlaylist({
 					aria-label="Playlist name"
 					spellCheck="false"
 					autoComplete="off"
-					// The dialog exists to be typed in, and opens with the genre in the field for editing.
 					autoFocus
 				/>
 
-				{/* The player's own count, not Jean's. They can differ: Jean matches the tag whole in
-				    JavaScript and this is foobar2000 answering its own query against the Media Library. */}
 				<p className={styles.preview}>
 					{preview == null
 						? "Asking the player what this matches…"

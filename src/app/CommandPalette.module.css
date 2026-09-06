@@ -19,7 +19,6 @@
 }
 
 .field {
-	/* The box is `shared/ui/Input`; the palette only says where it sits. */
 	margin: 0 0 6px;
 }
 
@@ -66,7 +65,6 @@
 	color: var(--muted);
 }
 
-/* The sidebar's, so the one heading in the app that means "playlists start here" looks the same in both places. */
 .heading {
 	margin: 10px 0 4px;
 	padding: 0 11px;

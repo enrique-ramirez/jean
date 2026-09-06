@@ -1,5 +1,3 @@
-/* Only the placement and the trailing bits. The box, the focus and the placeholder are
-   `shared/ui/Input`. */
 .field {
 	flex: 1;
 	max-width: 440px;
@@ -12,8 +10,6 @@
 	transition: opacity 0.12s var(--ease);
 }
 
-/* The list can trail the field by a frame while the filter runs. Saying so is
-   better than showing a stale number as if it were the answer. */
 .count[data-pending="true"] {
 	opacity: 0.45;
 }

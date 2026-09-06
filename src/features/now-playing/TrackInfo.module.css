@@ -1,28 +1,12 @@
-/* The reading surface, on a phone. It arrives the way the now-playing screen
-   arrives -- up from the bottom edge, dismissed by a chevron-down or a flick in
-   the same direction -- because it is the same kind of thing one layer deeper,
-   and a second dismissal idiom in the same stack is one to learn for nothing. */
 .screen {
-	/* Fixed, like the screen under it: `.body` starts below the top bar, and a
-     reading surface with the search field still on top of it is not one. */
 	position: fixed;
 	inset: 0;
-	/* Over the now-playing screen (25) and the queue panel (30), under toasts
-     (50) and menus (70) -- a write that failed still has to be able to say so.
-     The same level as `LyricsScreen`, which a phone never reaches: the Lyrics
-     tab is already full screen here. */
 	z-index: 45;
 	background: var(--bg);
 
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
-	/* **No horizontal padding on the layer, and that is about the scrollbar.**
-     The panel below is the scroller, and an overlay scrollbar draws at the
-     right edge of whatever scrolls -- inset by the layer's padding, it floats a
-     finger's width inside the screen and reads as a second bar beside the
-     browser's own. The inset moves onto the header and the panel's own box
-     instead, so the bar lands where a page's does. */
 	padding: max(10px, env(safe-area-inset-top)) 0
 		calc(12px + env(safe-area-inset-bottom));
 
@@ -34,13 +18,8 @@
 	animation: info-in 0.24s var(--ease);
 }
 
-/* It leaves the way it was sent. A flick names a direction and throwing the
-   layer that way is the whole of the feedback that the flick was read; the
-   chevron names none, so it gets the way it came in. */
 .screen[data-leaving="down"],
 .screen[data-leaving="up"] {
-	/* Nothing here is worth pressing on the way out, and a press landing on a
-     control halfway off screen is a mis-tap by construction. */
 	pointer-events: none;
 }
 
@@ -70,8 +49,6 @@
 	}
 }
 
-/* The movement says where it went; without it there is nothing to say the flick
-   was read at all, so reduced motion keeps a fade rather than a hard cut. */
 @media (prefers-reduced-motion: reduce) {
 	.screen {
 		animation: info-fade 0.16s var(--ease);
@@ -113,8 +90,6 @@
 	min-width: 0;
 }
 
-/* One line each and truncated. A wrapping title is precisely the space this
-   header gives back -- and what is under it is the reason anyone is here. */
 .title {
 	margin: 0;
 	font-size: 1.0625rem;

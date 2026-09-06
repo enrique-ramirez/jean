@@ -1,35 +1,27 @@
 import { OggDemuxer } from "./oggDemux";
 import { initSegment, WebmMuxer } from "./webmMux";
 
-// Feeds the element through MSE instead of handing it a URL, which is the only way the
-// buffer is ours: the browser decides how much to gather before it starts, and on a stream
-// delivered at 1x every second of that is a second of lag for the whole session.
+// Fed through MSE rather than handed a URL, which is the only way the buffer is ours: the browser
+// decides how much to gather before it starts, and on a stream delivered at 1x every second of that
+// is a second of lag for the whole session.
 
 const MIME = 'audio/webm; codecs="opus"';
 
-// What to gather before starting. The browser's own threshold is seconds; this is the number
-// the spike exists to find, so it is one constant and not spread around.
 const START_MS = 250;
 
-// How much played audio to keep behind the playhead. Small enough to stay cheap, large
-// enough that a removal never reaches what is about to be decoded.
 const KEEP_BEHIND = 10;
 const TRIM_EVERY_MS = 5000;
 
-// How much of a stream to read before concluding it is not Ogg at all. The headers are the
-// first thing the component sends, so this is generous rather than marginal -- and reaching
-// it is the difference between falling back at once and a watchdog's worth of silence.
+// How much of a stream to read before concluding it is not Ogg at all. The component sends the
+// headers first, so this is generous rather than marginal.
 const NOT_OGG_BYTES = 16 * 1024;
 
 export const canUseMse = () =>
 	typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(MIME);
 
 export interface MseStream {
-	// Revoked on stop, so the caller sets it as `src` and forgets it.
 	src: string;
 	stop: () => void;
-	// Drops everything buffered and picks the stream back up at the live edge. What a seek
-	// costs without this is the whole tail of the old position, played out in full.
 	flush: () => void;
 }
 
@@ -44,7 +36,7 @@ export function openMseStream(
 		onReady: () => void;
 		// Retryable: the connection dropped, and another one may well work.
 		onError: () => void;
-		// Not retryable on this path: reconnecting would meet the same stream again.
+		// Not retryable: reconnecting would meet the same stream again.
 		onUnusable: () => void;
 	},
 ): MseStream {
@@ -60,21 +52,16 @@ export function openMseStream(
 	let started = false;
 	let stopped = false;
 	let trimTimer: ReturnType<typeof setInterval> | null = null;
-	// Set by a flush: the playhead is standing in the hole the removal left, and the next
-	// audio to arrive is what it should jump to.
 	let resync = false;
 
-	// SourceBuffer takes one append at a time and throws on the second, so everything goes
-	// through here and waits for `updateend`.
+	// SourceBuffer takes one append at a time and throws on the second, so everything goes through
+	// here and waits for `updateend`.
 	function pump() {
 		if (!buffer || buffer.updating) return;
 
-		// A flush leaves the playhead somewhere no longer buffered, and the element will sit
-		// there waiting for audio that was deliberately thrown away.
-		//
-		// Waiting for a whole target's worth before jumping, rather than for the first byte:
-		// landing on a buffer of a few milliseconds empties it again immediately, which
-		// Firefox reports as two or three more stalls over the seconds that follow.
+		// A flush leaves the playhead where nothing is buffered, and the element sits there waiting for
+		// audio that was thrown away. A whole target's worth before jumping, not the first byte:
+		// landing on a few milliseconds of buffer empties it again at once.
 		if (resync && element.buffered.length > 0) {
 			const ready =
 				element.buffered.end(0) - element.buffered.start(0) >= START_MS / 1000;
@@ -139,8 +126,8 @@ export function openMseStream(
 
 				const packets = demuxer.push(value);
 
-				// The first two packets off the stream are OpusHead and OpusTags. The head is
-				// the container's CodecPrivate, so nothing can be muxed until it has arrived.
+				// The first two packets off the stream are OpusHead and OpusTags, and the head is the
+				// container's CodecPrivate, so nothing can be muxed until it has arrived.
 				if (!started && demuxer.headers.length >= 1) {
 					append(
 						initSegment({
@@ -180,9 +167,8 @@ export function openMseStream(
 			if (trimTimer) clearInterval(trimTimer);
 			URL.revokeObjectURL(src);
 		},
-		// The demuxer and the muxer deliberately survive this. OpusHead arrives once, at the
-		// top of the stream, so a demuxer started again mid-stream waits for a header that is
-		// never coming and the pump goes quiet for good.
+		// The demuxer and the muxer deliberately survive this. OpusHead arrives once, at the top of the
+		// stream, so a demuxer restarted mid-stream waits for a header that is never coming.
 		flush() {
 			if (!buffer) return;
 			queue.length = 0;

@@ -1,11 +1,10 @@
-// Composes several sets of React event props onto one element: two behaviours on one element share pointer handlers, and spreading one object after the other silently drops the first.
-// Deliberately loose: these are assembled by the gesture hooks, merged, then destructured and respread, so pinning every key would restate four hooks' return shapes at every stop.
-// biome-ignore lint/suspicious/noExplicitAny: see above
+// Two behaviours on one element share pointer handlers, and spreading one prop object after the
+// other silently drops the first.
+// biome-ignore lint/suspicious/noExplicitAny: these bags are assembled by the gesture hooks, merged, destructured and respread, so pinning every key would restate four hooks' return shapes at every stop
 export type PropBag = Record<string, any>;
 
 type Handler = (event: unknown) => void;
 
-// Functions under one name are called in the order they were given; anything else is last-wins, as a plain spread would be.
 export const mergeHandlers = (...sets: PropBag[]): PropBag =>
 	Object.fromEntries(
 		[...new Set(sets.flatMap((set) => Object.keys(set)))].map((name) => {

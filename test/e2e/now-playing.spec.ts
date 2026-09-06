@@ -367,7 +367,7 @@ test.describe("skipping with a flick", () => {
 });
 
 test.describe("the gap a skip leaves", () => {
-	// See API.md for what foobar2000 does during a skip and why.
+	// See ../../src/shared/api/README.md for what foobar2000 does during a skip and why.
 
 	// Every title the screen showed, in order, caught as it changed: the gap is far too short to poll for.
 	const watchTitles = (page: Page) =>

@@ -22,15 +22,12 @@ import { CreateAutoPlaylist } from "@/features/genres/CreateAutoPlaylist";
 import type { PlaylistInfo } from "@/shared/api/types";
 import styles from "./LibraryListView.module.css";
 
-// What the finder button calls the list it is searching.
 const FINDER_LABEL: Record<string, string> = {
 	[SCRATCH_KIND.all]: "Find in all music",
 	[SCRATCH_KIND.shelf]: "Find in this shelf",
 	[SCRATCH_KIND.genre]: "Find in this genre",
 };
 
-// One list, whatever filtered it: All music is the no-filter view and a shelf is the same thing with a preset.
-// Neither is a playlist; playback is materialised into the scratch only when somebody presses play, which is what keeps browsing free.
 export function LibraryListView({
 	library,
 	view,
@@ -54,26 +51,22 @@ export function LibraryListView({
 	scrollRef: RefObject<HTMLElement | null>;
 	isCompactViewport: boolean;
 	emptyNotice?: ReactNode;
-	/** Where an autoplaylist made from this genre lands. */
 	onOpenPlaylist?: (id: string) => void;
 }) {
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const { rows, indices, heat, patina, playedCount } = view;
 
 	const isPlaying = useIsPlaying();
-	// Refused playlist writes leave no scratch to make, so Shuffle here would shuffle the whole library rather than this view.
 	const canWrite = canChangePlaylists(usePermissions());
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
 	const { hasPlayCounts } = useAvailableFields(rows);
-	// No genre chips on a genre, where there is exactly one of them and it is at 100%.
 	const stats = useMemo(
 		() => summarise(rows, playedCount, isGenre ? { genres: 0 } : undefined),
 		[rows, playedCount, isGenre],
 	);
 
-	// Named for what it is searching, because the top bar has its own search: that one filters the library down to matches, this one jumps to a row without changing the list.
 	const finder = useFinder({
 		rows,
 		browserRef,
@@ -114,7 +107,6 @@ export function LibraryListView({
 			total={library.total}
 			scrollRef={scrollRef}
 			isCompactViewport={isCompactViewport}
-			// Unlike search, these rows do not change under every keystroke, so following playback is safe.
 			canFollowPlayback
 			onPlay={playAt}
 			onOpenFinder={finder.open}
@@ -126,8 +118,6 @@ export function LibraryListView({
 					title={title}
 					stats={stats}
 					hasPlayCounts={hasPlayCounts}
-					// Only here: All music's genres are the library's genres, so the figure on the chip and the
-					// page it opens are the same set. A shelf or a playlist counts its own and they are not.
 					allGenresHref={kind === SCRATCH_KIND.all ? GENRES_HREF : undefined}
 					aside={
 						<Mosaic
@@ -144,8 +134,6 @@ export function LibraryListView({
 								trackCount={rows.length}
 								canShuffle={canWrite}
 							/>
-							{/* Only a genre has a query the player can be handed. A shelf is a set of thresholds
-							    computed here and All music is everything, and neither is expressible as one. */}
 							{isGenre && label && onOpenPlaylist ? (
 								<CreateAutoPlaylist
 									genre={label}

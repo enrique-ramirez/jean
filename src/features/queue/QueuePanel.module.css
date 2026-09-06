@@ -1,5 +1,3 @@
-/* Stated once, because three things have to agree on it: the rail line, the
-   covers that sit on it, and the text that clears them. */
 .panel {
 	--rail-x: 32px;
 	--tick: 32px;
@@ -15,13 +13,9 @@
 	background: var(--surface);
 	border-left: 1px solid var(--border);
 	box-shadow: var(--shadow);
-	/* Over the list rather than shouldering it aside: opening the queue should not
-     reflow a table you were reading. Parked off the right edge when closed --
-     `.body` clips it, and `inert` keeps it out of the tab order.
-     Transform only, so it composites. */
 	transform: translateX(100%);
 	transition: transform 0.24s var(--ease);
-	/* The horizontal axis is the dismissal, so it must not become a browser gesture: an overscroll to the right is back-navigation, and it would beat the flick to it. The vertical axis stays the scroller's -- `useSwipe` reads touch events, so a sideways flick still arrives through a scroll. */
+	/* `pan-y`, not `none`: an overscroll to the right is browser back-navigation and would beat the dismissal flick. */
 	touch-action: pan-y;
 }
 
@@ -98,7 +92,6 @@
 	padding-bottom: 16px;
 }
 
-/* --- the origin ---------------------------------------------------------- */
 .origin {
 	position: relative;
 	display: flex;
@@ -122,8 +115,6 @@
 	background: var(--border-strong);
 }
 
-/* The only thing on the rail that moves, because it is the only thing actually
-   happening. Opacity and scale, so it composites. */
 .origin[data-live="true"] .pip::before {
 	background: var(--accent);
 	animation: pulse 2.2s var(--ease) infinite;
@@ -150,8 +141,6 @@
 	color: var(--faint);
 }
 
-/* --- the rail ------------------------------------------------------------
-   On the list rather than per row, so it does not break at the seams. */
 .rail {
 	position: relative;
 	margin: 0;
@@ -167,8 +156,6 @@
 	bottom: calc(var(--tick) / 2);
 	width: 2px;
 	border-radius: 1px;
-	/* --border-strong, not --border: this has to survive being 2px on a dark
-     surface, where --border only ever separates two large areas. */
 	background: linear-gradient(
 		to bottom,
 		var(--accent-line),
@@ -177,7 +164,6 @@
 	);
 }
 
-/* `--stretch` is the row's share of the rail, set inline from its duration. */
 .row {
 	position: relative;
 	display: flex;
@@ -187,8 +173,6 @@
 	transition: background-color 0.12s var(--ease);
 }
 
-/* Nothing to push down, and left in it hangs a stub of rail below the last
-   cover. */
 .row:last-child {
 	padding-bottom: 0;
 }
@@ -209,8 +193,6 @@
 	transition: transform 0.18s var(--ease);
 }
 
-/* The cover is the tick, sitting on the rail rather than beside it -- hence the
-   ring in the panel's own background, or the line runs under its corners. */
 .tick {
 	position: relative;
 	z-index: 1;
@@ -278,7 +260,6 @@
 	border-radius: var(--radius-sm);
 	background: none;
 	color: var(--faint);
-	/* Revealed by hover on a pointer; see the coarse-pointer block below. */
 	opacity: 0;
 	transition:
 		opacity 0.12s var(--ease),
@@ -296,8 +277,6 @@
 	color: var(--danger);
 }
 
-/* A mouse drags the row itself, so the grip is dead weight there. On touch it is
-   the only thing that can claim the vertical axis from the scroller. */
 .grip {
 	display: none;
 	cursor: grab;
@@ -343,7 +322,6 @@
 	}
 }
 
-/* --- empty --------------------------------------------------------------- */
 .empty {
 	padding: 10px 16px 0 calc(var(--rail-x) + 20px);
 }
@@ -374,8 +352,6 @@
 	display: none;
 }
 
-/* A pointer question, not a width one: a narrow desktop window still has a
-   right mouse button and a phone at any width does not. */
 @media (hover: none), (pointer: coarse) {
 	.fine {
 		display: none;
@@ -390,9 +366,6 @@
 	display: none;
 }
 
-/* Same panel, wider, and with a scrim -- on a phone it covers most of what is
-   behind it, so tapping away has to be a way out. On a desktop it does not, and
-   the button that opened it stays visible in the status bar to close it again. */
 @media (max-width: 860px) {
 	.panel {
 		width: min(360px, 88vw);

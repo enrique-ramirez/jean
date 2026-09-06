@@ -1,5 +1,3 @@
-// An error whose message is meant to be read by the person who clicked, as against the transport failure most errors here carry.
-
 const REFUSAL = Symbol.for("jean.refusal");
 
 export const refusal = (message: string) =>

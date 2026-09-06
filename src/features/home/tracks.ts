@@ -10,7 +10,6 @@ export interface TopTrack {
 	artworkUrl: string;
 }
 
-/** The most played tracks. Rows with no play count are dropped rather than sorted last, so a player that keeps no statistics yields an empty list. */
 export function topTracksOf(
 	rows: TrackColumns[],
 	limit: number,

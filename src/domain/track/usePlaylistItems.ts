@@ -13,7 +13,6 @@ import {
 
 const stayUnsubscribed = () => () => {};
 
-// A window onto one load in the store; the work happens once in there, however many components look at it.
 function useLoadedRows(
 	key: string | null,
 	start: () => void,

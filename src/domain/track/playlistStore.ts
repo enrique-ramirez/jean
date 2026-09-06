@@ -5,7 +5,8 @@ import { TRACK_EXPRESSIONS } from "./fields";
 import { deriveIntensity } from "./intensity";
 import { type PathCollector, type PathTable, pathCollector } from "./pathTable";
 
-// `paths` and `subsongs` are parallel to `rows` and present only on the media library. Null rather than empty on a playlist, so reaching for them on the wrong source fails loudly.
+// `paths` and `subsongs` are parallel to `rows` and present only on the media library. Null rather
+// than empty on a playlist, so reaching for them on the wrong source fails loudly.
 export interface PlaylistSnapshot {
 	rows: TrackColumns[];
 	paths: PathTable | null;
@@ -38,16 +39,16 @@ interface Entry {
 	isStarted: boolean;
 }
 
-// On a playlist almost all the cost is the round trip, so paint from one modest chunk and then fetch large concurrent ones. The media library endpoint has no cache and re-enumerates on every call, so concurrency buys nothing there.
+// On a playlist almost all the cost is the round trip, so paint from one modest chunk and then
+// fetch large concurrent ones. The media library endpoint has no cache and re-enumerates on every
+// call, so concurrency buys nothing there.
 const STRATEGY = {
 	playlist: { firstChunk: 2500, chunkSize: 7500, concurrency: 4 },
 	library: { firstChunk: 500, chunkSize: Infinity, concurrency: 1 },
 };
 
-// The budget a chunked load's publishing settles on, after the first chunk and before the last. Both of those are prompt: the first is what the user is waiting to see, and the last is the answer.
 const COALESCE_MS = 250;
 
-// One shared load per key, run to completion even after every consumer unmounts. What is kept afterwards is bounded, because rows are the largest thing Jean holds.
 const MAX_IDLE_ENTRIES = 4;
 
 const entries = new Map<string, Entry>();
@@ -68,7 +69,6 @@ export const EMPTY_PLAYLIST: PlaylistSnapshot = Object.freeze({
 export const playlistKey = (playlistId: string, itemCount: number) =>
 	`${playlistId}:${itemCount}`;
 
-// The media library has no playlist id, so it gets a key of its own, still carrying the count so an edited library loads afresh.
 export const libraryKey = (itemCount: number) => `library:${itemCount}`;
 
 const fetchChunk = async (
@@ -112,7 +112,7 @@ const fetchChunk = async (
 function entryFor(key: string): Entry {
 	const held = entries.get(key);
 	if (held) {
-		// Re-inserted so the eviction below sees it as the most recent.
+		// Re-inserted, since the eviction below reads insertion order as recency.
 		entries.delete(key);
 		entries.set(key, held);
 		return held;
@@ -136,7 +136,8 @@ function emit(entry: Entry, patch: Partial<PlaylistSnapshot>) {
 
 const prefixOf = (key: string) => key.slice(0, key.indexOf(":"));
 
-// A superseded entry -- same playlist, different item count -- always goes, since it is a stale copy of the largest thing in memory. The rest are merely old, and insertion order is recency.
+// A superseded entry -- same playlist, different item count -- always goes. The rest are merely
+// old, and insertion order is recency.
 function evictIdle(currentKey: string) {
 	const idle = [...entries.values()].filter(
 		(entry) => entry.key !== currentKey && entry.listeners.size === 0,
@@ -179,7 +180,8 @@ async function load(entry: Entry, source: LoadSource) {
 		});
 	};
 
-	// Every consumer of `rows` walks all of them -- the album grouping, the shelves, the stats, the intensity -- and none is incremental, so a chunked load pays for the whole prefix once per chunk. Rows are read at the timer rather than captured at the call, so a coalesced run publishes the newest set and never a stale one.
+	// Rows are read at the timer rather than captured at the call, so a coalesced run publishes the
+	// newest set and never a stale one.
 	let scheduled: ReturnType<typeof setTimeout> | null = null;
 	let deferred: { totalCount: number; isLoading: boolean } | null = null;
 
@@ -215,14 +217,14 @@ async function load(entry: Entry, source: LoadSource) {
 		publish(total, rows.length < total);
 		if (rows.length >= total) return;
 
-		// Infinity means the rest in one request, which is what the library wants: every extra call is another full enumeration.
 		const step = Number.isFinite(chunkSize) ? chunkSize : total - rows.length;
 		const offsets = Array.from(
 			{ length: Math.ceil((total - rows.length) / step) },
 			(_, at) => rows.length + at * step,
 		);
 
-		// Chunks land out of order but rows may only grow in order, so a chunk waits here until the gap in front of it is filled.
+		// Chunks land out of order but rows may only grow in order, so a chunk waits here until the gap
+		// in front of it is filled.
 		const pending = new Map<number, Chunk>();
 		const queue = [...offsets];
 		let appended = 0;
@@ -248,13 +250,13 @@ async function load(entry: Entry, source: LoadSource) {
 			Array.from({ length: Math.min(concurrency, queue.length) }, worker),
 		);
 
-		// The list can be shorter than it claimed if it was edited mid-load, so loading ends here rather than when the count is reached.
+		// The list can be shorter than it claimed if it was edited mid-load, so loading ends here rather
+		// than when the count is reached.
 		dropDeferred();
 		publish(total, false);
 	} catch (error) {
 		dropDeferred();
 		if (error instanceof Error && error.name === "AbortError") return;
-		// Cleared so a later mount can try again rather than sitting on the failure for as long as the tab is open.
 		entry.isStarted = false;
 		emit(entry, {
 			isLoading: false,

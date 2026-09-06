@@ -50,13 +50,10 @@ import {
 const PLAYER_KEY = ["player"];
 export const PLAYLISTS_KEY = ["playlists"];
 
-// What was playing before the gap, with the anchor it arrived on: paired, because
-// pairing the held item with a fresh `syncedAt` rewinds the seek bar by the width
-// of the gap.
+// The item and its anchor are paired: a held item given a fresh `syncedAt` rewinds the seek bar by
+// the width of the gap.
 let held: { item: ActiveItem; syncedAt: number } | null = null;
 
-// See API.md for why a skip needs this. Held here, rather than in the screen, so
-// the status bar, the media session and `usePlayingFrom` all read through one hold.
 const holdThroughGap = (player: PlayerState, syncedAt: number) => {
 	if (player.playbackState === "stopped") {
 		held = null;
@@ -76,14 +73,12 @@ const holdThroughGap = (player: PlayerState, syncedAt: number) => {
 	};
 };
 
-// Player state is pushed rather than fetched, so each snapshot carries its arrival time as the interpolation anchor.
 const snapshot = (player: PlayerState): PlayerSnapshot => {
 	const next = holdThroughGap(player, performance.now());
 	rememberSnapshot(next);
 	return next;
 };
 
-// Bridges the SSE stream into the query cache. Mount once, at the root; everything downstream reads through an ordinary useQuery.
 export function usePlayerStream() {
 	const queryClient = useQueryClient();
 
@@ -96,12 +91,12 @@ export function usePlayerStream() {
 			) as UpdateMessage;
 			if (player) queryClient.setQueryData(PLAYER_KEY, snapshot(player));
 			if (playlists) queryClient.setQueryData(PLAYLISTS_KEY, playlists);
-			// Dropped mid-mutation: a reorder rebuilds the tail, so the player pushes every intermediate state. See useQueue.
 			if (playQueue && !isQueueStreamHeld())
 				queryClient.setQueryData(QUEUE_KEY, playQueue);
 		};
 
-		// EventSource reconnects on its own and beefweb replays a full snapshot on connect, so a dropped stream needs no resync here.
+		// EventSource reconnects on its own and beefweb replays a full snapshot on connect, so a
+		// dropped stream needs no resync here.
 		return () => source.close();
 	}, [queryClient]);
 }
@@ -110,14 +105,11 @@ export function usePlayer() {
 	return useQuery({
 		queryKey: PLAYER_KEY,
 		queryFn: async () => snapshot(await fetchPlayer()),
-		// The stream owns this key. The fetch only covers first paint and reconnect.
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
 	});
 }
 
-// What is audible here, which lags the player while a stream is attached; anything drawing the current track reads this.
-// `usePlayer` stays the source for the player's own state and for query status, neither of which is delayed.
 export function useAudiblePlayer() {
 	return useAudibleSnapshot(usePlayer().data);
 }
@@ -127,22 +119,22 @@ export function usePlaylists() {
 		queryKey: PLAYLISTS_KEY,
 		queryFn: fetchPlaylists,
 		staleTime: Infinity,
-		// beefweb's `playlists` event fires when the set of playlists changes and stays silent when their contents do, so every `itemCount` is stale from the first edit onwards.
+		// beefweb's `playlists` event fires when the set of playlists changes and stays silent when
+		// their contents do, so every `itemCount` is stale from the first edit onwards.
 		refetchOnWindowFocus: true,
 	});
 }
 
-// What the player will let this client do: a read-only instance gets a read-only Jean rather than buttons that come back 403.
 export function usePermissions(): Partial<Permissions> {
 	const { data } = usePlayer();
 	return data?.player?.permissions ?? {};
 }
 
-// Absent means allowed, and that is the whole of why this is written once: a player reporting no permissions object at all is permissive, and a strict `=== true` reads it as read-only and takes the affordances away.
+// Absent means allowed: a player reporting no permissions object at all is permissive, and a strict
+// `=== true` reads it as read-only and takes the affordances away.
 export const canChangePlaylists = (permissions: Partial<Permissions>) =>
 	permissions.changePlaylists !== false;
 
-// Patch the cache, send, put the old value back if the player refuses. `patch` returns the next value for the key, or null to leave it alone.
 function useOptimisticWrite<TData, TInput>(
 	queryKey: QueryKey,
 	mutationFn: (input: TInput) => Promise<unknown>,
@@ -172,7 +164,8 @@ function useOptimisticWrite<TData, TInput>(
 	});
 }
 
-// Always re-anchors the interpolation: freezing a position without moving `syncedAt` leaves the seek bar carrying on from where the last update put it.
+// Always re-anchors the interpolation: freezing a position without moving `syncedAt` leaves the seek
+// bar carrying on from where the last update put it.
 const usePlayerPatch = <TInput>(
 	mutationFn: (input: TInput) => Promise<unknown>,
 	patchPlayer: (
@@ -211,11 +204,11 @@ const usePlaylistPatch = <TInput>(
 export function usePlaylistActions() {
 	const queryClient = useQueryClient();
 
-	// The one mutation that cannot be optimistic: only the player can say what id the new playlist got.
 	const create = useMutation({
 		mutationFn: async (title: string) => {
 			const playlist = await createPlaylist(title);
-			// Refetched rather than invalidated: what follows resolves against this list, and a row that is not in it yet cannot be put into rename mode.
+			// Refetched rather than invalidated: what follows resolves against this list, and a row not
+			// in it yet cannot be put into rename mode.
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			return playlist;
 		},
@@ -233,7 +226,8 @@ export function usePlaylistActions() {
 				),
 		),
 
-		// Deleting a playlist the queue points into crashes the player, so the queue is cleared first and the delete abandoned if it will not go.
+		// Deleting a playlist the queue points into crashes the player, so the queue is cleared first
+		// and the delete abandoned if it will not go.
 		remove: usePlaylistPatch(
 			async (id: string) => {
 				const release = holdQueue();
@@ -268,7 +262,8 @@ export function usePlaylistActions() {
 	};
 }
 
-// foobar2000 allows two playlists with the same name, and the sidebar shows nothing else to tell them apart by.
+// foobar2000 allows two playlists with the same name, and the sidebar shows nothing else to tell
+// them apart by.
 export function untitledPlaylistName(playlists: PlaylistInfo[]) {
 	const base = "New playlist";
 	const taken = new Set(playlists.map((entry) => entry.title));
@@ -301,7 +296,8 @@ export function useActiveItem(
 export const usePlayPause = () =>
 	usePlayerPatch<void>(playPause, (player, _input, previous) => ({
 		playbackState: player.playbackState === "playing" ? "paused" : "playing",
-		// Freeze the interpolated position, not the stale one from the last update, or pausing snaps the bar back by however long the track has been running.
+		// The interpolated position, not the stale one from the last update, or pausing snaps the bar
+		// back by however long the track has been running.
 		activeItem: {
 			...player.activeItem,
 			position: positionAt(previous, performance.now()),
@@ -319,7 +315,6 @@ export const useSeekBy = () =>
 	usePlayerPatch(seekBy, (player, offset: number, previous) => {
 		const item = player.activeItem;
 		if (!item) return null;
-		// Offset from the interpolated position, not the last pushed one, or a seek lands wherever the track happened to be at the last update.
 		const position = clamp(
 			positionAt(previous, performance.now()) + offset,
 			0,
@@ -329,7 +324,8 @@ export const useSeekBy = () =>
 		return { activeItem: { ...item, position } };
 	});
 
-// The order enum differs between players and versions, so shuffle is found by name rather than by index.
+// The order enum differs between players and versions, so the modes are found by name and never by
+// index.
 function findShuffleIndex(names: string[]) {
 	const lower = names.map((name) => name.toLowerCase());
 
@@ -342,20 +338,19 @@ function findShuffleIndex(names: string[]) {
 	);
 }
 
-// Same reasoning as shuffle: found by name, not assumed to sit at index 0, even though it does on every enum seen so far.
 function findDefaultIndex(names: string[]) {
 	const at = names.findIndex((name) => name.toLowerCase() === "default");
 	return at >= 0 ? at : 0;
 }
 
-// Global player state rather than a property of the playlist on screen, so toggling it must not disturb what is playing.
 export function usePlaybackOrder() {
 	const { data } = usePlayer();
 
 	const player = data?.player;
 	const option = player?.options?.find((entry) => entry.id === "playbackOrder");
 	const names = option?.enumNames ?? player?.playbackModes ?? [];
-	// beefweb's `options` is an open list carrying both enum and bool entries, so the value is only a number when this really is the enum one.
+	// beefweb's `options` is an open list carrying both enum and bool entries, so the value is only a
+	// number when this really is the enum one.
 	const value =
 		(typeof option?.value === "number" ? option.value : player?.playbackMode) ??
 		0;
@@ -364,13 +359,12 @@ export function usePlaybackOrder() {
 	const isShuffle = shuffleIndex >= 0 && value === shuffleIndex;
 	const defaultIndex = useMemo(() => findDefaultIndex(names), [names]);
 
-	// Turning shuffle off restores the previous order, so a repeat setting survives a shuffle detour. Session-scoped: after a reload the best guess is the first.
 	const previousOrder = useRef(0);
 	if (!isShuffle && value !== previousOrder.current)
 		previousOrder.current = value;
 
-	// The write has to agree with the read: where the order came from an option, it goes back as
-	// one, and where it came from the deprecated field that is the only thing the player accepts.
+	// The write has to agree with the read: where the order came from an option it goes back as one,
+	// and where it came from the deprecated field that is all the player accepts.
 	const hasOrderOption = option !== undefined;
 	const write = useCallback(
 		(next: number) => setPlaybackOrder(next, hasOrderOption),
@@ -391,7 +385,6 @@ export function usePlaybackOrder() {
 		mutate(isShuffle ? previousOrder.current : shuffleIndex);
 	}, [isShuffle, shuffleIndex, mutate]);
 
-	// Turns shuffle on rather than flipping it: pressing "play this shuffled" twice must not walk back out of the mode it just asked for.
 	const enableShuffle = useCallback(() => {
 		if (shuffleIndex < 0 || isShuffle) return;
 		mutate(shuffleIndex);
@@ -401,14 +394,12 @@ export function usePlaybackOrder() {
 		isShuffle,
 		canShuffle: shuffleIndex >= 0,
 		orderName: names[value] ?? null,
-		// Default is the one order under which the next track is the next row.
 		isInOrder: value === defaultIndex,
 		toggleShuffle,
 		enableShuffle,
 	};
 }
 
-// How long a value just sent outranks what the player reports: long enough to cover a push already in flight describing an older position of the slider.
 const VOLUME_SETTLE_MS = 1000;
 const VOLUME_EPSILON = 0.5;
 
@@ -421,8 +412,9 @@ export function useVolume() {
 	const nudgeUp = useMutation({ mutationFn: volumeUp });
 	const nudgeDown = useMutation({ mutationFn: volumeDown });
 
-	// State rather than a ref, or the control snaps back to the player's last reported value the moment a drag ends.
-	// Kept out of the query cache because a cache write re-renders every subscriber of player state, including the virtualised track list, for the whole gesture.
+	// State rather than a ref, or the control snaps back to the player's last reported value the
+	// moment a drag ends. Out of the query cache, whose writes re-render every subscriber of player
+	// state for the whole gesture.
 	const [pending, setPending] = useState<number | null>(null);
 
 	const reported = data?.player?.volume ?? null;
@@ -435,7 +427,6 @@ export function useVolume() {
 			return undefined;
 		}
 
-		// The player never confirmed, so hand control back rather than show a value that is no longer true.
 		const timer = setTimeout(() => setPending(null), VOLUME_SETTLE_MS);
 		return () => clearTimeout(timer);
 	}, [pending, reported]);

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
-/** Whether to keep a layer mounted: while it is open, and for the length of its exit after it closes. Unmounting on the spot cuts the animation off; leaving it mounted leaves whatever it is running running. The caller's `exitMs` has to match its stylesheet, because it is timing that exit. */
+// Keeps a layer mounted for the length of its exit. `exitMs` has to match the caller's stylesheet.
 export function usePresence(isOpen: boolean, exitMs: number) {
-	// Derived during render rather than in an effect, which would leave one committed render where an opening layer is still absent — so its entrance has nothing to run on until the frame after.
+	// Derived during render rather than in an effect, which would leave one committed render where an
+	// opening layer is still absent and its entrance nothing to run on.
 	const [isLeaving, setIsLeaving] = useState(false);
 	const [wasOpen, setWasOpen] = useState(isOpen);
 

@@ -22,9 +22,6 @@
 	list-style: none;
 }
 
-/* Three columns on a grid rather than a flex row, so every bar in the block
-   starts and ends at the same two x positions however long the tag names are.
-   A chart whose bars begin in different places is not a chart. */
 .bar {
 	display: grid;
 	grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr) auto;
@@ -59,9 +56,6 @@
 	overflow: hidden;
 }
 
-/* The wash rather than the ink. These are large areas of flat colour, which is
-   the job `--tint` exists for: on the light theme the accent went charcoal, and
-   seven charcoal bars on a near-white page is a bar chart about nothing. */
 .fill {
 	display: block;
 	height: 100%;
@@ -89,8 +83,6 @@
 	}
 }
 
-/* The heading is the way into the full index. Same shape as a shelf's, because it is the same idea:
-   a section title that is also its own "see all". */
 .open {
 	display: inline-flex;
 	align-items: center;

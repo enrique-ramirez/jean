@@ -1,6 +1,3 @@
-/* Prose with controls in it rather than a form, so it takes the reading measure
-   `LibrarySetup` uses rather than the window's width. */
-
 .backdrop {
 	position: fixed;
 	inset: 0;
@@ -11,8 +8,6 @@
 	background: oklch(0 0 0 / 0.55);
 }
 
-/* A grid so the header is a fixed row and the body takes the rest and scrolls.
-   TagWriting alone can be seven states tall. */
 .dialog {
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr);
@@ -36,8 +31,6 @@
 	border-bottom: 1px solid var(--border);
 }
 
-/* Carries the padding: a scroller with the gap outside it clips its first and
-   last child against the edge mid-scroll. */
 .body {
 	display: flex;
 	flex-direction: column;
@@ -73,7 +66,6 @@
 	outline: none;
 }
 
-/* The shortcut sheet's cap, deliberately. */
 .cap {
 	display: inline-grid;
 	place-items: center;
@@ -99,11 +91,6 @@
 	letter-spacing: -0.02em;
 }
 
-/* ---- one component ---------------------------------------------------------
-
-   A card rather than a run of headings: each is a separate yes-or-no about the
-   player, and the boundary is the useful part. */
-
 .panel {
 	display: flex;
 	flex-direction: column;
@@ -114,7 +101,6 @@
 	background: var(--surface);
 }
 
-/* Wraps so an open HelpHint takes the line below the title. */
 .panelHead {
 	display: flex;
 	flex-wrap: wrap;
@@ -129,8 +115,6 @@
 	letter-spacing: -0.01em;
 }
 
-/* Tone and text may disagree: connected but permitting nothing is "Connected"
-   in the warn tone. */
 .status {
 	margin-left: auto;
 	padding: 3px 10px;
@@ -162,8 +146,6 @@
 	text-wrap: pretty;
 }
 
-/* The instruction, set apart from the statement: somebody who already knows what
-   is wrong stops at the first line. */
 .fix {
 	margin: 0;
 	padding-left: 12px;
@@ -182,10 +164,6 @@
 	margin-top: 4px;
 }
 
-/* The way in, set above the paste field it replaces for most people. Boxed rather
-   than left loose in the panel, because it is one action with its own instruction
-   underneath and without the frame the instruction reads as belonging to the token
-   field below it. */
 .pairing {
 	display: flex;
 	flex-direction: column;
@@ -216,7 +194,6 @@
 }
 
 .input {
-	/* The box is `shared/ui/Input`; a field here only says how wide it is. */
 	flex: 1;
 	min-width: 0;
 }
@@ -235,7 +212,6 @@
 	font-family: var(--font-numeric);
 }
 
-/* A rule rather than a heading weight: above is status, below is a decision. */
 .fields {
 	display: flex;
 	flex-direction: column;
@@ -267,8 +243,6 @@
 	overflow-wrap: anywhere;
 }
 
-/* A maintenance action, kept at the weight of a footnote: it is one step above
-   the caption it sits under and well below the switches it is not. */
 .quiet {
 	align-self: flex-start;
 	margin-top: 10px;
@@ -294,8 +268,6 @@
 }
 
 @media (max-width: 720px) {
-	/* Full screen: the content is a tall column either way, so scrim around it
-	   wastes the only axis a handset has. */
 	.backdrop {
 		padding: 0;
 	}
@@ -316,7 +288,6 @@
 		padding: 18px 16px calc(28px + env(safe-area-inset-bottom));
 	}
 
-	/* Three controls on one line leaves the field about forty pixels wide. */
 	.tokenRow {
 		flex-wrap: wrap;
 	}
@@ -326,7 +297,6 @@
 	}
 }
 
-/* A line of fact beside whatever acts on it. */
 .note {
 	margin: 0;
 	font-size: 0.8125rem;
@@ -334,9 +304,6 @@
 	font-variant-numeric: tabular-nums;
 }
 
-/* A panel's own action, at the far end of the row it shares with whatever it acts on. Centred rather
-   than baselined: the button is twice the line's height, and aligning the two baselines hangs it
-   below the text it belongs to. */
 .panelActions {
 	display: flex;
 	flex-wrap: wrap;

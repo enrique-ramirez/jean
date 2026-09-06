@@ -48,14 +48,12 @@ import { type PlayingRoute, ROUTE } from "./routes";
 import styles from "./Sidebar.module.css";
 import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
 
-// The accent means "this is playing" and nothing else. The row being looked at is `aria-current` and the row's own styling.
 function NavRow({
 	icon: Icon,
 	label,
 	count,
 	isPlaying,
 	isCurrent,
-	/** Indented under the row above it, for a view that is part of that one rather than beside it. */
 	isNested,
 	onClick,
 	rowProps,
@@ -80,7 +78,6 @@ function NavRow({
 				className={styles.item}
 				aria-current={isCurrent}
 				onClick={onClick}
-				// What the arrows step through and what the shell's "go to the sidebar" lands on. Every row in here is one of these, search and Home included, so the two never have to agree on a list.
 				data-nav-row=""
 				{...itemProps}
 			>
@@ -131,12 +128,8 @@ export function Sidebar({
 }) {
 	const permissions = usePermissions();
 	const { create, rename, remove, move } = usePlaylistActions();
-	// Subscribed here only; the rows read `isDropTarget` as a plain prop rather than each subscribing to the drag.
 	const drag = useDragState();
-	// Empty without `foo_jean`, which is the point: this only ever takes an affordance away, so a
-	// player Jean cannot ask looks exactly as it did before.
 	const autoPlaylists = useAutoPlaylists();
-	// Undefined until the player answers. Assume yes and let a refusal correct it, rather than showing a read-only sidebar for the first few hundred milliseconds.
 	const canEdit = canChangePlaylists(permissions);
 
 	const menu = useContextMenu({ disabled: !canEdit });
@@ -144,17 +137,13 @@ export function Sidebar({
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [focusedId, setFocusedId] = useState<string | null>(null);
 
-	// Jean's scratch playlist still exists on the player, but here it would be a row whose name changed on every search.
 	const shown = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
 
-	// One answer for every row, from the same place the status bar reads it: playing search results makes the hidden scratch the current playlist.
-	// Not `isScratchPlaylist && isCurrent`: `isCurrent` outlives playback and says nothing about what the scratch is holding.
 	const playingRoute = playingFrom?.isPlaying ? playingFrom.route : null;
 
 	const target = shown.find((entry) => entry.id === targetId) ?? null;
 	const focusedIndex = shown.findIndex((entry) => entry.id === focusedId);
 
-	// The player orders the real list and `move` takes a position in it, so a drop among the visible rows is translated through the playlist currently occupying it.
 	const playerIndexOf = (position: number) =>
 		playlists.findIndex((entry) => entry.id === shown[position].id);
 
@@ -176,7 +165,6 @@ export function Sidebar({
 		reorder(focusedIndex, to);
 	};
 
-	// Only while a playlist row holds focus: these are arrow keys with a modifier and must not fire while the cursor is in the track list.
 	useKeymap(
 		SCOPE.sidebar,
 		{
@@ -186,7 +174,6 @@ export function Sidebar({
 		{ enabled: canEdit && focusedIndex >= 0 },
 	);
 
-	// Read off the DOM in source order rather than assembled from state: the rows above the playlists are conditional, and a second list of them here would be a second thing to keep in step.
 	const navRows = useCallback(
 		() => [
 			...(sortable.scrollRef.current?.querySelectorAll<HTMLElement>(
@@ -196,7 +183,6 @@ export function Sidebar({
 		[sortable.scrollRef],
 	);
 
-	// The shell reveals the sidebar and then asks; by the time an effect runs the column is open and the row is there to focus. Landing on the row for wherever you already are, so the arrows start from the thing on screen rather than from the top.
 	const focusAsked = useSidebarFocusAsked();
 	useEffect(() => {
 		if (!focusAsked) return;
@@ -209,11 +195,10 @@ export function Sidebar({
 		(current ?? rows[0])?.focus();
 	}, [focusAsked, navRows]);
 
-	// Handled here rather than in the keymap, as the palette's arrows are: the track list holds the same two keys and the manager fires every registration that matches, so the only thing that can decide between them is which of the two has the caret. Stopping the event is what says so.
 	const onArrows = (event: ReactKeyboardEvent) => {
 		if (event.altKey) return;
 
-		// Not preventDefault: the default here is the click a focused button gets, which is the whole of opening a row. It is stopped rather than left alone because the track list binds Enter to playing its cursor row, and that registration preventDefaults -- which would cancel the click before the browser could send it.
+		// Stopped rather than prevented: the default here is the click a focused button gets, and the track list binds Enter to playing its cursor row with a preventDefault that would cancel it.
 		if (event.key === "Enter") {
 			event.stopPropagation();
 			return;
@@ -228,19 +213,16 @@ export function Sidebar({
 
 		const rows = navRows();
 		const at = rows.indexOf(document.activeElement as HTMLElement);
-		// Entered from somewhere that is not a row -- the rename field, or a menu that has just closed -- either arrow starts at the end it is travelling from.
 		const next = at < 0 ? (delta > 0 ? 0 : rows.length - 1) : at + delta;
 		rows[Math.min(Math.max(next, 0), rows.length - 1)]?.focus();
 	};
 
-	// Only a refusal Jean wrote is shown as-is; anything else is an HTTP failure whose message is a URL and a status code.
 	const refused = (message: string) => (error: unknown) =>
 		pushToast({
 			tone: "error",
 			message: isRefusal(error) ? error.message : message,
 		});
 
-	// Created empty and dropped into rename, so naming it is optional. The view does not change: a new playlist is somewhere to put things.
 	const newPlaylist = () =>
 		create.mutate(untitledPlaylistName(shown), {
 			onSuccess: (playlist) => setRenamingId(playlist.id),
@@ -248,7 +230,6 @@ export function Sidebar({
 		});
 
 	const deletePlaylist = (playlist: PlaylistInfo) => {
-		// Step onto the neighbour before it goes, so deleting the open playlist lands somewhere real.
 		if (playlist.id === selectedId) {
 			const at = shown.findIndex((entry) => entry.id === playlist.id);
 			const next = shown[at + 1] ?? shown[at - 1];
@@ -259,7 +240,7 @@ export function Sidebar({
 		});
 	};
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: deletePlaylist's own captures, listed instead of it, see below
+	// biome-ignore lint/correctness/useExhaustiveDependencies: deletePlaylist's own captures, listed instead of it
 	const actions = useMemo((): ActionNode[] => {
 		if (!target) return [];
 
@@ -316,7 +297,6 @@ export function Sidebar({
 				aria-hidden={isCollapsed}
 				onKeyDown={onArrows}
 			>
-				{/* Playing results writes them to a playlist named after the query, so a search outlives the tab it was typed in and can be picked up on another device. */}
 				{search.hasQuery || search.remembered ? (
 					<>
 						<p className={styles.heading}>Search</p>
@@ -327,7 +307,6 @@ export function Sidebar({
 							isPlaying={playingRoute === "search"}
 							isCurrent={isSearchOpen}
 							onClick={() => {
-								// Restoring a remembered search is what loads the library, so it happens on the tap rather than on every launch that follows one.
 								if (!search.hasQuery) search.restore();
 								onOpenSearch();
 							}}
@@ -350,9 +329,6 @@ export function Sidebar({
 					onClick={() => onOpenRoute("all")}
 				/>
 
-				{/* A way into the same music rather than a place beside it, so it is indented under All music
-				    rather than given a row of its own. Nothing ever plays from here -- it is an index of
-				    genres and not a set of tracks -- so it has no playing state to show. */}
 				<NavRow
 					icon={Shapes}
 					label="Genres"
@@ -361,7 +337,6 @@ export function Sidebar({
 					onClick={() => onOpenRoute(ROUTE.genres)}
 				/>
 
-				{/* A shelf, for as long as it is playing: the scratch playlist is hidden, and unlike a playlist a shelf has no permanent row to point at. */}
 				{playingFrom?.temporaryRow ? (
 					<NavRow
 						icon={Disc3}
@@ -471,7 +446,6 @@ function PlaylistRow({
 	playlist: PlaylistInfo;
 	isSelected: boolean;
 	isRenaming: boolean;
-	/** The player fills this one itself. Everything else about the row is unchanged. */
 	isAuto: boolean;
 	isDropTarget: boolean;
 	isDropOver: boolean;
@@ -501,7 +475,6 @@ function PlaylistRow({
 			icon={isAuto ? WandSparkles : ListMusic}
 			label={playlist.title}
 			count={playlist.itemCount.toLocaleString()}
-			// A user's own playlist keeps `isCurrent` rather than reading the scratch: it is a real playlist the player can be inside.
 			isPlaying={playlist.isCurrent}
 			isCurrent={isSelected}
 			onClick={onSelect}
@@ -511,13 +484,11 @@ function PlaylistRow({
 				style: { ...pressableStyle, ...dragStyle },
 				"data-drop-target": isDropTarget ? playlist.id : undefined,
 				"data-drop-over": isDropOver ? "true" : undefined,
-				// Still a target, so it arms and says why. Excluded instead, the pointer would sit over
-				// a row that reacts to nothing and the reason would only arrive as a toast after the drop.
 				"data-drop-refuses": isAuto
 					? "Autoplaylists fill themselves"
 					: undefined,
 				...rowState,
-				// Merged rather than spread: both want onPointerDown, Move, Up and Cancel, and the second object would quietly win all four.
+				// Merged rather than spread: both objects set onPointerDown, Move, Up and Cancel, and the second would win all four.
 				...mergeHandlers(gestures, dragProps),
 			}}
 		>
@@ -526,7 +497,6 @@ function PlaylistRow({
 					className={styles.grip}
 					aria-hidden="true"
 					onPointerDown={(event) => {
-						// Holding the grip starts a drag, not a long press, and both firing at once opens a menu mid-drag. This also keeps the row's own mouse drag from starting twice.
 						event.stopPropagation();
 						handleProps.onPointerDown?.(event);
 					}}
@@ -562,7 +532,7 @@ function RenameField({
 				aria-label={`Rename ${title}`}
 				spellCheck="false"
 				autoComplete="off"
-				// biome-ignore lint/a11y/noAutofocus: rename is the state, see above
+				// biome-ignore lint/a11y/noAutofocus: rename is the state
 				autoFocus
 				onFocus={(event) => event.target.select()}
 				onChange={(event) => setValue(event.target.value)}

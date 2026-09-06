@@ -7,8 +7,10 @@ import {
 
 import { clamp } from "@/shared/lib/math";
 
-// Pressing and moving starts a text selection, and dragging a selection is a native drag: the browser paints a snapshot of the control and follows the pointer with that instead of moving the thumb.
-// On touch, without touch-action the browser keeps the gesture for panning and stops sending moves once it decides the finger is scrolling. Capture does not save this, and touch-action intersects down the tree, so it belongs on the track itself.
+// Pressing and moving starts a text selection, and dragging a selection is a native drag: the browser
+// then follows the pointer with a snapshot of the control instead of moving the thumb. On touch, the
+// browser keeps the gesture for panning without `touch-action`; capture does not save this, and
+// `touch-action` intersects down the tree, so it belongs on the track itself.
 const GRABBABLE = Object.freeze({
 	userSelect: "none",
 	WebkitUserSelect: "none",
@@ -17,7 +19,6 @@ const GRABBABLE = Object.freeze({
 	WebkitTouchCallout: "none",
 });
 
-// Pointer-drag along a track, as 0..1. While dragging, fraction is the pointer's position rather than the incoming value, or the thumb fights whatever the player last reported.
 export function useDragFraction({
 	onDrag,
 	onCommit,
@@ -32,7 +33,6 @@ export function useDragFraction({
 	const ref = useRef<HTMLDivElement | null>(null);
 	const [fraction, setFraction] = useState<number | null>(null);
 
-	// Vertical is inverted: the top of the track is the maximum, as on a physical fader.
 	const read = useCallback(
 		(event: ReactPointerEvent) => {
 			const rect = (ref.current as HTMLElement).getBoundingClientRect();
@@ -45,10 +45,10 @@ export function useDragFraction({
 
 	const handlers = {
 		style: GRABBABLE,
-		// A control that follows the finger owns the gesture outright: `useSwipe` skips anything under this mark, or dragging a fader down dismisses the screen behind it and scrubbing across the seek bar changes tab.
+		// `useSwipe` skips anything under this mark, or dragging a fader down also dismisses the screen
+		// behind it.
 		"data-owns-touch": "",
 
-		// Belt to the CSS braces: a native drag must not start even if something above ever becomes selectable.
 		onDragStart: (event: { preventDefault: () => void }) =>
 			event.preventDefault(),
 

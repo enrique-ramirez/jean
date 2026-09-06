@@ -1,43 +1,12 @@
-/* Two themes that are not each other's inverse. The accent is split into l/c/h
-   channels so translucent variants can be composed inline — `oklch(from …)`
-   would be nicer but this composes anywhere without relative-colour support.
-   `--tint-*` is the same trick for the second job an accent does; see below.
-
-   **Dark is warm and light is not, deliberately.** `#ffb454` over a near-black
-   page is a lamp; the same hue over a near-white one is a stain — it has
-   nowhere to glow against, so it reads as the page being dirty rather than as
-   a colour anybody chose. Light therefore drops the hue almost entirely and
-   accents in charcoal, which is the palette the reference for this screen
-   uses: near-black fills, white glyphs, and the artwork as the only colour in
-   the frame. The two themes share a structure and not a hue.
-
-   **Two accents, because an accent does two different jobs.** `--accent` is
-   *ink*: a filled play button, a tab rail, a set star — small, opaque shapes
-   that have to be legible against the page. `--tint` is *wash*: the play-count
-   heat on a row, the gradient under a header, the ground a dissolving sleeve
-   lands on — large, translucent areas that have to read as a colour rather
-   than as shading. On dark they are one and the same. On light they cannot be:
-   a near-black at 6–22% alpha over white is a grey vignette, and a row washed
-   in it says "disabled", not "played a lot". So the wash keeps a real hue —
-   blue, being as far from the sleeve-warm end as the palette gets — and the
-   ink goes to charcoal. */
 :root {
 	--accent-l: 0.8238;
 	--accent-c: 0.1408;
 	--accent-h: 70.17;
 
-	/* On dark the two are the same colour: the accent already glows against the
-     page, so there is nothing for a separate wash hue to fix. */
 	--tint-l: 0.8238;
 	--tint-c: 0.1408;
 	--tint-h: 70.17;
 
-	/* A set star, and the one thing that stays warm in both themes. Gold is not
-     Jean's accent being reused, it is what a rating *is* -- Amazon, Google
-     Play, Letterboxd and the App Store all draw one in this hue, and a star in
-     the page's own ink reads as a checkbox. So it is a token rather than
-     `--accent`: on light the accent went charcoal and the stars did not
-     follow. */
 	--star: oklch(0.8238 0.1408 70.17);
 
 	--bg: oklch(0.1722 0.007 258);
@@ -50,47 +19,19 @@
 	--muted: oklch(0.676 0.0193 253);
 	--faint: oklch(0.52 0.015 255);
 
-	/* What a dissolving album sleeve lands on. On dark it is the page itself --
-     a cover fading into black needs no help to keep its shape. */
 	--album-ground: oklch(0.1722 0.007 258);
 
-	/* A hold standing in for content that has not arrived. It has to read as a
-     shape at a glance, which `--surface` does not: at 0.04 lightness above the
-     page it is a hole rather than a placeholder. The sweep goes lighter on both
-     themes, but from opposite sides -- on light the hold sits below the page and
-     the sweep returns to it, on dark both sit above. */
 	--loading: oklch(0.245 0.012 260);
 	--loading-sheen: oklch(0.33 0.016 260);
 
-	/* The genre tints. A genre has no artwork of its own, so a tile is drawn from
-     its name -- and the hue is taken off a ramp of eight rather than off the
-     hash directly, because a free hue per tag puts a hundred and forty
-     unrelated colours on one screen and reads as a fault rather than as
-     variety. Lightness and chroma are the theme's business and the hue is the
-     name's: that split is what keeps both themes designed. */
 	--genre-l: 0.72;
 	--genre-c: 0.11;
-	/* How much of that hue the tile's field takes, and it is deliberately little. The sleeve is the
-	   colour on this screen; the field is the ground it sits on, and a field bright enough to compete
-	   both drowns the artwork and pushes the count under it towards unreadable. Dark still takes
-	   roughly twice light's share -- the figure is drawn *into* the field rather than over it, so the
-	   field carries the whole of a genre's identity, and at light's strength eight hues over
-	   near-black are one brown. */
 	--genre-wash: 8%;
-	/* What the figure is mixed into, and how much of the hue it keeps. The figure has to sit *away
-	   from the page* rather than at a fixed lightness, and which way that is differs by theme: on
-	   dark it goes down into the sunken neutral, on light it goes up into white. Stated as a ground
-	   rather than as a colour so the tile does one mix and neither theme is a special case in a
-	   component stylesheet. */
 	--genre-ink-ground: var(--surface-sunken);
 	--genre-ink-share: 20%;
 
 	--on-accent: oklch(0.18 0.01 260);
-	/* Destructive actions. Pulled towards the warm end of red so it reads as part
-     of the same palette as the accent rather than as a browser default. */
 	--danger: oklch(0.68 0.17 26);
-	/* Healthy. Cannot be `--accent`: on dark that is the yellow `--danger` is
-     pulled towards, so "Connected" read as a warning. */
 	--positive: oklch(0.74 0.13 155);
 	--shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 8px 24px oklch(0 0 0 / 0.28);
 
@@ -98,26 +39,14 @@
 }
 
 :root[data-theme="light"] {
-	/* Charcoal with a blue cast, not grey: at C 0.02 it still reads as ink at a
-     glance, and the cast is what keeps a filled star or a play button from
-     looking like disabled black text. Dark enough that `--on-accent` can be
-     plain white, which is what makes the filled controls read as the reference
-     does -- a solid near-black disc rather than a tinted one. */
 	--accent-l: 0.27;
 	--accent-c: 0.02;
 	--accent-h: 262;
 
-	/* The wash, and the whole reason it is a separate token. Mid-dark and
-     genuinely blue, so 22% of it over the page is a colour and 6% is a hint of
-     one. The hue is the cool end on purpose: album art is overwhelmingly warm,
-     so a wash that never competes with a sleeve is one that sits opposite it. */
 	--tint-l: 0.52;
 	--tint-c: 0.13;
 	--tint-h: 250;
 
-	/* The neutrals follow the accent's hue rather than the old warm one. Warm
-     greys under a blue-cast charcoal read as two palettes that met by accident
-     -- the page looked faintly yellowed next to its own ink. */
 	--bg: oklch(0.985 0.003 262);
 	--surface: oklch(0.967 0.005 262);
 	--surface-raised: oklch(1 0 0);
@@ -131,54 +60,16 @@
 	--loading: oklch(0.925 0.007 262);
 	--loading-sheen: oklch(0.985 0.003 262);
 
-	/* Deeper and a shade stronger than on dark: the same stroke that glows over a
-     near-black page disappears over a near-white one, and the tile's field is a
-     wash of this over white rather than over ink. */
 	--genre-l: 0.56;
 	--genre-c: 0.13;
-	/* A shade more than dark's share of its own hue: the figure here is lighter than the field rather
-	   than darker, so the field needs something for it to be lighter *than*. */
 	--genre-wash: 12%;
-	/* Up into white, and keeping almost none of the hue -- on a near-white page the lighter figure is
-	   a highlight, and a tinted one at this lightness turns back into a second colour. */
 	--genre-ink-ground: oklch(1 0 0);
 	--genre-ink-share: 2%;
 
-	/* Light needs the opposite of nothing. The page is all but white, so a pale
-     sleeve dissolving into it took the card with it -- no bottom edge, no
-     rounded corners, a row that read as captions floating in space. A tint a
-     shade under the page gives the sleeve something to land on, and it is
-     pulled towards `--tint` rather than grey so it reads as part of the palette
-     rather than as dirt. It follows the *wash* and not the ink for the same
-     reason everything else here does: a charcoal at this lightness is grey. */
 	--album-ground: oklch(0.945 0.012 250);
 
-	/* The same yellow, one notch deeper, because a near-white page is not a
-     near-black one. `#ffb454` unchanged is 1.69:1 against this background and
-     reads bleached -- peach rather than gold. *Measured* at L 0.78 it is
-     `#f7a30d` and 1.97:1, which is between Amazon's `#FFA41C` (1.90) and above
-     Google Play's `#FBBC04` (1.64): the range every rating control on a white
-     page already lives in. Below 3:1 on purpose -- WCAG's graphical-object
-     threshold would put this at `#d97600`, which is orange, and the ask was
-     yellow. What carries the meaning is fill against outline, and the empty
-     star is `--border-strong`. */
 	--star: oklch(0.78 0.165 72);
 
-	/* The third job, and the one a charcoal cannot do. `--accent` at L 0.27 and
-     `--text` at L 0.26 are the same colour to the eye, so every place the
-     accent was carrying *state* as a text colour stopped carrying anything:
-     the playing playlist's icon matched the four silent ones, "shuffle is on"
-     matched "you are hovering shuffle", and an album title's hover changed
-     nothing at all. A fill does not have this problem -- a black disc is
-     obviously not the page -- which is why the play button, the stars, the tab
-     rail and the seek fill all stay on `--accent`.
-
-     So: blue, on the wash's hue so the palette stays two hues and not three,
-     dark enough to sit among body copy without shouting. It is used only where
-     the alternative to the accent is `--text` or `--muted`; anything with a
-     background, a border or a shape of its own keeps the ink. On dark it is
-     the accent, unchanged -- yellow against a near-black page has never had
-     this problem. */
 	--accent-text: oklch(0.46 0.12 250);
 
 	--on-accent: oklch(1 0 0);
@@ -194,9 +85,7 @@
 	--accent: oklch(var(--accent-l) var(--accent-c) var(--accent-h));
 	--accent-quiet: oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.16);
 	--accent-line: oklch(var(--accent-l) var(--accent-c) var(--accent-h) / 0.4);
-	/* Overridden by the light block above, which outranks this on specificity
-     rather than on order: `:root[data-theme]` is (0,1,1) and `:root` is
-     (0,1,0), so it wins wherever it is written. */
+	/* Overridden by the light block above, which outranks this on specificity rather than on order. */
 	--accent-text: var(--accent);
 
 	--radius: 14px;
@@ -215,22 +104,15 @@
 	--ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* Duration alone does not stop an infinite animation -- it runs it ~100,000
-   times a frame, which for the continuously-animating controls here (the
-   play/pause toggle layers scale and rotate for as long as something is
-   playing) samples a different phase every frame. The result is a flicker,
-   which is worse for the people this rule exists for than the motion it
-   replaced. The iteration count is what actually brings it to rest. */
+/* `animation-iteration-count` is what stops an infinite animation; a short duration alone leaves it running and flickering. */
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
 	*::after {
-		/* The canonical reduced-motion reset: it has to beat every animation
-		   declared anywhere, which is the one thing !important is for. */
-		/* biome-ignore-start lint/complexity/noImportantStyles: reset, see above */
+		/* biome-ignore-start lint/complexity/noImportantStyles: this reset must beat every animation declared anywhere */
 		animation-duration: 0.01ms !important;
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
-		/* biome-ignore-end lint/complexity/noImportantStyles: reset, see above */
+		/* biome-ignore-end lint/complexity/noImportantStyles: this reset must beat every animation declared anywhere */
 	}
 }

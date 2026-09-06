@@ -8,7 +8,6 @@ import { Button } from "@/shared/ui/Button";
 import { PlayIcon } from "@/shared/ui/icons";
 import type { TrackBrowserHandle } from "./listTypes";
 
-// Shuffle here is the action, not the mode: it turns shuffle on and plays a random position, and Play never turns it back off.
 export function PlayActions({
 	browserRef,
 	trackCount,

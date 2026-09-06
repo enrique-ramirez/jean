@@ -8,7 +8,6 @@ import styles from "./QueueButton.module.css";
 
 const BADGE_MAX = 99;
 
-// One button at two sizes, as `PlayToggle` is: `screen` is the now-playing transport, where every target is 44px.
 export function QueueButton({
 	isOpen,
 	onToggle,
@@ -29,7 +28,6 @@ export function QueueButton({
 			aria-expanded={isOpen}
 			data-open={isOpen}
 			data-size={variant}
-			// Named to the panel's own dismissal, which cannot contain a trigger this far from it: without the mark the press outside closes and the click reopens.
 			data-queue-toggle=""
 			data-drop-target={drag.isDragging ? QUEUE_DROP_TARGET : undefined}
 			data-drop-over={drag.over === QUEUE_DROP_TARGET ? "true" : undefined}
@@ -38,7 +36,6 @@ export function QueueButton({
 			<ListEnd size={18} strokeWidth={2} aria-hidden="true" />
 
 			{count > 0 ? (
-				// Keyed by the count so a change remounts it and replays the pop.
 				<span key={count} className={styles.badge} aria-hidden="true">
 					{count > BADGE_MAX ? `${BADGE_MAX}+` : count}
 				</span>

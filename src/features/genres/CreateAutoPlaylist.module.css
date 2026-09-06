@@ -11,8 +11,6 @@
 	font-weight: 600;
 }
 
-/* The player's own answer about the query, which is the only honest count: Jean matches the tag in
-   JavaScript and this is foobar2000 matching it against the Media Library. */
 .preview {
 	margin: 0;
 	font-size: 0.8125rem;

@@ -16,7 +16,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 
 	useKeyboardOwnership(SETTINGS_KEYBOARD);
 
-	// Read through a ref so the trap is installed once per open. The shell rebuilds `onDismiss` on every render, and every re-run of the effect below refocuses the dialog -- which takes the caret out of whichever field was being typed into, on every push the player sends.
+	// Read through a ref so the effect below installs once per open: `onDismiss` is rebuilt on every render, and re-running the effect refocuses the dialog out of whatever field is being typed into.
 	const dismiss = useRef(onDismiss);
 	dismiss.current = onDismiss;
 
@@ -77,7 +77,6 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="settings-title"
-				// So the dialog can hold focus on open, inside its own Tab trap.
 				tabIndex={-1}
 			>
 				<header className={styles.header}>

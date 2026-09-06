@@ -13,7 +13,6 @@ import { Input } from "@/shared/ui/Input";
 import { Switch } from "@/shared/ui/Switch";
 import styles from "./Settings.module.css";
 
-// The menu path rather than the config file it writes: whoever reads this has to walk to the player either way, and a menu is the easier instruction.
 const PANE = "File \u2192 Preferences \u2192 Tools \u2192 Jean";
 
 // TODO: link the release once foo_jean is published.
@@ -21,10 +20,8 @@ const IS_PUBLISHED = false;
 
 interface Explained {
 	tone: "ok" | "warn" | "off";
-	// Names the state rather than collapsing to on/off: a component that answers perfectly and only wants a credential must not read as a network fault.
 	badge: string;
 	summary: string;
-	// What to do about it, or null when there is nothing to do.
 	fix: string | null;
 }
 
@@ -109,19 +106,16 @@ function explain(state: TagWriterState): Explained {
 	}
 }
 
-// Streaming fails for its own reasons, so it gets its own line: an install that writes tags perfectly and has no encoder is connected and working, minus one feature.
 function explainStreaming(state: TagWriterState): string | null {
 	if (state.kind !== "ready") return null;
 	const { canStream, streamFormats } = state.capabilities;
 
-	// Absent means false, which is what an older component looks like from here.
 	if (!canStream)
 		return `This copy of foo_jean does not stream audio, so Jean cannot play it on this device. Either it is older than the feature, or no encoder started -- check ${PANE}.`;
 
 	return `Streaming ${(streamFormats ?? []).join(" and ")}. The control is beside the volume in the status bar.`;
 }
 
-// What went wrong, in the user's terms. The common case is a pairing window nobody has opened yet, so every message names the menu path.
 function explainPairing(failure: PairFailure): string {
 	switch (failure.reason) {
 		case "not-open":
@@ -137,12 +131,11 @@ function explainPairing(failure: PairFailure): string {
 	}
 }
 
-// The token is 64 hex characters, which nobody will type on a television remote. Pairing replaces that with one press here and one on the player; the paste path underneath stays, so an install with the window turned off still has a way in.
 function PairButton({
 	origin,
 	onPaired,
 }: {
-	// Non-null only once `/api/status` has answered as foo_jean at a version this build understands: the discovery record naming this port is forgeable, so it is a hint and never a credential target.
+	// Non-null only once `/api/status` has answered as foo_jean: the discovery record naming the port is forgeable, so a probed origin is what makes it safe to send the token to.
 	origin: string;
 	onPaired: (token: string) => void;
 }) {
@@ -173,7 +166,6 @@ function PairButton({
 						value={name}
 						spellCheck={false}
 						autoComplete="off"
-						// Optional, and it stays optional: requiring a name would put back the typing pairing removes.
 						placeholder="This device (optional)"
 						maxLength={64}
 						onChange={(event) => setName(event.target.value)}
@@ -193,7 +185,6 @@ function PairButton({
 	);
 }
 
-// Masked because it is a credential, revealable because it is pasted by hand and one wrong character is otherwise unexplainable.
 function TokenField({
 	token,
 	onSave,
@@ -201,13 +192,11 @@ function TokenField({
 }: {
 	token: string;
 	onSave: (token: string) => void;
-	// Absent while there is nothing to go back to: an unconfigured component has no earlier state for Cancel to mean.
 	onCancel?: () => void;
 }) {
 	const [draft, setDraft] = useState(token);
 	const [isVisible, setIsVisible] = useState(false);
 
-	// Committed rather than bound: the token keys the discovery query, so binding it would re-probe the component once per keystroke.
 	return (
 		<form
 			className={styles.tokenRow}
@@ -246,7 +235,6 @@ function TokenField({
 }
 
 export function TagWriting() {
-	// Discovery comes from the shared hook rather than the tag-writing context, which owns only the allowlist switches.
 	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
 	const { allowedFields, isFieldEnabled, setFieldEnabled } = useTagWriting();
 	const { state, origin } = discovery;
@@ -255,7 +243,6 @@ export function TagWriting() {
 	const streaming = explainStreaming(state);
 	const [isEditingToken, setIsEditingToken] = useState(false);
 
-	// A stored token that works collapses to a button; the field stays open only where it is the panel's whole point, not yet pasted or pasted and refused.
 	const needsToken = state.kind === "no-token" || state.kind === "unauthorized";
 	const wantsToken = needsToken || isEditingToken;
 	const isWorking = state.kind === "ready" && !wantsToken;
@@ -290,7 +277,6 @@ export function TagWriting() {
 				/>
 			) : null}
 
-			{/* Narrowing only: a field switched on here is still refused unless the component permits it. */}
 			{allowedFields.length > 0 ? (
 				<div className={styles.fields}>
 					<div className={styles.fieldsHead}>
@@ -326,7 +312,6 @@ export function TagWriting() {
 				</div>
 			) : null}
 
-			{/* Only useful while getting to working: a connected component shows its state and its switches, and a reload re-runs discovery if it is ever needed. */}
 			{isWorking ? null : (
 				<div className={styles.panelFoot}>
 					<Button onClick={recheck} disabled={isChecking}>

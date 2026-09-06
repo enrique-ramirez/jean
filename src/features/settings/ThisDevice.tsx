@@ -11,13 +11,11 @@ import { Input } from "@/shared/ui/Input";
 import { Switch } from "@/shared/ui/Switch";
 import styles from "./Settings.module.css";
 
-// The one setting in here that describes the machine rather than the library, which is why it says so and why it never syncs.
 export function ThisDevice() {
 	const { canListen, lowLatencyFellBack: fellBack } = useListener();
 	const [name, setName] = useStoredState(DEVICE_NAME_KEY, defaultDeviceName);
 	const [isLowLatency, setLowLatency] = useStoredState(LOW_LATENCY_KEY, true);
 
-	// Nothing can listen without the component, and with nobody to be named to this is a field about nothing.
 	if (!canListen) return null;
 
 	return (
@@ -49,7 +47,6 @@ export function ThisDevice() {
 					type="text"
 					value={name}
 					maxLength={64}
-					// Emptied, it falls back to the guess rather than to nothing: a blank row in somebody else's picker says less than a wrong word.
 					onChange={(event) => setName(event.target.value)}
 					onBlur={(event) => {
 						if (event.target.value.trim() === "") setName(defaultDeviceName());

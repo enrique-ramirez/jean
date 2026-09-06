@@ -1,31 +1,4 @@
-/* Full-screen lyrics. The only view in Jean that is deliberately *one thing on
-   a page* -- no transport, no artwork, no tabs, no title. Everything else in
-   the app is a frame around content; this is the content with the frame taken
-   away, which is the whole request and the reason it is a screen rather than a
-   wider panel.
-
-   Reference pass: Apple Music's full-screen player puts its dismiss top-*left*,
-   Spotify's lyric sheet does the same, and both are wrong here for one reason
-   -- the now-playing screen's own chevron-down is already in that corner, one
-   layer down. Two dismissals stacked in one corner is a mis-tap waiting to
-   happen and it makes the deeper one feel like the shallower one. So the X goes
-   top-right, which is also what a modal that covers everything gets on the web.
-   What was taken from the references is the *scrim-less* treatment: neither
-   floats its control over the text, and neither should this. */
 .screen {
-	/* **Fixed, not absolute**, and at every width -- the now-playing screen is
-     fixed only on a phone, and the queue panel never is. A layer positioned in
-     `.body` sits *below* the top bar and beside the sidebar, so it covers the
-     view and leaves the search field, the settings gear and the theme switch on
-     screen above it. That is right for a screen you are still navigating and
-     wrong for this one, where the whole request is that the lyrics are the only
-     thing on it. Nothing between here and the viewport establishes a containing
-     block -- `.body` is `position: relative` with `overflow: hidden`, and
-     neither clips a fixed descendant -- so this is the viewport.
-
-     45 puts it over the app chrome, the queue panel (30) and the now-playing
-     screen (25), and deliberately under toasts (50) and menus (70): a write
-     that failed still has to be able to say so. */
 	position: fixed;
 	inset: 0;
 	z-index: 45;
@@ -33,15 +6,11 @@
 
 	display: flex;
 	flex-direction: column;
-	/* The lyric wants a measure whatever the window is, and centring the column
-     rather than the text keeps it set ragged-right like every other block of
-     type in the app. */
 	--lyric-size: clamp(1.25rem, 2.6vw, 1.75rem);
 	--resume-bottom: calc(30px + env(safe-area-inset-bottom));
 
-	/* Same reason as the now-playing screen: the horizontal axis must not become
-     Android Chrome's back gesture, and the vertical axis stays the scroller's
-     so `useSwipe` can still read a downward flick through a scroll. */
+	/* The horizontal axis must not become Android Chrome's back gesture. The vertical
+	   stays the scroller's, so `useSwipe` still reads a downward flick through a scroll. */
 	touch-action: pan-y;
 	animation: lyrics-in 0.22s var(--ease);
 }
@@ -59,10 +28,6 @@
 	}
 }
 
-/* A bar rather than a floating button. Floating it would put the X over the
-   lyric it exists to get you away from -- and a scrim under it to fix that is a
-   gradient over the one thing this screen is for. Sixty-odd pixels of nothing
-   is the cheaper answer, and it is the only chrome here. */
 .bar {
 	flex: none;
 	display: flex;
@@ -71,9 +36,6 @@
 		max(10px, env(safe-area-inset-right)) 6px 16px;
 }
 
-/* Big and fat, as asked. 52px clears the 44px touch minimum with room to spare
-   and is the largest single control in the app after the play button -- which
-   is right: it is the only way out of a screen with nothing else on it. */
 .close {
 	display: grid;
 	place-items: center;
@@ -102,13 +64,6 @@
 		max(20px, env(safe-area-inset-right));
 }
 
-/* A measure. Lyrics running the full width of a 27" display is not what going
-   full screen was for -- the point is the type getting bigger, not the line
-   getting longer.
-
-   A wrapper rather than `.body > *`: the resume pill is a sibling of the lyric
-   list, so a width rule on the children caught it too and turned a floating
-   control into a full-width bar docked to the foot of the screen. */
 .measure {
 	width: 100%;
 	max-width: 44rem;

@@ -3,7 +3,7 @@ import { type PointerEvent as ReactPointerEvent, useState } from "react";
 
 import styles from "./Stars.module.css";
 
-// A half is a filled star clipped over its outline: lucide has no half-star glyph, and clipping keeps the silhouette exactly.
+// A half is a filled star clipped over its outline: lucide has no half-star glyph.
 function Glyph({ fill }: { fill: number }) {
 	return (
 		<>
@@ -46,7 +46,8 @@ export function Stars({
 	);
 }
 
-// Pointer-only and deliberately not focusable: the virtualiser unmounts rows as they scroll and would take focus with them. Keyboard and touch rate through the track menu instead.
+// Pointer-only and deliberately not focusable: the virtualiser unmounts rows as they scroll and
+// would take focus with them. Keyboard and touch rate through the track menu.
 export function StarsInput({
 	value,
 	max = 5,
@@ -56,25 +57,19 @@ export function StarsInput({
 	value: number;
 	max?: number;
 	label: string;
-	// null clears the rating rather than setting a zero.
 	onRate: (stars: number | null) => void;
 }) {
 	const [preview, setPreview] = useState<number | null>(null);
 	const shown = preview ?? value;
-	// Clicking the set star clears it, so its preview shows the state that would leave behind rather than the star being pointed at.
 	const isClearing = preview !== null && preview === value;
 
-	// Dropped on click and re-armed by the next pointerenter: committing a rating makes the star under the pointer the one that would now clear it, so a preview left armed changes the drawing with no pointer movement to explain it.
-	// pointerenter rather than pointermove: one event per star rather than a stream, which is felt immediately as a laggy hover.
 	const arm = (event: ReactPointerEvent, stars: number) => {
-		// A finger hides the value it would preview.
 		if (event.pointerType === "touch") return;
 		setPreview(stars);
 	};
 
 	return (
-		// A span rather than a fieldset because this sits in a grid row; the group is named for the value and each button for what it would do.
-		// biome-ignore lint/a11y/useSemanticElements: in a grid row, see above
+		// biome-ignore lint/a11y/useSemanticElements: a fieldset cannot sit in this grid row
 		<span
 			className={styles.stars}
 			role="group"
@@ -97,7 +92,6 @@ export function StarsInput({
 							clears ? `Clear rating (${label})` : `Rate ${stars} of ${max}`
 						}
 						onPointerEnter={(event) => arm(event, stars)}
-						// The row beneath plays on click and drags on pointer-down.
 						onPointerDown={(event) => event.stopPropagation()}
 						onClick={(event) => {
 							event.stopPropagation();

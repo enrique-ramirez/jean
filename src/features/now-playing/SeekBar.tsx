@@ -4,7 +4,6 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
 import styles from "./SeekBar.module.css";
 
-// Sampled every animation frame; `resolution` is what React compares to decide whether to re-render.
 const useTickingPosition = (
 	snapshot: PlayerSnapshot | null | undefined,
 	resolution: (at: number) => number,
@@ -24,11 +23,9 @@ const useTickingPosition = (
 
 const exactly = (at: number) => at;
 
-/** The interpolated position, ticking. Never lift this into a shared store: it re-renders every animation frame. */
 export const useElapsed = (snapshot: PlayerSnapshot | null | undefined) =>
 	useTickingPosition(snapshot, exactly);
 
-/** The same, in whole seconds, for a readout that changes once a second: React bails out on every frame landing inside the second it already drew. A caller drawing a position -- a fill, a thumb, a scrubber -- needs `useElapsed`, or the movement steps. */
 export const useElapsedSeconds = (
 	snapshot: PlayerSnapshot | null | undefined,
 ) => useTickingPosition(snapshot, Math.floor);
@@ -45,7 +42,6 @@ export function SeekBar({
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
 	const canSeek = duration > 0;
 
-	// Seeking commits on release rather than on drag, or scrubbing fires a request per pointer move and the player stutters chasing them.
 	const { ref, fraction, isDragging, handlers } = useDragFraction({
 		onCommit: (next) => onSeek(next * duration),
 		disabled: !canSeek,
@@ -68,7 +64,6 @@ export function SeekBar({
 			{...handlers}
 		>
 			<span className={styles.rail} />
-			{/* scaleX rather than width: transforms skip layout entirely. */}
 			<span
 				className={styles.fill}
 				style={{ transform: `scaleX(${progress})` }}

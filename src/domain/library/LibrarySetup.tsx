@@ -8,17 +8,13 @@ import { plural } from "@/shared/lib/text";
 import { Button } from "@/shared/ui/Button";
 import styles from "./LibrarySetup.module.css";
 
-// beefweb sees playlists and the filesystem, and foobar2000's Media Library is invisible to it, so an autoplaylist is the way through.
-// There is no picker: the exact title is the contract, because adopting anything loosely named "Library" can make a stray playlist stand in for a whole collection.
 export function LibrarySetup({ playlists }: { playlists: PlaylistInfo[] }) {
 	const queryClient = useQueryClient();
 
-	// Offered, never taken: renaming somebody's playlist is theirs to agree to.
 	const candidate = playlists.find(looksLikeLibrary) ?? null;
 
 	const adopt = useMutation({
 		mutationFn: async () => {
-			// Only reachable from the button this candidate renders.
 			await renamePlaylist((candidate as PlaylistInfo).id, LIBRARY_TITLE);
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 		},

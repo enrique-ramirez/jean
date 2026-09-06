@@ -1,8 +1,3 @@
-/* The three panels and the strip that names them, in whichever host mounted
-   them. The variant is not a skin: it is the answer to *who scrolls*. On the
-   gatefold the screen is the one scroller and the panel sizes to its content;
-   in the phone's layer the panel is the scroller, because the header above it
-   is pinned. Everything else here is shared on purpose. */
 .panel {
 	display: flex;
 	flex-direction: column;
@@ -11,15 +6,11 @@
 }
 
 .tabs {
-	/* The containing block for `.expand`, which hangs below it. `sticky` already
-     positions this, so nothing else changes. */
 	position: sticky;
 	display: flex;
 	gap: 4px;
 	flex: none;
 	border-bottom: 1px solid var(--border);
-	/* Under the header, which is why the offset is the header's height rather
-     than zero. */
 	top: var(--head-offset);
 	z-index: 1;
 	background: var(--bg);
@@ -38,8 +29,6 @@
 	transition: color 0.15s var(--ease);
 }
 
-/* The letter that opens the tab from the keyboard. Hidden where there is no
-   keyboard to press it with, the same question the shortcuts button asks. */
 .key {
 	text-decoration: underline;
 	text-underline-offset: 3px;
@@ -59,8 +48,6 @@
 	color: var(--text);
 }
 
-/* The accent budget here is the same two-pixel rail the menu spends it on, and
-   it scales from its own centre rather than fading in. */
 .tab::after {
 	content: "";
 	position: absolute;
@@ -76,15 +63,6 @@
 	transform: scaleX(1);
 }
 
-/* Hangs off the *bottom* of the tab strip rather than sitting in it. `top: 100%`
-   resolves against `.tabs`, which is already `position: sticky` and therefore a
-   containing block -- so on the gatefold the button rides the sticky strip and
-   stays with the lyric instead of scrolling off the top of it, and no second
-   sticky rule is needed to say so.
-
-   It has a surface and a border because lyrics scroll under it. A bare glyph
-   over running text reads as a mark *in* the lyric rather than as a control on
-   top of one -- which is the same reason `.resume` is a pill. */
 .expand {
 	position: absolute;
 	top: 100%;
@@ -118,54 +96,30 @@
 	flex-direction: column;
 }
 
-/* ---- in the layer ------------------------------------------------------ */
-
 .panel[data-variant="screen"] {
 	flex: 1;
 	min-height: 0;
-	/* Set larger than the gatefold's 1.125rem, because this panel is the whole
-     phone rather than one leaf of two — the same reason `LyricsScreen` raises
-     it, and a phone never reaches that screen. Inherited into `Lyrics` rather
-     than declared on the line, which would beat anything set from outside. */
 	--lyric-size: clamp(1.25rem, 5.2vw, 1.5rem);
-	/* Clear of the gesture bar, now that the pill hangs off the layer rather
-     than off the panel. */
 	--resume-bottom: calc(16px + env(safe-area-inset-bottom));
 }
 
-/* Three tabs across the full width of a phone rather than four at the left edge
-   of a leaf. */
 .panel[data-variant="screen"] .tabs {
-	/* Nothing above it inside this layer, unlike the gatefold, where the strip
-     pins under the screen's own header. */
 	top: 0;
 	justify-content: space-around;
-	/* The rule under the strip runs the full width of the phone; only the labels
-     are inset, and `space-around` is what insets them. */
 	padding-inline: 8px;
 }
 
 .panel[data-variant="screen"] .panelBody {
 	flex: 1;
 	min-height: 0;
-	/* **Not the containing block for the resume pill**, which is the one
-     absolutely positioned thing inside a panel. This box is the scroller here,
-     and an absolutely positioned child of a scroller is part of what scrolls —
-     so the pill rode the lyric up and out instead of hovering over it.
-     Unpositioned, it resolves to the layer, which does not move. */
+	/* Not the containing block for the resume pill: this box is the scroller, and an
+	   absolutely positioned child of a scroller is part of what scrolls. Unpositioned,
+	   the pill resolves to the layer, which does not move. */
 	position: static;
-	/* The gutter the layer gave up so that this box could reach the edges: the
-     content stays inset and the scrollbar does not. */
 	padding-inline: 20px;
-	/* The one place a panel scrolls itself: the header above it is fixed, so the
-     layer as a whole cannot be the scroller without taking the tabs off the
-     top of it. */
 	overflow-y: auto;
 	overscroll-behavior: contain;
-	/* The fade belongs to whatever actually scrolls, and on the gatefold that is
-     the whole screen rather than the panel -- left on the panel there it dimmed
-     the first and last row permanently, on content that was never clipped.
-     Both prefixes: Safari only took the unprefixed form in 15.4. */
+	/* Both prefixes: Safari took the unprefixed form only in 15.4. */
 	-webkit-mask-image: linear-gradient(
 		to bottom,
 		transparent 0,
@@ -182,15 +136,6 @@
 	);
 }
 
-/* The panel arrives from the side the gesture came from, which is most of what
-   makes the swipe discoverable: content that simply replaces itself gives no
-   sign that a flick did anything. Not on the gatefold, where the tabs are
-   clicked and the pointer already said which one -- and **not on the first
-   panel either**, which arrives with the layer and would otherwise slide
-   sideways while the layer slides up.
-
-   `transform` and `opacity` only, so it stays on the compositor; nothing here
-   moves the element's laid-out box, so the tab strip above holds still. */
 .panel[data-variant="screen"] .panelBody[data-direction="1"] {
 	animation: panel-in-right 0.24s var(--ease);
 }
@@ -213,8 +158,6 @@
 	}
 }
 
-/* The direction is the information; without the movement a crossfade still says
-   the panel changed, which is the part that has to survive. */
 @media (prefers-reduced-motion: reduce) {
 	.panel[data-variant="screen"] .panelBody[data-direction="1"],
 	.panel[data-variant="screen"] .panelBody[data-direction="-1"] {
@@ -228,11 +171,9 @@
 	}
 }
 
-/* Centred when it fits, scrolled from the top when it does not -- and `margin:
-   auto` is what does both. `justify-content: center` is the trap here: it
-   centres identically and then clips the overflow *above* the scrollport, where
-   nothing can scroll back to it. Auto margins collapse to zero once the content
-   is taller than the box. */
+/* `margin: auto` centres when the content fits and collapses to zero when it is
+   taller than the box. `justify-content: center` centres identically and then clips
+   the overflow above the scrollport, where nothing can scroll back to it. */
 .panel[data-variant="screen"] .panelBody > * {
 	flex: none;
 	margin-block: auto;

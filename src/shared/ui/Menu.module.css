@@ -8,12 +8,8 @@
 	top: calc(100% + 6px);
 	z-index: 25;
 	min-width: 210px;
-	/* Sliding a menu back inside the window only works while it is narrow enough
-     to fit in the first place. Past that it has to give up width instead. */
 	max-width: calc(100vw - 16px);
 	padding: 5px;
-	/* Set by Menu, which is the only thing that can measure where the anchor
-     actually put this. */
 	transform: translateX(var(--menu-shift, 0px));
 	border: 1px solid var(--border-strong);
 	border-radius: var(--radius);

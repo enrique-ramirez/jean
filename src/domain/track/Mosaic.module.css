@@ -27,9 +27,6 @@
 	border-radius: 0;
 }
 
-/* The tiles are mounted from the first frame -- that is what makes them load -- and hidden until the
-   last has answered. Faded in together, so nine covers arrive as one picture rather than as nine
-   things appearing one after another. */
 .mosaic:not([data-ready]) .tile {
 	opacity: 0;
 }
@@ -38,8 +35,6 @@
 	transition: opacity 220ms var(--ease);
 }
 
-/* One hold at the size of the whole mosaic, which is the shape a single album has. `Artwork` draws
-   its own per tile and that is right for one cover; nine identical disc icons is not a loading state. */
 .hold {
 	position: absolute;
 	inset: 0;
@@ -53,8 +48,6 @@
 	height: 34%;
 }
 
-/* How many albums are really in there, where the tiles cannot say. Bottom right, over the artwork, in
-   the same pill a shelf card uses for its caption. */
 .count {
 	position: absolute;
 	right: 6px;
@@ -81,14 +74,11 @@
 	color: var(--faint);
 }
 
-/* Beside the name rather than above it, so it is sized to sit against two
-   lines of text instead of to fill a row on its own. */
 @media (max-width: 720px) {
 	.mosaic {
-		/* The size arrives as an inline style, so nothing short of this beats it. */
-		/* biome-ignore-start lint/complexity/noImportantStyles: beats inline, see above */
+		/* biome-ignore-start lint/complexity/noImportantStyles: the size arrives as an inline style */
 		width: 92px !important;
 		height: 92px !important;
-		/* biome-ignore-end lint/complexity/noImportantStyles: beats inline, see above */
+		/* biome-ignore-end lint/complexity/noImportantStyles: the size arrives as an inline style */
 	}
 }

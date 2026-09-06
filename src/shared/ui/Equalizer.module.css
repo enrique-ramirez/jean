@@ -1,10 +1,6 @@
-/* Three bars, the mark for "the sound comes out here". Unequal delays matter more
-   than the keyframes: matched bars march, drifting bars play. */
 .equalizer {
 	display: inline-flex;
 	align-items: flex-end;
-	/* Bars stand in for whatever they replace -- a track number, a checkmark --
-	   so they start where it started. */
 	justify-content: flex-start;
 	gap: 2px;
 	height: 12px;
@@ -34,8 +30,6 @@
 	}
 }
 
-/* Still, but never gone: the mark says where the sound is routed, and a column
-   that empties on a pause says it went somewhere else. */
 @media (prefers-reduced-motion: reduce) {
 	.equalizer i {
 		height: 7px;

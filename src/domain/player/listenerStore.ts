@@ -21,47 +21,32 @@ import {
 } from "./listener";
 import { canUseMse, type MseStream, openMseStream } from "./mseStream";
 
-// The live connection: one `<audio>` element, the reconnect loop, the codec fall-through and the stream clock.
-
-// Per device, never synced: one device's fader must not move another's.
 const VOLUME_KEY = "jean.listenVolume";
-// Which source the element is given. Per device for the same reason: what a machine can
-// decode, and how far behind it runs, is a fact about that machine.
 export const LOW_LATENCY_KEY = "jean.lowLatencyStream";
 
 const RECONNECT_MS = [500, 1000, 2000, 4000, 8000];
 const BUSY_RETRY_MS = 5000;
-// How long `currentTime` may stand still while the element believes it is playing.
-// A dead live stream fires `stalled` and `waiting`, never `error`, so nothing else notices.
+// How long `currentTime` may stand still while the element believes it is playing. A dead live
+// stream fires `stalled` and `waiting`, never `error`, so nothing else notices.
 const STALL_MS = 6000;
-// Grace for a slow start, until the first sample. The stopped check still runs at `STALL_MS`.
 const START_MS = 25_000;
-// Floor for a pending seek, reached only when no mark ever arrives to end it.
 const SEEK_WAIT_MS = 20_000;
 const WATCHDOG_MS = 1000;
-// A short buffer that keeps emptying is worse than a long one. A flush empties it on purpose,
-// so those are not counted.
 const STALLS_ALLOWED = 3;
 const STALL_WINDOW_MS = 30_000;
 const AFTER_FLUSH_MS = 3000;
-// How long the short-buffer path gets to produce a first sample before it is written off for
-// the session. It normally starts inside 300 ms, and a stream it cannot demux never starts at
-// all -- which, uncaught, is silence rather than the fallback the plain path would have been.
 const MSE_START_MS = 5000;
 const TIMELINE_POLL_MS = 10_000;
 
-// A stopped player and a broken stream look identical from the stream: headers arrive and then nothing.
-// Only beefweb can say which, and the two need different sentences.
+// A stopped player and a broken stream look identical from the stream: headers arrive and then
+// nothing. Only beefweb can say which, and the two need different sentences.
 export type ListenPhase =
 	| { kind: "off" }
 	| { kind: "connecting" }
 	| { kind: "playing" }
 	| { kind: "reconnecting"; attempt: number }
-	// The browser refused an autoplay whose user gesture was lost across an await; see `resume`.
 	| { kind: "blocked" }
-	// The component is serving as many listeners as it will. Retryable.
 	| { kind: "busy"; message: string }
-	// Connected, with nothing coming because the player is not playing.
 	| { kind: "silent" }
 	| { kind: "failed"; message: string };
 
@@ -72,10 +57,9 @@ export interface ListenSnapshot {
 	isMuted: boolean;
 	// False on iOS, where `audio.volume` is a documented no-op.
 	canSetVolume: boolean;
-	// Which track is coming out of the speaker. Published on change only, never per frame.
 	audiblePath: string | null;
-	// True once this connection has given up on the short buffer. The stored preference is
-	// left alone: it says what to try, and this says what happened.
+	// True once this connection has given up on the short buffer. The stored preference is left
+	// alone: it says what to try, and this says what happened.
 	lowLatencyFellBack: boolean;
 }
 
@@ -89,7 +73,6 @@ let volumeDb = readStoredVolume();
 let isMuted = false;
 let canSetVolume = true;
 
-// Formats this browser has failed to decode, so reconnects do not retry them.
 const dead = new Set<string>();
 
 let attempt = 0;
@@ -98,18 +81,13 @@ let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 let timelineTimer: ReturnType<typeof setInterval> | null = null;
 
 let anchor: number | null = null;
-// The last `/stream/timeline` answer and when it arrived. The anchor needs it paired with a buffered range, and the two arrive in either order.
 let timelineStreamTime: number | null = null;
 let timelineAt = 0;
-// When this element was pointed at the stream. The clock runs at 1x, so a later answer carries back to here.
 let connectAt = 0;
 let marks: StreamMark[] = [];
 let audiblePath: string | null = null;
-// A seek the player has taken and this device has not heard yet, with the audible mark current when it was asked for.
-// The control holds where it was put rather than snapping back to what is still audible.
 let pendingSeek: number | null = null;
 let mse: MseStream | null = null;
-// Per session, never stored: a downgrade describes this connection, not a decision the user made.
 let lowLatencyFellBack = false;
 let stalls: number[] = [];
 let flushedAt = 0;
@@ -117,9 +95,9 @@ let pendingMarkAt = 0;
 let pendingAt = 0;
 let lastTime = 0;
 let lastAdvance = 0;
-// False until the first sample, which is what chooses between `START_MS` and `STALL_MS`.
 let hasRendered = false;
-// Bumps on every connect, so a ticket or timeline settling after its connection was torn down is discarded.
+// Bumps on every connect, so a ticket or timeline settling after its connection was torn down is
+// discarded.
 let generation = 0;
 
 let snapshot: ListenSnapshot = build();
@@ -152,14 +130,10 @@ function readStoredVolume() {
 
 export const subscribeListening = listeners.subscribe;
 export const listeningSnapshot = () => snapshot;
-// `useSyncExternalStore` calls this before hydration, so it must not touch the DOM.
 export const listeningServerSnapshot = () => snapshot;
 
-// Which phases mean a connection is up. A parameter rather than the module's own, so the hook reading the published snapshot and the store reading its live one cannot answer differently.
 export const isListening = (at: ListenPhase) =>
 	at.kind !== "off" && at.kind !== "failed";
-
-// ---- the element -------------------------------------------------------------
 
 function ensureElement() {
 	if (element) return element;
@@ -180,7 +154,8 @@ function ensureElement() {
 	audio.addEventListener("error", onError);
 	audio.addEventListener("ended", onEnded);
 
-	// In the document, though it draws nothing: browsers only treat an attached element as the page's media for the OS controls.
+	// In the document, though it draws nothing: browsers only treat an attached element as the page's
+	// media for the OS controls.
 	audio.hidden = true;
 	document.body.appendChild(audio);
 
@@ -188,23 +163,19 @@ function ensureElement() {
 	return audio;
 }
 
-// Ogg is not an MSE container anywhere, so the low-latency path demuxes it and re-wraps the
-// same Opus packets in WebM. The audio is untouched: this changes who owns the buffer, not
-// what is in it. AAC has no such path yet, which is why the format decides too.
+// Ogg is not an MSE container anywhere, so the low-latency path demuxes it and re-wraps the same
+// Opus packets in WebM. AAC has no such path, which is why the format decides too.
 function wantsLowLatency(forFormat: string) {
 	if (forFormat !== "opus" || !canUseMse() || lowLatencyFellBack) return false;
 	try {
-		// Absent is on: a browser that supports the container gets the short buffer, and the
-		// fallback below is what protects a connection that cannot hold it.
 		return localStorage.getItem(LOW_LATENCY_KEY) !== "false";
 	} catch {
 		return false;
 	}
 }
 
-// An orphan keeps its reader loop, its trim interval and its object URL, goes on pulling the
-// live stream at 1x, and still counts against the component's `maxConcurrentStreams`. Its
-// `onError` would also drive reconnects on a connection it no longer owns.
+// An orphan keeps its reader loop and its object URL, goes on pulling the live stream at 1x, still
+// counts against `maxConcurrentStreams`, and drives reconnects on a connection it no longer owns.
 function releaseStream() {
 	mse?.stop();
 	mse = null;
@@ -220,24 +191,19 @@ function sourceFor(
 	if (!wantsLowLatency(forFormat)) return url;
 
 	mse = openMseStream(url, audio, {
-		// The element cannot start before there is something to decode, and how much that is
-		// is the whole question this path exists to answer.
 		onReady: () => {
 			if (audio.paused) void audio.play().catch(() => undefined);
 		},
 		onError: () => {
 			if (isListening(phase)) scheduleReconnect();
 		},
-		// Another connection would meet the same stream, so the path goes rather than retrying.
 		onUnusable: retireLowLatency,
 	});
 	return mse.src;
 }
 
-// Retiring the remux can retire a format with it. Where the element cannot play the container
-// the component actually sent -- Ogg, which is every browser for Opus in an element, and
-// Safari for Opus altogether -- the remux was the only way to reach it, so the format goes too
-// and the reconnect picks the next one rather than offering bytes nothing can decode.
+// Retiring the remux can retire a format with it: where the element cannot play the container the
+// component sent, the remux was the only way to reach that format.
 function retireLowLatency() {
 	lowLatencyFellBack = true;
 	stalls = [];
@@ -245,8 +211,7 @@ function retireLowLatency() {
 	restartListening();
 }
 
-// The short buffer running dry, which is the one way this path is worse than the browser's own.
-// A flush empties it deliberately and the first fill is not a stall, so neither is counted.
+// A flush empties the buffer deliberately and the first fill is not a stall, so neither is counted.
 function onWaiting() {
 	if (!mse || !hasRendered) return;
 	if (performance.now() - flushedAt < AFTER_FLUSH_MS) return;
@@ -256,12 +221,9 @@ function onWaiting() {
 	stalls.push(now);
 	if (stalls.length < STALLS_ALLOWED) return;
 
-	// Kept for the session rather than written to the setting: the preference says what to
-	// try, and this says what this connection turned out to be able to hold.
 	retireLowLatency();
 }
 
-// The observation the watchdog waits on: audio came out at this position, at this moment. The first one is also what tells a buffer running dry from a stream that was never going to play.
 function markRendered(at: number) {
 	lastTime = at;
 	lastAdvance = performance.now();
@@ -276,7 +238,6 @@ function onPlaying() {
 	deriveAnchor();
 }
 
-// The audio has reached the seek once the mark under it is later than the one the seek was asked for from.
 function hasReachedSeek(mark: StreamMark | null) {
 	return (
 		(mark !== null && mark.at > pendingMarkAt) ||
@@ -284,7 +245,6 @@ function hasReachedSeek(mark: StreamMark | null) {
 	);
 }
 
-// `timeupdate` fires about four times a second, which is one timer fewer than polling.
 function onTimeUpdate() {
 	deriveAnchor();
 
@@ -301,7 +261,8 @@ function onTimeUpdate() {
 	publish();
 }
 
-// `error.code` is the only thing separating "cannot play this" from "the Wi-Fi dropped", and the two want opposite responses.
+// `error.code` is the only thing separating "cannot play this" from "the Wi-Fi dropped", and the two
+// want opposite responses.
 function onError() {
 	if (!isListening(phase)) return;
 	const code = element?.error?.code;
@@ -323,8 +284,6 @@ function onEnded() {
 	if (isListening(phase)) scheduleReconnect();
 }
 
-// ---- connecting --------------------------------------------------------------
-
 function setPhase(next: ListenPhase) {
 	phase = next;
 	publish();
@@ -338,7 +297,8 @@ function nextFormat() {
 	const remaining = liveFormats();
 	if (remaining.length === 0) {
 		stopStream();
-		// Deliberately vague: a refused ticket and an undecodable codec reach the element as the same `MEDIA_ERR`.
+		// Deliberately vague: a refused ticket and an undecodable codec reach the element as the same
+		// `MEDIA_ERR`.
 		setPhase({
 			kind: "failed",
 			message: "Could not play the stream on this device.",
@@ -348,7 +308,6 @@ function nextFormat() {
 	void open(remaining[0]);
 }
 
-// What the clock for one connection consists of, in one place: the anchor is fixed per connection, and every mark under it means a stream time only that connection can read.
 function forgetStreamClock() {
 	anchor = null;
 	timelineStreamTime = null;
@@ -369,8 +328,8 @@ export function retry() {
 	connect();
 }
 
-// Re-entered by the reconnect timer, the busy retry and the codec fall-through as well as by a
-// fresh connect, so everything a connection holds is released here rather than in `stopStream`.
+// Re-entered by the reconnect timer, the busy retry and the codec fall-through as well as by a fresh
+// connect, so everything a connection holds is released here rather than in `stopStream`.
 async function open(next: string) {
 	if (!target) return;
 
@@ -413,14 +372,14 @@ async function open(next: string) {
 	audio.volume = amplitudeOf(volumeDb);
 
 	startWatchdog();
-	// Straight away rather than on the first poll: without it there is no anchor, and so no correction.
 	void reloadMarks();
 
 	try {
 		await audio.play();
 	} catch (error) {
 		if (mine !== generation) return;
-		// `play()` after an await has lost its user gesture. The only fix is a control the user presses synchronously.
+		// `play()` after an await has lost its user gesture. The only fix is a control the user presses
+		// synchronously.
 		if ((error as DOMException)?.name === "NotAllowedError") {
 			setPhase({ kind: "blocked" });
 			return;
@@ -452,7 +411,8 @@ function scheduleReconnect() {
 	const wait = RECONNECT_MS[attempt];
 	attempt += 1;
 	setPhase({ kind: "reconnecting", attempt });
-	// Never open a second element to probe with: Safari holds two connections per listener, and `maxConcurrentStreams` counts connections.
+	// Never open a second element to probe with: Safari holds two connections per listener, and
+	// `maxConcurrentStreams` counts connections.
 	const mine = generation;
 	reconnectTimer = setTimeout(() => {
 		if (mine !== generation) return;
@@ -461,12 +421,9 @@ function scheduleReconnect() {
 	}, wait);
 }
 
-// ---- the stall watchdog ------------------------------------------------------
-
-// What it watches is one connection, and a reconnect is a new one: the element's clock restarts at
-// zero and nothing has been heard yet, so the observation restarts whether or not the interval does.
-// Left alone, a reconnect inherits `hasRendered` and neither the slow-start grace nor the
-// short-buffer write-off can ever fire again.
+// A reconnect is a new connection and the observation has to restart whether or not the interval
+// does: left alone, it inherits `hasRendered` and neither the slow-start grace nor the short-buffer
+// write-off can fire again.
 function startWatchdog() {
 	lastTime = 0;
 	lastAdvance = performance.now();
@@ -482,9 +439,8 @@ async function watch() {
 	if (!audio || !isListening(phase)) return;
 	if (phase.kind === "blocked" || phase.kind === "busy") return;
 
-	// Nothing has been heard and the short-buffer path had its chance. The stall counter
-	// cannot cover this: it needs a first sample to know the difference between a stream
-	// running dry and one that was never going to play.
+	// Nothing has been heard and the short-buffer path had its chance. The stall counter cannot cover
+	// this: it needs a first sample to tell a stream running dry from one that never started.
 	if (mse && !hasRendered && performance.now() - connectAt > MSE_START_MS) {
 		retireLowLatency();
 		return;
@@ -499,7 +455,6 @@ async function watch() {
 	if (audio.paused) return;
 	if (performance.now() - lastAdvance < STALL_MS) return;
 
-	// From the stream alone a stopped player and a dead connection are the same event.
 	const stopped = await fetchPlayer()
 		.then((player) => player.playbackState !== "playing")
 		.catch(() => false);
@@ -516,16 +471,14 @@ async function watch() {
 	scheduleReconnect();
 }
 
-// ---- the stream clock --------------------------------------------------------
-
-// Fixed once per connection, and retried from `playing`, every `timeupdate` and every poll: the two terms arrive in either order.
+// Retried from `playing`, from every `timeupdate` and from every poll: the two terms arrive in
+// either order.
 function deriveAnchor() {
 	if (anchor !== null || timelineStreamTime === null || !element) return;
 
-	// On the low-latency path the muxer's own clock starts at zero on connect, so the origin
-	// is known rather than measured. Read from `buffered` it would be a race: the trim moves
-	// `start(0)` forward every few seconds, and a timeline answer arriving after the first
-	// one would anchor against a number that had already moved.
+	// On the low-latency path the muxer's own clock starts at zero on connect, so the origin is known
+	// rather than measured. Read from `buffered` it would be a race: the trim moves `start(0)`
+	// forward every few seconds.
 	const origin = mse ? 0 : bufferedStart(element);
 	if (origin === null) return;
 
@@ -546,16 +499,13 @@ async function reloadMarks() {
 	deriveAnchor();
 }
 
-// A track change or a seek lays a mark this client does not hold.
 export const refreshTimeline = () => void reloadMarks();
 
-// Read per animation frame by the seek bar, so it reads `currentTime` at call time rather than notifying the store.
 export function listeningPosition(
 	path: string | null | undefined,
 	duration: number,
 ): number | null {
 	if (!element || phase.kind !== "playing") return null;
-	// Held rather than advanced: the audio it is waiting for has not moved either.
 	if (pendingSeek !== null) return pendingSeek;
 	return audiblePosition(anchor, marks, element.currentTime, path, duration);
 }
@@ -574,8 +524,6 @@ export function beginSeek(position: number) {
 		Number.NEGATIVE_INFINITY;
 	pendingAt = performance.now();
 }
-
-// ---- volume ------------------------------------------------------------------
 
 export function setListeningVolume(db: number) {
 	volumeDb = Math.max(DEVICE_VOLUME_FLOOR_DB, Math.min(0, db));
@@ -602,13 +550,8 @@ export function toggleListeningMute() {
 export const listeningVolumeFloor = DEVICE_VOLUME_FLOOR_DB;
 export { decibelsOf };
 
-// ---- what the audience store reads -------------------------------------------
-
-// The roster comes from the same component this device streams from, so it reads the target here rather than resolving a second one out of discovery.
 export const listenTarget = () => target;
 
-// How far behind the player this device is, or null while nothing is listening or the clock has not settled.
-// Sampled by a caller rather than published: it moves continuously, and a store notifying on it would repaint the app sixty times a second.
 export function listeningLagSeconds(): number | null {
 	const audio = element;
 	if (anchor === null || !audio || timelineStreamTime === null) return null;
@@ -617,9 +560,6 @@ export function listeningLagSeconds(): number | null {
 	return liveNow - (anchor + audio.currentTime);
 }
 
-// ---- diagnostics -------------------------------------------------------------
-
-// The stream clock cannot be read off the screen, so `__jeanStream()` prints it. A null anchor means no correction is applied.
 if (import.meta.env.DEV) {
 	(globalThis as unknown as Record<string, unknown>).__jeanStream = () => {
 		const audio = element;
@@ -639,8 +579,6 @@ if (import.meta.env.DEV) {
 		};
 	};
 }
-
-// ---- teardown ----------------------------------------------------------------
 
 function stopStream() {
 	generation += 1;
@@ -675,11 +613,11 @@ export function disconnect() {
 	teardown();
 	setPhase({ kind: "off" });
 
-	// Only when there was a connection to end. A closed socket says nothing about why it closed, and the component waits out a linger before unmuting the player in case it was a reconnect; this is what says it was not one.
+	// A closed socket says nothing about why it closed, and the component waits out a linger before
+	// unmuting the player in case it was a reconnect. This is what says it was not one.
 	if (wasListening && gone) leaveStream(gone.origin, gone.token, deviceId());
 }
 
-// Idempotent, so every caller of the hook may state the target without tearing down another's connection.
 export function configureListening(next: ListenTarget | null) {
 	const same =
 		target?.origin === next?.origin &&
@@ -692,12 +630,10 @@ export function configureListening(next: ListenTarget | null) {
 	dead.clear();
 }
 
-// Whether this device is on the low-latency path. The toggle writes the key through
-// `useStoredState` like any other setting; this is what makes the change take effect, since
-// the source is chosen when a connection opens.
+// The source is chosen when a connection opens, so a change to `LOW_LATENCY_KEY` takes effect only
+// through this.
 export function restartListening() {
 	if (!isListening(phase)) return;
-	// The current format may have just been retired along with the path that reached it.
 	const wanted =
 		format && !dead.has(format) ? format : (liveFormats()[0] ?? null);
 	stopStream();

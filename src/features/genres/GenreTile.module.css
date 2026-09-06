@@ -1,12 +1,7 @@
-/* Eight hues off one ramp. `--genre-tint` is the index the mark chose, and it is the only thing the
-   component passes down: the colour itself is the theme's to decide. */
 .tile {
 	--tint: oklch(
 		var(--genre-l) var(--genre-c) calc(28deg + var(--genre-tint) * 45deg)
 	);
-	/* The field, and the figure drawn into it. The figure sits away from the page rather than at any
-	   fixed lightness -- darker than the field on dark, lighter on light -- which is what
-	   `--genre-ink-ground` carries. Both themes then run the same two mixes. */
 	--field: color-mix(
 		in oklab,
 		var(--tint) var(--genre-wash),
@@ -24,7 +19,6 @@
 	justify-content: flex-end;
 	overflow: hidden;
 	aspect-ratio: 1 / 0.72;
-	/* Extra at the foot: a leaning sleeve reaches past its own box, and the tile clips. */
 	padding: 14px 14px 19px;
 	border-radius: 14px;
 	background: var(--field);
@@ -51,7 +45,6 @@
 	position: absolute;
 	inset: 0;
 	z-index: 0;
-	/* The mark strokes in `currentColor`, and this is where that colour is set. */
 	color: var(--figure);
 }
 
@@ -74,8 +67,6 @@
 	text-overflow: ellipsis;
 }
 
-/* The figures, over the artwork. Top right, opposite the name, so a long tag and a long count never
-   compete for the same line. */
 .counts {
 	position: absolute;
 	top: 11px;
@@ -94,7 +85,6 @@
 	white-space: nowrap;
 }
 
-/* The visible half. Its sibling is the same figures in words, for a reader. */
 .figures {
 	display: flex;
 	align-items: center;
@@ -105,9 +95,6 @@
 	opacity: 0.45;
 }
 
-/* Records dropped along the bottom rather than filed in a row: they overlap, each leans its own way,
-   and the one at the front is whole. The negative margin is what makes the overlap, so the stack
-   grows to the right from the name's own left edge. */
 .stack {
 	display: flex;
 	align-items: flex-end;
@@ -122,7 +109,6 @@
 	overflow: hidden;
 	transform: rotate(var(--tilt));
 	box-shadow: 0 3px 10px oklch(0 0 0 / 0.34);
-	/* A hairline so two dark sleeves overlapping still read as two. */
 	outline: 1px solid oklch(1 0 0 / 0.09);
 	outline-offset: -1px;
 }
@@ -131,14 +117,10 @@
 	margin-left: -27px;
 }
 
-/* `Artwork` draws a disc glyph while it waits, which is right for one cover and wrong for five
-   overlapping ones -- the pile turns into a row of identical icons rather than a stack of records
-   that has not arrived. The hold itself stays, so the shape is still there. */
 .sleeve svg {
 	display: none;
 }
 
-/* Later sleeves sit in front, so the stack reads as dealt left to right and the last one is whole. */
 .sleeve:nth-child(1) {
 	z-index: 1;
 }
@@ -177,7 +159,6 @@
 		font-size: 16px;
 	}
 
-	/* Half the width, so the stack tightens rather than running off the edge. */
 	.sleeve {
 		width: 48px;
 		height: 48px;

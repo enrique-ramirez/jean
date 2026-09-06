@@ -41,7 +41,6 @@ const ancestorsUpTo = (
 		? [element.parentElement, ...ancestorsUpTo(element.parentElement, stop)]
 		: [];
 
-// Only the virtualiser's first guess before it measures: group heights depend on caption wrapping and on the breakpoint.
 const estimateGroupHeight = (group: AlbumRun, isCompactViewport: boolean) => {
 	const tracks =
 		group.count * COMPACT_ROW_HEIGHT +
@@ -89,7 +88,6 @@ export const TrackList = forwardRef(function TrackList(
 ) {
 	const isAlbumLayout = layout === "album";
 
-	// The list draws no group headings, so a multi-disc album says so in the track numbers instead.
 	const discPrefixed = useMemo(
 		() => (isAlbumLayout ? null : multiDiscRows(groups, rows.length)),
 		[isAlbumLayout, groups, rows.length],
@@ -103,14 +101,16 @@ export const TrackList = forwardRef(function TrackList(
 		[isAlbumLayout, showArtwork, groups, rows.length],
 	);
 
-	// To the album run's opening row first, then through `indices`: a filtered view renumbers everything, so the other order looks up a playlist index in a table of row positions.
+	// To the album run's opening row first, then through `indices`: the other order looks up a
+	// playlist index in a table of row positions.
 	const coverIndexOf = (position: number) => {
 		const row = coverRows ? coverRows[position] : position;
 		return refAt(indices, row);
 	};
 
-	// Row 0 is not at scroll offset 0, since the view header and toolbar sit above it, and without telling the virtualiser every scrollToIndex lands short by exactly this much.
-	// Rendering still looks right either way: only the scroll arithmetic is wrong.
+	// Row 0 is not at scroll offset 0: the view header and toolbar sit above it, and without telling
+	// the virtualiser every scrollToIndex lands short by exactly this much. Rendering looks right
+	// either way, so only the scroll arithmetic is wrong.
 	const listElement = useRef<HTMLDivElement | null>(null);
 	const [scrollMargin, setScrollMargin] = useState(0);
 
@@ -120,7 +120,8 @@ export const TrackList = forwardRef(function TrackList(
 		if (!list || !scroller) return undefined;
 
 		const measure = () => {
-			// Rounded, or a fractional margin leaks into every row's transform and the sub-pixel churn re-renders the list for nothing.
+			// Rounded, or a fractional margin leaks into every row's transform and the sub-pixel churn
+			// re-renders the list for nothing.
 			const next = Math.round(
 				list.getBoundingClientRect().top -
 					scroller.getBoundingClientRect().top +
@@ -131,7 +132,8 @@ export const TrackList = forwardRef(function TrackList(
 
 		measure();
 
-		// Observing the chain up to the scroller catches anything above the list resizing without knowing about any of it. `.rows` is display:contents and generates no box.
+		// The whole chain up to the scroller, since `.rows` is display:contents and generates no box for
+		// a ResizeObserver to watch.
 		const observer = new ResizeObserver(measure);
 		[scroller, ...ancestorsUpTo(list, scroller)].forEach((node) => {
 			observer.observe(node);
@@ -148,11 +150,12 @@ export const TrackList = forwardRef(function TrackList(
 				? estimateGroupHeight(groups[index], isCompactViewport)
 				: ROW_HEIGHT,
 		overscan: isAlbumLayout ? 3 : 12,
-		// Measurements are cached by item key and the default key is the index, so group 0 of one search would inherit the height of group 0 of the last -- and stay wrong, since measureElement reports only on mount and resize.
+		// Measurements are cached by item key and the default key is the index, so group 0 of one search
+		// would inherit the height of group 0 of the last -- and stay wrong, since measureElement reports
+		// only on mount and on resize.
 		getItemKey: isAlbumLayout
 			? (index) => groups[index]?.key ?? index
 			: undefined,
-		// Compact rows are genuinely a fixed height, so they skip measurement entirely and cost nothing per row.
 		measureElement: isAlbumLayout
 			? (element) => element.getBoundingClientRect().height
 			: undefined,
@@ -179,7 +182,9 @@ export const TrackList = forwardRef(function TrackList(
 				const element = scrollRef.current;
 				if (!element) return;
 
-				// Measured off the row rather than computed from the index: in album mode the virtualiser's items are groups, so centring an index centres the album and leaves the track wherever it falls inside it.
+				// Measured off the row rather than computed from the index: in album mode the virtualiser's
+				// items are groups, so centring an index centres the album and leaves the track wherever it
+				// falls inside it.
 				const rowRect = () =>
 					element
 						.querySelector(`[data-row="${index}"]`)
@@ -211,7 +216,8 @@ export const TrackList = forwardRef(function TrackList(
 
 				if (!animate) {
 					virtualizer.scrollToIndex(target, { align });
-					// The row exists now even if it did not a moment ago, so a second pass puts the track where the group just went.
+					// The row exists now even if it did not a moment ago, so a second pass puts the track
+					// where the group just went.
 					if (align === "center") {
 						requestAnimationFrame(() => {
 							const refined = centreOnRow();
@@ -229,18 +235,18 @@ export const TrackList = forwardRef(function TrackList(
 
 	useEffect(() => () => cancelScroll.current?.(), []);
 
-	// The trap `getItemKey` cannot fix: the same data in a different shape, since row 4 in list mode is not album 4, so cached heights are meaningless across either switch.
 	const virtualizerRef = useRef(virtualizer);
 	virtualizerRef.current = virtualizer;
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: both switches invalidate cached heights, see above
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the switches fire the effect rather than being read in it -- row 4 in list mode is not album 4, so every cached height is invalid across either
 	useEffect(() => {
 		virtualizerRef.current.measure();
 	}, [isAlbumLayout, isCompactViewport]);
 
 	const virtualItems = virtualizer.getVirtualItems();
 
-	// Rendered is not visible: overscan mounts rows past the fold, so a row that exists is measured against the scroll container and only an absent one has its direction decided by the index range.
+	// Rendered is not visible: overscan mounts rows past the fold, so a mounted row is measured
+	// against the scroll container and only an absent one falls back to the index range.
 	const reported = useRef<ActiveDirection | undefined>(undefined);
 
 	useEffect(() => {
@@ -275,8 +281,7 @@ export const TrackList = forwardRef(function TrackList(
 	});
 
 	return (
-		// Not a <table>: the rows are absolutely positioned by the virtualiser, which table layout cannot express.
-		// biome-ignore lint/a11y/useSemanticElements: virtualised, see above
+		// biome-ignore lint/a11y/useSemanticElements: rows are absolutely positioned by the virtualiser, which table layout cannot express
 		<div
 			ref={listElement}
 			className={showHeat ? styles.list : `${styles.list} heat-off`}

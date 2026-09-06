@@ -1,13 +1,6 @@
-/* The box is `shared/ui/Input`; this is the positioning context its results panel hangs from, and
-   the flex basis that keeps the toolbar honest. */
 .finder {
 	position: relative;
 	display: flex;
-	/* A 400px basis rather than `flex: 1`. The toolbar's spacer also grows, so
-     two flexible items split the free space evenly and the field settled at
-     about half the room it could have had -- measured on a phone, 195px of
-     field next to 180px of nothing. Asking for its full width up front and
-     letting it shrink leaves the spacer with nothing to claim. */
 	flex: 1 1 400px;
 	min-width: 0;
 	max-width: 400px;
@@ -15,7 +8,6 @@
 
 .field {
 	flex: 1;
-	/* Open, so it reads as the thing being typed into even before it has focus. */
 	border-color: var(--accent-line);
 }
 

@@ -41,7 +41,6 @@ import { useNowPlayingRating } from "./useNowPlayingRating";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 import { VolumePopover } from "./Volume";
 
-// Its own leaf, so the animation-frame loop repaints two spans rather than the whole screen.
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	const elapsed = useElapsedSeconds(snapshot);
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
@@ -63,7 +62,6 @@ function Rating() {
 	const stars = rating === null ? 0 : toStars(rating);
 	const label = rating === null ? "Unrated" : `${stars} of ${MAX_STARS} stars`;
 
-	// `0`-`5` rate what this screen is showing, through the same call the stars make. Published even where the value is read-only, so the digits are refused here rather than falling through to the cursor row of the list behind the layer.
 	useEffect(() => {
 		setRatingLayer(write);
 		return () => setRatingLayer(null);
@@ -89,17 +87,13 @@ export function NowPlaying({
 	isCompactViewport: boolean;
 	isQueueOpen: boolean;
 	onToggleQueue: () => void;
-	/** Given only when the set being played has a route to open, which is what makes the header a link. */
 	onOpenPlayingFrom?: () => void;
 	onDismiss: () => void;
 }) {
-	// Unmounted rather than hidden once the exit finishes: the lyric panel runs an animation-frame loop.
 	const isPresent = usePresence(isOpen, SLIDE_MS);
-	// What the Lyrics button opens on a phone, and the only place the tabs live there.
 	const [isInfoOpen, setIsInfoOpen] = useState(false);
 	const isInfoPresent = usePresence(isInfoOpen, INFO_EXIT_MS);
 
-	// Reopening the screen lands on the player: the layer over it was about the track you were looking at then.
 	useEffect(() => {
 		if (!isOpen) setIsInfoOpen(false);
 	}, [isOpen]);
@@ -113,7 +107,6 @@ export function NowPlaying({
 	const seek = useSeek();
 	const transport = useTransport();
 	const order = usePlaybackOrder();
-	// The audible fader, the one the status bar draws: pointed at the player while a stream is attached, it would move nothing anyone can hear.
 	const { isHere, volume, setValue, hasFader } = useAudibleVolume();
 	const menu = useNowPlayingMenu();
 
@@ -121,8 +114,8 @@ export function NowPlaying({
 
 	const keyboardOwner = useKeyboardOwner();
 
-	// Escape belongs to whatever is in front. The layers this screen opens take it first, the queue slides over the top of it, and a dialog that has claimed the keyboard has taken it already — capture beats all three, so the screen stands down rather than reaching over them.
-	// `isOpen` first: the component is mounted whether or not the screen is up, and a listener registered while it is down eats every Escape in the app.
+	// `isOpen` gates first: the component stays mounted while the screen is down, and a listener registered then eats
+	// every Escape in the app.
 	const ownsEscape =
 		isOpen &&
 		!isInfoOpen &&
@@ -132,13 +125,11 @@ export function NowPlaying({
 		keyboardOwner === null;
 	useEscapeCapture(ownsEscape ? onDismiss : null);
 
-	// The gatefold keeps the panels in a leaf of its own, so a resize must not leave a layer over one.
 	useEffect(() => {
 		if (!isCompactViewport) setIsInfoOpen(false);
 	}, [isCompactViewport]);
 
 	// `readValue` rather than truthiness: an unresolved beefweb field answers `?`, which is truthy.
-	// Parsed here rather than in the panel, because the full-screen copy reads the same result and an 8.5 KB tag should not be parsed twice.
 	const lyrics = useMemo(
 		() => parseLyrics(readValue(details?.row[NOW_PLAYING_FIELD.lyrics])),
 		[details],
@@ -164,9 +155,6 @@ export function NowPlaying({
 	const album = readValue(details?.row[NOW_PLAYING_FIELD.album]);
 	const year = readValue(details?.row[NOW_PLAYING_FIELD.year]);
 
-	// The artwork endpoint is addressed by position, so the sleeves either side cost a lookup and no request of Jean's
-	// own -- but only under Default, where the next row really is the next track. Anything else leaves them absent,
-	// which the wheel draws as loading.
 	const neighbours =
 		order.isInOrder && hasTrack && item
 			? {
@@ -176,8 +164,6 @@ export function NowPlaying({
 				}
 			: { nextArtwork: null, previousArtwork: null };
 
-	// The player's own track, which is never delayed. Only the wheel's undo reads it, to tell a skip the player refused
-	// from one whose sound has not arrived yet.
 	const liveItem = live?.player?.activeItem;
 
 	const wheel = useCoverWheel({
@@ -192,9 +178,6 @@ export function NowPlaying({
 		onSkip: sendSkip,
 	});
 
-	// On a phone this screen *is* the track: sideways turns the wheel to the next one, up is what is written about it.
-	// The horizontal axis belongs to the wheel rather than to `useSwipe`, because it follows the finger and only it
-	// knows how far round the turn got. The gatefold keeps the dismissal alone — its panels carry their own swipe.
 	const swipe = useSwipe(
 		isCompactViewport
 			? {
@@ -206,7 +189,6 @@ export function NowPlaying({
 			: { onDown: onDismiss },
 	);
 
-	// The global sheen, on whichever of the identity's lines are waiting for a name. See `base.css`.
 	const loading = wheel.isAwaiting ? " loading" : "";
 
 	const fromLine = from?.isPlaying ? (
@@ -235,10 +217,8 @@ export function NowPlaying({
 				className={styles.screen}
 				data-compact={isCompactViewport}
 				data-leaving={!isOpen}
-				// The boundary every scroller lookup inside this screen resolves against.
 				data-now-playing=""
 				{...swipe}
-				// Not "Now playing", which `TrackRow` uses for the playing row's equalizer and is queried by name.
 				aria-label="Current track"
 			>
 				<header className={styles.head}>
@@ -251,7 +231,6 @@ export function NowPlaying({
 						<ChevronDown size={20} strokeWidth={2} />
 					</button>
 
-					{/* The whole line is the way back to the set, not just the name: on a phone the label is half of what there is to aim at. A sentence where there is no route to open. */}
 					{from?.isPlaying && onOpenPlayingFrom ? (
 						<button
 							type="button"
@@ -279,7 +258,6 @@ export function NowPlaying({
 				</header>
 
 				<div className={styles.spread}>
-					{/* A wheel on a phone, where sideways means the next track; the gatefold has no such gesture and keeps the plain sleeve. Neither is keyed on the track: `Artwork` swaps its own element as a cover loads. */}
 					{isCompactViewport ? (
 						<div className={styles.stage}>
 							<CoverWheel ref={wheel.ref} slots={wheel.slots} />
@@ -291,7 +269,6 @@ export function NowPlaying({
 							<div className={styles.stage}>{cover}</div>
 						)}
 
-						{/* Loading, not stopped: the wheel has turned to a track the player has not named yet, and saying "Nothing playing" there would be a different and untrue thing. The text stays, invisible, to hold the line boxes open at the height they will settle at. */}
 						<h1 className={`${styles.title}${loading}`}>
 							{wheel.isAwaiting ? " " : (track?.title ?? "Nothing playing")}
 						</h1>
@@ -305,7 +282,6 @@ export function NowPlaying({
 							</p>
 						) : null}
 
-						{/* Rate it on the left, read about it on the right: one line of things to do with the track, and the right end of it is where a thumb already is. */}
 						<div className={styles.rating}>
 							<Rating />
 
@@ -323,7 +299,6 @@ export function NowPlaying({
 						</div>
 					</div>
 
-					{/* The gatefold's right leaf. On a phone the same panels are a layer of their own, which is what leaves this screen's horizontal axis free to mean the next track. */}
 					{isCompactViewport ? null : (
 						<TrackPanels
 							variant="gatefold"
@@ -337,15 +312,12 @@ export function NowPlaying({
 					)}
 				</div>
 
-				{/* Compact only; the desktop status bar carries these. Not rendered rather than hidden, so `Times` stops ticking. */}
 				{!isCompactViewport ? null : (
 					<div className={styles.controls}>
 						<SeekBar snapshot={snapshot} onSeek={(at) => seek.mutate(at)} />
 						<Times snapshot={snapshot} />
 
-						{/* Three groups, so Play sits in the middle of the row whatever the outer two hold. */}
 						<div className={styles.transport}>
-							{/* What plays next: the order the player takes tracks in, and the tracks asked for by name. Both belong under a thumb, which the header is not. */}
 							<div className={styles.next}>
 								<ShuffleToggle
 									order={order}
@@ -386,7 +358,6 @@ export function NowPlaying({
 								</button>
 							</div>
 
-							{/* Where the sound goes, in the status bar's own order: the picker left of the fader, because where has to be answered before how loud there means anything. */}
 							<div className={styles.outputs}>
 								{player ? (
 									<ListenHere playerName={playerNameOf(player.info)} />
@@ -407,7 +378,6 @@ export function NowPlaying({
 				{menu.element}
 			</section>
 
-			{/* Siblings of the screen, not children: inside it, every flick in one of them would skip a track underneath. */}
 			{isCompactViewport && isInfoPresent ? (
 				<TrackInfo
 					isOpen={isInfoOpen}

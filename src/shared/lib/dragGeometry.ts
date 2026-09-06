@@ -1,14 +1,8 @@
-// The arithmetic of a drag, shared by both drag primitives: where the rows of a list being
-// reordered sit while the gesture is in flight, and how fast a container under the pointer scrolls.
-// Pure -- the pointer, the elements and the state belong to whoever calls this.
-
-/** Where a row sat when the drag began, in viewport coordinates. */
 export interface RowBox {
 	top: number;
 	height: number;
 }
 
-/** The row that was picked up, the slot it is over, and how far it has travelled from its own top. */
 export interface Reorder {
 	tops: RowBox[];
 	from: number;
@@ -19,7 +13,6 @@ export interface Reorder {
 const centreOf = (tops: RowBox[], index: number) =>
 	tops[index].top + tops[index].height / 2;
 
-// Compared against each resting row's midpoint, so the swap happens when they visually cross rather than when they merely touch.
 export function targetFor(
 	{ tops, from }: Pick<Reorder, "tops" | "from">,
 	offset: number,
@@ -38,7 +31,8 @@ export function targetFor(
 	);
 }
 
-// Going down, the row lands against the target row's bottom: with uneven heights the tops do not line up.
+// Going down, the row lands against the target's bottom edge: with uneven heights the tops do not
+// line up and the two branches cannot be collapsed.
 export function landingOffset({
 	tops,
 	from,
@@ -49,7 +43,6 @@ export function landingOffset({
 	return tops[to].top - tops[from].top;
 }
 
-// The dragged row follows the pointer; every row between its start and its landing slides into the slot the one next to it just left.
 export function offsetFor(
 	{ tops, from, to, offset }: Reorder,
 	index: number,
@@ -62,14 +55,10 @@ export function offsetFor(
 	return 0;
 }
 
-// One ramp for every drag, held here rather than passed in: nothing distinguishes the gestures, and
-// a parameter is an invitation to a third pair of numbers.
 const ZONE_PX = 56;
 const MAX_STEP_PX = 14;
 
-// How fast a container scrolls while the pointer rests near one of its edges: nothing through the
-// middle, ramping to full speed at the edge itself. Positive is downwards, so a caller adds it to
-// `scrollTop`. The top wins where a container is shorter than two zones.
+// Positive is downwards, so a caller adds it to `scrollTop`.
 export function autoscrollStep(
 	{ top, bottom }: { top: number; bottom: number },
 	y: number,

@@ -7,24 +7,14 @@ import { usePlaylists } from "./usePlayer";
 
 const KEY = "fooJeanPlaylists";
 
-/**
- * Which of the player's playlists are autoplaylists.
- *
- * beefweb cannot say: `PlaylistInfo` has six fields and none of them is this, and every way of
- * working it out from the outside is worse than not knowing -- probing with a write is destructive,
- * `itemCount` drift cannot separate a smart playlist from `Default Playlist` churn, and a name
- * heuristic only catches foobar2000's own `#Quicksearch` prefix. `foo_jean` answers it directly.
- *
- * Absent, unreachable or unpaired, this is an empty set and every playlist looks ordinary -- which is
- * exactly what Jean did before, so nothing may treat "not an autoplaylist" as a fact rather than as
- * the absence of one. It only ever *removes* an affordance.
- */
+// Absent, unreachable or unpaired this is an empty set and every playlist looks ordinary, so nothing
+// may treat "not an autoplaylist" as a fact rather than as the absence of one. It only ever removes
+// an affordance.
 export function useAutoPlaylists(): ReadonlySet<string> {
 	const { discovery } = useFooJean();
 	const { origin, token } = discovery;
-	// The join is on `beefwebId`, and beefweb assigns those lazily -- a playlist created a moment ago
-	// reports `null` until beefweb next rebuilds its map, and asking beefweb is what makes it. So this
-	// waits on the playlists query rather than racing it.
+	// The join is on `beefwebId`, which beefweb assigns lazily, so this waits on the playlists query
+	// rather than racing it.
 	const { data: playlists } = usePlaylists();
 
 	const { data } = useQuery({

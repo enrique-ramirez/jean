@@ -2,8 +2,6 @@
 	display: flex;
 	flex-direction: column;
 	gap: 30px;
-	/* No top padding: the header carries its own, the way a view header does, so
-     its wash starts at the top of the view rather than a centimetre down it. */
 	padding: 0 0 40px;
 }
 
@@ -13,18 +11,6 @@
 	gap: 30px;
 }
 
-/* The closing band: the ranked tracks and the genre bars, side by side. Two
-   columns rather than two stacked sections because they are one statement --
-   what you play, and what you own -- and stacking them would put four hundred
-   pixels of scroll between halves of the same sentence.
-
-   Uneven on purpose: a row of the ranked list is a title, an artist and a count
-   and a bar is one short line, so an even split stretches the bars across half a
-   desktop and leaves the track titles truncating beside them. The *counts* on
-   either side are matched instead -- fourteen bars against ten tracks -- because
-   a column ending halfway up its neighbour reads as a section that failed to
-   fill. A half with nothing opposite it takes both columns rather than sitting
-   in one beside a hole. */
 .band {
 	display: grid;
 	grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
@@ -58,9 +44,6 @@
 		gap: 26px;
 	}
 
-	/* Stacked, and the tracks come first: a ranked list of things to press is
-     worth more than a chart of what the library is made of, which is the same
-     call the band's position on the page already makes. */
 	.band {
 		grid-template-columns: minmax(0, 1fr);
 		gap: 26px;

@@ -16,8 +16,6 @@ import { readTrack } from "@/shared/api/beefweb";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { useNowPlayingRating } from "./useNowPlayingRating";
 
-// The same actions a row offers, on the playing track, built from `trackActions` so the two cannot drift.
-// The source is always a playlist: a set out of the media library is materialised into the scratch playlist before it is played.
 export function useNowPlayingMenu() {
 	const snapshot = useAudiblePlayer();
 	const { data: playlists = [] } = usePlaylists();

@@ -1,8 +1,5 @@
-// The element that actually scrolls a given node, or null.
-// offsetParent answers a different question, the nearest positioned ancestor, and is not a substitute.
 export function scrollParentOf(
 	node: Element | null,
-	// Stop here: a surface drawn over another one must not answer with the scroller underneath it, which is off screen and belongs to something else.
 	boundary?: Element | null,
 ): HTMLElement | null {
 	let element = node?.parentElement ?? null;

@@ -1,6 +1,5 @@
 import { FIELD } from "./fields";
 
-// How a cell is rendered, which is not the same as what it holds: `duration` and `bitrate` are both numbers and neither is drawn like the other.
 export type ColumnKind =
 	| "text"
 	| "duration"
@@ -19,7 +18,6 @@ export interface Column {
 	field: number;
 }
 
-// Title and artist are not here: they share one cell and are always shown. Every field is fetched regardless of what is displayed, so toggling never refetches.
 export const OPTIONAL_COLUMNS: Column[] = [
 	{
 		id: "duration",
@@ -95,12 +93,10 @@ export const OPTIONAL_COLUMNS: Column[] = [
 
 export const DEFAULT_COLUMN_IDS = ["duration", "rating", "playCount"];
 
-// Once the fixed widths plus padding exceed a narrow viewport the flexible names cell collapses to nothing, so the compact layout caps how many columns appear rather than trusting the grid.
 const COMPACT_PRIORITY = ["duration", "playCount", "rating"];
 const COMPACT_MAX_COLUMNS = 2;
 
 const LEADING = {
-	// None of these is sized for the longest index there could be: anything longer runs into the gap rather than pushing every row across.
 	number: { width: "2rem", compactWidth: "1.5rem" },
 	numberBare: { width: "1.5rem", compactWidth: "1.25rem" },
 	numberWithDisc: { width: "2.375rem", compactWidth: "2.25rem" },
@@ -171,7 +167,6 @@ export function resolveColumns({
 			.filter((width) => width !== null)
 			.join(" ");
 
-	// Album rows sit beside a cover and carry no artwork cell, so reusing the other template would leave an empty column and shift every cell after it.
 	return {
 		optional,
 		template: build(showArtwork, hasDiscs),

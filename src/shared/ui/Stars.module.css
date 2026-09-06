@@ -1,21 +1,11 @@
 .stars {
-	/* Spatial, so the media query owns it and not the JS breakpoint -- otherwise
-     the stars resize at 860px while the column they sit in resizes at 720.
-     Both are defaults a caller may raise by setting `--stars-size` on any
-     ancestor -- the now-playing screen does. Read through a second name rather
-     than declared directly, because a custom property *declared on the element*
-     beats an inherited one, so `--star-size: 12px` here would silently win over
-     anything a container set. */
-	/* Sizes, not the colour: `--star` is the gold a set star is filled with
-     and lives in `tokens.css`. Three names one letter apart, so read them. */
+	/* Read through a second name: a custom property declared on the element beats an inherited one,
+	 so declaring `--star-size` here would win over anything an ancestor sets. */
 	--star-size: var(--stars-size, 12px);
 	--star-gap: var(--stars-gap, 2px);
 	display: inline-flex;
 	align-items: center;
 	gap: var(--star-gap);
-	/* The empty state, and it is the one that gets drawn thirty thousand times.
-     Quiet enough that a list of unrated tracks reads as texture rather than as
-     a column of rejected records. */
 	color: var(--border-strong);
 }
 
@@ -33,12 +23,6 @@
 	height: 100%;
 }
 
-/* Filled and stroked in the same colour, so a set star is a solid shape rather
-   than a tinted outline -- at 12px the stroke is most of what you see.
-
-   `--star`, not `--accent`: gold is what a rating is drawn in everywhere, and
-   it is the one warm thing that survives into the light theme, where the accent
-   is a charcoal. A star in the page's own ink reads as a checkbox. */
 .fill {
 	color: var(--star);
 	fill: currentColor;
@@ -50,9 +34,6 @@
 		--star-gap: var(--stars-gap, 1.5px);
 	}
 }
-
-/* The glyph stays 12px -- the column is sized to it -- and the button around it
-   takes the row's full height, so the pointer never falls between two stars. */
 
 .stars[data-interactive] {
 	margin-inline: -2px;
@@ -78,16 +59,10 @@
 	transform: translateY(-50%);
 }
 
-/* Without this, hovering an unrated row looks identical to a read-only one. */
 .stars[data-interactive]:hover {
 	color: color-mix(in oklab, var(--star) 35%, var(--border-strong));
 }
 
-/* Hovering the star already set means "click to remove", and this is how loud
-   that may be said. Emptying the stars was the first attempt and was far too
-   loud: sweeping the pointer across a five-star row made it read as unrated,
-   every time, without anything being clicked. Fading them says the same thing
-   about the same click and still looks like a rating. */
 .stars[data-interactive][data-clearing="true"] {
 	opacity: 0.4;
 }

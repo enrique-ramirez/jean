@@ -131,8 +131,6 @@
 	}
 }
 
-/* The whole instruction turns on getting this string exactly right, so it is
-   set apart from the prose rather than sitting inside it. */
 .name {
 	margin: 0;
 	padding: 10px 14px;

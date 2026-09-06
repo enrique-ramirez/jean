@@ -27,7 +27,6 @@
 	box-shadow: var(--shadow);
 }
 
-/* Icons carry the meaning on a phone; the labels are pure width there. */
 @media (max-width: 720px) {
 	.option:has(svg) .label {
 		display: none;

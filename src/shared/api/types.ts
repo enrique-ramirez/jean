@@ -1,8 +1,7 @@
-// Hand-written, not generated: beefweb's OpenAPI document describes 0.10, and the media library API and the absent-versus-empty fields are newer than it.
-
 export type PlaybackState = "playing" | "paused" | "stopped";
 
-// Decibels, -100..0, on foobar2000. type is what says so; another player may report a linear range.
+// Decibels rather than a percentage, and `type` is what says so. The range is the player's:
+// -100..0 on foobar2000, -50..0 on DeaDBeeF, so read `min` and `max`.
 export interface Volume {
 	type: string;
 	min: number;
@@ -22,7 +21,8 @@ export interface ActiveItem {
 }
 
 export interface PlayerInfo {
-	// name distinguishes foobar2000 from DeaDBeeF and is the one to branch on; title is a display name, identical to it on foobar2000.
+	// `name` distinguishes foobar2000 from DeaDBeeF and is the one to branch on. `title` is a display
+	// name, identical to it on foobar2000.
 	name: string;
 	title?: string;
 	version: string;
@@ -48,31 +48,29 @@ export interface PlayerState {
 	info: PlayerInfo;
 	options?: PlayerOption[];
 	permissions: Permissions;
-	// Deprecated for options, still sent, and still the only answer on an older player.
 	playbackMode: number;
 	playbackModes: string[];
 	playbackState: PlaybackState;
 	volume: Volume;
 }
 
-// Closed on purpose: there is no autoplaylist flag, and GET /playlists/{id} returns these same six. totalTime reads 0.0 on foobar2000.
 export interface PlaylistInfo {
 	id: string;
 	index: number;
 	isCurrent: boolean;
-	// Goes stale the moment anything edits the playlist, and no update event corrects it. Re-read before doing arithmetic with it.
+	// Goes stale the moment anything edits the playlist and no update event corrects it. Re-read it
+	// before doing arithmetic with it.
 	itemCount: number;
 	title: string;
 	totalTime: number;
 }
 
-// One string per requested column, positionally. Indexed through FIELD.
 export type TrackColumns = string[];
 
 export interface PlaylistItemsResponse {
 	offset: number;
 	totalCount: number;
-	// No id: position is the identity, so any mutation invalidates held indices.
+	// No id: position is the identity, so any mutation invalidates indices being held.
 	items: { columns: TrackColumns }[];
 }
 
@@ -82,20 +80,15 @@ export interface TrackRows {
 	offset: number;
 }
 
-// ---- the play queue --------------------------------------------------------
-
-// Only what was explicitly queued: the player consumes an entry the moment its track starts, and offers no lookahead beyond that.
 export interface PlayQueueItem {
 	playlistId: string;
 	playlistIndex: number;
-	// Re-derived on every read, because the queue holds track handles rather than positions. -1 once the track itself is removed from its playlist, and that entry's columns are garbage rather than empty.
+	// The queue holds a track handle rather than a position, so this is re-derived on every read. -1
+	// once the track is removed from its playlist, and that entry's columns are garbage, not empty.
 	itemIndex: number;
 	columns: TrackColumns;
 }
 
-// ---- media library (beefweb 0.11+) ----------------------------------------
-
-// Three states, not two: supported false is 0.10 or DeaDBeeF, while enabled false is a foobar2000 whose Media Library is not configured.
 export interface LibraryInfo {
 	supported: boolean;
 	enabled: boolean;
@@ -103,9 +96,8 @@ export interface LibraryInfo {
 }
 
 export interface LibraryItem {
-	// Relative to the media library folders and forward-slashed on every platform, so it only matches the player's absolute path by suffix.
+	// Relative to the library folders and forward-slashed on every platform. See `libraryPathMatcher`.
 	path: string;
-	// Non-zero for cue sheets and disc images.
 	subsong: number;
 	columns: TrackColumns;
 }
@@ -116,7 +108,8 @@ export interface LibraryItemsResponse {
 	items: LibraryItem[];
 }
 
-// Omitting both items and query means the whole library, and is the only way to send a large one: naming every track exceeds the 1 MiB body beefweb accepts.
+// Omitting both `items` and `query` means the whole library, and is the only way to send a large one:
+// naming every track exceeds the 1 MiB body beefweb accepts.
 export interface AddFromLibraryBody {
 	items?: { path: string; subsong: number }[];
 	query?: string;
@@ -125,17 +118,13 @@ export interface AddFromLibraryBody {
 	play?: boolean;
 }
 
-// ---- the update stream -----------------------------------------------------
-
-// Change-driven, not a ticker: each message carries only what changed, and a long silence is normal.
 export interface UpdateMessage {
 	player?: PlayerState;
 	playlists?: PlaylistInfo[];
-	// Complete, unlike playlists: the whole queue arrives on every change to it.
+	// Complete, unlike `playlists`: the whole queue arrives on every change to it.
 	playQueue?: PlayQueueItem[];
 }
 
-// Kept with the moment it arrived, which is what makes the position interpolation anchor atomic.
 export interface PlayerSnapshot {
 	player: PlayerState;
 	syncedAt: number;
@@ -146,7 +135,6 @@ export interface PlaybackPosition {
 	index: number;
 }
 
-// What the source seam matches on, deliberately separate from the track below: asking it for a full NowPlayingTrack would mean inventing an artist and a title to ask a question about a path.
 export interface TrackIdentity {
 	path: string | null;
 	subsong: number;

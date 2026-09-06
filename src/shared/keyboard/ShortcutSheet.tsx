@@ -7,20 +7,19 @@ import styles from "./ShortcutSheet.module.css";
 
 export const SHORTCUTS_KEYBOARD = "shortcuts";
 
-// formatForDisplay returns a whole chord in one string, space-joined, and a keycap is a key, so it is split back into its parts. The Space key comes back as ␣ rather than as a gap, which is what makes a space a safe separator.
+// `formatForDisplay` returns a whole chord space-joined, and a keycap is one key. Space comes back
+// as a glyph rather than as a gap, which is what makes the space a safe separator.
 const capsOf = (binding: Binding) =>
 	(binding.shown ?? binding.keys.map((key) => formatForDisplay(key))).map(
 		(chord) => chord.split(" ").filter(Boolean),
 	);
 
 export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
-	// The sheet holds the keyboard while it is up, or `V` switches the layout of a list nobody can see. Only the binding that opened it survives, so `?` still shuts it.
 	useKeyboardOwnership(SHORTCUTS_KEYBOARD);
 	useEscapeCapture(onDismiss);
 
 	return (
-		// A dismissal scrim, not a control: Escape is the keyboard route out.
-		// biome-ignore lint/a11y/noStaticElementInteractions: scrim, see above
+		// biome-ignore lint/a11y/noStaticElementInteractions: a dismissal scrim, not a control; Escape is the keyboard route out
 		<div
 			className={styles.backdrop}
 			role="presentation"
@@ -57,7 +56,7 @@ export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 							<div key={binding.id} className={styles.row}>
 								<span>{binding.name}</span>
 								<span className={styles.keys}>
-									{/* A registerable hotkey can be an object rather than a string, so the rendered spelling is what keys the row. */}
+									{/* A hotkey may be an object rather than a string, so the rendered spelling keys the row. */}
 									{capsOf(binding).map((chord) => (
 										<span key={chord.join("+")} className={styles.chord}>
 											{chord.map((cap) => (

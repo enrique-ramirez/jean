@@ -3,11 +3,10 @@ import { matchesTokens, tokenize } from "@/shared/lib/text";
 import type { Refs } from "./project";
 import { rowHaystack } from "./searchText";
 
-// One list at a time, because it is the size of the library: a second key replaces the first rather than joining it.
 let held: { key: string; haystacks: string[] } | null = null;
 
-// Rows only ever grow, a chunk at a time, so the index extends in place rather than being rebuilt for every chunk that lands.
-// The key carries the item count, so an edited library indexes afresh rather than inheriting rows that have moved.
+// Rows only ever grow, a chunk at a time, so the index extends in place. The key carries the item
+// count, so an edited library indexes afresh rather than inheriting rows that have moved.
 export function libraryIndex(key: string, rows: TrackColumns[]): string[] {
 	if (held?.key === key) {
 		for (const row of rows.slice(held.haystacks.length))
@@ -19,7 +18,6 @@ export function libraryIndex(key: string, rows: TrackColumns[]): string[] {
 	return held.haystacks;
 }
 
-// Refs ascending, in library order rather than ranked: order is what makes album grouping mean anything.
 export function searchLibrary(
 	haystacks: string[],
 	query: string,
@@ -35,7 +33,7 @@ export function searchLibrary(
 	return Int32Array.from(matched);
 }
 
-// Results are ascending, so finding the row the player is on is a bisection rather than a scan; this runs on every position update.
+// Bisects, so the indices have to be ascending.
 export function positionOf(
 	indices: Refs,
 	index: number | null | undefined,

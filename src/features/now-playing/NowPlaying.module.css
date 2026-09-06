@@ -1,25 +1,6 @@
-/* Two shapes, one component -- as the status bar is.
-
-   Desktop is a gatefold: the cover and the identity are a sticky left leaf and
-   the tabs are the right one, so the thing you look at holds still while the
-   thing you read changes. Compact rotates it ninety degrees -- the panel is the
-   top region and the identity and transport are the fixed bottom -- which keeps
-   the transport under the thumb and never moves it.
-
-   Deliberately not the streaming-client shape: no colour pulled out of the
-   artwork, no centred column, no edge-to-edge sheet. The palette is Jean's and
-   the cover is the colour on the screen. */
 .screen {
-	/* A layer over the content rather than a replacement for it, which is what
-     gives it somewhere to slide from and something to slide over. Positioned in
-     `.body`, exactly as the queue panel is, so the top bar and the status bar
-     stay live behind it. */
 	position: absolute;
 	inset: 0;
-	/* Above everything the list puts in its own stacking order -- the sticky
-     toolbar is 12 and the finder is 20, and at 3 both drew straight through the
-     lyrics. Below the queue panel at 30, which slides over this as it slides
-     over everything else. */
 	z-index: 25;
 	background: var(--bg);
 
@@ -27,27 +8,16 @@
 	flex-direction: column;
 	gap: 20px;
 	padding: 20px 28px 32px;
-	/* One scroll container, and it is this one. The panels used to scroll
-     themselves inside a height-constrained shell, which put two scrollbars on
-     the desktop and left part of a long lyric unreachable between them. */
-	/* What the two sticky things below pin against. Declared once because the
-     header's height is the offset for both, and two hand-tuned numbers drift
-     the moment its padding changes. */
 	--head-offset: 50px;
 
 	overflow-y: auto;
-	/* The wheel's neighbours are parked a sleeve-and-a-bit either side, well past
-     this box, and `overflow-y: auto` alone resolves the other axis to `auto` --
-     which is a horizontal scrollbar across the player. `clip` rather than
-     `hidden` so no second scroll container appears for `scrollParentOf` to
-     find. The menu and the popovers are portalled and are not clipped by it. */
+	/* `overflow-y: auto` alone resolves the other axis to `auto`, which is a horizontal
+	   scrollbar across the player. `clip` rather than `hidden`, so no second scroll
+	   container appears for `scrollParentOf` to find. */
 	overflow-x: clip;
 	overscroll-behavior: contain;
-	/* Keeps the horizontal axis from becoming a browser gesture -- an edge swipe
-     is back-navigation on Android Chrome, and that would beat a tab change to
-     it. The vertical axis stays the scroller's, which is the point: `useSwipe`
-     reads touch events, so it still sees a downward flick through a scroll and
-     decides for itself whether it was a dismissal. */
+	/* The horizontal axis must not become Android Chrome's back gesture. The vertical
+	   stays the scroller's, so `useSwipe` still reads a downward flick through a scroll. */
 	touch-action: pan-y;
 
 	animation: slide-up 0.28s var(--ease);
@@ -55,8 +25,6 @@
 
 .screen[data-leaving="true"] {
 	animation: slide-down 0.28s var(--ease) forwards;
-	/* Nothing in here is worth clicking on the way out, and a click landing on a
-     control that is halfway off screen is a mis-tap by construction. */
 	pointer-events: none;
 }
 
@@ -72,8 +40,6 @@
 	}
 }
 
-/* The movement *is* the affordance -- it says where dismissing will send it --
-   so reduced motion keeps a fade rather than dropping to a hard cut. */
 @media (prefers-reduced-motion: reduce) {
 	.screen {
 		animation: fade-in 0.16s var(--ease);
@@ -95,9 +61,6 @@
 	align-items: center;
 	gap: 10px;
 	flex: none;
-	/* The header stays put while the leaf under it scrolls: it holds the way out
-     and the track actions, and hunting for either by scrolling back up is the
-     kind of thing that makes a screen feel like a document. */
 	position: sticky;
 	top: -20px;
 	z-index: 1;
@@ -157,8 +120,6 @@
 .fromLink {
 	display: flex;
 	align-items: baseline;
-	/* The name below truncates, and a flex item refuses to shrink under its own
-     content without this. */
 	min-width: 0;
 	margin: 0;
 	font-size: 0.8125rem;
@@ -166,8 +127,6 @@
 	letter-spacing: 0.01em;
 }
 
-/* The same line, made pressable: the set it names is a place, and the header is
-   the only route back to it from here. */
 .fromLink {
 	padding: 0;
 	border: 0;
@@ -187,17 +146,11 @@
 	color: var(--muted);
 	font-weight: 600;
 	margin-left: 0.35em;
-	/* The header is one row and the name can be a long search: it truncates
-     rather than pushing the track actions off the end of it. */
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-/* The mark, not the ink: the alternative state here is `--muted` body copy with
-   no shape of its own, which is the test for `--accent-text`. Only the name
-   takes it -- "Playing from" is the label and stays `--faint` -- and only where
-   there is a route to open, since a set with nowhere to go is a sentence. */
 .fromLink b {
 	color: var(--accent-text);
 }
@@ -207,38 +160,24 @@
 	text-decoration: underline;
 }
 
-/* ---- the spread ------------------------------------------------------- */
-
 .spread {
 	display: grid;
 	grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
 	gap: 40px;
 	align-items: start;
-	/* **Half of what keeps a long title inside a narrow window**, the other half
-     being `align-self` on `.identity` below -- *measured*, each alone leaves
-     the leaf 502px wide in a 480px one.
-
-     This half: `.screen` is a grid, and a grid item's automatic minimum is its
-     *min-content* size, so the leaf refuses to be narrower than the widest
-     unbreakable thing in it -- a title with no space to break at, most often.
-     The block-axis twin of this is already on the compact rule. */
+	/* A grid item's automatic minimum is its min-content size, so a title with nowhere
+	   to break holds the leaf open. Half of a pair: the other half is `align-self:
+	   stretch` on the compact `.identity`, and neither half works alone. */
 	min-width: 0;
 }
 
-/* Sticky against `.screen`, which is now the scroller. A long lyric scrolls the
-   whole leaf past a cover that stays put -- one scrollbar, at the outside edge,
-   and the artwork never leaves. */
 .identity {
 	align-self: start;
 	position: sticky;
-	/* Below the header, not under it. At `0` the cover pinned to the top of the
-     scroller and the header -- which is also sticky -- slid over the top of it. */
 	top: var(--head-offset);
 	min-width: 0;
 }
 
-/* A square that never exceeds the height available to it, so the gatefold does
-   not grow a scrollbar on a short window. */
 .stage {
 	position: relative;
 	width: 100%;
@@ -259,9 +198,6 @@
 	box-shadow: var(--shadow);
 }
 
-/* Flush left and set large. Every reference centres the title under a centred
-   square, which is exactly what makes them interchangeable; a sleeve back is
-   set ragged-right and so is this. */
 .title {
 	margin: 0;
 	font-size: 1.75rem;
@@ -287,9 +223,6 @@
 	color: var(--faint);
 }
 
-/* Bars the width a title and an artist tend to be, rather than the full column:
-   a hold that spans the whole measure reads as a very long title arriving, and
-   then everything shifts when a short one does. */
 .identity[data-awaiting="true"] .title {
 	width: 62%;
 }
@@ -298,18 +231,11 @@
 	width: 38%;
 }
 
-/* `Stars` sizes itself from `--star-size`, so this raises it rather than
-   redeclaring the control. Twelve pixels is right in a table cell drawn thirty
-   thousand times and wrong here: this is the one place with room, and on a
-   phone it is a thumb doing the aiming -- 22px of glyph with the gap around it
-   clears a 44px target. */
 .rating {
 	margin-top: 16px;
 	--stars-size: 22px;
 	--stars-gap: 5px;
 }
-
-/* ---- transport (compact only) ----------------------------------------- */
 
 .controls {
 	flex: none;
@@ -324,18 +250,10 @@
 	color: var(--faint);
 }
 
-/* Three groups rather than an evenly spread row: what plays next, the transport
-   keys, and where the sound goes. The outer columns are equal, so Play sits in
-   the middle of the screen however many controls the outer two end up holding --
-   which spacing them apart cannot promise, and Play is the one control aimed at
-   without looking. */
 .transport {
 	display: grid;
 	grid-template-columns: 1fr auto 1fr;
 	align-items: center;
-	/* Each group sits at the start of its column, so it keeps its own width
-     instead of stretching across a whole 1fr. The trailing group turns this
-     around for itself. */
 	justify-items: start;
 	gap: 8px;
 	margin-top: 6px;
@@ -347,9 +265,6 @@
 	gap: 2px;
 }
 
-/* The keys hug: they are one control in three parts, and the space between them
-   is what says so. Symmetrical on purpose -- an uneven pair would take the
-   centre off Play again. */
 .keys {
 	display: flex;
 	align-items: center;
@@ -388,50 +303,21 @@
 	color: var(--text);
 }
 
-/* ---- compact ----------------------------------------------------------- */
-
 .screen[data-compact="true"] {
-	/* **Fixed, not absolute, and only here.** The gatefold is a pane inside the
-     shell and belongs in `.body`; on a phone this screen *is* the phone, and a
-     layer in `.body` starts below the top bar — which leaves the search field,
-     the gear and the theme switch on screen above something meant to be the
-     whole viewport. Nothing between here and the viewport establishes a
-     containing block. The z-index is unchanged: the queue panel still comes
-     over this, which is what the queue button in the header opens. */
 	position: fixed;
-	/* Rows: header / the track / transport. The middle is the only part that
-     flexes, so the transport is at a constant distance from the bottom edge and
-     the thing being aimed at never moves. */
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr) auto;
 	height: 100%;
-	/* The artwork is the one thing here that must never be cut off, and on a
-     2400px-tall handset it was arriving a couple of dozen pixels over the space
-     left for it. Every number between the top of the viewport and the cover
-     gives some of it back: this gap, the identity's lead and the star size. */
 	gap: 12px;
-	/* The top inset is the notch's, now that this reaches the top of the glass.
-     `.head` pulls itself up by 20px and pads the same amount back, so whatever
-     is set here is where the chevron lands. */
 	padding: max(10px, env(safe-area-inset-top)) 20px
 		calc(16px + env(safe-area-inset-bottom));
-	/* Nothing here scrolls: what would is a layer of its own, one press away. */
 	overflow: hidden;
 }
 
-/* The sleeve, then what it is: the reading order and the DOM order are the same
-   one here, where the gatefold's is a grid of two leaves. */
 .screen[data-compact="true"] .spread {
 	display: flex;
 	flex-direction: column;
-	/* Explicitly, because the gatefold's grid sets `align-items: start` and in a
-     *flex column* that means the cross axis too: every child shrank to its own
-     content width, so the artwork stopped ~58px short of the right edge while
-     the title and the transport ran full width. */
 	align-items: stretch;
-	/* The sleeve and its caption are one block and the slack goes outside it:
-     centred by the container rather than by auto margins on the stage, which
-     would put half the free space *between* the picture and the title. */
 	justify-content: center;
 	gap: 12px;
 	flex: 1;
@@ -442,18 +328,9 @@
 	position: static;
 	flex: none;
 	padding-top: 12px;
-	/* The other half. `.identity` sets `align-self: start` for the *gatefold*,
-     where the grid's cross axis is vertical and start means top; here the
-     cross axis is horizontal and the same declaration means "shrink to your
-     content", which for a `nowrap` title is as wide as the title is long. A
-     child's `align-self` outranks its container's `align-items`, so the
-     `stretch` on `.spread` above never reached this.
-
-     Both halves are needed and neither is decoration: without them a
-     65-character title took the rating row out past the right edge, where
-     `overflow: hidden` cut it off rather than letting anything scroll back to
-     it. Covered at 480px, which is a width neither test project runs at -- see
-     `now-playing.spec.ts`. */
+	/* A child's `align-self` outranks its container's `align-items`, and on this flex
+	   column `start` means shrink to your content -- as wide as a `nowrap` title is
+	   long. The other half of the pair with `min-width: 0` on `.spread`. */
 	align-self: stretch;
 }
 
@@ -461,19 +338,6 @@
 	font-size: 1.375rem;
 }
 
-/* A square that shrinks, never one that stretches. `flex: 0 1 auto` keeps the
-   base rule's `aspect-ratio` as the size it wants to be and lets the space it
-   is given take it below that; `flex: 1` instead would hand it every spare
-   pixel of a tall handset, and the cover -- sized from the *height*, clamped by
-   `max-width` -- would come out oblong and cropped.
-
-   The artwork is the one thing on this screen that must always fit whole: it is
-   what a sideways flick is aimed at, and a sleeve running under the title reads
-   as the app being broken rather than as a tall phone. */
-/* The sleeve is scenery here, not a control, and there is nothing on this screen
-   to press the artwork *for*, so the touch goes to the box behind it. Belt and
-   braces: `Artwork` keeps one element for every state, and a gesture whose
-   target leaves the document stops being delivered half way through. */
 .screen[data-compact="true"] .cover {
 	pointer-events: none;
 }
@@ -486,13 +350,6 @@
 	align-items: center;
 }
 
-/* One row of things to do with the track: rate it at the left, read about it at
-   the right. Nothing is added to the height for the button -- it sits in the
-   line the stars were already on, at the end a right thumb is nearest.
-
-   22px of star, down from 26. Still a thumb target -- 22px of glyph plus the 6px
-   gap and the button's own padding clears 44px -- and the four pixels come off
-   the only stack of margins between the header and the bottom of the cover. */
 .screen[data-compact="true"] .rating {
 	display: flex;
 	align-items: center;
@@ -503,17 +360,11 @@
 	--stars-gap: 6px;
 }
 
-/* A pill, and named rather than a bare glyph: the panel it opens is the second
-   thing anyone comes to this screen for, and an icon alone would have to be
-   learned. It stays put on a track with no lyric tag -- the empty state is where
-   finding one will go, and a control that comes and goes with the file is one
-   nobody can build a habit around. */
 .lyricsButton {
 	flex: none;
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	/* Vertical padding to a 44px target with the row's own line-height. */
 	padding: 9px 14px;
 	border: 1px solid var(--border);
 	border-radius: var(--radius-pill);
@@ -538,9 +389,6 @@
 	}
 }
 
-/* Between the two breakpoints the gatefold has no room for two columns, so it
-   stacks -- a media query rather than the JS flag, because this is spacing and
-   anything spatial belongs to the media query. */
 @media (max-width: 1040px) {
 	.screen:not([data-compact="true"]) .spread {
 		grid-template-columns: minmax(0, 1fr);

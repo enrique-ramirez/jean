@@ -9,7 +9,6 @@ import { descending, inSequence } from "@/shared/lib/sequence";
 export const QUEUE_KEY = ["playQueue"];
 export const QUEUE_DROP_TARGET = "jean:queue";
 
-// Here rather than in `useQueue` so `usePlayer` can consult it without the two importing each other. A counter, because two mutations can overlap.
 let held = 0;
 
 export const isQueueStreamHeld = () => held > 0;
@@ -32,7 +31,8 @@ export interface QueueEntry {
 	artist: string;
 	duration: number;
 	offset: number;
-	// beefweb reports `itemIndex: -1` for a track removed from its playlist and leaves `columns` holding whatever fell into the freed slot, so branch on the index and never on the columns.
+	// beefweb reports `itemIndex: -1` for a track removed from its playlist and leaves `columns`
+	// holding whatever fell into the freed slot. Branch on the index, never on the columns.
 	isOrphan: boolean;
 }
 
@@ -70,8 +70,8 @@ export const queuedSeconds = (entries: QueueEntry[]) =>
 export const startsIn = (entry: QueueEntry, remaining: number) =>
 	remaining + entry.offset;
 
-// A reorder is a rebuild, because `queueIndex` on `/playqueue/add` is accepted and silently ignored: there is no insert to ask for.
-// Everything above the earlier of the two positions is untouched, so a drag near the bottom is cheap and one from the top is not. Removals come off from the top, because the player renumbers on every one.
+// A reorder is a rebuild: `queueIndex` on `/playqueue/add` is accepted and silently ignored, so
+// there is no insert to ask for. Removals come off from the top, the player renumbering on each one.
 export function movePlan(current: PlayQueueItem[], from: number, to: number) {
 	const next = [...current];
 	const [item] = next.splice(from, 1);
@@ -96,12 +96,12 @@ export const sameQueue = (
 			item.itemIndex === b?.[at]?.itemIndex,
 	);
 
-// Deleting a playlist the queue points into crashes foo_beefweb and takes foobar2000 with it, so this runs first and its answer gates the delete.
+// Deleting a playlist the queue points into crashes foo_beefweb and takes foobar2000 with it, so
+// this runs first and its answer gates the delete.
 export async function dequeuePlaylist(playlistId: string) {
 	const queued = await fetchPlayQueue().catch(() => null);
 	if (!queued) return false;
 
-	// Highest first: every removal renumbers the entries after it.
 	const at = queued
 		.map((item, index) => (item.playlistId === playlistId ? index : -1))
 		.filter((index) => index >= 0)

@@ -11,7 +11,6 @@ import { TrackPanels } from "./TrackPanels";
 /** Must match the exit animation in TrackInfo.module.css. */
 export const INFO_EXIT_MS = 220;
 
-// What is written about the track, on a phone: the layer the Lyrics button opens over the player.
 export function TrackInfo({
 	isOpen,
 	title,
@@ -22,7 +21,6 @@ export function TrackInfo({
 	trackKey,
 	onClose,
 }: {
-	/** False while it plays its exit; the caller keeps it mounted for that long. */
 	isOpen: boolean;
 	title: string;
 	artist: string;
@@ -32,7 +30,6 @@ export function TrackInfo({
 	trackKey: string;
 	onClose: () => void;
 }) {
-	// Default "down": a chevron press names no direction, so it gets the way the layer came in.
 	const [exit, setExit] = useState<"up" | "down">("down");
 
 	const close = (towards: "up" | "down") => {
@@ -42,14 +39,12 @@ export function TrackInfo({
 
 	useEscapeCapture(() => close("down"));
 
-	// On a panel with nothing to scroll — most tracks, most tabs — both directions close it.
 	const swipe = useSwipe({
 		onDown: () => close("down"),
 		onUp: () => close("up"),
 	});
 
 	return (
-		// The boundary every scroller lookup inside this layer resolves against.
 		<section
 			className={styles.screen}
 			data-now-playing=""

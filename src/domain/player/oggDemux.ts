@@ -1,15 +1,13 @@
-// Pulls Opus packets back out of the Ogg stream the component serves, so they can be put
-// into a container MSE will take. Ogg is not one of them, in any browser.
+// Pulls Opus packets back out of the Ogg stream the component serves, to be put into a container
+// MSE will take. No browser takes Ogg in MSE.
 
 export interface OpusPacket {
 	data: Uint8Array;
-	// Milliseconds this packet is worth, read from its own table of contents rather than
-	// assumed: the encoder's frame size is a constant today and need not stay one.
 	duration: number;
 }
 
-// RFC 6716 section 3.1. The configuration number carries the frame size, and the low two
-// bits say how many frames the packet holds.
+// RFC 6716 section 3.1. The configuration number carries the frame size, and the low two bits say
+// how many frames the packet holds.
 function frameMs(toc: number): number {
 	const config = toc >> 3;
 
@@ -33,19 +31,14 @@ function packetMs(packet: Uint8Array): number {
 
 const CAPTURE = 0x4f676753; // "OggS"
 
-// Feed it whatever arrives off the socket; it keeps what it cannot use yet.
-//
-// A packet may span pages, which is why segments are gathered rather than emitted per page:
-// a segment of exactly 255 bytes says the packet continues into the next one.
+// A packet may span pages, which is why segments are gathered rather than emitted per page: a
+// segment of exactly 255 bytes says the packet continues into the next one.
 export class OggDemuxer {
 	private pending = new Uint8Array(0);
 	private partial: Uint8Array[] = [];
 
-	// OpusHead and OpusTags, the two packets the container needs before any audio.
 	headers: Uint8Array[] = [];
 
-	// Bytes handed over in total. The component sends the headers before anything else, so a
-	// stream that has produced none of them after a while is not the one this can read.
 	seen = 0;
 
 	push(chunk: Uint8Array): OpusPacket[] {
@@ -81,7 +74,6 @@ export class OggDemuxer {
 				this.partial.push(buffer.subarray(body, body + value));
 				body += value;
 
-				// Anything short of 255 ends the packet; a run of 255s continues it.
 				if (value === 255) continue;
 
 				const whole = concat(this.partial);

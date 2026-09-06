@@ -1,4 +1,3 @@
-/* Only what is specific to this field. The box, the focus and the placeholder are `shared/ui/Input`. */
 .field {
 	flex: 1;
 	max-width: 520px;
@@ -16,7 +15,6 @@
 	pointer-events: none;
 }
 
-/* The typed part is already drawn by the input on top; this only reserves its width. */
 .typed {
 	visibility: hidden;
 }
@@ -53,7 +51,6 @@
 	color: var(--text);
 }
 
-/* A keyboard hint on a device with no keyboard is furniture. */
 @media (pointer: coarse) {
 	.hint {
 		display: none;

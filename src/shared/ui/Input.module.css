@@ -1,15 +1,9 @@
-/* Every text field in Jean is this box. The parts that differ between callers are what sits either
-   side of the text -- an icon, a match count, a clear button, a shortcut hint -- and those are slots.
-   What must not differ is the shape, the focus and the placeholder, because a field that is styled
-   per feature is a field that looks slightly wrong in five places. */
 .field {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
 	border: 1px solid var(--border);
-	/* Pill, like every other control in the app. A field is the one place a square corner keeps being
-	   proposed, and a square field beside a pill button is what makes it look like a mistake. */
 	border-radius: var(--radius-pill);
 	background: var(--surface);
 	color: var(--muted);
@@ -23,25 +17,17 @@
 	border-color: var(--border-strong);
 }
 
-/* The ring belongs to the field, never to the input inside it: the input is chromeless by
-   construction, so the global `:focus-visible` rule drew a second rounded rectangle within the first
-   and read as a field nested in a field.
-   A tinted border and a soft spread, not a hard 2px outline -- that reads as an error state at this
-   size, and the app's other fields have always been the quieter one. */
 .field:focus-within {
 	border-color: var(--accent-line);
 	color: var(--text);
 	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
 }
 
-/* The leading icon picks up the accent once there is something in the field, which is the whole of
-   how a filled field differs from an empty one. */
 .field[data-filled="true"] .leading {
 	color: var(--accent);
 }
 
-/* `width: 0`, not only `min-width: 0` -- an `<input>` keeps asserting ~20 characters of width up
-   the tree otherwise, which is what forced a bar around it wider than the screen. See CLAUDE.md. */
+/* `width: 0`, not only `min-width: 0`: an `<input>` asserts a default width up the tree otherwise. */
 .input {
 	flex: 1;
 	width: 0;
@@ -57,15 +43,14 @@
 	color: var(--muted);
 }
 
-/* `:focus` as well as the bare class -- a lone class ties with the global `:focus-visible` on
-   specificity and loses on source order, which is how an inner ring once survived an `outline: none`
-   that looked like it had already handled this. */
+/* `:focus` as well as the bare class: a lone class ties with the global `:focus-visible` on
+   specificity and loses on source order. */
 .input:focus,
 .input:focus-visible {
 	outline: none;
 }
 
-/* Safari draws its own clear button on type=search, on top of whatever the caller put there. */
+/* Safari draws its own clear button on type=search. */
 .input::-webkit-search-cancel-button {
 	display: none;
 }
@@ -78,9 +63,6 @@
 	gap: 6px;
 }
 
-/* Three sizes, and they are the only dimensions a caller chooses. `sm` is a field inside another
-   piece of chrome -- a toolbar, a menu page; `md` is a field in a form; `lg` is a field that is the
-   point of the screen it is on. */
 .field[data-size="sm"] {
 	padding: 6px 8px 6px 12px;
 	font-size: 0.8125rem;
@@ -97,17 +79,13 @@
 }
 
 @media (max-width: 640px) {
-	/* Anything under 16px makes iOS Safari zoom the page on focus, and a page that zooms when the
-	   keyboard opens does not come back. Only the fields big enough to be aimed at with a thumb --
-	   a toolbar field that grew to 16px would push its own toolbar around. */
+	/* Under 16px, iOS Safari zooms the page on focus and does not come back. */
 	.field[data-size="lg"],
 	.field[data-size="md"] {
 		font-size: 1rem;
 	}
 }
 
-/* The underlay and the input are one box, stacked. Both resolve to the same metrics or a ghost
-   completion drifts a pixel per character away from the caret. */
 .well {
 	position: relative;
 	flex: 1;

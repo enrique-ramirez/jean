@@ -10,7 +10,6 @@
 }
 
 @media (max-width: 720px) {
-	/* No keyboard to press it with. */
 	.hint {
 		display: none;
 	}

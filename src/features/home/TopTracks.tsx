@@ -3,7 +3,6 @@ import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./TopTracks.module.css";
 import type { TopTrack } from "./tracks";
 
-// A ranked list rather than a rail of covers: Jean has no artist or track imagery beyond album art, and a numbered list needs none.
 export function TopTracks({
 	tracks,
 	onPlayTrack,
@@ -25,13 +24,11 @@ export function TopTracks({
 						<button
 							type="button"
 							className={styles.row}
-							// A track title truncates in this column on a phone almost every time.
 							title={
 								track.artist ? `${track.artist} — ${track.title}` : track.title
 							}
 							onClick={() => onPlayTrack(track.ref)}
 						>
-							{/* Tabular, so the covers stay in line whether the rank is 1 or 10. */}
 							<span className={styles.rank}>{at + 1}</span>
 							<Artwork
 								src={track.artworkUrl}

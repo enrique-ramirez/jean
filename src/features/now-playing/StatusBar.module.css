@@ -12,12 +12,6 @@
 	padding: 10px 20px;
 }
 
-/* A button since it toggles the now-playing screen, so the UA chrome has to
-   come off explicitly -- left bare it draws a bordered box around the cover and
-   the names.
-   No hover fill either: a panel that size lighting up behind the artwork is a
-   lot of movement for a thing you are not deciding between, and it read as the
-   bar having grown a card in it. The cover and the title are the affordance. */
 .now {
 	display: flex;
 	align-items: center;
@@ -59,8 +53,6 @@
 	color: var(--muted);
 }
 
-/* Only present when playback is inside a set Jean made -- a shelf, a search --
-   which is exactly when the sidebar cannot show you a playlist to point at. */
 .from {
 	overflow: hidden;
 	font-size: 0.6875rem;
@@ -80,9 +72,6 @@
 	gap: 6px;
 }
 
-/* A mode rather than an action, so it is quieter than the transport until it
-   is on -- and then it is the only accent down here besides the play button,
-   which is the whole point of a state you need to be able to read at a glance. */
 .order {
 	display: grid;
 	place-items: center;
@@ -102,8 +91,6 @@
 }
 
 .order[aria-pressed="true"] {
-	/* Hovering already takes this to `--text`, so on light the ink accent made
-     "shuffle is on" and "you are pointing at shuffle" the same drawing. */
 	color: var(--accent-text);
 }
 
@@ -133,10 +120,6 @@
 	gap: 14px;
 }
 
-/* The countdown is a character wider than the elapsed time, and `.trailing` is
-   right-aligned -- so the readout grows leftward into empty space and the fader
-   beside it does not move. Measured across a toggle: the mute button holds its
-   position to the pixel. */
 .times {
 	display: flex;
 	align-items: center;

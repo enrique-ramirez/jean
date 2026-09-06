@@ -4,7 +4,6 @@ import { dismissToast, useToasts } from "./toastStore";
 
 const ICONS = { default: Check, error: TriangleAlert };
 
-// Lives in the app grid rather than a portal, in the same cell as the content row: that pins it above the status bar by construction, with no magic number for a bar whose height changes with the breakpoint and no z-index argument with anything.
 export function Toasts() {
 	const toasts = useToasts();
 	if (toasts.length === 0) return null;

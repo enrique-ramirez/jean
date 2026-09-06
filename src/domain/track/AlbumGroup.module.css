@@ -20,8 +20,6 @@
 	min-width: 0;
 }
 
-/* Clamped so the caption can never grow past the height the virtualiser
-   allotted this group and spill into the next one. */
 .title {
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
@@ -47,22 +45,8 @@
 	min-width: 0;
 }
 
-/* Rows inside a group are tighter and lose the outer gutter -- the cover is
-   already setting the block apart. Set through the row's own variables so the
-   play-count wash follows the gutter instead of keeping the list layout's.
-
-   A floor rather than a height. Most rows are one line and sit at exactly 34px;
-   a compilation, where every artist is someone other than the album's, gives
-   every row two -- and two lines of 14px and 12.5px type in 34px left about half
-   a pixel above and below, so the text of one row all but touched the next. The
-   group is measured by the virtualiser, so letting a row grow costs nothing. */
-/* `.group` on the front is load-bearing, not decoration. These override
-   `.track` in TrackRow.module.css, which has the same specificity -- so
-   without it the winner is whichever stylesheet the bundler happened to put
-   last, and that is decided by import order in the component. Reordering the
-   imports silently took `height: auto` away and left every two-line row
-   crushed back to 34px. One extra class makes it a fact about the CSS rather
-   than about the module graph. */
+/* The leading `.group` is load-bearing: these override `.track` in TrackRow.module.css at equal
+   specificity, so without it the winner is decided by stylesheet import order. */
 .group .tracks > * {
 	min-height: 34px;
 	height: auto;
@@ -70,14 +54,6 @@
 	--row-pad-block: 4px;
 }
 
-/* The eyebrow the view header already uses, at row scale: uppercase, tracked
-   out, faint. Same vocabulary means a disc heading is recognisably a label
-   about the block under it rather than a new kind of thing.
-   The rule is the part worth arguing about -- Apple Music sets 'Disc 1' as
-   plain bold text and it reads as a very short track title, which is the whole
-   failure mode here. A hairline running to the row's right edge makes it a
-   division of the list. It stops where the rows stop, not where the group does,
-   so it sits on the same two lines the tracks do. */
 .disc {
 	display: flex;
 	align-items: center;
@@ -97,10 +73,6 @@
 	background: var(--border);
 }
 
-/* Overrides the 34px every direct child of .tracks gets. Shorter than a row on
-   purpose: a heading the same height as the thing it labels competes with it.
-   Air above every heading but the first -- disc one's boundary is the top of
-   the group, which the padding already draws. */
 .tracks > .disc {
 	height: 26px;
 	margin-top: 14px;
@@ -110,8 +82,6 @@
 	margin-top: 0;
 }
 
-/* On a phone the cover moves above the tracks: side-by-side leaves the titles
-   about half the screen, which is not enough for real album and track names. */
 .group[data-compact="true"] {
 	grid-template-columns: minmax(0, 1fr);
 	gap: 10px;
@@ -119,13 +89,6 @@
 	padding-bottom: 14px;
 }
 
-/* The horizontal gutter is deliberately NOT set by [data-compact]. That comes
-   from `isCompactViewport`, which flips at 860px, while every gutter in the app
-   -- the toolbar, the view header, the list rows -- flips at 720px. Setting it
-   here too left a band between the two where the album group indented itself to
-   the phone gutter while everything above it stayed on the desktop one.
-   It goes on the group rather than on the rows so the cover, the album title
-   and the track numbers keep one left edge: stacked, they are the same column. */
 @media (max-width: 720px) {
 	.group {
 		padding-inline: 16px;
@@ -144,8 +107,6 @@
 	font-size: 0.875rem;
 }
 
-/* Same 8px as the wide layout -- stated rather than inherited, so it does not
-   depend on this file happening to come after TrackRow's media query. */
 .group[data-compact="true"] .tracks > * {
 	--row-gutter: 8px;
 }

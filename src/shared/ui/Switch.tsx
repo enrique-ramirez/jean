@@ -1,6 +1,5 @@
 import styles from "./Switch.module.css";
 
-// For a setting that takes effect the moment it moves; a checkbox is for a selection something else submits.
 export function Switch({
 	checked,
 	label,

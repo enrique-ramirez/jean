@@ -12,14 +12,10 @@ export interface Point {
 }
 
 const HOLD_MS = 420;
-// How far the finger may wander and still count as a hold; much tighter and it fires on the tremor of holding a phone one-handed.
 const SLOP_PX = 10;
-// How long the click and contextmenu echoes of one hold may still arrive for.
 const ECHO_MS = 700;
 
-// Press-and-hold stands in for a right-click. A hold that turns into a scroll must not fire, and the tap the browser synthesises on lift must not reach whatever was underneath.
-// The browser claims the pointer and fires pointercancel once it decides the gesture is a scroll, so the slop check only covers the window before it makes up its mind.
-// Spread style onto the pressable element, or iOS draws its own selection callout over the menu.
+// Spread `style` onto the pressable element, or iOS draws its own selection callout over the menu.
 const PRESSABLE = Object.freeze({
 	WebkitTouchCallout: "none",
 	WebkitUserSelect: "none",
@@ -36,7 +32,6 @@ export function useLongPress(
 	const timer = useRef<number | null>(null);
 	const echoTimer = useRef<number | null>(null);
 	const origin = useRef<Point | null>(null);
-	// Set while the synthetic click and, on Android, the native contextmenu are still on their way. Both are echoes of a gesture already answered.
 	const justFired = useRef(false);
 	const latest = useRef(onLongPress);
 	latest.current = onLongPress;
@@ -56,7 +51,6 @@ export function useLongPress(
 	);
 
 	const onPointerDown = (event: ReactPointerEvent) => {
-		// Mouse and trackpad have contextmenu; holding one down should do nothing.
 		if (!enabled || event.pointerType === "mouse" || !event.isPrimary) return;
 
 		cancel();
@@ -68,7 +62,9 @@ export function useLongPress(
 			timer.current = null;
 			origin.current = null;
 			justFired.current = true;
-			// Time-boxed rather than cleared by whichever echo arrives: Android suppresses the click once it has fired contextmenu and iOS sends the click and no contextmenu, so waiting for a specific one leaves the guard stuck on.
+			// Time-boxed rather than cleared by whichever echo arrives: Android suppresses the click once
+			// it has fired contextmenu and iOS sends the click and no contextmenu, so waiting for a
+			// specific one leaves the guard stuck on.
 			clearTimeout(echoTimer.current ?? undefined);
 			echoTimer.current = setTimeout(() => {
 				justFired.current = false;
@@ -99,7 +95,8 @@ export function useLongPress(
 			event.stopPropagation();
 		},
 
-		// Android fires a real contextmenu about half a second into a hold, which would arrive just after ours and reopen the menu somewhere else.
+		// Android fires a real contextmenu part-way into a hold, which arrives just after this one and
+		// would reopen the menu somewhere else.
 		onContextMenuCapture: (event: ReactMouseEvent) => {
 			if (!justFired.current) return;
 			event.preventDefault();

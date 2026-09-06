@@ -80,7 +80,7 @@ const IDLE_ITEM = {
 };
 
 // What a manual skip pushes while the player opens the next file. Not `IDLE_ITEM`: the two agree on `index: -1` and
-// disagree on the rest, and the gap is reported with `playbackState` still `playing`. See API.md.
+// disagree on the rest, and the gap is reported with `playbackState` still `playing`. See ../../src/shared/api/README.md.
 const GAP_ITEM = {
 	columns: [],
 	duration: 0,

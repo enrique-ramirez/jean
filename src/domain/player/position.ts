@@ -2,7 +2,8 @@ import { readTrack } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { listeningPosition } from "./listenerStore";
 
-// Playback position, interpolated forward from the last update: beefweb reports one only when it sends an update, which can be minutes apart.
+// Interpolated forward from the last update: beefweb reports a position only when it sends one, and
+// those can be minutes apart.
 export function positionAt(
 	snapshot: PlayerSnapshot | null | undefined,
 	now: number,
@@ -17,8 +18,8 @@ export function positionAt(
 	return Math.min(base + elapsed, item.duration ?? base);
 }
 
-// Where the track is for the person in front of it, which while a stream is attached lags the player. Everything drawing the passage of time reads this.
-// `positionAt` stays the player's own answer, for the writes expressed in the player's clock: the freeze on pause, and what a relative seek offsets.
+// `positionAt` stays the player's own answer, for the writes expressed in the player's clock: the
+// freeze on pause, and what a relative seek offsets.
 export const audibleAt = (snapshot: PlayerSnapshot | null | undefined) =>
 	listeningPosition(
 		readTrack(snapshot?.player)?.path,

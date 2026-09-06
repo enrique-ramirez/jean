@@ -2,15 +2,9 @@
 	display: block;
 	width: 100%;
 	height: 100%;
-	/* Held back against the field it is drawn into. Opacity rather than a third colour token: the
-	   figure has to dim *towards its own ground*, and which way that is differs by theme -- down into
-	   the page on dark, up into white on light. Blending it back into the field does both at once,
-	   where any fixed colour would have to be two. */
 	opacity: 0.5;
 }
 
-/* A generated figure is decoration with no meaning to carry, so it is the first thing to go quiet
-   where somebody has asked for less. */
 @media (prefers-contrast: more) {
 	.mark {
 		opacity: 0.22;

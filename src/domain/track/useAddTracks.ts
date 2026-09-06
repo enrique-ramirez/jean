@@ -8,8 +8,9 @@ import { pushToast } from "@/shared/ui/toastStore";
 import type { LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
-// No duplicate check: foobar2000 playlists are ordered lists rather than sets, and identity is %path%, so there is no cheap one. Undo covers the mistake instead.
-// Copying into an autoplaylist answers 204 and adds nothing, exactly as a copy into an ordinary playlist answers 204 and adds everything, and nothing in the playlist schema says which kind it is -- so reading the count back is the only way to know whether anything happened.
+// Copying into an autoplaylist answers 204 and adds nothing, exactly as a copy into an ordinary
+// playlist answers 204 and adds everything, and nothing in the playlist schema says which kind it
+// is, so reading the count back is the only way to know whether anything happened.
 export function useAddTracks() {
 	const queryClient = useQueryClient();
 
@@ -26,8 +27,9 @@ export function useAddTracks() {
 			const count = itemIndices.length;
 			if (count === 0) return;
 
-			// From the player rather than the cache: item changes are never pushed, so a cached itemCount is stale from the first edit onwards and cannot see the desktop at all.
-			// The read is also what makes undo exact, since items are appended at precisely [itemCount, itemCount + count).
+			// From the player rather than the cache: item changes are never pushed, so a cached itemCount
+			// is stale from the first edit on. The read is also what makes undo exact, since items are
+			// appended at precisely [itemCount, itemCount + count).
 			const countOf = async () => {
 				const playlists = await fetchPlaylists();
 				queryClient.setQueryData(PLAYLISTS_KEY, playlists);
@@ -36,7 +38,6 @@ export function useAddTracks() {
 				);
 			};
 
-			// The fact first and the likely reason second, because a 204 that changed nothing is all the player says.
 			const refuse = () =>
 				pushToast({
 					tone: "error",
@@ -55,7 +56,6 @@ export function useAddTracks() {
 
 			const after = await countOf().catch(() => null);
 
-			// A count that could not be read either side is not evidence of failure, so the add is reported as sent and undo is withheld: the arithmetic it depends on is what is missing.
 			if (before === null || after === null) {
 				pushToast({
 					message: `Added ${plural(count, "track")} to ${target.title}`,
@@ -69,12 +69,12 @@ export function useAddTracks() {
 			}
 
 			const undo = async () => {
-				// From the player again: the desktop is the one writer this check exists to catch.
 				const current = (await fetchPlaylists()).find(
 					(entry) => entry.id === target.id,
 				);
 
-				// Those indices are only ours while nothing else has touched the playlist: if the count moved, removing that range takes somebody else's tracks.
+				// Those indices are only ours while nothing else has touched the playlist: if the count
+				// moved, removing that range takes somebody else's tracks.
 				if (!current || current.itemCount !== after) {
 					pushToast({
 						tone: "error",

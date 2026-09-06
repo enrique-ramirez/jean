@@ -1,8 +1,3 @@
-/* Hero on the left, the one thing to do about it on the right, and the doors
-   across the bottom. The gap between the first two is the point: that
-   right-hand space is what a header with no mosaic in it has going spare, and a
-   lone accent button across a wide gap is a stronger composition than the same
-   button tucked under a paragraph. */
 .header {
 	position: relative;
 	display: grid;
@@ -17,14 +12,6 @@
 	border-bottom: 1px solid var(--border);
 }
 
-/* The same warm cast and the same closing rule the playlist header has, because
-   they are the same *kind* of thing: the band at the top of a view that says
-   what you are looking at.
-
-   Not clipped, deliberately, for the reason the playlist header records:
-   `overflow: hidden` would make this a scroll container, and anything opening
-   past its bottom edge gets scrolled into view by scrolling the header inside
-   itself. */
 .header::before {
 	content: "";
 	position: absolute;
@@ -37,7 +24,6 @@
 	pointer-events: none;
 }
 
-/* Above the wash, or the gradient paints over the words. */
 .said,
 .actions,
 .doors,
@@ -65,8 +51,6 @@
 	color: var(--faint);
 }
 
-/* The years are a fact about the collection rather than part of its name, so
-   they ride along in the eyebrow instead of taking a line of their own. */
 .span {
 	display: flex;
 	align-items: center;
@@ -93,9 +77,6 @@
 	text-wrap: balance;
 }
 
-/* The remainder is true and secondary: "84 days" is the claim and "14 hr" is
-   the fine print on it, so it is lighter rather than smaller -- shrinking it
-   would break the single line the whole headline sits on. */
 .trail {
 	color: var(--muted);
 	font-weight: 500;
@@ -107,8 +88,6 @@
 	letter-spacing: -0.02em;
 }
 
-/* Centred against the hero rather than aligned to the headline's baseline: it
-   acts on the whole library, not on the sentence describing it. */
 .actions {
 	grid-area: actions;
 	align-self: center;
@@ -116,17 +95,9 @@
 	gap: 8px;
 }
 
-/* Capped rather than stretched. Three cards spread across a 1200px header read
-   as a dashboard filling its width; the same three at a readable size, left
-   aligned under the headline they belong to, read as part of the sentence
-   above them. */
 .doors {
 	grid-area: doors;
 	display: grid;
-	/* One row whatever the count, and a count that varies: a library with no album tags draws three
-	   cards, one with everything draws four. `auto-fit` over a template wraps rather than shrinks, so
-	   the fourth card dropped onto a second line at desktop width -- an auto column per card lets
-	   them narrow instead. Capped at 232px so three do not stretch across a wide window. */
 	grid-auto-flow: column;
 	grid-auto-columns: minmax(0, 232px);
 	justify-content: start;
@@ -134,18 +105,11 @@
 	margin-top: 18px;
 }
 
-/* A card, but never a KPI tile: no shadow, no coloured glyph, no delta pill.
-   What makes it a door rather than a readout is that the bottom half names a
-   record and the whole thing is a link -- so it lifts and warms on hover the way
-   an album card does, which is the affordance the shelves below already teach. */
 .door {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
 	padding: 12px 14px 11px;
-	/* A `<button>` centres its text and an `<a>` does not, and two of these three
-     are buttons -- so the albums and artists cards were centred and the tracks
-     card was not, which is what made the row look like a mistake. */
 	text-align: left;
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
@@ -188,14 +152,6 @@
 	color: var(--faint);
 }
 
-/* Divided from the figure by a hairline rather than boxed apart from it: they
-   are two halves of one card -- how many, and which one.
-
-   The sleeve makes the bottom half read as a *record* rather than as a link
-   with a label over it, which is the whole difference between this and a
-   dashboard tile. The card that names a destination has none, and the two
-   shapes are deliberately not reconciled: a cover means the thing named is in
-   your library, and "All music" is not. */
 .named {
 	display: flex;
 	align-items: center;
@@ -205,9 +161,6 @@
 	min-width: 0;
 }
 
-/* A span around it, matching the album card: `Artwork` draws a div while it is
-   waiting or has failed, and the wrapper is what owns the box so the three
-   states cannot each size themselves. */
 .thumb {
 	flex: none;
 	width: 32px;
@@ -239,15 +192,6 @@
 	color: var(--faint);
 }
 
-/* The chevron rides the end of the words rather than floating at the right of
-   the card, which is the same call the shelf headings make and for the same
-   reason: it belongs to the name, so it travels with it.
-
-   In `--text` rather than the accent. Three accent-coloured names across the top
-   of the page competed with the one accent control up there that matters, which
-   is Play -- and on a long album title it was a whole line of it. The name turns
-   accent under the pointer instead, which is the rule an album card and a shelf
-   heading already teach: this piece of text goes somewhere. */
 .name {
 	display: flex;
 	align-items: center;
@@ -301,31 +245,16 @@
 		font-size: 1.75rem;
 	}
 
-	/* Pushed to the two edges at their own size, rather than stretched to fill.
-     Two buttons blown up to half a screen each read as a dialog asking a
-     question; at their normal size with the gutters holding them apart they
-     read as what they are, which is the same pair the desktop has. */
 	.actions {
 		align-self: stretch;
 		justify-content: space-between;
 	}
 
-	/* Two, side by side, filling the width -- and never a row that scrolls. The
-     five-figure rail this replaced was cut off mid-figure at the edge of the
-     glass, and a number sliced in half by a hairline reads as broken rather
-     than as continuing. */
 	.doors {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		margin-top: 0;
 	}
 
-	/* Half a phone is about 127px of card, and the sleeve, the gap and the
-     chevron were taking a third of it -- "Chrono Cross Original Soundtrack"
-     arrived as "Chrono C...". The chevron is what goes: it says "this is a
-     link", which is a hover affordance on a surface that has no hover, and the
-     whole card is the tap target either way. The sleeve stays, because at this
-     width it identifies the record better than the seven letters of its name
-     that would fit. */
 	.nameChevron {
 		display: none;
 	}
@@ -335,10 +264,6 @@
 		height: 28px;
 	}
 
-	/* The headline already says how big the library is, so on a phone the tracks
-     figure is the card repeating itself. It goes only when there is another to
-     take its place: on a library with no album or artist tags it is the only
-     door there is. */
 	.door[data-minor="true"]:not(:only-child) {
 		display: none;
 	}

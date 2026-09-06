@@ -1,24 +1,9 @@
 .scroller {
-	/* Sized by its content, so the screen around it is what overflows and what
-     scrolls. `flex: 1; min-height: 0` here made the panel exactly as tall as the
-     space left over and *clipped* the rest -- which the edge fade then dressed
-     up as more text below, on a screen that could not be scrolled to reach it.
-     The compact layout puts the constraint back, because there the transport
-     below is pinned. */
 	flex: none;
-	/* Padding rather than a trailing spacer element: a spacer tall enough to lift the closing
-     lines to the focus point is most of a screen of nothing, and on a short lyric it is all
-     there is to scroll to. The follow's `scrollTo` is clamped by the browser, so the final
-     lines simply settle below the focus point. */
 	padding: 18px 4px 88px;
-	/* The follow scrolls this itself; letting the browser chain a flick out to
-     the page underneath fights it. */
 	overscroll-behavior: contain;
 }
 
-/* Every line is a seek target, so every line is a button -- but a button that
-   looks like one would turn a lyric into a list. Stripped back to text with a
-   hover that only hints at it. */
 .line {
 	display: block;
 	width: 100%;
@@ -27,10 +12,8 @@
 	border-radius: var(--radius-sm);
 	background: none;
 	text-align: left;
-	/* Set by whoever is drawing the panel, and inherited rather than declared
-     here -- a custom property declared on the element beats an inherited one,
-     so a `font-size` fixed at this level could not be raised from outside.
-     `LyricsScreen` is the one caller that raises it. */
+	/* A custom property declared on the element beats an inherited one, so a fixed
+	   `font-size` here could not be raised by whichever panel is drawing the lyric. */
 	font-size: var(--lyric-size, 1.125rem);
 	font-weight: 560;
 	line-height: 1.45;
@@ -46,20 +29,11 @@
 	color: var(--muted);
 }
 
-/* Past lines dim rather than vanish -- you can still read back a line you
-   missed, which is most of why anyone looks at lyrics. */
 .line[data-state="past"] {
 	color: var(--faint);
 	opacity: 0.55;
 }
 
-/* Lines still to come, and the hardest of the three to get right. They must be
-   legible -- reading ahead is half of why anyone opens this -- while losing
-   clearly to the current line. On dark `--muted` does that; on light it is a
-   near-black that the current line, also near-black, could not beat, so the two
-   read as the same weight and the highlight disappeared. Pulled back to the
-   lighter step there, which restores the gap without dimming them to the past
-   lines' level. */
 .line[data-state="coming"] {
 	color: var(--muted);
 }
@@ -73,9 +47,6 @@
 	font-weight: 680;
 }
 
-/* A timed gap: an intro or an instrumental break. Drawn as a short rule rather
-   than left blank, so the space reads as "nothing is sung here" rather than as
-   a lyric that failed to load. */
 .gap {
 	display: block;
 	width: 28px;
@@ -85,9 +56,6 @@
 	background: var(--border-strong);
 }
 
-/* Enough room under the last line for it to reach the focus point. Without it
-   the follow stops scrolling a third of a panel early and the final lines are
-   read from the very bottom edge. */
 .resume {
 	position: absolute;
 
@@ -136,10 +104,6 @@
 	white-space: pre-wrap;
 }
 
-/* A state, not a message. Three quarters of a real library has no lyric tag, so
-   this is met constantly and must not read as something having gone wrong --
-   which is what a paragraph of explanation does. Where the tag comes from and
-   what writes it belongs in Settings, not here. */
 .empty {
 	flex: 1;
 	min-height: 160px;

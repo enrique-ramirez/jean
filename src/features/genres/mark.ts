@@ -1,12 +1,5 @@
 import { squash } from "@/shared/lib/text";
 
-// A genre has no artwork of its own and never will: the tag is a word, and there is nothing on disk
-// to draw for it. So a tile with no sleeves to show draws a figure derived from the name instead --
-// the same figure every time, on every device, for as long as the tag is spelled the same way.
-// Seeded from `squash`, so `Heavy Metal`, `heavy-metal` and `heavymetal` are one identity.
-
-// Eight of Jean's own hues rather than the whole wheel. A hue per genre off a free-running hash puts
-// 142 unrelated colours on one screen, which reads as a fault rather than as variety.
 export const TINTS = 8;
 
 export const FIGURES = ["rings", "spokes", "arcs", "waves", "bars"] as const;
@@ -14,15 +7,11 @@ export const FIGURES = ["rings", "spokes", "arcs", "waves", "bars"] as const;
 export type Figure = (typeof FIGURES)[number];
 
 export interface Mark {
-	/** Which of the eight tints, as an index the stylesheet turns into a colour. */
 	tint: number;
 	figure: Figure;
-	/** Deterministic 0..1 draws for whatever the figure varies. */
 	draws: number[];
 }
 
-// FNV-1a. Cheap, and it avalanches well enough that `Rock` and `Rock En Español` land nowhere near
-// each other -- which a sum-of-characters hash does not, and which is the whole point here.
 function hash(text: string): number {
 	let value = 0x811c9dc5;
 	for (let index = 0; index < text.length; index += 1) {
@@ -32,7 +21,6 @@ function hash(text: string): number {
 	return value;
 }
 
-// mulberry32, so the draws after the first are as unrelated to each other as the seed is to the name.
 function draws(seed: number, count: number): number[] {
 	let state = seed;
 	return Array.from({ length: count }, () => {
@@ -43,13 +31,10 @@ function draws(seed: number, count: number): number[] {
 	});
 }
 
-/** The figure and tint for a name. Pure, and stable across sessions and devices. */
 export function markOf(name: string): Mark {
 	const seed = hash(squash(name));
 	return {
 		tint: seed % TINTS,
-		// Off a different slice of the hash than the tint, or figure and colour move together and the
-		// grid looks like five colours rather than forty combinations.
 		figure: FIGURES[(seed >>> 8) % FIGURES.length],
 		draws: draws(seed, 8),
 	};
@@ -57,14 +42,6 @@ export function markOf(name: string): Mark {
 
 const VIEWBOX = 100;
 
-/**
- * The figure as SVG geometry, in a 100x100 box. Stroked in one colour by the caller; no fills, so it
- * sits under a name without competing with it.
- *
- * Deliberately few, heavy strokes. Drawn thin there are enough of them to read as noise, and the tile
- * then competes with the one thing on it that carries meaning -- the sleeve. A pattern is something
- * you stop seeing; a texture of forty hairlines is something you keep having to.
- */
 export function pathsOf({ figure, draws: random }: Mark): string[] {
 	const at = (index: number) => random[index % random.length];
 
@@ -91,7 +68,6 @@ export function pathsOf({ figure, draws: random }: Mark): string[] {
 
 		case "arcs": {
 			const count = 3 + Math.floor(at(0) * 2);
-			// One of the four corners, so a wall of these does not all radiate from the same place.
 			const corner = Math.floor(at(1) * 4);
 			const x = corner === 0 || corner === 3 ? 0 : VIEWBOX;
 			const y = corner < 2 ? 0 : VIEWBOX;

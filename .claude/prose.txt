@@ -1,0 +1,149 @@
+# Phrases that make prose read like an assistant rather than a person.
+# Lines beginning with ! are checked mechanically by check-style.sh; the rest
+# are judgement, applied by the comment-reaper and style-reviewer agents.
+#
+# The mechanical set is deliberately small: it holds only phrases with no
+# innocent use in this repo. Common English on the judgement list -- because,
+# due to, as well as, world, power, fast -- would fire on album titles, genre
+# fixtures and ordinary sentences.
+
+!delve into
+!dive into
+!take a dive into
+!it's worth noting
+!it is worth noting
+!it's important to note
+!it is important to note
+!in today's
+!in the realm of
+!in the world of
+!ever-evolving
+!everchanging
+!game changer
+!game-changing
+!groundbreaking
+!cutting-edge
+!unlock the secrets
+!unveil the secrets
+!sights unseen
+!sounds unheard
+!in the quest
+!embark
+!tapestry
+!gossamer
+!indelible
+!metropolis
+!labyrinth
+!reverberate
+!revolutionize
+!transformative
+!unprecedented
+!seismic
+!bustling
+!vibrant
+!whispering
+!nestled
+!designed to enhance
+!there are a few considerations
+!let's dive
+!picture this
+!as a professional
+!my friend
+!in conclusion
+!in summary
+!to summarize
+!to put it simply
+
+additionally
+alternatively
+amongst
+and robust
+arguably
+as previously mentioned
+as well as
+because
+bridging
+changing the game
+compelling
+consequently
+crucial
+daunting
+dilemma
+due to
+elevate
+emphasize
+ensure
+essentially
+essential
+even though
+evolving
+excels
+expand
+expanding
+fancy
+fast
+firstly
+foster
+foundations
+furthermore
+generally
+given that
+harness
+hey
+imagine
+immense
+importantly
+in contrast
+in order to
+indeed
+intense
+it is advisable
+journey
+keen
+landscape
+mastering
+meticulous
+meticulously
+moreover
+navigating
+not only
+notably
+orchestrate
+orchestrating
+paced
+paramount
+power
+pressure
+profoundly
+promptly
+pursuit
+quest
+rapidly
+realm
+relentless
+remnant
+reshape
+reshaping
+robust
+shall
+specifically
+struggled
+subsequently
+tailored
+testament
+the world of
+thrilled
+thus
+to consider
+today's
+towards
+ultimately
+underpins
+underscore
+unleash
+vital
+when it comes to
+world
+you may want to
+understanding
+alright

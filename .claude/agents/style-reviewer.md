@@ -29,23 +29,11 @@ Judge structure by whether it makes the code easier to read, never by whether it
 
 ## Comments
 
-**Comments are a last resort.** Delete any comment that restates the code. Where a comment explains a confusing expression, extract a named function or constant and delete the comment — the highest-value change available, and the one most often skipped.
+**`comment-reaper` owns these, and runs after you.** Do not do its job. Two things stay yours, because they are design rather than prose:
 
-A comment survives only when it records a **trap** a maintainer would revert into, an **external constraint** (what beefweb, the player, the browser or a library actually does), or a **non-obvious invariant** no name could carry. One or two lines, plainly stated. No bold, no rhetorical asides, no second person, no essays.
-
-The test is one question: **would somebody doing the next piece of work get it wrong without this?** If it only explains why the current thing looks the way it does, it goes.
+**A comment standing in for a name is a design defect.** Where one explains a confusing expression, a magic number or an opaque step, say so and propose the name — that is the fix, and the reaper will make it.
 
 **Never delete or weaken a `biome-ignore` directive.** They are functional, and each carries its reason.
-
-**No rationale, and no rejected alternatives.** Not why a weight, a colour or a spacing was chosen; not what was tried first. Git holds the history and it is not worth re-reading. The rare exception is a rule that binds future work — write it as an imperative ("do not replace the banding with one detected scale per library"), never as a story about a decision.
-
-**No history.** "used to", "an earlier version", "measured on <date>", "a review pass found". State only what is true now.
-
-**No measurements.** A number ties the code to one library on one machine, and this app ships to everyone. Keep a fixed external constraint — "beefweb hangs up on a body over 1 MiB" — and cut the measurement that revealed it. Milliseconds, megabytes, row counts, percentages and per-item byte costs all go, in code and in documentation.
-
-**No personal detail.** No names, machines, hostnames, addresses or real library paths, in code, docs or test data. Placeholders instead. Public repository URLs are fine.
-
-Tests are allowed a little more room: a test is documentation, and a note saying *why* a case matters earns its place. A note restating what the assertion plainly does still does not.
 
 ## Documentation
 
@@ -74,13 +62,7 @@ The outcome of such a decision does not get written down. The owner is the gatek
 
 ## Register
 
-Documentation and comments should sound like a person, not an assistant. Flag and fix any of these:
-
-additionally, alternatively, amongst, and robust, arguably, as a professional, as previously mentioned, as well as, because, bridging, bustling, changing the game, compelling, consequently, crucial, cutting-edge, daunting, delve into, designed to enhance, dilemma, dive, dive into, diving, due to, embark, elevate, emphasize, ensure, essentially, essential, even though, ever-evolving, everchanging, evolving, excels, expand, expanding, fancy, fast, firstly, foster, foundations, furthermore, game changer, game-changing, generally, given that, gossamer, groundbreaking, harness, hey, imagine, immense, importantly, in conclusion, in contrast, in order to, in summary, in the quest, in the realm of, in the world of, in today's digital age, in today's digital era, indeed, indelible, intense, it is advisable, it's essential to, it's important to note, it's worth noting that, journey, keen, landscape, labyrinth, let's, mastering, metropolis, meticulous, meticulously, moreover, my friend, navigating, nestled, not only, notably, orchestrate, orchestrating, paced, picture this, paramount, power, pressure, profoundly, promptly, pursuit, quest, rapidly, realm, relentless, remember that, remnant, reshape, reshaping, reverberate, revolutionize, robust, seismic, shall, sights unseen, sounds unheard, specifically, struggled, subsequently, take a dive into, tapestry, tailored, testament, the world of, there are a few considerations, thrilled, thus, to consider, to put it simply, to summarize, today's, towards, transformative, ultimately, underpins, underscore, unleash, unlock the secrets, unprecedented, unveil the secrets, vibrant, vital, whispering, when it comes to, world, you may want to, understanding, alright, It is advisable.
-
-Avoid the register as well as the words: no throat-clearing, no selling to a reader who is already here, no "in today's environment".
-
-RFC 2119 keywords are exempt from that list. MUST, MUST NOT, SHOULD and SHALL carry an obligation and are the house style for stating one.
+`.claude/prose.txt` lists the phrases that make prose read like an assistant, and `CONTRIBUTING.md` §10 is the rule. The reaper applies it. Flag anything egregious you pass; do not sweep for it.
 
 ## How to verify
 

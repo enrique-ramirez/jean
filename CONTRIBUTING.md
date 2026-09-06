@@ -126,7 +126,11 @@ A comment is justified only when it records one of:
 - an **external constraint** — what the player, the browser or a library actually does;
 - a **non-obvious invariant** no name could carry.
 
+The test is one question: **would somebody doing the next piece of work get it wrong without this?** If the comment only explains why the current thing looks the way it does, it goes.
+
 Never narrate what the code does. Never date a comment, never sign one, never record what the code used to be. Git holds history.
+
+**No rationale and no rejected alternatives.** Not why a weight, a colour or a spacing was chosen; not what was tried first. Products evolve and recording every decision is a maintenance burden that drifts from the code and then contradicts it. The rare survivor is a rule that binds future work — write it as an imperative ("do not replace the banding with one detected scale per library"), never as the story of a decision.
 
 Where a lint rule fires on something deliberate, the suppression carries its reason. The `useExhaustiveDependencies` suppressions in this codebase are all one shape — a dependency that exists to *fire* an effect rather than to be read inside it — which the rule cannot model, so `lint:fix` would remove every one and break the feature silently. Read them before running it.
 
@@ -142,11 +146,17 @@ Never hard-wrap prose. One paragraph is one line, however long; editors wrap.
 
 Each file has one job. `README.md` is what the project is and how to use it. `CONTRIBUTING.md` is how to write its code. `ARCHITECTURE.md` is how the parts fit. `src/shared/api/README.md` is the player's surface. `CLAUDE.md` is what an agent cannot read off the code, and stays short. Anything that is really a contribution rule belongs here and is linked from there, never copied.
 
-`.claude/hooks/check-style.sh` fails an edit that reintroduces personal detail, history or hard-wrapped prose. It only catches what a grep can be certain of; the rest is your judgement. `.claude/agents/style-reviewer.md` is a reviewer to invoke over uncommitted changes.
+`.claude/hooks/check-style.sh` fails an edit that reintroduces personal detail, history, hard-wrapped prose, a recorded measurement, or one of the phrases marked `!` in `.claude/prose.txt`. It only catches what a grep can be certain of; the rest is your judgement.
+
+Two reviewers cover the rest, over uncommitted changes and in this order: `style-reviewer` for design, structure, naming and duplication, then `comment-reaper` for comments and the prose of documentation. Run both before asking for a commit — comment density is the rule that slips first, and it slips a little at a time.
 
 ## 10. Writing
 
 Short sentences. RFC 2119 keywords for obligations. Commit messages take an imperative subject; add a body only for a fact the diff cannot show.
+
+**Write like a person, not like an assistant.** Code is the source of truth; prose exists to say what the code cannot. The register that makes documentation unreadable is a house of throat-clearing, elevated synonyms and hedges. `.claude/prose.txt` holds the phrases to avoid, one per line — the hook checks a subset of them mechanically and your judgement covers the rest. Read it once; the shape matters more than the list.
+
+Plain words over elevated ones. No selling to a reader who is already here. No sentence whose only job is to introduce the next one.
 
 ## 11. Tag hygiene is the library owner's business
 

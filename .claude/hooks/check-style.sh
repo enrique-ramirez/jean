@@ -47,6 +47,13 @@ PY
     fi ;;
 esac
 
+# Register and recorded measurements. Prose only -- comment lines in code, body
+# text in markdown -- so an album title or a genre name is never checked.
+prose=$(python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/check-prose.py" "$file" "$CLAUDE_PROJECT_DIR/.claude/prose.txt" 2>/dev/null)
+if [ -n "$prose" ]; then
+  while IFS= read -r entry; do problems+=("$entry"); done <<< "$prose"
+fi
+
 [ ${#problems[@]} -eq 0 ] && exit 0
 
 {

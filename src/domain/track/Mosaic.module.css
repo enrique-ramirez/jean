@@ -1,4 +1,5 @@
 .mosaic {
+	position: relative;
 	display: grid;
 	flex: 0 0 auto;
 	gap: 3px;
@@ -24,6 +25,54 @@
 	width: 100%;
 	height: 100%;
 	border-radius: 0;
+}
+
+/* The tiles are mounted from the first frame -- that is what makes them load -- and hidden until the
+   last has answered. Faded in together, so nine covers arrive as one picture rather than as nine
+   things appearing one after another. */
+.mosaic:not([data-ready]) .tile {
+	opacity: 0;
+}
+
+.tile {
+	transition: opacity 220ms var(--ease);
+}
+
+/* One hold at the size of the whole mosaic, which is the shape a single album has. `Artwork` draws
+   its own per tile and that is right for one cover; nine identical disc icons is not a loading state. */
+.hold {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	color: var(--faint);
+}
+
+.hold svg {
+	width: 34%;
+	height: 34%;
+}
+
+/* How many albums are really in there, where the tiles cannot say. Bottom right, over the artwork, in
+   the same pill a shelf card uses for its caption. */
+.count {
+	position: absolute;
+	right: 6px;
+	bottom: 6px;
+	padding: 2px 7px;
+	border-radius: var(--radius-pill);
+	background: color-mix(in oklab, var(--surface-sunken) 82%, transparent);
+	backdrop-filter: blur(6px);
+	font-size: 0.6875rem;
+	font-variant-numeric: tabular-nums;
+	color: color-mix(in oklab, var(--text) 80%, transparent);
+	white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tile {
+		transition: none;
+	}
 }
 
 .empty {

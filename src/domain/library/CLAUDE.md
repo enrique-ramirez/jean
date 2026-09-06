@@ -124,8 +124,3 @@ Materialising is cheap even at library size: 500 indices copy in 17 ms, 5,000 in
 
 - **No folder tree.** `#/all` browses the library as one flat list; `/library/items/by-path` is documented in `API.md` for when that changes.
 - **Reconciling a stale `itemCount` is partly built.** `usePlaylists` and `useLibraryInfo` refetch on window focus. The live `playlistItems` tripwire is not wired; arithmetic that cannot survive being wrong re-reads the count itself.
-- **`Mosaic` is next**, and the rules for it are agreed: one, four or nine covers by how many *unique
-  albums* there are; a count badge only where the number shown differs from the number held;
-  uniqueness by album artist and title rather than by image bytes; and **one hold for the whole
-  mosaic** rather than nine, since `Artwork`'s per-tile placeholder is right for one cover and a grid
-  of nine identical disc icons is not a loading state.

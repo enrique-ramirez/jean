@@ -92,13 +92,7 @@ export function PlaylistView({
 					title={playlist.title}
 					stats={stats}
 					hasPlayCounts={hasPlayCounts}
-					aside={
-						<Mosaic
-							source={source}
-							trackCount={stats.trackCount}
-							seed={playlist.id}
-						/>
-					}
+					aside={<Mosaic source={source} rows={rows} seed={playlist.id} />}
 					actions={
 						<PlayActions browserRef={browserRef} trackCount={rows.length} />
 					}

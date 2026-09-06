@@ -90,6 +90,28 @@ At 30,441 tracks and 12 columns: 1.03 MB gzipped, 6.95 MB raw, ~680 ms fetch, ~4
 
 **React does not virtualise.** Render 30k rows and you get 30k DOM nodes. Use TanStack Virtual for any list that can grow unbounded. `content-visibility: auto` is not a substitute — it skips paint but still builds every node.
 
+### The mosaic
+
+**It counts albums, never tracks.** Counted by tracks, a 21-track single-album playlist drew the same
+cover four times and a two-album one drew four copies of the first while the second never appeared —
+because the tile count came from the track count and the covers were picked by striding across
+*rows*. One, four or nine, by how many distinct albums are actually in the set.
+
+**Identity is album artist and title through `tagKey`, never the picture.** Comparing bytes would mean
+downloading them, which is the whole cost this avoids. A row with no album tag is its own entry: a
+folder of loose singles is a wall of different covers, not one record repeated.
+
+**The figure appears only where the picture is not the whole answer** — four tiles for four albums says
+everything, and `4 albums` under it repeats the tiles back. So it is drawn at 2–3, 5–8 and 10+, and
+not at 1, 4 or 9.
+
+**One hold for the whole mosaic, not nine.** `Artwork`'s per-tile placeholder is right for a single
+cover and wrong here: a grid of nine identical disc icons reads as a fault rather than as covers on
+their way. The tiles mount from the first frame — that is what makes them load — and stay hidden until
+the last has answered, then fade in together. `Artwork` reports through `onSettled`, from its *state*
+rather than from the `<img>` handlers, so the paths that never mount one (a cover already answered for
+this session, an address of `null`) report too. It is the only caller that needs this.
+
 ### Artwork
 
 **`loading="lazy"` is not the mechanism.** It asks whether a row is visible, and a virtualised list moves rows through the viewport by the hundred: one jump to the playing track across a 30,441-row playlist started **499 artwork requests** for a screen that comes to rest showing 41. What that costs is not frames, it is the rest of the app — nothing blocks the main thread, but the browser gives an origin six HTTP/1.1 connections, the update stream holds one open forever, and everything Jean asks for afterwards queues behind covers for rows that are long gone. Against a player taking 200 ms a cover, a play/pause pressed a second and a half after the jump waited 122 ms for a socket and the queue drained for 19.8 s.

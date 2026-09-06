@@ -30,6 +30,7 @@ export function Artwork({
 	size,
 	alt = "",
 	className,
+	onSettled,
 }: {
 	/** `undefined` is *not known yet* and holds the shimmer; `null` is *there is no cover here* and settles. A caller that has an address always has a string, so the two are worth telling apart: a wheel slot the player has not named is loading, and the track before the first one is not. */
 	src: string | null | undefined;
@@ -37,6 +38,12 @@ export function Artwork({
 	size?: number | string;
 	alt?: string;
 	className?: string;
+	/**
+	 * Called once this cover has resolved, either way. For a caller that draws several as one thing
+	 * and has to hold them all until the last has arrived -- `Mosaic` is the only one.
+	 * Held in a ref, so a caller passing a fresh closure per render does not re-fire it.
+	 */
+	onSettled?: (outcome: ArtworkOutcome) => void;
 }) {
 	const [state, setState] = useState<ArtworkState>(
 		() => settled(src) ?? "waiting",
@@ -142,6 +149,14 @@ export function Artwork({
 		release.current = null;
 		setState(outcome);
 	};
+
+	// Reported from the state rather than from the `<img>` handlers, so the paths that settle without
+	// ever mounting one -- a cover this session already answered for, an address of `null` -- report too.
+	const settledRef = useRef(onSettled);
+	settledRef.current = onSettled;
+	useEffect(() => {
+		if (state === "ok" || state === "failed") settledRef.current?.(state);
+	}, [state]);
 
 	const classes = [styles.artwork, className].filter(Boolean).join(" ");
 

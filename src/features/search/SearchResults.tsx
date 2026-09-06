@@ -123,7 +123,7 @@ export function SearchResults({
 					aside={
 						<Mosaic
 							source={library.source}
-							trackCount={rows.length}
+							rows={rows}
 							indices={indices}
 							seed={search.viewKey}
 						/>

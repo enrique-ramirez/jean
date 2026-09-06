@@ -128,7 +128,7 @@ export function LibraryListView({
 					aside={
 						<Mosaic
 							source={library.source}
-							trackCount={rows.length}
+							rows={rows}
 							indices={indices}
 							seed={`${kind}:${label}`}
 						/>

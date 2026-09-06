@@ -36,6 +36,7 @@ import { ALL_MUSIC, withoutJeanPlaylists } from "@/domain/track/jeanPlaylists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useSortableList } from "@/shared/hooks/useSortableList";
+import { useSwipe } from "@/shared/hooks/useSwipe";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
@@ -133,6 +134,7 @@ export function Sidebar({
 	const canEdit = canChangePlaylists(permissions);
 
 	const menu = useContextMenu({ disabled: !canEdit });
+	const swipe = useSwipe({ onLeft: onDismiss });
 	const [targetId, setTargetId] = useState<string | null>(null);
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -296,6 +298,7 @@ export function Sidebar({
 				aria-label="Playlists"
 				aria-hidden={isCollapsed}
 				onKeyDown={onArrows}
+				{...swipe}
 			>
 				{search.hasQuery || search.remembered ? (
 					<>

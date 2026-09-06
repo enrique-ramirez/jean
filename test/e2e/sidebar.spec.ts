@@ -8,6 +8,7 @@ import {
 	scrollUntilMounted,
 	sidebar,
 	test,
+	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -207,6 +208,21 @@ test.describe("the drawer", () => {
 		const scrim = page.getByRole("button", { name: "Close menu" });
 		const box = await scrim.boundingBox();
 		await scrim.click({ position: { x: box!.width - 8, y: box!.height / 2 } });
+		await expect(link(page, LIBRARY)).toBeHidden();
+	});
+
+	test("a flick left closes it", async ({ page }) => {
+		await openApp(page);
+		await expect(link(page, LIBRARY)).toBeVisible();
+
+		const box = (await sidebar(page).boundingBox())!;
+		const y = box.y + box.height * 0.6;
+		await touchDrag(
+			page,
+			{ x: box.x + box.width * 0.8, y },
+			{ x: box.x + box.width * 0.8 - 120, y },
+		);
+
 		await expect(link(page, LIBRARY)).toBeHidden();
 	});
 });

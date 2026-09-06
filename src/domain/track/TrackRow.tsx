@@ -9,14 +9,21 @@ import { Artwork } from "@/shared/ui/Artwork";
 import { Equalizer } from "@/shared/ui/Equalizer";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
 import type { Column } from "./columns";
-import { FIELD, lastPlayedOf, number, playCountOf, value } from "./fields";
+import {
+	artistOf,
+	FIELD,
+	lastPlayedOf,
+	numberOf,
+	playCountOf,
+	titleOf,
+	value,
+} from "./fields";
 import { discNumber } from "./grouping";
 import type { LibrarySource } from "./librarySource";
 import {
 	isWritableScale,
 	MAX_STARS,
-	rawRatingOf,
-	rawRatingOfValue,
+	rawRatingWith,
 	starsOf,
 	toStars,
 } from "./rating";
@@ -37,8 +44,7 @@ function Rating({
 	const { canRateInline, rate } = useTagWriting();
 	const written = useWrittenRating(row);
 
-	const raw =
-		written === undefined ? rawRatingOf(row) : rawRatingOfValue(written);
+	const raw = rawRatingWith(row, written);
 	const rating = starsOf(raw);
 	const stars = rating === null ? 0 : toStars(rating);
 	const label = rating === null ? "Unrated" : `${stars} of ${MAX_STARS} stars`;
@@ -91,7 +97,7 @@ function Cell({
 	}
 
 	if (column.kind === "duration") {
-		const seconds = number(row, FIELD.duration);
+		const seconds = numberOf(row, FIELD.duration);
 		return (
 			<span className={`${className} tabular`}>
 				{seconds === null ? "--" : formatTime(seconds)}
@@ -115,7 +121,7 @@ function Cell({
 	}
 
 	if (column.kind === "bitrate") {
-		const rate = number(row, FIELD.bitrate);
+		const rate = numberOf(row, FIELD.bitrate);
 		return (
 			<span className={`${className} tabular`}>
 				{rate === null ? "--" : rate}
@@ -168,8 +174,8 @@ function TrackRowComponent({
 	showDisc?: boolean;
 	onSelect: (index: number, event: ReactPointerEvent) => void;
 }) {
-	const title = value(row, FIELD.title) ?? "Unknown title";
-	const artist = value(row, FIELD.artist) ?? "Unknown artist";
+	const title = titleOf(row);
+	const artist = artistOf(row);
 	const trackNumber = value(row, FIELD.trackNumber);
 
 	// '1.01', the way a booklet writes it. The fallback for an untagged track is its position in the view, which belongs to no disc, so it never takes the prefix.

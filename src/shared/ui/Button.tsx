@@ -1,6 +1,8 @@
-import type { ButtonHTMLAttributes, ComponentType } from "react";
+import type { ButtonHTMLAttributes } from "react";
 
+import { classNames } from "@/shared/lib/classNames";
 import styles from "./Button.module.css";
+import type { IconComponent } from "./icons";
 
 const VARIANTS: Record<string, string> = {
 	primary: styles.primary,
@@ -11,10 +13,7 @@ const VARIANTS: Record<string, string> = {
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	variant?: keyof typeof VARIANTS;
-	icon?: ComponentType<{
-		size?: number;
-		"aria-hidden"?: boolean | "true" | "false";
-	}>;
+	icon?: IconComponent;
 }
 
 export function Button({
@@ -24,17 +23,15 @@ export function Button({
 	className,
 	...props
 }: ButtonProps) {
-	const classes = [
-		styles.button,
-		VARIANTS[variant],
-		!children && styles.iconOnly,
-		className,
-	];
-
 	return (
 		<button
 			type="button"
-			className={classes.filter(Boolean).join(" ")}
+			className={classNames(
+				styles.button,
+				VARIANTS[variant],
+				!children && styles.iconOnly,
+				className,
+			)}
 			{...props}
 		>
 			{Icon ? <Icon size={16} aria-hidden="true" /> : null}

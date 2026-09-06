@@ -19,13 +19,14 @@ test.describe("the shell fits the screen", () => {
 		await page.setViewportSize(NARROWEST);
 		await openLibrary(page);
 
-		expect(await overflow(page)).toBe(0);
+		// Polled rather than read on the tick after load, which races first paint.
+		await expect.poll(() => overflow(page)).toBe(0);
 
 		// A query fills the field's trailing slot with a count and a clear button,
 		// which is the state that pushed the top bar past the screen.
 		await page.getByLabel("Search your library").fill("a");
 		await expect(page.getByText(/matches?$/)).toBeVisible();
 
-		expect(await overflow(page)).toBe(0);
+		await expect.poll(() => overflow(page)).toBe(0);
 	});
 });

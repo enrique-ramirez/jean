@@ -12,7 +12,7 @@ import {
 import type { PlaylistInfo } from "@/shared/api/types";
 import { pushToast } from "@/shared/ui/toastStore";
 import { findQueuePlaylist, QUEUE_TITLE } from "./jeanPlaylists";
-import type { LibrarySource } from "./librarySource";
+import type { HoldingPlaylist, LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
 // The player takes one request per track and has no bulk form, so the cost is linear.
@@ -23,25 +23,30 @@ export function useQueueTracks() {
 	const { queue, canQueue } = useQueueActions();
 
 	// Emptied on the way in, never deleted, and only while the queue is provably empty: deleting a playlist the queue points into crashes the player.
-	const holding = useCallback(async () => {
-		const playlists =
+	// The count goes back with the id, because it is where the caller's tracks will land and the caller would otherwise ask the player for a number already in hand.
+	const holding = useCallback(async (): Promise<HoldingPlaylist | null> => {
+		const cached =
 			queryClient.getQueryData<PlaylistInfo[]>(PLAYLISTS_KEY) ?? [];
-		const held = findQueuePlaylist(playlists);
+		const held = findQueuePlaylist(cached);
 
 		const target = held ?? (await createPlaylist(QUEUE_TITLE));
+		if (!target) return null;
 
-		if (held) {
-			const queued = await fetchPlayQueue().catch(() => null);
-			// From the player: item changes are never pushed, so a cached count is stale from the first append onwards.
-			const live = (await fetchPlaylists()).find(
-				(entry) => entry.id === held.id,
-			);
-			if (queued?.length === 0 && (live?.itemCount ?? 0) > 0)
-				await clearPlaylist(held.id);
+		const queued = held ? await fetchPlayQueue().catch(() => null) : null;
+
+		// From the player: item changes are never pushed, so a cached count is stale from the first append onwards.
+		const playlists = await fetchPlaylists();
+		const itemCount =
+			playlists.find((entry) => entry.id === target.id)?.itemCount ?? 0;
+
+		if (queued?.length === 0 && itemCount > 0) {
+			await clearPlaylist(target.id);
+			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
+			return { id: target.id, itemCount: 0 };
 		}
 
-		await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
-		return target?.id ?? null;
+		queryClient.setQueryData(PLAYLISTS_KEY, playlists);
+		return { id: target.id, itemCount };
 	}, [queryClient]);
 
 	const queueTracks = useCallback(

@@ -379,7 +379,17 @@ function streamUpdates({
 		if (Object.keys(payload).length > 0) send(payload);
 	});
 
-	response.on("close", unsubscribe);
+	const drop = () => {
+		unsubscribe();
+		state.updateStreams.delete(drop);
+		response.end();
+	};
+	state.updateStreams.add(drop);
+
+	response.on("close", () => {
+		unsubscribe();
+		state.updateStreams.delete(drop);
+	});
 	return true;
 }
 
@@ -428,6 +438,16 @@ export function handleControl({
 	if (action === "skipGap") {
 		state.skipGapMs = Number(input?.ms) || 0;
 		return empty(response);
+	}
+
+	// Every open update stream, hung up on without warning -- a wifi hiccup, a
+	// proxy timing out, a phone coming back from sleep. The browser reconnects by
+	// itself and the fake replays a full snapshot, which is exactly what
+	// `usePlayer` says it depends on and nothing else here exercises.
+	if (action === "dropStream") {
+		const dropped = state.updateStreams.size;
+		for (const drop of [...state.updateStreams]) drop();
+		return json(response, { dropped });
 	}
 
 	if (action === "requests") {

@@ -1,10 +1,14 @@
 import { QUEUE_DROP_TARGET } from "@/domain/player/queue";
-import { usePermissions, usePlaylists } from "@/domain/player/usePlayer";
+import {
+	canChangePlaylists,
+	usePermissions,
+	usePlaylists,
+} from "@/domain/player/usePlayer";
 import type { TrackColumns } from "@/shared/api/types";
 import { useDragSource } from "@/shared/ui/dnd";
-import { FIELD, value } from "./fields";
+import { titleOf } from "./fields";
 import type { LibrarySource } from "./librarySource";
-import type { Refs } from "./project";
+import { type Refs, refAt } from "./project";
 import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
@@ -27,7 +31,7 @@ export function useTrackDragSource({
 	const { queueTracks } = useQueueTracks();
 
 	return useDragSource<number[]>({
-		disabled: permissions.changePlaylists === false,
+		disabled: !canChangePlaylists(permissions),
 
 		getPayload: (event) => {
 			const aimed = targetsFrom(event, rows, selection);
@@ -35,7 +39,7 @@ export function useTrackDragSource({
 			const { index, positions } = aimed;
 
 			// The row under the pointer, not the lowest-numbered one in the selection: the ghost should name what was picked up.
-			const grabbed = value(rows[index], FIELD.title) ?? "Unknown title";
+			const grabbed = titleOf(rows[index]);
 
 			return {
 				count: positions.length,
@@ -43,9 +47,7 @@ export function useTrackDragSource({
 					positions.length === 1
 						? grabbed
 						: `${grabbed} and ${positions.length - 1} more`,
-				items: positions.map((position) =>
-					indices ? indices[position] : position,
-				),
+				items: positions.map((position) => refAt(indices, position)),
 			};
 		},
 

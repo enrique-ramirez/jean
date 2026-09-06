@@ -1,5 +1,6 @@
 import {
 	expect,
+	expectSettlesAt,
 	playedFrom,
 	pressAndHold,
 	requestsTo,
@@ -97,6 +98,31 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 			await expect(statusBar(page)).toContainText("Los Calientes");
 		});
 
+		test("on a pointer, a single click selects and does not play", async ({
+			page,
+			player,
+		}) => {
+			// Tap-to-play is decided by pointerType, so a regression there turns
+			// every desktop click into playback rather than breaking the phone.
+			test.skip(
+				test.info().project.name === "mobile",
+				"this is the mouse path",
+			);
+
+			await trackRow(page, THIRD_TRACK.index).click();
+
+			await expect(trackRow(page, THIRD_TRACK.index)).toHaveAttribute(
+				"aria-selected",
+				"true",
+			);
+			await expectSettlesAt(
+				player,
+				() => requestsTo(player, "/player/play/"),
+				[],
+			);
+			await expect(statusBar(page)).toContainText("Nothing playing");
+		});
+
 		test("pausing from the status bar leaves the track where it is", async ({
 			page,
 			player,
@@ -152,32 +178,11 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 			await pressAndHold(page, trackRow(page, THIRD_TRACK.index));
 
 			await expect(page.getByRole("dialog")).toBeVisible();
-			await page.waitForTimeout(150);
-			expect(requestsTo(player, "/player/play/")).toEqual([]);
+			await expectSettlesAt(
+				player,
+				() => requestsTo(player, "/player/play/"),
+				[],
+			);
 		});
-	});
-
-	test(`on a pointer, a single click selects and does not play (${layout} layout)`, async ({
-		page,
-		player,
-	}) => {
-		// Tap-to-play is decided by pointerType, so a regression there turns every
-		// desktop click into playback rather than breaking the phone.
-		test.skip(test.info().project.name === "mobile", "this is the mouse path");
-
-		await page.goto("/#/p7");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "Library" }),
-		).toBeVisible();
-
-		await trackRow(page, THIRD_TRACK.index).click();
-
-		await expect(trackRow(page, THIRD_TRACK.index)).toHaveAttribute(
-			"data-selected",
-			"true",
-		);
-		await page.waitForTimeout(150);
-		expect(requestsTo(player, "/player/play/")).toEqual([]);
-		await expect(statusBar(page)).toContainText("Nothing playing");
 	});
 });

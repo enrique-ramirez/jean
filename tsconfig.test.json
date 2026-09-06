@@ -26,6 +26,7 @@
 		"test/fake-api/**/*.ts",
 		"src/shared/api/types.ts",
 		"src/shared/api/fieldTable.ts",
+		"src/shared/lib/dragGeometry.ts",
 		"src/shared/lib/sequence.ts",
 		"src/shared/lib/text.ts",
 		"src/shared/keyboard/keymap.ts",

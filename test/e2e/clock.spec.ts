@@ -62,7 +62,10 @@ test.describe("the clock in the status bar", () => {
 
 		expect(down.total).toBe(up.total);
 		// The two readings are the same instant from either end, so they add up to
-		// the track -- give or take the second that passed between them.
-		expect(Math.abs(up.left + down.left - up.total)).toBeLessThanOrEqual(1);
+		// the track -- give or take the seconds that passed between them. Both
+		// figures are truncated to whole seconds, so `floor(elapsed)` plus
+		// `floor(remaining)` is already a second short before a click and two
+		// round trips are added to it.
+		expect(Math.abs(up.left + down.left - up.total)).toBeLessThanOrEqual(2);
 	});
 });

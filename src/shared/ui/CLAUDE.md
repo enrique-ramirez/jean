@@ -35,7 +35,7 @@ Icons come from `lucide-react`, imported per-icon so they tree-shake. **The play
 
 **`useLongPress` owns the echoes of the gesture, not just the gesture.** The synthetic click and, on Android, a native `contextmenu` both arrive after a hold has been answered, and both have to be swallowed. **Suppression is time-boxed rather than cleared by whichever event turns up**, because which one turns up differs by platform: iOS sends the click and no contextmenu, Android the reverse, and waiting for a specific one leaves the guard permanently on. Anything long-pressable also needs `-webkit-touch-callout: none`, which the hook returns as a style to spread.
 
-**A list that appears under a stationary pointer gets a `mouseenter` it did not earn.** The mouse has not moved; the element beneath it changed. The finder's results render exactly where the button that opened them was, and again under the same cursor on every keystroke, so hover would hand the active result to whatever landed there and Enter would play that instead of the first. **Hover has to prove the pointer moved**: a flag re-armed per result set covers the ordinary case, and comparing the event's coordinates against the last seen ones covers the first move onto a result, where `mouseenter` arrives before the `mousemove` that would have set the flag.
+**A list that appears under a stationary pointer gets a `mouseenter` it did not earn.** The mouse has not moved; the element beneath it changed. The finder's results render exactly where the button that opened them was, and again under the same cursor on every keystroke, so hover would hand the active result to whatever landed there and Enter would play that instead of the first. **Hover has to prove the pointer moved**: a flag re-armed per result set covers the ordinary case, and comparing the event's coordinates against the last seen ones covers the first move onto a result, where `mouseenter` arrives before the `mousemove` that would have set the flag. `useEarnedHover` is that guard and the one place it is written; every list whose rows can appear under a resting pointer MUST gate its `onMouseEnter` on it.
 
 **A touch target is not a pointer target.** A 26px fader track is missed often by a ~44px thumb, and a miss there does nothing at all — which reads as broken without ever being wrong. Hit areas widen on `(pointer: coarse)` while the visible rail stays 4px, and the thumb is drawn permanently there, because on touch there is no hover to reveal it and a thumb that appears once you are already dragging is one you aimed at from memory.
 
@@ -164,7 +164,7 @@ to install at `/jean` with the stock UI at `/`, so a worker there could never se
 — and widening its scope needs a `Service-Worker-Allowed` header beefweb has no way to send. `caches`
 is available to the page directly and has no scope at all.
 
-- **50 MB, oldest out first, never LRU.** LRU pins whatever you look at most, so the covers you see
+- **500 MB, oldest out first, never LRU.** LRU pins whatever you look at most, so the covers you see
   daily would be the last to refresh. Insertion order guarantees everything rotates, which is what
   makes a re-tagged sleeve reappear without anybody pressing Clear.
 - **Only `200`s are kept.** beefweb answers `404 no artwork found` for a track with none, and caching
@@ -186,7 +186,7 @@ is available to the page directly and has no scope at all.
 
 ## Animation
 
-**A layer that animates out has to outlive its own close.** `usePresence` holds it mounted for the length of the exit and no longer — unmounting on the close cuts the animation, and leaving it mounted leaves whatever it was running running. The number it is given has to match the stylesheet, because it is timing that exit.
+**A layer that animates out has to outlive its own close.** `usePresence` derives that during render, by the rule above — set from an effect there is a committed render in which an opening layer is still absent, so its entrance has nothing to run on until the frame after. It holds the layer mounted for the length of the exit and no longer — unmounting on the close cuts the animation, and leaving it mounted leaves whatever it was running running. The number it is given has to match the stylesheet, because it is timing that exit.
 
 **Compositor-only by default** — `transform`, `scale`, `rotate`, `opacity`. `border-radius` and layout properties repaint every frame: acceptable for a single small element, not for anything in a list. Continuous motion should layer animations with coprime durations rather than repeat one short loop, and **must never move an element's position on screen**.
 

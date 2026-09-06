@@ -292,6 +292,31 @@ export async function globalControls(page: Page, isCompact: boolean) {
 	return nowPlayingScreen(page);
 }
 
+// The token the fake component hands out, and the one specs seed as an already
+// paired device. One spelling: a second copy that drifted would fail as a 401
+// nobody could explain.
+export const FOO_JEAN_TOKEN = "0123456789abcdef0123456789abcdef";
+
+// Move the sound to this browser and wait until it is genuinely playing.
+// `listeningPosition` answers null until audio is rendering, so the element's
+// own clock is the only proof the stream arrived.
+export const listenHere = async (page: Page) => {
+	await statusBar(page)
+		.getByRole("button", {
+			name: /Choose where to play|Playing on this device/,
+		})
+		.click();
+	await page.getByRole("button", { name: "Listen here" }).click();
+	await page.waitForFunction(
+		() => {
+			const audio = document.querySelector("audio");
+			return Boolean(audio && audio.currentTime > 0);
+		},
+		undefined,
+		{ timeout: 60_000 },
+	);
+};
+
 export const settingsDialog = (page: Page) =>
 	page.getByRole("dialog", { name: "Settings" });
 
@@ -348,6 +373,48 @@ export const openLibrary = async (page: Page) => {
 // What the app sent, from the fake's own log rather than the browser's.
 export const requestsTo = (player: FakePlayer, pattern: string) =>
 	player.requests.filter((entry) => entry.path.includes(pattern));
+
+// No request at all for this long counts as the app having finished with the
+// action.
+const QUIET_MS = 250;
+
+const untilQuiet = async (player: FakePlayer) => {
+	let seen = -1;
+	await expect
+		.poll(
+			() => {
+				const now = player.requests.length;
+				const quiet = now === seen;
+				seen = now;
+				return quiet;
+			},
+			{ intervals: [QUIET_MS] },
+		)
+		.toBe(true);
+};
+
+/**
+ * The value `read` finally comes to rest on, rather than one it passes through.
+ *
+ * Two shapes of assertion need that and neither can state it on its own. A
+ * request in flight is not in the log yet, so `toHaveLength(0)` read on the same
+ * tick as the action passes whether or not the app suppressed the request. And
+ * `expect.poll` returns on its first successful evaluation, so polling a growing
+ * counter for a total proves it reached that number, never that it stopped
+ * there. This waits for the player to stop being asked anything at all, and only
+ * then reads.
+ */
+export const expectSettlesAt = async <T>(
+	player: FakePlayer,
+	read: () => T | Promise<T>,
+	expected: T,
+) => {
+	await expect.poll(read).toEqual(expected);
+	await untilQuiet(player);
+	// Widened, or the matcher does not resolve against an unbound generic.
+	const settled: unknown = await read();
+	expect(settled).toEqual(expected);
+};
 
 // The playlist Jean materialises to play a set from. Found by the prefix rather
 // than by a title, because the title is named for whichever set filled it.

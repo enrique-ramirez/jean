@@ -1,6 +1,5 @@
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import type {
-	ComponentType,
 	KeyboardEvent as ReactKeyboardEvent,
 	PointerEvent as ReactPointerEvent,
 } from "react";
@@ -20,21 +19,15 @@ import { useVisualViewport } from "@/shared/hooks/useVisualViewport";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./ActionMenu.module.css";
 import { Input } from "./Input";
+import type { IconComponent } from "./icons";
 import { handleMenuKeys, useFocusCapture } from "./menuKeys";
-
-type MenuIcon = ComponentType<{
-	className?: string;
-	size?: number;
-	strokeWidth?: number;
-	"aria-hidden"?: "true";
-}>;
 
 // One interface rather than a union: callers build these as array literals with entries spread in conditionally, where a union costs a cast per menu.
 export interface ActionEntry {
 	type?: undefined;
 	id: string;
 	label: string;
-	icon?: MenuIcon;
+	icon?: IconComponent;
 	shortcut?: string;
 	danger?: boolean;
 	disabled?: boolean;
@@ -69,7 +62,7 @@ interface Page {
 export interface MenuHeader {
 	title: string;
 	subtitle?: string | null;
-	icon?: MenuIcon;
+	icon?: IconComponent;
 }
 
 const EDGE_MARGIN = 8;

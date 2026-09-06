@@ -54,11 +54,12 @@ interface TagWriting {
 	setFieldEnabled: (field: string, enabled: boolean) => void;
 	recheck: () => void;
 	rate: (target: RateTarget, stars: number | null) => void;
-	// For a track with no row to overlay: the playing one, rated from the now-playing screen or from the keyboard. `label` is only used on failure.
+	// For a track with no row to overlay: the playing one, rated from the now-playing screen or from the keyboard. `label` is only used on failure, and `restore` undoes the caller's own optimistic value on the failures that rule it out -- the same rollback `clearWrittenRating` is for on a row.
 	rateTrack: (
 		track: TrackIdentity,
 		label: string,
 		stars: number | null,
+		restore: () => void,
 	) => void;
 }
 
@@ -162,13 +163,28 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 	);
 
 	const rateTrack = useCallback(
-		(track: TrackIdentity, label: string, stars: number | null) => {
+		(
+			track: TrackIdentity,
+			label: string,
+			stars: number | null,
+			restore: () => void,
+		) => {
 			const raw = tagValueOf(stars);
 			writerRef.current.write(track, { [RATING_FIELD]: raw }).then((result) => {
 				// Success is silent: a rating is a small, reversible act with a visible result.
 				if (result.ok) return;
 
 				// A failure names the track, because this path can be reached with the track nowhere on screen.
+				if (result.reason === "timeout") {
+					// The write may still land, so a timeout keeps the value it wrote, exactly as a row does.
+					pushToast({
+						message: `${label} may not have been rated. ${result.message}`,
+						tone: "error",
+					});
+					return;
+				}
+
+				restore();
 				pushToast({
 					message: `${label} was not rated. ${result.message}`,
 					tone: "error",

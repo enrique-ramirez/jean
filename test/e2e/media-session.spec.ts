@@ -1,5 +1,7 @@
 import {
 	expect,
+	FOO_JEAN_TOKEN,
+	listenHere,
 	openLibrary,
 	type Page,
 	statusBar,
@@ -11,29 +13,9 @@ import {
 // getter and Playwright cannot deliver a media key, so what is asserted is the
 // metadata and the state, which is what a lock screen draws.
 
-const TOKEN = "0123456789abcdef0123456789abcdef";
-
 const play = async (page: Page) => {
 	await openLibrary(page);
 	await trackRow(page, 0).dblclick();
-};
-
-const startListening = async (page: Page) => {
-	await statusBar(page)
-		.getByRole("button", {
-			name: /Choose where to play|Playing on this device/,
-		})
-		.click();
-	await page.getByRole("button", { name: "Listen here" }).click();
-	// The session follows the sound, and there is none until the element renders.
-	await page.waitForFunction(
-		() => {
-			const audio = document.querySelector("audio");
-			return Boolean(audio && audio.currentTime > 0);
-		},
-		undefined,
-		{ timeout: 60_000 },
-	);
 };
 
 // By its name rather than by its role: the row is a button only where pressing it
@@ -53,7 +35,7 @@ const session = (page: Page) =>
 	}));
 
 test.describe("the media session", () => {
-	test.use({ fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test("stays empty while the sound is on the player", async ({ page }) => {
 		await page.goto("/");
@@ -71,7 +53,7 @@ test.describe("the media session", () => {
 	test("names the track once the sound is here", async ({ page }) => {
 		await page.goto("/");
 		await play(page);
-		await startListening(page);
+		await listenHere(page);
 
 		// The album is the one field the update stream does not carry, so it
 		// arrives a request behind the rest.
@@ -80,8 +62,12 @@ test.describe("the media session", () => {
 			.not.toBeNull();
 
 		const live = await session(page);
-		// Against the tab rather than against a fixture value: the two read one
-		// derivation, and the point is that they cannot disagree.
+		// The song, named. Without this line every assertion below compares one
+		// derivation with another and a session publishing the wrong track passes.
+		expect(live.title).toBe("Los Calientes");
+		expect(live.artist).toBe("Babasónicos");
+		// And the tab agrees with it, which is the thing the two cannot be allowed
+		// to disagree about.
 		expect(await page.title()).toBe(`${live.title} — ${live.artist} · Jean`);
 		expect(live.album).not.toBe("");
 		// beefweb serves one image per track and has no thumbnail endpoint, so
@@ -93,7 +79,7 @@ test.describe("the media session", () => {
 	test("follows the player's transport", async ({ page }) => {
 		await page.goto("/");
 		await play(page);
-		await startListening(page);
+		await listenHere(page);
 		await expect
 			.poll(() => session(page).then((live) => live.state))
 			.toBe("playing");
@@ -111,7 +97,7 @@ test.describe("the media session", () => {
 	test("is given back when the sound goes", async ({ page }) => {
 		await page.goto("/");
 		await play(page);
-		await startListening(page);
+		await listenHere(page);
 		await expect
 			.poll(() => session(page).then((live) => live.title))
 			.not.toBeNull();

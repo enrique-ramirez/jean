@@ -4,7 +4,7 @@ import {
 	removeFromPlayQueue,
 } from "@/shared/api/beefweb";
 import type { PlayQueueItem } from "@/shared/api/types";
-import { inSequence } from "@/shared/lib/sequence";
+import { descending, inSequence } from "@/shared/lib/sequence";
 
 export const QUEUE_KEY = ["playQueue"];
 export const QUEUE_DROP_TARGET = "jean:queue";
@@ -70,14 +70,20 @@ export const queuedSeconds = (entries: QueueEntry[]) =>
 export const startsIn = (entry: QueueEntry, remaining: number) =>
 	remaining + entry.offset;
 
-export const rebuildFrom = (from: number, to: number) => Math.min(from, to);
-
-export const moved = <T>(entries: T[], from: number, to: number): T[] => {
-	const next = [...entries];
+// A reorder is a rebuild, because `queueIndex` on `/playqueue/add` is accepted and silently ignored: there is no insert to ask for.
+// Everything above the earlier of the two positions is untouched, so a drag near the bottom is cheap and one from the top is not. Removals come off from the top, because the player renumbers on every one.
+export function movePlan(current: PlayQueueItem[], from: number, to: number) {
+	const next = [...current];
 	const [item] = next.splice(from, 1);
 	next.splice(to, 0, item);
-	return next;
-};
+
+	const at = Math.min(from, to);
+	return {
+		next,
+		removals: descending(current.length - 1, at),
+		additions: next.slice(at),
+	};
+}
 
 export const sameQueue = (
 	a: PlayQueueItem[] | undefined,

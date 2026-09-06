@@ -1,13 +1,31 @@
-import type { Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import { expect, requestsTo, scrollTop, test, times } from "./fixtures.ts";
 
 // Far enough down that getting there crosses thousands of rows the view has
 // never been near.
 const FAR = 25000;
 
-// Rows on screen once the list has stopped moving.
-const settle = async (page: Page) => {
-	await page.waitForTimeout(1500);
+// Rows on screen once the list has stopped moving and the player has stopped
+// being asked for covers. Watched rather than waited out: the wait was a guess
+// at an animated scroll across a list 1.4 million pixels tall, and a truncation
+// of the request log taken while responses were still arriving counted the
+// first screenful into the jump it was meant to exclude.
+const settle = async (page: Page, player: FakePlayer) => {
+	let last = { at: -1, asked: -1 };
+	await expect
+		.poll(
+			async () => {
+				const now = {
+					at: await scrollTop(page),
+					asked: player.requests.length,
+				};
+				const steady = now.at === last.at && now.asked === last.asked;
+				last = now;
+				return steady;
+			},
+			{ intervals: [250] },
+		)
+		.toBe(true);
 	return page.locator('main [role="row"]').count();
 };
 
@@ -25,7 +43,7 @@ test.describe("artwork loading", () => {
 		await expect
 			.poll(() => requestsTo(player, "artwork").length)
 			.toBeGreaterThan(0);
-		await page.waitForTimeout(500);
+		await settle(page, player);
 		player.requests.length = 0;
 
 		// Following playback flies the list there, mounting and unmounting every
@@ -37,7 +55,7 @@ test.describe("artwork loading", () => {
 		);
 		await expect.poll(() => scrollTop(page)).toBeGreaterThan(1_000_000);
 
-		const rows = await settle(page);
+		const rows = await settle(page, player);
 		const asked = requestsTo(player, "artwork").length;
 
 		// A little over one screenful: the destination is measured rather than
@@ -57,12 +75,12 @@ test.describe("artwork loading", () => {
 		await expect
 			.poll(() => requestsTo(player, "artwork").length)
 			.toBeGreaterThan(0);
-		await page.waitForTimeout(500);
+		await settle(page, player);
 
 		await page.evaluate(() =>
 			(document.querySelector("main") as HTMLElement).scrollBy(0, 4000),
 		);
-		await settle(page);
+		await settle(page, player);
 
 		const seen = requestsTo(player, "artwork").length;
 		player.requests.length = 0;
@@ -72,7 +90,7 @@ test.describe("artwork loading", () => {
 		await page.evaluate(() =>
 			(document.querySelector("main") as HTMLElement).scrollTo(0, 0),
 		);
-		await settle(page);
+		await settle(page, player);
 
 		const again = requestsTo(player, "artwork").length;
 		expect(
@@ -92,15 +110,26 @@ test.describe("one cover per album, not per track", () => {
 	const TRACKS = 54; // the captured fixture, in 12 albums
 	const ALBUMS = 12;
 
-	const walkTheList = async (page: Page) => {
-		await times(12, async () => {
-			await page.evaluate(() =>
-				(document.querySelector("main") as HTMLElement).scrollBy(0, 300),
-			);
-			// Past the queue's settle gate, or the rows go by without ever asking.
-			await page.waitForTimeout(400);
-		});
-		await page.waitForTimeout(1500);
+	// To the bottom rather than a fixed distance: how far 54 tracks run depends on
+	// the row height, and a walk that stops short is not the whole list.
+	const walkTheList = async (page: Page, player: FakePlayer) => {
+		await expect
+			.poll(
+				async () => {
+					const atTheEnd = await page.evaluate(() => {
+						const scroller = document.querySelector("main") as HTMLElement;
+						const wasAt = scroller.scrollTop;
+						scroller.scrollBy(0, 300);
+						return wasAt >= scroller.scrollHeight - scroller.clientHeight - 1;
+					});
+					// Past the queue's settle gate, or the rows go by without ever asking.
+					await page.waitForTimeout(400);
+					return atTheEnd;
+				},
+				{ timeout: 30_000 },
+			)
+			.toBe(true);
+		await settle(page, player);
 	};
 
 	test("walking the whole list costs one request an album", async ({
@@ -109,7 +138,7 @@ test.describe("one cover per album, not per track", () => {
 	}) => {
 		await page.goto("/#/p7");
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
-		await walkTheList(page);
+		await walkTheList(page, player);
 
 		const asked = requestsTo(player, "artwork").length;
 		expect(
@@ -118,10 +147,10 @@ test.describe("one cover per album, not per track", () => {
 		).toBeLessThanOrEqual(ALBUMS + 3);
 	});
 
-	test("the rows of one album point at one URL", async ({ page }) => {
+	test("the rows of one album point at one URL", async ({ page, player }) => {
 		await page.goto("/#/p7");
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
-		await walkTheList(page);
+		await walkTheList(page, player);
 
 		// Distinct srcs rather than a count of requests: a count alone would also
 		// pass if the covers simply had not loaded.
@@ -139,6 +168,71 @@ test.describe("one cover per album, not per track", () => {
 		expect(covers, `${covers} covers across ${rows} rows`).toBeLessThan(
 			rows / 2,
 		);
+	});
+
+	// One address is one handle, however many rows come and go over it. A row that
+	// gives back a claim it never took revokes the picture under the rows still
+	// drawing it -- and an `<img>` that catches that reports a failure the queue
+	// remembers, which leaves the album blank for the rest of the session.
+	test("and stays one handle however the rows churn", async ({
+		page,
+		player,
+	}) => {
+		await page.addInitScript(() => {
+			const mint = URL.createObjectURL.bind(URL);
+			let minted = 0;
+			URL.createObjectURL = (object: Blob | MediaSource) => {
+				minted += 1;
+				return mint(object);
+			};
+			Object.defineProperty(window, "__mintedArtwork", { get: () => minted });
+		});
+
+		// Slower than the churn below, so rows are mounting and unmounting while the
+		// cover they share is still being fetched.
+		await page.route("**/api/artwork/**", async (route) => {
+			await new Promise((done) => setTimeout(done, 600));
+			await route.continue();
+		});
+
+		await page.goto("/#/p7");
+		await expect(page.locator('[role="row"]').first()).toBeAttached();
+
+		const scrollBy = (offset: number) =>
+			page.evaluate(
+				(by: number) =>
+					(document.querySelector("main") as HTMLElement).scrollBy(0, by),
+				offset,
+			);
+
+		// Down past the album and straight back, faster than the settle gate: the
+		// rows in between mount, ask for nothing and unmount again.
+		await times(8, async () => {
+			await scrollBy(1200);
+			await page.waitForTimeout(80);
+			await scrollBy(-1200);
+			await page.waitForTimeout(80);
+		});
+
+		const firstCover = page.locator("main [data-artwork]").first();
+		await expect(firstCover).toHaveAttribute("data-artwork", "ok", {
+			timeout: 20_000,
+		});
+
+		await settle(page, player);
+
+		const minted = await page.evaluate(
+			() => (window as unknown as { __mintedArtwork: number }).__mintedArtwork,
+		);
+		const addresses = new Set(
+			requestsTo(player, "/artwork/").map((entry) => entry.path),
+		).size;
+
+		expect(addresses).toBeGreaterThan(0);
+		expect(
+			minted,
+			`${minted} handles minted for ${addresses} covers`,
+		).toBeLessThanOrEqual(addresses);
 	});
 });
 

@@ -6,7 +6,11 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { usePermissions, usePlayer } from "@/domain/player/usePlayer";
+import {
+	canChangePlaylists,
+	usePermissions,
+	usePlayer,
+} from "@/domain/player/usePlayer";
 import {
 	isScratchPlaylist,
 	queryOfScratchPlaylist,
@@ -15,7 +19,9 @@ import { libraryIndex, searchLibrary } from "@/domain/track/libraryIndex";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
 import { removePlaylist } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { readStoredState, useStoredState } from "@/shared/hooks/useStoredState";
 import type { Library } from "./useLibrary";
+import { SCRATCH_PIN_KEY } from "./useScratchPlaylist";
 
 // Owns the query and nothing else: the rows, the source and the loading belong to `useLibrary`. Held by the shell, so it survives navigating away and back.
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
@@ -24,6 +30,10 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const [query, setQuery] = useState("");
 	const [isFocused, setIsFocused] = useState(false);
 	const inputRef = useRef<HTMLInputElement | null>(null);
+	const [, setPinnedScratch] = useStoredState<string | null>(
+		SCRATCH_PIN_KEY,
+		null,
+	);
 
 	// The scratch playlist's title is the query that built it, which is how a search survives a reload and reaches another device.
 	// Reading it does not touch the library, so a session that never searches never loads it.
@@ -36,21 +46,26 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		setQuery((current) => current || remembered || "");
 	}, [remembered]);
 
+	// Read out here rather than inside: `usePermissions` answers with a fresh object on a player that reports none, so a callback depending on it would have a new identity every render.
+	const canEdit = canChangePlaylists(permissions);
+
 	// Dismissing the search takes the playlist with it, except while the player is on it: deleting the playing playlist does not stop playback, it falls back to another one and wanders out of the results.
 	const clear = useCallback(() => {
 		setQuery("");
+		if (!canEdit) return;
+
+		// Read now rather than closed over: this also runs from a save, which drops the pin as it hands the playlist to the user, and a captured value predates that.
+		const pinned = readStoredState<string | null>(SCRATCH_PIN_KEY, null);
+		// The title is the second guard the pin needs: a beefweb id is not promised to outlive the player process, so a stale pin can name somebody's own playlist by now.
+		const scratch = playlists.find((entry) => entry.id === pinned);
+		if (!isScratchPlaylist(scratch)) return;
 
 		// The active item, not `isCurrent`: that keeps pointing at the last playlist played from long after playback stopped.
-		const playingFrom = playerSnapshot?.player?.activeItem?.playlistId;
-		const scratch = playlists.find(isScratchPlaylist);
-		if (
-			!scratch ||
-			scratch.id === playingFrom ||
-			permissions.changePlaylists === false
-		)
-			return;
+		if (scratch.id === playerSnapshot?.player?.activeItem?.playlistId) return;
+
 		removePlaylist(scratch.id);
-	}, [playlists, permissions.changePlaylists, playerSnapshot]);
+		setPinnedScratch(null);
+	}, [playlists, canEdit, playerSnapshot, setPinnedScratch]);
 
 	const { request } = library;
 

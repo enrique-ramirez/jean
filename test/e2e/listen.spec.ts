@@ -1,7 +1,9 @@
 import {
 	dragTo,
 	expect,
+	expectSettlesAt,
 	type FakePlayer,
+	FOO_JEAN_TOKEN,
 	type Locator,
 	nowPlayingScreen,
 	openNowPlaying,
@@ -13,8 +15,6 @@ import {
 
 // Playwright cannot hear anything, so nothing here asserts on sound -- only on
 // what went over the wire and what the audio element believes.
-
-const TOKEN = "0123456789abcdef0123456789abcdef";
 
 const TICK = [100, 100, 200];
 
@@ -68,7 +68,7 @@ const thePlayer = (page: Page) =>
 const marks = (within: Locator) => within.locator("[data-paused]");
 
 test.describe("where the picker sits", () => {
-	test.use({ fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	// The button is a third of the way in from the right edge at every width, so a
 	// panel whose right edge is the button's hangs off the left of a phone.
@@ -134,8 +134,31 @@ test.describe("where the picker sits", () => {
 	});
 });
 
+// A phone at the edge of a house answers the cross-origin probe slowly, and a
+// probe cached as unreachable takes the whole picker away -- `ListenHere`
+// renders nothing at all when the component is not ready, so there is not even a
+// button left to press. Settings has a "Check again"; the footer is where
+// somebody actually is.
+test.describe("a probe that is slower than the timeout", () => {
+	test.use({
+		fooJean: { slowStatus: 1 },
+		fooJeanToken: FOO_JEAN_TOKEN,
+	});
+	test.setTimeout(90_000);
+
+	test("the picker turns up on its own, with nothing pressed in Settings", async ({
+		page,
+	}) => {
+		await page.goto("/");
+
+		await expect(listenButton(page)).toBeVisible({ timeout: 60_000 });
+		await listenButton(page).click();
+		await expect(thisDevice(page)).toBeVisible();
+	});
+});
+
 test.describe("listening on this device", () => {
-	test.use({ fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test("takes a ticket and opens the stream", async ({ page, player }) => {
 		await page.goto("/");
@@ -143,7 +166,7 @@ test.describe("listening on this device", () => {
 
 		// One ticket per connect, not per request: Safari probes with a `Range`
 		// before fetching for real, so a ticket good once could not serve it.
-		await expect.poll(() => ticketRequests(player).length).toBe(1);
+		await expectSettlesAt(player, () => ticketRequests(player).length, 1);
 		await expect.poll(() => streamRequests(player).length).toBeGreaterThan(0);
 	});
 
@@ -216,13 +239,17 @@ test.describe("listening on this device", () => {
 	test("the toggle is this device's alone", async ({ page, player }) => {
 		await page.goto("/");
 		await startListening(page);
-		await expect.poll(() => ticketRequests(player).length).toBe(1);
+		await expectSettlesAt(player, () => ticketRequests(player).length, 1);
 
 		// Nothing about listening may reach the player's own settings namespace.
-		const written = requestsTo(player, "/api/clientconfig").filter(
-			(entry) => entry.method === "POST",
+		await expectSettlesAt(
+			player,
+			() =>
+				requestsTo(player, "/api/clientconfig").filter(
+					(entry) => entry.method === "POST",
+				),
+			[],
 		);
-		expect(written).toEqual([]);
 	});
 
 	test("no ticket and no token appears in a URL", async ({ page, player }) => {
@@ -233,8 +260,8 @@ test.describe("listening on this device", () => {
 		// The bearer token travels in a header and must never be in a query
 		// string; the ticket is the credential that may be.
 		for (const entry of player.requests)
-			expect(entry.path).not.toContain(TOKEN);
-		expect(page.url()).not.toContain(TOKEN);
+			expect(entry.path).not.toContain(FOO_JEAN_TOKEN);
+		expect(page.url()).not.toContain(FOO_JEAN_TOKEN);
 	});
 });
 
@@ -246,7 +273,7 @@ test.describe("choosing a codec", () => {
 			streamFormats: ["opus", "aac"],
 			playableFormats: ["aac"],
 		},
-		fooJeanToken: TOKEN,
+		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("falls to the second format without a reload", async ({
@@ -260,7 +287,7 @@ test.describe("choosing a codec", () => {
 			.poll(() => player.streamFormats, { timeout: 20_000 })
 			.toEqual(["opus", "aac"]);
 		// A fresh ticket for the second attempt: a reconnect never reuses one.
-		await expect.poll(() => ticketRequests(player).length).toBe(2);
+		await expectSettlesAt(player, () => ticketRequests(player).length, 2);
 		await expect
 			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
 			.toBeGreaterThan(0);
@@ -274,7 +301,7 @@ test.describe("a stream the short-buffer path cannot read", () => {
 	test.use({
 		fooJean: {},
 		settings: { "jean.lowLatencyStream": true },
-		fooJeanToken: TOKEN,
+		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("falls back to the browser's own buffer rather than going silent", async ({
@@ -305,7 +332,7 @@ test.describe("a stream the short-buffer path cannot read", () => {
 });
 
 test.describe("an install with no encoder", () => {
-	test.use({ fooJean: { canStream: false }, fooJeanToken: TOKEN });
+	test.use({ fooJean: { canStream: false }, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test("does not offer the control at all", async ({ page }) => {
 		await page.goto("/");
@@ -316,7 +343,7 @@ test.describe("an install with no encoder", () => {
 });
 
 test.describe("the picker on the now-playing screen", () => {
-	test.use({ fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	// The phone's screen replaces the status bar, so without a copy here the one
 	// control that says where the sound is going is unreachable while it is open.
@@ -371,7 +398,7 @@ test.describe("a busy component", () => {
 			failTickets: 503,
 			ticketError: "too many listeners",
 		},
-		fooJeanToken: TOKEN,
+		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("reads as busy rather than as not supported", async ({ page }) => {
@@ -385,7 +412,7 @@ test.describe("a busy component", () => {
 });
 
 test.describe("an expired ticket", () => {
-	test.use({ fooJean: { expireTickets: true }, fooJeanToken: TOKEN });
+	test.use({ fooJean: { expireTickets: true }, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test("retries with a fresh one rather than giving up at once", async ({
 		page,
@@ -404,7 +431,10 @@ test.describe("an expired ticket", () => {
 });
 
 test.describe("a stream that ends", () => {
-	test.use({ fooJean: { streamBehaviour: "short" }, fooJeanToken: TOKEN });
+	test.use({
+		fooJean: { streamBehaviour: "short" },
+		fooJeanToken: FOO_JEAN_TOKEN,
+	});
 
 	test("reconnects with a fresh ticket", async ({ page, player }) => {
 		await page.goto("/");
@@ -417,10 +447,28 @@ test.describe("a stream that ends", () => {
 			.poll(() => ticketRequests(player).length, { timeout: 20_000 })
 			.toBeGreaterThan(1);
 	});
+
+	// One device, one socket. A reconnect that opened a second without closing the
+	// first would keep pulling the live stream and would count against the
+	// component's `maxConcurrentStreams` for as long as the tab is open, which
+	// `requests` cannot show because it only ever grows.
+	test("and never holds two connections at once", async ({ page, player }) => {
+		await page.goto("/");
+		await startListening(page);
+
+		await expect
+			.poll(() => streamRequests(player).length, { timeout: 20_000 })
+			.toBeGreaterThan(2);
+
+		expect(player.peakStreams).toBeLessThanOrEqual(1);
+	});
 });
 
 test.describe("a stream that goes quiet", () => {
-	test.use({ fooJean: { streamBehaviour: "quiet" }, fooJeanToken: TOKEN });
+	test.use({
+		fooJean: { streamBehaviour: "quiet" },
+		fooJeanToken: FOO_JEAN_TOKEN,
+	});
 
 	test("says the player is stopped rather than nothing at all", async ({
 		page,
@@ -445,7 +493,7 @@ const NEXT = { index: 40, title: "Goodnite, Noises Everywhere" };
 test.describe("what is audible, not what the player is doing", () => {
 	// The lag is `12 - prime`; the default of fifteen leaves none. See
 	// `test/README.md`.
-	test.use({ fooJean: { streamPrime: 6 }, fooJeanToken: TOKEN });
+	test.use({ fooJean: { streamPrime: 6 }, fooJeanToken: FOO_JEAN_TOKEN });
 
 	// Real time is the thing under test.
 	test.setTimeout(120_000);
@@ -544,6 +592,52 @@ test.describe("what is audible, not what the player is doing", () => {
 	});
 });
 
+// The two paths take the clock's origin from different places -- the muxer's own zero, or the
+// element's buffer -- so a connection opened after the short buffer is written off has to
+// derive it again. Taken from the wrong one, the readout is the live edge and looks exactly
+// like a correction that was never applied.
+test.describe("the clock once the short buffer is written off", () => {
+	test.use({
+		fooJean: { streamPrime: 6 },
+		settings: { "jean.lowLatencyStream": true },
+		fooJeanToken: FOO_JEAN_TOKEN,
+	});
+
+	test.setTimeout(120_000);
+
+	test("still runs behind the player, by the buffer", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the readout is desktop-only");
+		await page.goto("/#/home");
+		// Wall clock is the reference: the fake pushes on change and never on a
+		// timer, so its stored `position` stays where the last push left it.
+		const startedAt = Date.now();
+		player.playItem("p7", HEARD.index);
+
+		await startListening(page);
+		// The fake stream is not Ogg, so the short-buffer path is written off and
+		// what produces this sample is the plain connection that replaced it.
+		await expect
+			.poll(() => currentTime(page), { timeout: 60_000, intervals: TICK })
+			.toBeGreaterThan(0);
+
+		await expect
+			.poll(
+				async () => {
+					const shown = await elapsedSeconds(page);
+					return shown === null
+						? null
+						: (Date.now() - startedAt) / 1000 - shown;
+				},
+				{ timeout: 60_000, intervals: TICK },
+			)
+			.toBeGreaterThan(2);
+	});
+});
+
 test.describe("who else is listening", () => {
 	test.use({
 		fooJean: {
@@ -553,7 +647,7 @@ test.describe("who else is listening", () => {
 				{ deviceId: "laptop-1", name: null, listeningFor: 0 },
 			],
 		},
-		fooJeanToken: TOKEN,
+		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("names them, and tells two of a kind apart", async ({ page }) => {
@@ -649,7 +743,7 @@ test.describe("who else is listening", () => {
 });
 
 test.describe("saying goodbye", () => {
-	test.use({ fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test("a handoff back to the player says it meant to stop", async ({
 		page,
@@ -682,10 +776,13 @@ test.describe("saying goodbye", () => {
 		await listenButton(page).click();
 		await thePlayer(page).click();
 
-		expect(
-			requestsTo(player, "/api/stream/leave").filter(
-				(entry) => entry.method === "POST",
-			),
-		).toEqual([]);
+		await expectSettlesAt(
+			player,
+			() =>
+				requestsTo(player, "/api/stream/leave").filter(
+					(entry) => entry.method === "POST",
+				),
+			[],
+		);
 	});
 });

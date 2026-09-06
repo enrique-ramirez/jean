@@ -1,6 +1,7 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	openSettings,
 	requestsTo,
 	settingsDialog,
@@ -27,9 +28,13 @@ const askedTwice = (player: FakePlayer) => {
 	return [...seen].filter(([, times]) => times > 1).map(([path]) => path);
 };
 
+// Throws rather than answering zero where there is no Cache Storage at all: the
+// suite runs on localhost, which is a secure context, so an absent `caches` here
+// is a broken harness and every count below would read as an empty cache.
 const held = (page: Page) =>
 	page.evaluate(async () => {
-		if (typeof caches === "undefined") return 0;
+		if (typeof caches === "undefined")
+			throw new Error("no Cache Storage in this context");
 		const cache = await caches.open("jean-artwork-v1");
 		return (await cache.keys()).length;
 	});
@@ -45,18 +50,21 @@ const settle = async (page: Page) => {
 	const drawn = () => page.locator('main [data-artwork="ok"]').count();
 	await expect.poll(drawn).toBeGreaterThan(0);
 
+	// Three consecutive equal readings, not two: covers arrive through a bounded
+	// queue three at a time, so a stall longer than one interval reads as settled.
 	let last = -1;
+	let steady = 0;
 	await expect
 		.poll(
 			async () => {
 				const now = await drawn();
-				const steady = now === last;
+				steady = now === last ? steady + 1 : 0;
 				last = now;
 				return steady;
 			},
-			{ intervals: [400, 400, 400, 400, 400, 400] },
+			{ intervals: [400] },
 		)
-		.toBe(true);
+		.toBeGreaterThanOrEqual(2);
 };
 
 test.describe("artwork is kept between visits", () => {
@@ -76,7 +84,7 @@ test.describe("artwork is kept between visits", () => {
 		await page.goto("/#/p7");
 		await settle(page);
 
-		expect(askedTwice(player)).toEqual([]);
+		await expectSettlesAt(player, () => askedTwice(player), []);
 	});
 
 	test("a reload asks for nothing it already holds either", async ({
@@ -90,7 +98,7 @@ test.describe("artwork is kept between visits", () => {
 		await page.reload();
 		await settle(page);
 
-		expect(askedTwice(player)).toEqual([]);
+		await expectSettlesAt(player, () => askedTwice(player), []);
 	});
 
 	test("one album across many rows is one entry and one handle", async ({

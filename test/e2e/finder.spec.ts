@@ -1,10 +1,12 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	openLibrary,
 	requestsTo,
 	statusBar,
 	test,
+	times,
 } from "./fixtures.ts";
 
 // Counts taken from the captured library. Jessico is twelve Babasónicos tracks
@@ -112,7 +114,6 @@ const openFinder = async (page: Page) => {
 				await expect(results(page)).toHaveCount(OFF_SCREEN.matches);
 
 				const list = page.getByRole("listbox");
-				expect(await list.evaluate((node) => node.scrollTop)).toBe(0);
 
 				// The dropdown is 320px over eleven results, so the last of them starts
 				// below the fold.
@@ -121,11 +122,9 @@ const openFinder = async (page: Page) => {
 					await page.keyboard.press("ArrowDown");
 				await expect(last).toHaveAttribute("aria-selected", "true");
 
-				expect(await list.evaluate((node) => node.scrollTop)).toBeGreaterThan(
-					0,
-				);
-
-				// Inside the scroller's own box, not merely inside the page.
+				// Inside the scroller's own box, not merely inside the page. The last
+				// result starts below the fold, so this can only hold if the dropdown
+				// followed the active option down.
 				const listBox = await list.boundingBox();
 				const activeBox = await last.boundingBox();
 				expect(activeBox!.y).toBeGreaterThanOrEqual(listBox!.y - 1);
@@ -234,8 +233,11 @@ const openFinder = async (page: Page) => {
 				);
 
 				// The preview is debounced, so give it time to be wrong.
-				await page.waitForTimeout(400);
-				expect(requestsTo(player, "/player/play/")).toEqual([]);
+				await expectSettlesAt(
+					player,
+					() => requestsTo(player, "/player/play/"),
+					[],
+				);
 				await expect(statusBar(page)).toContainText("Nothing playing");
 
 				// It did move the list: the previewed block starts well below the fold
@@ -360,7 +362,11 @@ const openFinder = async (page: Page) => {
 				await page.keyboard.press("Escape");
 
 				await expect(finder(page)).toHaveCount(0);
-				expect(requestsTo(player, "/player/play/")).toEqual([]);
+				await expectSettlesAt(
+					player,
+					() => requestsTo(player, "/player/play/"),
+					[],
+				);
 				await expect(statusBar(page)).toContainText("Nothing playing");
 			});
 
@@ -468,9 +474,15 @@ test.describe("typing does not drag the list around", () => {
 		// container the sticky finder sits in, and Android's keyboard loses its
 		// composition to that -- typed "Guster" comes back scrambled.
 		await finder(page).pressSequentially("guster", { delay: 60 });
-		await page.waitForTimeout(600);
+		await expect(finder(page)).toHaveValue("guster");
 
-		expect(Math.abs((await scrollTop(page)) - parked)).toBeLessThan(24);
+		// Asserted across a window rather than at one instant: the view moving and
+		// coming back would satisfy a single late read, and a jump that has not
+		// happened yet would satisfy an early one.
+		await times(6, async () => {
+			expect(Math.abs((await scrollTop(page)) - parked)).toBeLessThan(24);
+			await page.waitForTimeout(100);
+		});
 	});
 });
 
@@ -564,7 +576,11 @@ test.describe("finding in the library views", () => {
 		// track name seeks and pauses the player mid-word.
 		await field(page, "Find in all music").fill("nutshell");
 		await page.keyboard.press("ArrowRight");
-		expect(requestsTo(player, "/player")).toHaveLength(0);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/player").length,
+			0,
+		);
 	});
 
 	test("`/` takes the caret back after a click on the list", async ({
@@ -574,6 +590,10 @@ test.describe("finding in the library views", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
+		// The heading arrives before the list does, and `/` is the list's own
+		// binding: pressed at an empty view it reaches nothing and the field never
+		// opens. Every other test here clicks a row first, which waits for this.
+		await expect(page.locator('[role="row"]').first()).toBeVisible();
 
 		await page.keyboard.press("/");
 		await field(page, "Find in all music").fill("nutshell");

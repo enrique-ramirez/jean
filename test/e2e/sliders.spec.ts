@@ -5,6 +5,7 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	dragTo,
 	expect,
+	expectSettlesAt,
 	openLibrary,
 	requestsTo,
 	test,
@@ -125,9 +126,8 @@ test.describe("the volume slider", () => {
 		const MOVES = 40;
 		await dragTo(page, volume(page), 0.6, MOVES);
 
-		await expect.poll(() => volumesSent(player).length).toBeGreaterThan(0);
-		// Let the tail of the queue land before counting.
-		await page.waitForTimeout(400);
+		// The tail of the queue has to land before any of this can be counted.
+		await expectSettlesAt(player, () => volumesSent(player).length > 0, true);
 		const sent = volumesSent(player);
 
 		// One in flight at a time, newest queued behind it: one request per pointer
@@ -136,27 +136,9 @@ test.describe("the volume slider", () => {
 
 		// Whatever was queued during the last flight is still sent afterwards, so
 		// the player ends on the value the drag finished on.
-		await expect.poll(() => player.player.volume.value).toBe(sent.at(-1));
+		expect(player.player.volume.value).toBe(sent.at(-1));
 		expect(sent.at(-1)).toBeGreaterThan(-20);
 		expect(sent.at(-1)).toBeLessThan(-5);
-	});
-
-	test("it cannot be selected, so a press cannot turn into a native drag", async ({
-		page,
-	}) => {
-		// Otherwise the browser starts a text selection across whatever sits beside
-		// the control, and dragging a selection paints a translucent snapshot of it
-		// that follows the pointer instead of the thumb.
-		const style = await volume(page).evaluate((element: HTMLElement) => {
-			const computed = getComputedStyle(element);
-			return {
-				userSelect: computed.userSelect,
-				webkitUserSelect: computed.webkitUserSelect,
-			};
-		});
-		expect(
-			style.userSelect === "none" || style.webkitUserSelect === "none",
-		).toBe(true);
 	});
 
 	test("the reported value is a percentage of the fader, not of the decibels", async ({
@@ -176,9 +158,25 @@ test.describe("the volume slider", () => {
 test.describe("the seek bar", () => {
 	test.skip(({ isMobile }) => isMobile, "scrubbing is a mouse gesture");
 
-	test("it is not seekable until something is playing", async ({ page }) => {
+	test("it is not seekable until something is playing", async ({
+		page,
+		player,
+	}) => {
 		await openLibrary(page);
-		await expect(seekBar(page)).toHaveAttribute("data-seekable", "false");
+
+		// Attempted rather than declared: a bar that reported itself unseekable and
+		// then took the drag anyway would seek a player that is playing nothing.
+		await dragTo(page, seekBar(page), 0.5, 10);
+
+		await expectSettlesAt(
+			player,
+			() =>
+				requestsTo(player, "/api/player").filter(
+					(entry) => entry.body?.position !== undefined,
+				),
+			[],
+		);
+		await expect(seekBar(page)).toHaveAttribute("aria-valuenow", "0");
 	});
 
 	test("scrubbing commits once, on release", async ({ page, player }) => {
@@ -194,23 +192,28 @@ test.describe("the seek bar", () => {
 		await dragTo(page, seekBar(page), 0.5, 30);
 
 		// Los Calientes is 4:37, so halfway is a bit under two and a half minutes.
-		await expect.poll(() => positions()).toHaveLength(1);
+		await expectSettlesAt(player, () => positions().length, 1);
 		const landed = positions()[0];
 		expect(landed).toBeGreaterThan(125);
 		expect(landed).toBeLessThan(155);
 	});
 
-	test("it cannot be selected either", async ({ page }) => {
+	// Both faders take their gesture from `useDragFraction`, so this is the one
+	// place the guarantee is worth asserting: press and move without it and the
+	// browser starts a text selection, and dragging a selection is a native drag
+	// -- it paints a translucent snapshot of what was selected and follows the
+	// pointer with that instead of moving the thumb.
+	test("scrubbing leaves no selection dragging under the pointer", async ({
+		page,
+	}) => {
 		await openLibrary(page);
-		const style = await seekBar(page).evaluate((element: HTMLElement) => {
-			const computed = getComputedStyle(element);
-			return {
-				userSelect: computed.userSelect,
-				webkitUserSelect: computed.webkitUserSelect,
-			};
-		});
+		await trackRow(page, 0).dblclick();
+		await expect(seekBar(page)).toHaveAttribute("data-seekable", "true");
+
+		await dragTo(page, seekBar(page), 0.5, 10);
+
 		expect(
-			style.userSelect === "none" || style.webkitUserSelect === "none",
+			await page.evaluate(() => window.getSelection()?.isCollapsed ?? true),
 		).toBe(true);
 	});
 });
@@ -266,17 +269,20 @@ test.describe("dragging the fader with a finger", () => {
 
 		// The swipe crosses most of the track, so a cancelled pointer stream shows
 		// up as a value far from the target rather than as a rounding difference.
+		// One retrying assertion: read once, it can catch a value the fader was
+		// still passing through.
 		await expect
-			.poll(() => volume(page).getAttribute("aria-valuenow"), {
-				message: "the fader did not follow the finger to the end of the swipe",
-			})
-			.toBeTruthy();
-
-		const landed = Number(await volume(page).getAttribute("aria-valuenow"));
-		expect(
-			Math.abs(landed - 25),
-			`fader landed at ${landed}%, aimed at 25%`,
-		).toBeLessThan(8);
+			.poll(
+				async () =>
+					Math.abs(
+						Number(await volume(page).getAttribute("aria-valuenow")) - 25,
+					),
+				{
+					message:
+						"the fader did not follow the finger to the end of the swipe",
+				},
+			)
+			.toBeLessThan(8);
 
 		await expect.poll(() => volumesSent(player).length).toBeGreaterThan(0);
 	});

@@ -2,6 +2,8 @@ import type { Track } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectPlayingFrom,
+	expectSettlesAt,
 	openSidebar,
 	playedFrom,
 	requestsTo,
@@ -52,6 +54,59 @@ const saveAs = async (page: Page, name: string) => {
 	await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 };
 
+// `jeanPlaylists.ts` splits a scratch title on the *first* separator so that a
+// query containing a colon round-trips, and nothing anywhere searched for one.
+// An album titled `Something: Deluxe Edition` is ordinary, and the failure is
+// silent: the header names the tail of the query and the search entry takes you
+// back to a narrower search than you ran.
+test.describe("a query with a colon in it", () => {
+	test.use({
+		retagged: { Nutshell: { "%album%": "Jar Of Flies: Deluxe Edition" } },
+	});
+
+	const COLON = "flies: deluxe";
+
+	test("comes back whole, in the header and in the sidebar", async ({
+		page,
+		player,
+	}) => {
+		await search(page, COLON);
+		await trackRow(page, 0).dblclick();
+		await expect.poll(() => scratchOf(player)).not.toBeUndefined();
+
+		await expectPlayingFrom(page, COLON);
+
+		await openSidebar(page);
+		await expect(sidebar(page).getByText(COLON, { exact: true })).toBeVisible();
+	});
+
+	test("a reload takes you back to the whole query", async ({
+		page,
+		player,
+	}) => {
+		await search(page, COLON);
+		await trackRow(page, 0).dblclick();
+		await expect.poll(() => scratchOf(player)).not.toBeUndefined();
+
+		// Reloaded rather than navigated: a hashchange keeps the query in memory,
+		// so only a fresh page reads it back out of the playlist's title -- which
+		// is the round trip the colon can break.
+		await page.goto("/#/p7");
+		await page.reload();
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Library" }),
+		).toBeVisible();
+
+		await openSidebar(page);
+		await sidebar(page).getByText(COLON, { exact: true }).click();
+
+		await expect(page.getByLabel("Search your library")).toHaveValue(COLON);
+		await expect(
+			page.getByRole("heading", { level: 1, name: COLON }),
+		).toBeVisible();
+	});
+});
+
 test.describe("playing from search results", () => {
 	test("the results become a real playlist and playback happens inside it", async ({
 		page,
@@ -60,7 +115,7 @@ test.describe("playing from search results", () => {
 		await search(page, QUERY.text);
 
 		// Typing and refining stay client-side; nothing reaches the player yet.
-		expect(scratchOf(player)).toBeUndefined();
+		await expectSettlesAt(player, () => scratchOf(player), undefined);
 
 		await trackRow(page, 2).dblclick();
 
@@ -335,6 +390,33 @@ test.describe("saving results as a playlist", () => {
 		await expect(statusBar(page)).toContainText("Los Calientes");
 	});
 
+	// Playback inside the scratch is what otherwise keeps the deletion off it, and
+	// stopping puts the active item down. Deleting a playlist the play queue points
+	// into also takes foobar2000 with it, so this is worse than losing the tracks.
+	test("and keeps it once playback has stopped", async ({ page, player }) => {
+		await searchAndPlay(page, player);
+
+		// Playing is two requests -- build the playlist, then play from it -- and the
+		// poll above only waits for the first, so a stop between them is undone.
+		await expect(statusBar(page)).toContainText("Los Calientes");
+		player.stop();
+		await expect(statusBar(page)).toContainText("Nothing playing");
+
+		const scratchId = scratchOf(player)!.id;
+		await saveAs(page, "Keepers");
+
+		// Ordered rather than timed: a navigation after the save says anything it
+		// sent has reached the player.
+		await page.goto("/#/p5");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
+		).toBeVisible();
+
+		const keepers = player.playlists.find((entry) => entry.id === scratchId);
+		expect(keepers?.title).toBe("Keepers");
+		expect(keepers?.items).toHaveLength(QUERY.matches);
+	});
+
 	// A ref is only an index into its own source, so copying out of the `Library`
 	// autoplaylist by index addresses that library's path-ordered array instead --
 	// with no error either way, hence the assertion on the title.
@@ -343,7 +425,7 @@ test.describe("saving results as a playlist", () => {
 		player,
 	}) => {
 		await search(page, QUERY.text);
-		expect(scratchOf(player)).toBeUndefined();
+		await expectSettlesAt(player, () => scratchOf(player), undefined);
 		const playlistsBefore = player.playlists.length;
 
 		await saveAs(page, "Unplayed");
@@ -356,8 +438,8 @@ test.describe("saving results as a playlist", () => {
 		// expression.
 		expect(saved!.items[0]["%title%"]).toBe("Los Calientes");
 
-		expect(playedFrom(player)).toBeNull();
-		expect(scratchOf(player)).toBeUndefined();
+		await expectSettlesAt(player, () => playedFrom(player), null);
+		await expectSettlesAt(player, () => scratchOf(player), undefined);
 	});
 
 	test("and takes the search out of the sidebar with it", async ({
@@ -478,7 +560,27 @@ test.describe("a player that will not let Jean make playlists", () => {
 		)!.id;
 		await expect.poll(() => playedFrom(player)?.plref).toBe(libraryId);
 		expect(playedFrom(player)!.index).toBe(2);
-		expect(scratchOf(player)).toBeUndefined();
+		await expectSettlesAt(player, () => scratchOf(player), undefined);
+	});
+});
+
+test.describe("a player that reports no permissions at all", () => {
+	// Absent is not denied: an older beefweb, or the moment before the first
+	// snapshot lands, answers with no permissions object and every reader in the
+	// app treats that as allowed.
+	test("results keep Shuffle and Save as playlist", async ({
+		page,
+		player,
+	}) => {
+		delete (player.player as { permissions?: unknown }).permissions;
+
+		await search(page, QUERY.text);
+
+		const header = viewHeader(page);
+		await expect(header.getByRole("button", { name: "Shuffle" })).toBeVisible();
+		await expect(
+			header.getByRole("button", { name: "Save as playlist" }),
+		).toBeVisible();
 	});
 });
 
@@ -504,7 +606,7 @@ test.describe("marking the row that is playing", () => {
 
 		await search(page, QUERY.text);
 
-		expect(scratchOf(player)).toBeUndefined();
+		await expectSettlesAt(player, () => scratchOf(player), undefined);
 
 		const marked = page.locator('[role="row"][data-active="true"]');
 		if (!hasLibraryApi) {

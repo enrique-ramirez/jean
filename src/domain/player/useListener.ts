@@ -11,6 +11,7 @@ import {
 	configureListening,
 	connect,
 	disconnect,
+	isListening,
 	type ListenPhase,
 	listeningServerSnapshot,
 	listeningSnapshot,
@@ -49,7 +50,7 @@ export function useListener() {
 		listeningServerSnapshot,
 	);
 
-	const isOn = live.phase.kind !== "off" && live.phase.kind !== "failed";
+	const isOn = isListening(live.phase);
 
 	const toggle = useCallback(() => {
 		if (isOn) disconnect();

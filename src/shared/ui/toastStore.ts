@@ -53,11 +53,11 @@ export function pushToast({
 	const id = nextId;
 	nextId += 1;
 
-	const shown = [...toasts, { id, message, action, tone }];
-	shown.slice(0, Math.max(0, shown.length - MAX_VISIBLE)).forEach((toast) => {
+	const all = [...toasts, { id, message, action, tone }];
+	all.slice(0, Math.max(0, all.length - MAX_VISIBLE)).forEach((toast) => {
 		stopTimer(toast.id);
 	});
-	toasts = shown.slice(-MAX_VISIBLE);
+	toasts = all.slice(-MAX_VISIBLE);
 
 	const ms = duration ?? (action ? WITH_ACTION_MS : PLAIN_MS);
 	if (ms > 0)

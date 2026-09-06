@@ -96,21 +96,44 @@ test.describe("a multi-disc album in the list layout", () => {
 });
 
 // %discnumber% is a tag like any other, and plenty of libraries never wrote it.
-["compact", "album"].forEach((layout) => {
-	test.describe(`a library with no disc tags (${layout})`, () => {
-		test.use({
-			withoutFields: ["%discnumber%"],
-			settings: { "jean.layout": layout },
-		});
+// Split by layout rather than looped: only the album layout can draw a disc
+// heading, and only the compact one can prefix a number, so one body would
+// carry a live assertion and a dead one in each pass.
+test.describe("a library with no disc tags, in the album layout", () => {
+	test.use({
+		withoutFields: ["%discnumber%"],
+		settings: { "jean.layout": "album" },
+	});
 
-		test("nothing is drawn for a disc that was never tagged", async ({
-			page,
-		}) => {
-			await page.goto("/#/p7");
-			await scrollUntilMounted(page, rowByTitle(page, DISC_TWO));
+	test("the album is not headed into discs it was never told about", async ({
+		page,
+	}) => {
+		await page.goto("/#/p7");
+		await scrollUntilMounted(page, rowByTitle(page, DISC_TWO));
 
-			await expect(page.getByRole("heading", { level: 3 })).toHaveCount(0);
-			await expect(trackNumberOf(rowByTitle(page, DISC_TWO))).toHaveText("01");
-		});
+		const album = page
+			.locator("section")
+			.filter({ hasText: "Deathconsciousness" });
+		await expect(album).toHaveCount(1);
+		await expect(album.getByRole("heading", { level: 3 })).toHaveCount(0);
+	});
+});
+
+test.describe("a library with no disc tags, in the list layout", () => {
+	test.use({
+		withoutFields: ["%discnumber%"],
+		settings: { "jean.layout": "compact" },
+	});
+
+	test("the number stays bare rather than being prefixed with a guess", async ({
+		page,
+	}) => {
+		await page.goto("/#/p7");
+		await scrollUntilMounted(page, rowByTitle(page, DISC_TWO));
+
+		// Both discs number from 01, and with the tag gone there is nothing to tell
+		// them apart with: "2.01" here would be invented.
+		await expect(trackNumberOf(rowByTitle(page, DISC_TWO))).toHaveText("01");
+		await expect(trackNumberOf(rowByTitle(page, DISC_ONE))).toHaveText("01");
 	});
 });

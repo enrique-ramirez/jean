@@ -1,6 +1,8 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
+	FOO_JEAN_TOKEN,
 	openLibrary,
 	openSettings,
 	playedFrom,
@@ -91,7 +93,11 @@ test.describe("the settings dialog", () => {
 		await page.keyboard.press("h");
 
 		await expect(settingsDialog(page)).toBeVisible();
-		expect(requestsTo(player, "/player/play-pause")).toEqual([]);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/player/play-pause"),
+			[],
+		);
 		expect(requestsTo(player, "/player/play").length).toBe(played);
 	});
 
@@ -147,10 +153,40 @@ test.describe("the settings dialog", () => {
 		await openLibrary(page);
 		await openSettings(page);
 
-		const headings = await settingsDialog(page)
-			.getByRole("heading", { level: 2 })
-			.allInnerTexts();
-		expect(headings[0]).toBe("foo_jean");
+		// A retrying assertion on the first heading: `allInnerTexts` is read once,
+		// and the panels are still arriving when the dialog opens.
+		await expect(
+			settingsDialog(page).getByRole("heading", { level: 2 }).first(),
+		).toHaveText("foo_jean");
+	});
+
+	test.describe("typing into a field", () => {
+		test.use({
+			fooJean: {},
+			fooJeanToken: FOO_JEAN_TOKEN,
+		});
+
+		test("the caret survives a push from the player", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await openSettings(page);
+
+			const name = page.getByLabel("Name", { exact: true });
+			await name.click();
+			await name.fill("Kitchen");
+			await expect(name).toBeFocused();
+
+			// Anything the player pushes re-renders the shell, which is what hands
+			// the dialog a fresh `onDismiss`.
+			player.playItem("p7", 2);
+			await expect(statusBar(page)).toContainText("Deléctrico");
+
+			await expect(name).toBeFocused();
+			await name.pressSequentially(" table");
+			await expect(name).toHaveValue("Kitchen table");
+		});
 	});
 
 	test("a hint holds the caveat, and toggles it in place", async ({ page }) => {
@@ -198,7 +234,7 @@ test.describe("cursor follows playback", () => {
 			withoutFields: ["%lastfm_play_count%"],
 			retagged: { Deléctrico: { "%rating%": "3" } },
 			fooJean: {},
-			fooJeanToken: "0123456789abcdef0123456789abcdef",
+			fooJeanToken: FOO_JEAN_TOKEN,
 		});
 
 		test("is what makes the rating keys hit the track you are hearing", async ({
@@ -217,7 +253,7 @@ test.describe("cursor follows playback", () => {
 			await expect(statusBar(page)).toContainText("Deléctrico");
 
 			await page.keyboard.press("3");
-			await expect.poll(() => tagWrites(player).length).toBe(1);
+			await expectSettlesAt(player, () => tagWrites(player).length, 1);
 			expect(tagWrites(player)[0].body).toMatchObject({
 				path: expect.stringContaining("Deléctrico"),
 			});
@@ -278,8 +314,11 @@ test.describe("playback follows cursor", () => {
 		await openLibrary(page);
 		await expect(statusBar(page)).toContainText("La Fox");
 
-		await page.waitForTimeout(500);
-		expect(requestsTo(player, "/player/play/p7/0")).toEqual([]);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/player/play/p7/0"),
+			[],
+		);
 		await expect(statusBar(page)).toContainText("La Fox");
 	});
 

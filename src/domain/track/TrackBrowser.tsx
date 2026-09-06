@@ -37,7 +37,7 @@ import type {
 	TrackBrowserHandle,
 	TrackListHandle,
 } from "./listTypes";
-import type { Refs } from "./project";
+import { type Refs, refAt } from "./project";
 import { setRatingTarget } from "./ratingTarget";
 import styles from "./TrackBrowser.module.css";
 import { TrackList } from "./TrackList";
@@ -298,7 +298,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 	const cursorRow = rows[selection.cursor];
 	useEffect(() => {
 		if (!cursorRow) return undefined;
-		const ref = indices ? indices[selection.cursor] : selection.cursor;
+		const ref = refAt(indices, selection.cursor);
 		setRatingTarget({ source, ref, row: cursorRow });
 		return () => setRatingTarget(null);
 	}, [source, indices, selection.cursor, cursorRow]);

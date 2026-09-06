@@ -2,36 +2,40 @@ import type { PlayerOption } from "../../src/shared/api/types.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	globalControls,
 	nowPlayingScreen,
 	openNowPlaying,
 	playedFrom,
 	requestsTo,
+	rowByTitle,
 	statusBar,
 	test,
 	times,
+	trackPlayed,
 	viewHeader,
 } from "./fixtures.ts";
 
-// foobar2000's playback order for shuffle-by-tracks, from the captured player.
+// foobar2000's playback orders, from the captured player.
 const SHUFFLE_TRACKS = 4;
+const REPEAT_PLAYLIST = 1;
 
 // Rock en Español is the Jessico album: twelve tracks, playlist indices 0-11.
-const ALBUM = { route: "/#/p5", title: "Rock en Español", count: 12 };
+const ALBUM = { id: "p5", route: "/#/p5", title: "Rock en Español" };
 
 const headerShuffle = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: "Shuffle" });
+
 // One switch in one of two places: the status bar on a desktop, the now-playing
-// screen on a phone. Asked of the page rather than of the project name.
-const modeShuffle = async (page: Page) => {
-	const onScreen = nowPlayingScreen(page).getByRole("button", {
-		name: "Shuffle",
-	});
-	if (await onScreen.count()) return onScreen;
-	const inStatusBar = statusBar(page).getByRole("button", { name: "Shuffle" });
-	if (await inStatusBar.count()) return inStatusBar;
-	await openNowPlaying(page);
-	return onScreen;
+// screen on a phone. Chosen by the viewport rather than by counting what has
+// rendered -- the desktop transport arrives with the first SSE snapshot, and a
+// count taken before it lands reads zero and quietly sends the whole test to
+// the other surface.
+const modeShuffle = async (page: Page, isMobile: boolean) => {
+	const transport = await globalControls(page, isMobile);
+	const switched = transport.getByRole("button", { name: "Shuffle" });
+	await expect(switched).toBeVisible();
+	return switched;
 };
 
 const orderRequests = (player: FakePlayer) =>
@@ -40,8 +44,6 @@ const orderRequests = (player: FakePlayer) =>
 			.filter((option: PlayerOption) => option.id === "playbackOrder")
 			.map((option: PlayerOption) => option.value),
 	);
-
-const playedIndex = (player: FakePlayer) => playedFrom(player)?.index ?? null;
 
 test.describe("the header shuffle starts a shuffled run", () => {
 	test.beforeEach(async ({ page }) => {
@@ -54,17 +56,23 @@ test.describe("the header shuffle starts a shuffled run", () => {
 	test("it plays a track from this playlist and turns the mode on", async ({
 		page,
 		player,
+		isMobile,
 	}) => {
 		// play/{plref}/{index} makes that playlist active and the order draws the
 		// next track from it, so the player does the shuffling.
 		await headerShuffle(page).click();
 
-		await expect.poll(() => playedIndex(player)).not.toBeNull();
-		expect(playedIndex(player)).toBeGreaterThanOrEqual(0);
-		expect(playedIndex(player)).toBeLessThan(ALBUM.count);
+		// Resolved back to a song rather than compared to a range: every index this
+		// twelve-track album could send falls inside [0, 12), so a bounds check
+		// passes for a shuffle that started somewhere else entirely.
+		await expect.poll(() => trackPlayed(player)).not.toBeNull();
+		expect(playedFrom(player)?.plref).toBe(ALBUM.id);
+		await expect(rowByTitle(page, trackPlayed(player) as string)).toBeVisible();
 
-		await expect.poll(() => orderRequests(player)).toEqual([SHUFFLE_TRACKS]);
-		await expect(await modeShuffle(page)).toHaveAttribute(
+		await expectSettlesAt(player, () => orderRequests(player), [
+			SHUFFLE_TRACKS,
+		]);
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
@@ -82,9 +90,12 @@ test.describe("the header shuffle starts a shuffled run", () => {
 
 		await page.keyboard.press("s");
 
-		await expect.poll(() => playedIndex(player)).not.toBeNull();
-		expect(playedIndex(player)).toBeLessThan(ALBUM.count);
-		await expect.poll(() => orderRequests(player)).toEqual([SHUFFLE_TRACKS]);
+		await expect.poll(() => trackPlayed(player)).not.toBeNull();
+		expect(playedFrom(player)?.plref).toBe(ALBUM.id);
+		await expect(rowByTitle(page, trackPlayed(player) as string)).toBeVisible();
+		await expectSettlesAt(player, () => orderRequests(player), [
+			SHUFFLE_TRACKS,
+		]);
 		expect(requestsTo(player, "/player/play/")).toHaveLength(1);
 	});
 
@@ -110,6 +121,7 @@ test.describe("the header shuffle starts a shuffled run", () => {
 	test("pressing it again does not walk back out of shuffle", async ({
 		page,
 		player,
+		isMobile,
 	}) => {
 		await headerShuffle(page).click();
 		// Waited on the player rather than on aria-pressed: the order change and the
@@ -122,7 +134,7 @@ test.describe("the header shuffle starts a shuffled run", () => {
 
 		// The property rather than the request count: the button sets shuffle rather
 		// than flipping it, and asking for it twice is harmless.
-		await expect(await modeShuffle(page)).toHaveAttribute(
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
@@ -203,50 +215,36 @@ test.describe("the status bar shuffle is the mode", () => {
 	test("it sets the playback order and starts nothing", async ({
 		page,
 		player,
+		isMobile,
 	}) => {
-		await expect(await modeShuffle(page)).toHaveAttribute(
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"false",
 		);
 
-		(await modeShuffle(page)).click();
+		await (await modeShuffle(page, isMobile)).click();
 
-		await expect.poll(() => orderRequests(player)).toEqual([SHUFFLE_TRACKS]);
-		await expect(await modeShuffle(page)).toHaveAttribute(
+		await expectSettlesAt(player, () => orderRequests(player), [
+			SHUFFLE_TRACKS,
+		]);
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
-		expect(requestsTo(player, "/player/play/")).toEqual([]);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/player/play/"),
+			[],
+		);
 		expect(player.playQueue).toEqual([]);
 		// Asked of the page rather than of the status bar: on a phone the switch is
 		// on the now-playing screen, and reaching it hides the bar.
 		await expect(page.getByText("Nothing playing").first()).toBeVisible();
 	});
 
-	test("turning it off returns to the order you had", async ({
-		page,
-		player,
-	}) => {
-		(await modeShuffle(page)).click();
-		await expect(await modeShuffle(page)).toHaveAttribute(
-			"aria-pressed",
-			"true",
-		);
-
-		(await modeShuffle(page)).click();
-
-		// Back to the order that was set before rather than to "off", so a repeat
-		// setting survives a shuffle detour.
-		await expect.poll(() => orderRequests(player)).toEqual([SHUFFLE_TRACKS, 0]);
-		await expect(await modeShuffle(page)).toHaveAttribute(
-			"aria-pressed",
-			"false",
-		);
-	});
-
-	test("it is the same switch from every view", async ({ page }) => {
-		(await modeShuffle(page)).click();
-		await expect(await modeShuffle(page)).toHaveAttribute(
+	test("it is the same switch from every view", async ({ page, isMobile }) => {
+		await (await modeShuffle(page, isMobile)).click();
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
@@ -257,10 +255,97 @@ test.describe("the status bar shuffle is the mode", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: ALBUM.title }),
 		).toBeVisible();
-		await expect(await modeShuffle(page)).toHaveAttribute(
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
+	});
+});
+
+// Started from Repeat (playlist) rather than from Default: `usePlaybackOrder`
+// holds the order to come back to in a ref, and from 0 the test passes whether
+// or not that ref survived -- turning shuffle off writes 0 either way.
+test.describe("shuffle remembers the order it interrupted", () => {
+	test.use({
+		playerState: {
+			playbackMode: REPEAT_PLAYLIST,
+			options: [
+				{
+					id: "playbackOrder",
+					name: "Playback order",
+					type: "enum",
+					value: REPEAT_PLAYLIST,
+					enumNames: [
+						"Default",
+						"Repeat (playlist)",
+						"Repeat (track)",
+						"Random",
+						"Shuffle (tracks)",
+						"Shuffle (albums)",
+						"Shuffle (folders)",
+					],
+				},
+			],
+		},
+	});
+
+	test.beforeEach(async ({ page }) => {
+		await page.goto("/#/p7");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Library" }),
+		).toBeVisible();
+	});
+
+	test("turning it off returns to the order you had", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await (await modeShuffle(page, isMobile)).click();
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+
+		await (await modeShuffle(page, isMobile)).click();
+
+		await expectSettlesAt(player, () => orderRequests(player), [
+			SHUFFLE_TRACKS,
+			REPEAT_PLAYLIST,
+		]);
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
+			"aria-pressed",
+			"false",
+		);
+	});
+
+	test("and still does after the now-playing screen has been closed and reopened", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		// On a compact viewport the status bar unmounts while the screen is up and
+		// the switch a thumb reaches is the screen's own, so a hook that kept the
+		// remembered order inside the control would forget it here and drop the
+		// player back to Default.
+		await (await modeShuffle(page, isMobile)).click();
+		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+
+		await openNowPlaying(page);
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Close now playing" })
+			.click();
+		await expect(nowPlayingScreen(page)).toBeHidden();
+
+		await (await modeShuffle(page, isMobile)).click();
+
+		await expectSettlesAt(player, () => orderRequests(player), [
+			SHUFFLE_TRACKS,
+			REPEAT_PLAYLIST,
+		]);
 	});
 });
 
@@ -283,6 +368,7 @@ test.describe("a player that offers no shuffle", () => {
 	test("both shuffles are disabled rather than lying", async ({
 		page,
 		player,
+		isMobile,
 	}) => {
 		await page.goto(ALBUM.route);
 		await expect(
@@ -298,9 +384,12 @@ test.describe("a player that offers no shuffle", () => {
 		await headerShuffle(page)
 			.click({ force: true })
 			.catch(() => {});
-		await page.waitForTimeout(200);
-		expect(requestsTo(player, "/player/play/")).toEqual([]);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/player/play/"),
+			[],
+		);
 
-		await expect(await modeShuffle(page)).toBeDisabled();
+		await expect(await modeShuffle(page, isMobile)).toBeDisabled();
 	});
 });

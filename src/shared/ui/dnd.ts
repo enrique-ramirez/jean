@@ -6,6 +6,7 @@ import {
 	useSyncExternalStore,
 } from "react";
 
+import { autoscrollStep } from "@/shared/lib/dragGeometry";
 import { subscribers } from "@/shared/lib/store";
 
 // Dragging out of one scroll container and onto a target in another. The source row can be unmounted by the virtualiser mid-gesture and the target is elsewhere in the tree, so the drop is hit-tested against the document and a ghost follows the pointer.
@@ -48,8 +49,6 @@ interface Gesture {
 }
 
 const THRESHOLD_PX = 5;
-const AUTOSCROLL_ZONE_PX = 52;
-const AUTOSCROLL_MAX_PX = 13;
 // Below and right of the cursor, so the ghost never covers the row being hit-tested underneath it.
 const GHOST_OFFSET = { x: 18, y: 16 };
 
@@ -111,15 +110,7 @@ const autoscroll = (x: number, y: number) => {
 		?.closest<HTMLElement>("[data-drop-scroller]");
 	if (!scroller || scroller.scrollHeight <= scroller.clientHeight) return;
 
-	const rect = scroller.getBoundingClientRect();
-	const above = y - rect.top;
-	const below = rect.bottom - y;
-
-	if (above < AUTOSCROLL_ZONE_PX) {
-		scroller.scrollTop -= AUTOSCROLL_MAX_PX * (1 - above / AUTOSCROLL_ZONE_PX);
-	} else if (below < AUTOSCROLL_ZONE_PX) {
-		scroller.scrollTop += AUTOSCROLL_MAX_PX * (1 - below / AUTOSCROLL_ZONE_PX);
-	}
+	scroller.scrollTop += autoscrollStep(scroller.getBoundingClientRect(), y);
 };
 
 // getPayload returns the payload for the row the gesture started on, or null to leave the pointer alone. canDrop filters targets by id.
@@ -142,16 +133,21 @@ export function useDragSource<T = unknown>({
 	const latest = useRef({ getPayload, canDrop, onDrop });
 	latest.current = { getPayload, canDrop, onDrop };
 
+	// Ends the gesture whatever ended it, unmount included: a drag torn down without this leaves the whole document at userSelect: none and the ghost on screen for the rest of the session.
 	const teardown = useCallback(() => {
 		if (frame.current !== null) cancelAnimationFrame(frame.current);
 		frame.current = null;
 		const held = gesture.current;
-		if (held) {
-			window.removeEventListener("pointermove", held.onMove);
-			window.removeEventListener("pointerup", held.onUp);
-			window.removeEventListener("pointercancel", held.onCancel);
-		}
 		gesture.current = null;
+		if (!held) return;
+
+		window.removeEventListener("pointermove", held.onMove);
+		window.removeEventListener("pointerup", held.onUp);
+		window.removeEventListener("pointercancel", held.onCancel);
+		if (!held.started) return;
+
+		setDocumentDragging(false);
+		publish(IDLE);
 	}, []);
 
 	useEffect(() => teardown, [teardown]);
@@ -178,6 +174,8 @@ export function useDragSource<T = unknown>({
 		// Touch is not a drag surface here: the sidebar is a drawer that covers the list, so there is nothing to drag onto. The menu is the path there.
 		if (disabled || event.pointerType !== "mouse" || event.button !== 0) return;
 
+		// A gesture still in flight owns three window listeners whose references are about to become unreachable, and teardown could never remove them again.
+		teardown();
 		dragged.current = false;
 
 		const payload = latest.current.getPayload(event);
@@ -228,19 +226,10 @@ export function useDragSource<T = unknown>({
 			// saying so under the pointer for as long as it was armed.
 			const refused = state.refusal !== null;
 			teardown();
-			if (!started) return;
-			setDocumentDragging(false);
-			publish(IDLE);
-			if (over && !refused) latest.current.onDrop(over, payload);
+			if (started && over && !refused) latest.current.onDrop(over, payload);
 		};
 
-		current.onCancel = () => {
-			const { started } = current;
-			teardown();
-			if (!started) return;
-			setDocumentDragging(false);
-			publish(IDLE);
-		};
+		current.onCancel = teardown;
 
 		gesture.current = current;
 		window.addEventListener("pointermove", current.onMove);

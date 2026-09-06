@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { classNames } from "@/shared/lib/classNames";
+
 import styles from "./Chip.module.css";
 
 // A small labelled figure. Given an `href` it becomes somewhere to go rather than something to read,
@@ -17,7 +19,7 @@ export function Chip({
 	title?: string;
 	className?: string;
 }) {
-	const classes = [styles.chip, className].filter(Boolean).join(" ");
+	const classes = classNames(styles.chip, className);
 	const body = (
 		<>
 			{label}

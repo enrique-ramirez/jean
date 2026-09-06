@@ -87,12 +87,21 @@ test.describe("how many covers", () => {
 		});
 	});
 
-	test.describe("an empty playlist", () => {
-		test.use({ withoutPlaylists: true });
+	test.describe("a library with nothing in it", () => {
+		test.use({ libraryShape: { tracks: 0 } });
 
 		test("draws a hold rather than an empty grid", async ({ page }) => {
-			await page.goto("/");
+			await page.goto("/#/all");
 			await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+			// No grid at all, not a grid of one blank: there is no album to stand for
+			// the set, so the header draws the same disc mark a single missing cover
+			// gets, at the size of the whole picture.
+			await expect(mosaic(page)).toHaveCount(0);
+			const hold = page.locator("main header").locator("svg").first();
+			await expect(hold).toBeVisible();
+			const box = (await hold.boundingBox())!;
+			expect(box.width).toBeGreaterThan(16);
 		});
 	});
 });
@@ -120,27 +129,49 @@ test.describe("one album, one cover", () => {
 
 test.describe("while the covers are arriving", () => {
 	test("it holds as one picture rather than as nine", async ({ page }) => {
+		// Held open until the test lets go, rather than for a fixed number of
+		// milliseconds the assertions below then race: everything here is about
+		// what is on screen while the covers are still in flight, and a route that
+		// answered part way through would end the state under test.
+		let release = () => {};
+		const inFlight = new Promise<void>((settle) => {
+			release = settle;
+		});
 		await page.route("**/api/artwork/**", async (route) => {
-			await new Promise((settle) => setTimeout(settle, 1500));
-			await route.abort();
+			await inFlight;
+			await route.abort().catch(() => {});
 		});
 
-		await page.goto("/#/p7");
-		await expect(mosaic(page)).toBeVisible();
+		try {
+			await page.goto("/#/p7");
+			await expect(mosaic(page)).toBeVisible();
 
-		// `Artwork`'s own placeholder is right for a single cover. Nine identical disc
-		// icons in a grid reads as a fault rather than as covers on their way, so the
-		// tiles stay hidden and one hold at the size of the whole thing stands in.
-		await expect(mosaic(page)).not.toHaveAttribute("data-ready", "true");
-		// One, not nine. `Artwork` draws its own hold with the same class, which is
-		// what this replaces, so the mosaic's is named rather than found by class.
-		await expect(mosaic(page).locator("[data-mosaic-hold]")).toHaveCount(1);
+			// `Artwork`'s own placeholder is right for a single cover. Nine identical
+			// disc icons in a grid reads as a fault rather than as covers on their
+			// way, so the tiles stay hidden and one hold at the size of the whole
+			// thing stands in.
+			//
+			// One, not nine. `Artwork` draws its own hold with the same class, which
+			// is what this replaces, so the mosaic's is named rather than found by
+			// class.
+			const hold = mosaic(page).locator("[data-mosaic-hold]");
+			await expect(hold).toHaveCount(1);
+			await expect(mosaic(page)).not.toHaveAttribute("data-ready", "true");
 
-		// Mounted from the first frame -- that is what makes them load -- and hidden
-		// until the last has answered, so the covers arrive together as one picture.
-		const shown = await tiles(page)
-			.first()
-			.evaluate((tile) => getComputedStyle(tile).opacity);
-		expect(Number(shown)).toBe(0);
+			// Mounted from the first frame -- that is what makes them load -- and
+			// hidden until the last has answered, so the covers arrive together as
+			// one picture.
+			const shown = await tiles(page)
+				.first()
+				.evaluate((tile) => getComputedStyle(tile).opacity);
+			expect(Number(shown)).toBe(0);
+
+			// Still holding, rather than having flipped ready while nothing answered.
+			await expect(hold).toHaveCount(1);
+			await expect(mosaic(page)).not.toHaveAttribute("data-ready", "true");
+		} finally {
+			release();
+			await page.unroute("**/api/artwork/**");
+		}
 	});
 });

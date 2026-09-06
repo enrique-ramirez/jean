@@ -2,10 +2,12 @@ import { Disc3, ListMusic, Search } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
 
+import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import { Input } from "@/shared/ui/Input";
 import styles from "./CommandPalette.module.css";
@@ -34,16 +36,26 @@ export function CommandPalette({
 	const [active, setActive] = useState(0);
 
 	// Through the same `fold()` as every other typeable list, so accented titles are still found from unaccented input.
-	const tokens = tokenize(query);
-	const matching = (entries: PaletteEntry[]) =>
-		tokens.length === 0
-			? entries
-			: entries.filter((entry) => matchesTokens(fold(entry.title), tokens));
+	// Memoised because the hover guard below re-arms on this identity: rebuilt every render it would re-arm on an arrow key too, which is not a redraw of the rows.
+	const { matchedViews, matchedPlaylists, results } = useMemo(() => {
+		const tokens = tokenize(query);
+		const matching = (entries: PaletteEntry[]) =>
+			tokens.length === 0
+				? entries
+				: entries.filter((entry) => matchesTokens(fold(entry.title), tokens));
 
-	const matchedViews = matching(views);
-	const matchedPlaylists = matching(playlists);
-	// The arrow keys and Enter run down the whole panel, so the sections are two lists on screen and one everywhere else.
-	const results = [...matchedViews, ...matchedPlaylists];
+		const matchedViews = matching(views);
+		const matchedPlaylists = matching(playlists);
+		return {
+			matchedViews,
+			matchedPlaylists,
+			// The arrow keys and Enter run down the whole panel, so the sections are two lists on screen and one everywhere else.
+			results: [...matchedViews, ...matchedPlaylists],
+		};
+	}, [query, views, playlists]);
+
+	// The palette opens under wherever the pointer was resting and redraws under it on every keystroke, so an unearned `mouseenter` would hand the active row to whatever now sits there and Enter would open that.
+	const aimedAt = useEarnedHover(results);
 
 	useEffect(() => {
 		inputRef.current?.focus();
@@ -79,7 +91,9 @@ export function CommandPalette({
 			aria-selected={position === active}
 			className={styles.result}
 			data-active={position === active}
-			onMouseEnter={() => setActive(position)}
+			onMouseEnter={(event) => {
+				if (aimedAt(event)) setActive(position);
+			}}
 			onClick={() => onSelect(entry.route)}
 		>
 			{isView ? (

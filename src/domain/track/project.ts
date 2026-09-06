@@ -5,6 +5,10 @@ import type { PlaylistSnapshot } from "./playlistStore";
 // A ref is an integer: a playlist index on one source, a position in the paths array on the other. The search index produces an Int32Array and a shelf an ordinary array, and nothing downstream cares which.
 export type Refs = Int32Array | number[];
 
+// A view's rows and its source's refs are the same list only when nothing filtered them, which is what a null `indices` says. Stated once, because every list component and every action has to translate.
+export const refAt = (indices: Refs | null | undefined, position: number) =>
+	indices ? indices[position] : position;
+
 export interface TrackView {
 	rows: TrackColumns[];
 	indices: Refs;

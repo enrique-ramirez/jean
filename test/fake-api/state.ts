@@ -128,6 +128,9 @@ export function libraryOfShape({
 	// The same artist written two ways, differing in case and in spacing, as
 	// collections look once more than one tool has touched them.
 	mixedCase = false,
+	// A cue sheet or a disc image: this many tracks inside one file, sharing a
+	// `%path%` and told apart by `%subsong%` alone. foobar2000 numbers them from 1.
+	subsongsPerFile = 1,
 }: {
 	tracks?: number;
 	albums?: number;
@@ -137,6 +140,7 @@ export function libraryOfShape({
 	years?: [number, number];
 	omit?: string[];
 	mixedCase?: boolean;
+	subsongsPerFile?: number;
 } = {}): Track[] {
 	const template = allTracks()[0];
 	const [first, last] = years;
@@ -169,8 +173,13 @@ export function libraryOfShape({
 			"%length_seconds%": String(seconds),
 			// Under the same root the capture uses, so the library-relative paths
 			// still come out the way a real player reports them.
-			"%path%": `C:\\Music\\S\\Artist ${artist + 1}\\Album ${album + 1}\\${index + 1}.mp3`,
+			"%path%": `C:\\Music\\S\\Artist ${artist + 1}\\Album ${album + 1}\\${Math.floor(index / subsongsPerFile) + 1}.mp3`,
 		};
+
+		// Absent on an ordinary file, as it is on the capture: a player answers '?'
+		// for it and Jean reads that as subsong 0.
+		if (subsongsPerFile > 1)
+			track["%subsong%"] = String((index % subsongsPerFile) + 1);
 
 		for (const field of omit) delete track[field];
 		built[index] = track;
@@ -209,9 +218,9 @@ export function libraryItemsOf(tracks: Track[]): LibraryEntry[] {
 	return tracks.map((track) => ({
 		track,
 		path: libraryPathOf(track, rootDepth),
-		// The capture holds no cue sheets or disc images, so every track is its own
-		// file and every subsong is 0.
-		subsong: 0,
+		// Several tracks inside one file share a path, so this is the rest of the
+		// address. The capture holds no cue sheets, so there it is 0 throughout.
+		subsong: Number(track["%subsong%"]) || 0,
 	}));
 }
 
@@ -316,16 +325,19 @@ export function createState({
 	fooJean?: FooJeanOptions | null;
 	artworkOf?: ((track: Track) => string | null) | null;
 } = {}) {
-	const patches = Object.entries(retagged);
-	if (patches.length > 0) {
-		const byTitle = new Map(patches);
-		for (const playlist of playlists) {
-			playlist.items = playlist.items.map((track) => {
-				const patch = byTitle.get(track["%title%"]);
-				return patch ? { ...track, ...patch } : track;
-			});
-		}
-	}
+	const patches = new Map(Object.entries(retagged));
+	// Applied to the media library as well as to the playlists below: the two
+	// sources describe one library, and a fixture that only reached one of them
+	// made a spec pass on a default run and fail under JEAN_NO_LIBRARY_API, or
+	// the other way round.
+	const retag = (track: Track): Track => {
+		const patch = patches.get(track["%title%"]);
+		return patch ? { ...track, ...patch } : track;
+	};
+
+	if (patches.size > 0)
+		for (const playlist of playlists)
+			playlist.items = playlist.items.map(retag);
 
 	// The library API serves its own copy of the tracks, so a player without the
 	// component that publishes these fields has to strip both.
@@ -341,13 +353,15 @@ export function createState({
 			playlist.items = playlist.items.map(strip);
 	}
 
-	const libraryTracks = mediaLibrary
-		? mediaLibrary
-		: mediaLibrarySize
-			? generateTracks(mediaLibrarySize)
-			: withoutFields.length > 0
-				? allTracks().map(strip)
-				: allTracks();
+	const libraryTracks = (
+		mediaLibrary
+			? mediaLibrary
+			: mediaLibrarySize
+				? generateTracks(mediaLibrarySize)
+				: withoutFields.length > 0
+					? allTracks().map(strip)
+					: allTracks()
+	).map(retag);
 
 	if (mediaLibrary || mediaLibrarySize) {
 		const autoplaylist = playlists.find(
@@ -386,6 +400,12 @@ export function createState({
 		skipGapMs: 0,
 		// Every request the app made, in order.
 		requests: [] as RecordedRequest[],
+		// Open `GET /api/query` update streams -- not `openStreams` below, which
+		// counts audio sockets. Held so a test can drop one the way a wifi hiccup
+		// does: EventSource reconnects on its own and beefweb replays a full
+		// snapshot on connect, which is the reasoning `usePlayer` rests on and
+		// nothing else exercises. See POST /__control/dropStream.
+		updateStreams: new Set<() => void>(),
 		// Where each of the last few tracks began, in wall-clock milliseconds;
 		// `fooJean.ts` puts them on the stream clock. Same bound as the component's.
 		streamMarks: [] as StreamMark[],
@@ -516,6 +536,7 @@ export function createState({
 			return queuePayload();
 		},
 		requests: state.requests,
+		updateStreams: state.updateStreams,
 		// A getter because `mark` replaces the array rather than pushing into it.
 		get streamMarks() {
 			return state.streamMarks;
@@ -525,6 +546,12 @@ export function createState({
 		// Which `?format=` each stream was opened with, in order; `requests` records
 		// paths without their query.
 		streamFormats: [] as string[],
+		// Sockets holding `GET /api/stream` right now, and the most that were ever
+		// held at once. A client that leaks a connection past a reconnect leaves the
+		// old one open, which `requests` cannot show and which the component counts
+		// against `maxConcurrentStreams`.
+		openStreams: 0,
+		peakStreams: 0,
 		// Somebody asked to hear the player alongside the listeners, either by
 		// raising its fader — which is what `patchPlayer` watches for — or through
 		// `DELETE /api/stream/hold`. Cleared when the last listener leaves.
@@ -973,16 +1000,27 @@ export function createState({
 			// See copyItems: an autoplaylist takes the request and drops it.
 			if (playlist.isAuto) return true;
 
+			// Keyed by the pair: a cue sheet files several tracks at one path and the
+			// player takes all of them.
+			const addressOf = (path: string, subsong = 0) =>
+				`${path}\u0000${subsong}`;
 			const known = new Map(
-				libraryItemsOf(libraryTracks).map((entry) => [entry.path, entry]),
+				libraryItemsOf(libraryTracks).map((entry) => [
+					addressOf(entry.path, entry.subsong),
+					entry,
+				]),
 			);
 			// Omitting `items` adds the whole library, per the spec. The live player ignores
 			// both the order asked for and the library's own path order: a set arrives in
 			// the media library's browse order -- album artist, album, track number.
 			const chosen = (
-				items ?? [...known.values()].map((entry) => ({ path: entry.path }))
+				items ??
+				[...known.values()].map((entry) => ({
+					path: entry.path,
+					subsong: entry.subsong,
+				}))
 			)
-				.map((ref) => known.get(ref.path))
+				.map((ref) => known.get(addressOf(ref.path, ref.subsong)))
 				.filter((entry) => entry !== undefined)
 				.sort((a, b) => browseOrder(a.track, b.track))
 				.map((entry) => entry.track);

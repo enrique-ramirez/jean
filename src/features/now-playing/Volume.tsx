@@ -8,6 +8,7 @@ import {
 import type { Volume as VolumeState } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
+import { classNames } from "@/shared/lib/classNames";
 import styles from "./Volume.module.css";
 
 const iconFor = (percent: number, isMuted?: boolean) => {
@@ -82,7 +83,7 @@ export function VolumeSlider({
 	return (
 		<div
 			ref={ref}
-			className={[styles.slider, className].filter(Boolean).join(" ")}
+			className={classNames(styles.slider, className)}
 			data-orientation={orientation}
 			data-dragging={isDragging}
 			data-muted={Boolean(volume?.isMuted)}

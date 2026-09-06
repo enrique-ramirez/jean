@@ -27,6 +27,7 @@ import {
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useAutoPlaylists } from "@/domain/player/useAutoPlaylists";
 import {
+	canChangePlaylists,
 	untitledPlaylistName,
 	usePermissions,
 	usePlaylistActions,
@@ -136,7 +137,7 @@ export function Sidebar({
 	// player Jean cannot ask looks exactly as it did before.
 	const autoPlaylists = useAutoPlaylists();
 	// Undefined until the player answers. Assume yes and let a refusal correct it, rather than showing a read-only sidebar for the first few hundred milliseconds.
-	const canEdit = permissions.changePlaylists !== false;
+	const canEdit = canChangePlaylists(permissions);
 
 	const menu = useContextMenu({ disabled: !canEdit });
 	const [targetId, setTargetId] = useState<string | null>(null);

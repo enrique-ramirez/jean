@@ -40,10 +40,6 @@ const chip = () => {
 	element
 		.querySelector(".demo-chip-reset")
 		?.addEventListener("click", () => void reset());
-	element.querySelector(".demo-chip-close")?.addEventListener("click", () => {
-		localStorage.setItem(DISMISSED, "true");
-		element.remove();
-	});
 
 	// Out of the way on the now-playing screen, which on a phone is the whole
 	// window and puts its seek bar exactly where the chip sits.
@@ -54,6 +50,14 @@ const chip = () => {
 		);
 	window.addEventListener("hashchange", follow);
 	follow();
+
+	element.querySelector(".demo-chip-close")?.addEventListener("click", () => {
+		localStorage.setItem(DISMISSED, "true");
+		// Before the node goes: the listener closes over it, so leaving it on
+		// `window` retains a chip nothing can see.
+		window.removeEventListener("hashchange", follow);
+		element.remove();
+	});
 
 	document.body.append(element);
 };
@@ -96,10 +100,14 @@ async function start() {
 			// A worker that never claims is a broken deploy, and a reload fixes it.
 			// Cleared on the way out, or it reloads a demo that was already working.
 			const giveUp = setTimeout(() => location.reload(), 4000);
-			navigator.serviceWorker.addEventListener("controllerchange", () => {
-				clearTimeout(giveUp);
-				resolve();
-			});
+			navigator.serviceWorker.addEventListener(
+				"controllerchange",
+				() => {
+					clearTimeout(giveUp);
+					resolve();
+				},
+				{ once: true },
+			);
 		});
 
 	// JSON, because that is how `useStoredState` reads: a bare string parses as

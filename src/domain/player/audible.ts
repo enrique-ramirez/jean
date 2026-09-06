@@ -38,7 +38,7 @@ export function rememberSnapshot(next: PlayerSnapshot) {
 
 	const last = history[history.length - 1];
 	if (last && samePlayerPath(pathOf(last), pathOf(next))) {
-		history[history.length - 1] = next;
+		history = [...history.slice(0, -1), next];
 		if (looksLikeSeek(last, next)) {
 			beginSeek(positionOf(next));
 			refreshTimeline();

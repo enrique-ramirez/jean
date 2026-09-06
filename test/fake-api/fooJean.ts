@@ -17,6 +17,11 @@ export interface FooJeanOptions {
 	// different events in a browser.
 	reachable?: boolean;
 
+	// How many `/api/status` probes answer only after the client has given up on
+	// them. A loaded machine or a phone at the edge of the wifi, and the fault is
+	// gone by the next attempt.
+	slowStatus?: number;
+
 	name?: string;
 	// What answers on the advertised port, which is a different fact from what the
 	// record claims. The two disagreeing is what a forged record looks like.
@@ -97,6 +102,7 @@ const DEFAULTS: FooJeanFake = {
 	portInUse: false,
 	port: null,
 	reachable: true,
+	slowStatus: 0,
 	name: "foo_jean",
 	agentName: "foo_jean",
 	version: "0.1.0",
@@ -200,6 +206,18 @@ const applyTags = (
 };
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// True where the client gave up before the answer came, which is what a probe
+// timeout looks like from this end. Bounded, so a client that waits forever
+// still gets its socket back.
+const abandoned = (response: Responder, within: number) =>
+	new Promise<boolean>((resolve) => {
+		const timer = setTimeout(() => resolve(false), within);
+		response.on("close", () => {
+			clearTimeout(timer);
+			resolve(true);
+		});
+	});
 
 // ---- the stream --------------------------------------------------------------
 
@@ -400,6 +418,10 @@ export async function handleAgent({
 
 	// Unauthenticated: a client checks it before trusting the discovery record.
 	if (path === "/api/status") {
+		if (fake.slowStatus > 0) {
+			fake.slowStatus -= 1;
+			if (await abandoned(response, 8000)) return true;
+		}
 		return json(response, {
 			name: fake.agentName,
 			version: fake.version,
@@ -448,6 +470,12 @@ export async function handleAgent({
 			return json(response, { error: "unsupported format" }, 400);
 
 		state.streamFormats.push(format);
+
+		state.openStreams += 1;
+		state.peakStreams = Math.max(state.peakStreams, state.openStreams);
+		response.on("close", () => {
+			state.openStreams -= 1;
+		});
 
 		// One device however many sockets it holds: Safari opens two, and a
 		// reconnect is a third, and none of that is another person.

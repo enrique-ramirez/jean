@@ -4,7 +4,6 @@ import {
 	copyPlaylistItems,
 	fetchLibraryItems,
 	fetchPlaylistItems,
-	fetchPlaylists,
 	LIBRARY_SORT,
 	libraryArtworkUrl,
 	libraryPathMatcher,
@@ -19,6 +18,7 @@ import type {
 import { inSequence } from "@/shared/lib/sequence";
 import { FIELD, sameTagValue, value } from "./fields";
 import { positionOf } from "./libraryIndex";
+import type { PathTable } from "./pathTable";
 import type { Refs } from "./project";
 
 // One interface over the two places tracks come from: the media library API and a playlist.
@@ -31,6 +31,12 @@ export interface ResolvedTrack {
 export interface QueueTarget {
 	playlistId: string;
 	itemIndex: number;
+}
+
+// Where a source with no playlist of its own puts tracks so they can be queued. The count comes with the id because the tracks land after it, and beefweb answers on one work queue -- asking a second time for a number already in hand is a connection for nothing.
+export interface HoldingPlaylist {
+	id: string;
+	itemCount: number;
 }
 
 export interface LibrarySource {
@@ -53,7 +59,7 @@ export interface LibrarySource {
 	// `holding` is called only by a source that needs somewhere to put the tracks first. Pairs come back in the order asked for.
 	queueTargets: (
 		refs: Refs,
-		holding: () => Promise<string | null>,
+		holding: () => Promise<HoldingPlaylist | null>,
 	) => Promise<QueueTarget[]>;
 	playingPosition: (
 		refs: Refs,
@@ -63,7 +69,7 @@ export interface LibrarySource {
 }
 
 export type LibrarySourceOptions =
-	| { kind: "library"; paths: string[]; subsongs: number[] }
+	| { kind: "library"; paths: PathTable; subsongs: number[] }
 	| { kind: "playlist"; playlistId: string };
 
 interface ItemChunk {
@@ -72,8 +78,8 @@ interface ItemChunk {
 }
 
 // Array.from, never refs.map: refs can be an Int32Array, and mapping one gives back a typed array whose objects coerce to NaN.
-const itemsFor = (paths: string[], subsongs: number[], refs: Refs) =>
-	Array.from(refs, (ref) => ({ path: paths[ref], subsong: subsongs[ref] }));
+const itemsFor = (paths: PathTable, subsongs: number[], refs: Refs) =>
+	Array.from(refs, (ref) => ({ path: paths.at(ref), subsong: subsongs[ref] }));
 
 // The player files a set in the media library's browse order rather than the order it was sent, so a view that plays by position would play the wrong track. The order cannot be predicted, so it is overwritten.
 const sortToLibraryOrder = (targetId: string) =>
@@ -98,7 +104,7 @@ const chunkedItems = (items: { path: string; subsong: number }[]) =>
 	}, []);
 
 const fillByLibrary =
-	(paths: string[], subsongs: number[]) =>
+	(paths: PathTable, subsongs: number[]) =>
 	async (targetId: string, refs: Refs) => {
 		// Omitting `items` means the whole library, in one request with no body and no per-track path resolution.
 		if (refs.length === paths.length) {
@@ -130,29 +136,39 @@ const fillByCopy =
 
 // The read-back is not caution: the player files a set in the library's browse order rather than the order it was sent. The appended block is contiguous.
 const queueViaHolding =
-	(paths: string[], subsongs: number[]) =>
-	async (refs: Refs, holding: () => Promise<string | null>) => {
-		const playlistId = await holding();
-		if (!playlistId || refs.length === 0) return [];
+	(paths: PathTable, subsongs: number[]) =>
+	async (refs: Refs, holding: () => Promise<HoldingPlaylist | null>) => {
+		const held = await holding();
+		if (!held || refs.length === 0) return [];
 
-		// From the player, not the cache: item changes are never pushed, so a cached count is stale from the first write on.
-		const before =
-			(await fetchPlaylists()).find((entry) => entry.id === playlistId)
-				?.itemCount ?? 0;
+		await addFromLibrary(held.id, { items: itemsFor(paths, subsongs, refs) });
 
-		await addFromLibrary(playlistId, {
-			items: itemsFor(paths, subsongs, refs),
-		});
-
-		const landed = await fetchPlaylistItems(playlistId, before, refs.length, [
-			"%path%",
-		]);
+		const landed = await fetchPlaylistItems(
+			held.id,
+			held.itemCount,
+			refs.length,
+			["%path%", "%subsong%"],
+		);
 		// The playlist answers with an absolute, platform-separated path and the library with a relative, forward-slashed one, so they only meet by suffix.
-		const matchers = landed.rows.map((row) => libraryPathMatcher(row[0]));
+		// A cue sheet or a single-file mix puts many tracks at one path, so the subsong is what tells them apart -- and each landed row is claimed once, or all of them would queue as the first.
+		const landedRows = landed.rows.map((row) => ({
+			matches: libraryPathMatcher(row[0]),
+			subsong: Number(row[1]) || 0,
+		}));
+		const claimed = new Set<number>();
 
 		return Array.from(refs, (ref) => {
-			const at = matchers.findIndex((matches) => matches(paths[ref]));
-			return at < 0 ? null : { playlistId, itemIndex: before + at };
+			const path = paths.at(ref);
+			const subsong = subsongs[ref] ?? 0;
+			const at = landedRows.findIndex(
+				(row, position) =>
+					!claimed.has(position) &&
+					row.subsong === subsong &&
+					row.matches(path),
+			);
+			if (at < 0) return null;
+			claimed.add(at);
+			return { playlistId: held.id, itemIndex: held.itemCount + at };
 		}).filter((target): target is QueueTarget => target !== null);
 	};
 
@@ -160,18 +176,18 @@ const fromMediaLibrary = ({
 	paths,
 	subsongs,
 }: {
-	paths: string[];
+	paths: PathTable;
 	subsongs: number[];
 }): LibrarySource => ({
 	kind: "library",
 	playlistId: null,
 	needsHeldCount: false,
 
-	artworkUrl: (ref: number) => libraryArtworkUrl(paths[ref], subsongs[ref]),
+	artworkUrl: (ref: number) => libraryArtworkUrl(paths.at(ref), subsongs[ref]),
 
 	// Checked against the relative path already held: the item's `path` field is relative, while the `%path%` column is the player's absolute rendering.
 	identify: async (ref: number, _row: TrackColumns, columns: string[] = []) => {
-		const held = paths[ref];
+		const held = paths.at(ref);
 		if (!held) return null;
 
 		const { items } = await fetchLibraryItems({
@@ -202,7 +218,7 @@ const fromMediaLibrary = ({
 		const subsong = track.subsong ?? 0;
 		return Array.prototype.findIndex.call(
 			refs,
-			(ref: number) => subsongs[ref] === subsong && matches(paths[ref]),
+			(ref: number) => subsongs[ref] === subsong && matches(paths.at(ref)),
 		);
 	},
 });

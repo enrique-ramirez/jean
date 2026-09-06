@@ -2,24 +2,19 @@ import { Music, Star } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
+	canChangePlaylists,
 	useAudiblePlayer,
 	usePermissions,
 	usePlaylists,
 } from "@/domain/player/usePlayer";
 import { librarySourceOf } from "@/domain/track/librarySource";
-import {
-	isWritableScale,
-	rawRatingOfValue,
-	starsOf,
-} from "@/domain/track/rating";
+import { starsOf } from "@/domain/track/rating";
 import { ratingItems, trackActions } from "@/domain/track/trackActions";
 import { useAddTracks } from "@/domain/track/useAddTracks";
 import { useQueueTracks } from "@/domain/track/useQueueTracks";
-import { useTagWriting } from "@/domain/track/useTagWriter";
 import { readTrack } from "@/shared/api/beefweb";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
-import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
-import { useNowPlayingTrack } from "./useNowPlayingTrack";
+import { useNowPlayingRating } from "./useNowPlayingRating";
 
 // The same actions a row offers, on the playing track, built from `trackActions` so the two cannot drift.
 // The source is always a playlist: a set out of the media library is materialised into the scratch playlist before it is played.
@@ -27,9 +22,8 @@ export function useNowPlayingMenu() {
 	const snapshot = useAudiblePlayer();
 	const { data: playlists = [] } = usePlaylists();
 	const permissions = usePermissions();
-	const { details, setRating } = useNowPlayingTrack();
 	const { queueTracks, canQueue } = useQueueTracks();
-	const { canRate, rateTrack } = useTagWriting();
+	const { raw, canWrite, write } = useNowPlayingRating();
 	const addTracks = useAddTracks();
 
 	const [isOpen, setIsOpen] = useState(false);
@@ -47,11 +41,6 @@ export function useNowPlayingMenu() {
 		[item?.playlistId],
 	);
 
-	const raw =
-		details === null
-			? null
-			: rawRatingOfValue(details.row[NOW_PLAYING_FIELD.rating]);
-
 	const actions = useMemo(() => {
 		if (!source || !hasTrack || !item) return [];
 
@@ -60,22 +49,18 @@ export function useNowPlayingMenu() {
 			source,
 			itemIndices: [item.index],
 			playlists,
-			canEdit: permissions.changePlaylists !== false,
+			canEdit: canChangePlaylists(permissions),
 			canQueue,
 			queueTracks,
 			addTracks,
-			rating:
-				canRate && track && isWritableScale(raw)
-					? {
-							id: "rate",
-							label: "Rating",
-							icon: Star,
-							items: ratingItems(starsOf(raw), (stars: number) => {
-								setRating(stars === 0 ? "" : String(stars));
-								rateTrack(track, track.title, stars === 0 ? null : stars);
-							}),
-						}
-					: null,
+			rating: canWrite
+				? {
+						id: "rate",
+						label: "Rating",
+						icon: Star,
+						items: ratingItems(starsOf(raw), write),
+					}
+				: null,
 		});
 	}, [
 		source,
@@ -86,11 +71,9 @@ export function useNowPlayingMenu() {
 		canQueue,
 		queueTracks,
 		addTracks,
-		canRate,
-		track,
 		raw,
-		rateTrack,
-		setRating,
+		canWrite,
+		write,
 	]);
 
 	const element = (

@@ -5,6 +5,35 @@ const COMBINING_MARKS = /\p{Diacritic}/gu;
 export const fold = (text: string) =>
 	text.toLowerCase().normalize("NFD").replace(COMBINING_MARKS, "");
 
+// What is left of `best` once what was typed has been walked off it, or null where there is nothing
+// to draw. Offered only for a true prefix: a ghost completion sits under the real text, so a looser
+// match would print two strings on top of each other -- `heavymetal` finds Heavy Metal and completes
+// to nothing.
+// The prefix is walked rather than sliced at `query.length`, because `fold` normalises to NFD: one
+// character folds to two or to none, and a tag written decomposed would otherwise be cut in the
+// wrong place while the same tag written precomposed came out right.
+export function completionFor(
+	query: string,
+	best: string | null,
+): string | null {
+	if (!query || !best) return null;
+
+	const typed = fold(query);
+	if (!fold(best).startsWith(typed)) return null;
+
+	let folded = 0;
+	let at = 0;
+	for (const character of best) {
+		const width = fold(character).length;
+		if (folded >= typed.length && width > 0) break;
+		folded += width;
+		at += character.length;
+	}
+
+	const rest = best.slice(at);
+	return rest.length > 0 ? rest : null;
+}
+
 // Every token has to appear somewhere, in any order, as a substring, so a query can be half title and half artist.
 export const tokenize = (query: string) =>
 	fold(query.trim()).split(/\s+/).filter(Boolean);
@@ -48,18 +77,21 @@ const budgetFor = (length: number) => (length < 5 ? 0 : length < 9 ? 1 : 2);
 
 // Bounded, and it abandons a row the moment every cell in it is over budget. Full Levenshtein over a
 // few hundred candidates per keystroke would be affordable; this is the same answer for less.
-function within(a: string, b: string, budget: number): boolean {
-	if (Math.abs(a.length - b.length) > budget) return false;
-	if (budget === 0) return a === b;
+function within(query: string, candidate: string, budget: number): boolean {
+	if (Math.abs(query.length - candidate.length) > budget) return false;
+	if (budget === 0) return query === candidate;
 
-	let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+	let previous = Array.from(
+		{ length: candidate.length + 1 },
+		(_, index) => index,
+	);
 
-	for (let i = 1; i <= a.length; i += 1) {
+	for (let i = 1; i <= query.length; i += 1) {
 		const row = [i];
 		let best = i;
 
-		for (let j = 1; j <= b.length; j += 1) {
-			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+		for (let j = 1; j <= candidate.length; j += 1) {
+			const cost = query[i - 1] === candidate[j - 1] ? 0 : 1;
 			const distance = Math.min(
 				previous[j] + 1,
 				row[j - 1] + 1,
@@ -73,7 +105,7 @@ function within(a: string, b: string, budget: number): boolean {
 		previous = row;
 	}
 
-	return previous[b.length] <= budget;
+	return previous[candidate.length] <= budget;
 }
 
 // Ordered tiers rather than weights: a prefix match beats a substring match however long either is,

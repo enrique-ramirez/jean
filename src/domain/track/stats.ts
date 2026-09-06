@@ -1,6 +1,6 @@
 import type { TrackColumns } from "@/shared/api/types";
 import { plural } from "@/shared/lib/text";
-import { FIELD, number, tagKey, value } from "./fields";
+import { FIELD, numberOf, tagKey, value } from "./fields";
 
 // What a header's row of chips has room for; callers wanting more pass their own.
 const TOP_GENRES = 4;
@@ -17,9 +17,9 @@ export function summarise(
 ) {
 	const totals = rows.reduce(
 		(into, row) => {
-			into.seconds += number(row, FIELD.duration) ?? 0;
+			into.seconds += numberOf(row, FIELD.duration) ?? 0;
 
-			const year = number(row, FIELD.year);
+			const year = numberOf(row, FIELD.year);
 			if (year !== null && year > 1000) {
 				into.earliest =
 					into.earliest === null ? year : Math.min(into.earliest, year);

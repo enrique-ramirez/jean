@@ -1,8 +1,9 @@
 import {
 	FIELD,
 	lastPlayedOf,
-	number,
+	numberOf,
 	playCountOf,
+	tagKey,
 	value,
 } from "@/domain/track/fields";
 import { ratingOf } from "@/domain/track/rating";
@@ -10,8 +11,8 @@ import type { TrackColumns } from "@/shared/api/types";
 
 const LOSSLESS = new Set(["FLAC", "ALAC", "WAV", "APE", "WAVPACK", "TAK"]);
 
-const keyOf = (artist: string, album: string) =>
-	`${artist} ${album}`.toLowerCase().replace(/\s+/g, " ");
+// Through `tagKey`, so an album groups here exactly as it does in the track list.
+const keyOf = (artist: string, album: string) => tagKey(`${artist} ${album}`);
 
 // Takes the title rather than reading it back off the row, which is what would make `Album['album']` nullable for every consumer.
 const blankAlbum = (key: string, album: string, row: TrackColumns) => ({
@@ -40,7 +41,7 @@ const absorb = (album: AlbumDraft, ref: number, row: TrackColumns) => {
 	const played = lastPlayedOf(row);
 	if (played !== null && played > album.lastPlayed) album.lastPlayed = played;
 
-	const bitrate = number(row, FIELD.bitrate);
+	const bitrate = numberOf(row, FIELD.bitrate);
 	if (bitrate) {
 		album.bitrateTotal += bitrate;
 		album.bitrateCount += 1;

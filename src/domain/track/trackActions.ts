@@ -8,9 +8,10 @@ import { MAX_STARS } from "./rating";
 import { QUEUE_LIMIT } from "./useQueueTracks";
 
 // Plain entries with a check on the current value, since `ActionMenu` has no checkable row.
+// Null is "no rating" and is passed as null: a zero standing for it is a sentinel every caller would have to decode, and one of them would decode it wrongly.
 export const ratingItems = (
 	current: number | null,
-	onRate: (stars: number) => void,
+	onRate: (stars: number | null) => void,
 ): ActionNode[] => [
 	...Array.from({ length: MAX_STARS }, (_, at) => {
 		const stars = MAX_STARS - at;
@@ -26,7 +27,7 @@ export const ratingItems = (
 		id: "rate-none",
 		label: "No rating",
 		icon: current === null ? Check : undefined,
-		onSelect: () => onRate(0),
+		onSelect: () => onRate(null),
 	},
 ];
 

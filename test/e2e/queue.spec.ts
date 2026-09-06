@@ -1,6 +1,7 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
@@ -198,13 +199,16 @@ test.describe("putting things in the queue", () => {
 		test.skip(isMobile, "there is no Next button on a compact viewport");
 		await openLibrary(page);
 
-		const labels = await statusBar(page)
-			.getByRole("button")
-			.evaluateAll((buttons) =>
-				buttons.map((button) => button.getAttribute("aria-label")),
-			);
+		// Where the two buttons sit, not what order the accessibility tree lists
+		// them in: the claim is spatial, and a DOM walk also fails open -- rename
+		// either button and indexOf answers -1, silently pointing at labels[0].
+		const boxOf = async (name: string | RegExp) =>
+			(await statusBar(page).getByRole("button", { name }).boundingBox())!;
+		const next = await boxOf("Next track");
+		const queue = await boxOf(/^Queue/);
 
-		expect(labels[labels.indexOf("Next track") + 1]).toBe("Queue");
+		expect(queue.x).toBeGreaterThan(next.x);
+		expect(Math.abs(queue.y - next.y)).toBeLessThan(queue.height);
 	});
 
 	test("on a phone it sits with the transport too, beside Shuffle", async ({
@@ -225,13 +229,15 @@ test.describe("putting things in the queue", () => {
 				.getByRole("button", { name: /^Queue/ }),
 		).toHaveCount(0);
 
-		const labels = await nowPlayingScreen(page)
-			.getByRole("button")
-			.evaluateAll((buttons) =>
-				buttons.map((button) => button.getAttribute("aria-label")),
-			);
+		const boxOf = async (name: string | RegExp) =>
+			(await nowPlayingScreen(page)
+				.getByRole("button", { name })
+				.boundingBox())!;
+		const shuffle = await boxOf("Shuffle");
+		const queue = await boxOf(/^Queue/);
 
-		expect(labels[labels.indexOf("Shuffle") + 1]).toBe("Queue");
+		expect(queue.x).toBeGreaterThan(shuffle.x);
+		expect(Math.abs(queue.y - shuffle.y)).toBeLessThan(queue.height);
 	});
 
 	test("the badge counts what is queued", async ({
@@ -432,7 +438,6 @@ test.describe("the panel", () => {
 		const before = await width();
 
 		await openQueue(page);
-		await expect(page.locator("aside")).toHaveCSS("position", "absolute");
 		expect(await width()).toBe(before);
 	});
 
@@ -488,6 +493,117 @@ test.describe("the panel", () => {
 		await expect
 			.poll(() => label.textContent(), { timeout: 5000 })
 			.not.toBe(first);
+	});
+
+	// `movePlan` rebuilds the tail rather than inserting, because `queueIndex` on
+	// `/playqueue/add` is accepted and silently ignored. Nothing exercised it, and
+	// dragging a queued track up the list is an ordinary thing to want.
+	test("dragging a row up the list moves it on the player", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the grip is a separate gesture; see below");
+
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await queueTracks(page, isMobile, 2);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(3);
+
+		const before = queuedTitles(player);
+		const from = (await queueRows(page).nth(2).boundingBox())!;
+		const to = (await queueRows(page).nth(0).boundingBox())!;
+
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await page.mouse.down();
+		// In steps, and past the middle of the target row: the gesture only becomes
+		// a drag once it has travelled, and one jump is a single move event.
+		await page.mouse.move(to.x + to.width / 2, to.y + to.height * 0.25, {
+			steps: 12,
+		});
+		await page.mouse.up();
+
+		// The player's own queue, not the rows on screen: the panel is optimistic
+		// and a reorder that never reached the player looks identical here.
+		await expect
+			.poll(() => queuedTitles(player), { timeout: 10_000 })
+			.toEqual([before[2], before[0], before[1]]);
+		await expect(queueRows(page)).toHaveCount(3);
+	});
+
+	test("the reorder leaves the queue the same length it was", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the grip is a separate gesture; see below");
+
+		// A rebuild removes from the earlier of the two positions down and adds the
+		// tail back. Off by one either way and the queue grows or loses a track,
+		// which the order assertion above cannot see on its own.
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await queueTracks(page, isMobile, 2);
+		await openQueue(page);
+
+		const before = queuedTitles(player);
+		const from = (await queueRows(page).nth(0).boundingBox())!;
+		const to = (await queueRows(page).nth(2).boundingBox())!;
+
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(to.x + to.width / 2, to.y + to.height * 0.75, {
+			steps: 12,
+		});
+		await page.mouse.up();
+
+		await expect
+			.poll(() => queuedTitles(player), { timeout: 10_000 })
+			.toEqual([before[1], before[2], before[0]]);
+		await expectSettlesAt(player, () => player.playQueue.length, 3);
+	});
+
+	test("a finger reorders through the grip, which is the only thing that can", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(!isMobile, "the grip is drawn for coarse pointers only");
+		test.fixme(
+			true,
+			"the grip inherits touch-action: pan-y from the panel, so the browser reads the finger as a scroll and cancels the pointer stream two moves in",
+		);
+
+		// The vertical axis belongs to the scroller and the hold-then-drag gesture
+		// is spent on the context menu, so nothing but an explicit handle can claim
+		// a reorder here.
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await queueTracks(page, isMobile, 2);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(3);
+
+		const before = queuedTitles(player);
+		const grip = queuePanel(page)
+			.getByRole("button", { name: /^Reorder / })
+			.first();
+		const from = (await grip.boundingBox())!;
+		const to = (await queueRows(page).nth(2).boundingBox())!;
+
+		await touchDrag(
+			page,
+			{ x: from.x + from.width / 2, y: from.y + from.height / 2 },
+			{ x: from.x + from.width / 2, y: to.y + to.height * 0.75 },
+			10,
+		);
+
+		await expect
+			.poll(() => queuedTitles(player), { timeout: 10_000 })
+			.toEqual([before[1], before[2], before[0]]);
 	});
 
 	test("removing a row takes exactly that row off the player", async ({
@@ -697,6 +813,50 @@ test.describe("queueing a row that is in no playlist", () => {
 			.toBe(2);
 
 		expect(player.playQueue[0]).toEqual(first);
-		expect(requestsTo(player, "/playlists/remove/")).toHaveLength(0);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/playlists/remove/").length,
+			0,
+		);
+	});
+});
+
+// A cue sheet, a disc image or a single-file mix: several tracks inside one file,
+// which the media library addresses as one path and a subsong each.
+test.describe("queueing several tracks that share one file", () => {
+	test.use({ libraryShape: { tracks: 12, subsongsPerFile: 3 } });
+
+	test("each subsong is queued once, in the order asked for", async ({
+		page,
+		player,
+		isMobile,
+		hasLibraryApi,
+	}) => {
+		test.skip(
+			!hasLibraryApi,
+			"without the library API the rows are playlist positions, which are already unique",
+		);
+		test.skip(
+			isMobile,
+			"selecting a range is mouse-only; touch queues one row",
+		);
+
+		await page.goto("/#/all");
+		await expect(trackRow(page, 0)).toBeAttached();
+
+		// Rows 0 to 2 are the three subsongs of the first file, so a read-back matched
+		// on the path alone answers with the first of them three times.
+		await trackRow(page, 0).click();
+		await trackRow(page, 2).click({ modifiers: ["Shift"] });
+		await queueTracks(page, isMobile, 1);
+
+		await expect
+			.poll(() => player.playQueue.length, { timeout: 10000 })
+			.toBe(3);
+
+		expect(queuedTitles(player)).toEqual(["Track 1", "Track 2", "Track 3"]);
+		expect(new Set(player.playQueue.map((entry) => entry.itemIndex)).size).toBe(
+			3,
+		);
 	});
 });

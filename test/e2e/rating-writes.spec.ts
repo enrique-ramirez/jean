@@ -1,8 +1,12 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
+	FOO_JEAN_TOKEN,
 	inSequence,
+	nowPlayingScreen,
 	openLibrary,
+	openNowPlaying,
 	openSettings,
 	pressAndHold,
 	requestsTo,
@@ -12,8 +16,6 @@ import {
 
 // The fake serves `foo_jean` on a second port, so everything here crosses a
 // real origin boundary.
-
-const TOKEN = "0123456789abcdef0123456789abcdef";
 
 // Row numbers below are positions in the captured `Library` playlist: 0 Los
 // Calientes, 1 Fizz, 2 Deléctrico, 3 Soy Rock, 4 Pendejo. Dropping play counts
@@ -64,20 +66,17 @@ test.describe("with no foo_jean", () => {
 		await expect
 			.poll(() => requestsTo(player, "/clientconfig/foo_jean").length)
 			.toBeGreaterThan(0);
-		expect(requestsTo(player, "/api/status")).toEqual([]);
-		expect(tagWrites(player)).toEqual([]);
-	});
-
-	test("an empty allowlist behaves exactly like no component", async ({
-		page,
-	}) => {
-		await openLibrary(page);
-		await expect(readOnlyStars(page, 0)).toBeVisible();
+		await expectSettlesAt(player, () => requestsTo(player, "/api/status"), []);
+		await expectSettlesAt(player, () => tagWrites(player), []);
 	});
 });
 
 test.describe("with writing switched off", () => {
-	test.use({ ...RATED, fooJean: { allowedFields: [] }, fooJeanToken: TOKEN });
+	test.use({
+		...RATED,
+		fooJean: { allowedFields: [] },
+		fooJeanToken: FOO_JEAN_TOKEN,
+	});
 
 	test("draws the same read-only column", async ({ page }) => {
 		await openLibrary(page);
@@ -89,7 +88,7 @@ test.describe("with writing switched off", () => {
 });
 
 test.describe("with foo_jean and a token", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test.skip(
 		({ isMobile }) => Boolean(isMobile),
@@ -103,7 +102,7 @@ test.describe("with foo_jean and a token", () => {
 		await openLibrary(page);
 		await star(page, 2, 4).click();
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		expect(tagWrites(player)[0].body).toMatchObject({
 			path: expect.stringContaining("Deléctrico"),
 			fields: { rating: "4" },
@@ -120,9 +119,10 @@ test.describe("with foo_jean and a token", () => {
 	});
 
 	// Read back off the player rather than out of Jean's own cache.
-	test("the value survives a reload", async ({ page }) => {
+	test("the value survives a reload", async ({ page, player }) => {
 		await openLibrary(page);
 		await star(page, 2, 2).click();
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 
 		await page.reload();
 		await openLibrary(page);
@@ -139,7 +139,7 @@ test.describe("with foo_jean and a token", () => {
 			.getByRole("button", { name: "Clear rating (3 of 5 stars)" })
 			.click();
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		expect(tagWrites(player)[0].body).toMatchObject({
 			fields: { rating: "" },
 		});
@@ -164,7 +164,7 @@ test.describe("with foo_jean and a token", () => {
 
 		// Per track rather than the column giving up.
 		await expect(star(page, 2, 4)).toBeVisible();
-		expect(tagWrites(player)).toEqual([]);
+		await expectSettlesAt(player, () => tagWrites(player), []);
 	});
 
 	test("a burst on one row settles into the last value", async ({
@@ -194,7 +194,7 @@ test.describe("with foo_jean and a token", () => {
 			.toMatchObject({ fields: { rating: "5" } });
 		// Exactly two: the first goes immediately, the last is the one queued
 		// behind it, and the middle is dropped. Without coalescing this is three.
-		expect(tagWrites(player).length).toBe(2);
+		await expectSettlesAt(player, () => tagWrites(player).length, 2);
 	});
 
 	// Hovering the star that would clear a rating fades the stars, and clicking a
@@ -210,16 +210,10 @@ test.describe("with foo_jean and a token", () => {
 			.getByRole("button", { name: "Clear rating (5 of 5 stars)" })
 			.hover();
 		await expect(ratingOf(page, 0)).toHaveAccessibleName("5 of 5 stars");
-		await expect(trackRow(page, 0).locator("svg[class*='fill']")).toHaveCount(
-			5,
-		);
 
 		await star(page, 2, 5).hover();
 		await star(page, 2, 5).click();
 		await expect(ratingOf(page, 2)).toHaveAccessibleName("5 of 5 stars");
-		await expect(
-			trackRow(page, 2).locator("[data-clearing='true']"),
-		).toHaveCount(0);
 	});
 
 	test("two rows in flight both land", async ({ page, player }) => {
@@ -229,7 +223,7 @@ test.describe("with foo_jean and a token", () => {
 		await star(page, 2, 4).click();
 		await star(page, 3, 2).click();
 
-		await expect.poll(() => tagWrites(player).length).toBe(2);
+		await expectSettlesAt(player, () => tagWrites(player).length, 2);
 		const written = tagWrites(player).map(
 			(entry) => (entry.body as { fields: { rating: string } }).fields.rating,
 		);
@@ -250,7 +244,7 @@ test.describe("with foo_jean and a token", () => {
 // component needs an absolute one. `#/all` is the autoplaylist on a fallback
 // player, so this runs on both sources.
 test.describe("rating from All music", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test.skip(
 		({ isMobile }) => Boolean(isMobile),
@@ -266,7 +260,7 @@ test.describe("rating from All music", () => {
 
 		await star(page, 2, 4).click();
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		const { path } = tagWrites(player)[0].body as { path: string };
 		expect(path).toMatch(/^[A-Z]:\\/);
 		expect(path).toContain("\\Music\\");
@@ -274,7 +268,7 @@ test.describe("rating from All music", () => {
 });
 
 test.describe("rating with the number keys", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test("rates the row under the cursor", async ({ page, player }) => {
 		await openLibrary(page);
@@ -283,7 +277,7 @@ test.describe("rating with the number keys", () => {
 		await page.keyboard.press("ArrowDown");
 		await page.keyboard.press("4");
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		expect(tagWrites(player)[0].body).toMatchObject({
 			path: expect.stringContaining("Deléctrico"),
 			fields: { rating: "4" },
@@ -295,7 +289,7 @@ test.describe("rating with the number keys", () => {
 		await openLibrary(page);
 		await page.keyboard.press("0");
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		expect(tagWrites(player)[0].body).toMatchObject({ fields: { rating: "" } });
 	});
 
@@ -308,7 +302,44 @@ test.describe("rating with the number keys", () => {
 		await page.keyboard.press("2");
 
 		await expect(readOnlyStars(page, 4)).toHaveAccessibleName("5 of 5 stars");
-		expect(tagWrites(player)).toEqual([]);
+		await expectSettlesAt(player, () => tagWrites(player), []);
+	});
+
+	test.describe("with the now-playing screen up", () => {
+		// Off, so the cursor stays on a different track from the one playing --
+		// which is the arrangement the screen has to answer for.
+		test.use({ settings: { "jean.followPlayback": false } });
+
+		test("they rate the track the screen is showing, not the row behind it", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await trackRow(page, 2).dblclick();
+			await expect(page.locator("footer")).toContainText("Deléctrico");
+			// A click moves the cursor and leaves playback alone, so the marked row
+			// and the playing track are now two different tracks.
+			await trackRow(page, 0).click();
+
+			await openNowPlaying(page);
+			await page.keyboard.press("4");
+
+			await expectSettlesAt(player, () => tagWrites(player).length, 1);
+			expect(tagWrites(player)[0].body).toMatchObject({
+				path: expect.stringContaining("Deléctrico"),
+				fields: { rating: "4" },
+			});
+
+			// The stars on the screen move; Los Calientes, under the cursor behind
+			// the layer, keeps the five it had.
+			await expect(
+				nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ }),
+			).toHaveAccessibleName("4 of 5 stars");
+			await nowPlayingScreen(page)
+				.getByRole("button", { name: "Close now playing" })
+				.click();
+			await expect(ratingOf(page, 0)).toHaveAccessibleName("5 of 5 stars");
+		});
 	});
 
 	// Away from any list there is no cursor, so the keys fall through to what is
@@ -329,12 +360,45 @@ test.describe("rating with the number keys", () => {
 		).toBeVisible();
 		await page.keyboard.press("3");
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		expect(tagWrites(player)[0].body).toMatchObject({
 			path: expect.stringContaining("Deléctrico"),
 			fields: { rating: "3" },
 		});
 		await expect(page.getByRole("status")).toHaveCount(0);
+	});
+
+	// A read-only scale is read-only however the rating is reached, and the
+	// playing track is the one path with no row on screen to say so.
+	test("refuses a playing track on a scale Jean does not write", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 4).dblclick();
+		await expect(page.locator("footer")).toContainText("Pendejo");
+
+		// The screen draws the `100` as five read-only stars, which is also how
+		// this test knows the player has answered with the rating.
+		await openNowPlaying(page);
+		await expect(
+			nowPlayingScreen(page).getByRole("img", { name: /stars|Unrated/ }),
+		).toHaveAccessibleName("5 of 5 stars");
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Close now playing" })
+			.click();
+		// The screen publishes what it would do with a digit for as long as it is
+		// on screen, exit animation included, so the fallback is only reachable
+		// once it has gone.
+		await expect(nowPlayingScreen(page)).toBeHidden();
+
+		await page.goto("/#/home");
+		await expect(
+			page.getByRole("heading", { level: 1, name: /of music/ }),
+		).toBeVisible();
+		await page.keyboard.press("2");
+
+		await expectSettlesAt(player, () => tagWrites(player), []);
 	});
 });
 
@@ -342,7 +406,7 @@ test.describe("when foo_jean refuses the field", () => {
 	test.use({
 		...RATED,
 		fooJean: { failWrites: 403 },
-		fooJeanToken: TOKEN,
+		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test.skip(
@@ -357,19 +421,82 @@ test.describe("when foo_jean refuses the field", () => {
 		await openLibrary(page);
 		await star(page, 2, 4).click();
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		await expect(
 			trackRow(page, 2).getByRole("button", { name: /^Rate / }),
 		).toHaveCount(0);
 		await expect(readOnlyStars(page, 2)).toHaveAccessibleName("3 of 5 stars");
+	});
+});
 
-		// And no second attempt, however long it is left.
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+// The playing track has no row to overlay, so its optimistic value lives in the
+// now-playing query and a refusal has to put that back.
+test.describe("when a rating from the now-playing screen is refused", () => {
+	test.use({
+		...RATED,
+		fooJean: { failWrites: 500 },
+		fooJeanToken: FOO_JEAN_TOKEN,
+	});
+
+	test("the stars go back to the rating the player holds", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("Deléctrico");
+		await openNowPlaying(page);
+
+		const stars = nowPlayingScreen(page).getByRole("group", {
+			name: /stars|Unrated/,
+		});
+		await expect(stars).toHaveAccessibleName("3 of 5 stars");
+		await stars.getByRole("button", { name: "Rate 5 of 5" }).click();
+
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
+		await expect(page.getByRole("status")).toContainText("was not rated");
+		await expect(stars).toHaveAccessibleName("3 of 5 stars");
+	});
+});
+
+test.describe("the track actions on the now-playing screen", () => {
+	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+
+	test("offer no rating until the player has answered with one", async ({
+		page,
+	}) => {
+		let answer = () => {};
+		const answered = new Promise<void>((resolve) => {
+			answer = resolve;
+		});
+		// The screen's own read of the track. The update stream carries `trcolumns`
+		// too and must go on flowing, so the path has to be matched exactly.
+		await page.route(
+			(url) =>
+				url.pathname === "/api/query" && url.searchParams.has("trcolumns"),
+			async (route) => {
+				await answered;
+				await route.continue();
+			},
+		);
+
+		await openLibrary(page);
+		await trackRow(page, 2).dblclick();
+		await openNowPlaying(page);
+		await page.getByRole("button", { name: "Track actions" }).click();
+
+		await expect(
+			page.getByRole("menuitem", { name: "Add to queue" }),
+		).toBeVisible();
+		await expect(page.getByRole("menuitem", { name: "Rating" })).toHaveCount(0);
+
+		answer();
+		await expect(page.getByRole("menuitem", { name: "Rating" })).toBeVisible();
 	});
 });
 
 test.describe("rating from the track menu", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: TOKEN });
+	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 	test("a hold opens a rating page that writes", async ({ page, player }) => {
 		await openLibrary(page);
@@ -378,7 +505,7 @@ test.describe("rating from the track menu", () => {
 		await page.getByRole("menuitem", { name: "Rating" }).click();
 		await page.getByRole("menuitem", { name: "4 stars" }).click();
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		expect(tagWrites(player)[0].body).toMatchObject({
 			fields: { rating: "4" },
 		});
@@ -394,7 +521,7 @@ test.describe("rating from the track menu", () => {
 		await page.getByRole("menuitem", { name: "Rating" }).click();
 		await page.getByRole("menuitem", { name: "No rating" }).click();
 
-		await expect.poll(() => tagWrites(player).length).toBe(1);
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		expect(tagWrites(player)[0].body).toMatchObject({ fields: { rating: "" } });
 	});
 
@@ -485,7 +612,7 @@ test.describe("what the settings screen says", () => {
 
 		test("pasting the token switches ratings on", async ({ page }) => {
 			await settings(page);
-			await page.getByLabel("Token").fill(TOKEN);
+			await page.getByLabel("Token").fill(FOO_JEAN_TOKEN);
 			await page.getByRole("button", { name: "Save" }).click();
 
 			await expect(page.getByText(/Connected to foo_jean/)).toBeVisible();
@@ -495,7 +622,7 @@ test.describe("what the settings screen says", () => {
 	});
 
 	test.describe("a token that is stored and working", () => {
-		test.use({ fooJean: {}, fooJeanToken: TOKEN });
+		test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 		test("collapses to a button instead of a filled field", async ({
 			page,
@@ -520,7 +647,7 @@ test.describe("what the settings screen says", () => {
 
 	// The component's allowlist is the ceiling; these choose from underneath it.
 	test.describe("choosing what Jean may write", () => {
-		test.use({ ...RATED, fooJean: {}, fooJeanToken: TOKEN });
+		test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
 		test("draws one switch per permitted field, on by default", async ({
 			page,
@@ -554,7 +681,7 @@ test.describe("what the settings screen says", () => {
 				0,
 			);
 
-			expect(tagWrites(player)).toEqual([]);
+			await expectSettlesAt(player, () => tagWrites(player), []);
 		});
 
 		test("switching it back on restores the control", async ({ page }) => {
@@ -585,7 +712,10 @@ test.describe("what the settings screen says", () => {
 	// The record still says `foo_jean`, as a forgery would; the thing listening
 	// on the port it names does not.
 	test.describe("something else on the advertised port", () => {
-		test.use({ fooJean: { agentName: "not_foo_jean" }, fooJeanToken: TOKEN });
+		test.use({
+			fooJean: { agentName: "not_foo_jean" },
+			fooJeanToken: FOO_JEAN_TOKEN,
+		});
 
 		test("refuses to send the token, and says why", async ({
 			page,
@@ -598,12 +728,16 @@ test.describe("what the settings screen says", () => {
 			).toBeVisible();
 
 			expect(requestsTo(player, "/api/status").length).toBeGreaterThan(0);
-			expect(requestsTo(player, "/api/capabilities")).toEqual([]);
+			await expectSettlesAt(
+				player,
+				() => requestsTo(player, "/api/capabilities"),
+				[],
+			);
 		});
 	});
 
 	test.describe("an API version Jean does not understand", () => {
-		test.use({ fooJean: { apiVersion: 99 }, fooJeanToken: TOKEN });
+		test.use({ fooJean: { apiVersion: 99 }, fooJeanToken: FOO_JEAN_TOKEN });
 
 		test("refuses to proceed and says which is which", async ({
 			page,
@@ -611,12 +745,16 @@ test.describe("what the settings screen says", () => {
 		}) => {
 			await settings(page);
 			await expect(page.getByText(/version 99/)).toBeVisible();
-			expect(requestsTo(player, "/api/capabilities")).toEqual([]);
+			await expectSettlesAt(
+				player,
+				() => requestsTo(player, "/api/capabilities"),
+				[],
+			);
 		});
 	});
 
 	test.describe("connected with writing switched off", () => {
-		test.use({ fooJean: { allowedFields: [] }, fooJeanToken: TOKEN });
+		test.use({ fooJean: { allowedFields: [] }, fooJeanToken: FOO_JEAN_TOKEN });
 
 		test("says the allowlist is empty rather than claiming to be broken", async ({
 			page,

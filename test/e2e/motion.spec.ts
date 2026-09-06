@@ -85,9 +85,23 @@ test.describe("with motion allowed", () => {
 		const frames = await overFrames(page, 8, boxOfToggle);
 		expect(new Set(frames).size).toBeGreaterThan(1);
 
-		// A rotated square has a wider bounding box than the square itself.
-		const at = await shape(page);
-		expect(at.painted).toBeGreaterThan(at.laidOut);
+		// A rotated square has a wider bounding box than the square itself -- but
+		// the rotation passes through 0deg on every cycle, where the two are equal.
+		// Read at one instant this asserts which phase the sample happened to land
+		// on; over a span it asserts the rotation.
+		const painted = await overFrames(page, 30, () => {
+			const element = document.querySelector(
+				'footer button[aria-label="Pause"]',
+			) as HTMLElement;
+			return {
+				painted: Number(element.getBoundingClientRect().width.toFixed(2)),
+				laidOut: element.offsetWidth,
+			};
+		});
+		expect(
+			painted.some((at) => at.painted > at.laidOut),
+			"no sampled frame was wider than the button's own box",
+		).toBe(true);
 	});
 });
 
@@ -118,16 +132,17 @@ test.describe("the now-playing arrow", () => {
 		await expect(statusBar(page)).toContainText("Goodnite, Noises Everywhere");
 
 		// The follow is an animated scroll, so racing it means scrolling to the top
-		// and being carried back.
-		await page.waitForTimeout(1000);
-		await page.evaluate(() =>
-			(document.querySelector("main") as HTMLElement).scrollTo(0, 0),
-		);
+		// and being carried back. Scrolled from inside the poll rather than once
+		// after a guessed wait: an animation still running at the guess carries the
+		// view away again and the poll never converges.
 		await expect
 			.poll(() =>
-				page.evaluate(
-					() => (document.querySelector("main") as HTMLElement).scrollTop,
-				),
+				page.evaluate(async () => {
+					const scroller = document.querySelector("main") as HTMLElement;
+					scroller.scrollTo(0, 0);
+					await new Promise((settle) => setTimeout(settle, 120));
+					return scroller.scrollTop;
+				}),
 			)
 			.toBe(0);
 		await expect(pill(page)).toBeVisible();
@@ -142,6 +157,11 @@ test.describe("the now-playing arrow", () => {
 	}) => {
 		await showPill(page, player);
 		const seen = await overFrames(page, 20, arrowAndPill);
+
+		expect(
+			seen.every((frame) => frame.arrow !== null && frame.box !== null),
+			"the pill went missing part way through the sample",
+		).toBe(true);
 
 		const moved = new Set(seen.map((frame) => frame.arrow));
 		expect(moved.size, "the arrow never moved").toBeGreaterThan(1);
@@ -196,6 +216,9 @@ test.describe("the now-playing arrow", () => {
 		await page.emulateMedia({ reducedMotion: "reduce" });
 		await showPill(page, player);
 		const seen = await overFrames(page, 12, arrowAndPill);
+		// A pill that stopped matching mid-sample answers null on every frame, and
+		// a set of nulls has one member: the transform has to have been read.
+		expect(seen.every((frame) => frame.arrow !== null)).toBe(true);
 		expect(new Set(seen.map((frame) => frame.arrow)).size).toBe(1);
 	});
 });

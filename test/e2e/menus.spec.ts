@@ -1,6 +1,7 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	openLibrary,
 	openSidebar,
 	pressAndHold,
@@ -186,9 +187,12 @@ test.describe("while a menu is open", () => {
 		await page.keyboard.press("ArrowRight");
 		await page.keyboard.press("Space");
 
-		expect(
-			player.requests.filter((entry) => entry.path.startsWith("/api/player")),
-		).toEqual([]);
+		await expectSettlesAt(
+			player,
+			() =>
+				player.requests.filter((entry) => entry.path.startsWith("/api/player")),
+			[],
+		);
 	});
 
 	test("Escape closes it and does nothing else", async ({ page, isMobile }) => {
@@ -266,9 +270,12 @@ test.describe("a dropdown owns the keyboard too", () => {
 
 		// And the horizontal pair, which is what seeks the player everywhere else.
 		await page.keyboard.press("ArrowRight");
-		expect(
-			player.requests.filter((entry) => entry.path.startsWith("/api/player")),
-		).toEqual([]);
+		await expectSettlesAt(
+			player,
+			() =>
+				player.requests.filter((entry) => entry.path.startsWith("/api/player")),
+			[],
+		);
 	});
 });
 

@@ -36,6 +36,7 @@ import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { LibraryListView } from "@/features/library/LibraryListView";
 import { NowPlaying } from "@/features/now-playing/NowPlaying";
 import { StatusBar } from "@/features/now-playing/StatusBar";
+import { useNowPlayingRating } from "@/features/now-playing/useNowPlayingRating";
 import { PlaylistView } from "@/features/playlist/PlaylistView";
 import { QueuePanel } from "@/features/queue/QueuePanel";
 import { LibrarySearchField } from "@/features/search/LibrarySearchField";
@@ -129,7 +130,9 @@ function Shell() {
 	const search = useLibrarySearch(library, playlists);
 	const home = useHomePlayback({ library, playlists, navigate });
 
-	const rateShortcut = useRateShortcut();
+	// `0`-`5` away from any list rate the playing track, and the now-playing screen owns what that means -- the audible copy, and whether its scale may be written at all.
+	const { write: ratePlaying } = useNowPlayingRating();
+	const rateShortcut = useRateShortcut(ratePlaying);
 	const playing = usePlayingFrom();
 	const playingFrom = useMemo(() => routeOfPlayingSet(playing), [playing]);
 

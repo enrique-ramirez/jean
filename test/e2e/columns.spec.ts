@@ -1,6 +1,7 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	inSequence,
 	openLibrary,
 	requestsTo,
@@ -63,8 +64,7 @@ test.describe("showing and hiding columns", () => {
 		// than being an empty column that happens to be the right width.
 		await expect(trackRow(page, 0)).toContainText("2001");
 
-		await page.waitForTimeout(300);
-		expect(itemFetches(player)).toBe(fetches);
+		await expectSettlesAt(player, () => itemFetches(player), fetches);
 	});
 
 	test("turning one off takes the cell with it", async ({ page }) => {
@@ -191,9 +191,10 @@ test.describe("on a phone", () => {
 
 		// Once the fixed column widths exceed the viewport the flexible names cell
 		// collapses to nothing, so the compact layout caps the count rather than
-		// trusting the grid.
+		// trusting the grid. Exactly two: zero optional columns satisfies a cap and
+		// is its own bug -- a phone showing no Time at all after six were turned on.
 		const measured = await templateMatchesCells(page);
-		expect(measured.cells - LEADING).toBeLessThanOrEqual(2);
+		expect(measured.cells - LEADING).toBe(2);
 		expect(measured.tracks).toBe(measured.cells);
 	});
 });

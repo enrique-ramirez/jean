@@ -16,6 +16,10 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 
 	useKeyboardOwnership(SETTINGS_KEYBOARD);
 
+	// Read through a ref so the trap is installed once per open. The shell rebuilds `onDismiss` on every render, and every re-run of the effect below refocuses the dialog -- which takes the caret out of whichever field was being typed into, on every push the player sends.
+	const dismiss = useRef(onDismiss);
+	dismiss.current = onDismiss;
+
 	// Capture phase: the hotkey manager binds keydown on the document at bubble, where Escape also clears the track selection behind the scrim.
 	useEffect(() => {
 		const opener = document.activeElement as HTMLElement | null;
@@ -25,7 +29,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 			if (event.key === "Escape") {
 				event.preventDefault();
 				event.stopPropagation();
-				onDismiss();
+				dismiss.current();
 				return;
 			}
 
@@ -56,7 +60,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 			document.removeEventListener("keydown", onKeyDown, true);
 			opener?.focus?.();
 		};
-	}, [onDismiss]);
+	}, []);
 
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: a dismissal scrim, not a control

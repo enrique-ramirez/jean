@@ -20,7 +20,7 @@ export type PlaybackBadge = keyof typeof LABEL_FILL;
 const cache = new Map<string, string>();
 
 let icon: HTMLLinkElement | null = null;
-let canvas: CanvasRenderingContext2D | null = null;
+let drawing: CanvasRenderingContext2D | null = null;
 let source: HTMLImageElement | null = null;
 let pending: Promise<HTMLImageElement> | null = null;
 let timer: number | undefined;
@@ -36,21 +36,21 @@ function apply(href: string, type: string) {
 	icon.href = href;
 }
 
-function context() {
-	if (!canvas) {
+function drawingContext() {
+	if (!drawing) {
 		const element = document.createElement("canvas");
 		element.width = SIZE;
 		element.height = SIZE;
-		canvas = element.getContext("2d");
+		drawing = element.getContext("2d");
 	}
-	return canvas as CanvasRenderingContext2D;
+	return drawing as CanvasRenderingContext2D;
 }
 
-function dot(ctx: CanvasRenderingContext2D, radius: number, fill: string) {
-	ctx.beginPath();
-	ctx.arc(SIZE / 2, SIZE / 2, radius, 0, 2 * Math.PI);
-	ctx.fillStyle = fill;
-	ctx.fill();
+function dot(context: CanvasRenderingContext2D, radius: number, fill: string) {
+	context.beginPath();
+	context.arc(SIZE / 2, SIZE / 2, radius, 0, 2 * Math.PI);
+	context.fillStyle = fill;
+	context.fill();
 }
 
 function disc(state: PlaybackBadge, turn: number) {
@@ -58,22 +58,22 @@ function disc(state: PlaybackBadge, turn: number) {
 	const hit = cache.get(key);
 	if (hit) return hit;
 
-	const ctx = context();
+	const context = drawingContext();
 	const centre = SIZE / 2;
-	ctx.clearRect(0, 0, SIZE, SIZE);
-	ctx.save();
-	ctx.translate(centre, centre);
-	ctx.rotate((turn / FRAMES) * 2 * Math.PI);
-	ctx.drawImage(source as HTMLImageElement, -centre, -centre, SIZE, SIZE);
-	ctx.restore();
+	context.clearRect(0, 0, SIZE, SIZE);
+	context.save();
+	context.translate(centre, centre);
+	context.rotate((turn / FRAMES) * 2 * Math.PI);
+	context.drawImage(source as HTMLImageElement, -centre, -centre, SIZE, SIZE);
+	context.restore();
 
 	const fill = LABEL_FILL[state];
 	if (fill) {
-		dot(ctx, LABEL_R, fill);
-		dot(ctx, HOLE_R, HOLE_FILL);
+		dot(context, LABEL_R, fill);
+		dot(context, HOLE_R, HOLE_FILL);
 	}
 
-	const url = ctx.canvas.toDataURL("image/png");
+	const url = context.canvas.toDataURL("image/png");
 	cache.set(key, url);
 	return url;
 }

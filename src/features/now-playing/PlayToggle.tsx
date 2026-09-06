@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { classNames } from "@/shared/lib/classNames";
 import { PauseIcon, PlayIcon } from "@/shared/ui/icons";
 import styles from "./PlayToggle.module.css";
 
@@ -40,7 +41,7 @@ export function PlayToggle({
 	return (
 		<button
 			type="button"
-			className={[styles.toggle, className].filter(Boolean).join(" ")}
+			className={classNames(styles.toggle, className)}
 			data-size={variant}
 			data-playing={isPlaying}
 			data-motion={motion}

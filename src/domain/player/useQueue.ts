@@ -8,16 +8,9 @@ import {
 	removeFromPlayQueue,
 } from "@/shared/api/beefweb";
 import type { PlayQueueItem } from "@/shared/api/types";
-import { descending, inSequence } from "@/shared/lib/sequence";
+import { inSequence } from "@/shared/lib/sequence";
 import { pushToast } from "@/shared/ui/toastStore";
-import {
-	holdQueue,
-	moved,
-	QUEUE_KEY,
-	readQueue,
-	rebuildFrom,
-	sameQueue,
-} from "./queue";
+import { holdQueue, movePlan, QUEUE_KEY, readQueue, sameQueue } from "./queue";
 import { askToShowQueue } from "./showQueue";
 import { usePermissions } from "./usePlayer";
 
@@ -45,7 +38,8 @@ export function useQueueActions() {
 	// beefweb publishes no permission for the queue itself, and an instance refusing playlist writes cannot hold a queue either.
 	const canQueue = permissions.changePlaylists !== false;
 
-	const write = useCallback(
+	// The player passes through every intermediate state of a queue mutation and pushes each one, so the pushes are held until the truth has been read back.
+	const underQueueHold = useCallback(
 		async (run: () => Promise<unknown>) => {
 			const release = holdQueue();
 			let ok = true;
@@ -83,29 +77,29 @@ export function useQueueActions() {
 			// Before the write rather than after it, so what opens is the queue as it was and the tracks are watched landing in it.
 			askToShowQueue();
 
-			await write(() =>
+			await underQueueHold(() =>
 				inSequence(pairs, (pair) =>
 					addToPlayQueue(pair.playlistId, pair.itemIndex),
 				),
 			);
 		},
-		[canQueue, write],
+		[canQueue, underQueueHold],
 	);
 
 	const remove = useCallback(
 		(at: number) => {
 			if (!canQueue) return Promise.resolve();
 			patch((current) => current.filter((_, index) => index !== at));
-			return write(() => removeFromPlayQueue(at));
+			return underQueueHold(() => removeFromPlayQueue(at));
 		},
-		[canQueue, patch, write],
+		[canQueue, patch, underQueueHold],
 	);
 
 	const clear = useCallback(() => {
 		if (!canQueue) return Promise.resolve();
 		patch(() => []);
-		return write(() => clearPlayQueue());
-	}, [canQueue, patch, write]);
+		return underQueueHold(() => clearPlayQueue());
+	}, [canQueue, patch, underQueueHold]);
 
 	const move = useCallback(
 		async (from: number, to: number) => {
@@ -123,21 +117,17 @@ export function useQueueActions() {
 				return;
 			}
 
-			const next = moved(current, from, to);
-			patch(() => next);
+			const plan = movePlan(current, from, to);
+			patch(() => plan.next);
 
-			const at = rebuildFrom(from, to);
-			await write(async () => {
-				await inSequence(
-					descending(current.length - 1, at),
-					removeFromPlayQueue,
-				);
-				await inSequence(next.slice(at), (item) =>
+			await underQueueHold(async () => {
+				await inSequence(plan.removals, removeFromPlayQueue);
+				await inSequence(plan.additions, (item) =>
 					addToPlayQueue(item.playlistId, item.itemIndex),
 				);
 			});
 		},
-		[canQueue, patch, queryClient, write],
+		[canQueue, patch, queryClient, underQueueHold],
 	);
 
 	return { canQueue, queue, remove, clear, move };

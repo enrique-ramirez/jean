@@ -1,27 +1,8 @@
 import { Search, X } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
-import { fold } from "@/shared/lib/text";
 import { Input } from "@/shared/ui/Input";
 import styles from "./GenreFinder.module.css";
-
-/**
- * The completion drawn behind the caret, or null where there is none to draw.
- *
- * Only offered where the best match *starts with what was typed, character for character* -- the
- * ghost sits under the real text and any other kind of match would print two different strings on
- * top of each other. So `heavy` completes to `Heavy Metal`, and `heavymetal` completes to nothing
- * even though it still finds the genre: the matcher is looser than a completion can be honest about.
- */
-export function completionFor(
-	query: string,
-	best: string | null,
-): string | null {
-	if (!query || !best) return null;
-	if (!fold(best).startsWith(fold(query))) return null;
-	const rest = best.slice(query.length);
-	return rest.length > 0 ? rest : null;
-}
 
 // The centre of the page rather than a control in a corner: an index of a hundred and forty is
 // reached by typing, and everything else here is for the visit where you do not know what you want.
@@ -38,9 +19,7 @@ export function GenreFinder({
 	onChange: (query: string) => void;
 	completion: string | null;
 	matchCount: number;
-	/** Take the completion into the field. */
 	onAccept: () => void;
-	/** Open the best match outright. */
 	onOpen: () => void;
 	inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
@@ -58,9 +37,8 @@ export function GenreFinder({
 			return;
 		}
 
-		// Tab completes rather than leaving the field, which is the one place Jean takes Tab: a
-		// completion nobody can accept without reaching for the mouse is decoration. Only while there
-		// is something to accept, so an empty field still tabs onward.
+		// The one place Jean takes Tab, and only while there is something to accept, so an empty field
+		// still tabs onward.
 		const caretAtEnd =
 			event.currentTarget.selectionStart === query.length &&
 			event.currentTarget.selectionEnd === query.length;

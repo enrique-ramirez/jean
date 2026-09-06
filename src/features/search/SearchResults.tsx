@@ -5,7 +5,11 @@ import { LibrarySetup } from "@/domain/library/LibrarySetup";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
-import { useIsPlaying, usePermissions } from "@/domain/player/usePlayer";
+import {
+	canChangePlaylists,
+	useIsPlaying,
+	usePermissions,
+} from "@/domain/player/usePlayer";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import { Mosaic } from "@/domain/track/Mosaic";
@@ -43,7 +47,7 @@ export function SearchResults({
 
 	const isPlaying = useIsPlaying();
 	// A read-only instance gets a read-only Jean: no button that would 403, and no Shuffle, which without a scratch playlist would shuffle the whole library rather than these results.
-	const canSavePlaylists = usePermissions().changePlaylists === true;
+	const canSavePlaylists = canChangePlaylists(usePermissions());
 
 	const { rows, indices, heat, patina, playedCount } = search.results;
 	const { hasPlayCounts } = useAvailableFields(rows);

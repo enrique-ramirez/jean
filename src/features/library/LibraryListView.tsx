@@ -3,7 +3,11 @@ import { useMemo, useRef } from "react";
 import { GENRES_HREF } from "@/domain/library/genreRoute";
 import type { Library } from "@/domain/library/useLibrary";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
-import { useIsPlaying, usePermissions } from "@/domain/player/usePlayer";
+import {
+	canChangePlaylists,
+	useIsPlaying,
+	usePermissions,
+} from "@/domain/player/usePlayer";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import { Mosaic } from "@/domain/track/Mosaic";
@@ -57,8 +61,8 @@ export function LibraryListView({
 	const { rows, indices, heat, patina, playedCount } = view;
 
 	const isPlaying = useIsPlaying();
-	// Strictly true, not merely "not false": without the permission there is no scratch playlist to make, so Shuffle would shuffle the whole library rather than this view.
-	const canWrite = usePermissions().changePlaylists === true;
+	// Refused playlist writes leave no scratch to make, so Shuffle here would shuffle the whole library rather than this view.
+	const canWrite = canChangePlaylists(usePermissions());
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 

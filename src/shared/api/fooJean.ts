@@ -66,10 +66,11 @@ const looksLikeRecord = (value: unknown): value is DiscoveryRecord =>
 	(value as DiscoveryRecord).name === FOO_JEAN_ID &&
 	isPort((value as DiscoveryRecord).port);
 
+// `null` is beefweb saying nobody has written that id, which is the not-installed signal. It throws where beefweb itself did not answer, so a hiccup is never cached as "not installed".
 export async function fetchDiscoveryRecord(): Promise<DiscoveryRecord | null> {
 	const response = await fetch(`/api/clientconfig/${FOO_JEAN_ID}`);
 	if (response.status === 404) return null;
-	if (!response.ok) return null;
+	if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
 	const body: unknown = await response.json().catch(() => null);
 	return looksLikeRecord(body) ? body : null;
@@ -105,6 +106,61 @@ export async function probeStatus(origin: string): Promise<ProbeResult> {
 }
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+const JSON_BODY = { "Content-Type": "application/json" };
+
+// One sentence for every request that never got an answer at all, whichever route asked.
+const UNREACHABLE = "Could not reach foo_jean.";
+
+// `null` is a refused connection, a CORS rejection or the timeout -- the cases with no response to
+// classify. Every caller reports that in its own words, because the remedy differs by route.
+const postJson = async (
+	url: string,
+	body: unknown,
+	{
+		token,
+		timeoutMs = PROBE_TIMEOUT_MS,
+	}: { token?: string; timeoutMs?: number } = {},
+): Promise<Response | null> => {
+	try {
+		return await withTimeout(timeoutMs, (signal) =>
+			fetch(url, {
+				method: "POST",
+				headers: token ? { ...bearer(token), ...JSON_BODY } : JSON_BODY,
+				body: JSON.stringify(body),
+				signal,
+			}),
+		);
+	} catch {
+		return null;
+	}
+};
+
+// An authenticated read whose every failure is one answer: `null`. The optional features built on
+// these lose a correction, a roster or a preview when the component will not answer, and none of
+// them is worth an error path of its own.
+const authedJson = async <T>(
+	origin: string,
+	token: string,
+	path: string,
+	// Headers as a plain object, not a `Headers`: this spreads them onto the bearer, and spreading a
+	// `Headers` instance yields `{}` -- so a POST would silently lose its content type.
+	init?: Omit<RequestInit, "headers"> & { headers?: Record<string, string> },
+): Promise<T | null> => {
+	try {
+		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
+			const response = await fetch(`${origin}${path}`, {
+				...init,
+				headers: { ...bearer(token), ...init?.headers },
+				signal,
+			});
+			if (!response.ok) return null;
+			return (await response.json()) as T;
+		});
+	} catch {
+		return null;
+	}
+};
 
 export type CapabilitiesResult =
 	| { ok: true; capabilities: FooJeanCapabilities }
@@ -166,23 +222,12 @@ export async function writeTags(
 	token: string,
 	request: TagWriteRequest,
 ): Promise<WriteResult> {
-	let response: Response;
-	try {
-		response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
-			fetch(`${origin}/api/tags`, {
-				method: "POST",
-				headers: { ...bearer(token), "Content-Type": "application/json" },
-				body: JSON.stringify(request),
-				signal,
-			}),
-		);
-	} catch {
-		return {
-			ok: false,
-			reason: "unreachable",
-			message: "Could not reach foo_jean.",
-		};
-	}
+	const response = await postJson(`${origin}/api/tags`, request, {
+		token,
+		timeoutMs: WRITE_TIMEOUT_MS,
+	});
+	if (!response)
+		return { ok: false, reason: "unreachable", message: UNREACHABLE };
 
 	if (response.ok)
 		return { ok: true, written: (await response.json()) as TagWritten };
@@ -235,6 +280,8 @@ export interface FooJeanDiscovery {
 	// Non-null exactly when the probe succeeded, so holding it is proof the port answered `/api/status` as `foo_jean`. Pairing needs that before it has a token.
 	origin: string | null;
 	token: string | null;
+	// A timeout or a refused connection rather than an answer. The caller asks again; every other outcome is the component's own word and is cached.
+	retryable: boolean;
 }
 
 // The order is the security model: read the hint, prove the port with an unauthenticated call, and only then attach the token.
@@ -242,9 +289,14 @@ export interface FooJeanDiscovery {
 export async function discoverFooJean(
 	token: string | null,
 ): Promise<FooJeanDiscovery> {
-	const absent = { origin: null, token: null };
-	const record = await fetchDiscoveryRecord().catch(() => null);
-	if (!record) return { state: { kind: "absent" }, ...absent };
+	const unproven = { origin: null, token: null };
+	const settled = { ...unproven, retryable: false };
+	const transient = { ...unproven, retryable: true };
+
+	// One slow answer must not read as "not installed" for the rest of the session.
+	const record = await fetchDiscoveryRecord().catch(() => undefined);
+	if (record === undefined) return { state: { kind: "absent" }, ...transient };
+	if (record === null) return { state: { kind: "absent" }, ...settled };
 
 	if (!record.listening) {
 		return {
@@ -254,7 +306,7 @@ export async function discoverFooJean(
 				error: record.error ?? "The component could not start.",
 				portInUse: Boolean(record.portInUse),
 			},
-			...absent,
+			...settled,
 		};
 	}
 
@@ -262,28 +314,36 @@ export async function discoverFooJean(
 	const probe = await probeStatus(origin);
 
 	if (!probe.ok) {
-		const state: FooJeanState =
-			probe.reason === "unsupported"
-				? { kind: "unsupported", record, apiVersion: probe.apiVersion }
-				: probe.reason === "impostor"
-					? { kind: "impostor", record }
-					: { kind: "unreachable", record };
-		return { state, ...absent };
+		if (probe.reason === "unreachable")
+			return { state: { kind: "unreachable", record }, ...transient };
+		return {
+			state:
+				probe.reason === "unsupported"
+					? { kind: "unsupported", record, apiVersion: probe.apiVersion }
+					: { kind: "impostor", record },
+			...settled,
+		};
 	}
 
 	const { status } = probe;
-	const proven = { origin, token: null };
 
-	if (!token) return { state: { kind: "no-token", record, status }, ...proven };
+	if (!token)
+		return {
+			state: { kind: "no-token", record, status },
+			origin,
+			token: null,
+			retryable: false,
+		};
 
 	const capabilities = await fetchCapabilities(origin, token);
 	if (!capabilities.ok) {
+		if (capabilities.reason === "unreachable")
+			return { state: { kind: "unreachable", record }, ...transient };
 		return {
-			state:
-				capabilities.reason === "unauthorized"
-					? { kind: "unauthorized", record, status }
-					: { kind: "unreachable", record },
-			...(capabilities.reason === "unauthorized" ? proven : absent),
+			state: { kind: "unauthorized", record, status },
+			origin,
+			token: null,
+			retryable: false,
 		};
 	}
 
@@ -296,6 +356,7 @@ export async function discoverFooJean(
 		},
 		origin,
 		token,
+		retryable: false,
 	};
 }
 
@@ -323,23 +384,11 @@ export async function issueStreamTicket(
 	token: string,
 	device: DeviceIdentity,
 ): Promise<TicketResult> {
-	let response: Response;
-	try {
-		response = await withTimeout(PROBE_TIMEOUT_MS, (signal) =>
-			fetch(`${origin}/api/stream/ticket`, {
-				method: "POST",
-				headers: { ...bearer(token), "Content-Type": "application/json" },
-				body: JSON.stringify(device),
-				signal,
-			}),
-		);
-	} catch {
-		return {
-			ok: false,
-			reason: "unreachable",
-			message: "Could not reach foo_jean.",
-		};
-	}
+	const response = await postJson(`${origin}/api/stream/ticket`, device, {
+		token,
+	});
+	if (!response)
+		return { ok: false, reason: "unreachable", message: UNREACHABLE };
 
 	if (response.ok)
 		return { ok: true, ticket: (await response.json()) as StreamTicket };
@@ -361,42 +410,12 @@ export const streamUrl = (origin: string, ticket: string, format: string) =>
 	`${origin}/api/stream?ticket=${encodeURIComponent(ticket)}&format=${encodeURIComponent(format)}`;
 
 // `null` rather than a failure shape: a missing timeline costs the progress correction and nothing else.
-export async function fetchStreamTimeline(
-	origin: string,
-	token: string,
-): Promise<StreamTimeline | null> {
-	try {
-		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
-			const response = await fetch(`${origin}/api/stream/timeline`, {
-				headers: bearer(token),
-				signal,
-			});
-			if (!response.ok) return null;
-			return (await response.json()) as StreamTimeline;
-		});
-	} catch {
-		return null;
-	}
-}
+export const fetchStreamTimeline = (origin: string, token: string) =>
+	authedJson<StreamTimeline>(origin, token, "/api/stream/timeline");
 
 // `null` rather than a failure shape, for the same reason as the timeline: without it the picker shows this device and the player and says nothing about anybody else.
-export async function fetchStreamListeners(
-	origin: string,
-	token: string,
-): Promise<StreamListeners | null> {
-	try {
-		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
-			const response = await fetch(`${origin}/api/stream/listeners`, {
-				headers: bearer(token),
-				signal,
-			});
-			if (!response.ok) return null;
-			return (await response.json()) as StreamListeners;
-		});
-	} catch {
-		return null;
-	}
-}
+export const fetchStreamListeners = (origin: string, token: string) =>
+	authedJson<StreamListeners>(origin, token, "/api/stream/listeners");
 
 // ---- what beefweb cannot say about a playlist -------------------------------
 
@@ -414,21 +433,12 @@ export async function fetchPlaylistAnnotations(
 	origin: string,
 	token: string,
 ): Promise<PlaylistAnnotation[] | null> {
-	try {
-		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
-			const response = await fetch(`${origin}/api/playlists`, {
-				headers: bearer(token),
-				signal,
-			});
-			if (!response.ok) return null;
-			const body = (await response.json()) as {
-				playlists?: PlaylistAnnotation[];
-			};
-			return body.playlists ?? null;
-		});
-	} catch {
-		return null;
-	}
+	const body = await authedJson<{ playlists?: PlaylistAnnotation[] }>(
+		origin,
+		token,
+		"/api/playlists",
+	);
+	return body?.playlists ?? null;
 }
 
 /**
@@ -439,26 +449,12 @@ export async function fetchPlaylistAnnotations(
  * Debounced by the caller: it runs on foobar2000's main thread, so one request per keystroke is one
  * main-thread callback per keystroke.
  */
-export async function previewQuery(
-	origin: string,
-	token: string,
-	query: string,
-): Promise<QueryPreview | null> {
-	try {
-		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
-			const response = await fetch(`${origin}/api/autoplaylists/preview`, {
-				method: "POST",
-				headers: { ...bearer(token), "Content-Type": "application/json" },
-				body: JSON.stringify({ query }),
-				signal,
-			});
-			if (!response.ok) return null;
-			return (await response.json()) as QueryPreview;
-		});
-	} catch {
-		return null;
-	}
-}
+export const previewQuery = (origin: string, token: string, query: string) =>
+	authedJson<QueryPreview>(origin, token, "/api/autoplaylists/preview", {
+		method: "POST",
+		headers: JSON_BODY,
+		body: JSON.stringify({ query }),
+	});
 
 export type CreatedAutoPlaylist =
 	| { ok: true; playlist: PlaylistAnnotation }
@@ -470,19 +466,11 @@ export async function createAutoPlaylist(
 	token: string,
 	request: AutoPlaylistRequest,
 ): Promise<CreatedAutoPlaylist> {
-	let response: Response;
-	try {
-		response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
-			fetch(`${origin}/api/autoplaylists`, {
-				method: "POST",
-				headers: { ...bearer(token), "Content-Type": "application/json" },
-				body: JSON.stringify(request),
-				signal,
-			}),
-		);
-	} catch {
-		return { ok: false, message: "Could not reach foo_jean." };
-	}
+	const response = await postJson(`${origin}/api/autoplaylists`, request, {
+		token,
+		timeoutMs: WRITE_TIMEOUT_MS,
+	});
+	if (!response) return { ok: false, message: UNREACHABLE };
 
 	if (response.ok)
 		return {
@@ -499,7 +487,7 @@ export async function createAutoPlaylist(
 export function leaveStream(origin: string, token: string, deviceId: string) {
 	void fetch(`${origin}/api/stream/leave`, {
 		method: "POST",
-		headers: { ...bearer(token), "Content-Type": "application/json" },
+		headers: { ...bearer(token), ...JSON_BODY },
 		body: JSON.stringify({ deviceId }),
 	}).catch(() => {});
 }
@@ -519,28 +507,14 @@ export type PairFailure =
 export type PairResult = { ok: true; token: string } | PairFailure;
 
 // Pairing is a write, so the caller must probe `/api/status` first and confirm this really is `foo_jean` before posting to the port a forgeable record named.
-// `Content-Type: application/json` is what makes the request preflighted: the component refuses anything else, so no page can fire a simple POST blind and spend the single grant.
+// The one route here that sends no token, and the `Content-Type: application/json` every request carries is what makes it preflighted: the component refuses anything else, so no page can fire a simple POST blind and spend the single grant.
 export async function pairWithAgent(
 	origin: string,
 	name: string,
 ): Promise<PairResult> {
-	let response: Response;
-	try {
-		response = await withTimeout(PROBE_TIMEOUT_MS, (signal) =>
-			fetch(`${origin}/api/pair`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(name ? { name } : {}),
-				signal,
-			}),
-		);
-	} catch {
-		return {
-			ok: false,
-			reason: "unreachable",
-			message: "Could not reach foo_jean.",
-		};
-	}
+	const response = await postJson(`${origin}/api/pair`, name ? { name } : {});
+	if (!response)
+		return { ok: false, reason: "unreachable", message: UNREACHABLE };
 
 	if (response.ok) {
 		const body = (await response.json()) as Paired;

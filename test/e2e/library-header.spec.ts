@@ -10,16 +10,20 @@ const heading = (page: Page) =>
 const door = (page: Page, id: string) =>
 	viewHeader(page).locator(`[data-door="${id}"]`);
 
-// The figure drawn under a given noun, or null when the header draws none.
+// The figure drawn under a given noun, or null when the header draws none, read
+// off the card that draws it rather than by walking siblings in the markup. The
+// card's text is the count and then its label, so the count is anchored; read
+// out of the whole header it runs on from the record named in the card before
+// -- "Album 1" followed by "1 artist" is "Album 11artist".
+//
 // `textContent` rather than `innerText`: on a phone the tracks card is hidden by
 // CSS, and what the header decided to draw is still the thing under test.
 const figure = async (page: Page, noun: string) => {
-	const label = viewHeader(page).getByText(new RegExp(`^${noun}s?$`));
-	if ((await label.count()) === 0) return null;
-	const count = await label
-		.locator("xpath=preceding-sibling::span")
-		.textContent();
-	return (count ?? "").trim();
+	const card = door(page, `${noun}s`);
+	if ((await card.count()) === 0) return null;
+	const text = (await card.textContent()) ?? "";
+	const found = text.match(new RegExp(`^([\\d,]+)\\s*${noun}`));
+	return found ? found[1] : null;
 };
 
 // The genre bars sit outside the header on purpose: see
@@ -181,7 +185,12 @@ test.describe("a rip with no year tags", () => {
 		await page.goto("/");
 		await settled(page);
 
-		await expect(viewHeader(page)).not.toContainText("–");
+		// The eyebrow reads "Your library" and nothing after it. A positive claim,
+		// because "no en dash anywhere in the header" passes for a header that drew
+		// nothing at all and breaks the day unrelated copy uses one.
+		await expect(
+			viewHeader(page).getByText("Your library", { exact: true }),
+		).toBeVisible();
 		expect(await figure(page, "album")).toBe("6");
 	});
 });
@@ -261,5 +270,25 @@ test.describe("a library two people tagged", () => {
 		// drift `sameTagValue` absorbs.
 		expect(await figure(page, "artist")).toBe("1");
 		expect(await figure(page, "album")).toBe("2");
+	});
+});
+
+test.describe("a library a tagger left whitespace in", () => {
+	test.use({
+		// The autoplaylist is the one source `retagged` reaches, and Home reads
+		// whichever of the two the player offers.
+		library: { supported: false },
+		// One of Jar Of Flies' seven tracks, with a space on the end of the album
+		// tag. The other six spell it exactly.
+		retagged: { Nutshell: { "%album%": "Jar Of Flies " } },
+	});
+
+	test("an album is one album whether or not its tag is padded", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await settled(page);
+
+		expect(await figure(page, "album")).toBe("5");
 	});
 });

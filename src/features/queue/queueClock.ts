@@ -26,7 +26,10 @@ const subscribe = (listener: () => void) => {
 
 const getSnapshot = () => tick;
 
+// A module constant, not a fresh closure per render: `useSyncExternalStore` tears down and reinstalls a subscription whose function identity changed, so an inline one would do that on every render of every idle countdown.
+const never = () => () => {};
+
 // Off while playback is not playing, where the numbers are standing still.
 export function useQueueClock(active: boolean) {
-	return useSyncExternalStore(active ? subscribe : () => () => {}, getSnapshot);
+	return useSyncExternalStore(active ? subscribe : never, getSnapshot);
 }

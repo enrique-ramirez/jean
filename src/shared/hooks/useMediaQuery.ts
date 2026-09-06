@@ -6,12 +6,12 @@ interface QueryStore {
 	matches: () => boolean;
 }
 
-const lists = new Map<string, QueryStore>();
+const stores = new Map<string, QueryStore>();
 
-const listFor = (query: string): QueryStore => {
-	if (!lists.has(query)) {
+const storeFor = (query: string): QueryStore => {
+	if (!stores.has(query)) {
 		const list = window.matchMedia(query);
-		lists.set(query, {
+		stores.set(query, {
 			subscribe: (onChange) => {
 				list.addEventListener("change", onChange);
 				return () => list.removeEventListener("change", onChange);
@@ -19,12 +19,12 @@ const listFor = (query: string): QueryStore => {
 			matches: () => list.matches,
 		});
 	}
-	return lists.get(query) as QueryStore;
+	return stores.get(query) as QueryStore;
 };
 
 export function useMediaQuery(query: string): boolean {
-	const list = listFor(query);
-	return useSyncExternalStore(list.subscribe, list.matches, () => false);
+	const store = storeFor(query);
+	return useSyncExternalStore(store.subscribe, store.matches, () => false);
 }
 
 // The JavaScript breakpoint, and it is not the CSS one: this drives what is a different component below it, while the same component at a different size belongs to a media query in CSS.

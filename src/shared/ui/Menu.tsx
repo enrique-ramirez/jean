@@ -1,6 +1,5 @@
 import {
 	type ButtonHTMLAttributes,
-	type ComponentType,
 	type ReactNode,
 	useCallback,
 	useLayoutEffect,
@@ -8,6 +7,8 @@ import {
 } from "react";
 
 import { useDismissable } from "@/shared/hooks/useDismissable";
+import { classNames } from "@/shared/lib/classNames";
+import type { IconComponent } from "./icons";
 import styles from "./Menu.module.css";
 import { handleMenuKeys, useFocusCapture } from "./menuKeys";
 
@@ -38,7 +39,7 @@ export function Menu({
 
 	// A trigger near an edge puts a wide popover off screen, and only the layout can know that.
 	// Written to the element rather than into state: this runs on every resize, and a render per event would repaint whatever the menu sits over.
-	const clamp = useCallback(() => {
+	const keepInWindow = useCallback(() => {
 		const element = menuRef.current;
 		if (!element) return;
 
@@ -58,11 +59,11 @@ export function Menu({
 
 	useLayoutEffect(() => {
 		if (!isOpen) return undefined;
-		clamp();
+		keepInWindow();
 		// Rotating the phone moves the anchor without reopening the menu.
-		window.addEventListener("resize", clamp);
-		return () => window.removeEventListener("resize", clamp);
-	}, [isOpen, clamp]);
+		window.addEventListener("resize", keepInWindow);
+		return () => window.removeEventListener("resize", keepInWindow);
+	}, [isOpen, keepInWindow]);
 
 	return (
 		<div className={styles.anchor} ref={ref}>
@@ -72,7 +73,7 @@ export function Menu({
 				// biome-ignore lint/a11y/noStaticElementInteractions: menu panel, see above
 				<div
 					ref={menuRef}
-					className={[styles.menu, className].filter(Boolean).join(" ")}
+					className={classNames(styles.menu, className)}
 					data-align={align}
 					role={role}
 					tabIndex={-1}
@@ -96,11 +97,7 @@ export function MenuItem({
 	children,
 	...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-	icon?: ComponentType<{
-		size?: number;
-		strokeWidth?: number;
-		"aria-hidden"?: "true";
-	}>;
+	icon?: IconComponent;
 	shortcut?: string;
 }) {
 	return (

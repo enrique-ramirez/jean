@@ -9,6 +9,7 @@ import {
 } from "@/domain/player/audience";
 import { type ListenPhase, useListener } from "@/domain/player/useListener";
 import { useIsPlaying, useVolume } from "@/domain/player/usePlayer";
+import type { PlayerInfo } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { Equalizer } from "@/shared/ui/Equalizer";
 import styles from "./ListenHere.module.css";
@@ -17,6 +18,9 @@ import { VolumeGlyph, VolumeSlider } from "./Volume";
 // An output picker, and under it a roster.
 // The two are different kinds of thing and are drawn as such: the top rows move this device's sound, and the rest is who else has it. Audio cannot be sent to a device that is not already asking for it -- starting playback in a browser takes a gesture on that browser -- so there is nothing in the roster to press.
 // Every row that has the sound is marked with the same bars a playing track carries, which makes "where is it coming out" one glance rather than a vocabulary. Taken from AirPlay's card, along with the fader per row; the checkmark it marks the chosen device with is what was left behind, because two outputs can be live at once and a tick says one was picked.
+
+// What to call the player: foobar2000 reports a title the owner can change and falls back to its own name.
+export const playerNameOf = (info: PlayerInfo) => info.title ?? info.name;
 
 // What the row under "Listen here" says, in the states where it has something to say.
 function explain(phase: ListenPhase): string | null {

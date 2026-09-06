@@ -187,35 +187,6 @@
 		height: 40px;
 	}
 
-	/* A mode rather than an action, so it is quieter than the transport until it
-   is on -- and then it is the only accent down here besides the play button,
-   which is the whole point of a state you need to be able to read at a glance. */
-	.order {
-		display: grid;
-		place-items: center;
-		padding: 8px;
-		border: 0;
-		border-radius: var(--radius-pill);
-		background: none;
-		color: var(--faint);
-		transition:
-			color 0.12s var(--ease),
-			background-color 0.12s var(--ease);
-	}
-
-	.order:hover:not(:disabled) {
-		background: var(--surface-sunken);
-		color: var(--text);
-	}
-
-	.order[aria-pressed="true"] {
-		color: var(--accent-text);
-	}
-
-	.order:disabled {
-		opacity: 0.35;
-	}
-
 	.skip {
 		padding: 6px;
 	}

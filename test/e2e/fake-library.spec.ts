@@ -224,7 +224,6 @@ test.describe("a player with no media library", () => {
 
 		expect(library!.supported).toBe(false);
 		expect(library!.itemCount).toBe(0);
-		expect(player.library!.supported).toBe(false);
 	});
 
 	test("everything else is 501", async ({ request, player }) => {

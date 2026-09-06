@@ -1,6 +1,5 @@
 import { Search, X } from "lucide-react";
 import {
-	type MouseEvent as ReactMouseEvent,
 	type RefObject,
 	useEffect,
 	useLayoutEffect,
@@ -9,11 +8,12 @@ import {
 } from "react";
 import type { TrackColumns } from "@/shared/api/types";
 import { useDebounced } from "@/shared/hooks/useDebounced";
+import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Input } from "@/shared/ui/Input";
 import styles from "./Finder.module.css";
-import { FIELD, value } from "./fields";
+import { artistOf, titleOf } from "./fields";
 
 // Finds without filtering: the list keeps every track and its order, and only Enter starts playback.
 export function Finder({
@@ -57,35 +57,7 @@ export function Finder({
 		navigated.current = false;
 	}, [query]);
 
-	// A list appearing under a stationary cursor gets a mouseenter it did not earn, on every open and every keystroke, which would hand the active result to whatever landed under the mouse.
-	// `moved` covers the ordinary case and is re-armed per result set in a layout effect, so the reset lands before the mouseenter that follows paint; the coordinate check covers the first move onto a result, where mouseenter arrives before the mousemove that would have set the flag.
-	const moved = useRef(false);
-	const lastSeen = useRef<{ x: number; y: number } | null>(null);
-
-	useEffect(() => {
-		const track = (event: MouseEvent) => {
-			moved.current = true;
-			lastSeen.current = { x: event.clientX, y: event.clientY };
-		};
-		window.addEventListener("mousemove", track);
-		return () => window.removeEventListener("mousemove", track);
-	}, []);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-armed per result set, see above
-	useLayoutEffect(() => {
-		moved.current = false;
-	}, [results]);
-
-	const aimedAt = (event: ReactMouseEvent) => {
-		if (moved.current) return true;
-		// The first enter has no earlier position to compare against, so it is rejected and its coordinates become the reference.
-		const previous = lastSeen.current;
-		lastSeen.current = { x: event.clientX, y: event.clientY };
-		return (
-			previous !== null &&
-			(event.clientX !== previous.x || event.clientY !== previous.y)
-		);
-	};
+	const aimedAt = useEarnedHover(results);
 
 	// Follows the cursor, deliberately not the query: previewing per keystroke relays out the sticky toolbar the field sits in, and Android's keyboard then loses its composition and returns the letters scrambled.
 	const previewIndex = results[debouncedActive];
@@ -184,10 +156,10 @@ export function Finder({
 							>
 								<span className={styles.names}>
 									<span className={styles.resultTitle}>
-										{value(rows[index], FIELD.title) ?? "Unknown"}
+										{titleOf(rows[index])}
 									</span>
 									<span className={styles.resultArtist}>
-										{value(rows[index], FIELD.artist) ?? "Unknown artist"}
+										{artistOf(rows[index])}
 									</span>
 								</span>
 								<span className={styles.position}>#{index + 1}</span>

@@ -5,6 +5,7 @@ import styles from "./AlbumGroup.module.css";
 import { FIELD, featuring, sameTagValue, value } from "./fields";
 import type { AlbumRun } from "./grouping";
 import type { TrackRenderProps } from "./listTypes";
+import { refAt } from "./project";
 import { TrackRow } from "./TrackRow";
 
 // One fixed cover size per breakpoint: scaling it to the run length makes the column jitter between groups.
@@ -30,8 +31,7 @@ export function AlbumGroup({
 	isCompactViewport,
 }: TrackRenderProps & { group: AlbumRun }) {
 	const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER;
-	const itemIndexOf = (position: number) =>
-		indices ? indices[position] : position;
+	const itemIndexOf = (position: number) => refAt(indices, position);
 
 	// A single-disc album is one unlabelled run, so the ordinary case renders through the same loop rather than through a branch around it.
 	const runs = group.discs ?? [

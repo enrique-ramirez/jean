@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { usePermissions } from "@/domain/player/usePlayer";
+import { canChangePlaylists, usePermissions } from "@/domain/player/usePlayer";
 import type { Refs } from "@/domain/track/project";
 import { playItem } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
@@ -17,7 +17,7 @@ export function usePlaySet({
 	const permissions = usePermissions();
 	const scratch = useScratchPlaylist({
 		playlists,
-		canEdit: permissions.changePlaylists !== false,
+		canEdit: canChangePlaylists(permissions),
 	});
 
 	const play = useCallback(
@@ -50,7 +50,7 @@ export function usePlaySet({
 
 	// Playing a set always needs a playlist to hold it, so a player that refuses writes can only do this with an autoplaylist already there.
 	const canPlaySets =
-		permissions.changePlaylists !== false || Boolean(library.playlist);
+		canChangePlaylists(permissions) || Boolean(library.playlist);
 
 	return { play, scratch, canPlaySets };
 }

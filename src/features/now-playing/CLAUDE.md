@@ -197,6 +197,12 @@ Three things that cost time:
 
 **The playing track has no row anywhere**, so this cannot go through `rate()` like a list row does — there is nothing to patch optimistically. The now-playing query is that row's stand-in and `setRating` patches it directly, which keeps the fact in one store rather than adding a second overlay beside `ratingStore` (which is keyed on the row arrays `playlistStore` publishes and cannot see this one).
 
+**`useNowPlayingRating` is the one home for that.** The stars on the screen, the `⋯` menu and the `0`-`5` keys are three ways to the same act, and the patch, the write and the question of which scales may be written have to be one answer for all three.
+
+**One gate, `canWrite`, and part of it is whether the rating has arrived yet.** The one read per track is what says which scale this file is on and what the optimistic patch would be applied over, so a control offered before it lands draws five empty stars for a track that may be rated and writes a value with nowhere to put it. Every surface waits for the same answer.
+
+**A refused write puts the value back.** `rateTrack` is given the undo along with the track, which is what `clearWrittenRating` is to a row. **A 504 is the exception on both paths**: the player may still be finishing the write, so the value stands and the message says it may not have been saved.
+
 **Rating is silent on success and speaks on failure**, and the failure names the track. The read-only rule is asked per track: a raw value above 5 is on somebody else's scale, and rescaling a `100` to five stars is a 4% rating drawn as full marks. See `src/domain/track/CLAUDE.md`.
 
 ## Sizing

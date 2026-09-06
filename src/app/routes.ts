@@ -43,7 +43,6 @@ export function resolveRoute(route: string): {
 	isSearch: boolean;
 	isAll: boolean;
 	isHome: boolean;
-	isNowPlaying: boolean;
 	isLibrary: boolean;
 } {
 	const shelfId = route.startsWith(SHELF_PREFIX)
@@ -63,8 +62,6 @@ export function resolveRoute(route: string): {
 		isSearch: route === ROUTE.search,
 		isAll: route === ROUTE.all,
 		isHome: route === "" || route === ROUTE.home,
-		// About whichever track is playing rather than a set of tracks, so no playlist row lights up behind it.
-		isNowPlaying: route === ROUTE.playing,
 		// Everything the library owns, as opposed to a playlist the player owns. Only a playlist route selects a playlist in the sidebar.
 		isLibrary:
 			route === "" ||

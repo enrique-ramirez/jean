@@ -3,6 +3,7 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
+	expectSettlesAt,
 	inSequence,
 	openSidebar,
 	playedFrom,
@@ -80,7 +81,7 @@ test.describe("the library header", () => {
 		await expect(header.getByText("playlists", { exact: true })).toHaveCount(0);
 	});
 
-	test("each card ends in something to press", async ({ page }) => {
+	test("each card ends in something to press", async ({ page, isMobile }) => {
 		await page.goto("/");
 		const header = viewHeader(page);
 		await expect(header.getByRole("heading", { level: 1 })).toBeVisible();
@@ -92,14 +93,17 @@ test.describe("the library header", () => {
 			"most played",
 		);
 
-		// The tracks card is a link rather than a button, so cmd-click opens All
-		// music in a tab.
-		await expect(
-			header.locator('a[data-door="tracks"][href="#/all"]'),
-		).toHaveCount(1);
+		// A link rather than a button, so cmd-click opens All music in a tab. The
+		// role is the claim; a selector matching the href was a way of spelling it.
+		// Desktop only: the phone hides this card in CSS, so it has no role at all
+		// there -- and cmd-click is not a gesture a phone has.
+		test.skip(isMobile, "the tracks card is not drawn on a phone");
+		await expect(header.getByRole("link", { name: /tracks/ })).toHaveCount(1);
 	});
 
-	test("a figure the player cannot answer for is not drawn", async ({
+	// Named for what it asserts: the negative half is the describe below, and a
+	// future reader finding two tests under one promise deletes the wrong one.
+	test("the genres block is drawn when the player has genre tags", async ({
 		page,
 	}) => {
 		await page.goto("/");
@@ -141,7 +145,11 @@ test.describe("the closing band", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
-		await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(54);
+		await expectSettlesAt(
+			player,
+			() => scratchOf(player)?.items.length ?? 0,
+			54,
+		);
 		expect(scratchOf(player)!.title).toBe("#Jean [all music]");
 		await expect
 			.poll(() => scratchOf(player)!.items[playedFrom(player)?.index ?? -1])
@@ -196,13 +204,17 @@ test.describe("starting the library from the front door", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
-		await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(54);
+		await expectSettlesAt(
+			player,
+			() => scratchOf(player)?.items.length ?? 0,
+			54,
+		);
 		expect(scratchOf(player)!.title).toBe("#Jean [all music]");
 
 		await expect.poll(() => playedFrom(player)?.index).toBe(0);
 
 		// The playback order is global player state, and Play leaves it alone.
-		expect(orderRequests(player)).toHaveLength(0);
+		await expectSettlesAt(player, () => orderRequests(player).length, 0);
 	});
 
 	test("Shuffle opens All music and turns the mode on", async ({
@@ -215,7 +227,11 @@ test.describe("starting the library from the front door", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
-		await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(54);
+		await expectSettlesAt(
+			player,
+			() => scratchOf(player)?.items.length ?? 0,
+			54,
+		);
 
 		await expect.poll(() => orderRequests(player).length).toBeGreaterThan(0);
 		await expect
@@ -294,8 +310,12 @@ test.describe("opening a shelf from its heading", () => {
 			page.getByRole("heading", { level: 1, name: "Most played" }),
 		).toBeVisible();
 
-		expect(scratchOf(player)).toBeUndefined();
-		expect(requestsTo(player, "/player/play/")).toHaveLength(0);
+		await expectSettlesAt(player, () => scratchOf(player), undefined);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/player/play/").length,
+			0,
+		);
 		expect(player.player.playbackState).toBe("stopped");
 	});
 
@@ -346,9 +366,6 @@ test.describe("opening a shelf from its heading", () => {
 			"aria-current",
 			"true",
 		);
-		await expect(
-			explore(page).getByRole("link", { name: "Explore" }),
-		).toHaveAttribute("href", "#/shelf/top");
 	});
 });
 

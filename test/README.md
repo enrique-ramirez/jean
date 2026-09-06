@@ -1,18 +1,22 @@
 # Tests
 
-End-to-end, in a real browser, against a fake player. There are no unit tests and no jsdom: what breaks in Jean needs real layout, real pointers and a real viewport — the virtualiser renders nothing without layout, `dnd.ts` hit-tests with `elementFromPoint`, the gestures are pointer and touch streams, and half the design is a *different component* below 860px rather than a narrower one.
+Two suites, and the split is not about speed. **`test/e2e/` is the suite**: end-to-end, in a real browser, against a fake player, because what breaks in Jean needs real layout, real pointers and a real viewport — the virtualiser renders nothing without layout, `dnd.ts` hit-tests with `elementFromPoint`, the gestures are pointer and touch streams, and half the design is a *different component* below 860px rather than a narrower one.
 
-Pure functions — `fold()`, the volume curve, `deriveIntensity`, `groupByAlbum` — need no DOM and are worth unit tests when someone wants them.
+**`test/unit/` is for logic with no user-visible surface of its own**, under `node --test` in milliseconds. A unit test goes there only where the user cannot see the thing being asserted: the shape of the play-count curve, the order `refsOfShelf` sorts refs into, the escape inside a foobar2000 query, the keymap's layout rule — which Playwright cannot reach at all, since Chromium synthesises US QWERTY codes. **Where the user can see it, the e2e stays**, and may keep a unit test beside it for an edge the browser cannot reach. A user searching for "Heavy Metal" cares that they get Heavy Metal; that `genreQuery` composed a particular string is not the test.
 
 ## Running it
 
 ```sh
-pnpm test                                        # everything, desktop and mobile
+pnpm test                                        # unit, then e2e on desktop and mobile
+pnpm test:unit                                   # node --test over test/unit/
+pnpm test:e2e                                    # playwright only
 pnpm test:ui                                     # pick and watch interactively
-pnpm test --project=desktop -g "double-clicking" # one test
+pnpm test:e2e --project=desktop -g "double-clicking"   # one test
 ```
 
-`pnpm test` builds first (`test/e2e/build.ts`) and serves the build from the fake, because that is beefweb's arrangement: one origin answering both the app and `/api`.
+`test/alias.ts` is loaded before the unit tests and teaches node two things about `src/` that its resolver does not know: `@/` is Vite's alias, and imports there are written without an extension.
+
+`pnpm test:e2e` builds first (`test/e2e/build.ts`) and serves the build from the fake, because that is beefweb's arrangement: one origin answering both the app and `/api`.
 
 Both projects — `desktop` and `mobile` (Pixel 7, touch on) — run every spec. Skip explicitly when a gesture has no equivalent on the other surface, and say why.
 
@@ -23,7 +27,7 @@ pnpm test                          # the media library API (the default)
 JEAN_NO_LIBRARY_API=1 pnpm test    # the autoplaylist fallback
 ```
 
-Both are green at the same count. If a change makes one pass and the other fail, something outside `librarySource.ts` has learned which source it is talking to. Three specs are source-aware: `fake-library.spec.ts` and one describe in `library-source.spec.ts` **pin the API on** because they are about it, and `navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and* `library: { supported: false }`, because the setup screen exists only when there is no API **and** no autoplaylist.
+Both are green at the same count. If a change makes one pass and the other fail, something outside `librarySource.ts` has learned which source it is talking to. Three specs are source-aware: `fake-library.spec.ts` **pins the API on** because it is about it, `library-fallback.spec.ts` **pins it off** because it is the DeaDBeeF steady state and must be covered on a default run, and `navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and* `library: { supported: false }`, because the setup screen exists only when there is no API **and** no autoplaylist.
 
 ## Touch gestures
 
@@ -139,7 +143,9 @@ Three things about the container are load-bearing and none of them is obvious. I
 
 ## Writing a spec
 
-`test/e2e/fixtures.ts` gives every test its own player, on its own port, and carries the helpers every spec would otherwise write for itself — `openLibrary`, `openSidebar`, `trackRow`, `scratchOf`, `playedFrom`, `trackPlayed`, `pressAndHold`, `statusBar`, `viewHeader`. Anything more than one spec needs belongs there.
+`test/e2e/fixtures.ts` gives every test its own player, on its own port, and carries the helpers every spec would otherwise write for itself — `openLibrary`, `openSidebar`, `trackRow`, `scratchOf`, `playedFrom`, `trackPlayed`, `pressAndHold`, `statusBar`, `viewHeader`, `globalControls`, `expectSettlesAt`, `listenHere`, `FOO_JEAN_TOKEN`. Anything more than one spec needs belongs there.
+
+A file that is not `*.spec.ts` is not collected, which is how `fixtures.ts` and `build.ts` sit in the same folder. `nowPlaying.ts` is the same thing one level down: the lyric fixtures and the panel helpers four now-playing specs share, which are too specific to be everybody's.
 
 ```js
 import { expect, requestsTo, test, trackRow } from './fixtures.ts'
@@ -169,7 +175,7 @@ test('does the thing', async ({ page, player }) => {
 | `withoutFields` | removes title-formatting expressions, so the player answers `?` as a real one does. `['%lastfm_play_count%']` is an install with no playback-statistics component, and everything built on play counts must disappear rather than break |
 | `withoutPlaylists` | empties everything but Jean's own — the player a fresh install would find |
 | `withoutLibraryPlaylist` | renames the playlist Jean resolves as the library, the only way to reach the first-run setup screen |
-| `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured |
+| `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches **both** sources, so a retagged spec holds on a fallback run too |
 | `settings` | merged over a default seed, so a spec names only what it cares about. **`firstRun: true`** drops the seed entirely |
 | `fooJean` | installs the component in whichever state is needed: absent (the default), `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `canStream: false`, `pairingOpen: true`, `failPairing` with `pairingError`. `fooJeanToken` seeds the credential |
 | `hasLibraryApi` | whether this run has the media library API. Ask the fixture rather than reading `process.env`: a spec that pins `library` gets the right answer |
@@ -182,6 +188,8 @@ Pairing is **single-grant in the fake as in the component**: the first success c
 - **`POST /__control/play`** drives the player the way the desktop would — the case Jean has to survive and cannot provoke reliably against a real one. **`/__control/append`** is the same for playlists: the desktop adding tracks while Jean holds a range of indices.
 - **`POST /__control/latency`** holds writes for N milliseconds. On localhost every request settles before the next pointer event, so a control coalescing forty moves into three looks identical to one sending forty. `useCoalescedWrite` is untestable without it.
 - **`POST /__control/skipGap`** spends N milliseconds reporting an empty `activeItem` on a skip, as the real player does while it opens the next file. Off by default, because the gap makes `next` asynchronous and no other spec should have to wait one out.
+- **`POST /__control/dropStream`** hangs up on every open update stream and answers how many it dropped — a wifi hiccup, a proxy timing out, a phone coming out of a pocket. `usePlayer` rests on EventSource reconnecting by itself and beefweb replaying a full snapshot, and this is the only way to watch that happen. Assert on the count it returns: a test that dropped nothing is asserting the app survived an event that never occurred.
+- **`POST /__control/requests`** empties the request log.
 
 ### Rules
 
@@ -189,8 +197,11 @@ Pairing is **single-grant in the fake as in the component**: the first success c
 2. **`test.use` goes *inside* a describe, never beside one.** At file scope it applies to the whole file however many times it is called, so a loop writing it once per layout runs every case under whichever it wrote last — green, correctly named, and covering the same thing twice.
 3. **`inSequence` and `times` rather than a loop.** Playwright assertions share one page, so steps must be awaited in order. `times` is a `reduce` in `fixtures.ts`; `inSequence` is re-exported from `src/shared/lib/sequence.ts`.
 4. **Drive timing-sensitive input from inside the page.** Anything racing an animation cannot be driven over the wire — three round trips land after the animation has finished, so the test passes whether the behaviour works or not. Dispatch from `page.evaluate`, one frame apart. A synthetic wheel event scrolls nothing, which is usually the point: what is under test is the listener.
-5. **Wait on the player, not on the render that looks right.** `isRowOnScreen` is true as soon as an animated scroll brings a row into view, hundreds of milliseconds before it stops moving; `settle()` in `follow.spec.ts` takes two equal scroll readings first. And mutations write to the query cache before the request goes out, so the UI flips before the stream agrees. Prefer the fake's own state — `player.player.playbackMode` has no optimism in it — and **assert the property rather than the exact traffic**: "nothing it sends ever asks for a different order" survives a duplicated idempotent request where `toEqual([4])` does not.
+5. **Wait on the player, not on the render that looks right.** `isRowOnScreen` is true as soon as an animated scroll brings a row into view, hundreds of milliseconds before it stops moving. And mutations write to the query cache before the request goes out, so the UI flips before the stream agrees. Prefer the fake's own state — `player.player.playbackMode` has no optimism in it — and **assert the property rather than the exact traffic**: "nothing it sends ever asks for a different order" survives a duplicated idempotent request where `toEqual([4])` does not.
+
+   **Settle by watching, never by sleeping.** `settle()` in `follow.spec.ts` walks the scroll offset frame by frame from inside the page and returns once it has held still; `settle()` in `artwork.spec.ts` waits for the offset *and* the request log to stop moving together. A fixed `waitForTimeout` followed by a hard assertion that the animation has finished fails a slow machine instead of waiting for it, and it is the slowest thing in whatever file it is in. Where the end state is what matters, prefer a retrying assertion over settle-then-assert: `expectCentredOrClamped` polls a sentence describing what it saw, so a failure reports the offset rather than a boolean.
 6. **Touch is a gesture, not a narrow mouse.** Touch tests go through CDP `Input.dispatchTouchEvent` rather than dispatching DOM events, because what is under test is the browser's own decision about who the gesture belongs to: without `touch-action: none` it decides the finger is panning and stops delivering moves, and a swipe aimed at 25% lands at 74%. A dispatched `pointermove` sails past that and passes either way.
 7. **Check an injection more than once.** A guard that fails on one run and passes on the next is flaky, not covered.
 8. **A test that cannot fail is worse than no test.** When one covers a guard rather than a feature — "a long press plays nothing", "a desktop click does not play" — delete the guard, watch it go red, and put the guard back.
 9. **Anywhere the fake supplies both sides of a comparison, it is only testing that a string equals itself.** Path joins between the stream timeline and beefweb's `%path%` are the case in point, and have to be verified against a real player.
+10. **Assert what a value settles at, never what it passed through.** A "nothing was sent" read and a poll for an exact request count are both unfalsifiable written straight, for reasons `expectSettlesAt` in `fixtures.ts` sets out. Use it for either.

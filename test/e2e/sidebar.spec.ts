@@ -1,6 +1,7 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	openSidebar,
 	pressAndHold,
 	requestsTo,
@@ -163,7 +164,11 @@ test.describe("deleting a playlist", () => {
 		await page.getByRole("menuitem", { name: "Keep it" }).click();
 
 		await expect(link(page, FAVORITES)).toBeVisible();
-		expect(requestsTo(player, "/playlists/remove/")).toHaveLength(0);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/playlists/remove/").length,
+			0,
+		);
 	});
 
 	test("deleting what you are looking at steps onto the neighbour", async ({
@@ -398,7 +403,11 @@ test.describe("dragging tracks onto a playlist", () => {
 		await page.mouse.up();
 
 		// One request whatever the count: indices go up, nothing else does.
-		await expect.poll(() => requestsTo(player, "/items/copy").length).toBe(1);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/copy").length,
+			1,
+		);
 		const copy = requestsTo(player, "/items/copy")[0];
 		expect(copy.path).toBe("/api/playlists/p7/p2/items/copy");
 		expect(copy.body).toEqual({ items: [0] });
@@ -435,6 +444,42 @@ test.describe("dragging tracks onto a playlist", () => {
 		).toHaveLength(5);
 	});
 
+	test("a drag that lands nowhere gives the page back", async ({
+		page,
+		player,
+	}) => {
+		// The gesture holds the whole document still while it runs -- without that
+		// it selects text it passes over, and dragging a selection is a native drag
+		// that paints a snapshot of it under the pointer. Whatever ends the drag has
+		// to give that back, and abandoning one over empty space is the ordinary way
+		// to end it.
+		await openApp(page);
+		await scrollUntilMounted(page, trackRow(page, 0));
+
+		// Armed over a real target first, so this is a drag that genuinely ran
+		// rather than a press that never passed the threshold.
+		const target = await dragTrackTo(page, 0, FAVORITES);
+		await expect(target).toHaveAttribute("data-drop-over", "true");
+
+		// Then away and let go over nothing at all.
+		await page.mouse.move(4, 4, { steps: 8 });
+		await page.mouse.up();
+
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/copy").length,
+			0,
+		);
+
+		// The heading, because it is text nothing else claims. A document still
+		// held at `user-select: none` cannot be selected at all, and a page that
+		// stops selecting is a page that stops feeling like a page.
+		await page.getByRole("heading", { level: 1, name: LIBRARY }).dblclick();
+		expect(
+			await page.evaluate(() => window.getSelection()?.isCollapsed ?? true),
+		).toBe(false);
+	});
+
 	test("the playlist you are dragging out of is not a target", async ({
 		page,
 		player,
@@ -449,6 +494,10 @@ test.describe("dragging tracks onto a playlist", () => {
 		await expect(target).not.toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
-		expect(requestsTo(player, "/items/copy")).toHaveLength(0);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/copy").length,
+			0,
+		);
 	});
 });

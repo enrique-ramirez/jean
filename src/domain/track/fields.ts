@@ -72,8 +72,15 @@ export function readNumber(raw: string | undefined): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-export const number = (row: TrackColumns, field: number): number | null =>
+export const numberOf = (row: TrackColumns, field: number): number | null =>
 	readNumber(row[field]);
+
+// How a row names itself where a tag is missing. One spelling, because a track drawn in a list, dragged as a ghost and headed in a menu is the same track.
+export const titleOf = (row: TrackColumns) =>
+	value(row, FIELD.title) ?? "Unknown title";
+
+export const artistOf = (row: TrackColumns) =>
+	value(row, FIELD.artist) ?? "Unknown artist";
 
 // 'YYYY-MM-DD HH:MM:SS', with a trailing space from some components. Not every engine parses the space separator, hence the swap for 'T'.
 export function readTimestamp(raw: string | undefined): number | null {

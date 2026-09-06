@@ -1,5 +1,5 @@
 import { genreHref } from "@/domain/library/genreRoute";
-import { readValue } from "@/domain/track/fields";
+import { readTimestamp, readValue } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
 import styles from "./Details.module.css";
 import { NOW_PLAYING_FIELD as F, readNowPlaying } from "./nowPlayingFields";
@@ -31,17 +31,17 @@ function released(row: TrackColumns) {
 		: date;
 }
 
+// The raw string where it will not parse: a tag Jean cannot read is still something the owner can act on, which a row drawn as blank would not be.
 function played(raw: string | null) {
 	if (!raw) return null;
-	// 'YYYY-MM-DD HH:MM:SS', sometimes with a trailing space, and not every engine parses the space separator.
-	const at = Date.parse(raw.trim().replace(" ", "T"));
-	return Number.isFinite(at)
-		? new Date(at).toLocaleDateString(undefined, {
+	const at = readTimestamp(raw);
+	return at === null
+		? raw
+		: new Date(at).toLocaleDateString(undefined, {
 				year: "numeric",
 				month: "short",
 				day: "numeric",
-			})
-		: raw;
+			});
 }
 
 interface Row {

@@ -3,23 +3,20 @@ import { matchesTokens, tokenize } from "@/shared/lib/text";
 import type { Refs } from "./project";
 import { rowHaystack } from "./searchText";
 
-const indexes = new Map<string, string[]>();
+// One list at a time, because it is the size of the library: a second key replaces the first rather than joining it.
+let held: { key: string; haystacks: string[] } | null = null;
 
 // Rows only ever grow, a chunk at a time, so the index extends in place rather than being rebuilt for every chunk that lands.
 // The key carries the item count, so an edited library indexes afresh rather than inheriting rows that have moved.
 export function libraryIndex(key: string, rows: TrackColumns[]): string[] {
-	const held = indexes.get(key);
-	if (held) {
-		rows.slice(held.length).forEach((row) => {
-			held.push(rowHaystack(row));
-		});
-		return held;
+	if (held?.key === key) {
+		for (const row of rows.slice(held.haystacks.length))
+			held.haystacks.push(rowHaystack(row));
+		return held.haystacks;
 	}
 
-	const haystacks = rows.map(rowHaystack);
-	indexes.clear();
-	indexes.set(key, haystacks);
-	return haystacks;
+	held = { key, haystacks: rows.map(rowHaystack) };
+	return held.haystacks;
 }
 
 // Refs ascending, in library order rather than ranked: order is what makes album grouping mean anything.

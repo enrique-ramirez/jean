@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
-import { usePermissions } from "@/domain/player/usePlayer";
+import { canChangePlaylists, usePermissions } from "@/domain/player/usePlayer";
 import { findLibraryPlaylist } from "@/domain/track/jeanPlaylists";
 import { librarySourceOf } from "@/domain/track/librarySource";
+import type { PathTable } from "@/domain/track/pathTable";
 import { libraryKey, playlistKey } from "@/domain/track/playlistStore";
 import {
 	useLibraryItems,
@@ -20,24 +21,26 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 	const request = useCallback(() => setRequested(true), []);
 	const isWanted = wanted || requested;
 
-	const canWrite = permissions.changePlaylists !== false;
+	const canWrite = canChangePlaylists(permissions);
 
 	// Not simply dropped when there is an API: playing a set always needs a playlist to play it in, so a player that refuses playlist writes browses through the API but plays through the autoplaylist.
 	const playlist = useMemo(
 		() => (hasLibraryApi && canWrite ? null : findLibraryPlaylist(playlists)),
 		[hasLibraryApi, canWrite, playlists],
 	);
-	const useApi = hasLibraryApi && (canWrite || !playlist);
+	const readsFromApi = hasLibraryApi && (canWrite || !playlist);
 
-	const viaApi = useLibraryItems(isWanted && useApi ? info.itemCount : null);
-	const viaPlaylist = usePlaylistItems(
-		isWanted && !useApi ? playlist?.id : null,
-		isWanted && !useApi ? playlist?.itemCount : null,
+	const viaApi = useLibraryItems(
+		isWanted && readsFromApi ? info.itemCount : null,
 	);
-	const library = useApi ? viaApi : viaPlaylist;
+	const viaPlaylist = usePlaylistItems(
+		isWanted && !readsFromApi ? playlist?.id : null,
+		isWanted && !readsFromApi ? playlist?.itemCount : null,
+	);
+	const library = readsFromApi ? viaApi : viaPlaylist;
 
 	// Carries the count, so an edited library indexes afresh rather than inheriting rows that have moved.
-	const key = useApi
+	const key = readsFromApi
 		? libraryKey(info.itemCount)
 		: playlist
 			? playlistKey(playlist.id, playlist.itemCount)
@@ -45,18 +48,18 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 
 	const source = useMemo(
 		() =>
-			useApi
+			readsFromApi
 				? librarySourceOf({
 						kind: "library",
 						// Non-null by construction: only the media library load has them.
-						paths: library.paths as string[],
+						paths: library.paths as PathTable,
 						subsongs: library.subsongs as number[],
 					})
 				: librarySourceOf({
 						kind: "playlist",
 						playlistId: playlist?.id as string,
 					}),
-		[useApi, library.paths, library.subsongs, playlist?.id],
+		[readsFromApi, library.paths, library.subsongs, playlist?.id],
 	);
 
 	return {
@@ -70,8 +73,8 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 		isWanted,
 		canWrite,
 		// `total` stays zero until a load starts, so it cannot answer how big the library is before anything has arrived.
-		count: useApi ? info.itemCount : (playlist?.itemCount ?? 0),
-		needsSetup: !useApi && !playlist,
+		count: readsFromApi ? info.itemCount : (playlist?.itemCount ?? 0),
+		needsSetup: !readsFromApi && !playlist,
 	};
 }
 

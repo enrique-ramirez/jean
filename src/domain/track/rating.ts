@@ -1,5 +1,5 @@
 import type { TrackColumns } from "@/shared/api/types";
-import { FIELD, number, readNumber, sampleRows } from "./fields";
+import { FIELD, numberOf, readNumber, sampleRows } from "./fields";
 
 export const MAX_STARS = 5;
 
@@ -21,10 +21,16 @@ export function starsOf(raw: number | null): number | null {
 }
 
 // The tag before any scale has been guessed at. A write needs this rather than the stars, which look the same whatever convention produced them.
-export const rawRatingOf = (row: TrackColumns) => number(row, FIELD.rating);
+export const rawRatingOf = (row: TrackColumns) => numberOf(row, FIELD.rating);
 
 // The same reading for a value Jean wrote rather than loaded.
 export const rawRatingOfValue = readNumber;
+
+// What a row's rating is: a value Jean wrote supersedes the row's own, and both are read on the same scale. Asked from three places, which is three chances to disagree about which wins.
+export const rawRatingWith = (
+	row: TrackColumns,
+	written: string | undefined,
+) => (written === undefined ? rawRatingOf(row) : rawRatingOfValue(written));
 
 export const ratingOf = (row: TrackColumns) => starsOf(rawRatingOf(row));
 

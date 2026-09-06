@@ -4,20 +4,34 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
 import styles from "./SeekBar.module.css";
 
-/** The interpolated position, ticking. Never lift this into a shared store: it re-renders every animation frame. */
-export function useElapsed(snapshot: PlayerSnapshot | null | undefined) {
-	const [elapsed, setElapsed] = useState(() => audibleAt(snapshot));
+// Sampled every animation frame; `resolution` is what React compares to decide whether to re-render.
+const useTickingPosition = (
+	snapshot: PlayerSnapshot | null | undefined,
+	resolution: (at: number) => number,
+) => {
+	const [elapsed, setElapsed] = useState(() => resolution(audibleAt(snapshot)));
 
 	useEffect(() => {
 		let frame = requestAnimationFrame(function tick() {
-			setElapsed(audibleAt(snapshot));
+			setElapsed(resolution(audibleAt(snapshot)));
 			frame = requestAnimationFrame(tick);
 		});
 		return () => cancelAnimationFrame(frame);
-	}, [snapshot]);
+	}, [snapshot, resolution]);
 
 	return elapsed;
-}
+};
+
+const exactly = (at: number) => at;
+
+/** The interpolated position, ticking. Never lift this into a shared store: it re-renders every animation frame. */
+export const useElapsed = (snapshot: PlayerSnapshot | null | undefined) =>
+	useTickingPosition(snapshot, exactly);
+
+/** The same, in whole seconds, for a readout that changes once a second: React bails out on every frame landing inside the second it already drew. A caller drawing a position -- a fill, a thumb, a scrubber -- needs `useElapsed`, or the movement steps. */
+export const useElapsedSeconds = (
+	snapshot: PlayerSnapshot | null | undefined,
+) => useTickingPosition(snapshot, Math.floor);
 
 export function SeekBar({
 	snapshot,

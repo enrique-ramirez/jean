@@ -1,5 +1,6 @@
 import { DiscAlbum } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { classNames } from "@/shared/lib/classNames";
 import {
 	canCacheArtwork,
 	dropArtwork,
@@ -18,7 +19,7 @@ type ArtworkState = "waiting" | "granted" | ArtworkOutcome;
 import styles from "./Artwork.module.css";
 
 // What is already known about an address, or null where the answer is still open. A cover this session has resolved before is settled without another request, and `null` -- there is no cover here -- is settled before there is anything to ask.
-const settled = (src: string | null | undefined): ArtworkState | null =>
+const knownState = (src: string | null | undefined): ArtworkState | null =>
 	src ? (outcomeFor(src) ?? null) : src === null ? "failed" : null;
 
 // Every cover in the app, at every size: the status bar, the wheel, an album group, a row, a shelf card. One component because they are one thing, and because a cover that arrives differently in six places is six different flickers.
@@ -46,7 +47,7 @@ export function Artwork({
 	onSettled?: (outcome: ArtworkOutcome) => void;
 }) {
 	const [state, setState] = useState<ArtworkState>(
-		() => settled(src) ?? "waiting",
+		() => knownState(src) ?? "waiting",
 	);
 	// What the `<img>` points at: the address itself where the browser fetches it, or a blob held on
 	// disk. Null until the queue has granted a turn.
@@ -55,7 +56,7 @@ export function Artwork({
 	const release = useRef<((outcome?: ArtworkOutcome) => void) | null>(null);
 
 	useEffect(() => {
-		const known = settled(src);
+		const known = knownState(src);
 
 		// Nothing to ask for. `null` is *there is no cover here* and settles; `undefined` holds.
 		if (!src) {
@@ -90,16 +91,27 @@ export function Artwork({
 		// Set true here and not only in the cleanup: StrictMode mounts, unmounts and remounts in
 		// development, and a flag only ever cleared would be permanently off on the second run.
 		let live = true;
+		// One address is one refcounted blob URL shared by every row drawing that album, so a drop
+		// this component never claimed revokes a picture still on screen elsewhere -- and the
+		// `onError` that follows remembers the address as failed for the rest of the session.
+		let claimed = false;
 		const abort = new AbortController();
+
+		const dropClaim = () => {
+			if (!claimed) return;
+			claimed = false;
+			dropArtwork(src);
+		};
 
 		const resolve = async () => {
 			try {
 				const url = await holdArtwork(src, abort.signal);
+				claimed = true;
 
 				// The claim outlived the component: give it back rather than leaking a handle nobody
 				// will ever drop.
 				if (!live) {
-					dropArtwork(src);
+					dropClaim();
 					return;
 				}
 
@@ -119,8 +131,9 @@ export function Artwork({
 		// tiles at a time exactly as a cold one does.
 		let cancel = whenNearViewport(element, async () => {
 			const held = await heldArtwork(src);
+			if (held) claimed = true;
 			if (!live) {
-				if (held) dropArtwork(src);
+				dropClaim();
 				return;
 			}
 
@@ -138,7 +151,7 @@ export function Artwork({
 			cancel();
 			cancel = () => {};
 			abort.abort();
-			dropArtwork(src);
+			dropClaim();
 			release.current?.();
 			release.current = null;
 		};
@@ -158,7 +171,7 @@ export function Artwork({
 		if (state === "ok" || state === "failed") settledRef.current?.(state);
 	}, [state]);
 
-	const classes = [styles.artwork, className].filter(Boolean).join(" ");
+	const classes = classNames(styles.artwork, className);
 
 	return (
 		// The box, and the only element in here that outlives the picture arriving. A caller's class lands on this, so its size, its rounding and its shadow are settled before anything is known about the cover -- and a gesture that began on a sleeve is still on the same element when the sleeve resolves.

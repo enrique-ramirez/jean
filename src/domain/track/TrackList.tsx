@@ -19,6 +19,7 @@ import type {
 	TrackListHandle,
 	TrackRenderProps,
 } from "./listTypes";
+import { refAt } from "./project";
 import styles from "./TrackList.module.css";
 import { TrackRow } from "./TrackRow";
 
@@ -105,7 +106,7 @@ export const TrackList = forwardRef(function TrackList(
 	// To the album run's opening row first, then through `indices`: a filtered view renumbers everything, so the other order looks up a playlist index in a table of row positions.
 	const coverIndexOf = (position: number) => {
 		const row = coverRows ? coverRows[position] : position;
-		return indices ? indices[row] : row;
+		return refAt(indices, row);
 	};
 
 	// Row 0 is not at scroll offset 0, since the view header and toolbar sit above it, and without telling the virtualiser every scrollToIndex lands short by exactly this much.
@@ -316,7 +317,7 @@ export const TrackList = forwardRef(function TrackList(
 						<TrackRow
 							row={rows[virtualRow.index]}
 							index={virtualRow.index}
-							itemIndex={indices ? indices[virtualRow.index] : virtualRow.index}
+							itemIndex={refAt(indices, virtualRow.index)}
 							coverIndex={coverIndexOf(virtualRow.index)}
 							source={source}
 							columns={columns}

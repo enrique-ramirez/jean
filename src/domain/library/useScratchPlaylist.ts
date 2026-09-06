@@ -16,6 +16,9 @@ import {
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
+// Jean's claim on the playlist: set while it is Jean's, dropped the moment it becomes the user's. Anything that deletes the scratch reads this rather than a title off a list that may already be a render behind.
+export const SCRATCH_PIN_KEY = "jean.scratchPlaylist";
+
 // Holds the last set chosen to play, not the thing on screen. Resolved by stored id falling back to the title, because beefweb ids are neither contiguous nor promised to outlive the player process.
 export function useScratchPlaylist({
 	playlists,
@@ -25,7 +28,7 @@ export function useScratchPlaylist({
 	canEdit: boolean;
 }) {
 	const [pinnedId, setPinnedId] = useStoredState<string | null>(
-		"jean.scratchPlaylist",
+		SCRATCH_PIN_KEY,
 		null,
 	);
 	const queryClient = useQueryClient();
@@ -73,12 +76,9 @@ export function useScratchPlaylist({
 			const build = async () => {
 				const title = scratchTitle(kind, label);
 				let target = playlist as PlaylistInfo | null;
-				if (!target) {
-					target = await createPlaylist(title);
-					setPinnedId(target.id);
-				} else if (target.title !== title) {
-					await renamePlaylist(target.id, title);
-				}
+				if (!target) target = await createPlaylist(title);
+				else if (target.title !== title) await renamePlaylist(target.id, title);
+				setPinnedId(target.id);
 
 				// Read off the player, not off `target`: item changes are never pushed, so a cached `itemCount` is stale from the first write on and this is the one place that cannot survive being wrong.
 				const heldCount = source.needsHeldCount

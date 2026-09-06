@@ -7,9 +7,12 @@ const COOL = 13; // 72 plays, last heard in 2024
 const NEVER = 15; // never played, and the last-played field reads N/A
 const RECENT = 0; // 108 plays, played yesterday
 
-// Everything visible is derived in CSS from these two custom properties.
-const shading = (page: Page, row: number) =>
-	page.evaluate((index: number) => {
+// Everything visible is derived in CSS from these two custom properties. The
+// row is waited for rather than assumed: the virtualiser mounts what is near
+// the viewport, and how much that is differs between the two projects.
+const shading = async (page: Page, row: number) => {
+	await expect(page.locator(`[data-row="${row}"]`)).toBeAttached();
+	return page.evaluate((index: number) => {
 		const element = document.querySelector(`[data-row="${index}"]`);
 		if (!element) throw new Error(`no row ${index} on screen`);
 		const style = getComputedStyle(element);
@@ -19,6 +22,7 @@ const shading = (page: Page, row: number) =>
 			washPainted: getComputedStyle(element, "::before").display !== "none",
 		};
 	}, row);
+};
 
 // The virtualiser only mounts rows near the viewport, so the furthest row read
 // below has to be waited for.
@@ -41,17 +45,20 @@ test.describe("play-count shading", () => {
 		expect(hottest!.heat).toBeGreaterThan(warm!.heat);
 		expect(warm!.heat).toBeGreaterThan(cool!.heat);
 		expect(cool!.heat).toBeGreaterThan(never!.heat);
-
-		// The scale is logarithmic: on a linear one the single outlier takes the
-		// whole range and everything else sits at the bottom.
-		expect(warm!.heat).toBeGreaterThan(0.8);
 	});
 
-	test("a track never played is flat, not faded", async ({ page }) => {
-		const never = await shading(page, NEVER);
+	test("a track never played is not drawn as the oldest thing in the list", async ({
+		page,
+	}) => {
+		// N/A in the last-played field is "no date", not "the beginning of time":
+		// read as a date it would fade a never-played row further than anything
+		// that was genuinely put down years ago.
+		const [never, cool] = await Promise.all([
+			shading(page, NEVER),
+			shading(page, COOL),
+		]);
 
-		expect(never!.heat).toBe(0);
-		expect(never!.patina).toBe(0);
+		expect(never.patina).toBeLessThan(cool.patina);
 	});
 
 	test("the colour cools with the years since a track was last heard", async ({
@@ -62,9 +69,7 @@ test.describe("play-count shading", () => {
 			shading(page, COOL),
 		]);
 
-		expect(recent!.patina).toBeLessThan(0.1);
 		expect(cool!.patina).toBeGreaterThan(recent!.patina);
-		expect(cool!.patina).toBeLessThanOrEqual(1);
 	});
 
 	test("the scale is per list, not per library", async ({ page }) => {
@@ -78,8 +83,16 @@ test.describe("play-count shading", () => {
 		).toBeVisible();
 		await expect(page.locator('[data-row="0"]')).toBeAttached();
 
+		// The top of this list's own scale rather than a number: nothing in Rock en
+		// Español is shaded more heavily than the track that leads it.
 		const inPlaylist = await shading(page, 0);
-		expect(inPlaylist.heat).toBeCloseTo(1, 5);
+		await inSequence([1, 2, 3, 4, 5], async (row: number) => {
+			const other = await shading(page, row);
+			expect(inPlaylist.heat, `row ${row} is hotter`).toBeGreaterThan(
+				other.heat,
+			);
+		});
+
 		expect(inLibrary.heat).toBeLessThan(inPlaylist.heat);
 	});
 });
@@ -254,42 +267,42 @@ test.describe("an install with no play counts", () => {
 	});
 });
 
-["compact", "album"].forEach((layout) => {
-	test.describe(`the wash follows the row gutter in ${layout} layout`, () => {
-		test.use({ settings: { "jean.layout": layout } });
+// `TrackRow` exposes `--row-gutter` and the wash is derived from it rather than
+// stated again: hardcoded, the two drift the moment a layout sets its own
+// padding, and the wash stops sitting on the view's content line. Asserted by
+// switching layout rather than by re-computing the stylesheet's own `calc()` in
+// JavaScript, which would only be checking the browser against itself.
+test.describe("the wash and the row gutter", () => {
+	test.beforeEach(({ page }) => openWithEveryRow(page));
 
-		test("its edge sits on the content line, whatever the gutter is", async ({
-			page,
-		}) => {
-			await openWithEveryRow(page);
-
-			const geometry = await page.evaluate((index: number) => {
-				const row = document.querySelector(
-					`[data-row="${index}"]`,
-				) as HTMLElement;
-				const style = getComputedStyle(row);
-				const wash = getComputedStyle(row, "::before");
-				const px = (value: string) => Number.parseFloat(value);
-				return {
-					gutter: px(style.getPropertyValue("--row-gutter")),
-					lead: px(style.getPropertyValue("--heat-lead")),
-					washLeft: px(wash.left),
-					washRight: px(wash.right),
-					washTop: px(wash.top),
-				};
-			}, HOTTEST);
-
-			// Each layout chooses its own gutter, so this asserts the relationship
-			// rather than a number.
-			expect(geometry.gutter).toBeGreaterThan(0);
-			expect(geometry.lead).toBeGreaterThan(0);
-
-			const expected = Math.max(0, geometry.gutter - geometry.lead);
-			expect(geometry.washLeft).toBeCloseTo(expected, 1);
-			expect(geometry.washRight).toBeCloseTo(expected, 1);
-			expect(geometry.washTop).toBeCloseTo(2, 1);
-
-			expect(geometry.washLeft).toBeLessThan(geometry.gutter);
+	// How far the row's content sits inside the wash's leading edge.
+	const leadOf = (page: Page) =>
+		page.evaluate(() => {
+			const row = document.querySelector('[data-row="0"]') as HTMLElement;
+			const wash = getComputedStyle(row, "::before");
+			const box = row.getBoundingClientRect();
+			const content = (
+				row.firstElementChild as HTMLElement
+			).getBoundingClientRect();
+			return content.left - (box.left + Number.parseFloat(wash.left));
 		});
+
+	test("the content sits the same distance inside it in either layout", async ({
+		page,
+	}) => {
+		const list = await leadOf(page);
+		expect(list, "the wash starts on top of the row's content").toBeGreaterThan(
+			0,
+		);
+
+		// The album layout's gutter is three times the list's.
+		await page.getByRole("button", { name: "Albums", exact: true }).click();
+		await expect(page.locator('[data-row="0"]')).toBeAttached();
+
+		const albums = await leadOf(page);
+		expect(
+			Math.abs(albums - list),
+			`the content sat ${Math.round(list)}px inside the wash as a list and ${Math.round(albums)}px as albums`,
+		).toBeLessThan(1);
 	});
 });

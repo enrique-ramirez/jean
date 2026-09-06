@@ -1,5 +1,7 @@
 import type { InputHTMLAttributes, ReactNode, Ref } from "react";
 
+import { classNames } from "@/shared/lib/classNames";
+
 import styles from "./Input.module.css";
 
 type NativeProps = Omit<InputHTMLAttributes<HTMLInputElement>, "size">;
@@ -39,7 +41,7 @@ export function Input({
 
 	return (
 		<div
-			className={[styles.field, className].filter(Boolean).join(" ")}
+			className={classNames(styles.field, className)}
 			data-size={size}
 			data-filled={filled}
 		>

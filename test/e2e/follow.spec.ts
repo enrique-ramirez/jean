@@ -18,14 +18,34 @@ const FAR = { index: 40, title: "Goodnite, Noises Everywhere" };
 
 // Where the view came to rest. An animated jump brings the row on screen well
 // before it stops moving, so "is the row visible yet" is not the same question.
-// Two equal readings mean nothing is still running.
-const settle = async (page: Page) => {
-	await page.waitForTimeout(900);
-	const first = await scrollTop(page);
-	await page.waitForTimeout(300);
-	expect(await scrollTop(page)).toBe(first);
-	return first;
-};
+//
+// Watched frame by frame from inside the page rather than sampled after a fixed
+// wait and asserted to have stopped: an animation still running at the guess
+// failed the test instead of being waited for, and the guess was long enough to
+// dominate this file's running time. The floor is there because the animation
+// takes a render to start, and ten still frames before it does would report the
+// offset it was leaving.
+const SETTLE_FLOOR_MS = 500;
+
+const settle = (page: Page) =>
+	page.evaluate(
+		(floor: number) =>
+			new Promise<number>((resolve) => {
+				const scroller = document.querySelector("main") as HTMLElement;
+				const until = performance.now() + floor;
+				let last = Number.NaN;
+				let still = 0;
+				const tick = () => {
+					const now = scroller.scrollTop;
+					still = now === last ? still + 1 : 0;
+					last = now;
+					if (still >= 10 && performance.now() >= until) resolve(now);
+					else requestAnimationFrame(tick);
+				};
+				requestAnimationFrame(tick);
+			}),
+		SETTLE_FLOOR_MS,
+	);
 
 // How far the playing row's middle is from the view's, in pixels.
 const offCentre = (page: Page) =>
@@ -43,29 +63,34 @@ const offCentre = (page: Page) =>
 // Centred, unless the list has run out of room. Near either end the scroll
 // clamps and the track cannot reach the middle; what still has to hold there is
 // that it is on screen at all.
+//
+// Retrying, and it reports what it saw: read once it races the tail of the
+// animation, and every caller here is asserting where the view finished rather
+// than where it passed through.
 const expectCentredOrClamped = async (page: Page, index: number) => {
-	const distance = await offCentre(page);
-	expect(distance, `track ${index} was not mounted`).not.toBeNull();
+	await expect
+		.poll(async () => {
+			const distance = await offCentre(page);
+			if (distance === null) return `track ${index} was not mounted`;
 
-	const { top, max } = await page.evaluate(() => {
-		const scroller = document.querySelector("main");
-		return {
-			top: scroller!.scrollTop,
-			max: scroller!.scrollHeight - scroller!.clientHeight,
-		};
-	});
+			const { top, max } = await page.evaluate(() => {
+				const scroller = document.querySelector("main");
+				return {
+					top: scroller!.scrollTop,
+					max: scroller!.scrollHeight - scroller!.clientHeight,
+				};
+			});
 
-	if (top <= 1 || top >= max - 1) {
-		expect(
-			await isRowOnScreen(page, index),
-			`track ${index} clamped off screen`,
-		).toBe(true);
-		return;
-	}
-	expect(
-		distance!,
-		`track ${index} settled ${Math.round(distance!)}px off centre`,
-	).toBeLessThan(2);
+			if (top <= 1 || top >= max - 1)
+				return (await isRowOnScreen(page, index))
+					? "at rest"
+					: `track ${index} clamped off screen`;
+
+			return distance < 2
+				? "at rest"
+				: `track ${index} sat ${Math.round(distance)}px off centre`;
+		})
+		.toBe("at rest");
 };
 
 // The first fully visible row at or past the middle of the view.
@@ -91,7 +116,7 @@ const rowInTheMiddle = (page: Page) =>
 // rest, so it has to start from one settled at the top.
 const openAtTheTop = async (page: Page) => {
 	await openLibrary(page);
-	await expect(isRowOnScreen(page, 0)).resolves.toBe(true);
+	await expect.poll(() => isRowOnScreen(page, 0)).toBe(true);
 };
 
 test.describe("following playback", () => {
@@ -152,9 +177,8 @@ test.describe("with following turned off", () => {
 		// The status bar proves the push landed, so the view staying put is the
 		// setting working rather than the update never arriving.
 		await expect(statusBar(page)).toContainText(FAR.title);
-		await page.waitForTimeout(400);
 
-		expect(await scrollTop(page)).toBe(0);
+		expect(await settle(page)).toBe(0);
 		expect(await isRowOnScreen(page, FAR.index)).toBe(false);
 	});
 });
@@ -289,14 +313,17 @@ test.describe("at library scale", () => {
 					"data-active",
 					"true",
 				);
-				await page.waitForTimeout(500);
+				const at = await settle(page);
 				expect(
 					await isRowOnScreen(page, next),
 					`track ${next} left the screen`,
 				).toBe(true);
-				expect(await scrollTop(page), `the view moved for track ${next}`).toBe(
-					resting,
-				);
+				// A tolerance rather than equality: the offset is fractional at the
+				// phone's device pixel ratio.
+				expect(
+					Math.abs(at - resting),
+					`the view moved for track ${next}`,
+				).toBeLessThan(2);
 			});
 		});
 
@@ -321,15 +348,17 @@ test.describe("at library scale", () => {
 
 		test("playing a row you can already see leaves the view alone", async ({
 			page,
+			isMobile,
 		}) => {
-			test.skip(
-				test.info().project.name === "mobile",
-				"double-click is a pointer gesture",
-			);
+			test.skip(isMobile, "double-click is a pointer gesture");
 
 			await openAtTheTop(page);
 			await scrollTo(page, 300);
-			await expect.poll(() => scrollTop(page)).toBe(300);
+			// Read back rather than asserted: in album layout on a phone the covers
+			// stack and the content can be shorter than 300 plus the viewport, in
+			// which case the browser clamps and 300 is never reachable.
+			const parked = await settle(page);
+			expect(parked, "the list had nowhere to scroll to").toBeGreaterThan(0);
 
 			// Which index is halfway down the view depends on the layout's row
 			// heights and on the viewport, so it is read off the page.
@@ -341,9 +370,8 @@ test.describe("at library scale", () => {
 				"data-active",
 				"true",
 			);
-			await page.waitForTimeout(600);
 
-			expect(await scrollTop(page)).toBe(300);
+			expect(Math.abs((await settle(page)) - parked)).toBeLessThan(2);
 		});
 
 		test("the last track is reachable even though it cannot be centred", async ({
@@ -371,11 +399,8 @@ test.describe("at library scale", () => {
 
 		// The virtualiser has to be told about the view header and toolbar above
 		// the list, or every scrollToIndex lands short by their combined height.
-		test("n centres it", async ({ page, player }) => {
-			test.skip(
-				test.info().project.name === "mobile",
-				"n is a keyboard shortcut",
-			);
+		test("n centres it", async ({ page, player, isMobile }) => {
+			test.skip(isMobile, "n is a keyboard shortcut");
 
 			await openAtTheTop(page);
 			player.playItem("p7", FAR.index);

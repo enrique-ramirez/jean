@@ -1,14 +1,14 @@
 import {
 	expect,
+	expectSettlesAt,
 	type FakePlayer,
+	FOO_JEAN_TOKEN,
 	openSettings,
 	type Page,
 	requestsTo,
 	settingsDialog,
 	test,
 } from "./fixtures.ts";
-
-const TOKEN = "0123456789abcdef0123456789abcdef";
 
 const pairButton = (page: Page) =>
 	settingsDialog(page).getByRole("button", { name: /^Pair$/ });
@@ -28,13 +28,14 @@ test.describe("pairing a device", () => {
 		await pairButton(page).click();
 
 		await expect(settingsDialog(page)).toContainText("Connected");
-		await expect.poll(() => pairRequests(player).length).toBe(1);
+		await expectSettlesAt(player, () => pairRequests(player).length, 1);
 
-		// Stored where a pasted one would be.
-		const stored = await page.evaluate(() =>
-			window.localStorage.getItem("jean.fooJeanToken"),
-		);
-		expect(JSON.parse(stored ?? '""')).toBe(TOKEN);
+		// Kept, and still working: a reload that comes back connected proves both,
+		// where reading the storage key proves neither and names a key the project
+		// rules put off limits.
+		await page.reload();
+		await openSettings(page);
+		await expect(settingsDialog(page)).toContainText("Connected");
 	});
 
 	test("nothing has to be typed", async ({ page, player }) => {
@@ -67,13 +68,17 @@ test.describe("pairing a device", () => {
 
 		// beefweb serves clientconfig unauthenticated, so syncing the credential
 		// through it would recreate the escalation the credential prevents.
-		const written = requestsTo(player, "/api/clientconfig").filter(
-			(entry) => entry.method === "POST",
+		await expectSettlesAt(
+			player,
+			() =>
+				requestsTo(player, "/api/clientconfig").filter(
+					(entry) => entry.method === "POST",
+				),
+			[],
 		);
-		expect(written).toEqual([]);
 
 		for (const entry of player.requests)
-			expect(entry.path).not.toContain(TOKEN);
+			expect(entry.path).not.toContain(FOO_JEAN_TOKEN);
 	});
 
 	test("the paste path is still there for anyone who wants it", async ({
@@ -117,7 +122,7 @@ test.describe("when no window is open", () => {
 
 		await pairButton(page).click();
 		await expect(settingsDialog(page)).toContainText("Connected");
-		await expect.poll(() => pairRequests(player).length).toBe(2);
+		await expectSettlesAt(player, () => pairRequests(player).length, 2);
 	});
 });
 
@@ -171,6 +176,37 @@ test.describe("with no component at all", () => {
 		await expect(settingsDialog(page)).toContainText("Not installed");
 		await expect(pairButton(page)).toHaveCount(0);
 	});
+
+	// Absent is the component's own answer, so it is asked once. A poll here would
+	// be a request every few seconds, for the life of every tab, on every install
+	// that does not have the component -- which is most of them.
+	test("and the answer is not asked for again", async ({ page, player }) => {
+		await openSettings(page);
+		await expect(settingsDialog(page)).toContainText("Not installed");
+
+		await page.waitForTimeout(8000);
+		expect(requestsTo(player, "/api/clientconfig/foo_jean")).toHaveLength(1);
+		expect(requestsTo(player, "/api/status")).toEqual([]);
+	});
+});
+
+test.describe("a probe that times out once", () => {
+	// Installed, running, reachable -- and the first `/api/status` answers only
+	// after this device has given up on it.
+	test.use({ fooJean: { slowStatus: 1 }, fooJeanToken: FOO_JEAN_TOKEN });
+
+	test("recovers on its own rather than reading as not installed", async ({
+		page,
+	}) => {
+		await openSettings(page);
+
+		// Nothing here presses "Check again": a timeout must not cost the session
+		// its component.
+		await expect(settingsDialog(page)).toContainText("Connected to foo_jean", {
+			timeout: 30_000,
+		});
+		await expect(settingsDialog(page)).not.toContainText("Not installed");
+	});
 });
 
 test.describe("a component that is advertised but unreachable", () => {
@@ -194,6 +230,6 @@ test.describe("something else answering on the advertised port", () => {
 
 		await expect(settingsDialog(page)).toContainText("is not foo_jean");
 		await expect(pairButton(page)).toHaveCount(0);
-		expect(pairRequests(player)).toEqual([]);
+		await expectSettlesAt(player, () => pairRequests(player), []);
 	});
 });

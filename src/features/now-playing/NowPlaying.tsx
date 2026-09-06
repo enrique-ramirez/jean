@@ -1,4 +1,4 @@
-import { ChevronDown, Mic2, MoreHorizontal, Shuffle } from "lucide-react";
+import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
@@ -13,14 +13,8 @@ import {
 	useTransport,
 } from "@/domain/player/usePlayer";
 import { readValue } from "@/domain/track/fields";
-import {
-	isWritableScale,
-	MAX_STARS,
-	rawRatingOfValue,
-	starsOf,
-	toStars,
-} from "@/domain/track/rating";
-import { useTagWriting } from "@/domain/track/useTagWriter";
+import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
+import { setRatingLayer } from "@/domain/track/ratingTarget";
 import { artworkUrl } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -31,23 +25,25 @@ import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
 import { CoverWheel, useCoverWheel } from "./CoverWheel";
-import { ListenHere } from "./ListenHere";
+import { ListenHere, playerNameOf } from "./ListenHere";
 import { LyricsScreen } from "./LyricsScreen";
 import { parseLyrics } from "./lyricsFormat";
 import styles from "./NowPlaying.module.css";
 import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import { PlayToggle } from "./PlayToggle";
 import { QueueButton } from "./QueueButton";
-import { SeekBar, useElapsed } from "./SeekBar";
+import { SeekBar, useElapsedSeconds } from "./SeekBar";
+import { ShuffleToggle } from "./ShuffleToggle";
 import { INFO_EXIT_MS, TrackInfo } from "./TrackInfo";
 import { TrackPanels } from "./TrackPanels";
 import { useNowPlayingMenu } from "./useNowPlayingMenu";
+import { useNowPlayingRating } from "./useNowPlayingRating";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 import { VolumePopover } from "./Volume";
 
 // Its own leaf, so the animation-frame loop repaints two spans rather than the whole screen.
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
-	const elapsed = useElapsed(snapshot);
+	const elapsed = useElapsedSeconds(snapshot);
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
 
 	return (
@@ -60,33 +56,22 @@ function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	);
 }
 
-// The playing track has no row to patch optimistically, so `setRating` patches the now-playing query instead.
 function Rating() {
-	const { canRate, rateTrack } = useTagWriting();
-	const { track, details, setRating } = useNowPlayingTrack();
+	const { raw, canWrite, write } = useNowPlayingRating();
 
-	const raw =
-		details === null
-			? null
-			: rawRatingOfValue(details.row[NOW_PLAYING_FIELD.rating]);
 	const rating = starsOf(raw);
 	const stars = rating === null ? 0 : toStars(rating);
 	const label = rating === null ? "Unrated" : `${stars} of ${MAX_STARS} stars`;
 
-	// A rating on another scale would be rescaled on write, so it is shown read-only.
-	if (!canRate || !track || details === null || !isWritableScale(raw))
-		return <Stars value={stars} label={label} />;
+	// `0`-`5` rate what this screen is showing, through the same call the stars make. Published even where the value is read-only, so the digits are refused here rather than falling through to the cursor row of the list behind the layer.
+	useEffect(() => {
+		setRatingLayer(write);
+		return () => setRatingLayer(null);
+	}, [write]);
 
-	return (
-		<StarsInput
-			value={stars}
-			label={label}
-			onRate={(next) => {
-				setRating(next === null ? "" : String(next));
-				rateTrack(track, track.title, next);
-			}}
-		/>
-	);
+	if (!canWrite) return <Stars value={stars} label={label} />;
+
+	return <StarsInput value={stars} label={label} onRate={write} />;
 }
 
 // Must match the exit animation in NowPlaying.module.css.
@@ -362,21 +347,11 @@ export function NowPlaying({
 						<div className={styles.transport}>
 							{/* What plays next: the order the player takes tracks in, and the tracks asked for by name. Both belong under a thumb, which the header is not. */}
 							<div className={styles.next}>
-								<button
-									type="button"
+								<ShuffleToggle
+									order={order}
 									className={styles.order}
-									aria-label="Shuffle"
-									aria-pressed={order.isShuffle}
-									disabled={!order.canShuffle}
-									title={
-										order.orderName
-											? `Playback order: ${order.orderName}`
-											: "Shuffle"
-									}
-									onClick={order.toggleShuffle}
-								>
-									<Shuffle size={18} strokeWidth={2} />
-								</button>
+									size={18}
+								/>
 
 								<QueueButton
 									isOpen={isQueueOpen}
@@ -414,9 +389,7 @@ export function NowPlaying({
 							{/* Where the sound goes, in the status bar's own order: the picker left of the fader, because where has to be answered before how loud there means anything. */}
 							<div className={styles.outputs}>
 								{player ? (
-									<ListenHere
-										playerName={player.info.title ?? player.info.name}
-									/>
+									<ListenHere playerName={playerNameOf(player.info)} />
 								) : null}
 
 								{hasFader ? (

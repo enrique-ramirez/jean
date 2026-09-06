@@ -16,7 +16,18 @@ const ABSENT: FooJeanDiscovery = {
 	state: { kind: "absent" },
 	origin: null,
 	token: null,
+	retryable: false,
 };
+
+// beefweb answers on one work queue and closes the connection per response, so an interval that never widens is a permanent cost, per open tab, for a port that is never going to answer -- a firewall, or a machine that is off. Doubling to a cap of a minute keeps a phone walking back into range recovering in seconds while a dead port settles into costing almost nothing.
+const MIN_RETRY_MS = 500;
+const MAX_RETRY_MS = 60_000;
+
+// The wait before the next attempt. Put back by a settled answer and by an explicit recheck.
+let retryMs = MIN_RETRY_MS;
+
+const isRetryable = (discovery: FooJeanDiscovery | undefined) =>
+	discovery?.retryable ?? false;
 
 export function useFooJean() {
 	const [token, setToken] = useStoredState(TOKEN_KEY, "");
@@ -24,14 +35,26 @@ export function useFooJean() {
 
 	const query = useQuery({
 		queryKey: [KEY, token],
-		queryFn: () => discoverFooJean(token || null),
-		// A property of the player rather than of this tab; the settings screen has an explicit check again.
-		staleTime: Number.POSITIVE_INFINITY,
-		refetchOnWindowFocus: false,
+		// Widened here rather than in `refetchInterval`, which react-query is free to consult more than once per cycle.
+		queryFn: async () => {
+			const discovery = await discoverFooJean(token || null);
+			retryMs = discovery.retryable
+				? Math.min(retryMs * 2, MAX_RETRY_MS)
+				: MIN_RETRY_MS;
+			return discovery;
+		},
+		// A settled answer is a property of the player rather than of this tab, so it is asked once and the settings screen has an explicit check again.
+		// A timeout or a refused connection is the network talking: caching it would present a component that is installed and working as absent, for the life of the tab.
+		staleTime: (query) =>
+			isRetryable(query.state.data) ? 0 : Number.POSITIVE_INFINITY,
+		refetchOnWindowFocus: (query) => isRetryable(query.state.data),
+		refetchInterval: (query) =>
+			isRetryable(query.state.data) ? retryMs : false,
 		retry: false,
 	});
 
 	const recheck = useCallback(() => {
+		retryMs = MIN_RETRY_MS;
 		queryClient.invalidateQueries({ queryKey: [KEY] });
 	}, [queryClient]);
 

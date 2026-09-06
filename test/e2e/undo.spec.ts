@@ -1,6 +1,7 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	openLibrary,
 	pressAndHold,
 	requestsTo,
@@ -138,7 +139,11 @@ test.describe("adding tracks to a playlist", () => {
 
 		await addToFavorites(page, 1, isMobile);
 
-		await expect.poll(() => requestsTo(player, "/items/copy")).toHaveLength(1);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/copy").length,
+			1,
+		);
 		const copy = requestsTo(player, "/items/copy")[0];
 		expect(copy.path).toBe(
 			`/api/playlists/${LIBRARY}/${FAVORITES.id}/items/copy`,
@@ -173,9 +178,11 @@ test.describe("undoing it", () => {
 
 		// The appended range, computed from the itemCount already in PlaylistInfo:
 		// no %path% fetched, no matching, one request.
-		await expect
-			.poll(() => requestsTo(player, "/items/remove"))
-			.toHaveLength(1);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/remove").length,
+			1,
+		);
 		expect(requestsTo(player, "/items/remove")[0].body).toEqual({
 			items: [FAVORITES.itemCount],
 		});
@@ -206,9 +213,11 @@ test.describe("undoing it", () => {
 
 		await toast(page).getByRole("button", { name: "Undo" }).click();
 
-		await expect
-			.poll(() => requestsTo(player, "/items/remove"))
-			.toHaveLength(1);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/remove").length,
+			1,
+		);
 		expect(requestsTo(player, "/items/remove")[0].body).toEqual({
 			items: [7, 8, 9],
 		});
@@ -247,8 +256,11 @@ test.describe("undoing it", () => {
 		);
 
 		// It removed nothing, rather than removing the wrong rows and reporting it.
-		await page.waitForTimeout(200);
-		expect(requestsTo(player, "/items/remove")).toHaveLength(0);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/remove").length,
+			0,
+		);
 		expect(titlesIn(player, FAVORITES.id)).toEqual(after);
 	});
 
@@ -263,8 +275,11 @@ test.describe("undoing it", () => {
 		await toast(page).getByRole("button", { name: "Dismiss" }).click();
 		await expect(toast(page)).toHaveCount(0);
 
-		await page.waitForTimeout(200);
-		expect(requestsTo(player, "/items/remove")).toHaveLength(0);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/remove").length,
+			0,
+		);
 		expect(
 			player.playlists.find((entry) => entry.id === FAVORITES.id)!.items,
 		).toHaveLength(FAVORITES.itemCount + 1);

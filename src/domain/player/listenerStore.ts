@@ -95,7 +95,7 @@ const dead = new Set<string>();
 let attempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let watchdogTimer: ReturnType<typeof setInterval> | null = null;
-let timelineTimer: ReturnType<typeof setTimeout> | null = null;
+let timelineTimer: ReturnType<typeof setInterval> | null = null;
 
 let anchor: number | null = null;
 // The last `/stream/timeline` answer and when it arrived. The anchor needs it paired with a buffered range, and the two arrive in either order.
@@ -110,7 +110,7 @@ let audiblePath: string | null = null;
 let pendingSeek: number | null = null;
 let mse: MseStream | null = null;
 // Per session, never stored: a downgrade describes this connection, not a decision the user made.
-let lowLatencyFailed = false;
+let lowLatencyFellBack = false;
 let stalls: number[] = [];
 let flushedAt = 0;
 let pendingMarkAt = 0;
@@ -132,7 +132,7 @@ function build(): ListenSnapshot {
 		isMuted,
 		canSetVolume,
 		audiblePath,
-		lowLatencyFellBack: lowLatencyFailed,
+		lowLatencyFellBack,
 	};
 }
 
@@ -155,8 +155,9 @@ export const listeningSnapshot = () => snapshot;
 // `useSyncExternalStore` calls this before hydration, so it must not touch the DOM.
 export const listeningServerSnapshot = () => snapshot;
 
-export const isListening = () =>
-	phase.kind !== "off" && phase.kind !== "failed";
+// Which phases mean a connection is up. A parameter rather than the module's own, so the hook reading the published snapshot and the store reading its live one cannot answer differently.
+export const isListening = (at: ListenPhase) =>
+	at.kind !== "off" && at.kind !== "failed";
 
 // ---- the element -------------------------------------------------------------
 
@@ -191,7 +192,7 @@ function ensureElement() {
 // same Opus packets in WebM. The audio is untouched: this changes who owns the buffer, not
 // what is in it. AAC has no such path yet, which is why the format decides too.
 function wantsLowLatency(forFormat: string) {
-	if (forFormat !== "opus" || !canUseMse() || lowLatencyFailed) return false;
+	if (forFormat !== "opus" || !canUseMse() || lowLatencyFellBack) return false;
 	try {
 		// Absent is on: a browser that supports the container gets the short buffer, and the
 		// fallback below is what protects a connection that cannot hold it.
@@ -199,6 +200,14 @@ function wantsLowLatency(forFormat: string) {
 	} catch {
 		return false;
 	}
+}
+
+// An orphan keeps its reader loop, its trim interval and its object URL, goes on pulling the
+// live stream at 1x, and still counts against the component's `maxConcurrentStreams`. Its
+// `onError` would also drive reconnects on a connection it no longer owns.
+function releaseStream() {
+	mse?.stop();
+	mse = null;
 }
 
 function sourceFor(
@@ -217,7 +226,7 @@ function sourceFor(
 			if (audio.paused) void audio.play().catch(() => undefined);
 		},
 		onError: () => {
-			if (isListening()) scheduleReconnect();
+			if (isListening(phase)) scheduleReconnect();
 		},
 		// Another connection would meet the same stream, so the path goes rather than retrying.
 		onUnusable: retireLowLatency,
@@ -230,7 +239,7 @@ function sourceFor(
 // Safari for Opus altogether -- the remux was the only way to reach it, so the format goes too
 // and the reconnect picks the next one rather than offering bytes nothing can decode.
 function retireLowLatency() {
-	lowLatencyFailed = true;
+	lowLatencyFellBack = true;
 	stalls = [];
 	if (format && !playsNatively(format)) dead.add(format);
 	restartListening();
@@ -252,13 +261,18 @@ function onWaiting() {
 	retireLowLatency();
 }
 
-function onPlaying() {
-	if (!isListening()) return;
-	attempt = 0;
-	setPhase({ kind: "playing" });
-	lastTime = element?.currentTime ?? 0;
+// The observation the watchdog waits on: audio came out at this position, at this moment. The first one is also what tells a buffer running dry from a stream that was never going to play.
+function markRendered(at: number) {
+	lastTime = at;
 	lastAdvance = performance.now();
 	hasRendered = true;
+}
+
+function onPlaying() {
+	if (!isListening(phase)) return;
+	attempt = 0;
+	setPhase({ kind: "playing" });
+	markRendered(element?.currentTime ?? 0);
 	deriveAnchor();
 }
 
@@ -289,7 +303,7 @@ function onTimeUpdate() {
 
 // `error.code` is the only thing separating "cannot play this" from "the Wi-Fi dropped", and the two want opposite responses.
 function onError() {
-	if (!isListening()) return;
+	if (!isListening(phase)) return;
 	const code = element?.error?.code;
 
 	if (
@@ -306,7 +320,7 @@ function onError() {
 
 // An endless response ends on every network blip, and an `<audio>` element will not retry by itself.
 function onEnded() {
-	if (isListening()) scheduleReconnect();
+	if (isListening(phase)) scheduleReconnect();
 }
 
 // ---- connecting --------------------------------------------------------------
@@ -334,6 +348,15 @@ function nextFormat() {
 	void open(remaining[0]);
 }
 
+// What the clock for one connection consists of, in one place: the anchor is fixed per connection, and every mark under it means a stream time only that connection can read.
+function forgetStreamClock() {
+	anchor = null;
+	timelineStreamTime = null;
+	marks = [];
+	audiblePath = null;
+	pendingSeek = null;
+}
+
 export function connect() {
 	if (!target) return;
 	teardown();
@@ -346,16 +369,15 @@ export function retry() {
 	connect();
 }
 
+// Re-entered by the reconnect timer, the busy retry and the codec fall-through as well as by a
+// fresh connect, so everything a connection holds is released here rather than in `stopStream`.
 async function open(next: string) {
 	if (!target) return;
 
 	const mine = ++generation;
+	releaseStream();
 	format = next;
-	anchor = null;
-	timelineStreamTime = null;
-	marks = [];
-	audiblePath = null;
-	pendingSeek = null;
+	forgetStreamClock();
 	stalls = [];
 	setPhase(
 		attempt > 0 ? { kind: "reconnecting", attempt } : { kind: "connecting" },
@@ -371,6 +393,7 @@ async function open(next: string) {
 	if (!issued.ok) {
 		if (issued.reason === "busy") {
 			setPhase({ kind: "busy", message: issued.message });
+			if (reconnectTimer) clearTimeout(reconnectTimer);
 			reconnectTimer = setTimeout(() => {
 				if (mine === generation) void open(next);
 			}, BUSY_RETRY_MS);
@@ -430,7 +453,9 @@ function scheduleReconnect() {
 	attempt += 1;
 	setPhase({ kind: "reconnecting", attempt });
 	// Never open a second element to probe with: Safari holds two connections per listener, and `maxConcurrentStreams` counts connections.
+	const mine = generation;
 	reconnectTimer = setTimeout(() => {
+		if (mine !== generation) return;
 		const remaining = liveFormats();
 		if (remaining.length > 0) void open(format ?? remaining[0]);
 	}, wait);
@@ -438,18 +463,23 @@ function scheduleReconnect() {
 
 // ---- the stall watchdog ------------------------------------------------------
 
+// What it watches is one connection, and a reconnect is a new one: the element's clock restarts at
+// zero and nothing has been heard yet, so the observation restarts whether or not the interval does.
+// Left alone, a reconnect inherits `hasRendered` and neither the slow-start grace nor the
+// short-buffer write-off can ever fire again.
 function startWatchdog() {
-	if (watchdogTimer) return;
 	lastTime = 0;
 	lastAdvance = performance.now();
 	hasRendered = false;
+
+	if (watchdogTimer) return;
 	watchdogTimer = setInterval(watch, WATCHDOG_MS);
 	timelineTimer = setInterval(() => void refreshTimeline(), TIMELINE_POLL_MS);
 }
 
 async function watch() {
 	const audio = element;
-	if (!audio || !isListening()) return;
+	if (!audio || !isListening(phase)) return;
 	if (phase.kind === "blocked" || phase.kind === "busy") return;
 
 	// Nothing has been heard and the short-buffer path had its chance. The stall counter
@@ -461,9 +491,7 @@ async function watch() {
 	}
 
 	if (audio.currentTime !== lastTime) {
-		lastTime = audio.currentTime;
-		lastAdvance = performance.now();
-		hasRendered = true;
+		markRendered(audio.currentTime);
 		if (phase.kind === "silent") setPhase({ kind: "playing" });
 		return;
 	}
@@ -476,7 +504,7 @@ async function watch() {
 		.then((player) => player.playbackState !== "playing")
 		.catch(() => false);
 
-	if (!isListening()) return;
+	if (!isListening(phase)) return;
 	if (stopped) {
 		setPhase({ kind: "silent" });
 		lastAdvance = performance.now();
@@ -506,7 +534,7 @@ function deriveAnchor() {
 }
 
 async function reloadMarks() {
-	if (!target || !element || !isListening()) return;
+	if (!target || !element || !isListening(phase)) return;
 
 	const mine = generation;
 	const timeline = await fetchStreamTimeline(target.origin, target.token);
@@ -533,7 +561,7 @@ export function listeningPosition(
 }
 
 export function beginSeek(position: number) {
-	if (!isListening() || !element) return;
+	if (!isListening(phase) || !element) return;
 
 	if (mse) {
 		flushedAt = performance.now();
@@ -618,18 +646,13 @@ function stopStream() {
 	generation += 1;
 	if (reconnectTimer) clearTimeout(reconnectTimer);
 	if (watchdogTimer) clearInterval(watchdogTimer);
-	if (timelineTimer) clearTimeout(timelineTimer);
+	if (timelineTimer) clearInterval(timelineTimer);
 	reconnectTimer = null;
 	watchdogTimer = null;
 	timelineTimer = null;
-	anchor = null;
-	timelineStreamTime = null;
-	marks = [];
-	audiblePath = null;
-	pendingSeek = null;
+	forgetStreamClock();
 
-	mse?.stop();
-	mse = null;
+	releaseStream();
 
 	const audio = element;
 	if (audio) {
@@ -647,7 +670,7 @@ function teardown() {
 
 export function disconnect() {
 	const gone = target;
-	const wasListening = isListening();
+	const wasListening = isListening(phase);
 
 	teardown();
 	setPhase({ kind: "off" });
@@ -664,7 +687,7 @@ export function configureListening(next: ListenTarget | null) {
 		target?.formats.join() === next?.formats.join();
 	if (same) return;
 
-	if (isListening()) disconnect();
+	if (isListening(phase)) disconnect();
 	target = next;
 	dead.clear();
 }
@@ -673,7 +696,7 @@ export function configureListening(next: ListenTarget | null) {
 // `useStoredState` like any other setting; this is what makes the change take effect, since
 // the source is chosen when a connection opens.
 export function restartListening() {
-	if (!isListening()) return;
+	if (!isListening(phase)) return;
 	// The current format may have just been retired along with the path that reached it.
 	const wanted =
 		format && !dead.has(format) ? format : (liveFormats()[0] ?? null);

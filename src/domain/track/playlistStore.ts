@@ -3,11 +3,12 @@ import type { TrackColumns } from "@/shared/api/types";
 import { type Subscribers, subscribers } from "@/shared/lib/store";
 import { TRACK_EXPRESSIONS } from "./fields";
 import { deriveIntensity } from "./intensity";
+import { type PathCollector, type PathTable, pathCollector } from "./pathTable";
 
 // `paths` and `subsongs` are parallel to `rows` and present only on the media library. Null rather than empty on a playlist, so reaching for them on the wrong source fails loudly.
 export interface PlaylistSnapshot {
 	rows: TrackColumns[];
-	paths: string[] | null;
+	paths: PathTable | null;
 	subsongs: number[] | null;
 	loaded: number;
 	total: number;
@@ -42,6 +43,9 @@ const STRATEGY = {
 	playlist: { firstChunk: 2500, chunkSize: 7500, concurrency: 4 },
 	library: { firstChunk: 500, chunkSize: Infinity, concurrency: 1 },
 };
+
+// The budget a chunked load's publishing settles on, after the first chunk and before the last. Both of those are prompt: the first is what the user is waiting to see, and the last is the answer.
+const COALESCE_MS = 250;
 
 // One shared load per key, run to completion even after every consumer unmounts. What is kept afterwards is bounded, because rows are the largest thing Jean holds.
 const MAX_IDLE_ENTRIES = 4;
@@ -157,7 +161,7 @@ async function load(entry: Entry, source: LoadSource) {
 	const isLibrary = source.kind === "library";
 
 	const rows: TrackColumns[] = [];
-	const paths: string[] | null = isLibrary ? [] : null;
+	const paths: PathCollector | null = isLibrary ? pathCollector() : null;
 	const subsongs: number[] | null = isLibrary ? [] : null;
 
 	const publish = (totalCount: number, isLoading: boolean) => {
@@ -165,7 +169,7 @@ async function load(entry: Entry, source: LoadSource) {
 		const snapshot = [...rows];
 		emit(entry, {
 			rows: snapshot,
-			paths: paths ? [...paths] : null,
+			paths: paths?.table() ?? null,
 			subsongs: subsongs ? [...subsongs] : null,
 			loaded: snapshot.length,
 			total: totalCount,
@@ -175,9 +179,30 @@ async function load(entry: Entry, source: LoadSource) {
 		});
 	};
 
+	// Every consumer of `rows` walks all of them -- the album grouping, the shelves, the stats, the intensity -- and none is incremental, so a chunked load pays for the whole prefix once per chunk. Rows are read at the timer rather than captured at the call, so a coalesced run publishes the newest set and never a stale one.
+	let scheduled: ReturnType<typeof setTimeout> | null = null;
+	let deferred: { totalCount: number; isLoading: boolean } | null = null;
+
+	const publishSoon = (totalCount: number, isLoading: boolean) => {
+		deferred = { totalCount, isLoading };
+		if (scheduled) return;
+		scheduled = setTimeout(() => {
+			scheduled = null;
+			const held = deferred;
+			deferred = null;
+			if (held) publish(held.totalCount, held.isLoading);
+		}, COALESCE_MS);
+	};
+
+	const dropDeferred = () => {
+		if (scheduled) clearTimeout(scheduled);
+		scheduled = null;
+		deferred = null;
+	};
+
 	const absorb = (chunk: Chunk) => {
 		rows.push(...chunk.rows);
-		if (paths && chunk.paths) paths.push(...chunk.paths);
+		if (paths && chunk.paths) for (const path of chunk.paths) paths.add(path);
 		if (subsongs && chunk.subsongs) subsongs.push(...chunk.subsongs);
 	};
 
@@ -215,7 +240,7 @@ async function load(entry: Entry, source: LoadSource) {
 				const offset = queue.shift() as number;
 				pending.set(offset, await fetchChunk(source, offset, step, signal));
 				drainInOrder();
-				publish(total, rows.length < total);
+				publishSoon(total, rows.length < total);
 			}
 		};
 
@@ -224,8 +249,10 @@ async function load(entry: Entry, source: LoadSource) {
 		);
 
 		// The list can be shorter than it claimed if it was edited mid-load, so loading ends here rather than when the count is reached.
+		dropDeferred();
 		publish(total, false);
 	} catch (error) {
+		dropDeferred();
 		if (error instanceof Error && error.name === "AbortError") return;
 		// Cleared so a later mount can try again rather than sitting on the failure for as long as the tab is open.
 		entry.isStarted = false;

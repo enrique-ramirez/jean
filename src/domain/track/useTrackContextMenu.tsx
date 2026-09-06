@@ -5,20 +5,19 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import { usePermissions, usePlaylists } from "@/domain/player/usePlayer";
+import {
+	canChangePlaylists,
+	usePermissions,
+	usePlaylists,
+} from "@/domain/player/usePlayer";
 import type { TrackColumns } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { plural } from "@/shared/lib/text";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
-import { FIELD, value } from "./fields";
+import { artistOf, titleOf } from "./fields";
 import type { LibrarySource } from "./librarySource";
-import type { Refs } from "./project";
-import {
-	isWritableScale,
-	rawRatingOf,
-	rawRatingOfValue,
-	starsOf,
-} from "./rating";
+import { type Refs, refAt } from "./project";
+import { isWritableScale, rawRatingWith, starsOf } from "./rating";
 import { useWrittenRating } from "./ratingStore";
 import { ratingItems, trackActions } from "./trackActions";
 import { targetsFrom } from "./trackTargets";
@@ -56,14 +55,9 @@ export function useTrackContextMenu({
 	// One track only: a rating over a whole selection is dozens of tag writes behind a single click, and an undo that is dozens more.
 	const rated = positions.length === 1 ? rows[positions[0]] : undefined;
 	const written = useWrittenRating(rated);
-	const rawRating =
-		rated === undefined
-			? null
-			: written === undefined
-				? rawRatingOf(rated)
-				: rawRatingOfValue(written);
+	const rawRating = rated === undefined ? null : rawRatingWith(rated, written);
 
-	const canEdit = permissions.changePlaylists !== false;
+	const canEdit = canChangePlaylists(permissions);
 
 	// Right-clicking inside a selection acts on all of it, outside one replaces it. That is why TrackRow ignores non-primary buttons: selecting on pointer-down would collapse the selection before the menu about to act on it opened.
 	// `adopt` is off for the hold, because claiming the selection on pointer-down would undo the shift-click in the same event.
@@ -97,9 +91,7 @@ export function useTrackContextMenu({
 	const actions = useMemo(() => {
 		if (count === 0) return [];
 
-		const itemIndices = positions.map((position) =>
-			indices ? indices[position] : position,
-		);
+		const itemIndices = positions.map((position) => refAt(indices, position));
 		const rateable =
 			canRate && rated !== undefined && isWritableScale(rawRating);
 
@@ -117,10 +109,10 @@ export function useTrackContextMenu({
 						id: "rate",
 						label: "Rating",
 						icon: Star,
-						items: ratingItems(starsOf(rawRating), (stars: number) =>
+						items: ratingItems(starsOf(rawRating), (stars) =>
 							rate(
 								{ source, ref: itemIndices[0], row: rated as TrackColumns },
-								stars === 0 ? null : stars,
+								stars,
 							),
 						),
 					}
@@ -155,8 +147,8 @@ export function useTrackContextMenu({
 		const row = rows[positions[0]];
 		return {
 			icon: Music,
-			title: value(row, FIELD.title) ?? "Unknown title",
-			subtitle: value(row, FIELD.artist) ?? "Unknown artist",
+			title: titleOf(row),
+			subtitle: artistOf(row),
 		};
 	}, [count, positions, rows]);
 

@@ -13,7 +13,7 @@
 		"lint:fix": "biome check --write",
 		"format": "biome format --write",
 		"test": "pnpm test:unit && pnpm test:e2e",
-		"test:unit": "node --test \"test/unit/*.test.ts\"",
+		"test:unit": "node --import ./test/alias.ts --test \"test/unit/*.test.ts\"",
 		"test:e2e": "playwright test",
 		"test:ui": "playwright test --ui",
 		"fake": "node test/fake-api/main.ts --port 8880",

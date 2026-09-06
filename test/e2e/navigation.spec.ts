@@ -2,6 +2,7 @@ import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
+	expectSettlesAt,
 	nowPlayingScreen,
 	openLibrary,
 	openSidebar,
@@ -44,6 +45,49 @@ test.describe("the command palette", () => {
 			"aria-selected",
 			"true",
 		);
+	});
+
+	test("the first result stays active under a pointer that has not moved", async ({
+		page,
+	}) => {
+		// Where the third result sits. The palette opens in the same place every
+		// time, so parking the pointer there and reopening puts a row under a
+		// cursor that never moved -- which is what the palette is normally used
+		// like, since it is opened by a key.
+		const box = (await results(page).nth(2).boundingBox())!;
+		await page.keyboard.press("Escape");
+		await expect(palette(page)).toHaveCount(0);
+
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.keyboard.press("g");
+		await expect(results(page)).toHaveCount(6);
+
+		await expect(results(page).first()).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+
+		// And again for a query typed under the same still pointer.
+		await paletteField(page).fill("e");
+		await expect(results(page).first()).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+	});
+
+	test("hovering a result still selects it, once the pointer really moves", async ({
+		page,
+	}) => {
+		const target = results(page).nth(3);
+		const box = (await target.boundingBox())!;
+
+		// Somewhere else first: the first mouseenter has no earlier position to be
+		// compared against and is refused, so one synthetic move onto a row proves
+		// nothing either way.
+		await page.mouse.move(4, 4);
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+		await expect(target).toHaveAttribute("aria-selected", "true");
 	});
 
 	test("All music is above the playlists and goes there", async ({ page }) => {
@@ -226,7 +270,11 @@ test.describe("the first run, with no library playlist", () => {
 		await expect(trackRow(page, 0)).toBeAttached();
 
 		// Renamed, not copied.
-		expect(requestsTo(player, "/playlists/add")).toHaveLength(0);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/playlists/add").length,
+			0,
+		);
 		expect(
 			player.playlists.some((entry) => entry.title === "#Jean Library"),
 		).toBe(true);
@@ -274,11 +322,21 @@ test.describe("the library playlist is Jean's, not furniture", () => {
 	});
 });
 
+// Far enough down the 54-track fixture to be nowhere near either end.
+const LEFT_AT = 900;
+
+// A tolerance rather than equality: row heights, the scroll offset and the
+// container's own rect are all fractional, and the phone runs at DPR 2.625.
+const expectNear = (page: Page, offset: number) =>
+	expect
+		.poll(async () => Math.abs((await scrollTop(page)) - offset))
+		.toBeLessThan(2);
+
 test.describe("where a view puts you when you come back to it", () => {
 	test("a playlist remembers where it was left", async ({ page }) => {
 		await openLibrary(page);
-		await scrollTo(page, 900);
-		await expect.poll(() => scrollTop(page)).toBe(900);
+		await scrollTo(page, LEFT_AT);
+		await expectNear(page, LEFT_AT);
 
 		await openSidebar(page);
 		await sidebar(page)
@@ -303,7 +361,7 @@ test.describe("where a view puts you when you come back to it", () => {
 		// Rows arrive a chunk at a time, so the content is often too short to hold
 		// the offset at the moment the view comes back; the restore keeps trying
 		// for about a second.
-		await expect.poll(() => scrollTop(page)).toBe(900);
+		await expectNear(page, LEFT_AT);
 	});
 });
 

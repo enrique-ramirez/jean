@@ -138,6 +138,10 @@ export function usePermissions(): Partial<Permissions> {
 	return data?.player?.permissions ?? {};
 }
 
+// Absent means allowed, and that is the whole of why this is written once: a player reporting no permissions object at all is permissive, and a strict `=== true` reads it as read-only and takes the affordances away.
+export const canChangePlaylists = (permissions: Partial<Permissions>) =>
+	permissions.changePlaylists !== false;
+
 // Patch the cache, send, put the old value back if the player refuses. `patch` returns the next value for the key, or null to leave it alone.
 function useOptimisticWrite<TData, TInput>(
 	queryKey: QueryKey,

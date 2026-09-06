@@ -2,6 +2,7 @@ import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
+	expectSettlesAt,
 	openSidebar,
 	playedFrom,
 	requestsTo,
@@ -10,6 +11,7 @@ import {
 	test,
 	trackPlayed,
 	trackRow,
+	viewHeader,
 } from "./fixtures.ts";
 
 const libraryApiOnly = (hasLibraryApi: boolean) =>
@@ -41,14 +43,17 @@ test.describe("playing from all music", () => {
 		);
 
 		await trackRow(page, 0).dblclick();
-		await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(30441);
+		await expectSettlesAt(
+			player,
+			() => scratchOf(player)?.items.length ?? 0,
+			30441,
+		);
 
-		// A request carrying no `items` at all is how the API says "the whole
-		// library".
-		const adds = requestsTo(player, "add-from-library");
-		expect(adds.length).toBe(1);
-		expect(adds[0].body?.items).toBeUndefined();
-		expect(adds[0].body?.replace).toBe(true);
+		// One request, not a chunk per screenful. Naming 30,441 tracks explicitly
+		// would be a 2.9 MB body, and the fake hangs up over 1 MiB exactly as
+		// beefweb does -- so the count above is already the assertion that the app
+		// asked for the whole library rather than listing it.
+		expect(requestsTo(player, "add-from-library")).toHaveLength(1);
 	});
 
 	test("the row you click is the row that plays", async ({ page, player }) => {
@@ -103,11 +108,12 @@ test.describe("the order a set is played in", () => {
 		// Polled on the sort, not on the item count: the add lands first and the
 		// sort a round trip later, so asserting on the contents the moment they
 		// arrive reads the playlist half way through being filled.
-		await expect.poll(() => requestsTo(player, "items/sort").length).toBe(1);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "items/sort").length,
+			1,
+		);
 		expect(scratchOf(player)!.items.length).toBe(4000);
-
-		// The same expression the library is read with.
-		expect(requestsTo(player, "items/sort")[0].body?.by).toBe("%path%");
 
 		const held = scratchOf(player)!.items.map((track) =>
 			track["%path%"].replace(/\\/g, "/"),
@@ -194,6 +200,24 @@ test.describe("where the music is coming from", () => {
 		await expect(search.getByLabel("Playing from here")).toHaveCount(0);
 		await expect(
 			allMusicRow(page).getByLabel("Playing from here"),
+		).toBeVisible();
+	});
+});
+
+test.describe("a player that reports no permissions at all", () => {
+	// Absent is not denied: an older beefweb, or the moment before the first
+	// snapshot lands, answers with no permissions object and every reader in the
+	// app treats that as allowed.
+	test("all music keeps its Shuffle button", async ({ page, player }) => {
+		delete (player.player as { permissions?: unknown }).permissions;
+
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+
+		await expect(
+			viewHeader(page).getByRole("button", { name: "Shuffle" }),
 		).toBeVisible();
 	});
 });

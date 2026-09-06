@@ -5,6 +5,7 @@ import {
 	nowPlayingScreen,
 	openLibrary,
 	requestsTo,
+	scrollUntilMounted,
 	sidebar,
 	test,
 	trackRow,
@@ -258,14 +259,26 @@ test.describe("navigation and appearance", () => {
 	});
 
 	test("t switches the theme", async ({ page }) => {
-		const theme = () => page.locator("html").getAttribute("data-theme");
-		const before = await theme();
+		// The colours a user sees, and the control that offers the other one: an
+		// attribute on <html> is neither, and the two custom-property sets are the
+		// whole design rather than a flag.
+		const surface = () =>
+			page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+		const offered = () =>
+			page
+				.getByRole("button", { name: /Switch to (light|dark) theme/ })
+				.getAttribute("aria-label");
+
+		const before = await surface();
+		const wasOffered = await offered();
 
 		await page.keyboard.press("t");
-		await expect.poll(theme).not.toBe(before);
+		await expect.poll(surface).not.toBe(before);
+		await expect.poll(offered).not.toBe(wasOffered);
 
 		await page.keyboard.press("t");
-		await expect.poll(theme).toBe(before);
+		await expect.poll(surface).toBe(before);
+		await expect.poll(offered).toBe(wasOffered);
 	});
 });
 
@@ -357,11 +370,23 @@ test.describe("selecting in a playlist", () => {
 	test("Mod+A takes everything and Escape gives it back", async ({ page }) => {
 		await page.keyboard.press("ControlOrMeta+a");
 
-		// Only mounted rows can be counted on screen; the selection itself is a set
-		// of indices over all 54.
-		const mounted = await page.locator('[role="row"]').count();
-		expect(mounted).toBeGreaterThan(1);
-		await expect(selected(page)).toHaveCount(mounted);
+		// The whole playlist rather than the screenful that happened to be mounted:
+		// counting rows on screen and comparing the selection to that number passes
+		// for an implementation that only ever selects what it can see. The menu
+		// reports the size of the selection itself.
+		await trackRow(page, 0).click({ button: "right" });
+		// Scoped to the menu, which is a portal outside the app root: the view
+		// header behind it counts the playlist and says "54 tracks" as well.
+		const menu = page
+			.locator("body > div")
+			.filter({ has: page.getByRole("menuitem", { name: "Add to playlist" }) });
+		await expect(menu).toContainText("54 tracks");
+		await page.keyboard.press("Escape");
+
+		// And the last row is in it, which is nowhere near the fold on either
+		// viewport.
+		await scrollUntilMounted(page, trackRow(page, 53));
+		await expect(trackRow(page, 53)).toHaveAttribute("aria-selected", "true");
 
 		await page.keyboard.press("Escape");
 		await expect(selected(page)).toHaveCount(0);

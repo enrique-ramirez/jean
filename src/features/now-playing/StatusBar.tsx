@@ -1,4 +1,3 @@
-import { Shuffle } from "lucide-react";
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -16,10 +15,11 @@ import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
-import { ListenHere } from "./ListenHere";
+import { ListenHere, playerNameOf } from "./ListenHere";
 import { PlayToggle } from "./PlayToggle";
 import { QueueButton } from "./QueueButton";
-import { SeekBar, useElapsed } from "./SeekBar";
+import { SeekBar, useElapsedSeconds } from "./SeekBar";
+import { ShuffleToggle } from "./ShuffleToggle";
 import styles from "./StatusBar.module.css";
 import { Volume, VolumePopover } from "./Volume";
 
@@ -29,7 +29,7 @@ function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 		"jean.timeRemaining",
 		false,
 	);
-	const elapsed = useElapsed(snapshot);
+	const elapsed = useElapsedSeconds(snapshot);
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
 
 	// The player reports no duration for a stream, so only the reading falls back; the preference is kept either way.
@@ -135,21 +135,7 @@ export function StatusBar({
 				<div className={styles.transport}>
 					{isCompactViewport ? null : (
 						<>
-							<button
-								type="button"
-								className={styles.order}
-								aria-label="Shuffle"
-								aria-pressed={order.isShuffle}
-								disabled={!order.canShuffle}
-								title={
-									order.orderName
-										? `Playback order: ${order.orderName}`
-										: "Shuffle"
-								}
-								onClick={order.toggleShuffle}
-							>
-								<Shuffle size={16} strokeWidth={2} />
-							</button>
+							<ShuffleToggle order={order} className={styles.order} size={16} />
 
 							<button
 								type="button"
@@ -164,7 +150,7 @@ export function StatusBar({
 
 					{isCompactViewport ? (
 						<>
-							<ListenHere playerName={player.info.title ?? player.info.name} />
+							<ListenHere playerName={playerNameOf(player.info)} />
 							{hasFader ? (
 								<VolumePopover
 									volume={shownVolume}
@@ -199,7 +185,7 @@ export function StatusBar({
 				{isCompactViewport ? null : (
 					<div className={styles.trailing}>
 						<Times snapshot={snapshot} />
-						<ListenHere playerName={player.info.title ?? player.info.name} />
+						<ListenHere playerName={playerNameOf(player.info)} />
 						{hasFader ? (
 							<Volume
 								volume={shownVolume}

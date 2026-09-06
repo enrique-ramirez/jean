@@ -7,11 +7,13 @@ import {
 	useState,
 } from "react";
 
-// Where each row sat when the drag began, in viewport coordinates.
-interface RowBox {
-	top: number;
-	height: number;
-}
+import {
+	autoscrollStep,
+	landingOffset,
+	offsetFor,
+	type RowBox,
+	targetFor,
+} from "@/shared/lib/dragGeometry";
 
 // The gesture in progress. tops is null until it turns out to be a drag rather than a click, because measuring is what the threshold buys.
 interface Drag {
@@ -38,25 +40,8 @@ interface SortState extends Drag {
 
 // Generous for a mouse: the row body is both the drag target and a link, so a click that wanders must not quietly rewrite the order.
 const THRESHOLD_PX: Record<string, number> = { mouse: 6, touch: 8 };
-const AUTOSCROLL_ZONE_PX = 56;
-const AUTOSCROLL_MAX_PX = 14;
 // If the reorder never lands, stop holding the transforms rather than freezing the list in place.
 const SETTLE_TIMEOUT_MS = 600;
-
-// Going down, the row lands against the target row's bottom: with uneven heights the tops do not line up.
-const landingOffset = ({
-	tops,
-	from,
-	to,
-}: {
-	tops: RowBox[];
-	from: number;
-	to: number;
-}) => {
-	if (to > from)
-		return tops[to].top + tops[to].height - tops[from].height - tops[from].top;
-	return tops[to].top - tops[from].top;
-};
 
 export function useSortableList({
 	keys,
@@ -105,39 +90,11 @@ export function useSortableList({
 		return () => clearTimeout(timer);
 	}, [state, order]);
 
-	// Compared against each resting row's midpoint, so the swap happens when they visually cross rather than when they merely touch.
-	const targetFor = (
-		{ tops, from }: { tops: RowBox[]; from: number },
-		offset: number,
-	) => {
-		const centre = tops[from].top + offset + tops[from].height / 2;
-		const crossed = (index: number) => tops[index].top + tops[index].height / 2;
-
-		const above = tops.findIndex(
-			(_, index) => index < from && centre < crossed(index),
-		);
-		if (above >= 0) return above;
-
-		return tops.reduce(
-			(target, _, index) =>
-				index > from && centre > crossed(index) ? index : target,
-			from,
-		);
-	};
-
 	const autoscroll = (clientY: number) => {
 		const scroller = scrollRef.current;
 		if (!scroller) return;
 
-		const rect = scroller.getBoundingClientRect();
-		const above = clientY - rect.top;
-		const below = rect.bottom - clientY;
-
-		let step = 0;
-		if (above < AUTOSCROLL_ZONE_PX)
-			step = -AUTOSCROLL_MAX_PX * (1 - above / AUTOSCROLL_ZONE_PX);
-		else if (below < AUTOSCROLL_ZONE_PX)
-			step = AUTOSCROLL_MAX_PX * (1 - below / AUTOSCROLL_ZONE_PX);
+		const step = autoscrollStep(scroller.getBoundingClientRect(), clientY);
 
 		if (drag.current) drag.current.step = step;
 
@@ -287,23 +244,11 @@ export function useSortableList({
 						begin(index, event, true),
 				};
 
-	// The dragged row follows the pointer; every row between its start and its landing slides into the slot the one next to it just left.
-	const offsetFor = (index: number) => {
-		if (!state) return 0;
-		const { from, to, offset, tops } = state;
-		if (index === from) return offset;
-		if (from < to && index > from && index <= to)
-			return tops[index - 1].top - tops[index].top;
-		if (from > to && index >= to && index < from)
-			return tops[index + 1].top - tops[index].top;
-		return 0;
-	};
-
 	// No transform at rest: a translate3d of zero on every row would still hand each one its own compositing layer for the whole life of the list.
 	const itemProps = (index: number) => ({
 		ref: setItemRef(index),
 		style: state
-			? { transform: `translate3d(0, ${offsetFor(index)}px, 0)` }
+			? { transform: `translate3d(0, ${offsetFor(state, index)}px, 0)` }
 			: undefined,
 		"data-dragging":
 			state && !state.settled && state.from === index ? "true" : undefined,

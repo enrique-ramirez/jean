@@ -1,15 +1,10 @@
-import type { ComponentType } from "react";
-
+import type { IconComponent } from "./icons";
 import styles from "./Segmented.module.css";
 
 export interface SegmentedOption<T> {
 	value: T;
 	label: string;
-	icon?: ComponentType<{
-		size?: number;
-		strokeWidth?: number;
-		"aria-hidden"?: "true";
-	}>;
+	icon?: IconComponent;
 }
 
 export function Segmented<T extends string>({

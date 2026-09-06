@@ -18,6 +18,8 @@ The queue is deliberately **not** an action sheet, though the app has one. A she
 
 **`.body` is what clips the parked panel.** Closed, the queue sits at `translateX(100%)`, off the right edge of its own containing block; without `overflow: hidden` there it becomes horizontal document overflow.
 
+**Every row of the grid carries `min-width: 0`, and the top bar is the one that keeps being forgotten.** A grid item may not be sized below its own min-content, so a single control that refuses to shrink sets a floor for the whole shell, and the document is as wide as the shell. What that looks like on a phone is two faults rather than one: the page scrolls sideways, and the browser widens the visual viewport to fit the excess, which leaves the `100dvh` grid short of the bottom of the screen. Both symptoms, one cause — and neither shows above about 400px, so `shell.spec.ts` asks at 320.
+
 ## Four surfaces, and what each one is
 
 | | |

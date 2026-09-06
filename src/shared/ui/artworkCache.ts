@@ -1,10 +1,9 @@
 // Artwork kept on disk, because beefweb will not let the browser keep it.
 //
 // Every beefweb response carries `Cache-Control: max-age=3, must-revalidate` -- one filter for the
-// whole API, so a 600 KB sleeve is cached as briefly as a status poll. Measured against a real
-// library, revisiting a screen re-fetched every cover as a fresh 200: about 15 MB and sixty round
-// trips, each one a new connection, since beefweb also closes the socket per response. Nothing on
-// the client can change another server's headers.
+// whole API, so a 600 KB sleeve is cached as briefly as a status poll, and revisiting a screen
+// re-fetches every cover. Nothing on the client can change another server's headers. The measurements
+// are in `shared/ui/CLAUDE.md`.
 //
 // Cache Storage is the way out, and the reason is that **it ignores caching headers entirely**:
 // what is put in stays until it is taken out. The HTTP cache cannot be talked into this; this store
@@ -17,14 +16,10 @@
 
 const CACHE = "jean-artwork-v1";
 
-// Measured against a real library rather than guessed: covers there run 14 KB to 1.19 MB and average
-// about 740 KB, because the artwork that ships with an album is whatever the tagger embedded. At
-// 50 MB this held sixty-five of them -- roughly one screenful of the genres index -- so it filled and
-// then evicted the covers still on screen, which looks exactly like not caching at all.
-//
-// A cache still has to fill eventually: nothing here expires, and rotation is the only thing that
-// makes a re-tagged sleeve reappear without somebody pressing Clear. This is the compromise -- large
-// enough that ordinary use never thrashes, small enough that a 2,360-album library turns over.
+// Sized against measured cover sizes rather than guessed; the figures are in `shared/ui/CLAUDE.md`.
+// The tension it settles: nothing here expires, so rotation is the only thing that makes a re-tagged
+// sleeve reappear without somebody pressing Clear -- and a cache too small to hold one screen evicts
+// the covers still on it, which looks exactly like not caching at all.
 const BUDGET_BYTES = 500 * 1024 * 1024;
 
 /**

@@ -109,9 +109,18 @@ Icons come from `lucide-react`, imported per-icon so they tree-shake. **The play
 **`Input.tsx` is the only text field in Jean**, and not a wrapper anybody may skip. The box, the
 focus ring, the placeholder and three sizes live there; what differs between callers is only what
 sits either side of the text, and those are slots — `leading`, `trailing`, and `underlay` for a ghost
-completion that has to share the input's own metrics. Eight callers use it: the top-bar search, the
-finder, the command palette, the action-menu filter, save-as-playlist, both `foo_jean` settings
-fields and the genre finder.
+completion that has to share the input's own metrics. Every field in the app is one: the top-bar
+search, the finder, the command palette, the action-menu filter, save-as-playlist, the `foo_jean`
+token and its device name, this device's name, the genre finder and the autoplaylist dialog. The one
+exception is the sidebar's rename, which replaces a row in place rather than sitting in a form.
+
+**An `<input>` asserts about twenty characters of width on everything above it, and `min-width: 0`
+does not take that back.** It lowers the floor the input may shrink to, which is why the field itself
+looked fine, while leaving the min-content size its ancestors are measured by untouched — so the top
+bar could not be sized below 424px, the document could not either, and every phone narrower than that
+scrolled sideways. `width: 0` on the input is what withdraws the claim; the flex line hands the space
+straight back. The rule is general and belongs here rather than at a caller, since this is the only
+field in the app.
 
 The ring is **a tinted border and a soft spread on the field**, never a hard outline and never on the
 input: the input is chromeless by construction, so the global `:focus-visible` rule drew a second
@@ -130,10 +139,25 @@ is yes for every row a jump scrolls past.
 
 **beefweb defeats the browser's own cache and there is nothing a client can do about it.** Every
 response carries `Cache-Control: max-age=3, must-revalidate` from one filter that does not
-distinguish a 600 KB sleeve from a status poll (`cpp/server/cache_support_filter.cpp`). Measured:
-revisiting a screen re-fetched every cover as a fresh `200` — ~15 MB and sixty round trips, each a
-new connection. **Cache Storage is the way out because it ignores caching headers entirely**: what is
-put in stays until it is taken out.
+distinguish a 600 KB sleeve from a status poll (`cpp/server/cache_support_filter.cpp`). beefweb does
+answer a conditional request correctly — `If-None-Match` returns a `304` with no body — so the header
+is the whole of the problem, and it is the player's to change. **Cache Storage is the way out because
+it ignores caching headers entirely**: what is put in stays until it is taken out.
+
+Measured against a real 30,441-track library, through the dev proxy:
+
+| | |
+|---|---|
+| Covers on one visit to the genres index | 53–67 |
+| Bytes | ~15 MB, all fresh `200`s |
+| Conditional requests the browser sent | **none** |
+| Cover size | 14 KB to 1.19 MB, averaging **~740 KB** |
+| The same visit, warm | 3 requests, and 5.6 s to draw twenty covers becomes 1.0 s |
+
+Those figures set the budget. At 50 MB the cache held **65 covers** — about one screenful of the
+genres index — so it filled and then evicted the covers still on screen, which looks exactly like not
+caching at all. 500 MB is large enough that ordinary use never thrashes and small enough that a
+2,360-album library still turns over.
 
 **Not a service worker.** A worker's scope is the directory it is served from, and Jean is documented
 to install at `/jean` with the stock UI at `/`, so a worker there could never see `/api/artwork/...`

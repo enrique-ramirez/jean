@@ -37,10 +37,13 @@
 	scrollbar-gutter: stable;
 }
 
+/* `min-width: 0`, like `.main` -- without it, a control in here that refuses to shrink sets the
+   floor for the whole shell and the document scrolls sideways below it. Reasoning in CLAUDE.md. */
 .topbar {
 	display: flex;
 	align-items: center;
 	gap: 12px;
+	min-width: 0;
 	padding: 9px 16px;
 	border-bottom: 1px solid var(--border);
 }

@@ -40,8 +40,11 @@
 	color: var(--accent);
 }
 
+/* `width: 0`, not only `min-width: 0` -- an `<input>` keeps asserting ~20 characters of width up
+   the tree otherwise, which is what forced a bar around it wider than the screen. See CLAUDE.md. */
 .input {
 	flex: 1;
+	width: 0;
 	min-width: 0;
 	padding: 0;
 	border: 0;

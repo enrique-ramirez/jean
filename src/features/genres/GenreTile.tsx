@@ -65,8 +65,10 @@ export function GenreTile({
 			    its caption. It sits opposite the name so neither has to give up width to the other.
 			    Icons rather than words because at two columns the words all but span the tile -- and the
 			    label carries the units, since `235 · 2,667` read aloud is two numbers about nothing.
-			    `Album` and not `DiscAlbum`: the latter is what `Artwork` draws for *there is no cover
-			    here*, and a tile can show both at once. */}
+			    `DiscAlbum` because that is what an album is drawn as everywhere else in Jean. It is also
+			    what `Artwork` draws for *there is no cover here*, which a tile can show at the same
+			    time -- but a glyph invented to dodge that would be vocabulary the design system does
+			    not have, and the figure beside it settles which is meant. */}
 			<span className={styles.counts}>
 				{/* A bare `<span>` takes no `aria-label`, so the units are read out of the document rather
 				    than asserted onto it. Everything visible is then hidden from the reader, which is

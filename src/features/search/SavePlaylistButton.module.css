@@ -12,19 +12,8 @@
 }
 
 .input {
+	/* The box is `shared/ui/Input`. */
 	width: 100%;
-	padding: 8px 10px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-sm);
-	background: var(--surface-sunken);
-	font: inherit;
-	font-size: 0.875rem;
-	color: var(--text);
-}
-
-.input:focus {
-	border-color: var(--accent-line);
-	outline: none;
 }
 
 .error {

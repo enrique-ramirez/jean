@@ -1,4 +1,5 @@
 import { ChevronRight, Shuffle } from "lucide-react";
+import { GENRES_HREF } from "@/domain/library/genreRoute";
 import { spellDuration } from "@/domain/track/stats";
 import { pluralise } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";
@@ -78,6 +79,22 @@ export function HomeHeader({
 			hint: stats.topArtist ? "most played" : null,
 			name: stats.topArtist?.name ?? null,
 			cover: stats.topArtist?.cover.artworkUrl ?? null,
+		},
+		{
+			id: "genres",
+			label: "genre",
+			count: stats.genreCount,
+			// A destination, like the tracks card, so the row is two doors and two records rather than
+			// three records and an odd one out. No sleeve: a cover means the thing named is *in* your
+			// library, and "All genres" is not a record.
+			href: GENRES_HREF,
+			hint: "browse",
+			name: "All genres",
+			cover: null,
+			// Dropped on a phone, like the tracks card: three cards there leave a lone one on a second
+			// row, and this screen carries two other doors to the same place -- the sidebar row and the
+			// `Genres` heading further down.
+			minor: true,
 		},
 	].filter((door) => door.count > 0);
 

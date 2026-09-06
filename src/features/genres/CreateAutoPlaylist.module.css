@@ -1,0 +1,40 @@
+.form {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	width: min(340px, 80vw);
+	padding: 4px;
+}
+
+.label {
+	font-size: 0.8125rem;
+	font-weight: 600;
+}
+
+/* The player's own answer about the query, which is the only honest count: Jean matches the tag in
+   JavaScript and this is foobar2000 matching it against the Media Library. */
+.preview {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: var(--muted);
+}
+
+.note {
+	margin: 0;
+	font-size: 0.75rem;
+	color: var(--faint);
+	text-wrap: pretty;
+}
+
+.error {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: var(--danger);
+}
+
+.actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 2px;
+}

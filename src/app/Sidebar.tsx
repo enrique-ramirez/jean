@@ -7,9 +7,11 @@ import {
 	Pencil,
 	Plus,
 	Search,
+	Shapes,
 	Trash2,
 	Undo2,
 	Volume2,
+	WandSparkles,
 } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -23,6 +25,7 @@ import {
 	useState,
 } from "react";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
+import { useAutoPlaylists } from "@/domain/player/useAutoPlaylists";
 import {
 	untitledPlaylistName,
 	usePermissions,
@@ -40,7 +43,7 @@ import { plural } from "@/shared/lib/text";
 import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
 import { pushToast } from "@/shared/ui/toastStore";
-import type { PlayingRoute } from "./routes";
+import { type PlayingRoute, ROUTE } from "./routes";
 import styles from "./Sidebar.module.css";
 import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
 
@@ -51,6 +54,8 @@ function NavRow({
 	count,
 	isPlaying,
 	isCurrent,
+	/** Indented under the row above it, for a view that is part of that one rather than beside it. */
+	isNested,
 	onClick,
 	rowProps,
 	itemProps,
@@ -61,13 +66,14 @@ function NavRow({
 	count?: ReactNode;
 	isPlaying?: boolean;
 	isCurrent?: boolean;
+	isNested?: boolean;
 	onClick?: () => void;
 	rowProps?: PropBag;
 	itemProps?: PropBag;
 	children?: ReactNode;
 }) {
 	return (
-		<div className={styles.row} {...rowProps}>
+		<div className={styles.row} data-nested={isNested} {...rowProps}>
 			<button
 				type="button"
 				className={styles.item}
@@ -126,6 +132,9 @@ export function Sidebar({
 	const { create, rename, remove, move } = usePlaylistActions();
 	// Subscribed here only; the rows read `isDropTarget` as a plain prop rather than each subscribing to the drag.
 	const drag = useDragState();
+	// Empty without `foo_jean`, which is the point: this only ever takes an affordance away, so a
+	// player Jean cannot ask looks exactly as it did before.
+	const autoPlaylists = useAutoPlaylists();
 	// Undefined until the player answers. Assume yes and let a refusal correct it, rather than showing a read-only sidebar for the first few hundred milliseconds.
 	const canEdit = permissions.changePlaylists !== false;
 
@@ -340,6 +349,17 @@ export function Sidebar({
 					onClick={() => onOpenRoute("all")}
 				/>
 
+				{/* A way into the same music rather than a place beside it, so it is indented under All music
+				    rather than given a row of its own. Nothing ever plays from here -- it is an index of
+				    genres and not a set of tracks -- so it has no playing state to show. */}
+				<NavRow
+					icon={Shapes}
+					label="Genres"
+					isNested
+					isCurrent={route === ROUTE.genres}
+					onClick={() => onOpenRoute(ROUTE.genres)}
+				/>
+
 				{/* A shelf, for as long as it is playing: the scratch playlist is hidden, and unlike a playlist a shelf has no permanent row to point at. */}
 				{playingFrom?.temporaryRow ? (
 					<NavRow
@@ -371,6 +391,7 @@ export function Sidebar({
 						playlist={playlist}
 						isSelected={playlist.id === selectedId}
 						isRenaming={playlist.id === renamingId}
+						isAuto={autoPlaylists.has(playlist.id)}
 						isDropTarget={canEdit && drag.isDragging}
 						isDropOver={drag.over === playlist.id}
 						canEdit={canEdit}
@@ -433,6 +454,7 @@ function PlaylistRow({
 	playlist,
 	isSelected,
 	isRenaming,
+	isAuto,
 	isDropTarget,
 	isDropOver,
 	canEdit,
@@ -448,6 +470,8 @@ function PlaylistRow({
 	playlist: PlaylistInfo;
 	isSelected: boolean;
 	isRenaming: boolean;
+	/** The player fills this one itself. Everything else about the row is unchanged. */
+	isAuto: boolean;
 	isDropTarget: boolean;
 	isDropOver: boolean;
 	canEdit: boolean;
@@ -473,7 +497,7 @@ function PlaylistRow({
 
 	return (
 		<NavRow
-			icon={ListMusic}
+			icon={isAuto ? WandSparkles : ListMusic}
 			label={playlist.title}
 			count={playlist.itemCount.toLocaleString()}
 			// A user's own playlist keeps `isCurrent` rather than reading the scratch: it is a real playlist the player can be inside.
@@ -486,6 +510,11 @@ function PlaylistRow({
 				style: { ...pressableStyle, ...dragStyle },
 				"data-drop-target": isDropTarget ? playlist.id : undefined,
 				"data-drop-over": isDropOver ? "true" : undefined,
+				// Still a target, so it arms and says why. Excluded instead, the pointer would sit over
+				// a row that reacts to nothing and the reason would only arrive as a toast after the drop.
+				"data-drop-refuses": isAuto
+					? "Autoplaylists fill themselves"
+					: undefined,
 				...rowState,
 				// Merged rather than spread: both want onPointerDown, Move, Up and Cancel, and the second object would quietly win all four.
 				...mergeHandlers(gestures, dragProps),

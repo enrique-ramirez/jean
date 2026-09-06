@@ -155,7 +155,9 @@ test.describe("the closing band", () => {
 
 		// The search index covers title, artist and album, not genre, so the bar
 		// cannot be a search.
-		const first = bars.getByRole("link").first();
+		// Scoped to the list: the section's heading is a link as well, and it opens
+		// the genres index rather than a genre.
+		const first = bars.getByRole("list").getByRole("link").first();
 		const [genre, count] = (await first.innerText()).split("\n");
 		await first.click();
 

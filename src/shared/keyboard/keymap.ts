@@ -29,6 +29,7 @@ export const SCOPE = {
 	nowPlaying: "now playing",
 	sidebar: "sidebar",
 	playlist: "playlist",
+	genres: "genres",
 	finder: "finder",
 	search: "search",
 };
@@ -268,6 +269,22 @@ export const KEYMAP: Binding[] = [
 		group: "In the sidebar",
 		name: "Move playlist down",
 		keys: ["Alt+ArrowDown"],
+	},
+
+	// On the genres page ---------------------------------------------------
+	{
+		id: "findGenre",
+		scope: SCOPE.genres,
+		group: "Genres",
+		name: "Find a genre",
+		keys: ["/"],
+	},
+	{
+		id: "switchGenreOrder",
+		scope: SCOPE.genres,
+		group: "Genres",
+		name: "Switch order",
+		keys: ["S"],
 	},
 
 	// In a playlist --------------------------------------------------------

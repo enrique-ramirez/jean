@@ -421,11 +421,16 @@ test.describe("the field is one field", () => {
 			const input = document.querySelector(
 				'input[aria-label="Find in this playlist"]',
 			) as HTMLElement;
+			// Either way of drawing one counts: the shared field spreads a shadow
+			// where it used to draw an outline, and the question here is which
+			// element wears it rather than which property does.
 			const ringOf = (element: Element) => {
 				const style = getComputedStyle(element);
-				return style.outlineStyle === "none"
-					? 0
-					: Number.parseFloat(style.outlineWidth) || 0;
+				const outline =
+					style.outlineStyle === "none"
+						? 0
+						: Number.parseFloat(style.outlineWidth) || 0;
+				return outline > 0 || style.boxShadow !== "none" ? 1 : 0;
 			};
 			return {
 				input: ringOf(input),
@@ -437,7 +442,7 @@ test.describe("the field is one field", () => {
 		// the global `:focus-visible` rule on specificity and loses on source
 		// order, so the ring is easily drawn on the input instead of the field.
 		expect(rings.input).toBe(0);
-		expect(rings.field).toBeGreaterThan(0);
+		expect(rings.field).toBe(1);
 	});
 });
 

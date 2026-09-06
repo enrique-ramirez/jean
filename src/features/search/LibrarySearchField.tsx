@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
+import { Input } from "@/shared/ui/Input";
 import styles from "./LibrarySearchField.module.css";
 
 // Persistent and always visible rather than a shortcut with an icon bolted on: a phone has no keyboard, so the bindings are the shortcut and not the interface.
@@ -34,45 +35,45 @@ export function LibrarySearchField({
 	};
 
 	return (
-		<div className={styles.field} data-filled={hasQuery}>
-			<Search size={15} strokeWidth={2} aria-hidden="true" />
-
-			<input
-				ref={search.inputRef}
-				className={styles.input}
-				type="search"
-				value={query}
-				onChange={(event) => onChange(event.target.value)}
-				onFocus={search.onFocus}
-				onBlur={search.onBlur}
-				onKeyDown={onKeyDown}
-				// Keyed on whether there is a library at all, not on whether a playlist stands in for one: with the media library API there is no playlist and nothing to set up.
-				placeholder={
-					library.needsSetup ? "Set up your library" : "Search your library"
-				}
-				aria-label="Search your library"
-				spellCheck="false"
-				autoComplete="off"
-				enterKeyHint="search"
-			/>
-
-			{hasQuery ? (
-				<>
-					<span className={styles.count} data-pending={isFiltering}>
-						{matchCount.toLocaleString()}
-					</span>
-					<button
-						type="button"
-						className={styles.clear}
-						onClick={onDismiss}
-						aria-label="Clear search"
-					>
-						<X size={14} strokeWidth={2} />
-					</button>
-				</>
-			) : (
-				<kbd className={styles.hint}>⌘K</kbd>
-			)}
-		</div>
+		<Input
+			size="sm"
+			className={styles.field}
+			isFilled={hasQuery}
+			type="search"
+			inputRef={search.inputRef}
+			value={query}
+			onChange={(event) => onChange(event.target.value)}
+			onFocus={search.onFocus}
+			onBlur={search.onBlur}
+			onKeyDown={onKeyDown}
+			// Keyed on whether there is a library at all, not on whether a playlist stands in for one: with the media library API there is no playlist and nothing to set up.
+			placeholder={
+				library.needsSetup ? "Set up your library" : "Search your library"
+			}
+			aria-label="Search your library"
+			spellCheck="false"
+			autoComplete="off"
+			enterKeyHint="search"
+			leading={<Search size={15} strokeWidth={2} aria-hidden="true" />}
+			trailing={
+				hasQuery ? (
+					<>
+						<span className={styles.count} data-pending={isFiltering}>
+							{matchCount.toLocaleString()}
+						</span>
+						<button
+							type="button"
+							className={styles.clear}
+							onClick={onDismiss}
+							aria-label="Clear search"
+						>
+							<X size={14} strokeWidth={2} />
+						</button>
+					</>
+				) : (
+					<kbd className={styles.hint}>⌘K</kbd>
+				)
+			}
+		/>
 	);
 }

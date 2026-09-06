@@ -1,0 +1,194 @@
+/* Eight hues off one ramp. `--genre-tint` is the index the mark chose, and it is the only thing the
+   component passes down: the colour itself is the theme's to decide. */
+.tile {
+	--tint: oklch(
+		var(--genre-l) var(--genre-c) calc(28deg + var(--genre-tint) * 45deg)
+	);
+	/* The field, and the figure drawn into it. The figure sits away from the page rather than at any
+	   fixed lightness -- darker than the field on dark, lighter on light -- which is what
+	   `--genre-ink-ground` carries. Both themes then run the same two mixes. */
+	--field: color-mix(
+		in oklab,
+		var(--tint) var(--genre-wash),
+		var(--surface-raised)
+	);
+	--figure: color-mix(
+		in oklab,
+		var(--tint) var(--genre-ink-share),
+		var(--genre-ink-ground)
+	);
+
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	overflow: hidden;
+	aspect-ratio: 1 / 0.72;
+	/* Extra at the foot: a leaning sleeve reaches past its own box, and the tile clips. */
+	padding: 14px 14px 19px;
+	border-radius: 14px;
+	background: var(--field);
+	color: var(--text);
+	text-decoration: none;
+	isolation: isolate;
+	transition:
+		transform 140ms var(--ease),
+		box-shadow 140ms var(--ease);
+}
+
+.tile:hover,
+.tile:focus-visible {
+	transform: translateY(-2px);
+	box-shadow: var(--shadow);
+}
+
+.tile:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.field {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	/* The mark strokes in `currentColor`, and this is where that colour is set. */
+	color: var(--figure);
+}
+
+.body {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	min-width: 0;
+}
+
+.name {
+	font-size: 17px;
+	font-weight: 650;
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* The figures, over the artwork. Top right, opposite the name, so a long tag and a long count never
+   compete for the same line. */
+.counts {
+	position: absolute;
+	top: 11px;
+	right: 11px;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 9px;
+	border-radius: var(--radius-pill);
+	background: color-mix(in oklab, var(--surface-sunken) 78%, transparent);
+	backdrop-filter: blur(6px);
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	color: color-mix(in oklab, var(--text) 78%, transparent);
+	white-space: nowrap;
+}
+
+/* The visible half. Its sibling is the same figures in words, for a reader. */
+.figures {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.separator {
+	opacity: 0.45;
+}
+
+/* Records dropped along the bottom rather than filed in a row: they overlap, each leans its own way,
+   and the one at the front is whole. The negative margin is what makes the overlap, so the stack
+   grows to the right from the name's own left edge. */
+.stack {
+	display: flex;
+	align-items: flex-end;
+	min-width: 0;
+}
+
+.sleeve {
+	flex: 0 0 auto;
+	width: 58px;
+	height: 58px;
+	border-radius: 5px;
+	overflow: hidden;
+	transform: rotate(var(--tilt));
+	box-shadow: 0 3px 10px oklch(0 0 0 / 0.34);
+	/* A hairline so two dark sleeves overlapping still read as two. */
+	outline: 1px solid oklch(1 0 0 / 0.09);
+	outline-offset: -1px;
+}
+
+.sleeve + .sleeve {
+	margin-left: -27px;
+}
+
+/* `Artwork` draws a disc glyph while it waits, which is right for one cover and wrong for five
+   overlapping ones -- the pile turns into a row of identical icons rather than a stack of records
+   that has not arrived. The hold itself stays, so the shape is still there. */
+.sleeve svg {
+	display: none;
+}
+
+/* Later sleeves sit in front, so the stack reads as dealt left to right and the last one is whole. */
+.sleeve:nth-child(1) {
+	z-index: 1;
+}
+.sleeve:nth-child(2) {
+	z-index: 2;
+}
+.sleeve:nth-child(3) {
+	z-index: 3;
+}
+.sleeve:nth-child(4) {
+	z-index: 4;
+}
+.sleeve:nth-child(5) {
+	z-index: 5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tile {
+		transition: none;
+	}
+
+	.tile:hover,
+	.tile:focus-visible {
+		transform: none;
+	}
+}
+
+@media (max-width: 640px) {
+	.tile {
+		aspect-ratio: 1 / 0.82;
+		padding: 12px 12px 17px;
+		border-radius: 12px;
+	}
+
+	.name {
+		font-size: 16px;
+	}
+
+	/* Half the width, so the stack tightens rather than running off the edge. */
+	.sleeve {
+		width: 48px;
+		height: 48px;
+	}
+
+	.sleeve + .sleeve {
+		margin-left: -24px;
+	}
+
+	.counts {
+		top: 9px;
+		right: 9px;
+	}
+}

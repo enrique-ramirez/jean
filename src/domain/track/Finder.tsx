@@ -11,6 +11,7 @@ import type { TrackColumns } from "@/shared/api/types";
 import { useDebounced } from "@/shared/hooks/useDebounced";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
+import { Input } from "@/shared/ui/Input";
 import styles from "./Finder.module.css";
 import { FIELD, value } from "./fields";
 
@@ -130,27 +131,35 @@ export function Finder({
 	});
 
 	return (
+		// The panel is positioned against this, so the field sits inside it rather than being it.
 		<div className={styles.finder}>
-			<Search size={15} strokeWidth={2} aria-hidden="true" />
-			<input
-				ref={inputRef}
-				className={styles.input}
+			<Input
+				size="sm"
+				className={styles.field}
+				inputRef={inputRef}
 				value={query}
 				onChange={(event) => onQueryChange(event.target.value)}
 				placeholder={label}
 				aria-label={label}
 				spellCheck="false"
 				autoComplete="off"
+				leading={<Search size={15} strokeWidth={2} aria-hidden="true" />}
+				trailing={
+					<>
+						{matches ? (
+							<span className={styles.count}>{matches.size}</span>
+						) : null}
+						<button
+							type="button"
+							className={styles.close}
+							onClick={onClose}
+							aria-label="Close finder"
+						>
+							<X size={14} strokeWidth={2} />
+						</button>
+					</>
+				}
 			/>
-			{matches ? <span className={styles.count}>{matches.size}</span> : null}
-			<button
-				type="button"
-				className={styles.close}
-				onClick={onClose}
-				aria-label="Close finder"
-			>
-				<X size={14} strokeWidth={2} />
-			</button>
 
 			{query.trim().length > 0 ? (
 				<div className={styles.results} role="listbox" ref={listRef}>

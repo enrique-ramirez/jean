@@ -9,6 +9,7 @@ import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { createPlaylist } from "@/shared/api/beefweb";
 import { plural } from "@/shared/lib/text";
 import { Button } from "@/shared/ui/Button";
+import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
 import styles from "./SavePlaylistButton.module.css";
 
@@ -101,9 +102,10 @@ export function SavePlaylistButton({
 					New playlist from {plural(trackCount, "result")}
 				</label>
 
-				<input
+				<Input
+					size="md"
 					id="save-search-title"
-					ref={inputRef}
+					inputRef={inputRef}
 					className={styles.input}
 					value={title}
 					onChange={(event) => setTitle(event.target.value)}
@@ -112,7 +114,6 @@ export function SavePlaylistButton({
 					spellCheck="false"
 					autoComplete="off"
 					// The dialog exists to be typed in, and opens with the query in the field for editing.
-					// biome-ignore lint/a11y/noAutofocus: the field is the dialog, see above
 					autoFocus
 				/>
 

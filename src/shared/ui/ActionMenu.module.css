@@ -277,31 +277,11 @@
 /* Pinned rather than scrolling away with the list it filters. Bled out to the
    page edges, because the page's padding is for the items, not for this. */
 .filter {
+	/* Pinned rather than scrolling away with the list it filters. The box itself is `Input`. */
 	position: sticky;
 	top: 0;
 	z-index: 1;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin: calc(var(--menu-pad) * -1) calc(var(--menu-pad) * -1) 4px;
-	padding: 9px 13px;
-	border-bottom: 1px solid var(--border);
-	background: var(--surface-raised);
-	color: var(--faint);
-}
-
-.filterInput {
-	flex: 1;
-	min-width: 0;
-	border: 0;
-	background: none;
-	font-size: var(--menu-item-font);
-	color: var(--text);
-	outline: none;
-}
-
-.filterInput::placeholder {
-	color: var(--faint);
+	margin-bottom: 4px;
 }
 
 /* Items ------------------------------------------------------------------- */

@@ -1,0 +1,61 @@
+/* Only what is specific to this field. The box, the focus and the placeholder are `shared/ui/Input`. */
+.field {
+	flex: 1;
+	max-width: 520px;
+}
+
+.ghost {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	font: inherit;
+	color: var(--faint);
+	white-space: pre;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+/* The typed part is already drawn by the input on top; this only reserves its width. */
+.typed {
+	visibility: hidden;
+}
+
+.matches {
+	font-family: var(--font-numeric);
+	font-size: 0.75rem;
+	color: var(--faint);
+	white-space: nowrap;
+}
+
+.hint {
+	padding: 2px 8px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	font-family: inherit;
+	font-size: 0.6875rem;
+	color: var(--faint);
+}
+
+.clear {
+	display: grid;
+	place-items: center;
+	width: 22px;
+	height: 22px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+}
+
+.clear:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+/* A keyboard hint on a device with no keyboard is furniture. */
+@media (pointer: coarse) {
+	.hint {
+		display: none;
+	}
+}

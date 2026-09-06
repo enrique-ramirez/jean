@@ -1,3 +1,8 @@
+import {
+	GENRES_ROUTE,
+	genreOfRoute,
+	genreRoute,
+} from "@/domain/library/genreRoute";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import { SHELVES, type Shelf } from "@/features/home/shelves";
 
@@ -19,33 +24,22 @@ export interface PlayingRoute extends PlayingSet {
 export const ROUTE = {
 	home: "home",
 	all: "all",
+	// The index of every genre. Not a set of tracks, so nothing ever plays from here and no sidebar row lights up for it.
+	genres: GENRES_ROUTE,
 	search: "search",
 	playing: "playing",
 } as const;
 
 const SHELF_PREFIX = "shelf/";
-const GENRE_PREFIX = "genre/";
 
 const shelfRoute = (id: string) => `${SHELF_PREFIX}${id}`;
-
-// A genre is a tag somebody typed, so it can hold a slash, a hash or an accent. Decoded inside a `try`, because a hand-edited hash with a stray `%` throws.
-export const genreRoute = (name: string) =>
-	`${GENRE_PREFIX}${encodeURIComponent(name)}`;
-
-const genreOfRoute = (route: string): string | null => {
-	if (!route.startsWith(GENRE_PREFIX)) return null;
-	try {
-		return decodeURIComponent(route.slice(GENRE_PREFIX.length)) || null;
-	} catch {
-		return null;
-	}
-};
 
 // What a hash means, as one answer rather than five booleans read in five places. An unrecognised hash falls to home rather than onto whichever playlist happened to be first.
 export function resolveRoute(route: string): {
 	shelf: Shelf | null;
 	// The genre tag this route names, decoded. A filter over the library rather than anything the player holds.
 	genre: string | null;
+	isGenres: boolean;
 	isSearch: boolean;
 	isAll: boolean;
 	isHome: boolean;
@@ -64,6 +58,8 @@ export function resolveRoute(route: string): {
 	return {
 		shelf,
 		genre,
+		// `genres` is not `genre/`, so the prefix test above never claims it and the two routes cannot be confused.
+		isGenres: route === ROUTE.genres,
 		isSearch: route === ROUTE.search,
 		isAll: route === ROUTE.all,
 		isHome: route === "" || route === ROUTE.home,
@@ -74,6 +70,7 @@ export function resolveRoute(route: string): {
 			route === "" ||
 			route === ROUTE.home ||
 			route === ROUTE.all ||
+			route === ROUTE.genres ||
 			route === ROUTE.search ||
 			route === ROUTE.playing ||
 			shelf !== null ||

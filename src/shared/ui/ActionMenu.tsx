@@ -19,6 +19,7 @@ import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useVisualViewport } from "@/shared/hooks/useVisualViewport";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./ActionMenu.module.css";
+import { Input } from "./Input";
 import { handleMenuKeys, useFocusCapture } from "./menuKeys";
 
 type MenuIcon = ComponentType<{
@@ -296,18 +297,19 @@ function usePanel({
 						inert={index === depth ? undefined : true}
 					>
 						{index === depth && isFiltered ? (
-							<div className={styles.filter}>
-								<Search size={14} strokeWidth={2} aria-hidden="true" />
-								<input
-									className={styles.filterInput}
-									value={query}
-									placeholder={page.filter}
-									aria-label={page.filter}
-									spellCheck="false"
-									autoComplete="off"
-									onChange={(event) => setQuery(event.target.value)}
-								/>
-							</div>
+							<Input
+								size="sm"
+								className={styles.filter}
+								value={query}
+								placeholder={page.filter}
+								aria-label={page.filter}
+								spellCheck="false"
+								autoComplete="off"
+								onChange={(event) => setQuery(event.target.value)}
+								leading={
+									<Search size={14} strokeWidth={2} aria-hidden="true" />
+								}
+							/>
 						) : null}
 
 						{visibleItems(page, index === depth).map((node, position) => (

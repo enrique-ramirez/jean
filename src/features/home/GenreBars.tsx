@@ -1,3 +1,5 @@
+import { ChevronRight } from "lucide-react";
+import { GENRES_HREF, genreHref } from "@/domain/library/genreRoute";
 import styles from "./GenreBars.module.css";
 
 export interface GenreBar {
@@ -17,8 +19,19 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 
 	return (
 		<section className={styles.block} aria-labelledby="home-genres">
+			{/* The heading opens the index, exactly as a shelf's heading opens the shelf. Fourteen bars are
+			    a distribution and not a list of everywhere you can go: on a real library that is fourteen
+			    of a hundred and forty, and without this the other hundred and twenty-six have no door. */}
 			<h2 className={styles.heading} id="home-genres">
-				Genres
+				<a className={styles.open} href={GENRES_HREF}>
+					Genres
+					<ChevronRight
+						className={styles.chevron}
+						size={16}
+						strokeWidth={2.5}
+						aria-hidden="true"
+					/>
+				</a>
 			</h2>
 
 			<ul className={styles.bars}>
@@ -27,7 +40,7 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 						{/* A route rather than a search: beefweb's search index covers title, artist and album and not genre. */}
 						<a
 							className={styles.bar}
-							href={`#/genre/${encodeURIComponent(genre.name)}`}
+							href={genreHref(genre.name)}
 							title={`${genre.count.toLocaleString()} tracks, ${genre.share}% of your library`}
 						>
 							<span className={styles.name}>{genre.name}</span>

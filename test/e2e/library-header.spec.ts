@@ -26,6 +26,11 @@ const figure = async (page: Page, noun: string) => {
 // `features/home/CLAUDE.md`.
 const genres = (page: Page) => page.getByRole("region", { name: "Genres" });
 
+// The bars themselves. Scoped to the list, because the section's heading is a
+// link too -- it opens the full index.
+const genreBars = (page: Page) =>
+	genres(page).getByRole("list").getByRole("link");
+
 const settled = async (page: Page) => {
 	await expect(heading(page)).toBeVisible();
 	await expect(viewHeader(page).getByText("still counting")).toHaveCount(0);
@@ -81,7 +86,7 @@ test.describe("one artist on repeat", () => {
 		expect(await figure(page, "album")).toBe("12");
 		expect(await figure(page, "artist")).toBe("1");
 
-		await expect(genres(page).getByRole("link")).toHaveCount(1);
+		await expect(genreBars(page)).toHaveCount(1);
 		await expect(genres(page)).toContainText("400");
 	});
 });
@@ -161,7 +166,7 @@ test.describe("a wide, varied library", () => {
 		await settled(page);
 
 		// Fourteen is a cap, not a count: a library with four genres draws four.
-		await expect(genres(page).getByRole("link")).toHaveCount(14);
+		await expect(genreBars(page)).toHaveCount(14);
 	});
 });
 

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import { ArtistInformation } from "./ArtistInformation";
+import { CachedArtwork } from "./CachedArtwork";
 import { Playback } from "./Playback";
 import styles from "./Settings.module.css";
 import { TagWriting } from "./TagWriting";
@@ -96,6 +97,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 					<Playback />
 					<ThisDevice />
 					<ArtistInformation />
+					<CachedArtwork />
 				</div>
 			</div>
 		</div>

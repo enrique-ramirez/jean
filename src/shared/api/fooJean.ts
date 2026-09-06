@@ -17,6 +17,9 @@ export type StreamListeners = Schema["StreamListeners"];
 export type StreamListener = StreamListeners["devices"][number];
 export type DeviceIdentity = Schema["DeviceIdentity"];
 export type Paired = Schema["Paired"];
+export type PlaylistAnnotation = Schema["PlaylistAnnotation"];
+export type AutoPlaylistRequest = Schema["AutoPlaylistRequest"];
+export type QueryPreview = Schema["QueryPreview"];
 
 // This may never move to `/api/clientconfig`: beefweb serves that namespace unauthenticated. `jean.listenVolume`, `jean.deviceId` and `jean.deviceName` are excluded from that move as well; the root CLAUDE.md holds the list and the reasons.
 export const TOKEN_KEY = "jean.fooJeanToken";
@@ -393,6 +396,102 @@ export async function fetchStreamListeners(
 	} catch {
 		return null;
 	}
+}
+
+// ---- what beefweb cannot say about a playlist -------------------------------
+
+/**
+ * Which playlists are autoplaylists. beefweb's `PlaylistInfo` has six fields and none of them is
+ * this, and there is no way to work it out from the outside: probing with a write is destructive,
+ * `itemCount` drift cannot separate a smart playlist from `Default Playlist` churn, and a name
+ * heuristic only catches foobar2000's own `#Quicksearch` prefix.
+ *
+ * Joined on `beefwebId`. **beefweb must be asked first**: it assigns its ids lazily, so a playlist
+ * created a moment ago reports `beefwebId: null` until beefweb next rebuilds its map -- and asking
+ * beefweb is what makes it do so.
+ */
+export async function fetchPlaylistAnnotations(
+	origin: string,
+	token: string,
+): Promise<PlaylistAnnotation[] | null> {
+	try {
+		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
+			const response = await fetch(`${origin}/api/playlists`, {
+				headers: bearer(token),
+				signal,
+			});
+			if (!response.ok) return null;
+			const body = (await response.json()) as {
+				playlists?: PlaylistAnnotation[];
+			};
+			return body.playlists ?? null;
+		});
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * What a query would match, without creating anything. A query that does not parse is a `200` here
+ * carrying `valid: false`, because this is called while somebody types and an unreadable query is
+ * data rather than an error.
+ *
+ * Debounced by the caller: it runs on foobar2000's main thread, so one request per keystroke is one
+ * main-thread callback per keystroke.
+ */
+export async function previewQuery(
+	origin: string,
+	token: string,
+	query: string,
+): Promise<QueryPreview | null> {
+	try {
+		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
+			const response = await fetch(`${origin}/api/autoplaylists/preview`, {
+				method: "POST",
+				headers: { ...bearer(token), "Content-Type": "application/json" },
+				body: JSON.stringify({ query }),
+				signal,
+			});
+			if (!response.ok) return null;
+			return (await response.json()) as QueryPreview;
+		});
+	} catch {
+		return null;
+	}
+}
+
+export type CreatedAutoPlaylist =
+	| { ok: true; playlist: PlaylistAnnotation }
+	| { ok: false; message: string };
+
+/** Create one. The component hands it to foobar2000's own autoplaylist client, so the player keeps it filled and keeps it after the component is uninstalled. */
+export async function createAutoPlaylist(
+	origin: string,
+	token: string,
+	request: AutoPlaylistRequest,
+): Promise<CreatedAutoPlaylist> {
+	let response: Response;
+	try {
+		response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
+			fetch(`${origin}/api/autoplaylists`, {
+				method: "POST",
+				headers: { ...bearer(token), "Content-Type": "application/json" },
+				body: JSON.stringify(request),
+				signal,
+			}),
+		);
+	} catch {
+		return { ok: false, message: "Could not reach foo_jean." };
+	}
+
+	if (response.ok)
+		return {
+			ok: true,
+			playlist: (await response.json()) as PlaylistAnnotation,
+		};
+
+	const { message } = await messageOf(response, `HTTP ${response.status}`);
+	return { ok: false, message };
 }
 
 // Says that this device stopped on purpose, which is what tells a handoff from a dropped connection: both close the socket, and only this one should give the player its sound back now rather than after the component's linger.

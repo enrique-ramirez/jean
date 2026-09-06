@@ -8,7 +8,7 @@ This file holds what an agent cannot read off the code. How to *write* code here
 
 - **Never run a git command that writes.** No `commit`, `add`, `push`, `branch`, `tag`, `rebase`, `reset`. Read-only git (`status`, `diff`, `log`) is fine.
 - **A general-purpose UI meant for public release, not a personal dashboard.** Nothing may assume a particular library: no hardcoded playlist ids, no assumed paths, no assumed scale, no assumed components.
-- **A LAN, though, is assumed.** Jean and `foo_jean` are for a player on the same network, never across the internet — beefweb has no authentication of its own and `foo_jean` pairs only with private source addresses. So bandwidth is cheap, round trips are short, and a design may spend both: a 256 kbps stream and a quarter-second buffer are reasonable here and would not be over a WAN. What this does **not** buy is a perfect link — wifi at the edge of a house is a LAN condition, and a phone in the garden is the case to keep honest.
+- **A LAN, though, is assumed.** Jean and `foo_jean` are for a player on the same network, never across the internet — beefweb has no authentication of its own and `foo_jean` pairs only with private source addresses. So bandwidth is cheap, round trips are short, and a design may spend both: a 256 kbps stream and a quarter-second buffer are reasonable here and would not be over a WAN. What this does **not** buy is a perfect link — wifi at the edge of a house is a LAN condition, and a phone in the garden is the case to keep honest. **Nor does it buy request *volume*, which is the separate budget**: beefweb answers on one work queue and closes the connection per response, so six hundred covers is six hundred connections however small each one is. Cheap bytes, expensive requests.
 - **The primary axis of quality is UX/UI, and performance is part of UX.** A feature that makes the interface slower has to justify itself.
 - **Fully responsive**, one codebase, no separate mobile build. Desktop is keyboard-first; mobile is aggressively optimised for touch targets, safe-area insets and payload.
 - **Light and dark themes, both designed.** Neither is `#000` / `#fff`.
@@ -55,6 +55,7 @@ Everything specific to one part of the app sits next to that part:
 | `src/features/home/CLAUDE.md` | the home screen and its shelves |
 | `src/features/now-playing/CLAUDE.md` | the status bar, the screen, lyrics and details |
 | `src/features/queue/CLAUDE.md` | the play queue panel |
+| `src/features/genres/CLAUDE.md` | the genres index, its tiles and its matcher |
 | `src/features/search/CLAUDE.md` | the search control |
 | `src/app/CLAUDE.md` | the shell, breakpoints, themes, the tab, the media session |
 | `demo/CLAUDE.md` | the live demo: the fake player in a service worker |
@@ -148,9 +149,10 @@ The code says what exists; this says what does not, and why.
 - **No folder tree.** `#/all` browses the library as one flat list. `/library/items/by-path` is documented in `API.md` for when that changes.
 - **No Web Worker and no IndexedDB persistence**, so a cold start re-fetches and re-indexes. Both are requirements for 100k–200k libraries, not things already done.
 - **Tag writing is one field.** `domain/track/tagWriter.ts` writes **ratings** and nothing else. Genre, comment and the rest of what the component could write are deliberately not wired up: the seam should not be shaped around a second field before there is one.
+- **Autoplaylists are one query.** `domain/library/genreQuery.ts` composes `%genre% IS "x"` and nothing else. A shelf is a set of percentile thresholds computed in JavaScript and All music is everything; neither is expressible as a foobar2000 query, so neither gets the button.
 - **No "play next", and no lookahead of any kind.** `queueIndex` on `/playqueue/add` is accepted and silently ignored, and the API says nothing about what the player would play next on its own. The queue panel shows what was explicitly queued and says so.
 - **No sending audio to another device.** Other listeners are a roster and never a set of targets: starting playback in a browser needs a gesture on *that* browser, so a "play on the kitchen phone" button would fail every time the phone was locked. Jean shows who has the sound and offers nothing to press.
 - **No multi-room sync.** The player and the stream can both be on, and they are a second or two apart. Closing that would mean delaying the player's own output past the stream, and `foo_jean` captures post-DSP with nothing after it to delay; each listener's lag differs anyway, so one delay could never align two of them. The picker says by how much and leaves it there.
 - **Artist information is the one thing that leaves the network**, and it is off until switched on in Settings. MusicBrainz and Wikipedia, no key, no proxy — and no artist *images*: the obvious source is Deezer and it sends no CORS header.
-- **`Mosaic` is on hold.** Do not rework it or add tests for it.
+- **No artwork beyond the first sight of it.** `shared/ui/artworkCache.ts` keeps 50 MB of covers in Cache Storage, oldest out first, and that is the whole of the persistence in Jean — deliberately not LRU, so everything rotates and a re-tagged cover refreshes on its own eventually.
 - **Reconciling a stale `itemCount` is only partly built.** `usePlaylists` and `useLibraryInfo` refetch on window focus. The live `playlistItems` tripwire in `API.md` is not wired; arithmetic that cannot survive being wrong re-reads the count itself.

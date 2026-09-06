@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { genreHref } from "@/domain/library/genreRoute";
 import { pluralise } from "@/shared/lib/text";
 import { Chip } from "@/shared/ui/Chip";
 import { formatDuration, type TrackStats } from "./stats";
@@ -26,6 +27,8 @@ export function ViewHeader({
 	hasPlayCounts,
 	actions,
 	aside,
+	/** Where the chips end, on a view whose genres are the whole library's. See below. */
+	allGenresHref,
 }: {
 	eyebrow?: ReactNode;
 	title: ReactNode;
@@ -33,6 +36,7 @@ export function ViewHeader({
 	hasPlayCounts?: boolean;
 	actions?: ReactNode;
 	aside?: ReactNode;
+	allGenresHref?: string;
 }) {
 	const duration = formatDuration(stats.seconds);
 	const span =
@@ -73,6 +77,13 @@ export function ViewHeader({
 					{hasPlayCounts ? <PlayedMeter share={stats.playedShare} /> : null}
 				</div>
 
+				{/* Every chip opens its genre: the share is what this list is made of, and the tag is where
+				    the rest of it lives. On a playlist that is a change of scope -- 34% of these tracks,
+				    then all 2,667 in the library -- and the destination's own header says `Genre` first,
+				    which is what keeps the jump legible on arrival.
+				    The last chip is the way out to the index, and it is drawn only where the count beside
+				    it and the page behind it are the same set. On a playlist they are not: the header
+				    would say 23 and the index would list 141. */}
 				{stats.topGenres.length > 0 ? (
 					<div className={styles.chips}>
 						{stats.topGenres.map((genre) => (
@@ -80,8 +91,19 @@ export function ViewHeader({
 								key={genre.name}
 								label={genre.name}
 								value={`${genre.share}%`}
+								href={genreHref(genre.name)}
 							/>
 						))}
+
+						{allGenresHref && stats.genreCount > stats.topGenres.length ? (
+							<Chip
+								className={styles.wayOut}
+								label="All genres"
+								value={stats.genreCount.toLocaleString()}
+								href={allGenresHref}
+								title="Every genre in your library"
+							/>
+						) : null}
 					</div>
 				) : null}
 

@@ -1,53 +1,8 @@
+/* Only the placement and the trailing bits. The box, the focus and the placeholder are
+   `shared/ui/Input`. */
 .field {
-	display: flex;
 	flex: 1;
-	align-items: center;
-	gap: 8px;
 	max-width: 440px;
-	padding: 6px 8px 6px 12px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-pill);
-	background: var(--surface);
-	color: var(--muted);
-	transition:
-		border-color 0.15s var(--ease),
-		color 0.15s var(--ease);
-}
-
-.field:hover {
-	border-color: var(--border-strong);
-}
-
-.field:focus-within {
-	border-color: var(--accent-line);
-	color: var(--text);
-}
-
-.field[data-filled="true"] svg {
-	color: var(--accent);
-}
-
-.input {
-	flex: 1;
-	min-width: 0;
-	border: 0;
-	background: none;
-	font: inherit;
-	font-size: 0.8125rem;
-	color: var(--text);
-}
-
-.input::placeholder {
-	color: var(--muted);
-}
-
-.input:focus {
-	outline: none;
-}
-
-/* Safari draws its own clear button on type=search, on top of ours. */
-.input::-webkit-search-cancel-button {
-	display: none;
 }
 
 .count {

@@ -27,6 +27,8 @@ import {
 } from "@/domain/track/project";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
+import { GenreCrumb } from "@/features/genres/GenreCrumb";
+import { GenresView } from "@/features/genres/GenresView";
 import { albumsOf } from "@/features/home/albums";
 import { HomeView } from "@/features/home/HomeView";
 import { buildShelves, refsOfShelf } from "@/features/home/shelves";
@@ -117,12 +119,12 @@ function Shell() {
 	const [openedFrom, setOpenedFrom] = useState("");
 	const shellRoute = isNowPlaying ? openedFrom : route;
 
-	const { shelf, genre, isSearch, isAll, isHome, isLibrary } =
+	const { shelf, genre, isGenres, isSearch, isAll, isHome, isLibrary } =
 		resolveRoute(shellRoute);
 
 	// Loaded for the views that show it. Search asks separately, on focus, because reaching for the field is the ask and the route cannot know.
 	const library = useLibrary(playlists, {
-		wanted: isHome || isAll || Boolean(shelf) || Boolean(genre),
+		wanted: isHome || isAll || isGenres || Boolean(shelf) || Boolean(genre),
 	});
 	const search = useLibrarySearch(library, playlists);
 	const home = useHomePlayback({ library, playlists, navigate });
@@ -162,7 +164,10 @@ function Shell() {
 					view: genreView,
 					kind: SCRATCH_KIND.genre,
 					label: genre,
-					eyebrow: "Genre",
+					// The eyebrow is the way back. A genre is the one view in Jean reached from an index of
+					// its own, and without this the only route out of `Alternative Folk` is the browser's
+					// Back button -- which is not there at all on a phone in standalone mode.
+					eyebrow: <GenreCrumb />,
 					title: genre,
 				}
 			: {
@@ -548,6 +553,8 @@ function Shell() {
 							canPlay={home.canPlay}
 							canShuffle={home.canShuffle}
 						/>
+					) : isGenres ? (
+						<GenresView library={library} onOpenRoute={openRoute} />
 					) : isAll || shelf || genre ? (
 						<LibraryListView
 							library={library}
@@ -559,6 +566,7 @@ function Shell() {
 							playlists={playlists}
 							scrollRef={scrollRef}
 							isCompactViewport={isCompactViewport}
+							onOpenPlaylist={openPlaylist}
 							emptyNotice={
 								library.isLoading
 									? "Reading your library..."

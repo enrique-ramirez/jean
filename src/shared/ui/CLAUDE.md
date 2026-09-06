@@ -61,6 +61,11 @@ Icons come from `lucide-react`, imported per-icon so they tree-shake. **The play
 - **Pressing inside a multi-track selection must not collapse it on pointer-down.** That decision waits for the release, or the selection is gone before the pointer has moved a pixel and a multi-track drag cannot exist.
 - Hit-testing runs on a frame rather than on the move event, so a target that autoscrolls under a stationary pointer still arms.
 - Drag is mouse-only; the mobile path is the menu. There is nothing to drag onto on a phone, since the sidebar is a drawer covering the list it would be dragged from.
+- **A target may arm *and* refuse.** `data-drop-refuses` carries a sentence the store republishes as
+  `refusal`, the ghost draws instead of the payload, and the drop silently does not happen. Filtering
+  the target out with `canDrop` instead leaves the pointer over a row that reacts to nothing, and the
+  reason arrives as a toast *after* the decision rather than before it. The sentence is read off the
+  DOM, so this file still knows nothing about what a refusal means.
 - **The ids are opaque here and must stay that way.** A target is a string this file hit-tests and hands back; what it means belongs to whoever registered it. `useTrackDragSource` is the one place that tells a playlist id from `QUEUE_DROP_TARGET`, because it is the one place that knows what a drop should do.
 
 ## Controls
@@ -99,7 +104,53 @@ Icons come from `lucide-react`, imported per-icon so they tree-shake. **The play
 
 **An animated scroll must not treat every wheel event as a decision.** Trackpad and mouse momentum keep emitting for a second or more after the fingers have left, so a jump asked for at the end of a flick gets cancelled by the tail of the gesture that preceded it — a single delta of one pixel is enough to strand the scroll and leave the target row unmounted. `animateScrollTo` accumulates wheel delta and gives up at 40px, which deliberate scrolling passes in one or two events and a decaying tail never reaches. A touch still cancels on contact, because a finger on the glass is unambiguous where a wheel event is not.
 
+## Fields
+
+**`Input.tsx` is the only text field in Jean**, and not a wrapper anybody may skip. The box, the
+focus ring, the placeholder and three sizes live there; what differs between callers is only what
+sits either side of the text, and those are slots — `leading`, `trailing`, and `underlay` for a ghost
+completion that has to share the input's own metrics. Eight callers use it: the top-bar search, the
+finder, the command palette, the action-menu filter, save-as-playlist, both `foo_jean` settings
+fields and the genre finder.
+
+The ring is **a tinted border and a soft spread on the field**, never a hard outline and never on the
+input: the input is chromeless by construction, so the global `:focus-visible` rule drew a second
+rounded rectangle inside the first and read as a field nested in a field. It had been fixed
+separately in three places before it was one component. Every field is `--radius-pill`, because a
+square field beside a pill button is what makes it look like a mistake.
+
 ## Artwork
+
+**Three gates, answering different questions.** `nearViewport.ts` decides *whether to ask at all* —
+a grid can mount far more covers than it shows, and the genres index is 141 tiles of which a dozen
+are on screen; it answers once and never takes the answer back, because a cover scrolled past keeps
+the picture it has. `artworkCache.ts` decides *whether the network is involved*. The artwork queue
+decides *how many ask at once*. None of them is `loading="lazy"`, whose answer to "is this visible"
+is yes for every row a jump scrolls past.
+
+**beefweb defeats the browser's own cache and there is nothing a client can do about it.** Every
+response carries `Cache-Control: max-age=3, must-revalidate` from one filter that does not
+distinguish a 600 KB sleeve from a status poll (`cpp/server/cache_support_filter.cpp`). Measured:
+revisiting a screen re-fetched every cover as a fresh `200` — ~15 MB and sixty round trips, each a
+new connection. **Cache Storage is the way out because it ignores caching headers entirely**: what is
+put in stays until it is taken out.
+
+**Not a service worker.** A worker's scope is the directory it is served from, and Jean is documented
+to install at `/jean` with the stock UI at `/`, so a worker there could never see `/api/artwork/...`
+— and widening its scope needs a `Service-Worker-Allowed` header beefweb has no way to send. `caches`
+is available to the page directly and has no scope at all.
+
+- **50 MB, oldest out first, never LRU.** LRU pins whatever you look at most, so the covers you see
+  daily would be the last to refresh. Insertion order guarantees everything rotates, which is what
+  makes a re-tagged sleeve reappear without anybody pressing Clear.
+- **Only `200`s are kept.** beefweb answers `404 no artwork found` for a track with none, and caching
+  that is what would make a newly added sleeve fail to turn up.
+- **Blob URLs are shared and reference-counted.** `createObjectURL` mints a *new* handle per call, and
+  a track list draws one album across a dozen rows — minting per component held a dozen copies of the
+  same picture in memory until the tab closed. `artwork.spec.ts` catches it.
+- Secure-context only, so a plain-HTTP install has no cache and must go on working: every entry point
+  answers "no" rather than throwing, and the Settings panel returns `null` rather than rendering
+  disabled.
 
 **One component draws every cover in the app** — the status bar, the wheel, the now-playing screen, an album group, a row, a shelf card, a queue entry — and the reason is the loading state rather than the picture. Six callers each holding a picture is fine; six of them each *flickering differently* while it arrives is what the user sees.
 

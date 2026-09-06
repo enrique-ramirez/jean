@@ -67,3 +67,11 @@
 	color: var(--on-accent);
 	font-variant-numeric: tabular-nums;
 }
+
+/* Armed, and saying no. Not `--danger`: nothing is going wrong and nothing was destroyed -- the
+   target simply does not take drops, and a red pill under the pointer reads as an error report. */
+.pill[data-refused="true"] {
+	border-color: var(--border-strong);
+	background: var(--surface-sunken);
+	color: var(--muted);
+}

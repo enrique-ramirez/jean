@@ -35,6 +35,25 @@
 
 **`POST /stream/ticket` is where this device says who it is**, and the only place it can: an `<audio>` element sends no body and no header of its own, so the identity has to ride the one request the client controls. Both fields are untrusted text and the component treats them as such — a bad name is dropped and the ticket is still issued, because a label must never cost somebody their audio.
 
+**`GET /playlists` is the one question beefweb cannot answer.** `PlaylistInfo` has six fields and none
+of them says whether a playlist is an autoplaylist; every way of working it out from outside is worse
+than not knowing, which is why `domain/library/CLAUDE.md` says to stop looking. Joined on
+`beefwebId` — **and beefweb must be asked first**, because it assigns its ids lazily and a playlist
+created a moment ago reports `null` until beefweb next rebuilds its map. Asking beefweb is what makes
+it look. Jean uses the answer only to *remove* affordances, so absent, unreachable or unpaired every
+playlist looks exactly as it did before.
+
+**`POST /autoplaylists/preview` runs on foobar2000's main thread**, so one request per keystroke is
+one main-thread callback per keystroke. A query that does not parse is a **`200` carrying
+`valid: false`**, not an error — it is called while somebody types. Read `libraryEnabled` before
+`matches`: an install with no Media Library matches nothing whatever the query says, and every
+autoplaylist created there is empty.
+
+**Queries are passed through untouched, so quoting is Jean's.** The component never composes or
+interprets one; the player owns that language and is the only thing that can say whether a query
+parses. A tag pasted in unquoted can produce a query that parses and means something else, and no
+validation on either side can catch it.
+
 **`DELETE /stream/hold` has no matching PUT, and that is deliberate on the component's side.** A client asks for the player to be audible alongside the listeners; *when* the two should be one is the component's decision, and it takes the hold back on its own once nobody is listening.
 
 **`GET /stream` takes no bearer token**, because an `<audio>` element cannot send a header. The ticket is the credential and it travels in the query string, which is why it expires in minutes; **the token must never go there**. All three 401 causes — no ticket, unknown, expired — answer identically on purpose, so a client cannot sort guesses into "wrong" and "too late", and cannot tell any of them from an undecodable codec either. A 503 is *two* conditions distinguished only by the `error` string: this install does not stream, or it is already serving as many listeners as it allows. The second must read as "busy" and retry.

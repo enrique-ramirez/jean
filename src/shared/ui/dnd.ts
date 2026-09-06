@@ -23,6 +23,16 @@ export interface DragState {
 	over: string | null;
 	count: number;
 	label: string | null;
+	/**
+	 * Why the armed target will not take this, or null where it will. Read off the target's own
+	 * `data-drop-refuses` attribute, so the ids stay opaque here: what a refusal *means* belongs to
+	 * whoever registered the target, and this file only carries the sentence across.
+	 *
+	 * A refusing target still arms, deliberately. Filtering it out with `canDrop` would leave the
+	 * pointer over a row that says nothing, and the user learns why only by dropping and reading a
+	 * toast -- which is after the decision rather than before it.
+	 */
+	refusal: string | null;
 }
 
 // One in-flight gesture. The window listeners are held on it so teardown can remove exactly the ones it added.
@@ -48,6 +58,7 @@ const IDLE: DragState = {
 	over: null,
 	count: 0,
 	label: null,
+	refusal: null,
 };
 
 let state = IDLE;
@@ -91,7 +102,7 @@ const targetUnder = (
 		?.closest<HTMLElement>("[data-drop-target]");
 	const id = element?.dataset.dropTarget;
 	if (!id || (canDrop && !canDrop(id))) return null;
-	return id;
+	return { id, refusal: element?.dataset.dropRefuses || null };
 };
 
 const autoscroll = (x: number, y: number) => {
@@ -154,8 +165,11 @@ export function useDragSource<T = unknown>({
 		placeGhost(x, y);
 		autoscroll(x, y);
 
-		const over = targetUnder(x, y, latest.current.canDrop);
-		if (over !== state.over) publish({ ...state, over });
+		const found = targetUnder(x, y, latest.current.canDrop);
+		const over = found?.id ?? null;
+		const refusal = found?.refusal ?? null;
+		if (over !== state.over || refusal !== state.refusal)
+			publish({ ...state, over, refusal });
 
 		frame.current = requestAnimationFrame(tick);
 	}, []);
@@ -201,6 +215,7 @@ export function useDragSource<T = unknown>({
 				over: null,
 				count: payload.count,
 				label: payload.label,
+				refusal: null,
 			});
 			frame.current = requestAnimationFrame(tick);
 		};
@@ -208,11 +223,15 @@ export function useDragSource<T = unknown>({
 		current.onUp = () => {
 			const { started } = current;
 			const over = state.over;
+			// Read before the state is cleared: a target that said no during the drag says no at the end
+			// of it, and the drop simply does not happen. Nothing is reported, because the row has been
+			// saying so under the pointer for as long as it was armed.
+			const refused = state.refusal !== null;
 			teardown();
 			if (!started) return;
 			setDocumentDragging(false);
 			publish(IDLE);
-			if (over) latest.current.onDrop(over, payload);
+			if (over && !refused) latest.current.onDrop(over, payload);
 		};
 
 		current.onCancel = () => {

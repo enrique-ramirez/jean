@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
+import { Input } from "@/shared/ui/Input";
 import styles from "./CommandPalette.module.css";
 
 /** Somewhere to go, addressed the way the hash addresses it: a playlist's route is its id, so views and playlists share one space and one handler. */
@@ -109,20 +110,19 @@ export function CommandPalette({
 				aria-modal="true"
 				aria-label="Go to"
 			>
-				<div className={styles.field}>
-					<Search size={16} strokeWidth={2} aria-hidden="true" />
-					<input
-						ref={inputRef}
-						className={styles.input}
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-						onKeyDown={onKeyDown}
-						placeholder="Go to"
-						aria-label="Go to"
-						spellCheck="false"
-						autoComplete="off"
-					/>
-				</div>
+				<Input
+					size="md"
+					className={styles.field}
+					inputRef={inputRef}
+					value={query}
+					onChange={(event) => setQuery(event.target.value)}
+					onKeyDown={onKeyDown}
+					placeholder="Go to"
+					aria-label="Go to"
+					spellCheck="false"
+					autoComplete="off"
+					leading={<Search size={16} strokeWidth={2} aria-hidden="true" />}
+				/>
 
 				<div className={styles.results} role="listbox">
 					{results.length === 0 ? (

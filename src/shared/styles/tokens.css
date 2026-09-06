@@ -62,6 +62,29 @@
 	--loading: oklch(0.245 0.012 260);
 	--loading-sheen: oklch(0.33 0.016 260);
 
+	/* The genre tints. A genre has no artwork of its own, so a tile is drawn from
+     its name -- and the hue is taken off a ramp of eight rather than off the
+     hash directly, because a free hue per tag puts a hundred and forty
+     unrelated colours on one screen and reads as a fault rather than as
+     variety. Lightness and chroma are the theme's business and the hue is the
+     name's: that split is what keeps both themes designed. */
+	--genre-l: 0.72;
+	--genre-c: 0.11;
+	/* How much of that hue the tile's field takes, and it is deliberately little. The sleeve is the
+	   colour on this screen; the field is the ground it sits on, and a field bright enough to compete
+	   both drowns the artwork and pushes the count under it towards unreadable. Dark still takes
+	   roughly twice light's share -- the figure is drawn *into* the field rather than over it, so the
+	   field carries the whole of a genre's identity, and at light's strength eight hues over
+	   near-black are one brown. */
+	--genre-wash: 8%;
+	/* What the figure is mixed into, and how much of the hue it keeps. The figure has to sit *away
+	   from the page* rather than at a fixed lightness, and which way that is differs by theme: on
+	   dark it goes down into the sunken neutral, on light it goes up into white. Stated as a ground
+	   rather than as a colour so the tile does one mix and neither theme is a special case in a
+	   component stylesheet. */
+	--genre-ink-ground: var(--surface-sunken);
+	--genre-ink-share: 20%;
+
 	--on-accent: oklch(0.18 0.01 260);
 	/* Destructive actions. Pulled towards the warm end of red so it reads as part
      of the same palette as the accent rather than as a browser default. */
@@ -107,6 +130,19 @@
 
 	--loading: oklch(0.925 0.007 262);
 	--loading-sheen: oklch(0.985 0.003 262);
+
+	/* Deeper and a shade stronger than on dark: the same stroke that glows over a
+     near-black page disappears over a near-white one, and the tile's field is a
+     wash of this over white rather than over ink. */
+	--genre-l: 0.56;
+	--genre-c: 0.13;
+	/* A shade more than dark's share of its own hue: the figure here is lighter than the field rather
+	   than darker, so the field needs something for it to be lighter *than*. */
+	--genre-wash: 12%;
+	/* Up into white, and keeping almost none of the hue -- on a near-white page the lighter figure is
+	   a highlight, and a tinted one at this lightness turns back into a second colour. */
+	--genre-ink-ground: oklch(1 0 0);
+	--genre-ink-share: 2%;
 
 	/* Light needs the opposite of nothing. The page is all but white, so a pale
      sleeve dissolving into it took the card with it -- no bottom edge, no

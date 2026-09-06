@@ -72,3 +72,17 @@
 		gap: 10px;
 	}
 }
+
+/* The one value in here that goes somewhere. Underlined on approach rather than always: a panel of
+   forty rows with one permanently underlined reads as a mistake in the other thirty-nine. */
+.link {
+	color: inherit;
+	text-decoration: none;
+}
+
+.link:hover,
+.link:focus-visible {
+	color: var(--accent-text);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}

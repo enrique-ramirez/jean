@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from "react";
 import { useMemo, useRef } from "react";
+import { GENRES_HREF } from "@/domain/library/genreRoute";
 import type { Library } from "@/domain/library/useLibrary";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { useIsPlaying, usePermissions } from "@/domain/player/usePlayer";
@@ -13,6 +14,7 @@ import { TrackBrowser } from "@/domain/track/TrackBrowser";
 import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { useFinder } from "@/domain/track/useFinder";
 import { ViewHeader } from "@/domain/track/ViewHeader";
+import { CreateAutoPlaylist } from "@/features/genres/CreateAutoPlaylist";
 import type { PlaylistInfo } from "@/shared/api/types";
 import styles from "./LibraryListView.module.css";
 
@@ -36,6 +38,7 @@ export function LibraryListView({
 	scrollRef,
 	isCompactViewport,
 	emptyNotice,
+	onOpenPlaylist,
 }: {
 	library: Library;
 	view: TrackView;
@@ -47,6 +50,8 @@ export function LibraryListView({
 	scrollRef: RefObject<HTMLElement | null>;
 	isCompactViewport: boolean;
 	emptyNotice?: ReactNode;
+	/** Where an autoplaylist made from this genre lands. */
+	onOpenPlaylist?: (id: string) => void;
 }) {
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const { rows, indices, heat, patina, playedCount } = view;
@@ -117,6 +122,9 @@ export function LibraryListView({
 					title={title}
 					stats={stats}
 					hasPlayCounts={hasPlayCounts}
+					// Only here: All music's genres are the library's genres, so the figure on the chip and the
+					// page it opens are the same set. A shelf or a playlist counts its own and they are not.
+					allGenresHref={kind === SCRATCH_KIND.all ? GENRES_HREF : undefined}
 					aside={
 						<Mosaic
 							source={library.source}
@@ -126,11 +134,21 @@ export function LibraryListView({
 						/>
 					}
 					actions={
-						<PlayActions
-							browserRef={browserRef}
-							trackCount={rows.length}
-							canShuffle={canWrite}
-						/>
+						<>
+							<PlayActions
+								browserRef={browserRef}
+								trackCount={rows.length}
+								canShuffle={canWrite}
+							/>
+							{/* Only a genre has a query the player can be handed. A shelf is a set of thresholds
+							    computed here and All music is everything, and neither is expressible as one. */}
+							{isGenre && label && onOpenPlaylist ? (
+								<CreateAutoPlaylist
+									genre={label}
+									onOpenPlaylist={onOpenPlaylist}
+								/>
+							) : null}
+						</>
 					}
 				/>
 			}

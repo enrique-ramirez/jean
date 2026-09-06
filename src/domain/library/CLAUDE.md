@@ -42,6 +42,11 @@ Full shapes and costs in `API.md`.
 
 Consequence: **the autoplaylist is not the browse view.** On a 0.11 player it is not read at all — only resolved when there is no library API, or when `changePlaylists` is false and playing in place is the only way to play anything — and on every player it is hidden from the sidebar. `#/all` is a *view over the library array*, projected through the source seam like a shelf or a set of results, so both sources produce it identically and neither pretends to be a playlist.
 
+**Jean composes exactly one player query**, in `genreQuery.ts`: `%genre% IS "x"`, for the autoplaylist
+a genre view offers to make. `foo_jean` passes queries through untouched and says so — the player owns
+that language — so **quoting is Jean's responsibility**, and a tag pasted in unquoted can produce a
+query that parses and means something else. `POST /autoplaylists/preview` is the check.
+
 **A genre view is a filter over rows Jean already holds** — no request, no playlist, nothing the player knows about. `refsOfGenre` in `domain/track/project.ts` matches the tag **whole and through `tagKey`**, which is how `summarise` counts genres, so "Indie Rock, 2,667" opens 2,667 rows. An empty key returns nothing rather than everything: `tagKey('')` matches every untagged row, which on an install with no genre tags is the whole library. The route carries a tag somebody typed, so `genreRoute` percent-encodes and `resolveRoute` decodes inside a `try` — a hand-edited hash with a stray `%` throws.
 
 ### Rules that are not obvious
@@ -119,4 +124,8 @@ Materialising is cheap even at library size: 500 indices copy in 17 ms, 5,000 in
 
 - **No folder tree.** `#/all` browses the library as one flat list; `/library/items/by-path` is documented in `API.md` for when that changes.
 - **Reconciling a stale `itemCount` is partly built.** `usePlaylists` and `useLibraryInfo` refetch on window focus. The live `playlistItems` tripwire is not wired; arithmetic that cannot survive being wrong re-reads the count itself.
-- **`Mosaic` is on hold.** Do not rework it or add tests for it.
+- **`Mosaic` is next**, and the rules for it are agreed: one, four or nine covers by how many *unique
+  albums* there are; a count badge only where the number shown differs from the number held;
+  uniqueness by album artist and title rather than by image bytes; and **one hold for the whole
+  mosaic** rather than nine, since `Artwork`'s per-tile placeholder is right for one cover and a grid
+  of nine identical disc icons is not a loading state.

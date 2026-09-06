@@ -7,6 +7,7 @@ import { canUseMse } from "@/domain/player/mseStream";
 import { useListener } from "@/domain/player/useListener";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { HelpHint } from "@/shared/ui/HelpHint";
+import { Input } from "@/shared/ui/Input";
 import { Switch } from "@/shared/ui/Switch";
 import styles from "./Settings.module.css";
 
@@ -41,7 +42,8 @@ export function ThisDevice() {
 				<label className={styles.label} htmlFor="device-name">
 					Name
 				</label>
-				<input
+				<Input
+					size="md"
 					className={styles.input}
 					id="device-name"
 					type="text"

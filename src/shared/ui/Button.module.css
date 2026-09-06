@@ -59,3 +59,17 @@
 	background: var(--surface);
 	color: var(--text);
 }
+
+/* Destructive, and drawn the way `ActionMenu` draws a destructive item: the colour on the label
+   rather than a filled red box. A solid red button in a settings panel reads as an alarm, and this
+   is a thing you may well mean to press -- clearing the artwork cache costs a re-download and
+   nothing else. The border follows only on approach, so the row is quiet until aimed at. */
+.danger {
+	color: var(--danger);
+}
+
+.danger:hover:not(:disabled),
+.danger:focus-visible {
+	border-color: var(--danger);
+	background: color-mix(in oklab, var(--danger) 10%, var(--surface));
+}

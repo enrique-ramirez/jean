@@ -1,3 +1,5 @@
+/* The box is `shared/ui/Input`; this is the positioning context its results panel hangs from, and
+   the flex basis that keeps the toolbar honest. */
 .finder {
 	position: relative;
 	display: flex;
@@ -7,40 +9,14 @@
      field next to 180px of nothing. Asking for its full width up front and
      letting it shrink leaves the spacer with nothing to claim. */
 	flex: 1 1 400px;
-	align-items: center;
-	gap: 8px;
 	min-width: 0;
 	max-width: 400px;
-	padding: 6px 8px 6px 12px;
-	border: 1px solid var(--accent-line);
-	border-radius: var(--radius-pill);
-	background: var(--surface);
-	color: var(--muted);
 }
 
-/* The ring belongs to the field, not to the box inside it. The input is
-   chromeless by construction, so the global :focus-visible rule drawing a
-   second rounded rectangle around it read as a field nested in a field. */
-.finder:focus-within {
-	outline: 2px solid var(--accent);
-	outline-offset: 2px;
-}
-
-.input {
-	min-width: 0;
+.field {
 	flex: 1;
-	border: 0;
-	background: none;
-	font-size: 0.875rem;
-	color: var(--text);
-}
-
-/* :focus, not a bare .input -- a lone class ties with the global :focus-visible
-   on specificity and loses on source order, which is how the inner ring
-   survived an `outline: none` that looked like it had already handled this. */
-.input:focus,
-.input:focus-visible {
-	outline: none;
+	/* Open, so it reads as the thing being typed into even before it has focus. */
+	border-color: var(--accent-line);
 }
 
 .count {

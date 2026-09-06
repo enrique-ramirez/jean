@@ -14,6 +14,7 @@ Jean (/ʝan/) is a replacement web UI for the [beefweb](https://github.com/hyper
 - **Ratings** are read from tags, and writable when `foo_jean` is installed.
 - **Playlists** can be created, renamed, deleted and dragged into order. Drag tracks onto one to add them, or use the context menu. Every write is confirmed with an undo.
 - **Listen on this device** — with `foo_jean` installed, play what the player is playing in this browser. Choosing a device *moves* the sound: the player is muted while you listen, and gets it back when you stop. The picker names the other devices listening, and can put the player's speakers back on alongside them.
+- **Genres** get an index of their own: every genre in the library, found by typing, and each one a filter over what you already have. With `foo_jean` installed a genre can also become an autoplaylist the player keeps filled.
 - **Play queue**, drawn as a timetable: each row says when it will play.
 - **Themes**, light and dark, and full keyboard control on desktop.
 
@@ -30,7 +31,7 @@ Jean requires **one** component. Everything else is detected at runtime and stay
 | **Required** | [`foo_beefweb`](https://github.com/hyperblast/beefweb) | Playback, playlists, the play queue, outputs, artwork, filesystem browsing |
 | **Recommended** | `foo_beefweb` **0.11+** | The media library, read directly instead of through an autoplaylist |
 | **Optional** | `foo_enhanced_playcount` *or* `foo_playcount` | Play counts and first/last played, which drive the play-history shelves |
-| **Optional** | [`foo_jean`](https://github.com/enrique-ramirez/foo_jean) | Writing tags back — today that is ratings, so without it the stars are read-only. And listening on this device: a control beside the volume plays what the player is playing, in this browser, muting the player so the sound moves rather than doubling. It also names who else is listening, and — where Jean is served over HTTPS — puts the track on the lock screen, the media keys and the Bluetooth buttons while the sound is here |
+| **Optional** | [`foo_jean`](https://github.com/enrique-ramirez/foo_jean) | Writing tags back — today that is ratings, so without it the stars are read-only. Making an autoplaylist from a genre, and marking which playlists the player fills itself, neither of which beefweb can express. And listening on this device: a control beside the volume plays what the player is playing, in this browser, muting the player so the sound moves rather than doubling. It also names who else is listening, and — where Jean is served over HTTPS — puts the track on the lock screen, the media keys and the Bluetooth buttons while the sound is here |
 | **Optional** | any component publishing title-formatting fields | Auto-detected. Jean probes the fields it knows about and enables whatever resolves |
 
 Some features need no component, because they read tags the files already carry: **lyrics**, from the `UNSYNCED LYRICS` tag ([`foo_openlyrics`](https://github.com/jacquesh/foo_openlyrics) is a good way to populate it; Jean only reads it), plus ratings, ReplayGain, composer, publisher, ISRC and all standard metadata.

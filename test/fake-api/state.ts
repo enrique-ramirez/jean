@@ -725,6 +725,19 @@ export function createState({
 			notify({ player: true });
 		},
 
+		// What `%genre% IS "x"` would match, which is the only query Jean composes. Read
+		// off the media library rather than a playlist, as an autoplaylist is.
+		previewMatches(query: string): number {
+			const wanted = /^%genre% IS "(.*)"$/
+				.exec(query)?.[1]
+				?.replace(/""/g, '"');
+			if (wanted === undefined) return 0;
+			const key = wanted.trim().toLowerCase();
+			return allTracks().filter(
+				(track) => (track["%genre%"] ?? "").trim().toLowerCase() === key,
+			).length;
+		},
+
 		addPlaylist(title: string): PlaylistInfo {
 			// Ids keep climbing and are never reused, as the player's do.
 			const used = state.playlists.map((entry) => Number(entry.id.slice(1)));

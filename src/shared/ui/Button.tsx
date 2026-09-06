@@ -6,6 +6,7 @@ const VARIANTS: Record<string, string> = {
 	primary: styles.primary,
 	default: styles.default,
 	ghost: styles.ghost,
+	danger: styles.danger,
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

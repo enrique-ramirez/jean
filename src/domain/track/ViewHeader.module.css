@@ -156,8 +156,10 @@
 	}
 
 	/* Two is the gist. Four wrap onto a second row, and a second row of
-     percentages is not worth the height it costs on a phone. */
-	.chips > *:nth-child(n + 3) {
+     percentages is not worth the height it costs on a phone. The way out to the
+     genres index is exempt: it is not a percentage, and on a phone the sidebar
+     that also carries it is a drawer. */
+	.chips > *:nth-child(n + 3):not(.wayOut) {
 		display: none;
 	}
 
@@ -183,4 +185,9 @@
 	.actions {
 		justify-content: space-between;
 	}
+}
+
+/* Only a marker for the rule above, which needs something to exempt. */
+.wayOut {
+	order: 1;
 }

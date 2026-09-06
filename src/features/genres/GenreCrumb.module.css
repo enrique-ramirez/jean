@@ -1,0 +1,24 @@
+/* Sized and cased by the eyebrow it replaces, so a genre view's header keeps the shape every other
+   view's has. Only the colour and the chevron say it is a link. */
+.crumb {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: -3px;
+	color: inherit;
+	text-decoration: none;
+	transition: color 140ms var(--ease);
+}
+
+.crumb:hover,
+.crumb:focus-visible {
+	color: var(--accent-text);
+}
+
+.chevron {
+	transition: transform 140ms var(--ease);
+}
+
+.crumb:hover .chevron {
+	transform: translateX(-2px);
+}

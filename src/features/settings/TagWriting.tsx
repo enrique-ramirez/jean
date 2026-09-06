@@ -9,6 +9,7 @@ import {
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Button } from "@/shared/ui/Button";
 import { HelpHint } from "@/shared/ui/HelpHint";
+import { Input } from "@/shared/ui/Input";
 import { Switch } from "@/shared/ui/Switch";
 import styles from "./Settings.module.css";
 
@@ -163,9 +164,11 @@ function PairButton({
 	return (
 		<div className={styles.pairing}>
 			<div className={styles.tokenRow}>
-				<label className={styles.field}>
+				<label className={styles.field} htmlFor="foo-jean-device-name">
 					<span className={styles.label}>Name</span>
-					<input
+					<Input
+						size="md"
+						id="foo-jean-device-name"
 						className={styles.input}
 						value={name}
 						spellCheck={false}
@@ -213,9 +216,11 @@ function TokenField({
 				onSave(draft.trim());
 			}}
 		>
-			<label className={styles.field}>
+			<label className={styles.field} htmlFor="foo-jean-token">
 				<span className={styles.label}>Token</span>
-				<input
+				<Input
+					size="md"
+					id="foo-jean-token"
 					className={styles.input}
 					type={isVisible ? "text" : "password"}
 					value={draft}

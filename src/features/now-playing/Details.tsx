@@ -1,3 +1,4 @@
+import { genreHref } from "@/domain/library/genreRoute";
 import { readValue } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
 import styles from "./Details.module.css";
@@ -46,12 +47,18 @@ function played(raw: string | null) {
 interface Row {
 	label: string;
 	value: string | null;
+	/** Where the value is somewhere to go rather than something to read. */
+	href?: string;
 }
 
 interface Group {
 	title: string;
 	rows: Row[];
 }
+
+// A tag with nothing in it is not a link, and neither is a field the player answered `?` for.
+const genreOf = (genre: string | null) =>
+	genre ? genreHref(genre) : undefined;
 
 function groupsOf(row: TrackColumns): Group[] {
 	const bitrate = read(row, F.bitrate);
@@ -66,7 +73,13 @@ function groupsOf(row: TrackColumns): Group[] {
 				{ label: "Album", value: read(row, F.album) },
 				{ label: "Album artist", value: read(row, F.albumArtist) },
 				{ label: "Released", value: released(row) },
-				{ label: "Genre", value: read(row, F.genre) },
+				// The one value in here that is also a place. `genreHref` takes the tag whole, the way
+				// `refsOfGenre` matches it, so what opens is exactly the set this track is counted in.
+				{
+					label: "Genre",
+					value: read(row, F.genre),
+					href: genreOf(read(row, F.genre)),
+				},
 				{ label: "Publisher", value: read(row, F.publisher) },
 				{ label: "Composer", value: read(row, F.composer) },
 				{ label: "Track", value: counted(row, F.trackNumber, F.totalTracks) },
@@ -132,7 +145,15 @@ export function Details() {
 						{group.rows.map((row) => (
 							<div key={row.label} className={styles.row}>
 								<dt className={styles.label}>{row.label}</dt>
-								<dd className={styles.value}>{row.value}</dd>
+								<dd className={styles.value}>
+									{row.href && row.value ? (
+										<a className={styles.link} href={row.href}>
+											{row.value}
+										</a>
+									) : (
+										row.value
+									)}
+								</dd>
 							</div>
 						))}
 					</dl>

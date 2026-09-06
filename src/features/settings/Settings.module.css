@@ -216,25 +216,9 @@
 }
 
 .input {
-	width: 100%;
-	padding: 8px 10px;
-	border: 1px solid var(--border-strong);
-	border-radius: var(--radius-sm);
-	background: var(--surface-sunken);
-	font-family: var(--font-numeric);
-	font-size: 0.8125rem;
-	color: var(--text);
-	transition: border-color 0.12s var(--ease);
-}
-
-.input:focus-visible {
-	border-color: var(--accent);
-	outline: none;
-}
-
-.input::placeholder {
-	font-family: var(--font);
-	color: var(--faint);
+	/* The box is `shared/ui/Input`; a field here only says how wide it is. */
+	flex: 1;
+	min-width: 0;
 }
 
 .detail {
@@ -340,4 +324,23 @@
 	.field {
 		flex-basis: 100%;
 	}
+}
+
+/* A line of fact beside whatever acts on it. */
+.note {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+/* A panel's own action, at the far end of the row it shares with whatever it acts on. Centred rather
+   than baselined: the button is twice the line's height, and aligning the two baselines hangs it
+   below the text it belongs to. */
+.panelActions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
 }

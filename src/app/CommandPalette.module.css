@@ -19,22 +19,8 @@
 }
 
 .field {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 13px 16px;
-	border-bottom: 1px solid var(--border);
-	color: var(--muted);
-}
-
-.input {
-	flex: 1;
-	min-width: 0;
-	border: 0;
-	background: none;
-	font-size: 0.9375rem;
-	color: var(--text);
-	outline: none;
+	/* The box is `shared/ui/Input`; the palette only says where it sits. */
+	margin: 0 0 6px;
 }
 
 .results {

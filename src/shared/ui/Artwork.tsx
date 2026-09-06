@@ -1,11 +1,17 @@
 import { DiscAlbum } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-
+import {
+	canCacheArtwork,
+	dropArtwork,
+	heldArtwork,
+	holdArtwork,
+} from "./artworkCache";
 import {
 	type ArtworkOutcome,
 	outcomeFor,
 	requestArtwork,
 } from "./artworkQueue";
+import { whenNearViewport } from "./nearViewport";
 
 type ArtworkState = "waiting" | "granted" | ArtworkOutcome;
 
@@ -17,7 +23,8 @@ const settled = (src: string | null | undefined): ArtworkState | null =>
 
 // Every cover in the app, at every size: the status bar, the wheel, an album group, a row, a shelf card. One component because they are one thing, and because a cover that arrives differently in six places is six different flickers.
 // The artwork endpoint 404s when a track has no embedded cover, which is common enough to be a normal state rather than an error. Takes a URL, not an address: where artwork lives is the source's business.
-// Loading goes through the artwork queue rather than loading="lazy", whose answer to "is this visible" is yes for every row a jump scrolls past.
+//
+// Three gates, and they answer different questions. `whenNearViewport` decides *whether to ask at all* -- a grid can mount far more covers than it shows, and the genres page is a hundred and forty tiles of which a dozen are on screen. `artworkCache` decides *whether the network is involved*, because beefweb's own `max-age=3` makes the browser re-download every cover on every visit. The artwork queue then decides *how many ask at once*. None of them is `loading="lazy"`, whose answer to "is this visible" is yes for every row a jump scrolls past.
 export function Artwork({
 	src,
 	size,
@@ -34,26 +41,97 @@ export function Artwork({
 	const [state, setState] = useState<ArtworkState>(
 		() => settled(src) ?? "waiting",
 	);
-	const image = useRef<HTMLImageElement | null>(null);
+	// What the `<img>` points at: the address itself where the browser fetches it, or a blob held on
+	// disk. Null until the queue has granted a turn.
+	const [href, setHref] = useState<string | null>(null);
+	const box = useRef<HTMLDivElement | null>(null);
 	const release = useRef<((outcome?: ArtworkOutcome) => void) | null>(null);
 
 	useEffect(() => {
 		const known = settled(src);
-		if (known) {
-			setState(known);
+
+		// Nothing to ask for. `null` is *there is no cover here* and settles; `undefined` holds.
+		if (!src) {
+			setState(known ?? "waiting");
+			setHref(null);
 			return;
 		}
 
-		setState("waiting");
-		// No address to ask for yet, and so nothing to release: the hold stands until one arrives.
-		if (!src) return;
+		if (known === "failed") {
+			setState("failed");
+			setHref(null);
+			return;
+		}
 
-		release.current = requestArtwork(src, () => setState("granted"));
+		// `ok` means this address resolved earlier in this session, so the hold is not shown again --
+		// but the picture still has to be resolved, because a blob URL belongs to whichever component
+		// made it and was revoked when that one went away.
+		setState(known ?? "waiting");
+		setHref(null);
+
+		// Without a cache there is nothing to resolve: the `<img>` fetches the address, the browser
+		// decides whether it already has it, and this is exactly what Jean did before.
+		if (!canCacheArtwork()) {
+			setHref(src);
+			if (!known) setState("granted");
+			return;
+		}
+
+		const element = box.current;
+		if (!element) return;
+
+		// Set true here and not only in the cleanup: StrictMode mounts, unmounts and remounts in
+		// development, and a flag only ever cleared would be permanently off on the second run.
+		let live = true;
+		const abort = new AbortController();
+
+		const resolve = async () => {
+			try {
+				const url = await holdArtwork(src, abort.signal);
+
+				// The claim outlived the component: give it back rather than leaking a handle nobody
+				// will ever drop.
+				if (!live) {
+					dropArtwork(src);
+					return;
+				}
+
+				setHref(url);
+				setState((current) => (current === "ok" ? current : "granted"));
+			} catch {
+				// An abort lands here too, and there is nothing to report: the component is going away.
+				if (!live) return;
+				release.current?.("failed");
+				release.current = null;
+				setState("failed");
+			}
+		};
+
+		// A cover already on disk skips the queue entirely. That queue bounds how many *requests* run at
+		// once; a Cache Storage read is not one, and going through it made a cached screen fill in three
+		// tiles at a time exactly as a cold one does.
+		let cancel = whenNearViewport(element, async () => {
+			const held = await heldArtwork(src);
+			if (!live) {
+				if (held) dropArtwork(src);
+				return;
+			}
+
+			if (held) {
+				setHref(held);
+				setState((current) => (current === "ok" ? current : "granted"));
+				return;
+			}
+
+			release.current = requestArtwork(src, resolve);
+		});
 
 		return () => {
-			// Detaching an <img> mid-load does not stop the request; the socket stays busy until the response arrives, and clearing the src is what abandons it.
-			if (image.current && !image.current.complete)
-				image.current.removeAttribute("src");
+			live = false;
+			cancel();
+			cancel = () => {};
+			abort.abort();
+			dropArtwork(src);
 			release.current?.();
 			release.current = null;
 		};
@@ -70,11 +148,12 @@ export function Artwork({
 	return (
 		// The box, and the only element in here that outlives the picture arriving. A caller's class lands on this, so its size, its rounding and its shadow are settled before anything is known about the cover -- and a gesture that began on a sleeve is still on the same element when the sleeve resolves.
 		<div
+			ref={box}
 			className={classes}
 			style={size === undefined ? undefined : { width: size, height: size }}
 			data-artwork={state}
 		>
-			{state === "ok" ? null : (
+			{state === "ok" && href ? null : (
 				// The same hold in every state before the picture, sheen and all, because "queued", "downloading" and "there is no cover" are one answer to the only question being asked: is there a sleeve here yet. Only a settled failure stops shimmering.
 				<span
 					className={`${styles.placeholder}${state === "failed" ? "" : " loading"}`}
@@ -84,12 +163,11 @@ export function Artwork({
 				</span>
 			)}
 
-			{state === "granted" || state === "ok" ? (
+			{href && (state === "granted" || state === "ok") ? (
 				// Transparent until it has loaded, which is what keeps the alt text off the screen: a browser paints it in the box the moment the element exists, and a wall of "Rastaman Vibration cover" is not a loading state.
 				<img
-					ref={image}
 					className={styles.image}
-					src={src ?? undefined}
+					src={href}
 					alt={alt}
 					// The queue governs how many requests start; this governs where the browser puts them among everything else on the same six connections.
 					fetchPriority="low"

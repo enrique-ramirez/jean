@@ -281,3 +281,25 @@
 		background: oklch(0 0 0 / 0.5);
 	}
 }
+
+/* A view that is part of the one above it rather than beside it. The indent lands the icon under the
+   label of its parent, which is what says "inside" without a disclosure triangle for something that
+   never collapses. */
+.row[data-nested="true"] .item {
+	padding-left: 30px;
+}
+
+/* Armed but refusing. The accented "yes" of an ordinary drop target is replaced rather than added to
+   -- a row that lit up *and* said no would be saying both at once. The ghost under the pointer
+   carries the sentence; this only has to stop looking like a landing place. */
+.row[data-drop-over="true"][data-drop-refuses] {
+	background: var(--surface-sunken);
+	box-shadow: inset 0 0 0 1px var(--border-strong);
+	cursor: not-allowed;
+}
+
+.row[data-drop-over="true"][data-drop-refuses] .item,
+.row[data-drop-over="true"][data-drop-refuses] .count,
+.row[data-drop-over="true"][data-drop-refuses] .item svg {
+	color: var(--muted);
+}

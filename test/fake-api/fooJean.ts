@@ -30,6 +30,19 @@ export interface FooJeanOptions {
 	// Force a status on `POST /api/tags`.
 	failWrites?: number | null;
 
+	// ---- autoplaylists ----
+	// `0` switches creation off, which is what `canCreateAutoPlaylists: false` means.
+	maxAutoPlaylists?: number;
+	// beefweb ids the component reports as already being autoplaylists, whether it
+	// made them or not. An autoplaylist created in foobar2000 itself looks like
+	// this and is not one Jean may update or delete.
+	autoPlaylists?: string[];
+	// What `POST /autoplaylists/preview` answers, before the query is even read: a
+	// player with no Media Library matches nothing whatever the query says.
+	libraryEnabled?: boolean;
+	// Force a status on `POST /api/autoplaylists`.
+	failCreate?: number | null;
+
 	// ---- streaming ----
 	// Absent on an older component, and absent means false. `streamFormats` is
 	// what goes on the wire.
@@ -104,6 +117,10 @@ const DEFAULTS: FooJeanFake = {
 	pairingOpen: false,
 	failPairing: null,
 	pairingError: "",
+	maxAutoPlaylists: 0,
+	autoPlaylists: [],
+	libraryEnabled: true,
+	failCreate: null,
 };
 
 export const fooJeanState = (options: FooJeanOptions | null): FooJeanFake => ({
@@ -460,13 +477,78 @@ export async function handleAgent({
 			apiVersion: fake.apiVersion,
 			allowedFields: fake.allowedFields,
 			canWrite: fake.allowedFields.length > 0,
-			maxAutoPlaylists: 0,
-			canCreateAutoPlaylists: false,
+			maxAutoPlaylists: fake.maxAutoPlaylists,
+			canCreateAutoPlaylists: fake.maxAutoPlaylists > 0,
 			canStream: fake.canStream && fake.streamFormats.length > 0,
 			canMuteWhileStreaming: fake.canMuteWhileStreaming,
 			// Omitted rather than empty when the component does not stream, which is
 			// what an older one looks like.
 			...(fake.canStream ? { streamFormats: fake.streamFormats } : null),
+		});
+	}
+
+	// One entry per playlist, in playlist order, joined by the client on `beefwebId`.
+	// Not a playlist listing: it repeats nothing beefweb already answers.
+	if (path === "/api/playlists") {
+		return json(response, {
+			playlists: state.playlists.map((playlist, index) => ({
+				id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
+				beefwebId: playlist.id,
+				index,
+				title: playlist.title,
+				isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
+				managed: null,
+			})),
+		});
+	}
+
+	if (method === "POST" && path === "/api/autoplaylists/preview") {
+		const asked = body as { query?: string } | null;
+		const query = String(asked?.query ?? "");
+		// A query that does not parse is a 200 carrying `valid: false`: this is called
+		// while somebody types, so an unreadable query is data rather than an error.
+		const valid = query.length > 0 && !query.includes("((");
+		return json(response, {
+			valid,
+			error: valid ? "" : "Query syntax error",
+			matches: valid && fake.libraryEnabled ? state.previewMatches(query) : 0,
+			libraryEnabled: fake.libraryEnabled,
+		});
+	}
+
+	if (method === "POST" && path === "/api/autoplaylists") {
+		if (fake.maxAutoPlaylists === 0)
+			return json(response, { error: "autoplaylists are not available" }, 503);
+		if (fake.failCreate)
+			return json(
+				response,
+				{ error: "the player could not do that" },
+				fake.failCreate,
+			);
+
+		const asked = body as {
+			title?: string;
+			key?: string;
+			query?: string;
+		} | null;
+		const title = String(asked?.title ?? "");
+		const made = state.addPlaylist(title);
+		fake.autoPlaylists.push(made.id);
+
+		return json(response, {
+			id: `00000000-0000-0000-0000-${String(state.playlists.length).padStart(12, "0")}`,
+			// Real beefweb assigns its ids lazily, and this fake has already made the
+			// playlist, so the join key is there straight away.
+			beefwebId: made.id,
+			index: state.playlists.length - 1,
+			title: made.title,
+			isAutoPlaylist: true,
+			managed: {
+				key: String(asked?.key ?? ""),
+				query: String(asked?.query ?? ""),
+				sort: "",
+				forceSort: false,
+			},
 		});
 	}
 

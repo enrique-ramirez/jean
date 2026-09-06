@@ -88,6 +88,32 @@ test.describe("the volume slider", () => {
 		await expect.poll(() => volumesSent(player).at(-1)).toBe(-100);
 	});
 
+	// DeaDBeeF's fader stops at -50 dB where foobar2000's runs to -100, and the loudness curve
+	// approaches zero without reaching it. Mapped naively the bottom of the travel is 2^-5 of full
+	// scale rather than nothing, so the thumb never reaches the end and a drag there springs back.
+	test.describe("a player whose silence is -50 dB", () => {
+		test.use({
+			playerState: {
+				volume: { type: "db", min: -50, max: 0, value: -50, isMuted: false },
+			},
+		});
+
+		test("the bottom of the travel is the player's own silence", async ({
+			page,
+			player,
+		}) => {
+			// Reading: the floor the player reported has to draw as empty, not as a thirtieth full.
+			await expect(volume(page)).toHaveAttribute("aria-valuenow", "0");
+
+			// And writing: the end of the travel asks for that same floor rather than short of it.
+			await dragTo(page, volume(page), 0);
+			await expect.poll(() => volumesSent(player).at(-1)).toBe(-50);
+
+			await dragTo(page, volume(page), 1);
+			await expect.poll(() => volumesSent(player).at(-1)).toBe(0);
+		});
+	});
+
 	test("a drag sends far fewer requests than it has moves, and the last one wins", async ({
 		page,
 		player,

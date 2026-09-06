@@ -136,12 +136,13 @@ export function NowPlaying({
 
 	const keyboardOwner = useKeyboardOwner();
 
-	// Escape belongs to whatever is in front. The layers this screen opens take it first, and a dialog that has claimed the keyboard has taken it already — capture beats both, so the screen stands down rather than reaching over them.
+	// Escape belongs to whatever is in front. The layers this screen opens take it first, the queue slides over the top of it, and a dialog that has claimed the keyboard has taken it already — capture beats all three, so the screen stands down rather than reaching over them.
 	// `isOpen` first: the component is mounted whether or not the screen is up, and a listener registered while it is down eats every Escape in the app.
 	const ownsEscape =
 		isOpen &&
 		!isInfoOpen &&
 		!isLyricsFull &&
+		!isQueueOpen &&
 		!menu.isOpen &&
 		keyboardOwner === null;
 	useEscapeCapture(ownsEscape ? onDismiss : null);

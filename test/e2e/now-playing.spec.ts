@@ -1097,6 +1097,26 @@ test.describe("the cover wheel", () => {
 		expect(player.player.activeItem.index).toBe(0);
 	});
 
+	test("every slot holds the same way, sleeve or no sleeve", async ({
+		page,
+		player,
+	}) => {
+		// Shuffle: the neighbours are unknowable, so the slots either side of the
+		// current one have nothing in them and every one of the three is a hold.
+		await openLibrary(page);
+		player.patchPlayer({ options: [{ id: "playbackOrder", value: 4 }] });
+		await trackRow(page, 0).dblclick();
+		await openNowPlaying(page);
+
+		// One component for all three, so the box, the sheen and the sleeve icon are
+		// the same answer wherever the rim is: two placeholders here was the wheel
+		// changing its mind about a missing cover halfway through a turn.
+		await expect(wheel(page).locator("[data-artwork]")).toHaveCount(3);
+		await expect(
+			wheel(page).locator('[data-artwork="waiting"]').first(),
+		).toBeVisible();
+	});
+
 	test("what it turns to is a hold, where the next sleeve cannot be known", async ({
 		page,
 		player,

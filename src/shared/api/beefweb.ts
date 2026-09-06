@@ -115,7 +115,7 @@ export const artworkUrl = (playlistId: string, index: number) =>
 
 // ---- media library (beefweb 0.11+) ----------------------------------------
 //
-// Absent before 0.11 and on DeaDBeeF, where every endpoint below answers 501. `fetchLibraryInfo` always answers, because it is how a client finds out which it is talking to.
+// Absent before 0.11, which 404s for want of the route, and on DeaDBeeF, where 0.11 answers 501. `fetchLibraryInfo` always answers, because it is how a client finds out which it is talking to.
 
 export async function fetchLibraryInfo(): Promise<LibraryInfo> {
 	const response = await fetch("/api/library/info");
@@ -208,8 +208,18 @@ export const setMuted = (isMuted: boolean) => post("/api/player", { isMuted });
 export const volumeUp = () => post("/api/player/volume/up");
 export const volumeDown = () => post("/api/player/volume/down");
 
-export const setPlaybackOrder = (value: number) =>
-	post("/api/player", { options: [{ id: "playbackOrder", value }] });
+// foobar2000 carries the order as an option named `playbackOrder`. DeaDBeeF splits it into
+// `shuffle` and `repeat` and answers `400 invalid option id` for that name, so there the only
+// write that lands is the deprecated top-level field -- which both players still accept, and
+// which beefweb translates back into DeaDBeeF's own pair. The caller says which it is holding,
+// because the read already falls back to `playbackModes` and the write has to agree with it.
+export const setPlaybackOrder = (value: number, hasOrderOption: boolean) =>
+	post(
+		"/api/player",
+		hasOrderOption
+			? { options: [{ id: "playbackOrder", value }] }
+			: { playbackMode: value },
+	);
 
 export async function createPlaylist(title: string): Promise<PlaylistInfo> {
 	const response = await post(

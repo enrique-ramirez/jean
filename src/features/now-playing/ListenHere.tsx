@@ -1,5 +1,5 @@
 import { Loader2, MonitorSpeaker, Play, RotateCcw } from "lucide-react";
-import { useId, useState } from "react";
+import { type CSSProperties, useId, useLayoutEffect, useState } from "react";
 
 import {
 	otherListeners,
@@ -105,6 +105,14 @@ export function ListenHere({ playerName }: { playerName: string }) {
 	const [isOpen, setIsOpen] = useState(false);
 	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false));
 
+	// How far the button sits from the right of the screen, which is what the compact rule right-aligns the panel against. Measured on open: it closes on any press outside, so there is no arrangement where it is up while the bar underneath it reflows.
+	const [gap, setGap] = useState(0);
+	useLayoutEffect(() => {
+		if (!isOpen) return;
+		const box = ref.current?.getBoundingClientRect();
+		if (box) setGap(window.innerWidth - box.right);
+	}, [isOpen, ref]);
+
 	// Two of these are mounted at once on a screen that has both a status bar and a now-playing panel, so the ids a row points at cannot be spelled out.
 	const headingId = useId();
 	const othersId = useId();
@@ -154,7 +162,11 @@ export function ListenHere({ playerName }: { playerName: string }) {
 		<div className={styles.anchor} ref={ref}>
 			{isOpen ? (
 				// On the now-playing screen this opens inside the swipe surface, and a flick down a roster is not a dismissal of the screen under it.
-				<div className={styles.popover} data-owns-touch="">
+				<div
+					className={styles.popover}
+					style={{ "--listen-gap": `${gap}px` } as CSSProperties}
+					data-owns-touch=""
+				>
 					{/* Toggles rather than a radio group, because both outputs can be on at once. Pressing one still hands the sound over -- that is what the rows do -- but the state underneath is two booleans, and saying otherwise would leave a reader hearing "1 of 2" while it plays in two rooms. */}
 					{/* biome-ignore lint/a11y/useSemanticElements: a fieldset would bring a form control's styling and legend into a menu that is neither */}
 					<div role="group" aria-labelledby={headingId}>

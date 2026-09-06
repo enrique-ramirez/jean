@@ -17,6 +17,10 @@ const FIELDS = [
 	["genre", "%genre%"],
 	["codec", "%codec%"],
 	["bitrate", "%bitrate%"],
+
+	// The same two facts as foo_playcount spells them, asked for alongside the pair above rather than instead of it. Appended rather than filed beside their partners because the table is positional: an expression inserted in the middle shifts every index after it.
+	["playCountLocal", "%play_count%"],
+	["lastPlayedLocal", "%last_played%"],
 ] as const;
 
 export const { expressions: TRACK_EXPRESSIONS, index: FIELD } =
@@ -28,6 +32,33 @@ const ABSENT = new Set([UNRESOLVED, "", "N/A"]);
 
 export const readValue = (raw: string | undefined): string | null =>
 	raw === undefined || ABSENT.has(raw) ? null : raw;
+
+// One fact the player may spell two ways, preferred in this order. `%lastfm_play_count%` is foo_enhanced_playcount's and counts scrobbles across every device somebody listens on; `%play_count%` is foo_playcount's and counts plays on this machine. They are different numbers, so the order is a choice rather than a detail: an install with both keeps the figure it already showed, and an install with only the ordinary component gets play history at all instead of an empty shelf. Neither is bundled with foobar2000.
+//
+// **An index means nothing outside its own table.** `nowPlayingFields.ts` numbers a different set, where 7 is the date rather than the play count, so this is applied by the named readers below and never inside `value()`, which both tables share. A map consulted there would fall back into whatever the other table happened to hold at that index and draw a disc total under "Date".
+const TRACK_ALTERNATIVE: Partial<Record<number, number>> = {
+	[FIELD.playCount]: FIELD.playCountLocal,
+	[FIELD.lastPlayed]: FIELD.lastPlayedLocal,
+};
+
+// Falls back on anything `readValue` calls absent, not only on the missing-field sentinel: a counter that exists and has never been incremented answers `0`, so an empty answer means this component is not the one supplying the field.
+// A factory rather than one function, because the map is per table and the mechanism is not: `nowPlayingFields.ts` declares its own pairs against its own indices.
+export const alternativeReader =
+	(alternatives: Partial<Record<number, number>>) =>
+	(row: TrackColumns, field: number): string | undefined => {
+		const primary = row[field];
+		if (readValue(primary) !== null) return primary;
+		const alternative = alternatives[field];
+		return alternative === undefined ? primary : row[alternative];
+	};
+
+const eitherSpelling = alternativeReader(TRACK_ALTERNATIVE);
+
+export const playCountOf = (row: TrackColumns): number | null =>
+	readNumber(eitherSpelling(row, FIELD.playCount));
+
+export const lastPlayedOf = (row: TrackColumns): number | null =>
+	readTimestamp(eitherSpelling(row, FIELD.lastPlayed));
 
 export function value(row: TrackColumns, field: number): string | null {
 	return readValue(row[field]);
@@ -45,12 +76,15 @@ export const number = (row: TrackColumns, field: number): number | null =>
 	readNumber(row[field]);
 
 // 'YYYY-MM-DD HH:MM:SS', with a trailing space from some components. Not every engine parses the space separator, hence the swap for 'T'.
-export function timestamp(row: TrackColumns, field: number): number | null {
-	const raw = value(row, field);
-	if (!raw) return null;
-	const parsed = Date.parse(raw.trim().replace(" ", "T"));
+export function readTimestamp(raw: string | undefined): number | null {
+	const text = readValue(raw);
+	if (!text) return null;
+	const parsed = Date.parse(text.trim().replace(" ", "T"));
 	return Number.isFinite(parsed) ? parsed : null;
 }
+
+export const timestamp = (row: TrackColumns, field: number): number | null =>
+	readTimestamp(row[field]);
 
 // Sampling is only safe where a wrong answer picks a default. Where it decides whether a column exists at all, scan instead.
 export function sampleRows(
@@ -64,11 +98,19 @@ export function sampleRows(
 	);
 }
 
+// A field with an alternative exists if either spelling does, or the column would be hidden on the install the fallback was written for.
 export const fieldIsAvailable = (
 	rows: TrackColumns[],
 	field: number,
 	sampleSize = 200,
-) => sampleRows(rows, sampleSize).some((row) => row[field] !== UNRESOLVED);
+) => {
+	const alternative = TRACK_ALTERNATIVE[field];
+	return sampleRows(rows, sampleSize).some(
+		(row) =>
+			row[field] !== UNRESOLVED ||
+			(alternative !== undefined && row[alternative] !== UNRESOLVED),
+	);
+};
 
 // Tags drift in case and spacing between files in the same album, so compare loosely to decide what the user sees and display the file's own spelling.
 export const tagKey = (text: string | null | undefined) =>

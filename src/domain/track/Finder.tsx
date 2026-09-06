@@ -1,6 +1,7 @@
 import { Search, X } from "lucide-react";
 import {
 	type MouseEvent as ReactMouseEvent,
+	type RefObject,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -15,6 +16,7 @@ import { FIELD, value } from "./fields";
 
 // Finds without filtering: the list keeps every track and its order, and only Enter starts playback.
 export function Finder({
+	inputRef,
 	rows,
 	label,
 	results,
@@ -25,6 +27,8 @@ export function Finder({
 	onConfirm,
 	onClose,
 }: {
+	// The hook's, and so is the caret: it puts it here when the field appears and again on every later `/`, which is one rule in one place rather than a mount effect that only ever answers the first of them.
+	inputRef: RefObject<HTMLInputElement | null>;
 	rows: TrackColumns[];
 	label: string;
 	results: number[];
@@ -35,7 +39,6 @@ export function Finder({
 	onConfirm: (index: number) => void;
 	onClose: () => void;
 }) {
-	const inputRef = useRef<HTMLInputElement | null>(null);
 	const listRef = useRef<HTMLDivElement | null>(null);
 	const [active, setActive] = useState(0);
 	const debouncedActive = useDebounced(active, 90);
@@ -43,11 +46,6 @@ export function Finder({
 	// Held in a ref: the parent passes a new closure every render, and depending on it directly would make previewing re-run itself forever.
 	const previewRef = useRef(onPreview);
 	previewRef.current = onPreview;
-
-	useEffect(() => {
-		inputRef.current?.focus();
-		inputRef.current?.select();
-	}, []);
 
 	// Whether the active result is where the user put it, or merely where a new query reset it. Only the first previews.
 	const navigated = useRef(false);

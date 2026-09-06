@@ -79,3 +79,18 @@
 	font-size: 0.8125rem;
 	color: var(--muted);
 }
+
+/* The sidebar's, so the one heading in the app that means "playlists start here" looks the same in both places. */
+.heading {
+	margin: 10px 0 4px;
+	padding: 0 11px;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.heading:first-child {
+	margin-top: 0;
+}

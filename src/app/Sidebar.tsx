@@ -12,9 +12,12 @@ import {
 	Volume2,
 } from "lucide-react";
 import {
+	type KeyboardEvent as ReactKeyboardEvent,
 	type MouseEvent as ReactMouseEvent,
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
+	useCallback,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -39,6 +42,7 @@ import { useDragState } from "@/shared/ui/dnd";
 import { pushToast } from "@/shared/ui/toastStore";
 import type { PlayingRoute } from "./routes";
 import styles from "./Sidebar.module.css";
+import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
 
 // The accent means "this is playing" and nothing else. The row being looked at is `aria-current` and the row's own styling.
 function NavRow({
@@ -69,6 +73,8 @@ function NavRow({
 				className={styles.item}
 				aria-current={isCurrent}
 				onClick={onClick}
+				// What the arrows step through and what the shell's "go to the sidebar" lands on. Every row in here is one of these, search and Home included, so the two never have to agree on a list.
+				data-nav-row=""
 				{...itemProps}
 			>
 				{isPlaying ? (
@@ -170,6 +176,53 @@ export function Sidebar({
 		{ enabled: canEdit && focusedIndex >= 0 },
 	);
 
+	// Read off the DOM in source order rather than assembled from state: the rows above the playlists are conditional, and a second list of them here would be a second thing to keep in step.
+	const navRows = useCallback(
+		() => [
+			...(sortable.scrollRef.current?.querySelectorAll<HTMLElement>(
+				"[data-nav-row]",
+			) ?? []),
+		],
+		[sortable.scrollRef],
+	);
+
+	// The shell reveals the sidebar and then asks; by the time an effect runs the column is open and the row is there to focus. Landing on the row for wherever you already are, so the arrows start from the thing on screen rather than from the top.
+	const focusAsked = useSidebarFocusAsked();
+	useEffect(() => {
+		if (!focusAsked) return;
+		sidebarFocusAnswered();
+
+		const rows = navRows();
+		const current = rows.find(
+			(row) => row.getAttribute("aria-current") === "true",
+		);
+		(current ?? rows[0])?.focus();
+	}, [focusAsked, navRows]);
+
+	// Handled here rather than in the keymap, as the palette's arrows are: the track list holds the same two keys and the manager fires every registration that matches, so the only thing that can decide between them is which of the two has the caret. Stopping the event is what says so.
+	const onArrows = (event: ReactKeyboardEvent) => {
+		if (event.altKey) return;
+
+		// Not preventDefault: the default here is the click a focused button gets, which is the whole of opening a row. It is stopped rather than left alone because the track list binds Enter to playing its cursor row, and that registration preventDefaults -- which would cancel the click before the browser could send it.
+		if (event.key === "Enter") {
+			event.stopPropagation();
+			return;
+		}
+
+		const delta =
+			event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+		if (delta === 0) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+
+		const rows = navRows();
+		const at = rows.indexOf(document.activeElement as HTMLElement);
+		// Entered from somewhere that is not a row -- the rename field, or a menu that has just closed -- either arrow starts at the end it is travelling from.
+		const next = at < 0 ? (delta > 0 ? 0 : rows.length - 1) : at + delta;
+		rows[Math.min(Math.max(next, 0), rows.length - 1)]?.focus();
+	};
+
 	// Only a refusal Jean wrote is shown as-is; anything else is an HTTP failure whose message is a URL and a status code.
 	const refused = (message: string) => (error: unknown) =>
 		pushToast({
@@ -251,6 +304,7 @@ export function Sidebar({
 				data-receiving={drag.isDragging ? "true" : undefined}
 				aria-label="Playlists"
 				aria-hidden={isCollapsed}
+				onKeyDown={onArrows}
 			>
 				{/* Playing results writes them to a playlist named after the query, so a search outlives the tab it was typed in and can be picked up on another device. */}
 				{search.hasQuery || search.remembered ? (

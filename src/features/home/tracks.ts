@@ -1,4 +1,4 @@
-import { FIELD, number, value } from "@/domain/track/fields";
+import { FIELD, playCountOf, value } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
 
 // Not named `topTracks.ts`: a case-insensitive filesystem cannot tell it from `TopTracks.tsx`, and `'./TopTracks'` would resolve to whichever the compiler probes first.
@@ -18,7 +18,7 @@ export function topTracksOf(
 ): TopTrack[] {
 	const played = rows.reduce<{ ref: number; plays: number }[]>(
 		(into, row, ref) => {
-			const plays = number(row, FIELD.playCount) ?? 0;
+			const plays = playCountOf(row) ?? 0;
 			if (plays > 0) into.push({ ref, plays });
 			return into;
 		},

@@ -32,6 +32,8 @@ The **action** lives in a playlist header next to Play, where it reads as "play 
 
 The two obvious alternatives both fail on a range reaching -100 dB. Squaring the distance from the top puts the midpoint at -25 dB and 15% at **-72 dB**, so the bottom third of the travel does nothing. Linear in *amplitude* (`20 * log10(f)`, roughly macOS) puts the midpoint at -6 dB and crams everything under -26 dB into the bottom twentieth.
 
+**The floor is the player's and has to be mapped onto the end of the travel.** `2^((value - max) / 10)` approaches zero without reaching it, so the level the player calls silence lands somewhere above the bottom of the fader unless it is normalised there: `(loudness(value) - floor) / (1 - floor)`, where `floor` is that expression at `min`. foobar2000 reports `-100 dB` and its floor is 0.001, which no eye can find; DeaDBeeF reports `-50 dB` and its floor is 0.031, so without this the thumb stops a thirtieth short of the end and a drag to the bottom springs back up. A player reporting `min === max` has no travel to describe and reads as empty.
+
 ## Listening on this device
 
 **It is a handoff first, and a second speaker only if you ask.** Pressing a row moves the sound rather than adding to it, which is the whole reason the component mutes the player — and the *default* has to stay that, because the stream is a second or two behind and both outputs in one room is slapback. Playing on both is reached by raising the player's own fader, never by pressing the thing you wanted to move the sound to. Deliberately **not** a cast glyph: casting pushes audio away to a box you are not holding, and this moves it to the device you are.

@@ -141,3 +141,56 @@ test.describe("one cover per album, not per track", () => {
 		);
 	});
 });
+
+// One component draws every cover in the app, and the reason is this: the hold
+// before the picture is the part the user sees on every screen.
+test.describe("what a cover looks like before it arrives", () => {
+	// Named rather than found by class: `data-state` is a shared idiom in here and
+	// a hashed module class is not a contract.
+	const cover = (page: Page) => page.locator("main [data-artwork]");
+
+	const holdArtwork = (page: Page) =>
+		page.route("**/api/artwork/**", async (route) => {
+			await new Promise((done) => setTimeout(done, 3000));
+			await route.continue();
+		});
+
+	test("a hold with a sleeve on it, and no alt text anywhere", async ({
+		page,
+	}) => {
+		await holdArtwork(page);
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+
+		const first = cover(page).first();
+		await expect(first).toHaveAttribute("data-artwork", /waiting|granted/);
+		// The icon rather than a bare box: queued and downloading say the same
+		// thing, so they draw the same thing.
+		await expect(first.locator("svg")).toBeVisible();
+
+		// A browser paints alt text into the box the moment an <img> has a src and
+		// no bytes, which is what turned a screen of albums into a screen of the
+		// word "cover". Transparent until it has decoded is the whole fix.
+		const showing = await page
+			.locator("main img")
+			.evaluateAll(
+				(images) =>
+					(images as HTMLImageElement[]).filter(
+						(img) => getComputedStyle(img).opacity !== "0" && !img.complete,
+					).length,
+			);
+		expect(showing, "an undecoded image was left visible").toBe(0);
+	});
+
+	test("and settles to the picture once it has", async ({ page }) => {
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+
+		await expect(cover(page).first()).toHaveAttribute("data-artwork", "ok");
+		await expect(cover(page).first().locator("svg")).toHaveCount(0);
+	});
+});

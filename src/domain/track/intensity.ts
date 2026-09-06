@@ -1,6 +1,6 @@
 import type { TrackColumns } from "@/shared/api/types";
 import { clamp } from "@/shared/lib/math";
-import { FIELD, number, timestamp } from "./fields";
+import { lastPlayedOf, playCountOf } from "./fields";
 
 // How long since a track was last played before it reads as fully faded.
 const PATINA_YEARS = 6;
@@ -9,10 +9,7 @@ const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 // Heat is logarithmic because play counts are heavily skewed: on a linear scale almost every track sits at zero and one outlier takes the whole range.
 // Patina applies only to tracks that were played at all: a never-played track is flat rather than faded.
 export function deriveIntensity(rows: TrackColumns[]) {
-	const playCounts = Int32Array.from(
-		rows,
-		(row) => number(row, FIELD.playCount) ?? 0,
-	);
+	const playCounts = Int32Array.from(rows, (row) => playCountOf(row) ?? 0);
 
 	const maxPlayCount = playCounts.reduce(
 		(most, plays) => Math.max(most, plays),
@@ -27,7 +24,7 @@ export function deriveIntensity(rows: TrackColumns[]) {
 
 	const patina = Float32Array.from(rows, (row, index) => {
 		if (playCounts[index] <= 0) return 0;
-		const lastPlayed = timestamp(row, FIELD.lastPlayed);
+		const lastPlayed = lastPlayedOf(row);
 		return lastPlayed === null
 			? 0
 			: clamp((now - lastPlayed) / YEAR_MS / PATINA_YEARS, 0, 1);

@@ -6,6 +6,10 @@ Desktop is keyboard-first, and every binding is declared in one place.
 
 **Register a binding where the button lives, when there is a button.** `S` (shuffle play) is registered by `PlayActions`, not by `TrackBrowser`, because that component already owns both the call and the question of whether shuffling this view is possible at all — so the key and the button cannot disagree, and the key is live on exactly the views that draw the button.
 
+**A focus region answers its own keys, on the element, and the shortcut sheet does not list them.** The sidebar's arrows and the palette's are `onKeyDown` handlers rather than keymap rows, because the manager fires *every* enabled registration matching a key — `conflictBehavior` defaults to `warn`, not `replace` — and the track list holds `ArrowUp`, `ArrowDown` and `Enter` for its own cursor. The only thing that can decide between two lists claiming one arrow is which of them has the caret, which is a question about the DOM and not about scope. **So the region stops the event**: the manager listens on `document` at bubble, below React's root, so `stopPropagation` from inside settles it.
+
+**Enter is stopped without being prevented.** A focused row is a button and the browser's default action on Enter is the click that opens it; `playCursor` preventDefaults, which cancels that click and makes a keyboard-navigable sidebar a dead end. Space is deliberately *not* stopped — it is the transport everywhere in Jean, and a row is reachable with Enter.
+
 **Virtualisation and keyboard navigation collide.** The virtualiser unmounts the focused row when it scrolls out of view and DOM focus evaporates, so **the active row is an index in state** and the virtualiser is told to scroll that index into view. A roving `tabindex` alone will not survive this. Every list component must be built knowing it.
 
 ## Layouts
@@ -40,4 +44,4 @@ So: **a shifted character is declared twice**, `Shift+X` and bare `X`, so it wor
 
 ## Debugging
 
-**A hotkey that has stopped working in dev is probably a stale registration, not a bug.** `useKeymap` registers into a module-level manager that resolves conflicts between registrations claiming the same key. HMR remounts a component and re-registers while the previous module instance's registration may still be in the registry, so the survivor can hold a callback from a dead closure: the binding looks bound and does nothing. Full reload before debugging.
+**A hotkey that has stopped working in dev is probably a stale registration, not a bug.** `useKeymap` registers into a module-level manager, which does not resolve a conflict so much as report one — two enabled registrations on one key both fire, with a console warning. HMR remounts a component and re-registers while the previous module instance's registration may still be in the registry, so the survivor can hold a callback from a dead closure: the binding looks bound and does nothing. Full reload before debugging.

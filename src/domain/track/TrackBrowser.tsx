@@ -371,10 +371,16 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		scrollToTrack,
 	]);
 
+	// Registered apart from the rest, and deliberately not behind `keysEnabled`: that goes false for as long as the finder is open, which is exactly when `/` has to mean "back to the field". A field holding the caret is covered already, since `ignoreInputs` stops the binding before it can type a slash into itself.
+	useKeymap(
+		SCOPE.playlist,
+		{ ...(onOpenFinder ? { openFinder: onOpenFinder } : null) },
+		{ enabled: rows.length > 0 },
+	);
+
 	useKeymap(
 		SCOPE.playlist,
 		{
-			...(onOpenFinder ? { openFinder: onOpenFinder } : null),
 			cursorDown: () => keyMove(1),
 			cursorUp: () => keyMove(-1),
 			cursorPageDown: () => keyMove(PAGE),

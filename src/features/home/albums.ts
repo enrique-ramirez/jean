@@ -1,4 +1,10 @@
-import { FIELD, number, timestamp, value } from "@/domain/track/fields";
+import {
+	FIELD,
+	lastPlayedOf,
+	number,
+	playCountOf,
+	value,
+} from "@/domain/track/fields";
 import { ratingOf } from "@/domain/track/rating";
 import type { TrackColumns } from "@/shared/api/types";
 
@@ -29,9 +35,9 @@ type AlbumDraft = ReturnType<typeof blankAlbum>;
 const absorb = (album: AlbumDraft, ref: number, row: TrackColumns) => {
 	album.refs.push(ref);
 
-	album.plays += number(row, FIELD.playCount) ?? 0;
+	album.plays += playCountOf(row) ?? 0;
 
-	const played = timestamp(row, FIELD.lastPlayed);
+	const played = lastPlayedOf(row);
 	if (played !== null && played > album.lastPlayed) album.lastPlayed = played;
 
 	const bitrate = number(row, FIELD.bitrate);

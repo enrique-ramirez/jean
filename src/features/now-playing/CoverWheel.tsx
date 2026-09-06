@@ -266,16 +266,12 @@ export function CoverWheel({
 					style={{ "--at": at } as CSSProperties}
 					data-current={isCurrent || undefined}
 				>
-					{sleeve ? (
-						<Artwork
-							src={sleeve.src}
-							alt={sleeve.alt}
-							className={styles.cover}
-						/>
-					) : (
-						// Loading, not empty: the wheel has turned to a track the player has not named yet.
-						<div className={`${styles.pending} loading`} aria-hidden="true" />
-					)}
+					{/* An absent slot is a track the player has not named yet, which is `undefined` rather than `null`: the same component holds it, shimmering, on the same shape it will draw the sleeve on. Two placeholders here was the wheel changing its mind about what a missing cover looks like halfway through a turn. */}
+					<Artwork
+						src={sleeve?.src}
+						alt={sleeve?.alt ?? ""}
+						className={styles.cover}
+					/>
 				</div>
 			))}
 		</div>

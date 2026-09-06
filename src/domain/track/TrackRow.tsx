@@ -9,7 +9,7 @@ import { Artwork } from "@/shared/ui/Artwork";
 import { Equalizer } from "@/shared/ui/Equalizer";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
 import type { Column } from "./columns";
-import { FIELD, number, timestamp, value } from "./fields";
+import { FIELD, lastPlayedOf, number, playCountOf, value } from "./fields";
 import { discNumber } from "./grouping";
 import type { LibrarySource } from "./librarySource";
 import {
@@ -56,7 +56,7 @@ function Rating({
 }
 
 function shortDate(row: TrackColumns) {
-	const played = timestamp(row, FIELD.lastPlayed);
+	const played = lastPlayedOf(row);
 	if (played === null) return null;
 	return new Date(played).toLocaleDateString(undefined, {
 		year: "numeric",
@@ -100,7 +100,7 @@ function Cell({
 	}
 
 	if (column.kind === "playCount") {
-		const plays = number(row, FIELD.playCount) ?? 0;
+		const plays = playCountOf(row) ?? 0;
 		return (
 			<span className={`${className} tabular`} data-zero={plays === 0}>
 				{plays === 0 ? "--" : plays}

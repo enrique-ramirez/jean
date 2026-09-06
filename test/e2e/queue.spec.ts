@@ -321,31 +321,89 @@ test.describe("queueing opens the panel", () => {
 			.getByRole("button", { name: /^Reorder/ });
 		const box = (await grip.boundingBox())!;
 		const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-		// Well past the distance a flick is read at, which is the whole point: the grip owns the axis it is dragged on.
-		await touchDrag(page, from, { x: from.x, y: from.y + 120 }, 8);
+		// Down the panel, as a reorder is, but drifting further sideways than a flick is read at: that is what `data-owns-touch` is for, since the grip owns the gesture on both axes once it has it.
+		await touchDrag(page, from, { x: from.x + 120, y: from.y + 60 }, 8);
 
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 	});
 
-	test("a flick up or down puts it away", async ({ page, isMobile }) => {
+	test("Escape closes it, and the screen under it keeps the next one", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openNowPlaying(page);
+		await (await anyQueueButton(page)).click();
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+		// A capture listener does not stop its siblings on `window`, so both layers would answer this one keystroke unless the screen stands down for the panel.
+		await page.keyboard.press("Escape");
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+		await expect(nowPlayingScreen(page)).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		await expect(nowPlayingScreen(page)).toBeHidden();
+	});
+
+	test("and Escape reaches the selection behind once it is closed", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "selecting rows is a pointer path");
+		await openLibrary(page);
+
+		// Selected first: a press on the list is also the press outside that puts the panel away, so it cannot be done in the other order.
+		await trackRow(page, 2).click();
+		await expect(trackRow(page, 2)).toHaveAttribute("aria-selected", "true");
+
+		await (await anyQueueButton(page)).click();
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+		// The panel is in front, so the first press is spent on it and the selection is still there to drop with the second.
+		await page.keyboard.press("Escape");
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+		await expect(trackRow(page, 2)).toHaveAttribute("aria-selected", "true");
+
+		await page.keyboard.press("Escape");
+		await expect(trackRow(page, 2)).toHaveAttribute("aria-selected", "false");
+	});
+
+	test("a flick to the right puts it away", async ({ page, isMobile }) => {
+		test.skip(!isMobile, "a flick is a touch gesture");
+		await openLibrary(page);
+		await queueTracks(page, isMobile);
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+		// Begun inside the left edge of the panel, so the whole 160px lands on it rather than off the right of the viewport.
+		const box = (await queuePanel(page).boundingBox())!;
+		const from = { x: box.x + 40, y: box.y + box.height / 2 };
+		await touchDrag(page, from, { x: from.x + 160, y: from.y });
+
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+	});
+
+	test("but a flick up or down is the scroller's", async ({
+		page,
+		isMobile,
+	}) => {
 		test.skip(!isMobile, "a flick is a touch gesture");
 		await openLibrary(page);
 
+		await queueTracks(page, isMobile);
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+		// One short queue, so the scroller is at both ends at once -- which is exactly the state a vertical dismissal would have fired from.
 		for (const [dy, name] of [
 			[-160, "up"],
 			[160, "down"],
 		] as const) {
-			await queueTracks(page, isMobile);
-			await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
-
 			const box = (await queuePanel(page).boundingBox())!;
 			const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 			await touchDrag(page, from, { x: from.x, y: from.y + dy });
 
 			await expect(
 				queuePanel(page),
-				`a flick ${name} left it open`,
-			).toHaveAttribute("data-open", "false");
+				`a flick ${name} closed it`,
+			).toHaveAttribute("data-open", "true");
 		}
 	});
 });

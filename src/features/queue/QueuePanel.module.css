@@ -21,6 +21,8 @@
      Transform only, so it composites. */
 	transform: translateX(100%);
 	transition: transform 0.24s var(--ease);
+	/* The horizontal axis is the dismissal, so it must not become a browser gesture: an overscroll to the right is back-navigation, and it would beat the flick to it. The vertical axis stays the scroller's -- `useSwipe` reads touch events, so a sideways flick still arrives through a scroll. */
+	touch-action: pan-y;
 }
 
 .panel[data-open="true"] {

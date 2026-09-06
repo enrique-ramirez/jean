@@ -256,7 +256,7 @@ Facts that cost time to rediscover:
 - **`items/sort` takes a title-format expression**, so it inherits the comma limitation. Concatenation works: `%album artist%%album%%tracknumber%`. Sorting is whole-playlist and destructive; there is no sort-a-selection and no view-level sort.
 - **`/playlists/move/{id}/{index}` takes a negative index to mean "last"**, so appending needs no count.
 - **Rename is `POST /playlists/{id}`, not a `rename` route.** `UpdatePlaylistRequest` has exactly one field, `title`, and it is nullable.
-- **`playbackMode` on `POST /player` is deprecated.** Use the `options` array.
+- **`playbackMode` on `POST /player` is deprecated.** Use the `options` array — on foobar2000, where the order is an option named `playbackOrder`. **DeaDBeeF has no such option**: it splits the order into `shuffle` and `repeat`, answers `400 invalid option id` for `playbackOrder`, and accepts only the deprecated field, which beefweb translates back into its own pair. So the deprecated form is the fallback rather than a mistake, and the two `playbackModes` lists differ in wording *and* order — index 1 is `Repeat (playlist)` on foobar2000 and `Loop track` on DeaDBeeF — so nothing may address a mode by index.
 - **There is no tag-writing endpoint.** All 27 POST routes are playback, playlists, queue, outputs and clientconfig. Ratings and lyrics can be *read* through title formatting and cannot be written back through beefweb at all.
 - **There is no way to reach another component.** `/api/commands`, `/api/command`, `/api/mainmenu`, `/api/contextmenu`, `/api/plugins`, `/api/components` all 404.
 - **The static server has no SPA fallback.** `/playlists/p2` is a 404, which is why Jean routes on the hash.

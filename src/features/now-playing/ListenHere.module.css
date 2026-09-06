@@ -45,9 +45,18 @@
 	width: min(320px, calc(100vw - 24px));
 	padding: 8px;
 	border: 1px solid var(--border-strong);
-	border-radius: var(--radius-md);
+	/* The app's panel radius, as the action menu and the dropdown both use. This
+     asked for a `--radius-md` that has never existed, so it resolved to nothing
+     and came out square -- the one panel in Jean with hard corners, which is
+     most of what read as it not belonging here. */
+	border-radius: var(--radius);
 	background: var(--surface-raised);
-	box-shadow: var(--shadow);
+	/* A hairline of light along the top edge, the same one `ActionMenu` carries:
+     it is what stops a dark panel on a dark page reading as a hole rather than
+     as something lying on top of the page. */
+	box-shadow:
+		var(--shadow),
+		inset 0 1px 0 oklch(1 0 0 / 0.05);
 	animation: listen-in 160ms var(--ease);
 }
 
@@ -270,6 +279,17 @@
 @media (prefers-reduced-motion: reduce) {
 	.spin {
 		animation: none;
+	}
+}
+
+/* Right-aligned to the screen rather than to the button, and vertically still
+   against the button. `--listen-gap` is how far the button's own right edge is
+   from the screen's, measured when the panel opens, so subtracting it walks the
+   panel out to the margin. Why, in `CLAUDE.md`. */
+@media (max-width: 720px) {
+	.popover {
+		right: calc(10px - var(--listen-gap, 4px));
+		width: min(320px, calc(100vw - 20px));
 	}
 }
 

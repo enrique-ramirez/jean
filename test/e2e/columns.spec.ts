@@ -142,6 +142,35 @@ test.describe("a field the player cannot resolve", () => {
 	});
 });
 
+// foo_playcount is the ordinary component and foo_enhanced_playcount the one that adds the
+// scrobbled figures on top; neither ships with foobar2000. An install with only the first holds
+// the data under a different name, so the column has to read either spelling to find it.
+test.describe("a player that spells play counts the other way", () => {
+	test.use({
+		withoutFields: ["%lastfm_play_count%", "%lastfm_last_played%"],
+		retagged: {
+			"Los Calientes": { "%play_count%": "42" },
+			Deléctrico: { "%play_count%": "7" },
+		},
+	});
+
+	test("the column is offered, because the player can answer it", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await menu(page).click();
+
+		const plays = option(page, "Plays");
+		await expect(plays).toBeVisible();
+		await expect(plays).toBeEnabled();
+	});
+
+	test("and it shows the count the player actually holds", async ({ page }) => {
+		await openLibrary(page);
+		await expect(trackRow(page, 0)).toContainText("42");
+	});
+});
+
 test.describe("on a phone", () => {
 	test.skip(
 		({ isMobile }) => !isMobile,

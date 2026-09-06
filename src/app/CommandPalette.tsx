@@ -1,23 +1,31 @@
-import { ListMusic, Search } from "lucide-react";
+import { Disc3, ListMusic, Search } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	useEffect,
 	useRef,
 	useState,
 } from "react";
-import type { PlaylistInfo } from "@/shared/api/types";
 
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./CommandPalette.module.css";
 
-// Jumps between playlists rather than searching their tracks, which is the library field's job up in the top bar.
+/** Somewhere to go, addressed the way the hash addresses it: a playlist's route is its id, so views and playlists share one space and one handler. */
+export interface PaletteEntry {
+	route: string;
+	title: string;
+	count?: number;
+}
+
+// Jumps between the places the sidebar lists rather than searching their tracks, which is the library field's job up in the top bar.
 export function CommandPalette({
+	views,
 	playlists,
 	onSelect,
 	onDismiss,
 }: {
-	playlists: PlaylistInfo[];
-	onSelect: (id: string) => void;
+	views: PaletteEntry[];
+	playlists: PaletteEntry[];
+	onSelect: (route: string) => void;
 	onDismiss: () => void;
 }) {
 	const inputRef = useRef<HTMLInputElement | null>(null);
@@ -26,12 +34,15 @@ export function CommandPalette({
 
 	// Through the same `fold()` as every other typeable list, so accented titles are still found from unaccented input.
 	const tokens = tokenize(query);
-	const results =
+	const matching = (entries: PaletteEntry[]) =>
 		tokens.length === 0
-			? playlists
-			: playlists.filter((playlist) =>
-					matchesTokens(fold(playlist.title), tokens),
-				);
+			? entries
+			: entries.filter((entry) => matchesTokens(fold(entry.title), tokens));
+
+	const matchedViews = matching(views);
+	const matchedPlaylists = matching(playlists);
+	// The arrow keys and Enter run down the whole panel, so the sections are two lists on screen and one everywhere else.
+	const results = [...matchedViews, ...matchedPlaylists];
 
 	useEffect(() => {
 		inputRef.current?.focus();
@@ -53,11 +64,34 @@ export function CommandPalette({
 					(current - 1 + results.length) % Math.max(results.length, 1),
 			);
 		} else if (event.key === "Enter" && results[active]) {
-			onSelect(results[active].id);
+			onSelect(results[active].route);
 		} else if (event.key === "Escape") {
 			onDismiss();
 		}
 	};
+
+	const row = (entry: PaletteEntry, position: number, isView: boolean) => (
+		<button
+			key={entry.route}
+			type="button"
+			role="option"
+			aria-selected={position === active}
+			className={styles.result}
+			data-active={position === active}
+			onMouseEnter={() => setActive(position)}
+			onClick={() => onSelect(entry.route)}
+		>
+			{isView ? (
+				<Disc3 size={15} strokeWidth={2} aria-hidden="true" />
+			) : (
+				<ListMusic size={15} strokeWidth={2} aria-hidden="true" />
+			)}
+			{entry.title}
+			{entry.count === undefined ? null : (
+				<span className={styles.count}>{entry.count.toLocaleString()}</span>
+			)}
+		</button>
+	);
 
 	return (
 		// A dismissal scrim, not a control: Escape is the keyboard route out and the panel above owns it.
@@ -73,7 +107,7 @@ export function CommandPalette({
 				className={styles.palette}
 				role="dialog"
 				aria-modal="true"
-				aria-label="Go to playlist"
+				aria-label="Go to"
 			>
 				<div className={styles.field}>
 					<Search size={16} strokeWidth={2} aria-hidden="true" />
@@ -83,8 +117,8 @@ export function CommandPalette({
 						value={query}
 						onChange={(event) => setQuery(event.target.value)}
 						onKeyDown={onKeyDown}
-						placeholder="Go to playlist"
-						aria-label="Go to playlist"
+						placeholder="Go to"
+						aria-label="Go to"
 						spellCheck="false"
 						autoComplete="off"
 					/>
@@ -92,26 +126,21 @@ export function CommandPalette({
 
 				<div className={styles.results} role="listbox">
 					{results.length === 0 ? (
-						<p className={styles.empty}>No playlist matches that.</p>
+						<p className={styles.empty}>Nothing here matches that.</p>
 					) : (
-						results.map((playlist, position) => (
-							<button
-								key={playlist.id}
-								type="button"
-								role="option"
-								aria-selected={position === active}
-								className={styles.result}
-								data-active={position === active}
-								onMouseEnter={() => setActive(position)}
-								onClick={() => onSelect(playlist.id)}
-							>
-								<ListMusic size={15} strokeWidth={2} aria-hidden="true" />
-								{playlist.title}
-								<span className={styles.count}>
-									{playlist.itemCount.toLocaleString()}
-								</span>
-							</button>
-						))
+						<>
+							{matchedViews.map((entry, position) =>
+								row(entry, position, true),
+							)}
+
+							{/* Headed like the sidebar is, and for the same reason: without it the playlists run straight on from the views above them. Drawn only when the filter left something under it. */}
+							{matchedPlaylists.length > 0 ? (
+								<p className={styles.heading}>Playlists</p>
+							) : null}
+							{matchedPlaylists.map((entry, position) =>
+								row(entry, matchedViews.length + position, false),
+							)}
+						</>
 					)}
 				</div>
 			</div>

@@ -58,6 +58,7 @@ import styles from "./App.module.css";
 import { CommandPalette } from "./CommandPalette";
 import { ROUTE, resolveRoute, routeOfPlayingSet } from "./routes";
 import { Sidebar } from "./Sidebar";
+import { askToFocusSidebar } from "./sidebarFocus";
 import { useDocumentIdentity } from "./useDocumentIdentity";
 import { useHashRoute } from "./useHashRoute";
 import { useScrollMemory } from "./useScrollMemory";
@@ -175,6 +176,28 @@ function Shell() {
 	// Jean's own scratch playlists are not somewhere to browse to: playing search results makes one current, and landing there would show them stripped of the search that made them.
 	const browsable = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
 
+	const palettePlaylists = useMemo(
+		() =>
+			browsable.map((playlist) => ({
+				route: playlist.id,
+				title: playlist.title,
+				count: playlist.itemCount,
+			})),
+		[browsable],
+	);
+
+	// The two library rows the sidebar keeps above the playlists, in the palette for the same reason they are there: a playlist can be reached by name and a shelf cannot.
+	// `temporaryRow` is the whole test -- a genre or a shelf has no permanent row anywhere, where a playing playlist is already in the list below and All music is already in this one.
+	const paletteViews = useMemo(
+		() => [
+			...(playingFrom?.temporaryRow
+				? [{ route: playingFrom.route, title: playingFrom.name }]
+				: []),
+			{ route: ROUTE.all, title: ALL_MUSIC },
+		],
+		[playingFrom],
+	);
+
 	// Where the sound is coming from, as a route to open: the set Jean materialised for it, or the playlist the player holds the track in. Null for the queue's holding playlist and anything else with nowhere to browse to.
 	const playingRoute = playingFrom?.isPlaying
 		? playingFrom.route
@@ -267,10 +290,20 @@ function Shell() {
 		setQueueOpen(true);
 	}, [showQueueAsked, setQueueOpen]);
 
-	const toggleSidebar = () => {
-		if (isCompactViewport) setIsSidebarOpen((current) => !current);
-		else setIsSidebarCollapsed((current) => !current);
-	};
+	// One question, two pieces of state: a phone slides a drawer over the app and a desktop collapses a column, and nothing outside here should have to know which.
+	const isSidebarShown = isCompactViewport
+		? isSidebarOpen
+		: !isSidebarCollapsed;
+
+	const showSidebar = useCallback(
+		(shown: boolean) => {
+			if (isCompactViewport) setIsSidebarOpen(shown);
+			else setIsSidebarCollapsed(!shown);
+		},
+		[isCompactViewport, setIsSidebarCollapsed],
+	);
+
+	const toggleSidebar = () => showSidebar(!isSidebarShown);
 
 	const openPlaylist = (id: string) => {
 		navigate(`/${id}`);
@@ -284,6 +317,15 @@ function Shell() {
 			setIsSidebarOpen(false);
 		},
 		[navigate],
+	);
+
+	// Everything the palette lists is a hash route, playlist or view, so it needs no branch on which was picked.
+	const openFromPalette = useCallback(
+		(next: string) => {
+			openRoute(next);
+			setIsPaletteOpen(false);
+		},
+		[openRoute],
 	);
 
 	// The way back to the set, from the now-playing screen. The route alone lands at the top of a long list, or wherever
@@ -377,7 +419,20 @@ function Shell() {
 			if (search.hasQuery) openSearch();
 		},
 		openPalette: () => setIsPaletteOpen(true),
-		toggleSidebar,
+		// Shown by a key rather than a click, so it is being shown in order to be used: the hand is already on the keyboard and the next press is almost always an arrow. A click leaves the caret where it was, because the pointer is the thing that is going to choose.
+		toggleSidebar: () => {
+			toggleSidebar();
+			if (!isSidebarShown) return askToFocusSidebar();
+
+			// Hidden with the caret on a row: every key after it would land on something nobody can see.
+			const focused = document.activeElement;
+			if (focused instanceof HTMLElement && focused.closest("[data-nav-row]"))
+				focused.blur();
+		},
+		focusSidebar: () => {
+			showSidebar(true);
+			askToFocusSidebar();
+		},
 		toggleQueue,
 		toggleNowPlaying,
 		goToPlayingFrom: () => {
@@ -571,8 +626,9 @@ function Shell() {
 
 			{isPaletteOpen ? (
 				<CommandPalette
-					playlists={browsable}
-					onSelect={openPlaylist}
+					views={paletteViews}
+					playlists={palettePlaylists}
+					onSelect={openFromPalette}
 					onDismiss={() => setIsPaletteOpen(false)}
 				/>
 			) : null}

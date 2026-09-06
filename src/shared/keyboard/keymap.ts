@@ -163,7 +163,7 @@ export const KEYMAP: Binding[] = [
 		id: "openPalette",
 		scope: SCOPE.global,
 		group: "Navigation",
-		name: "Go to playlist",
+		name: "Go to a playlist or a shelf",
 		keys: ["G"],
 	},
 	{
@@ -172,6 +172,14 @@ export const KEYMAP: Binding[] = [
 		group: "Navigation",
 		name: "Show / hide sidebar",
 		keys: ["Mod+B"],
+	},
+	// The same letter without the modifier, because the two are one idea: `Mod+B` decides whether the sidebar is there, `B` goes to it.
+	{
+		id: "focusSidebar",
+		scope: SCOPE.global,
+		group: "Navigation",
+		name: "Go to the sidebar",
+		keys: ["B"],
 	},
 	{
 		id: "toggleQueue",

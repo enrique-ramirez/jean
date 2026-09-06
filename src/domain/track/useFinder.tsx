@@ -3,7 +3,9 @@ import {
 	type RefObject,
 	useCallback,
 	useDeferredValue,
+	useLayoutEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import type { TrackColumns } from "@/shared/api/types";
@@ -34,14 +36,30 @@ export function useFinder({
 		[haystacks, deferredQuery],
 	);
 
-	const open = useCallback(() => setIsFinding(true), []);
+	const inputRef = useRef<HTMLInputElement | null>(null);
+
+	const focusField = useCallback(() => {
+		inputRef.current?.focus();
+		inputRef.current?.select();
+	}, []);
+
+	// The two openings are different events and both are `/`: the first has no field to focus yet, so the effect below takes it once the field is mounted; every one after it is a field that lost the caret to a click on the list, which is this call and nothing else.
+	const open = useCallback(() => {
+		setIsFinding(true);
+		focusField();
+	}, [focusField]);
 	const close = useCallback(() => {
 		setIsFinding(false);
 		setQuery("");
 	}, []);
 
+	useLayoutEffect(() => {
+		if (isFinding) focusField();
+	}, [isFinding, focusField]);
+
 	const toolbarLeading = isFinding ? (
 		<Finder
+			inputRef={inputRef}
 			rows={rows}
 			label={label}
 			results={results}

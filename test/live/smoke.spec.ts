@@ -187,3 +187,32 @@ test("settings reports what the discovery actually found on this player", async 
 		await expect(pair).toHaveCount(0);
 	}
 });
+
+test("toggling shuffle reaches the player, whichever option set it exposes", async ({
+	page,
+	install,
+}) => {
+	// foobar2000 carries the order as a `playbackOrder` option and DeaDBeeF as `shuffle` plus
+	// `repeat`, answering 400 for that id. Reading falls back to the deprecated `playbackMode`
+	// on its own, so a write aimed at the wrong one leaves the button looking right and does
+	// nothing -- which is invisible against a fake modelled on either player alone.
+	const mode = async () => {
+		const { player } = await api<{ player: { playbackMode: number } }>(
+			install.origin,
+			"/player",
+		);
+		return player.playbackMode;
+	};
+	const before = await mode();
+
+	await page.goto("#/all");
+	const shuffle = statusBar(page).getByRole("button", { name: "Shuffle" });
+	await expect(shuffle).toBeEnabled();
+	await shuffle.click();
+
+	await expect.poll(mode).not.toBe(before);
+	await expect(shuffle).toHaveAttribute("aria-pressed", "true");
+
+	await shuffle.click();
+	await expect.poll(mode).toBe(before);
+});

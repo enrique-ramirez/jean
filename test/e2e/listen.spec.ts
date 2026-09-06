@@ -67,6 +67,73 @@ const thePlayer = (page: Page) =>
 // track list.
 const marks = (within: Locator) => within.locator("[data-paused]");
 
+test.describe("where the picker sits", () => {
+	test.use({ fooJean: {}, fooJeanToken: TOKEN });
+
+	// The button is a third of the way in from the right edge at every width, so a
+	// panel whose right edge is the button's hangs off the left of a phone.
+	test("it is on the screen, both ends, wherever it was opened from", async ({
+		page,
+		isMobile,
+	}) => {
+		await page.goto("/");
+
+		const width = page.viewportSize()?.width ?? 0;
+		const check = async (where: string) => {
+			const box = (await picker(page).boundingBox())!;
+			expect(box.x, `${where}: ran off the left`).toBeGreaterThanOrEqual(0);
+			expect(
+				box.x + box.width,
+				`${where}: ran off the right`,
+			).toBeLessThanOrEqual(width);
+		};
+
+		await listenButton(page).click();
+		await check("the status bar");
+
+		if (!isMobile) return;
+
+		// The screen replaces the status bar on a phone, so the same panel opens
+		// from the transport instead -- a different anchor and the same answer.
+		await page.keyboard.press("Escape");
+		await openNowPlaying(page);
+		await nowPlayingScreen(page)
+			.getByRole("button", {
+				name: /Choose where to play|Playing on this device/,
+			})
+			.click();
+		await check("the now-playing transport");
+	});
+
+	// It clears the controls it was opened from, or choosing an output puts Play
+	// out of reach for as long as the panel is up.
+	test("and never over the transport that opened it", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(!isMobile, "the desktop bar has room beside the button");
+		await page.goto("/");
+		await openNowPlaying(page);
+
+		const play = nowPlayingScreen(page).getByRole("button", {
+			name: /Play|Pause/,
+		});
+		const before = (await play.boundingBox())!;
+
+		await nowPlayingScreen(page)
+			.getByRole("button", {
+				name: /Choose where to play|Playing on this device/,
+			})
+			.click();
+
+		const panel = (await picker(page).boundingBox())!;
+		expect(
+			panel.y + panel.height,
+			"the panel reached the transport",
+		).toBeLessThanOrEqual(before.y);
+	});
+});
+
 test.describe("listening on this device", () => {
 	test.use({ fooJean: {}, fooJeanToken: TOKEN });
 

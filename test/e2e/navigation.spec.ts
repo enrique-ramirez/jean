@@ -1,6 +1,7 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
+	expectPlayingFrom,
 	nowPlayingScreen,
 	openLibrary,
 	openSidebar,
@@ -12,10 +13,9 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-const palette = (page: Page) =>
-	page.getByRole("dialog", { name: "Go to playlist" });
+const palette = (page: Page) => page.getByRole("dialog", { name: "Go to" });
 const paletteField = (page: Page) =>
-	page.getByRole("textbox", { name: "Go to playlist" });
+	page.getByRole("textbox", { name: "Go to" });
 const results = (page: Page) => palette(page).getByRole("option");
 
 test.describe("the command palette", () => {
@@ -36,13 +36,29 @@ test.describe("the command palette", () => {
 		page,
 	}) => {
 		await expect(paletteField(page)).toBeFocused();
-		// The fixture's four user playlists plus the autoplaylist; `#Jean Library`
-		// is the only one held back.
-		await expect(results(page)).toHaveCount(5);
+		// All music, then the fixture's four user playlists plus the autoplaylist;
+		// `#Jean Library` is the only one held back.
+		await expect(results(page)).toHaveCount(6);
+		await expect(results(page).first()).toHaveText(/^All music/);
 		await expect(results(page).first()).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
+	});
+
+	test("All music is above the playlists and goes there", async ({ page }) => {
+		await expect(palette(page)).toContainText("Playlists");
+
+		await paletteField(page).fill("all mus");
+		await expect(results(page)).toHaveCount(1);
+		// The section is drawn only when the filter left something under it.
+		await expect(palette(page)).not.toContainText("Playlists");
+
+		await page.keyboard.press("Enter");
+		await expect(palette(page)).toHaveCount(0);
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
 	});
 
 	test("typing narrows it and Enter goes there", async ({ page }) => {
@@ -58,8 +74,10 @@ test.describe("the command palette", () => {
 	});
 
 	test("the arrows move the choice and Enter takes it", async ({ page }) => {
+		// Down the whole panel: the views and the playlists are two sections on screen and one list to the arrows.
 		await page.keyboard.press("ArrowDown");
-		await expect(results(page).nth(1)).toHaveAttribute("aria-selected", "true");
+		await page.keyboard.press("ArrowDown");
+		await expect(results(page).nth(2)).toHaveAttribute("aria-selected", "true");
 
 		await page.keyboard.press("Enter");
 		await expect(
@@ -93,7 +111,7 @@ test.describe("the command palette", () => {
 	}) => {
 		await paletteField(page).fill("zzzz");
 		await expect(results(page)).toHaveCount(0);
-		await expect(palette(page)).toContainText("No playlist matches that.");
+		await expect(palette(page)).toContainText("Nothing here matches that.");
 	});
 
 	test("Escape closes it and changes nothing", async ({ page }) => {
@@ -101,6 +119,41 @@ test.describe("the command palette", () => {
 		await expect(palette(page)).toHaveCount(0);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
+		).toBeVisible();
+	});
+});
+
+// A playlist can be reached by name and a shelf cannot: it has no permanent row
+// anywhere, so the palette borrows one for as long as it is what is playing.
+test.describe("the shelf that is playing", () => {
+	test.skip(
+		({ isMobile }) => isMobile,
+		"it is opened and driven entirely by keys",
+	);
+
+	test("gets a row above All music, and is not there before it plays", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		const explore = page.getByRole("region", { name: "Explore" });
+		await expect(explore).toBeVisible();
+
+		await page.keyboard.press("g");
+		await expect(results(page)).toHaveCount(6);
+		await expect(results(page).first()).toHaveText(/^All music/);
+		await page.keyboard.press("Escape");
+
+		// Most played is the tab Explore opens on, so this puts that shelf in play.
+		await explore.getByRole("button", { name: /^Jessico/ }).click();
+		await expectPlayingFrom(page, "Most played");
+
+		await page.keyboard.press("g");
+		await expect(results(page)).toHaveCount(7);
+		await expect(results(page).first()).toHaveText(/^Most played/);
+
+		await page.keyboard.press("Enter");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Most played" }),
 		).toBeVisible();
 	});
 });

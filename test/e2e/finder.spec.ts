@@ -562,6 +562,29 @@ test.describe("finding in the library views", () => {
 		expect(requestsTo(player, "/player")).toHaveLength(0);
 	});
 
+	test("`/` takes the caret back after a click on the list", async ({
+		page,
+	}) => {
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+
+		await page.keyboard.press("/");
+		await field(page, "Find in all music").fill("nutshell");
+
+		// The finder stays open, so the binding cannot be the one that opens it: it has to answer while the list is standing down for a field that is on screen and no longer has the caret. Aimed at the heading rather than a row, which the results dropdown covers on a phone.
+		await page.getByRole("heading", { level: 1, name: "All music" }).click();
+		await expect(field(page, "Find in all music")).not.toBeFocused();
+
+		await page.keyboard.press("/");
+		await expect(field(page, "Find in all music")).toBeFocused();
+		// Selected, not appended to: the second press is a fresh search, as the first was.
+		await expect(field(page, "Find in all music")).toHaveValue("nutshell");
+		await page.keyboard.type("grace");
+		await expect(field(page, "Find in all music")).toHaveValue("grace");
+	});
+
 	test("a result plays the track it names", async ({ page, player }) => {
 		await page.goto("/#/all");
 		await expect(

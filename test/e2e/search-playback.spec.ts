@@ -195,7 +195,7 @@ test.describe("playing from search results", () => {
 
 		await page.keyboard.press("g");
 		// Scoped to the palette: the sidebar names these playlists too.
-		const palette = page.getByRole("dialog", { name: "Go to playlist" });
+		const palette = page.getByRole("dialog", { name: "Go to" });
 		await expect(
 			palette.getByRole("option", { name: "Favorites" }),
 		).toBeVisible();

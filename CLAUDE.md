@@ -63,6 +63,8 @@ Everything specific to one part of the app sits next to that part:
 
 A title-formatting field that **does not exist returns `?`**. A field that exists but is empty returns `0`, `''` or `N/A`. That difference is the whole mechanism: probe a set of columns against sample tracks on connect, and enable features for whatever resolves. Settings override it when detection guesses wrong.
 
+**That sentinel is foobar2000's, and DeaDBeeF does not have one**: there an unknown field answers `''`, exactly as an empty one does. `readValue` maps both to `null`, so rows draw correctly either way — but `fieldIsAvailable` asks whether a row answered `?`, and on DeaDBeeF nothing ever does, so **every optional field reads as supported and its column arrives empty rather than staying hidden**. Detection is the thing that cannot work there, and it fails towards showing too much rather than too little.
+
 - **`$meta(x)` cannot be feature-detected.** It answers `''` for a field that does not exist, where `%x%` answers `?`. Use `%x%`.
 - **The autoplaylist and the media library API resolve byte-identical values for every field**, so a column that works on one works on the other and detection never has to ask which is in play.
 - **Sparse fields defeat sampling.** Detect per track where a field is sparse — the Details panel does. What one install resolves is not a rule; see `API.md`.

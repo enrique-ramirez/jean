@@ -365,7 +365,15 @@ export function usePlaybackOrder() {
 	if (!isShuffle && value !== previousOrder.current)
 		previousOrder.current = value;
 
-	const mutation = usePlayerPatch(setPlaybackOrder, (player, next: number) => ({
+	// The write has to agree with the read: where the order came from an option, it goes back as
+	// one, and where it came from the deprecated field that is the only thing the player accepts.
+	const hasOrderOption = option !== undefined;
+	const write = useCallback(
+		(next: number) => setPlaybackOrder(next, hasOrderOption),
+		[hasOrderOption],
+	);
+
+	const mutation = usePlayerPatch(write, (player, next: number) => ({
 		playbackMode: next,
 		options: player.options?.map((entry) =>
 			entry.id === "playbackOrder" ? { ...entry, value: next } : entry,

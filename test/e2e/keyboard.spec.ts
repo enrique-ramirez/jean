@@ -131,6 +131,32 @@ test.describe("navigation and appearance", () => {
 		await expect(sidebarLink(page, "Favorites")).toBeVisible();
 	});
 
+	test("and brings it back with the caret on it", async ({ page }) => {
+		await page.keyboard.press("ControlOrMeta+b");
+		await expect(sidebarLink(page, "Favorites")).toBeHidden();
+
+		await page.keyboard.press("ControlOrMeta+b");
+		// The row for wherever you already are, rather than the top of the list.
+		await expect(sidebarLink(page, "Library")).toBeFocused();
+	});
+
+	test("B goes to the sidebar without hiding it first", async ({ page }) => {
+		await expect(sidebarLink(page, "Library")).not.toBeFocused();
+
+		await page.keyboard.press("b");
+		await expect(sidebarLink(page, "Library")).toBeFocused();
+	});
+
+	test("B reveals a hidden sidebar rather than doing nothing", async ({
+		page,
+	}) => {
+		await page.keyboard.press("ControlOrMeta+b");
+		await expect(sidebarLink(page, "Favorites")).toBeHidden();
+
+		await page.keyboard.press("b");
+		await expect(sidebarLink(page, "Library")).toBeFocused();
+	});
+
 	test("? opens the shortcut sheet", async ({ page }) => {
 		// Playwright sends `key: '?'` with shiftKey set, as a browser does on every
 		// layout. The binding matches that rather than the physical slash key, which
@@ -383,6 +409,39 @@ test.describe("in search results", () => {
 });
 
 test.describe("in the sidebar", () => {
+	test("the arrows walk the rows, and the track list does not follow", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		const cursor = page.locator('[role="row"][data-cursor="true"]');
+		await expect(cursor).toHaveAttribute("data-row", "0");
+
+		await page.keyboard.press("b");
+		await expect(sidebarLink(page, "Library")).toBeFocused();
+
+		await page.keyboard.press("ArrowDown");
+		await expect(sidebarLink(page, "Favorites")).toBeFocused();
+
+		await page.keyboard.press("ArrowUp");
+		await expect(sidebarLink(page, "Library")).toBeFocused();
+
+		// The manager fires every registration matching a key, so the list holding
+		// the same two arrows is the whole reason the sidebar stops the event.
+		await expect(cursor).toHaveAttribute("data-row", "0");
+	});
+
+	test("Enter on a row opens it", async ({ page }) => {
+		await openLibrary(page);
+
+		await page.keyboard.press("b");
+		await page.keyboard.press("ArrowDown");
+		await page.keyboard.press("Enter");
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Favorites" }),
+		).toBeVisible();
+	});
+
 	test("Alt+ArrowUp moves a playlist up", async ({ page, player }) => {
 		await openLibrary(page);
 

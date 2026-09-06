@@ -91,13 +91,23 @@ Icons come from `lucide-react`, imported per-icon so they tree-shake. **The play
 
 **A gesture that competes with scrolling is settled by scroll *position*, not by region.** Down fires only when the thing under the finger had nowhere left to scroll up to, and up only when it had nowhere left to scroll down to; halfway through a list either flick is just scrolling. Carving out the parts of a surface that happen not to scroll leaves whatever the user is actually reading as the one place the gesture does not work. **A surface with nothing to scroll is at both ends at once**, which is what lets one panel answer to both directions and a long lyric answer to neither until it is read.
 
-**A gesture whose target leaves the document stops being delivered.** React listens at the root, and touch events after `touchstart` go to the node the finger landed on — so when that node is replaced mid-gesture the moves never reach the handler and the flick arrives as a tap where it began. Anything a swipe surface swaps out under the finger — a cover resolving from placeholder to image is the one that bit — needs `pointer-events: none`, which hands the touch to a box that stays put. **Do not key such an element on the thing that changes**, either: the key is a second way to detach it.
+**A gesture whose target leaves the document stops being delivered.** React listens at the root, and touch events after `touchstart` go to the node the finger landed on — so when that node is replaced mid-gesture the moves never reach the handler and the flick arrives as a tap where it began. A cover resolving from placeholder to image is the one that bit, which is half of why `Artwork` is now one element for every state rather than three; where a swipe surface does swap something out under the finger, `pointer-events: none` hands the touch to a box that stays put. **Do not key such an element on the thing that changes**, either: the key is a second way to detach it.
 
 **A control that follows the finger is not part of the surface it sits on.** `useDragFraction` marks everything it makes with `data-owns-touch` and `useSwipe` records nothing when a touch begins under that mark, so a fader dragged down inside a swipeable screen changes the volume rather than dismissing it. Scroll position cannot settle this one — the drag is on a control that never scrolls, so the flick reads as deliberate every time.
 
 **`shared/lib/scrollParent.ts` takes a boundary, and a layered surface must pass one.** The walk otherwise goes straight past an overlay and returns the scroller *underneath* it, which is off screen, belongs to something else, and reports a scroll position that quietly changes the answer.
 
 **An animated scroll must not treat every wheel event as a decision.** Trackpad and mouse momentum keep emitting for a second or more after the fingers have left, so a jump asked for at the end of a flick gets cancelled by the tail of the gesture that preceded it — a single delta of one pixel is enough to strand the scroll and leave the target row unmounted. `animateScrollTo` accumulates wheel delta and gives up at 40px, which deliberate scrolling passes in one or two events and a decaying tail never reaches. A touch still cancels on contact, because a finger on the glass is unambiguous where a wheel event is not.
+
+## Artwork
+
+**One component draws every cover in the app** — the status bar, the wheel, the now-playing screen, an album group, a row, a shelf card, a queue entry — and the reason is the loading state rather than the picture. Six callers each holding a picture is fine; six of them each *flickering differently* while it arrives is what the user sees.
+
+**One box, and the states happen inside it.** `Artwork` renders a wrapper that outlives everything: the caller's class lands there, so the size, the rounding and the shadow are settled before anything is known about the cover, and nothing reflows when it lands. Queued, downloading and *there is no cover here* all draw the same `DiscAlbum` on the same shape — the question being asked is only "is there a sleeve yet", and a settled failure differs from the other two by dropping the sheen, not by becoming a different component.
+
+**The image is transparent until it has decoded.** A browser paints alt text into the box the moment an `<img>` has a src and no bytes, so a screen of album groups came up reading "Rastaman Vibration cover" a row at a time. `opacity` rather than `display`, so there is something to fade.
+
+**`.loading` fights a placeholder in two ways.** It is written for text — it rounds its own corners, which inside an already-clipped box shows the ground through four of them, and it sets `color: transparent`, which takes the icon with it. Both are undone on `.placeholder`.
 
 ## Animation
 

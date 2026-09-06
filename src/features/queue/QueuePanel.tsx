@@ -9,8 +9,10 @@ import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { artworkUrl } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
+import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
 import { plural } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";
@@ -180,7 +182,7 @@ const QueueRow = memo(function QueueRow({
 						className={styles.grip}
 						aria-label={`Reorder ${entry.title}`}
 						tabIndex={-1}
-						// The one thing in here that takes the vertical axis for itself; without this a row dragged up the panel reads as the flick that closes it.
+						// The one thing in here that takes an axis for itself; without this the sideways drift of a row dragged down the panel reads as the flick that closes it.
 						data-owns-touch=""
 						{...handleProps}
 					>
@@ -223,14 +225,20 @@ export function QueuePanel({
 		disabled: !canQueue,
 	});
 
-	// A press anywhere else puts the queue away, at every width: it is a glance at what happens next, opened around whatever you were doing. The toggle is a panel away in the status bar, so it is named rather than contained -- and Escape stays where it is, since this leaves the app behind it live and never claims the keyboard.
+	// A press anywhere else puts the queue away, at every width: it is a glance at what happens next, opened around whatever you were doing. The toggle is a panel away in the status bar, so it is named rather than contained.
+	// `onEscape: false` hands that key to the capture listener below rather than declining it: the hook's own is a bubbling one, which the playlist scope would have answered first.
 	const ref = useDismissable<HTMLElement>(isOpen, onDismiss, {
 		ignore: "[data-queue-toggle]",
 		onEscape: false,
 	});
 
-	// Either direction, and only from the end of the scroll it would otherwise be. The panel enters from the right and a horizontal flick is left to the list behind it, which is where sideways already means something.
-	const swipe = useSwipe({ onUp: onDismiss, onDown: onDismiss });
+	const keyboardOwner = useKeyboardOwner();
+
+	// Escape peels one layer, and this panel is the front one whenever it is up -- it opens over the now-playing screen and over the list, and both stand down for it. It stands down in turn for a dialog that has claimed the keyboard, which is in front of everything.
+	useEscapeCapture(isOpen && keyboardOwner === null ? onDismiss : null);
+
+	// It leaves the way it arrived: the panel slides in from the right edge, so the flick that puts it back is the one aimed at that edge. The vertical axis stays the scroller's, which is what a queue long enough to scroll is doing with it.
+	const swipe = useSwipe({ onRight: onDismiss });
 
 	return (
 		<>

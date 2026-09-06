@@ -470,11 +470,10 @@
    The artwork is the one thing on this screen that must always fit whole: it is
    what a sideways flick is aimed at, and a sleeve running under the title reads
    as the app being broken rather than as a tall phone. */
-/* The sleeve is scenery here, not a control, and letting it take the touch is
-   what breaks the flick: `Artwork` replaces its own element when a cover
-   arrives, and a gesture whose target leaves the document stops being delivered
-   half way through. Handing the touch to the box instead costs nothing -- there
-   is nothing on this screen to press the artwork *for*. */
+/* The sleeve is scenery here, not a control, and there is nothing on this screen
+   to press the artwork *for*, so the touch goes to the box behind it. Belt and
+   braces: `Artwork` keeps one element for every state, and a gesture whose
+   target leaves the document stops being delivered half way through. */
 .screen[data-compact="true"] .cover {
 	pointer-events: none;
 }

@@ -47,17 +47,6 @@
 	box-shadow: var(--shadow);
 }
 
-/* The wheel has turned to a track the player has not named yet. Sleeve-shaped,
-   because the shape is known and only the picture is missing; the sheen is the
-   global `.loading`, which this only has to give a box to. */
-.pending {
-	width: auto;
-	height: 100%;
-	aspect-ratio: 1;
-	border-radius: var(--radius);
-	box-shadow: var(--shadow);
-}
-
 /* The turn is the whole statement, so there is nothing to keep when it is refused
    -- what is left is one sleeve replacing another, which is what a cross-fade is
    for. The neighbours have nowhere to be, so they are not drawn. */

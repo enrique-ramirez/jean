@@ -121,6 +121,20 @@ LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='D:\SomeFolder' pnpm test
 
 **Nothing here may assume what is in the library.** Counts, titles, which row carries a rating and whether any artist is accented are all read off the player first and asserted against; a spec that cannot be satisfied skips itself and says why. That is why the suite is short: an assertion that survives an unknown library has to be about a relationship rather than a value.
 
+### DeaDBeeF
+
+beefweb supports a second player, and `test/live/deadbeef/` is how that one gets tested. It is a container because **the released beefweb plugin for DeaDBeeF is a Linux x86-64 `.so` and always has been** — no release has ever carried a Windows or macOS build — so the pairing cannot be installed on a foobar2000 machine or on a mac at all. The image downloads both the player and the plugin, so nothing binary is committed here.
+
+```sh
+docker build --platform linux/amd64 -t jean-deadbeef test/live/deadbeef
+docker run -d --name jean-ddb --platform linux/amd64 -p 8890:8880 \
+  -v /path/to/music:/music:ro -v "$PWD/dist:/jean:ro" jean-deadbeef
+```
+
+Then create a playlist named `#Jean Library` and add `/music` to it over the api — **DeaDBeeF has no autoplaylists**, so Jean's usual library playlist cannot keep itself in sync there and the folder-playlist fallback is the honest path for a real install.
+
+Three things about the container are load-bearing and none of them is obvious. It runs the bundled **`nullout`** output plugin, which needs no sound device and is what leaves a playback state to assert on. It needs **an X server anyway**, because DeaDBeeF exits 1 when its GTK ui cannot open a display — started directly rather than through `xvfb-run`, whose wait-for-display loop does not return under emulation and leaves the player unlaunched with no output saying so. And it sets a **UTF-8 locale**, without which beefweb's artwork route fails `iconv` on any non-ascii path, which is most of a real library.
+
 **`LIVE_LIBRARY_ROOT` is required and has no default.** These specs play tracks, write the play queue and can write rating tags, so the worker fixture reads the whole library first and refuses to start if one track sits outside the named folder. The check runs before any page is opened, so a wrong answer costs nothing.
 
 ## Writing a spec

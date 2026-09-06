@@ -1,10 +1,11 @@
 import { readValue } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
 import styles from "./Details.module.css";
-import { NOW_PLAYING_FIELD as F } from "./nowPlayingFields";
+import { NOW_PLAYING_FIELD as F, readNowPlaying } from "./nowPlayingFields";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 
-const read = (row: TrackColumns, field: number) => readValue(row[field]);
+const read = (row: TrackColumns, field: number) =>
+	readValue(readNowPlaying(row, field));
 
 // `n of m` where the total is known, `n` where it is not. Both halves happen: `%totaltracks%` is far rarer in tags than `%totaldiscs%`.
 function counted(row: TrackColumns, position: number, total: number) {

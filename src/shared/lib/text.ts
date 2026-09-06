@@ -57,6 +57,14 @@ export const fuzzyKey = (text: string): FuzzyKey => ({
 
 const budgetFor = (length: number) => (length < 5 ? 0 : length < 9 ? 1 : 2);
 
+/**
+ * What separates two candidates that matched the same way: the shorter one is more of the query. The
+ * window is wide enough that it never reaches the rung below, so it orders within a tier and never
+ * across one -- which is what lets a caller add its own weighting on top.
+ */
+export const closenessTo = (text: string, query: string) =>
+	Math.max(0, 999 - Math.abs(text.length - query.length));
+
 function within(query: string, candidate: string, budget: number): boolean {
 	if (Math.abs(query.length - candidate.length) > budget) return false;
 	if (budget === 0) return query === candidate;
@@ -109,7 +117,7 @@ export function fuzzyScore(key: FuzzyKey, query: string): number {
 	if (query.length === 0) return EXACT;
 
 	const { squashed, words } = key;
-	const closeness = Math.max(0, 999 - Math.abs(squashed.length - query.length));
+	const closeness = closenessTo(squashed, query);
 
 	if (squashed === query) return EXACT + closeness;
 	if (squashed.startsWith(query)) return PREFIX + closeness;

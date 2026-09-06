@@ -6,6 +6,7 @@ import {
 	pressAndHold,
 	requestsTo,
 	scrollUntilMounted,
+	searchFor,
 	sidebar,
 	test,
 	touchDrag,
@@ -236,10 +237,7 @@ test.describe("the search entry", () => {
 			sidebar(page).getByText("Search", { exact: true }),
 		).toHaveCount(0);
 
-		await page.getByLabel("Search your library").fill("babasonicos");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "babasonicos" }),
-		).toBeVisible();
+		await searchFor(page, "babasonicos");
 
 		await openSidebar(page);
 		await expect(
@@ -251,10 +249,7 @@ test.describe("the search entry", () => {
 
 	test("it goes back to the results after browsing away", async ({ page }) => {
 		await openApp(page);
-		await page.getByLabel("Search your library").fill("babasonicos");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "babasonicos" }),
-		).toBeVisible();
+		await searchFor(page, "babasonicos");
 
 		await openSidebar(page);
 		await link(page, SPANISH).click();

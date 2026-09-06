@@ -9,6 +9,7 @@ import {
 	playedFrom,
 	requestsTo,
 	rowByTitle,
+	searchFor,
 	statusBar,
 	test,
 	times,
@@ -148,10 +149,7 @@ test.describe("the header shuffle starts a shuffled run", () => {
 test.describe("shuffle in the search results header", () => {
 	test("sits between Play and Save as playlist", async ({ page }) => {
 		await page.goto("/#/search");
-		await page.getByLabel("Search your library").fill("babasonicos");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "babasonicos" }),
-		).toBeVisible();
+		await searchFor(page, "babasonicos");
 
 		const labels = await viewHeader(page)
 			.getByRole("button")

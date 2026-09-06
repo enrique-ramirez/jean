@@ -31,10 +31,10 @@ export function useFinder({
 	// scan of the whole list before the character can paint and a phone keyboard starts dropping and
 	// reordering input.
 	const deferredQuery = useDeferredValue(query);
-	const haystacks = useSearchIndex(rows, isFinding);
+	const index = useSearchIndex(rows, isFinding);
 	const { matches, results } = useMemo(
-		() => search(haystacks, deferredQuery),
-		[haystacks, deferredQuery],
+		() => search(index, deferredQuery),
+		[index, deferredQuery],
 	);
 
 	const inputRef = useRef<HTMLInputElement | null>(null);

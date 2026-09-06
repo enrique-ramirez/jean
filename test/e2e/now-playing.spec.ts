@@ -70,8 +70,8 @@ test.describe("the way in and the way out", () => {
 		await openLibrary(page);
 		await openNowPlaying(page);
 
-		// Empty rather than typed at: typing in this field is itself a navigation
-		// to the search route, which closes the screen before Escape is pressed.
+		// Empty rather than typed at: a query gives the field its own dropdown, and
+		// Escape would close that instead of reaching the screen.
 		const field = page.getByLabel("Search your library");
 		await field.focus();
 		await field.press("Escape");

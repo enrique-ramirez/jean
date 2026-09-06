@@ -368,6 +368,19 @@ export const openLibrary = async (page: Page) => {
 	await expect(trackRow(page, 0)).toBeAttached();
 };
 
+export const searchField = (page: Page) =>
+	page.getByLabel("Search your library");
+
+// Typing only fills the dropdown; the results page is a commitment, and Enter with nothing under the
+// cursor is the way to make it without also choosing a track.
+export const searchFor = async (page: Page, text: string) => {
+	await searchField(page).fill(text);
+	await searchField(page).press("Enter");
+	await expect(
+		page.getByRole("heading", { level: 1, name: text }),
+	).toBeVisible();
+};
+
 // ---- reading the player -----------------------------------------------------
 
 // What the app sent, from the fake's own log rather than the browser's.

@@ -6,6 +6,8 @@ import {
 	openLibrary,
 	requestsTo,
 	scrollUntilMounted,
+	searchField,
+	searchFor,
 	sidebar,
 	test,
 	trackRow,
@@ -29,7 +31,6 @@ import {
 // Playwright both map Mod by platform, so the literal would pass here and fail
 // on Linux.
 
-const searchField = (page: Page) => page.getByLabel("Search your library");
 const sidebarLink = (page: Page, title: string) =>
 	sidebar(page).getByRole("button").filter({ hasText: title });
 
@@ -418,14 +419,12 @@ test.describe("view keys", () => {
 test.describe("in search results", () => {
 	test("Mod+S offers to save the results as a playlist", async ({ page }) => {
 		await page.goto("/#/search");
-		await searchField(page).fill("babasonicos");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "babasonicos" }),
-		).toBeVisible();
+		await searchFor(page, "babasonicos");
 		await expect(trackRow(page, 0)).toBeAttached();
 
-		// The field has focus straight after typing, and the binding has to fire
-		// from there.
+		// Committing takes the caret out of the field, so it is put back: the binding
+		// has to fire with the caret in there, which is where a refining user leaves it.
+		await searchField(page).click();
 		await page.keyboard.press("ControlOrMeta+s");
 		await expect(
 			page.getByRole("textbox", { name: "Playlist name" }),

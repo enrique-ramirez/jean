@@ -8,6 +8,7 @@ import {
 	playedFrom,
 	requestsTo,
 	scratchOf,
+	searchFor,
 	sidebar,
 	statusBar,
 	test,
@@ -29,10 +30,7 @@ const NARROWER = {
 
 const search = async (page: Page, text: string) => {
 	await page.goto("/#/search");
-	await page.getByLabel("Search your library").fill(text);
-	await expect(
-		page.getByRole("heading", { level: 1, name: text }),
-	).toBeVisible();
+	await searchFor(page, text);
 	await expect(trackRow(page, 0)).toBeAttached();
 };
 
@@ -153,10 +151,7 @@ test.describe("playing from search results", () => {
 		await searchAndPlay(page, player);
 		const firstId = scratchOf(player)!.id;
 
-		await page.getByLabel("Search your library").fill(NARROWER.text);
-		await expect(
-			page.getByRole("heading", { level: 1, name: NARROWER.text }),
-		).toBeVisible();
+		await searchFor(page, NARROWER.text);
 		await trackRow(page, 0).dblclick();
 
 		await expect

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
+import { usePlaySet } from "@/domain/library/usePlaySet";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -122,6 +123,7 @@ function Shell() {
 		wanted: isHome || isAll || isGenres || Boolean(shelf) || Boolean(genre),
 	});
 	const search = useLibrarySearch(library, playlists);
+	const { play: playSet } = usePlaySet({ library, playlists });
 	const home = useHomePlayback({ library, playlists, navigate });
 
 	const { write: ratePlaying } = useNowPlayingRating();
@@ -317,10 +319,10 @@ function Shell() {
 
 	const searchFor = useCallback(
 		(query: string) => {
-			search.setQuery(query);
+			search.commit(query);
 			openSearch();
 		},
-		[search.setQuery, openSearch],
+		[search.commit, openSearch],
 	);
 
 	// `history.back()` is wrong: a reload can land straight on `#/playing` with no entry behind it, and back would leave Jean.
@@ -381,10 +383,7 @@ function Shell() {
 		volumeUp: () => volume.up(),
 		volumeDown: () => volume.down(),
 		toggleMute: () => volume.toggleMute(),
-		globalSearch: () => {
-			search.focus();
-			if (search.hasQuery) openSearch();
-		},
+		globalSearch: () => search.focus(),
 		openPalette: () => setIsPaletteOpen(true),
 		toggleSidebar: () => {
 			toggleSidebar();
@@ -438,9 +437,23 @@ function Shell() {
 				<LibrarySearchField
 					search={search}
 					library={library}
-					onChange={(value) => {
-						search.setQuery(value);
-						if (value.trim()) openSearch();
+					onChange={search.type}
+					onSubmit={() => {
+						search.commit();
+						openSearch();
+					}}
+					// Picking a track does not move you: the results are materialised so it has somewhere to
+					// play from, and the status bar and the sidebar say where the sound is coming from.
+					onSelect={(ref) => {
+						const { query, refs } = search.commit();
+						const position = refs ? refs.indexOf(ref) : -1;
+						if (refs && position >= 0)
+							void playSet({
+								kind: SCRATCH_KIND.search,
+								label: query,
+								refs,
+								position,
+							});
 					}}
 					onDismiss={() => {
 						search.clear();

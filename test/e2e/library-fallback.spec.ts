@@ -4,6 +4,7 @@ import {
 	playedFrom,
 	requestsTo,
 	scratchOf,
+	searchFor,
 	test,
 	trackPlayed,
 	trackRow,
@@ -71,10 +72,7 @@ test.describe("a player with no media library API", () => {
 		player,
 	}) => {
 		await page.goto("/#/search");
-		await page.getByLabel("Search your library").fill("nutshell");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "nutshell" }),
-		).toBeVisible();
+		await searchFor(page, "nutshell");
 		await expect(trackRow(page, 0)).toContainText("Nutshell");
 
 		await trackRow(page, 0).dblclick();

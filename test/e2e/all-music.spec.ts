@@ -7,6 +7,7 @@ import {
 	playedFrom,
 	requestsTo,
 	scratchOf,
+	searchFor,
 	sidebar,
 	test,
 	trackPlayed,
@@ -81,7 +82,7 @@ test.describe("the order a set is played in", () => {
 		player,
 	}) => {
 		await page.goto("/#/search");
-		await page.getByRole("searchbox").fill("nutshell");
+		await searchFor(page, "nutshell");
 		await expect
 			.poll(() => page.locator('[role="row"]').count())
 			.toBeGreaterThan(10);
@@ -189,7 +190,7 @@ test.describe("where the music is coming from", () => {
 		await trackRow(page, 3).dblclick();
 
 		await page.goto("/#/search");
-		await page.getByRole("searchbox").fill("nutshell");
+		await searchFor(page, "nutshell");
 		await expect
 			.poll(() => page.locator('[role="row"]').count())
 			.toBeGreaterThan(10);

@@ -9,6 +9,7 @@ import {
 	requestsTo,
 	scrollTo,
 	scrollTop,
+	searchFor,
 	sidebar,
 	test,
 	trackRow,
@@ -263,10 +264,7 @@ test.describe("the first run, with no library playlist", () => {
 			.getByRole("button", { name: /Rename it to #Jean Library/ })
 			.click();
 
-		await page.getByLabel("Search your library").fill("babasonicos");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "babasonicos" }),
-		).toBeVisible();
+		await searchFor(page, "babasonicos");
 		await expect(trackRow(page, 0)).toBeAttached();
 
 		// Renamed, not copied.
@@ -285,10 +283,7 @@ test.describe("the first run, with no library playlist", () => {
 		// The name is on the player rather than in this browser, so it survives a
 		// reload and holds on the next device too.
 		await page.reload();
-		await page.getByLabel("Search your library").fill("babasonicos");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "babasonicos" }),
-		).toBeVisible();
+		await searchFor(page, "babasonicos");
 		await expect(
 			page.getByRole("heading", { name: /Point Jean at your library/ }),
 		).toHaveCount(0);

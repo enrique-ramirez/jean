@@ -1,32 +1,32 @@
 import type { TrackColumns } from "@/shared/api/types";
-import { matchesTokens, tokenize } from "@/shared/lib/text";
+import { tokenize } from "@/shared/lib/text";
 import type { Refs } from "./project";
-import { rowHaystack } from "./searchText";
+import { type RowText, rowMatches, rowText } from "./searchText";
 
-let held: { key: string; haystacks: string[] } | null = null;
+let held: { key: string; text: RowText[] } | null = null;
 
 // Rows only ever grow, a chunk at a time, so the index extends in place. The key carries the item
 // count, so an edited library indexes afresh rather than inheriting rows that have moved.
-export function libraryIndex(key: string, rows: TrackColumns[]): string[] {
+export function libraryIndex(key: string, rows: TrackColumns[]): RowText[] {
 	if (held?.key === key) {
-		for (const row of rows.slice(held.haystacks.length))
-			held.haystacks.push(rowHaystack(row));
-		return held.haystacks;
+		for (const row of rows.slice(held.text.length))
+			held.text.push(rowText(row));
+		return held.text;
 	}
 
-	held = { key, haystacks: rows.map(rowHaystack) };
-	return held.haystacks;
+	held = { key, text: rows.map(rowText) };
+	return held.text;
 }
 
 export function searchLibrary(
-	haystacks: string[],
+	index: RowText[],
 	query: string,
 ): Int32Array | null {
 	const tokens = tokenize(query);
 	if (tokens.length === 0) return null;
 
-	const matched = haystacks.reduce<number[]>((found, haystack, index) => {
-		if (matchesTokens(haystack, tokens)) found.push(index);
+	const matched = index.reduce<number[]>((found, text, index) => {
+		if (rowMatches(text, tokens)) found.push(index);
 		return found;
 	}, []);
 

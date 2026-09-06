@@ -175,6 +175,7 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Queue panel · volume popover · listen-here popover | 30 |
 | Sidebar scrim, compact | 39 |
 | Sidebar drawer, compact | 40 |
+| Search dropdown | 42 |
 | Track info screen · lyrics screen | 45 |
 | Toasts · settings backdrop · shortcut sheet backdrop | 50 |
 | Command palette backdrop | 60 |

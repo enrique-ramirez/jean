@@ -1,5 +1,11 @@
 import type { Page } from "./fixtures.ts";
-import { expect, openLibrary, test } from "./fixtures.ts";
+import {
+	expect,
+	openLibrary,
+	searchField,
+	searchFor,
+	test,
+} from "./fixtures.ts";
 
 // 320px, which is the narrowest phone still worth drawing for and the width every
 // piece of chrome has to survive.
@@ -24,7 +30,14 @@ test.describe("the shell fits the screen", () => {
 
 		// A query fills the field's trailing slot with a count and a clear button,
 		// which is the state that pushed the top bar past the screen.
-		await page.getByLabel("Search your library").fill("a");
+		await searchField(page).fill("a");
+		await expect(page.getByRole("option").first()).toBeVisible();
+
+		// The dropdown is the widest thing the field can put on the screen, so it is
+		// measured open as well as shut.
+		await expect.poll(() => overflow(page)).toBe(0);
+
+		await searchFor(page, "a");
 		await expect(page.getByText(/matches?$/)).toBeVisible();
 
 		await expect.poll(() => overflow(page)).toBe(0);

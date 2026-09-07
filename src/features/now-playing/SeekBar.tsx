@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { audibleAt } from "@/domain/player/position";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./SeekBar.module.css";
 
 const useTickingPosition = (
@@ -37,6 +38,7 @@ export function SeekBar({
 	snapshot: PlayerSnapshot | null | undefined;
 	onSeek: (position: number) => void;
 }) {
+	const t = useTranslate();
 	const elapsed = useElapsed(snapshot);
 
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
@@ -57,7 +59,7 @@ export function SeekBar({
 			data-seekable={canSeek}
 			role="slider"
 			tabIndex={canSeek ? 0 : -1}
-			aria-label="Playback position"
+			aria-label={t("player.position")}
 			aria-valuemin={0}
 			aria-valuemax={Math.round(duration)}
 			aria-valuenow={Math.round(progress * duration)}

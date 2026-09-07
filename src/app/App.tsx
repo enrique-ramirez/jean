@@ -21,7 +21,6 @@ import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
 import { type ArtistTab, artistRoute } from "@/domain/track/artistRoute";
 import { type ArtistTracks, refsOfArtist } from "@/domain/track/artists";
 import {
-	ALL_MUSIC,
 	SCRATCH_KIND,
 	withoutJeanPlaylists,
 } from "@/domain/track/jeanPlaylists";
@@ -57,6 +56,8 @@ import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import type { Phrase } from "@/shared/i18n/en";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import {
@@ -67,7 +68,7 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
 import { Crumb } from "@/shared/ui/Crumb";
 import { DragGhost } from "@/shared/ui/DragGhost";
-import { type TabOption, Tabs } from "@/shared/ui/Tabs";
+import { Tabs } from "@/shared/ui/Tabs";
 import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
 import { CommandPalette } from "./CommandPalette";
@@ -86,14 +87,10 @@ import { useTheme } from "./useTheme";
 
 const SEEK_STEP = 5;
 
-const ARTIST_TABS: TabOption<ArtistTab>[] = [
-	{
-		value: "overview",
-		label: "Overview",
-		mnemonic: mnemonicOf("Overview", "switchArtistTab"),
-	},
-	{ value: "tracks", label: "Tracks" },
-];
+const ARTIST_TABS = [
+	{ value: "overview", label: "artist.overview" },
+	{ value: "tracks", label: "artist.tracks" },
+] as const satisfies readonly { value: ArtistTab; label: Phrase }[];
 
 const EMPTY_ARTIST_TRACKS: ArtistTracks = {
 	own: new Int32Array(0),
@@ -110,6 +107,7 @@ export function App() {
 }
 
 function Shell() {
+	const t = useTranslate();
 	usePlayerStream();
 	useDocumentIdentity();
 
@@ -236,16 +234,16 @@ function Shell() {
 		? {
 				view: shelfView,
 				kind: SCRATCH_KIND.shelf,
-				label: shelf.title,
-				eyebrow: "Shelf",
-				title: shelf.title,
+				label: t(shelf.title),
+				eyebrow: t("route.shelf"),
+				title: t(shelf.title),
 			}
 		: genre
 			? {
 					view: genreView,
 					kind: SCRATCH_KIND.genre,
 					label: genre,
-					eyebrow: <Crumb href={GENRES_HREF}>All genres</Crumb>,
+					eyebrow: <Crumb href={GENRES_HREF}>{t("home.allGenres")}</Crumb>,
 					title: genre,
 				}
 			: albumTracks
@@ -260,8 +258,8 @@ function Shell() {
 						view: allMusic,
 						kind: SCRATCH_KIND.all,
 						label: "",
-						eyebrow: "Your library",
-						title: ALL_MUSIC,
+						eyebrow: t("home.yourLibrary"),
+						title: t("library.allMusic"),
 					};
 
 	const browsable = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
@@ -281,9 +279,9 @@ function Shell() {
 			...(playingFrom?.temporaryRow
 				? [{ route: playingFrom.route, title: playingFrom.name }]
 				: []),
-			{ route: ROUTE.all, title: ALL_MUSIC },
+			{ route: ROUTE.all, title: t("library.allMusic") },
 		],
-		[playingFrom],
+		[playingFrom, t],
 	);
 
 	const playingRoute = playingFrom?.isPlaying
@@ -427,12 +425,18 @@ function Shell() {
 			artist ? (
 				<Tabs
 					value={artistTab}
-					label="Artist views"
-					options={ARTIST_TABS}
+					label={t("artist.views")}
+					options={ARTIST_TABS.map((tab) => ({
+						...tab,
+						label: t(tab.label),
+						// Read off the translated label, so a language whose word does not start with the
+						// key underlines nothing rather than lying about which key opens the tab.
+						mnemonic: mnemonicOf(t(tab.label), "switchArtistTab"),
+					}))}
 					onChange={showArtistTab}
 				/>
 			) : null,
-		[artist, artistTab, showArtistTab],
+		[artist, artistTab, showArtistTab, t],
 	);
 
 	// Left is the next tab, as it is on the now-playing panels. Touch only, and on `main` rather than
@@ -553,8 +557,8 @@ function Shell() {
 					icon={PanelLeft}
 					aria-label={
 						isSidebarCollapsed || !isSidebarOpen
-							? "Show playlists"
-							: "Hide playlists"
+							? t("sidebar.show")
+							: t("sidebar.hide")
 					}
 					aria-expanded={
 						isCompactViewport ? isSidebarOpen : !isSidebarCollapsed
@@ -608,13 +612,13 @@ function Shell() {
 						variant="ghost"
 						className={styles.shortcuts}
 						icon={Keyboard}
-						aria-label="Keyboard shortcuts"
+						aria-label={t("shortcuts.title")}
 						onClick={() => setIsSheetOpen(true)}
 					/>
 					<Button
 						variant="ghost"
 						icon={Settings}
-						aria-label="Settings"
+						aria-label={t("settings.title")}
 						aria-expanded={isSettingsOpen}
 						onClick={() => setIsSettingsOpen(true)}
 					/>
@@ -622,9 +626,7 @@ function Shell() {
 						variant="ghost"
 						icon={theme === "dark" ? Sun : Moon}
 						aria-label={
-							theme === "dark"
-								? "Switch to light theme"
-								: "Switch to dark theme"
+							theme === "dark" ? t("theme.toLight") : t("theme.toDark")
 						}
 						onClick={toggleTheme}
 					/>
@@ -685,12 +687,12 @@ function Shell() {
 							onOpenPlaylist={openPlaylist}
 							emptyNotice={
 								library.isLoading
-									? "Reading your library..."
+									? t("library.reading")
 									: genre
-										? `Nothing tagged ${genre} in your library.`
+										? t("library.noGenre", { genre })
 										: album
-											? "That record is not in your library."
-											: "Nothing in your library yet."
+											? t("library.noAlbum")
+											: t("library.empty")
 							}
 						/>
 					) : isSearch ? (
@@ -714,7 +716,7 @@ function Shell() {
 									view={artistView ?? EMPTY_VIEW}
 									kind={SCRATCH_KIND.artist}
 									label={artist}
-									eyebrow="Artist"
+									eyebrow={t("artist.eyebrow")}
 									title={artist}
 									tabs={artistTabs}
 									playlists={playlists}
@@ -723,8 +725,8 @@ function Shell() {
 									onOpenPlaylist={openPlaylist}
 									emptyNotice={
 										library.isLoading
-											? "Reading your library..."
-											: `Nothing by ${artist} in your library.`
+											? t("library.reading")
+											: t("library.noArtist", { artist })
 									}
 								/>
 							) : (
@@ -816,7 +818,7 @@ function Shell() {
 			) : null}
 
 			<span className="visually-hidden" aria-live="polite">
-				{isPlaying ? "Playing" : "Paused"}
+				{t(isPlaying ? "player.playing" : "player.paused")}
 			</span>
 		</div>
 	);

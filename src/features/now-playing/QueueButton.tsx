@@ -2,7 +2,7 @@ import { ListEnd } from "lucide-react";
 
 import { QUEUE_DROP_TARGET } from "@/domain/player/queue";
 import { useQueue } from "@/domain/player/useQueue";
-import { plural } from "@/shared/lib/text";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useDragState } from "@/shared/ui/dnd";
 import styles from "./QueueButton.module.css";
 
@@ -17,6 +17,7 @@ export function QueueButton({
 	onToggle: () => void;
 	variant?: "bar" | "screen";
 }) {
+	const t = useTranslate();
 	const { count } = useQueue();
 	const drag = useDragState();
 
@@ -24,7 +25,9 @@ export function QueueButton({
 		<button
 			type="button"
 			className={styles.queue}
-			aria-label={count === 0 ? "Queue" : `Queue, ${plural(count, "track")}`}
+			aria-label={
+				count === 0 ? t("queue.title") : t("queue.withCount", { count })
+			}
 			aria-expanded={isOpen}
 			data-open={isOpen}
 			data-size={variant}

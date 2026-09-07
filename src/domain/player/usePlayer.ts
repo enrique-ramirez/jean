@@ -35,6 +35,7 @@ import type {
 	UpdateMessage,
 } from "@/shared/api/types";
 import { useCoalescedWrite } from "@/shared/hooks/useCoalescedWrite";
+import { translate } from "@/shared/i18n/locale";
 import { clamp } from "@/shared/lib/math";
 import { refusal } from "@/shared/lib/refusal";
 import { rememberSnapshot, useAudibleSnapshot } from "./audible";
@@ -233,9 +234,7 @@ export function usePlaylistActions() {
 				const release = holdQueue();
 				try {
 					if (!(await dequeuePlaylist(id))) {
-						throw refusal(
-							"Tracks from this playlist are still in the play queue, and deleting it while they are would stop the player. Clear the queue and try again.",
-						);
+						throw refusal(translate("playlist.deleteBlockedByQueue"));
 					}
 				} finally {
 					release();
@@ -265,7 +264,7 @@ export function usePlaylistActions() {
 // foobar2000 allows two playlists with the same name, and the sidebar shows nothing else to tell
 // them apart by.
 export function untitledPlaylistName(playlists: PlaylistInfo[]) {
-	const base = "New playlist";
+	const base = translate("playlist.newName");
 	const taken = new Set(playlists.map((entry) => entry.title));
 
 	return (

@@ -32,16 +32,16 @@ import {
 	usePermissions,
 	usePlaylistActions,
 } from "@/domain/player/usePlayer";
-import { ALL_MUSIC, withoutJeanPlaylists } from "@/domain/track/jeanPlaylists";
+import { withoutJeanPlaylists } from "@/domain/track/jeanPlaylists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { hintFor, SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
 import { isRefusal } from "@/shared/lib/refusal";
-import { plural } from "@/shared/lib/text";
 import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
 import { pushToast } from "@/shared/ui/toastStore";
@@ -74,6 +74,7 @@ function NavRow({
 	itemProps?: PropBag;
 	children?: ReactNode;
 }) {
+	const t = useTranslate();
 	return (
 		<div className={styles.row} data-nested={isNested} {...rowProps}>
 			<button
@@ -89,7 +90,7 @@ function NavRow({
 						size={15}
 						strokeWidth={2}
 						className={styles.playing}
-						aria-label="Playing from here"
+						aria-label={t("sidebar.playingFromHere")}
 					/>
 				) : (
 					<Icon size={15} strokeWidth={2} aria-hidden="true" />
@@ -129,6 +130,8 @@ export function Sidebar({
 	isCollapsed: boolean;
 	onDismiss: () => void;
 }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const permissions = usePermissions();
 	const { create, rename, remove, move } = usePlaylistActions();
 	const drag = useDragState();
@@ -154,7 +157,7 @@ export function Sidebar({
 	const reorder = (from: number, to: number) =>
 		move.mutate(
 			{ id: shown[from].id, index: playerIndexOf(to) },
-			{ onError: refused("The player would not reorder that.") },
+			{ onError: refused(t("playlist.reorderRefused")) },
 		);
 
 	const sortable = useSortableList({
@@ -230,7 +233,7 @@ export function Sidebar({
 	const newPlaylist = () =>
 		create.mutate(untitledPlaylistName(shown), {
 			onSuccess: (playlist) => setRenamingId(playlist.id),
-			onError: refused("The player would not create a playlist."),
+			onError: refused(t("playlist.createRefused")),
 		});
 
 	const deletePlaylist = (playlist: PlaylistInfo) => {
@@ -240,7 +243,9 @@ export function Sidebar({
 			if (next) onSelect(next.id);
 		}
 		remove.mutate(playlist.id, {
-			onError: refused(`${playlist.title} could not be deleted.`),
+			onError: refused(
+				t("playlist.deleteFailed", { playlist: playlist.title }),
+			),
 		});
 	};
 
@@ -251,33 +256,36 @@ export function Sidebar({
 		return [
 			{
 				id: "rename",
-				label: "Rename",
+				label: t("action.rename"),
 				icon: Pencil,
 				onSelect: () => setRenamingId(target.id),
 			},
 			{ type: "separator" },
 			{
 				id: "delete",
-				label: "Delete",
+				label: t("action.delete"),
 				icon: Trash2,
 				danger: true,
 				items: [
 					{
 						type: "message",
-						text: `${target.title} will be removed from the player. Its ${target.itemCount.toLocaleString()} tracks stay where they are on disk.`,
+						text: t("playlist.deleteWarning", {
+							playlist: target.title,
+							count: target.itemCount,
+						}),
 					},
 					{
 						id: "confirm",
-						label: "Delete playlist",
+						label: t("playlist.delete"),
 						icon: Trash2,
 						danger: true,
 						onSelect: () => deletePlaylist(target),
 					},
-					{ id: "cancel", label: "Keep it", icon: Undo2 },
+					{ id: "cancel", label: t("playlist.keepIt"), icon: Undo2 },
 				],
 			},
 		];
-	}, [target, shown, selectedId]);
+	}, [target, shown, selectedId, t]);
 
 	return (
 		<>
@@ -285,7 +293,7 @@ export function Sidebar({
 				<button
 					type="button"
 					className={styles.scrim}
-					aria-label="Close menu"
+					aria-label={t("sidebar.closeMenu")}
 					onClick={onDismiss}
 				/>
 			) : null}
@@ -297,18 +305,18 @@ export function Sidebar({
 				data-reordering={sortable.isDragging ? "true" : undefined}
 				data-drop-scroller=""
 				data-receiving={drag.isDragging ? "true" : undefined}
-				aria-label="Playlists"
+				aria-label={t("sidebar.playlists")}
 				aria-hidden={isCollapsed}
 				onKeyDown={onArrows}
 				{...swipe}
 			>
 				{search.hasQuery || search.remembered ? (
 					<>
-						<p className={styles.heading}>Search</p>
+						<p className={styles.heading}>{t("search.title")}</p>
 						<NavRow
 							icon={Search}
 							label={search.query || search.remembered}
-							count={search.hasQuery ? search.matchCount.toLocaleString() : ""}
+							count={search.hasQuery ? format.number(search.matchCount) : ""}
 							isPlaying={playingRoute === "search"}
 							isCurrent={isSearchOpen}
 							onClick={() => {
@@ -321,14 +329,14 @@ export function Sidebar({
 
 				<NavRow
 					icon={Home}
-					label="Home"
+					label={t("sidebar.home")}
 					isCurrent={route === "" || route === "home"}
 					onClick={() => onOpenRoute("home")}
 				/>
 
 				<NavRow
 					icon={Disc3}
-					label={ALL_MUSIC}
+					label={t("library.allMusic")}
 					isPlaying={playingRoute === "all"}
 					isCurrent={route === "all"}
 					onClick={() => onOpenRoute("all")}
@@ -336,7 +344,7 @@ export function Sidebar({
 
 				<NavRow
 					icon={Shapes}
-					label="Genres"
+					label={t("home.genres")}
 					isNested
 					isCurrent={route === ROUTE.genres}
 					onClick={() => onOpenRoute(ROUTE.genres)}
@@ -345,7 +353,7 @@ export function Sidebar({
 				{playingFrom?.temporaryRow ? (
 					<>
 						<p className={styles.heading}>
-							{KIND_LABEL[playingFrom.kind] ?? "Playing from"}
+							{t(KIND_LABEL[playingFrom.kind] ?? "playlist.playingFrom")}
 						</p>
 						<NavRow
 							icon={Disc3}
@@ -359,7 +367,7 @@ export function Sidebar({
 
 				<div className={styles.sectionHeader}>
 					<p className={styles.heading}>
-						Playlists
+						{t("sidebar.playlists")}
 						{PALETTE_HINT ? (
 							<kbd className={styles.hint}>{PALETTE_HINT}</kbd>
 						) : null}
@@ -368,7 +376,7 @@ export function Sidebar({
 						<button
 							type="button"
 							className={styles.add}
-							aria-label="New playlist"
+							aria-label={t("playlist.new")}
 							disabled={create.isPending}
 							onClick={newPlaylist}
 						>
@@ -430,7 +438,10 @@ export function Sidebar({
 						? {
 								icon: ListMusic,
 								title: target.title,
-								subtitle: plural(target.itemCount, "track"),
+								subtitle: t("view.trackCount", {
+									count: target.itemCount,
+									total: target.itemCount,
+								}),
 							}
 						: null
 				}
@@ -474,6 +485,8 @@ function PlaylistRow({
 	onBlur: () => void;
 	onRename: (title: string | null) => void;
 }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const { style: pressableStyle, ...gestures } = menuProps;
 	const { style: dragStyle, ref, ...rowState } = rowProps;
 
@@ -489,7 +502,7 @@ function PlaylistRow({
 		<NavRow
 			icon={isAuto ? WandSparkles : ListMusic}
 			label={playlist.title}
-			count={playlist.itemCount.toLocaleString()}
+			count={format.number(playlist.itemCount)}
 			isPlaying={playlist.isCurrent}
 			isCurrent={isSelected}
 			onClick={onSelect}
@@ -499,9 +512,7 @@ function PlaylistRow({
 				style: { ...pressableStyle, ...dragStyle },
 				"data-drop-target": isDropTarget ? playlist.id : undefined,
 				"data-drop-over": isDropOver ? "true" : undefined,
-				"data-drop-refuses": isAuto
-					? "Autoplaylists fill themselves"
-					: undefined,
+				"data-drop-refuses": isAuto ? t("playlist.autoRefuses") : undefined,
 				...rowState,
 				// Merged rather than spread: both objects set onPointerDown, Move, Up and Cancel, and the second would win all four.
 				...mergeHandlers(gestures, dragProps),
@@ -530,6 +541,7 @@ function RenameField({
 	title: string;
 	onCommit: (title: string | null) => void;
 }) {
+	const t = useTranslate();
 	const [value, setValue] = useState(title);
 	const cancelled = useRef(false);
 
@@ -544,7 +556,7 @@ function RenameField({
 			<input
 				className={styles.renameInput}
 				value={value}
-				aria-label={`Rename ${title}`}
+				aria-label={t("playlist.renameOne", { playlist: title })}
 				spellCheck="false"
 				autoComplete="off"
 				// biome-ignore lint/a11y/noAutofocus: rename is the state

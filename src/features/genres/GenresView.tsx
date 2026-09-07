@@ -6,9 +6,12 @@ import { genreRoute } from "@/domain/library/genreRoute";
 import type { Library } from "@/domain/library/useLibrary";
 import { genresOf } from "@/domain/track/genres";
 import { useStoredState } from "@/shared/hooks/useStoredState";
+import type { Phrase } from "@/shared/i18n/en";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
-import { completionFor, fuzzyScore, plural, squash } from "@/shared/lib/text";
+import { completionFor, fuzzyScore, squash } from "@/shared/lib/text";
+import type { IconComponent } from "@/shared/ui/icons";
 import { Segmented } from "@/shared/ui/Segmented";
 import { GenreFinder } from "./GenreFinder";
 import styles from "./GenresView.module.css";
@@ -17,9 +20,17 @@ import { GenreTile } from "./GenreTile";
 type Order = "largest" | "name";
 
 const ORDERS = [
-	{ value: "largest" as const, label: "Largest", icon: ArrowDownWideNarrow },
-	{ value: "name" as const, label: "A–Z", icon: ArrowDownAZ },
-];
+	{
+		value: "largest" as const,
+		label: "genre.largest",
+		icon: ArrowDownWideNarrow,
+	},
+	{ value: "name" as const, label: "genre.alphabetical", icon: ArrowDownAZ },
+] as const satisfies readonly {
+	value: Order;
+	label: Phrase;
+	icon: IconComponent;
+}[];
 
 export function GenresView({
 	library,
@@ -28,6 +39,7 @@ export function GenresView({
 	library: Library;
 	onOpenRoute: (route: string) => void;
 }) {
+	const t = useTranslate();
 	const [query, setQuery] = useState("");
 	const [order, setOrder] = useStoredState<Order>("jean.genreOrder", "largest");
 	const inputRef = useRef<HTMLInputElement | null>(null);
@@ -117,6 +129,11 @@ export function GenresView({
 		if (best) onOpenRoute(genreRoute(best.name));
 	};
 
+	const orders = useMemo(
+		() => ORDERS.map((option) => ({ ...option, label: t(option.label) })),
+		[t],
+	);
+
 	const trackCount = useMemo(
 		() => genres.reduce((total, genre) => total + genre.trackCount, 0),
 		[genres],
@@ -126,12 +143,17 @@ export function GenresView({
 		// biome-ignore lint/a11y/noStaticElementInteractions: type-to-find focuses the field
 		<div className={styles.view} onKeyDown={onPageKeyDown}>
 			<header className={styles.header}>
-				<p className={styles.eyebrow}>Your library</p>
-				<h1 className={styles.title}>Genres</h1>
+				<p className={styles.eyebrow}>{t("home.yourLibrary")}</p>
+				<h1 className={styles.title}>{t("home.genres")}</h1>
 				{genres.length > 0 ? (
 					<p className={styles.summary}>
-						{plural(genres.length, "genre")} across{" "}
-						{plural(trackCount, "track")}
+						{t("genre.summary", {
+							genres: t("genre.count", { count: genres.length }),
+							tracks: t("view.trackCount", {
+								count: trackCount,
+								total: trackCount,
+							}),
+						})}
 					</p>
 				) : null}
 			</header>
@@ -151,13 +173,13 @@ export function GenresView({
 					{genres.length > 1 && !query ? (
 						<div className={styles.sort}>
 							<p className={styles.sortLabel} id="genre-order">
-								Sort by
+								{t("genre.sortBy")}
 							</p>
 							<Segmented
 								value={order}
 								onChange={setOrder}
-								options={ORDERS}
-								label="Order genres"
+								options={orders}
+								label={t("genre.order")}
 							/>
 						</div>
 					) : null}
@@ -174,10 +196,10 @@ export function GenresView({
 			) : (
 				<p className={styles.notice}>
 					{library.isLoading
-						? "Reading your library..."
+						? t("library.reading")
 						: genres.length === 0
-							? "Nothing in your library carries a genre tag."
-							: `No genre here answers to "${query}".`}
+							? t("genre.noTags")
+							: t("genre.noMatch", { query })}
 				</p>
 			)}
 		</div>

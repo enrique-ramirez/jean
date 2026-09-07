@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Lyrics } from "./Lyrics";
 import styles from "./LyricsScreen.module.css";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
@@ -18,6 +19,7 @@ export function LyricsScreen({
 	onSeek: (at: number) => void;
 	onClose: () => void;
 }) {
+	const t = useTranslate();
 	useEscapeCapture(onClose);
 
 	const swipe = useSwipe({ onDown: onClose });
@@ -26,14 +28,14 @@ export function LyricsScreen({
 		<section
 			className={styles.screen}
 			data-now-playing=""
-			aria-label="Lyrics"
+			aria-label={t("panel.lyrics")}
 			{...swipe}
 		>
 			<div className={styles.bar}>
 				<button
 					type="button"
 					className={styles.close}
-					aria-label="Close full-screen lyrics"
+					aria-label={t("lyrics.closeFullScreen")}
 					onClick={onClose}
 				>
 					<X size={26} strokeWidth={2.5} />

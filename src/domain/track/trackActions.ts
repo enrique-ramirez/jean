@@ -1,6 +1,7 @@
 import { Check, ListEnd, ListMusic, ListPlus, Star, User } from "lucide-react";
 import { artistHref } from "@/domain/track/artistRoute";
 import type { PlaylistInfo } from "@/shared/api/types";
+import type { Translate } from "@/shared/i18n/locale";
 import type { ActionNode } from "@/shared/ui/ActionMenu";
 import { namesAnArtist } from "./artists";
 import { creditedArtists } from "./fields";
@@ -12,12 +13,13 @@ import { QUEUE_LIMIT } from "./useQueueTracks";
 export const ratingItems = (
 	current: number | null,
 	onRate: (stars: number | null) => void,
+	t: Translate,
 ): ActionNode[] => [
 	...Array.from({ length: MAX_STARS }, (_, at) => {
 		const stars = MAX_STARS - at;
 		return {
 			id: `rate-${stars}`,
-			label: stars === 1 ? "1 star" : `${stars} stars`,
+			label: t("rating.stars", { count: stars }),
 			icon: stars === current ? Check : Star,
 			onSelect: () => onRate(stars),
 		};
@@ -25,7 +27,7 @@ export const ratingItems = (
 	{ type: "separator" as const },
 	{
 		id: "rate-none",
-		label: "No rating",
+		label: t("rating.none"),
 		icon: current === null ? Check : undefined,
 		onSelect: () => onRate(null),
 	},
@@ -42,6 +44,7 @@ export function trackActions({
 	addTracks,
 	rating,
 	credit,
+	t,
 }: {
 	count: number;
 	source: LibrarySource;
@@ -59,6 +62,7 @@ export function trackActions({
 		itemIndices: number[];
 	}) => void;
 	rating: ActionNode | null;
+	t: Translate;
 	// The `%artist%` line of the one track this is about. A track list gives its rows no artist link
 	// of their own -- playing is what a row is for, and a link inside one is a target a finger misses
 	// -- so this is where an artist is reachable from a row at all.
@@ -86,7 +90,7 @@ export function trackActions({
 			? [
 					{
 						id: "artist",
-						label: `Go to ${first}`,
+						label: t("track.goToNamed", { artist: first }),
 						icon: User,
 						onSelect: goTo(first),
 					},
@@ -94,7 +98,7 @@ export function trackActions({
 			: [
 					{
 						id: "artist",
-						label: "Go to artist",
+						label: t("track.goToArtist"),
 						icon: User,
 						items: named.map((name) => ({
 							id: `artist-${name}`,
@@ -112,8 +116,8 @@ export function trackActions({
 			id: "queue",
 			label:
 				count > QUEUE_LIMIT
-					? `Add to queue (${QUEUE_LIMIT} at a time)`
-					: "Add to queue",
+					? t("track.queueLimited", { limit: QUEUE_LIMIT })
+					: t("track.queue"),
 			icon: ListEnd,
 			disabled: !canQueue || count > QUEUE_LIMIT,
 			onSelect: () => queueTracks({ source, itemIndices }),
@@ -122,10 +126,10 @@ export function trackActions({
 		{ type: "separator" as const },
 		{
 			id: "add",
-			label: "Add to playlist",
+			label: t("track.addToPlaylist"),
 			icon: ListPlus,
 			disabled: !canEdit || targets.length === 0,
-			filter: "Find a playlist",
+			filter: t("track.findPlaylist"),
 			items: targets.map((target) => ({
 				id: target.id,
 				label: target.title,

@@ -7,6 +7,7 @@ import type {
 	Suggestion,
 } from "@/domain/library/useLibrarySearch";
 import { useDismissable } from "@/shared/hooks/useDismissable";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Input } from "@/shared/ui/Input";
 import styles from "./LibrarySearchField.module.css";
 import { optionId, SearchDropdown } from "./SearchDropdown";
@@ -28,6 +29,8 @@ export function LibrarySearchField({
 	onSelect: (suggestion: Suggestion) => void;
 	onDismiss: () => void;
 }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const {
 		draft,
 		hasDraft,
@@ -144,10 +147,10 @@ export function LibrarySearchField({
 				onClick={open}
 				onBlur={search.onBlur}
 				onKeyDown={onKeyDown}
-				placeholder={
-					library.needsSetup ? "Set up your library" : "Search your library"
-				}
-				aria-label="Search your library"
+				placeholder={t(
+					library.needsSetup ? "search.setUp" : "search.yourLibrary",
+				)}
+				aria-label={t("search.yourLibrary")}
 				role="combobox"
 				aria-expanded={isShowing}
 				aria-controls={hasOptions ? LIST_ID : undefined}
@@ -163,13 +166,13 @@ export function LibrarySearchField({
 					hasDraft ? (
 						<>
 							<span className={styles.count} data-pending={isFiltering}>
-								{draftCount.toLocaleString()}
+								{format.number(draftCount)}
 							</span>
 							<button
 								type="button"
 								className={styles.clear}
 								onClick={onDismiss}
-								aria-label="Clear search"
+								aria-label={t("search.clear")}
 							>
 								<X size={14} strokeWidth={2} />
 							</button>

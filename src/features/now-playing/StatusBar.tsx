@@ -14,6 +14,7 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { ListenHere, playerNameOf } from "./ListenHere";
@@ -25,6 +26,7 @@ import styles from "./StatusBar.module.css";
 import { Volume, VolumePopover } from "./Volume";
 
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
+	const t = useTranslate();
 	const [showRemaining, setShowRemaining] = useStoredState(
 		"jean.timeRemaining",
 		false,
@@ -38,7 +40,7 @@ function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 		<button
 			type="button"
 			className={styles.times}
-			title={showRemaining ? "Show time elapsed" : "Show time remaining"}
+			title={t(showRemaining ? "player.showElapsed" : "player.showRemaining")}
 			onClick={() => setShowRemaining((current) => !current)}
 		>
 			<span className="tabular">
@@ -63,6 +65,7 @@ export function StatusBar({
 	onOpenNowPlaying: () => void;
 	onRevealNowPlaying: () => void;
 }) {
+	const t = useTranslate();
 	const { isPending, isError, error } = usePlayer();
 	const snapshot = useAudiblePlayer();
 	const isCompactViewport = useIsCompactViewport();
@@ -87,8 +90,8 @@ export function StatusBar({
 			<footer className={styles.statusbar}>
 				<p className={styles.notice}>
 					{isError
-						? `Can’t reach the player — ${error.message}`
-						: "Connecting to the player…"}
+						? t("player.unreachable", { message: error.message })
+						: t("player.connecting")}
 				</p>
 			</footer>
 		);
@@ -111,7 +114,7 @@ export function StatusBar({
 				<button
 					type="button"
 					className={styles.now}
-					aria-label="Show current track"
+					aria-label={t("player.showCurrentTrack")}
 					onClick={onOpenNowPlaying}
 				>
 					<Artwork
@@ -126,7 +129,7 @@ export function StatusBar({
 
 					<div className={styles.names}>
 						<span className={styles.title}>
-							{track?.title ?? "Nothing playing"}
+							{track?.title ?? t("player.nothingPlaying")}
 						</span>
 						<span className={styles.artist}>{track?.artist ?? "—"}</span>
 					</div>
@@ -140,7 +143,7 @@ export function StatusBar({
 							<button
 								type="button"
 								className={styles.skip}
-								aria-label="Previous track"
+								aria-label={t("shortcut.previousTrack")}
 								onClick={() => transport.previous.mutate()}
 							>
 								<SkipBackIcon size={18} />
@@ -155,7 +158,7 @@ export function StatusBar({
 								<VolumePopover
 									volume={shownVolume}
 									onChange={changeVolume}
-									label={isHere ? "Volume on this device" : "Volume"}
+									label={t(isHere ? "player.volumeHere" : "player.volume")}
 								/>
 							) : null}
 						</>
@@ -171,7 +174,7 @@ export function StatusBar({
 							<button
 								type="button"
 								className={styles.skip}
-								aria-label="Next track"
+								aria-label={t("shortcut.nextTrack")}
 								onClick={() => transport.next.mutate()}
 							>
 								<SkipForwardIcon size={18} />
@@ -191,7 +194,7 @@ export function StatusBar({
 								volume={shownVolume}
 								onChange={changeVolume}
 								onToggleMute={toggleMute}
-								label={isHere ? "Volume on this device" : "Volume"}
+								label={t(isHere ? "player.volumeHere" : "player.volume")}
 							/>
 						) : null}
 					</div>

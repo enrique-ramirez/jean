@@ -36,7 +36,7 @@ const find = (artist: string, album: string) =>
 	albums.find(
 		(entry) =>
 			entry.album.toLowerCase() === album.toLowerCase() &&
-			entry.artist.toLowerCase() === artist.toLowerCase(),
+			entry.artistTag?.toLowerCase() === artist.toLowerCase(),
 	);
 
 test("one title by two bands is two records", () => {
@@ -59,9 +59,10 @@ test("a missing album artist falls back to the track's own", () => {
 });
 
 test("a record with neither artist tag is still a record", () => {
-	const loose = find("Unknown artist", "Field Recordings");
+	const loose = albums.find((entry) => entry.album === "Field Recordings");
 	assert.equal(loose?.trackCount, 1);
-	// What is drawn stands in for the tag; what addresses the record is the absence of one.
+	// The absence is what addresses it. A record carries no name to draw, since what to
+	// call an untagged one is a phrase and would be in whichever language built the index.
 	assert.equal(loose?.artistTag, null);
 });
 
@@ -143,7 +144,7 @@ test("two records sharing a title are two rows, not one", () => {
 	const both = rankEntities(albums, "blood, sweat & tears", TIER.word);
 	assert.equal(both.length, 2);
 	assert.deepEqual(
-		both.map((entry) => entry.artist),
+		both.map((entry) => entry.artistTag),
 		["Blood, Sweat & Tears", "Johnny Cash"],
 	);
 });

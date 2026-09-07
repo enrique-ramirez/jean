@@ -1,5 +1,6 @@
 import { fieldTable } from "@/shared/api/fieldTable";
 import type { TrackColumns } from "@/shared/api/types";
+import type { Translate } from "@/shared/i18n/locale";
 
 const FIELDS = [
 	["trackNumber", "%tracknumber%"],
@@ -74,11 +75,14 @@ export function readNumber(raw: string | undefined): number | null {
 export const numberOf = (row: TrackColumns, field: number): number | null =>
 	readNumber(row[field]);
 
-export const titleOf = (row: TrackColumns) =>
-	value(row, FIELD.title) ?? "Unknown title";
+// The translator is passed in rather than reached for: what these answer is a phrase, so a caller
+// memoising the result has to depend on the language, and a dependency it cannot see is one it will
+// not have.
+export const titleOf = (row: TrackColumns, t: Translate) =>
+	value(row, FIELD.title) ?? t("track.unknownTitle");
 
-export const artistOf = (row: TrackColumns) =>
-	value(row, FIELD.artist) ?? "Unknown artist";
+export const artistOf = (row: TrackColumns, t: Translate) =>
+	value(row, FIELD.artist) ?? t("track.unknownArtist");
 
 // 'YYYY-MM-DD HH:MM:SS', with a trailing space from some components. Not every engine parses the
 // space separator, hence the swap for 'T'.

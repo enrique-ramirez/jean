@@ -1,4 +1,5 @@
 import type { PlaylistInfo } from "@/shared/api/types";
+import type { Translate } from "@/shared/i18n/locale";
 
 // beefweb has no hidden or app-owned playlist, so ownership is declared in the title: anything
 // beginning `#Jean` is Jean's plumbing, anything else is the user's music.
@@ -34,10 +35,11 @@ export interface ScratchContents {
 	label: string;
 }
 
-export const ALL_MUSIC = "All music";
-
-export const scratchName = (held: ScratchContents | null | undefined) =>
-	held?.kind === SCRATCH_KIND.all ? ALL_MUSIC : held?.label || null;
+export const scratchName = (
+	held: ScratchContents | null | undefined,
+	t: Translate,
+) =>
+	held?.kind === SCRATCH_KIND.all ? t("library.allMusic") : held?.label || null;
 
 export const scratchTitle = (kind: string, label?: string | null) =>
 	`${SCRATCH_PREFIX}${label ? `${kind}: ${label}` : kind}${SCRATCH_SUFFIX}`;

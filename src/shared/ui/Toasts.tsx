@@ -1,10 +1,12 @@
 import { Check, TriangleAlert, X } from "lucide-react";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./Toasts.module.css";
 import { dismissToast, useToasts } from "./toastStore";
 
 const ICONS = { default: Check, error: TriangleAlert };
 
 export function Toasts() {
+	const t = useTranslate();
 	const toasts = useToasts();
 	if (toasts.length === 0) return null;
 
@@ -39,7 +41,7 @@ export function Toasts() {
 						<button
 							type="button"
 							className={styles.close}
-							aria-label="Dismiss"
+							aria-label={t("action.dismiss")}
 							onClick={() => dismissToast(toast.id)}
 						>
 							<X size={13} strokeWidth={2.2} aria-hidden="true" />

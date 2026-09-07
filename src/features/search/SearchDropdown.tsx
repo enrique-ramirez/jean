@@ -10,6 +10,7 @@ import {
 import type { Library } from "@/domain/library/useLibrary";
 import type {
 	LibrarySearch,
+	SearchSectionLabel,
 	Suggestion,
 } from "@/domain/library/useLibrarySearch";
 import {
@@ -21,7 +22,11 @@ import {
 } from "@/domain/track/fields";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useSwipe } from "@/shared/hooks/useSwipe";
-import { plural } from "@/shared/lib/text";
+import {
+	type Translate,
+	useFormats,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./SearchDropdown.module.css";
 
@@ -29,10 +34,19 @@ export const optionId = (position: number) => `search-result-${position}`;
 
 const ART = 36;
 
-function Heading({ label, count }: { label: string; count: number }) {
+function Heading({
+	label,
+	count,
+}: {
+	label: SearchSectionLabel;
+	count: number;
+}) {
+	const t = useTranslate();
+	const format = useFormats();
+
 	return (
 		<p className={styles.heading}>
-			{label} <span className={styles.count}>({count.toLocaleString()})</span>
+			{t(label)} <span className={styles.count}>({format.number(count)})</span>
 		</p>
 	);
 }
@@ -50,6 +64,7 @@ const joined = (...parts: (string | null | false)[]) =>
 function faceOf(
 	suggestion: Suggestion,
 	library: Library,
+	t: Translate,
 ): { key: string; leading: ReactNode; title: string; under: string } {
 	const cover = (ref: number, className: string) => (
 		<Artwork
@@ -73,8 +88,15 @@ function faceOf(
 					),
 				title: artist.name,
 				under: joined(
-					artist.albumCount > 0 && plural(artist.albumCount, "album"),
-					plural(artist.trackCount + artist.guestCount, "track"),
+					artist.albumCount > 0 &&
+						t("artist.albumCount", {
+							count: artist.albumCount,
+							total: artist.albumCount,
+						}),
+					t("view.trackCount", {
+						count: artist.trackCount + artist.guestCount,
+						total: artist.trackCount + artist.guestCount,
+					}),
 				),
 			};
 		}
@@ -85,7 +107,13 @@ function faceOf(
 				key: `album:${album.key}`,
 				leading: cover(album.refs[0], styles.cover),
 				title: album.album,
-				under: joined(album.artist, plural(album.trackCount, "track")),
+				under: joined(
+					album.artistTag,
+					t("view.trackCount", {
+						count: album.trackCount,
+						total: album.trackCount,
+					}),
+				),
 			};
 		}
 
@@ -101,7 +129,10 @@ function faceOf(
 					</span>
 				),
 				title: genre.name,
-				under: plural(genre.trackCount, "track"),
+				under: t("view.trackCount", {
+					count: genre.trackCount,
+					total: genre.trackCount,
+				}),
 			};
 		}
 
@@ -110,8 +141,8 @@ function faceOf(
 			return {
 				key: `track:${suggestion.ref}`,
 				leading: cover(suggestion.ref, styles.cover),
-				title: titleOf(row),
-				under: joined(artistOf(row), value(row, FIELD.album)),
+				title: titleOf(row, t),
+				under: joined(artistOf(row, t), value(row, FIELD.album)),
 			};
 		}
 	}
@@ -195,6 +226,7 @@ export function SearchDropdown({
 	onSelect: (suggestion: Suggestion) => void;
 	onDismiss: () => void;
 }) {
+	const t = useTranslate();
 	const panel = useRef<HTMLDivElement | null>(null);
 	const list = useRef<HTMLDivElement | null>(null);
 	const { sections, suggestions } = search;
@@ -224,8 +256,11 @@ export function SearchDropdown({
 			{suggestions.length === 0 ? (
 				<p className={styles.notice}>
 					{library.isLoading
-						? `Searching ${library.loaded.toLocaleString()} of ${library.total.toLocaleString()}...`
-						: "Nothing in your library matches that."}
+						? t("search.reading", {
+								loaded: library.loaded,
+								total: library.total,
+							})
+						: t("search.noMatch")}
 				</p>
 			) : (
 				<div className={styles.results} id={listId} role="listbox" ref={list}>
@@ -243,6 +278,7 @@ export function SearchDropdown({
 									const { key, leading, title, under } = faceOf(
 										suggestion,
 										library,
+										t,
 									);
 
 									return (

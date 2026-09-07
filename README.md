@@ -17,7 +17,7 @@ Jean (/ʝan/) is a replacement web UI for the [beefweb](https://github.com/hyper
 - **Indexes your genres**, all of them, found by typing, and turns any of them into an autoplaylist the player keeps filled.
 - **Draws the play queue as a timetable**, so every row says when it will play.
 
-Light and dark, both actually designed. Full keyboard control on desktop. On a phone the sidebar is a drawer, menus arrive as sheets, the volume fader is sized for a thumb, and anything that only means something with a keyboard attached is not there.
+Light and dark, both actually designed. English and Spanish, with any other language a JSON file away. Full keyboard control on desktop. On a phone the sidebar is a drawer, menus arrive as sheets, the volume fader is sized for a thumb, and anything that only means something with a keyboard attached is not there.
 
 Anything your library cannot support is not drawn. No ratings, no starred shelf. No playback statistics, no play-history shelves at all. A library with no genre tags does not get told it has none.
 
@@ -51,7 +51,7 @@ The name is how Jean knows the playlist is meant for it, so it has to match. If 
 
 ## Put it on your player
 
-Jean is a static build. `pnpm build` produces a `dist/` folder — an `index.html`, a favicon and an `assets/` folder with one JS and one CSS file. Copy it where the player can read it, point beefweb at it, restart.
+Jean is a static build. `pnpm build` produces a `dist/` folder — an `index.html`, a favicon, a `locales/` folder and an `assets/` folder with one JS and one CSS file. Copy it where the player can read it, point beefweb at it, restart.
 
 **1. Build.**
 
@@ -60,7 +60,7 @@ pnpm install
 pnpm build
 ```
 
-**2. Copy `dist/` somewhere the player process can read.** **Empty the target folder first if you are replacing an older build** — asset filenames are content-hashed, so old bundles pile up rather than being overwritten.
+**2. Copy `dist/` somewhere the player process can read.** **Empty `assets/` first if you are replacing an older build** — asset filenames are content-hashed, so old bundles pile up rather than being overwritten. Empty the *whole* folder only if you have not written a translation of your own; `locales/custom.json` is yours and nothing else replaces it.
 
 **3. Point beefweb at it** in `config.json`, in the beefweb profile directory. Create the file if it is not there:
 
@@ -96,6 +96,26 @@ The portable case catches people out. A deploy to `%APPDATA%` there fails silent
 ### You do not have to tell Jean your port
 
 Jean asks beefweb for everything by a root-relative path, which the browser resolves against whatever origin served the page. Change the port in the player's settings and nothing here needs touching. The one arrangement this does not survive is hosting Jean somewhere *other* than beefweb — there is no same-origin API then, and beefweb has CORS off by default.
+
+## Language
+
+Jean ships in English, with a Spanish translation beside it. Pick one under **Settings → Language**; with nothing picked it follows the browser, so a phone set to Spanish opens in Spanish without anyone configuring it. Dates, figures and sort order follow whatever is chosen, not the browser.
+
+### Translating it yourself
+
+The languages live in `locales/`, beside `index.html`, one JSON file per language named after its code — `en.json`, `es.json`, `fr.json`. Copy one, translate the right-hand side of each line, and leave anything in `{braces}` alone: those are filled in at runtime, and a field renamed shows up as `{prot}` on screen.
+
+Then tell Jean the file is there. It cannot look: beefweb's static server publishes no directory listing, and its file browser refuses anything outside your music folders. So name the code in `locales/custom.json`, which is a plain list and is the one file here that is yours:
+
+```json
+["fr", "pt-BR"]
+```
+
+A phrase your file does not carry falls back to English, so a half-finished translation works from the first line, and one written for an older release of Jean goes on working — Settings names how many phrases are missing. `en.json` is written by the build as the file to copy; English is built into Jean, so editing it changes nothing.
+
+**Names outside Jean stay in their own language.** `Library → Search`, the `File → Preferences → Tools → Jean` pane, foo_jean's own labels: those are things to find on a foobar2000 screen that is in English whatever Jean is showing, and translating them sends people looking for a menu that is not there.
+
+A translation you would like shipped is welcome as a pull request — put it in `public/locales/` and `pnpm test:unit` will check it against the catalogue.
 
 ## Keyboard
 

@@ -12,6 +12,8 @@ import type { TrackColumns, TrackIdentity } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
+import { translate } from "@/shared/i18n/locale";
+import type { Translate } from "@/shared/i18n/useTranslate";
 import { pushToast } from "@/shared/ui/toastStore";
 import type { LibrarySource } from "./librarySource";
 import { clearWrittenRating, setWrittenRating } from "./ratingStore";
@@ -27,10 +29,14 @@ export const RATING_FIELD = "rating";
 
 const FIELDS_KEY = "jean.fooJeanFields";
 
-const FIELD_LABELS: Record<string, string> = { rating: "Ratings" };
+// A field this install permits that Jean has no name for is drawn as the player spells it, which is
+// the only honest thing to call something the component's own configuration invented.
+const FIELD_LABELS = { rating: "fooJean.field.rating" } as const;
 
-export const labelOfField = (field: string) =>
-	FIELD_LABELS[field.toLowerCase()] ?? field;
+export function labelOfField(field: string, t: Translate): string {
+	const known = FIELD_LABELS[field.toLowerCase() as keyof typeof FIELD_LABELS];
+	return known ? t(known) : field;
+}
 
 export interface RateTarget {
 	source: LibrarySource;
@@ -172,7 +178,10 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 				if (result.reason === "timeout") {
 					// The write may still land, so a timeout is never rolled back.
 					pushToast({
-						message: `${label} may not have been rated. ${result.message}`,
+						message: translate("rate.maybeFailed", {
+							label,
+							message: result.message,
+						}),
 						tone: "error",
 					});
 					return;
@@ -180,7 +189,7 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 
 				restore();
 				pushToast({
-					message: `${label} was not rated. ${result.message}`,
+					message: translate("rate.failed", { label, message: result.message }),
 					tone: "error",
 				});
 			});
@@ -238,7 +247,7 @@ async function sendRating(
 	if (!resolved?.identity.path) {
 		clearWrittenRating(row);
 		pushToast({
-			message: "That track has moved. Reload to rate it.",
+			message: translate("rate.moved"),
 			tone: "error",
 		});
 		return;
@@ -260,9 +269,7 @@ async function sendRating(
 			.catch(() => null);
 		if (after) setWrittenRating(row, after.columns[0] ?? "");
 		pushToast({
-			message: after
-				? "foobar2000 took a while, but the rating is saved."
-				: "foobar2000 did not answer. The rating may not have been saved.",
+			message: translate(after ? "rate.slowOk" : "rate.noAnswer"),
 			tone: after ? "default" : "error",
 		});
 		return;
@@ -276,7 +283,7 @@ async function sendRating(
 		);
 		refuse((current) => [...current, result.field ?? RATING_FIELD]);
 		pushToast({
-			message: "This foobar2000 does not allow ratings to be written.",
+			message: translate("rate.notAllowed"),
 			tone: "error",
 		});
 		return;
@@ -285,8 +292,8 @@ async function sendRating(
 	pushToast({
 		message:
 			result.reason === "unknown-track"
-				? "foobar2000 does not know that track, so it was not rated."
-				: `The rating was not saved. ${result.message}`,
+				? translate("rate.unknownTrack")
+				: translate("rate.notSaved", { message: result.message }),
 		tone: "error",
 	});
 }

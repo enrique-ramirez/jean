@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CoveredAlbum } from "@/domain/track/albums";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { AlbumCard } from "./AlbumCard";
 import styles from "./ShelfRow.module.css";
 import type { FilledShelf } from "./shelves";
@@ -12,6 +13,8 @@ export function ShelfScroller({
 	shelf: FilledShelf<CoveredAlbum>;
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const scrollerRef = useRef<HTMLDivElement | null>(null);
 	const [more, setMore] = useState({ start: false, end: false });
 
@@ -51,7 +54,7 @@ export function ShelfScroller({
 			<button
 				type="button"
 				className={`${styles.arrow} ${styles.back}`}
-				aria-label={`Scroll ${shelf.title} back`}
+				aria-label={t("home.scrollBack", { shelf: t(shelf.title) })}
 				disabled={!more.start}
 				onClick={() => page(-1)}
 			>
@@ -69,7 +72,7 @@ export function ShelfScroller({
 					<AlbumCard
 						key={album.key}
 						album={album}
-						caption={shelf.caption(album)}
+						caption={shelf.caption(album, t, format.locale)}
 						onPlay={() => onPlayAlbum(shelf, album)}
 					/>
 				))}
@@ -78,7 +81,7 @@ export function ShelfScroller({
 			<button
 				type="button"
 				className={`${styles.arrow} ${styles.forward}`}
-				aria-label={`Scroll ${shelf.title} forward`}
+				aria-label={t("home.scrollForward", { shelf: t(shelf.title) })}
 				disabled={!more.end}
 				onClick={() => page(1)}
 			>

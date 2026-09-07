@@ -1,37 +1,34 @@
 import { Columns3 } from "lucide-react";
-
+import { Trans } from "@/shared/i18n/Trans";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import styles from "./HeatLegend.module.css";
 
 export function HeatLegend({ onDismiss }: { onDismiss: () => void }) {
+	const t = useTranslate();
 	return (
 		<div className={styles.legend}>
-			<p className={styles.title}>Play-count shading</p>
+			<p className={styles.title}>{t("heat.legendTitle")}</p>
 
 			<div className={styles.scale} aria-hidden="true" />
 			<div className={styles.ends} aria-hidden="true">
-				<span>never played</span>
-				<span>played most</span>
+				<span>{t("heat.neverPlayed")}</span>
+				<span>{t("heat.playedMost")}</span>
 			</div>
 
 			<p className={styles.body}>
-				Warmer rows are the ones you play more, measured against the most-played
-				track in <em>this list</em> — so it rescales when you open a different
-				one.
+				<Trans phrase="heat.warmer" list={<em>{t("heat.thisList")}</em>} />
 			</p>
 
-			<p className={styles.body}>
-				The colour cools as years pass since you last heard a track. Ones you
-				have never played stay plain rather than faded.
-			</p>
+			<p className={styles.body}>{t("heat.cools")}</p>
 
 			<div className={styles.actions}>
 				<p className={styles.home}>
 					<Columns3 size={13} strokeWidth={2} aria-hidden="true" />
-					Find this again under view options
+					{t("heat.findAgain")}
 				</p>
 				<Button variant="primary" onClick={onDismiss}>
-					Got it
+					{t("action.gotIt")}
 				</Button>
 			</div>
 		</div>

@@ -17,7 +17,12 @@ import { summarise } from "@/domain/track/stats";
 import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { Artist } from "@/features/now-playing/Artist";
-import { plural, pluralise } from "@/shared/lib/text";
+import { Trans } from "@/shared/i18n/Trans";
+import {
+	type Translate,
+	useFormats,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Button } from "@/shared/ui/Button";
 import styles from "./ArtistView.module.css";
@@ -25,7 +30,7 @@ import styles from "./ArtistView.module.css";
 const inLibrarySpace = (refs: Refs, view: TrackView) =>
 	Int32Array.from(refs, (at) => view.indices[at]);
 
-function historyOf(view: TrackView) {
+function historyOf(view: TrackView, t: Translate) {
 	let plays = 0;
 	let unplayed = 0;
 	let lastPlayed = 0;
@@ -36,7 +41,7 @@ function historyOf(view: TrackView) {
 		plays += count;
 		if (count === 0) unplayed += 1;
 		else if (best === null || count > best.plays)
-			best = { title: titleOf(row), plays: count };
+			best = { title: titleOf(row, t), plays: count };
 
 		const at = lastPlayedOf(row);
 		if (at !== null && at > lastPlayed) lastPlayed = at;
@@ -44,13 +49,6 @@ function historyOf(view: TrackView) {
 
 	return { plays, unplayed, lastPlayed, best };
 }
-
-const shortDate = (at: number) =>
-	new Date(at).toLocaleDateString(undefined, {
-		year: "numeric",
-		month: "long",
-		day: "numeric",
-	});
 
 export function ArtistView({
 	name,
@@ -73,6 +71,8 @@ export function ArtistView({
 	canPlay: boolean;
 	canShuffle: boolean;
 }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const { snapshot } = library;
 
 	const own = useMemo(
@@ -96,7 +96,7 @@ export function ArtistView({
 			.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
 	}, [own]);
 
-	const history = useMemo(() => (own ? historyOf(own) : null), [own]);
+	const history = useMemo(() => (own ? historyOf(own, t) : null), [own, t]);
 	const { hasPlayCounts } = useAvailableFields(own?.rows ?? []);
 
 	const held = (own?.rows.length ?? 0) + (guest?.rows.length ?? 0);
@@ -105,16 +105,17 @@ export function ArtistView({
 	return (
 		<div className={styles.artist}>
 			<ViewHeader
-				eyebrow="Artist"
+				eyebrow={t("artist.eyebrow")}
 				title={name}
 				stats={stats}
 				hasPlayCounts={hasPlayCounts}
 				tabs={tabs}
 				leading={
-					<>
-						<b>{discography.length.toLocaleString()}</b>{" "}
-						{pluralise(discography.length, "album")}
-					</>
+					<Trans
+						phrase="artist.albumCount"
+						count={discography.length}
+						total={<b>{format.number(discography.length)}</b>}
+					/>
 				}
 				// No artist image to fall back to -- see this feature's CLAUDE.md.
 				aside={
@@ -137,11 +138,11 @@ export function ArtistView({
 								onClick={() => onPlay(allRefs, 0)}
 								disabled={!canPlay}
 							>
-								Play
+								{t("player.play")}
 							</Button>
 							{canShuffle ? (
 								<Button icon={Shuffle} onClick={() => onShuffle(allRefs)}>
-									Shuffle
+									{t("player.shuffle")}
 								</Button>
 							) : null}
 						</>
@@ -151,40 +152,46 @@ export function ArtistView({
 
 			{held === 0 ? (
 				<p className={styles.notice}>
-					{library.isLoading
-						? "Reading your library..."
-						: "Nothing by them in your library."}
+					{library.isLoading ? t("library.reading") : t("artist.nothingBy")}
 				</p>
 			) : null}
 
 			{own && history && hasPlayCounts ? (
 				<section className={styles.section}>
-					<h2 className={styles.heading}>Your history</h2>
+					<h2 className={styles.heading}>{t("artist.yourHistory")}</h2>
 					<dl className={styles.history}>
 						<div>
-							<dt>Plays</dt>
-							<dd className="tabular">{history.plays.toLocaleString()}</dd>
+							<dt>{t("details.plays")}</dt>
+							<dd className="tabular">{format.number(history.plays)}</dd>
 						</div>
 						<div>
-							<dt>Never played</dt>
+							<dt>{t("artist.neverPlayed")}</dt>
 							<dd className="tabular">
-								{history.unplayed.toLocaleString()} of{" "}
-								{own.rows.length.toLocaleString()}
+								{t("artist.someOf", {
+									some: history.unplayed,
+									all: own.rows.length,
+								})}
 							</dd>
 						</div>
 						{history.lastPlayed > 0 ? (
 							<div>
-								<dt>Last listened</dt>
-								<dd>{shortDate(history.lastPlayed)}</dd>
+								<dt>{t("artist.lastListened")}</dt>
+								<dd>
+									{format.date(history.lastPlayed, {
+										year: "numeric",
+										month: "long",
+										day: "numeric",
+									})}
+								</dd>
 							</div>
 						) : null}
 						{history.best ? (
 							<div>
-								<dt>Most played</dt>
+								<dt>{t("shelf.top.title")}</dt>
 								<dd>
 									{history.best.title}{" "}
 									<span className={styles.faint}>
-										{plural(history.best.plays, "play")}
+										{t("shelf.plays", { count: history.best.plays })}
 									</span>
 								</dd>
 							</div>
@@ -195,14 +202,14 @@ export function ArtistView({
 
 			{held > 0 ? (
 				<section className={styles.section}>
-					<h2 className={styles.heading}>About</h2>
+					<h2 className={styles.heading}>{t("artist.about")}</h2>
 					<Artist name={name} />
 				</section>
 			) : null}
 
 			{discography.length > 0 ? (
 				<section className={styles.section}>
-					<h2 className={styles.heading}>Discography</h2>
+					<h2 className={styles.heading}>{t("artist.discography")}</h2>
 					<div className={styles.records}>
 						{discography.map((album) => (
 							<button
@@ -223,7 +230,12 @@ export function ArtistView({
 									{album.year ? (
 										<span className="tabular">{album.year}</span>
 									) : null}
-									<span>{plural(album.trackCount, "track")}</span>
+									<span>
+										{t("view.trackCount", {
+											count: album.trackCount,
+											total: album.trackCount,
+										})}
+									</span>
 								</span>
 							</button>
 						))}
@@ -233,7 +245,7 @@ export function ArtistView({
 
 			{guest && guest.rows.length > 0 ? (
 				<section className={styles.section}>
-					<h2 className={styles.heading}>Appears on</h2>
+					<h2 className={styles.heading}>{t("artist.appearsOn")}</h2>
 					<ul className={styles.guests}>
 						{guest.rows.map((row, position) => (
 							<li key={`${tracks.guest[position]}`}>
@@ -247,7 +259,7 @@ export function ArtistView({
 										size={36}
 									/>
 									<span className={styles.guestText}>
-										<span className={styles.guestTitle}>{titleOf(row)}</span>
+										<span className={styles.guestTitle}>{titleOf(row, t)}</span>
 										<span className={styles.guestUnder}>
 											{value(row, FIELD.artist)}
 										</span>

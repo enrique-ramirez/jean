@@ -1,4 +1,5 @@
 import type { TrackColumns } from "@/shared/api/types";
+import type { Translate } from "@/shared/i18n/locale";
 import { FIELD, sameTagValue, value } from "./fields";
 
 export interface DiscRun {
@@ -35,13 +36,13 @@ const discsWorthDrawing = (discs: DiscRun[]): DiscRun[] | null =>
 
 // Contiguous runs only, never reordering: the player decides what comes next, so reordering here
 // would desync the view from playback.
-export function groupByAlbum(rows: TrackColumns[]): AlbumRun[] {
+export function groupByAlbum(rows: TrackColumns[], t: Translate): AlbumRun[] {
 	const groups = rows.reduce<OpenRun[]>((built, row, index) => {
-		const album = value(row, FIELD.album) ?? "Unknown album";
+		const album = value(row, FIELD.album) ?? t("track.unknownAlbum");
 		const albumArtist =
 			value(row, FIELD.albumArtist) ??
 			value(row, FIELD.artist) ??
-			"Unknown artist";
+			t("track.unknownArtist");
 		const number = discNumber(row);
 
 		const open = built[built.length - 1];

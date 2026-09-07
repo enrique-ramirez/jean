@@ -2,6 +2,7 @@ import { Shuffle } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 
 import { usePlaybackOrder } from "@/domain/player/usePlayer";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
@@ -19,6 +20,7 @@ export function PlayActions({
 	canShuffle?: boolean;
 	children?: ReactNode;
 }) {
+	const t = useTranslate();
 	const order = usePlaybackOrder();
 	const isEmpty = trackCount === 0;
 
@@ -41,7 +43,7 @@ export function PlayActions({
 				onClick={() => play(0)}
 				disabled={isEmpty}
 			>
-				Play
+				{t("player.play")}
 			</Button>
 
 			{canShuffle ? (
@@ -50,7 +52,7 @@ export function PlayActions({
 					disabled={isEmpty || !order.canShuffle}
 					onClick={shufflePlay}
 				>
-					Shuffle
+					{t("player.shuffle")}
 				</Button>
 			) : null}
 

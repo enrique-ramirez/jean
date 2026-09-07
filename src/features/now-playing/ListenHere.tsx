@@ -11,27 +11,28 @@ import { type ListenPhase, useListener } from "@/domain/player/useListener";
 import { useIsPlaying, useVolume } from "@/domain/player/usePlayer";
 import type { PlayerInfo } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
+import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Equalizer } from "@/shared/ui/Equalizer";
 import styles from "./ListenHere.module.css";
 import { VolumeGlyph, VolumeSlider } from "./Volume";
 
 export const playerNameOf = (info: PlayerInfo) => info.title ?? info.name;
 
-function explain(phase: ListenPhase): string | null {
+function explain(phase: ListenPhase, t: Translate): string | null {
 	switch (phase.kind) {
 		case "off":
 		case "playing":
 			return null;
 		case "connecting":
-			return "Connecting…";
+			return t("listen.connecting");
 		case "reconnecting":
-			return "The stream dropped. Reconnecting…";
+			return t("listen.reconnecting");
 		case "blocked":
-			return "This browser needs one more tap before it will play audio.";
+			return t("listen.blocked");
 		case "busy":
-			return "The player is already streaming to as many devices as it allows.";
+			return t("listen.busy");
 		case "silent":
-			return "foobar2000 is stopped, so there is nothing to hear yet.";
+			return t("listen.stopped");
 		case "failed":
 			return phase.message;
 	}
@@ -40,11 +41,12 @@ function explain(phase: ListenPhase): string | null {
 function silentFor(
 	isHere: boolean,
 	others: readonly { label: string }[],
+	t: Translate,
 ): string {
-	if (isHere) return "Silent while you and others listen";
+	if (isHere) return t("listen.silentWithYou");
 	if (others.length === 1)
-		return `Silent while ${others[0].label} is listening`;
-	return `Silent while ${others.length} devices are listening`;
+		return t("listen.silentForOne", { device: others[0].label });
+	return t("listen.silentForMany", { count: others.length });
 }
 
 const isBusy = (phase: ListenPhase) =>
@@ -60,28 +62,25 @@ const audienceMode = (
 	return playerMuted ? "background" : "off";
 };
 
-const withOthers = (label: string, others: number) =>
-	others === 0
-		? label
-		: `${label}, ${others} other ${others === 1 ? "device" : "devices"} listening`;
+const withOthers = (label: string, others: number, t: Translate) =>
+	others === 0 ? label : t("listen.andOthers", { label, count: others });
 
-const roughly = (seconds: number) =>
-	seconds < 1.5 ? "about a second" : `about ${Math.round(seconds)} seconds`;
-
-const drift = (lagSeconds: number | null) =>
+const drift = (lagSeconds: number | null, t: Translate) =>
 	lagSeconds === null
-		? "Runs ahead of this device."
-		: `Runs ${roughly(lagSeconds)} ahead of this device.`;
+		? t("listen.driftUnknown")
+		: lagSeconds < 1.5
+			? t("listen.driftSecond")
+			: t("listen.driftSeconds", { seconds: Math.round(lagSeconds) });
 
-function forHowLong(seconds: number): string {
-	if (seconds < 60) return "just now";
+function forHowLong(seconds: number, t: Translate): string {
+	if (seconds < 60) return t("listen.forJustNow");
 	const minutes = Math.round(seconds / 60);
-	if (minutes < 60) return `${minutes} min`;
-	const hours = Math.round(minutes / 60);
-	return hours === 1 ? "1 hr" : `${hours} hr`;
+	if (minutes < 60) return t("span.minutesShort", { count: minutes });
+	return t("span.hoursShort", { count: Math.round(minutes / 60) });
 }
 
 export function ListenHere({ playerName }: { playerName: string }) {
+	const t = useTranslate();
 	const {
 		canListen,
 		isOn,
@@ -119,22 +118,26 @@ export function ListenHere({ playerName }: { playerName: string }) {
 
 	if (!canListen) return null;
 
-	const note = explain(phase);
+	const note = explain(phase, t);
 
 	const playerAudible = !playerMuted;
 
 	const canHandBack = isOn && others.length === 0 && !playerAudible;
 
 	let playerNote: string | null = null;
-	if (playerAudible) playerNote = isOn ? drift(audience.lagSeconds) : null;
-	else if (canHandBack) playerNote = `Move the sound back to ${playerName}`;
-	else if (held && others.length > 0) playerNote = silentFor(isOn, others);
+	if (playerAudible) playerNote = isOn ? drift(audience.lagSeconds, t) : null;
+	else if (canHandBack)
+		playerNote = t("listen.handBack", { player: playerName });
+	else if (held && others.length > 0) playerNote = silentFor(isOn, others, t);
 
 	const playerFace = (
 		<>
 			<span className={styles.mark}>
 				{playerAudible ? (
-					<Equalizer label={`Playing on ${playerName}`} paused={!isPlaying} />
+					<Equalizer
+						label={t("listen.playingOn", { player: playerName })}
+						paused={!isPlaying}
+					/>
 				) : null}
 			</span>
 			<span className={styles.name}>{playerName}</span>
@@ -152,7 +155,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 					{/* biome-ignore lint/a11y/useSemanticElements: a fieldset would bring a form control's styling and legend into a menu that is neither */}
 					<div role="group" aria-labelledby={headingId}>
 						<p className={styles.heading} id={headingId}>
-							Playing on
+							{t("listen.playingOnHeading")}
 						</p>
 
 						<div className={styles.row}>
@@ -160,7 +163,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 								<button
 									type="button"
 									className={`${styles.face} ${styles.option}`}
-									aria-label={`Move the sound back to ${playerName}`}
+									aria-label={t("listen.handBack", { player: playerName })}
 									aria-describedby={playerNote ? playerNoteId : undefined}
 									onClick={() => disconnect()}
 								>
@@ -177,7 +180,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 										volume={volume}
 										onChange={setValue}
 										className={styles.slider}
-										label={`Volume on ${playerName}`}
+										label={t("listen.volumeOn", { player: playerName })}
 									/>
 								</span>
 							) : null}
@@ -194,7 +197,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 								type="button"
 								className={`${styles.face} ${styles.option}`}
 								aria-pressed={isOn}
-								aria-label={isOn ? "Stop listening here" : "Listen here"}
+								aria-label={t(isOn ? "listen.stopHere" : "listen.here")}
 								aria-describedby={note ? deviceNoteId : undefined}
 								onClick={() => (isOn ? disconnect() : connect())}
 							>
@@ -210,9 +213,11 @@ export function ListenHere({ playerName }: { playerName: string }) {
 									) : null}
 								</span>
 								<span className={styles.name}>
-									{isOn ? "Listening here" : "Listen here"}
+									{t(isOn ? "listen.listeningHere" : "listen.here")}
 								</span>
-								{isOn ? <span className={styles.stop}>Stop</span> : null}
+								{isOn ? (
+									<span className={styles.stop}>{t("action.stop")}</span>
+								) : null}
 							</button>
 
 							{note ? (
@@ -235,7 +240,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 							onClick={() => resume()}
 						>
 							<Play size={13} strokeWidth={2.5} aria-hidden="true" />
-							Start playing
+							{t("listen.startPlaying")}
 						</button>
 					) : null}
 
@@ -246,20 +251,18 @@ export function ListenHere({ playerName }: { playerName: string }) {
 							onClick={() => retry()}
 						>
 							<RotateCcw size={13} strokeWidth={2.5} aria-hidden="true" />
-							Try again
+							{t("action.tryAgain")}
 						</button>
 					) : null}
 
 					{isOn && !canSetVolume ? (
-						<p className={styles.level}>
-							This device sets its own level. Use its volume buttons.
-						</p>
+						<p className={styles.level}>{t("listen.ownLevel")}</p>
 					) : null}
 
 					{others.length > 0 ? (
 						<>
 							<p className={styles.heading} id={othersId}>
-								Also listening
+								{t("listen.alsoListening")}
 							</p>
 							<ul className={styles.roster} aria-labelledby={othersId}>
 								{others.map((device) => (
@@ -269,7 +272,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 										</span>
 										<span className={styles.listenerName}>{device.label}</span>
 										<span className={styles.listenerFor}>
-											{forHowLong(device.listeningFor)}
+											{forHowLong(device.listeningFor, t)}
 										</span>
 									</li>
 								))}
@@ -284,12 +287,16 @@ export function ListenHere({ playerName }: { playerName: string }) {
 				className={styles.button}
 				aria-label={
 					isOn
-						? withOthers("Playing on this device", others.length)
-						: withOthers("Choose where to play", others.length)
+						? withOthers(t("listen.onThisDevice"), others.length, t)
+						: withOthers(t("listen.chooseWhere"), others.length, t)
 				}
 				aria-expanded={isOpen}
 				aria-pressed={isOn}
-				title={isOn ? "Playing on this device" : `Playing on ${playerName}`}
+				title={
+					isOn
+						? t("listen.onThisDevice")
+						: t("listen.playingOn", { player: playerName })
+				}
 				data-listening={isOn}
 				onClick={() => setIsOpen((open) => !open)}
 			>

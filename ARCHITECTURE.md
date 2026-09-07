@@ -152,6 +152,36 @@ Jean has more sequential work than a player client suggests. The player renumber
 
 > **The trap is `void`.** `done.then(() => void run(...))` calls each step in turn and hands `undefined` to `then`, so nothing waits for anything and the sequencing is silently gone. Return the promise.
 
+## The phrase catalogue
+
+Every string a person reads is a key in `src/shared/i18n/en.ts`, resolved by `t()` against whatever language is showing. The catalogue sits in `shared/` for the same reason `tokens.css` does: every tier draws from it, and the import direction only runs one way.
+
+```
+src/shared/i18n/
+  en.ts            every phrase, flat and sorted. Imports nothing
+  message.ts       what a message is, and the types that read its fields off the literal
+  locale.ts        the store: which language, what is loaded, and the module-level translate()
+  format.ts        memoised Intl constructors, keyed by locale
+  useTranslate.ts  the hooks a component uses
+  Trans.tsx        a sentence with elements inside it
+```
+
+**English is the bundle's, and every other language is the install's.** `en.ts` is compiled in as the fallback layer, so a stock install fetches nothing and a bad file on disk can never break the language Jean falls back to. The build emits it to `dist/locales/en.json` **as the file to copy**, and nothing reads that back.
+
+**Three things decide which languages exist, and they are not the same thing.**
+
+| | Where | Written by |
+|---|---|---|
+| English | the bundle | `en.ts` |
+| Shipped translations | `public/locales/*.json`, copied verbatim into the build; their codes are compiled in through `__SHIPPED_LOCALES__` | the repository |
+| Everything else | `locales/<code>.json` beside `index.html`, listed by hand in `locales/custom.json` | whoever installed Jean |
+
+The split is what makes an upgrade safe: copying a new build over an old one replaces the files the build owns and never touches `custom.json`. **Jean writes none of them.** It cannot even enumerate them — beefweb's static server serves no directory index, and `/api/browser/entries` is a 403 for anything outside the player's music directories, so the list has to be stated somewhere.
+
+**A key the loaded file does not carry falls back to English, and a key Jean no longer has is dropped.** A translation degrades phrase by phrase rather than all at once, which is what lets a half-finished one ship and an out-of-date one keep working.
+
+`t()` derives its argument list from the key it is given, so a *runtime* key has to be typed narrower than `Phrase` or every call demands the union of every phrase's fields. `src/shared/i18n/CLAUDE.md` has that and the rest of the local rules.
+
 ## Styling and the token layer
 
 CSS Modules, colocated with the component. The only global stylesheets are `src/shared/styles/tokens.css` (the palette and scale, as custom properties) and `base.css`, both pulled in by `global.css`. Re-theming Jean should mean editing custom properties and nothing else.

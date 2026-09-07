@@ -2,7 +2,7 @@ import { DiscAlbum } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import type { TrackColumns } from "@/shared/api/types";
-import { plural } from "@/shared/lib/text";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { coverIdentity } from "./fields";
 import type { LibrarySource } from "./librarySource";
@@ -65,6 +65,7 @@ export function Mosaic({
 	seed?: string | null;
 	size?: number | string;
 }) {
+	const t = useTranslate();
 	const albums = useMemo(() => albumTiles(rows, indices), [rows, indices]);
 	const tiles = tileCountFor(albums.length);
 
@@ -111,7 +112,12 @@ export function Mosaic({
 			))}
 
 			{isReady && albums.length !== tiles ? (
-				<span className={styles.count}>{plural(albums.length, "album")}</span>
+				<span className={styles.count}>
+					{t("artist.albumCount", {
+						count: albums.length,
+						total: albums.length,
+					})}
+				</span>
 			) : null}
 
 			{isReady ? null : (

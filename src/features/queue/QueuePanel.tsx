@@ -13,9 +13,9 @@ import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
-import { plural } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./QueuePanel.module.css";
 import { useQueueClock } from "./queueClock";
@@ -58,6 +58,7 @@ function Remaining({
 	snapshot: PlayerSnapshot | null | undefined;
 	isPlaying: boolean;
 }) {
+	const t = useTranslate();
 	useQueueClock(isPlaying);
 
 	const remaining = remainingOf(snapshot);
@@ -65,8 +66,8 @@ function Remaining({
 	return (
 		<span className={styles.originLabel}>
 			{remaining === null
-				? "Nothing playing"
-				: `${formatTime(remaining)} left of this track`}
+				? t("player.nothingPlaying")
+				: t("queue.leftOfTrack", { time: formatTime(remaining) })}
 		</span>
 	);
 }
@@ -80,6 +81,7 @@ function StartsIn({
 	snapshot: PlayerSnapshot | null | undefined;
 	isPlaying: boolean;
 }) {
+	const t = useTranslate();
 	useQueueClock(isPlaying);
 
 	const remaining = remainingOf(snapshot);
@@ -87,7 +89,7 @@ function StartsIn({
 
 	return (
 		<span className={`${styles.when} tabular`}>
-			in {formatTime(startsIn(entry, remaining))}
+			{t("queue.startsIn", { time: formatTime(startsIn(entry, remaining)) })}
 		</span>
 	);
 }
@@ -111,21 +113,20 @@ const QueueRow = memo(function QueueRow({
 	handleProps: PropBag;
 	itemProps: PropBag;
 }) {
+	const t = useTranslate();
 	if (entry.isOrphan) {
 		return (
 			<li className={styles.row} data-orphan="true" {...itemProps}>
 				<span className={styles.tick} aria-hidden="true" />
 				<span className={styles.names}>
-					<span className={styles.title}>Track no longer in its playlist</span>
-					<span className={styles.artist}>
-						It will be skipped. Remove it to tidy the queue.
-					</span>
+					<span className={styles.title}>{t("queue.orphan")}</span>
+					<span className={styles.artist}>{t("queue.orphanFix")}</span>
 				</span>
 				{canQueue ? (
 					<button
 						type="button"
 						className={styles.remove}
-						aria-label="Remove from queue"
+						aria-label={t("queue.remove")}
 						onClick={onRemove}
 					>
 						<X size={15} strokeWidth={2.2} />
@@ -158,9 +159,11 @@ const QueueRow = memo(function QueueRow({
 			/>
 
 			<span className={styles.names}>
-				<span className={styles.title}>{entry.title || "Unknown title"}</span>
+				<span className={styles.title}>
+					{entry.title || t("track.unknownTitle")}
+				</span>
 				<span className={styles.artist}>
-					{entry.artist || "Unknown artist"}
+					{entry.artist || t("track.unknownArtist")}
 					{entry.duration > 0 ? (
 						<>
 							<span className={styles.dot}>·</span>
@@ -177,7 +180,7 @@ const QueueRow = memo(function QueueRow({
 					<button
 						type="button"
 						className={styles.grip}
-						aria-label={`Reorder ${entry.title}`}
+						aria-label={t("queue.reorder", { track: entry.title })}
 						tabIndex={-1}
 						data-owns-touch=""
 						{...handleProps}
@@ -187,7 +190,7 @@ const QueueRow = memo(function QueueRow({
 					<button
 						type="button"
 						className={styles.remove}
-						aria-label={`Remove ${entry.title} from the queue`}
+						aria-label={t("queue.removeTrack", { track: entry.title })}
 						onClick={onRemove}
 					>
 						<X size={15} strokeWidth={2.2} />
@@ -207,6 +210,7 @@ export function QueuePanel({
 	isCompactViewport: boolean;
 	onDismiss: () => void;
 }) {
+	const t = useTranslate();
 	const { data: snapshot } = usePlayer();
 	const { entries, count } = useQueue();
 	const { canQueue, remove, clear, move } = useQueueActions();
@@ -238,7 +242,7 @@ export function QueuePanel({
 				<button
 					type="button"
 					className={styles.scrim}
-					aria-label="Close the queue"
+					aria-label={t("queue.close")}
 					onClick={onDismiss}
 				/>
 			) : null}
@@ -247,30 +251,33 @@ export function QueuePanel({
 				ref={ref}
 				className={styles.panel}
 				data-open={isOpen}
-				aria-label="Queue"
+				aria-label={t("queue.title")}
 				{...swipe}
 				inert={isOpen ? undefined : true}
 			>
 				<header className={styles.header}>
 					<div className={styles.heading}>
-						<h2 className={styles.title}>Queue</h2>
+						<h2 className={styles.title}>{t("queue.title")}</h2>
 						<p className={styles.meta}>
 							{count === 0
-								? "Nothing queued"
-								: `${plural(count, "track")} · ${formatTime(queuedSeconds(entries))}`}
+								? t("queue.nothingQueued")
+								: t("queue.summary", {
+										tracks: t("view.trackCount", { count, total: count }),
+										time: formatTime(queuedSeconds(entries)),
+									})}
 						</p>
 					</div>
 
 					{count > 0 && canQueue ? (
 						<button type="button" className={styles.clear} onClick={clear}>
-							Clear
+							{t("action.clear")}
 						</button>
 					) : null}
 
 					<button
 						type="button"
 						className={styles.close}
-						aria-label="Close the queue"
+						aria-label={t("queue.close")}
 						onClick={onDismiss}
 					>
 						<X size={17} strokeWidth={2} />
@@ -285,18 +292,11 @@ export function QueuePanel({
 
 					{count === 0 ? (
 						<div className={styles.empty}>
-							<p className={styles.emptyLead}>The queue is empty.</p>
-							<p className={styles.emptyBody}>
-								Anything you put here plays next, in order, before the playlist
-								carries on.
-							</p>
+							<p className={styles.emptyLead}>{t("queue.empty")}</p>
+							<p className={styles.emptyBody}>{t("queue.emptyBody")}</p>
 							<p className={styles.emptyHint}>
-								<span className={styles.fine}>
-									Right-click a track and choose Add to queue.
-								</span>
-								<span className={styles.coarse}>
-									Press and hold a track, then choose Add to queue.
-								</span>
+								<span className={styles.fine}>{t("queue.hintPointer")}</span>
+								<span className={styles.coarse}>{t("queue.hintTouch")}</span>
 							</p>
 						</div>
 					) : (

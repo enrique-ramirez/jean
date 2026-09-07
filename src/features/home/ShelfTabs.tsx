@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import type { CoveredAlbum } from "@/domain/track/albums";
 import { useStoredState } from "@/shared/hooks/useStoredState";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
 import tabs from "./ShelfTabs.module.css";
@@ -13,6 +14,7 @@ export function ShelfTabs({
 	shelves: FilledShelf<CoveredAlbum>[];
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 }) {
+	const t = useTranslate();
 	const [chosen, choose] = useStoredState<string | null>(
 		"jean.homeShelf",
 		null,
@@ -27,7 +29,7 @@ export function ShelfTabs({
 			<header className={tabs.header}>
 				<h2 className={tabs.heading} id="home-explore">
 					<a className={styles.open} href={`#/shelf/${active.id}`}>
-						Explore
+						{t("home.explore")}
 						<ChevronRight
 							className={styles.chevron}
 							size={16}
@@ -37,7 +39,7 @@ export function ShelfTabs({
 					</a>
 				</h2>
 
-				<nav className={tabs.strip} aria-label="Shelves">
+				<nav className={tabs.strip} aria-label={t("home.shelves")}>
 					{shelves.map((shelf) => (
 						<button
 							key={shelf.id}
@@ -47,7 +49,7 @@ export function ShelfTabs({
 							data-active={shelf.id === active.id}
 							onClick={() => choose(shelf.id)}
 						>
-							{shelf.title}
+							{t(shelf.title)}
 						</button>
 					))}
 				</nav>

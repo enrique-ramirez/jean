@@ -20,6 +20,7 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { usePresence } from "@/shared/hooks/usePresence";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
@@ -90,6 +91,7 @@ export function NowPlaying({
 	onOpenPlayingFrom?: () => void;
 	onDismiss: () => void;
 }) {
+	const t = useTranslate();
 	const isPresent = usePresence(isOpen, SLIDE_MS);
 	const [isInfoOpen, setIsInfoOpen] = useState(false);
 	const isInfoPresent = usePresence(isInfoOpen, INFO_EXIT_MS);
@@ -227,13 +229,13 @@ export function NowPlaying({
 				data-leaving={!isOpen}
 				data-now-playing=""
 				{...swipe}
-				aria-label="Current track"
+				aria-label={t("player.currentTrack")}
 			>
 				<header className={styles.head}>
 					<button
 						type="button"
 						className={styles.dismiss}
-						aria-label="Close now playing"
+						aria-label={t("player.closeNowPlaying")}
 						onClick={onDismiss}
 					>
 						<ChevronDown size={20} strokeWidth={2} />
@@ -255,7 +257,7 @@ export function NowPlaying({
 						<button
 							type="button"
 							className={styles.more}
-							aria-label="Track actions"
+							aria-label={t("track.actions")}
 							aria-haspopup="menu"
 							disabled={!hasTrack}
 							onClick={menu.open}
@@ -278,7 +280,9 @@ export function NowPlaying({
 						)}
 
 						<h1 className={`${styles.title}${loading}`}>
-							{wheel.isAwaiting ? " " : (track?.title ?? "Nothing playing")}
+							{wheel.isAwaiting
+								? " "
+								: (track?.title ?? t("player.nothingPlaying"))}
 						</h1>
 						<p className={`${styles.artist}${loading}`}>
 							{wheel.isAwaiting ? " " : (track?.artist ?? "—")}
@@ -301,7 +305,7 @@ export function NowPlaying({
 									onClick={() => setIsInfoOpen(true)}
 								>
 									<Mic2 size={15} strokeWidth={2} aria-hidden="true" />
-									Lyrics
+									{t("panel.lyrics")}
 								</button>
 							) : null}
 						</div>
@@ -344,7 +348,7 @@ export function NowPlaying({
 								<button
 									type="button"
 									className={styles.skip}
-									aria-label="Previous track"
+									aria-label={t("shortcut.previousTrack")}
 									onClick={() => wheel.skip(-1)}
 								>
 									<SkipBackIcon size={22} />
@@ -359,7 +363,7 @@ export function NowPlaying({
 								<button
 									type="button"
 									className={styles.skip}
-									aria-label="Next track"
+									aria-label={t("shortcut.nextTrack")}
 									onClick={() => wheel.skip(1)}
 								>
 									<SkipForwardIcon size={22} />
@@ -375,7 +379,7 @@ export function NowPlaying({
 									<VolumePopover
 										volume={volume}
 										onChange={setValue}
-										label={isHere ? "Volume on this device" : "Volume"}
+										label={t(isHere ? "player.volumeHere" : "player.volume")}
 									/>
 								) : null}
 							</div>
@@ -389,7 +393,7 @@ export function NowPlaying({
 			{isCompactViewport && isInfoPresent ? (
 				<TrackInfo
 					isOpen={isInfoOpen}
-					title={track?.title ?? "Nothing playing"}
+					title={track?.title ?? t("player.nothingPlaying")}
 					artist={track?.artist ?? "—"}
 					lyrics={lyrics}
 					snapshot={snapshot}

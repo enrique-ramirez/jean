@@ -40,6 +40,8 @@ So **a shifted character is declared twice**, `Shift+X` and bare `X`, so it work
 
 **A binding drawn on its own control has to be read off the same declaration**, so the label and the key are one fact rather than two that drift. Hide the hint on a coarse pointer, where there is no key to press.
 
+**A binding's name and group are phrases, and the key it presses is not.** Translating a shortcut would give one keyboard two meanings, so keys stay put and the initial they spell stops being an initial in most languages. `mnemonicOf` therefore reads the underline off the label it is handed — hand it the *translated* one and a language whose word does not begin with the key underlines nothing, rather than advertising a key that does something else.
+
 ## Debugging
 
 **A hotkey that has stopped working in dev is probably a stale registration, not a bug.** Two enabled registrations on one key both fire, with a console warning. HMR remounts a component and re-registers while the previous module instance's registration may still be in the registry, so the survivor can hold a callback from a dead closure: the binding looks bound and does nothing. Full reload before debugging.

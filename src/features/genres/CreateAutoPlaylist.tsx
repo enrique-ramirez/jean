@@ -7,7 +7,7 @@ import { genreQuery } from "@/domain/library/genreQuery";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { createAutoPlaylist, previewQuery } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
-import { plural } from "@/shared/lib/text";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
@@ -20,6 +20,7 @@ export function CreateAutoPlaylist({
 	genre: string;
 	onOpenPlaylist: (id: string) => void;
 }) {
+	const t = useTranslate();
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
 	const { origin, token, state } = discovery;
@@ -85,13 +86,13 @@ export function CreateAutoPlaylist({
 					aria-expanded={isOpen}
 					onClick={() => setIsOpen(!isOpen)}
 				>
-					Create autoplaylist
+					{t("genre.createAutoPlaylist")}
 				</Button>
 			}
 		>
 			<form className={styles.form} onSubmit={submit}>
 				<label className={styles.label} htmlFor="autoplaylist-title">
-					An autoplaylist of {genre}
+					{t("genre.autoPlaylistOf", { genre })}
 				</label>
 
 				<Input
@@ -100,8 +101,8 @@ export function CreateAutoPlaylist({
 					inputRef={inputRef}
 					value={title}
 					onChange={(event) => setTitle(event.target.value)}
-					placeholder="Playlist name"
-					aria-label="Playlist name"
+					placeholder={t("playlist.name")}
+					aria-label={t("playlist.name")}
 					spellCheck="false"
 					autoComplete="off"
 					autoFocus
@@ -109,27 +110,24 @@ export function CreateAutoPlaylist({
 
 				<p className={styles.preview}>
 					{preview == null
-						? "Asking the player what this matches…"
+						? t("genre.asking")
 						: !preview.valid
-							? `The player could not read that query — ${preview.error}`
+							? t("genre.queryFailed", { error: preview.error })
 							: !preview.libraryEnabled
-								? "This player has no Media Library configured, so an autoplaylist would stay empty."
-								: `The player matches ${plural(preview.matches, "track")}.`}
+								? t("genre.noMediaLibrary")
+								: t("genre.matches", { count: preview.matches })}
 				</p>
 
-				<p className={styles.note}>
-					foobar2000 keeps it filled, so tracks tagged {genre} later join it on
-					their own.
-				</p>
+				<p className={styles.note}>{t("genre.keptFilled", { genre })}</p>
 
 				{create.error ? (
 					<p className={styles.error}>
-						Could not create it — {create.error.message}
+						{t("genre.createFailed", { message: create.error.message })}
 					</p>
 				) : null}
 
 				<div className={styles.actions}>
-					<Button onClick={() => setIsOpen(false)}>Cancel</Button>
+					<Button onClick={() => setIsOpen(false)}>{t("action.cancel")}</Button>
 					<Button
 						variant="primary"
 						type="submit"
@@ -139,7 +137,7 @@ export function CreateAutoPlaylist({
 							preview?.valid === false
 						}
 					>
-						{create.isPending ? "Creating…" : "Create"}
+						{t(create.isPending ? "action.creating" : "action.create")}
 					</Button>
 				</div>
 			</form>

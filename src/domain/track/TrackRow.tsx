@@ -5,6 +5,11 @@ import {
 } from "react";
 import { formatTime } from "@/domain/player/position";
 import type { TrackColumns } from "@/shared/api/types";
+import {
+	type Formats,
+	useFormats,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Equalizer } from "@/shared/ui/Equalizer";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
@@ -41,13 +46,17 @@ function Rating({
 	source: LibrarySource;
 	itemIndex: number;
 }) {
+	const t = useTranslate();
 	const { canRateInline, rate } = useTagWriting();
 	const written = useWrittenRating(row);
 
 	const raw = rawRatingWith(row, written);
 	const rating = starsOf(raw);
 	const stars = rating === null ? 0 : toStars(rating);
-	const label = rating === null ? "Unrated" : `${stars} of ${MAX_STARS} stars`;
+	const label =
+		rating === null
+			? t("rating.unrated")
+			: t("rating.outOf", { stars, max: MAX_STARS });
 
 	if (!canRateInline || !isWritableScale(raw))
 		return <Stars value={stars} label={label} />;
@@ -61,13 +70,10 @@ function Rating({
 	);
 }
 
-function shortDate(row: TrackColumns) {
+function shortDate(row: TrackColumns, format: Formats) {
 	const played = lastPlayedOf(row);
 	if (played === null) return null;
-	return new Date(played).toLocaleDateString(undefined, {
-		year: "numeric",
-		month: "short",
-	});
+	return format.date(played, { year: "numeric", month: "short" });
 }
 
 function Cell({
@@ -81,6 +87,7 @@ function Cell({
 	source: LibrarySource;
 	itemIndex: number;
 }) {
+	const format = useFormats();
 	const className = [
 		styles.cell,
 		column.align === "right" ? styles.numeric : null,
@@ -116,7 +123,9 @@ function Cell({
 
 	if (column.kind === "date") {
 		return (
-			<span className={`${className} tabular`}>{shortDate(row) ?? "--"}</span>
+			<span className={`${className} tabular`}>
+				{shortDate(row, format) ?? "--"}
+			</span>
 		);
 	}
 
@@ -173,8 +182,9 @@ function TrackRowComponent({
 	showDisc?: boolean;
 	onSelect: (index: number, event: ReactPointerEvent) => void;
 }) {
-	const title = titleOf(row);
-	const artist = artistOf(row);
+	const t = useTranslate();
+	const title = titleOf(row, t);
+	const artist = artistOf(row, t);
 	const trackNumber = value(row, FIELD.trackNumber);
 
 	const disc = showDisc && trackNumber !== null ? discNumber(row) : null;
@@ -206,7 +216,7 @@ function TrackRowComponent({
 		>
 			<span className={`${styles.index} tabular`}>
 				{isActive && isPlaying ? (
-					<Equalizer label="Now playing" />
+					<Equalizer label={t("player.nowPlaying")} />
 				) : disc !== null ? (
 					`${disc}.${trackNumber}`
 				) : (

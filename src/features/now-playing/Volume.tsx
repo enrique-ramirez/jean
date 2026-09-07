@@ -8,6 +8,7 @@ import {
 import type { Volume as VolumeState } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
 import styles from "./Volume.module.css";
 
@@ -30,13 +31,14 @@ export function VolumeGlyph({
 function VolumeButton({
 	volume,
 	onPress,
-	label = "Volume",
+	label,
 	...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
 	volume: VolumeState | null;
 	onPress?: () => void;
-	label?: string;
+	label: string;
 }) {
+	const t = useTranslate();
 	const percent = volumePercent(volume);
 
 	return (
@@ -45,8 +47,12 @@ function VolumeButton({
 			className={styles.button}
 			onClick={onPress}
 			aria-pressed={Boolean(volume?.isMuted)}
-			aria-label={volume?.isMuted ? "Unmute" : "Mute"}
-			title={volume?.isMuted ? "Muted" : `${label} ${percent}%`}
+			aria-label={t(volume?.isMuted ? "player.unmute" : "player.mute")}
+			title={
+				volume?.isMuted
+					? t("player.muted")
+					: t("player.volumeAt", { label, percent })
+			}
 			{...props}
 		>
 			<VolumeGlyph volume={volume} size={17} />
@@ -59,14 +65,15 @@ export function VolumeSlider({
 	onChange,
 	orientation = "horizontal",
 	className,
-	label = "Volume",
+	label,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	orientation?: "horizontal" | "vertical";
 	className?: string;
-	label?: string;
+	label: string;
 }) {
+	const t = useTranslate();
 	const { ref, fraction, isDragging, handlers } = useDragFraction({
 		onDrag: (next) => onChange(fractionToVolume(volume as VolumeState, next)),
 		onCommit: (next) => onChange(fractionToVolume(volume as VolumeState, next)),
@@ -90,7 +97,7 @@ export function VolumeSlider({
 			aria-valuemin={0}
 			aria-valuemax={100}
 			aria-valuenow={percent}
-			aria-valuetext={volume?.isMuted ? "Muted" : `${percent}%`}
+			aria-valuetext={volume?.isMuted ? t("player.muted") : `${percent}%`}
 			{...handlers}
 		>
 			<span className={styles.rail} />
@@ -118,12 +125,13 @@ export function VolumeSlider({
 export function VolumePopover({
 	volume,
 	onChange,
-	label = "Volume",
+	label,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
-	label?: string;
+	label: string;
 }) {
+	const t = useTranslate();
 	const [isOpen, setIsOpen] = useState(false);
 	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false));
 
@@ -145,7 +153,7 @@ export function VolumePopover({
 				volume={volume}
 				label={label}
 				onPress={() => setIsOpen((open) => !open)}
-				aria-label={isOpen ? "Hide volume" : "Show volume"}
+				aria-label={t(isOpen ? "player.hideVolume" : "player.showVolume")}
 				aria-expanded={isOpen}
 			/>
 		</div>
@@ -156,12 +164,12 @@ export function Volume({
 	volume,
 	onChange,
 	onToggleMute,
-	label = "Volume",
+	label,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	onToggleMute: () => void;
-	label?: string;
+	label: string;
 }) {
 	return (
 		<div className={styles.volume}>

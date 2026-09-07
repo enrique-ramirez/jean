@@ -6,6 +6,7 @@ import {
 	type StreamMark,
 	streamUrl,
 } from "@/shared/api/fooJean";
+import { translate } from "@/shared/i18n/locale";
 import { subscribers } from "@/shared/lib/store";
 import { deviceId, deviceIdentity } from "./device";
 import {
@@ -301,7 +302,7 @@ function nextFormat() {
 		// `MEDIA_ERR`.
 		setPhase({
 			kind: "failed",
-			message: "Could not play the stream on this device.",
+			message: translate("listen.cannotPlay"),
 		});
 		return;
 	}
@@ -403,7 +404,7 @@ function scheduleReconnect() {
 		stopStream();
 		setPhase({
 			kind: "failed",
-			message: "The stream keeps dropping. Check that foobar2000 is running.",
+			message: translate("listen.keepsDropping"),
 		});
 		return;
 	}
@@ -639,6 +640,5 @@ export function restartListening() {
 	stopStream();
 	attempt = 0;
 	if (wanted) void open(wanted);
-	else
-		setPhase({ kind: "failed", message: "Nothing here can play this stream." });
+	else setPhase({ kind: "failed", message: translate("listen.noDecoder") });
 }

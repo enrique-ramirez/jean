@@ -19,9 +19,9 @@ import { TrackBrowser } from "@/domain/track/TrackBrowser";
 import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
-import { plural } from "@/shared/lib/text";
 import { Button } from "@/shared/ui/Button";
 import { SavePlaylistButton } from "./SavePlaylistButton";
 import styles from "./SearchResults.module.css";
@@ -41,6 +41,7 @@ export function SearchResults({
 	isCompactViewport: boolean;
 	onOpenPlaylist: (id: string) => void;
 }) {
+	const t = useTranslate();
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
 
@@ -82,13 +83,12 @@ export function SearchResults({
 		return (
 			<div className={styles.idle}>
 				<Search size={26} strokeWidth={1.5} aria-hidden="true" />
-				<h1 className={styles.idleTitle}>Search your library</h1>
+				<h1 className={styles.idleTitle}>{t("search.yourLibrary")}</h1>
 				<p className={styles.idleBody}>
-					{library.count.toLocaleString()} tracks in your library. Title, artist
-					and album, as you type -- every word has to match, in any order.
+					{t("search.idle", { count: library.count })}
 				</p>
 				<Button variant="primary" icon={Search} onClick={search.focus}>
-					Start typing
+					{t("search.startTyping")}
 				</Button>
 			</div>
 		);
@@ -113,10 +113,10 @@ export function SearchResults({
 			keysEnabled={!search.isFocused}
 			onPlay={playAt}
 			onOpenFinder={search.focus}
-			emptyNotice="Nothing in your library matches that."
+			emptyNotice={t("search.noMatch")}
 			header={
 				<ViewHeader
-					eyebrow="Search results in your library"
+					eyebrow={t("search.resultsEyebrow")}
 					title={search.query}
 					stats={stats}
 					hasPlayCounts={hasPlayCounts}
@@ -152,8 +152,11 @@ export function SearchResults({
 			toolbarLeading={
 				<p className={styles.summary}>
 					{library.isLoading
-						? `Searching ${library.loaded.toLocaleString()} of ${library.total.toLocaleString()}...`
-						: plural(search.matchCount, "match", "matches")}
+						? t("search.reading", {
+								loaded: library.loaded,
+								total: library.total,
+							})
+						: t("search.matchCount", { count: search.matchCount })}
 				</p>
 			}
 		/>

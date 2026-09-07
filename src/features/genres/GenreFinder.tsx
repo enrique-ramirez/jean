@@ -1,6 +1,6 @@
 import { Search, X } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Input } from "@/shared/ui/Input";
 import styles from "./GenreFinder.module.css";
 
@@ -21,6 +21,7 @@ export function GenreFinder({
 	onOpen: () => void;
 	inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+	const t = useTranslate();
 	const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
 		if (event.key === "Escape") {
 			event.preventDefault();
@@ -56,8 +57,8 @@ export function GenreFinder({
 			value={query}
 			onChange={(event) => onChange(event.target.value)}
 			onKeyDown={onKeyDown}
-			placeholder="Find a genre"
-			aria-label="Find a genre"
+			placeholder={t("shortcut.findGenre")}
+			aria-label={t("shortcut.findGenre")}
 			spellCheck="false"
 			autoComplete="off"
 			autoCorrect="off"
@@ -78,7 +79,7 @@ export function GenreFinder({
 						<button
 							type="button"
 							className={styles.clear}
-							aria-label="Clear"
+							aria-label={t("action.clear")}
 							onClick={() => {
 								onChange("");
 								inputRef.current?.focus();

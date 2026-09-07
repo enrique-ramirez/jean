@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import { Input } from "@/shared/ui/Input";
 import styles from "./CommandPalette.module.css";
@@ -29,6 +30,8 @@ export function CommandPalette({
 	onSelect: (route: string) => void;
 	onDismiss: () => void;
 }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const [query, setQuery] = useState("");
 	const [active, setActive] = useState(0);
@@ -97,7 +100,7 @@ export function CommandPalette({
 			)}
 			{entry.title}
 			{entry.count === undefined ? null : (
-				<span className={styles.count}>{entry.count.toLocaleString()}</span>
+				<span className={styles.count}>{format.number(entry.count)}</span>
 			)}
 		</button>
 	);
@@ -115,7 +118,7 @@ export function CommandPalette({
 				className={styles.palette}
 				role="dialog"
 				aria-modal="true"
-				aria-label="Go to"
+				aria-label={t("palette.goTo")}
 			>
 				<Input
 					size="md"
@@ -124,8 +127,8 @@ export function CommandPalette({
 					value={query}
 					onChange={(event) => setQuery(event.target.value)}
 					onKeyDown={onKeyDown}
-					placeholder="Go to"
-					aria-label="Go to"
+					placeholder={t("palette.goTo")}
+					aria-label={t("palette.goTo")}
 					spellCheck="false"
 					autoComplete="off"
 					leading={<Search size={16} strokeWidth={2} aria-hidden="true" />}

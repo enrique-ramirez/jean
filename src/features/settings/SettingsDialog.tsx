@@ -1,9 +1,11 @@
 import { X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import { ArtistInformation } from "./ArtistInformation";
 import { CachedArtwork } from "./CachedArtwork";
+import { Language } from "./Language";
 import { Playback } from "./Playback";
 import styles from "./Settings.module.css";
 import { TagWriting } from "./TagWriting";
@@ -12,6 +14,7 @@ import { ThisDevice } from "./ThisDevice";
 export const SETTINGS_KEYBOARD = "settings";
 
 export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
+	const t = useTranslate();
 	const dialogRef = useRef<HTMLDivElement | null>(null);
 
 	useKeyboardOwnership(SETTINGS_KEYBOARD);
@@ -81,14 +84,14 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 			>
 				<header className={styles.header}>
 					<h1 className={styles.title} id="settings-title">
-						Settings
+						{t("settings.title")}
 					</h1>
 
 					<button
 						type="button"
 						className={styles.close}
 						onClick={onDismiss}
-						aria-label="Close settings"
+						aria-label={t("settings.close")}
 					>
 						<kbd className={styles.cap}>Esc</kbd>
 						<X size={16} strokeWidth={2} aria-hidden="true" />
@@ -97,6 +100,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 
 				<div className={styles.body}>
 					<TagWriting />
+					<Language />
 					<Playback />
 					<ThisDevice />
 					<ArtistInformation />

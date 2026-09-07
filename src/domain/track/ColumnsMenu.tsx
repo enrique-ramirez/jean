@@ -1,5 +1,5 @@
 import { Check, Columns3, Flame } from "lucide-react";
-
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { Menu, MenuItem, MenuSeparator } from "@/shared/ui/Menu";
 import styles from "./ColumnsMenu.module.css";
@@ -52,6 +52,8 @@ export function ColumnsMenu({
 	isAvailable: (field: number) => boolean;
 	onExplainHeat?: () => void;
 }) {
+	const t = useTranslate();
+
 	return (
 		<Menu
 			isOpen={isOpen}
@@ -60,8 +62,8 @@ export function ColumnsMenu({
 			trigger={
 				<Button
 					icon={Columns3}
-					aria-label="View options"
-					title="View options"
+					aria-label={t("columns.viewOptions")}
+					title={t("columns.viewOptions")}
 					aria-expanded={isOpen}
 					onClick={() => onOpenChange(!isOpen)}
 				/>
@@ -70,14 +72,14 @@ export function ColumnsMenu({
 			{onExplainHeat ? (
 				<>
 					<MenuItem icon={Flame} onClick={onExplainHeat}>
-						What the shading means
+						{t("heat.whatItMeans")}
 					</MenuItem>
 					<MenuSeparator />
 				</>
 			) : null}
 
 			<Option
-				label="Artwork"
+				label={t("columns.artwork")}
 				checked={showArtwork}
 				onToggle={onToggleArtwork}
 			/>
@@ -87,7 +89,11 @@ export function ColumnsMenu({
 				return (
 					<Option
 						key={column.id}
-						label={available ? column.label : `${column.label} (not available)`}
+						label={
+							available
+								? t(column.label)
+								: t("columns.unavailable", { column: t(column.label) })
+						}
 						checked={enabledIds.includes(column.id) && available}
 						disabled={!available}
 						onToggle={() => onToggleColumn(column.id)}

@@ -3,7 +3,7 @@ import { tagKey } from "@/domain/track/fields";
 
 export interface AlbumArtist<A extends Album = Album> {
 	key: string;
-	name: string;
+	name: string | null;
 	plays: number;
 	albumCount: number;
 	trackCount: number;
@@ -12,7 +12,7 @@ export interface AlbumArtist<A extends Album = Album> {
 
 const blank = <A extends Album>(key: string, album: A): AlbumArtist<A> => ({
 	key,
-	name: album.artist,
+	name: album.artistTag,
 	plays: 0,
 	albumCount: 0,
 	trackCount: 0,
@@ -24,7 +24,7 @@ const blank = <A extends Album>(key: string, album: A): AlbumArtist<A> => ({
 // use that one where the count has to be right about who an artist is.
 export function albumArtistsOf<A extends Album>(albums: A[]): AlbumArtist<A>[] {
 	const byKey = albums.reduce((into, album) => {
-		const key = tagKey(album.artist);
+		const key = tagKey(album.artistTag);
 		const artist = into.get(key) ?? blank(key, album);
 
 		artist.plays += album.plays;

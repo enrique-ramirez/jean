@@ -1,4 +1,5 @@
 import type { CoveredAlbum } from "@/domain/track/albums";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./AlbumCard.module.css";
 
@@ -11,12 +12,13 @@ export function AlbumCard({
 	caption?: string | null;
 	onPlay: () => void;
 }) {
+	const t = useTranslate();
 	return (
 		<button
 			type="button"
 			className={styles.card}
 			onClick={onPlay}
-			title={`${album.artist} — ${album.album}`}
+			title={`${album.artistTag ?? t("track.unknownArtist")} — ${album.album}`}
 		>
 			<span className={styles.cover}>
 				<Artwork
@@ -30,7 +32,9 @@ export function AlbumCard({
 
 			<span className={styles.meta}>
 				<span className={styles.album}>{album.album}</span>
-				<span className={styles.artist}>{album.artist}</span>
+				<span className={styles.artist}>
+					{album.artistTag ?? t("track.unknownArtist")}
+				</span>
 			</span>
 
 			{caption ? <span className={styles.caption}>{caption}</span> : null}

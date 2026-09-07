@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { plural } from "@/shared/lib/text";
+import { Trans } from "@/shared/i18n/Trans";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import {
 	artworkHeld,
 	canCacheArtwork,
@@ -12,6 +13,7 @@ import styles from "./Settings.module.css";
 const asMB = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 export function CachedArtwork() {
+	const t = useTranslate();
 	const [held, setHeld] = useState<{
 		count: number;
 		bytes: number;
@@ -37,22 +39,21 @@ export function CachedArtwork() {
 	return (
 		<section className={styles.panel}>
 			<div className={styles.panelHead}>
-				<h2 className={styles.panelTitle}>Cached artwork</h2>
-				<HelpHint label="About cached artwork">
+				<h2 className={styles.panelTitle}>{t("artwork.title")}</h2>
+				<HelpHint label={t("artwork.help")}>
+					<p>{t("artwork.why")}</p>
 					<p>
-						The player asks browsers not to keep artwork for more than a few
-						seconds, so every visit re-downloads every cover. Jean keeps its own
-						copy instead — the covers you have already seen cost nothing to see
-						again.
+						<Trans
+							phrase="artwork.budget"
+							budget={asMB(held?.budget ?? 0)}
+							no={<strong>{t("artwork.no")}</strong>}
+						/>
 					</p>
 					<p>
-						Covers are kept until the {asMB(held?.budget ?? 0)} here is full,
-						and then the oldest go first. A track with <strong>no</strong>{" "}
-						artwork is never kept, so adding one shows up straight away.
-					</p>
-					<p>
-						Clear this if you have <strong>replaced</strong> artwork on a track
-						and Jean is still showing the old picture.
+						<Trans
+							phrase="artwork.clearWhen"
+							replaced={<strong>{t("artwork.replaced")}</strong>}
+						/>
 					</p>
 				</HelpHint>
 			</div>
@@ -60,10 +61,14 @@ export function CachedArtwork() {
 			<div className={styles.panelActions}>
 				<p className={styles.note}>
 					{held === null
-						? "Counting…"
+						? t("artwork.counting")
 						: held.count === 0
-							? "Nothing kept yet."
-							: `${plural(held.count, "cover")}, ${asMB(held.bytes)} of ${asMB(held.budget)}.`}
+							? t("artwork.nothingKept")
+							: t("artwork.held", {
+									covers: t("artwork.covers", { count: held.count }),
+									used: asMB(held.bytes),
+									budget: asMB(held.budget),
+								})}
 				</p>
 
 				<Button
@@ -71,7 +76,7 @@ export function CachedArtwork() {
 					onClick={clear}
 					disabled={isClearing || held === null || held.count === 0}
 				>
-					{isClearing ? "Clearing…" : "Clear cached artwork"}
+					{t(isClearing ? "artwork.clearing" : "artwork.clear")}
 				</Button>
 			</div>
 		</section>

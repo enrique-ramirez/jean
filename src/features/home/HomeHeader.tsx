@@ -1,20 +1,25 @@
 import { ChevronRight, Shuffle } from "lucide-react";
 import { GENRES_HREF } from "@/domain/library/genreRoute";
 import { spellDuration } from "@/domain/track/stats";
-import { pluralise } from "@/shared/lib/text";
+import type { Phrase } from "@/shared/i18n/en";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Button } from "@/shared/ui/Button";
 import { PlayIcon } from "@/shared/ui/icons";
 import styles from "./HomeHeader.module.css";
 import type { LibraryStats } from "./libraryStats";
 
+// Two types, not one: a door's noun is pluralised by its count, a hint is one fixed word.
+type DoorPhrase = Extract<Phrase, `home.door.${string}`>;
+type HintPhrase = Extract<Phrase, `home.hint.${string}`>;
+
 interface Door {
 	id: string;
-	label: string;
+	label: DoorPhrase;
 	count: number;
 	href: string | null;
 	onOpen?: () => void;
-	hint: string | null;
+	hint: HintPhrase | null;
 	name: string | null;
 	cover: string | null;
 	minor?: boolean;
@@ -37,60 +42,63 @@ export function HomeHeader({
 	canPlay: boolean;
 	canShuffle: boolean;
 }) {
+	const t = useTranslate();
 	const duration = spellDuration(stats.seconds);
 	const span =
 		stats.earliest && stats.latest && stats.earliest !== stats.latest
 			? `${stats.earliest}–${stats.latest}`
 			: (stats.earliest ?? null);
 
-	const doors: Door[] = [
-		{
-			id: "tracks",
-			label: "track",
-			count: stats.trackCount,
-			href: "#/all",
-			hint: "browse",
-			name: "All music",
-			cover: null,
-			minor: true,
-		},
-		{
-			id: "albums",
-			label: "album",
-			count: stats.albumCount,
-			href: null,
-			onOpen: () => stats.topAlbum && onSearch(stats.topAlbum.album),
-			hint: stats.topAlbum ? "most played" : null,
-			name: stats.topAlbum?.album ?? null,
-			cover: stats.topAlbum?.artworkUrl ?? null,
-		},
-		{
-			id: "artists",
-			label: "artist",
-			count: stats.artistCount,
-			href: null,
-			onOpen: () => stats.topArtist && onSearch(stats.topArtist.name),
-			hint: stats.topArtist ? "most played" : null,
-			name: stats.topArtist?.name ?? null,
-			cover: stats.topArtist?.cover.artworkUrl ?? null,
-		},
-		{
-			id: "genres",
-			label: "genre",
-			count: stats.genreCount,
-			href: GENRES_HREF,
-			hint: "browse",
-			name: "All genres",
-			cover: null,
-			minor: true,
-		},
-	].filter((door) => door.count > 0);
+	const doors = (
+		[
+			{
+				id: "tracks",
+				label: "home.door.tracks",
+				count: stats.trackCount,
+				href: "#/all",
+				hint: "home.hint.browse",
+				name: t("library.allMusic"),
+				cover: null,
+				minor: true,
+			},
+			{
+				id: "albums",
+				label: "home.door.albums",
+				count: stats.albumCount,
+				href: null,
+				onOpen: () => stats.topAlbum && onSearch(stats.topAlbum.album),
+				hint: stats.topAlbum ? "home.hint.mostPlayed" : null,
+				name: stats.topAlbum?.album ?? null,
+				cover: stats.topAlbum?.artworkUrl ?? null,
+			},
+			{
+				id: "artists",
+				label: "home.door.artists",
+				count: stats.artistCount,
+				href: null,
+				onOpen: () => stats.topArtist?.name && onSearch(stats.topArtist.name),
+				hint: stats.topArtist ? "home.hint.mostPlayed" : null,
+				name: stats.topArtist?.name ?? null,
+				cover: stats.topArtist?.cover.artworkUrl ?? null,
+			},
+			{
+				id: "genres",
+				label: "home.door.genres",
+				count: stats.genreCount,
+				href: GENRES_HREF,
+				hint: "home.hint.browse",
+				name: t("home.allGenres"),
+				cover: null,
+				minor: true,
+			},
+		] as Door[]
+	).filter((door) => door.count > 0);
 
 	return (
 		<header className={styles.header}>
 			<div className={styles.said}>
 				<p className={styles.eyebrow}>
-					Your library
+					{t("home.yourLibrary")}
 					{span ? <span className={styles.span}>{span}</span> : null}
 				</p>
 
@@ -101,10 +109,10 @@ export function HomeHeader({
 							{duration.trail ? (
 								<span className={styles.trail}> {duration.trail}</span>
 							) : null}
-							<span className={styles.of}> of music</span>
+							<span className={styles.of}> {t("home.ofMusic")}</span>
 						</>
 					) : (
-						"Your library"
+						t("home.yourLibrary")
 					)}
 				</h1>
 			</div>
@@ -117,12 +125,12 @@ export function HomeHeader({
 							icon={PlayIcon}
 							onClick={onPlayEverything}
 						>
-							Play
+							{t("player.play")}
 						</Button>
 					) : null}
 					{canShuffle ? (
 						<Button icon={Shuffle} onClick={onShuffleEverything}>
-							Shuffle
+							{t("player.shuffle")}
 						</Button>
 					) : null}
 				</div>
@@ -136,18 +144,22 @@ export function HomeHeader({
 				</div>
 			) : null}
 
-			{isLoading ? <p className={styles.counting}>still counting</p> : null}
+			{isLoading ? (
+				<p className={styles.counting}>{t("home.counting")}</p>
+			) : null}
 		</header>
 	);
 }
 
 function Doorway({ door }: { door: Door }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const body = (
 		<>
 			<span className={styles.figure}>
-				<span className={styles.count}>{door.count.toLocaleString()}</span>
+				<span className={styles.count}>{format.number(door.count)}</span>
 				<span className={styles.label}>
-					{pluralise(door.count, door.label)}
+					{t(door.label, { count: door.count })}
 				</span>
 			</span>
 
@@ -161,7 +173,7 @@ function Doorway({ door }: { door: Door }) {
 
 					<span className={styles.namedText}>
 						{door.hint ? (
-							<span className={styles.hint}>{door.hint}</span>
+							<span className={styles.hint}>{t(door.hint)}</span>
 						) : null}
 						<span className={styles.name}>
 							<span className={styles.nameText}>{door.name}</span>

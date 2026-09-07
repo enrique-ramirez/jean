@@ -1,4 +1,4 @@
-import { plural } from "@/shared/lib/text";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./TopTracks.module.css";
 import type { TopTrack } from "./tracks";
@@ -10,12 +10,13 @@ export function TopTracks({
 	tracks: TopTrack[];
 	onPlayTrack: (ref: number) => void;
 }) {
+	const t = useTranslate();
 	if (tracks.length === 0) return null;
 
 	return (
 		<section className={styles.block} aria-labelledby="home-top-tracks">
 			<h2 className={styles.heading} id="home-top-tracks">
-				Your top tracks
+				{t("home.topTracks")}
 			</h2>
 
 			<ol className={styles.list}>
@@ -42,7 +43,7 @@ export function TopTracks({
 								) : null}
 							</span>
 							<span className={styles.plays}>
-								{plural(track.plays, "play")}
+								{t("shelf.plays", { count: track.plays })}
 							</span>
 						</button>
 					</li>

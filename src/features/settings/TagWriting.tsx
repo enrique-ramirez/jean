@@ -7,6 +7,9 @@ import {
 	SUPPORTED_API_VERSION,
 } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import { Trans } from "@/shared/i18n/Trans";
+import type { Translate } from "@/shared/i18n/useTranslate";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { HelpHint } from "@/shared/ui/HelpHint";
 import { Input } from "@/shared/ui/Input";
@@ -25,109 +28,121 @@ interface Explained {
 	fix: string | null;
 }
 
-function explain(state: TagWriterState): Explained {
+function explain(state: TagWriterState, t: Translate): Explained {
 	switch (state.kind) {
 		case "absent":
 			return {
 				tone: "off",
-				badge: "Not installed",
-				summary:
-					"foo_jean is the companion component that writes tags back to your library. Without it Jean reads everything and changes nothing, which is still a complete app — just not one that can set a rating.",
-				fix: IS_PUBLISHED
-					? "Install it into foobar2000 and restart the player."
-					: "It is not published yet, so there is nothing to do here.",
+				badge: t("fooJean.badge.absent"),
+				summary: t("fooJean.absent.summary"),
+				fix: t(IS_PUBLISHED ? "fooJean.absent.install" : "fooJean.absent.soon"),
 			};
 
 		case "not-listening":
 			return {
 				tone: "warn",
-				badge: "Not connected",
-				summary: `foo_jean is installed but could not start on port ${state.record.port}. ${state.error}`,
-				fix: state.portInUse
-					? `Another program already has that port. Change the port under ${PANE} in foobar2000, then restart it.`
-					: `Check the settings under ${PANE} in foobar2000, then restart it.`,
+				badge: t("fooJean.badge.disconnected"),
+				summary: t("fooJean.notListening.summary", {
+					port: state.record.port,
+					error: state.error,
+				}),
+				fix: t(
+					state.portInUse
+						? "fooJean.notListening.portTaken"
+						: "fooJean.notListening.check",
+					{ pane: PANE },
+				),
 			};
 
 		case "unreachable":
 			return {
 				tone: "warn",
-				badge: "Not connected",
-				summary: `foo_jean says it is listening on port ${state.record.port}, but this device cannot reach it.`,
-				fix: `Something on the player is refusing the connection: usually the address under ${PANE} restricted to one machine, otherwise a firewall. 0.0.0.0 accepts connections from your network, which is both the default and what beefweb itself does.`,
+				badge: t("fooJean.badge.disconnected"),
+				summary: t("fooJean.unreachable.summary", { port: state.record.port }),
+				fix: t("fooJean.unreachable.fix", { pane: PANE }),
 			};
 
 		case "impostor":
 			return {
 				tone: "warn",
-				badge: "Not connected",
-				summary: `Something is listening on port ${state.record.port} and it is not foo_jean. Your token has not been sent to it.`,
-				fix: "That record is writable by anything that can reach the player, so it may simply be stale. Restart foobar2000 to have foo_jean publish it again.",
+				badge: t("fooJean.badge.disconnected"),
+				summary: t("fooJean.impostor.summary", { port: state.record.port }),
+				fix: t("fooJean.impostor.fix"),
 			};
 
 		case "unsupported":
 			return {
 				tone: "warn",
-				badge: "Not connected",
-				summary: `foo_jean is speaking version ${state.apiVersion} of its API and this copy of Jean understands version ${SUPPORTED_API_VERSION}.`,
-				fix: "Update whichever of the two is older.",
+				badge: t("fooJean.badge.disconnected"),
+				summary: t("fooJean.unsupported.summary", {
+					theirs: state.apiVersion,
+					ours: SUPPORTED_API_VERSION,
+				}),
+				fix: t("fooJean.unsupported.fix"),
 			};
 
 		case "no-token":
 			return {
 				tone: "warn",
-				badge: "Needs token",
-				summary: `foo_jean ${state.status.version} is running on port ${state.record.port}. It needs the token before it will accept anything.`,
-				fix: `On the player, open ${PANE} and copy the token. It is deliberately not published with the rest of the component's details, because anything that can reach the player can read those.`,
+				badge: t("fooJean.badge.needsToken"),
+				summary: t("fooJean.noToken.summary", {
+					version: state.status.version,
+					port: state.record.port,
+				}),
+				fix: t("fooJean.noToken.fix", { pane: PANE }),
 			};
 
 		case "unauthorized":
 			return {
 				tone: "warn",
-				badge: "Token refused",
-				summary: "foo_jean refused that token.",
-				fix: `Check it against the token under ${PANE}. Regenerating there locks out every client holding the old one.`,
+				badge: t("fooJean.badge.tokenRefused"),
+				summary: t("fooJean.unauthorized.summary"),
+				fix: t("fooJean.unauthorized.fix", { pane: PANE }),
 			};
 
 		case "ready":
 			return state.capabilities.canWrite
 				? {
 						tone: "ok",
-						badge: "Connected",
-						summary: `Connected to foo_jean ${state.status.version} on port ${state.record.port}.`,
+						badge: t("fooJean.badge.connected"),
+						summary: t("fooJean.ready.summary", {
+							version: state.status.version,
+							port: state.record.port,
+						}),
 						fix: null,
 					}
 				: {
 						tone: "warn",
-						badge: "Connected",
-						summary:
-							"Connected, and this install permits no fields to be written.",
-						fix: `Add the fields you want under ${PANE}, in "Fields they may write", then restart foobar2000.`,
+						badge: t("fooJean.badge.connected"),
+						summary: t("fooJean.ready.noFields"),
+						fix: t("fooJean.ready.addFields", { pane: PANE }),
 					};
 	}
 }
 
-function explainStreaming(state: TagWriterState): string | null {
+function explainStreaming(state: TagWriterState, t: Translate): string | null {
 	if (state.kind !== "ready") return null;
 	const { canStream, streamFormats } = state.capabilities;
 
-	if (!canStream)
-		return `This copy of foo_jean does not stream audio, so Jean cannot play it on this device. Either it is older than the feature, or no encoder started -- check ${PANE}.`;
+	if (!canStream) return t("fooJean.stream.none", { pane: PANE });
 
-	return `Streaming ${(streamFormats ?? []).join(" and ")}. The control is beside the volume in the status bar.`;
+	return t("fooJean.stream.formats", {
+		formats: (streamFormats ?? []).join(" and "),
+	});
 }
 
-function explainPairing(failure: PairFailure): string {
+function explainPairing(failure: PairFailure, t: Translate): string {
 	switch (failure.reason) {
 		case "not-open":
-			return `No pairing window is open. On the player, go to ${PANE} and press “Pair a device”, then press Pair here within two minutes.`;
+			return t("fooJean.pair.notOpen", { pane: PANE });
 		case "not-local":
-			return "This device is not on the player’s own network, so it cannot pair. Paste the token instead.";
+			return t("fooJean.pair.notLocal");
 		case "busy":
-			return "Too many pairing attempts just now. Wait a few seconds and try again.";
+			return t("fooJean.pair.busy");
 		case "unsupported":
-			return "This copy of foo_jean is too old to pair. Paste the token instead, or update the component.";
+			return t("fooJean.pair.unsupported");
 		case "unreachable":
-			return `Could not reach foo_jean. ${failure.message}`;
+			return t("fooJean.pair.unreachable", { message: failure.message });
 	}
 }
 
@@ -139,6 +154,7 @@ function PairButton({
 	origin: string;
 	onPaired: (token: string) => void;
 }) {
+	const t = useTranslate();
 	const [name, setName] = useState("");
 	const [isPairing, setIsPairing] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
@@ -151,14 +167,14 @@ function PairButton({
 		setIsPairing(false);
 
 		if (result.ok) onPaired(result.token);
-		else setProblem(explainPairing(result));
+		else setProblem(explainPairing(result, t));
 	};
 
 	return (
 		<div className={styles.pairing}>
 			<div className={styles.tokenRow}>
 				<label className={styles.field} htmlFor="foo-jean-device-name">
-					<span className={styles.label}>Name</span>
+					<span className={styles.label}>{t("label.name")}</span>
 					<Input
 						size="md"
 						id="foo-jean-device-name"
@@ -166,20 +182,19 @@ function PairButton({
 						value={name}
 						spellCheck={false}
 						autoComplete="off"
-						placeholder="This device (optional)"
+						placeholder={t("fooJean.pair.namePlaceholder")}
 						maxLength={64}
 						onChange={(event) => setName(event.target.value)}
 					/>
 				</label>
 
 				<Button variant="primary" disabled={isPairing} onClick={pair}>
-					{isPairing ? "Pairing…" : "Pair"}
+					{t(isPairing ? "fooJean.pair.pairing" : "fooJean.pair.pair")}
 				</Button>
 			</div>
 
 			<p className={styles.fix}>
-				{problem ??
-					`Press “Pair a device” under ${PANE} on the player, then press Pair here. No typing on this device.`}
+				{problem ?? t("fooJean.pair.how", { pane: PANE })}
 			</p>
 		</div>
 	);
@@ -194,6 +209,7 @@ function TokenField({
 	onSave: (token: string) => void;
 	onCancel?: () => void;
 }) {
+	const t = useTranslate();
 	const [draft, setDraft] = useState(token);
 	const [isVisible, setIsVisible] = useState(false);
 
@@ -206,7 +222,7 @@ function TokenField({
 			}}
 		>
 			<label className={styles.field} htmlFor="foo-jean-token">
-				<span className={styles.label}>Token</span>
+				<span className={styles.label}>{t("fooJean.token.label")}</span>
 				<Input
 					size="md"
 					id="foo-jean-token"
@@ -215,7 +231,7 @@ function TokenField({
 					value={draft}
 					spellCheck={false}
 					autoComplete="off"
-					placeholder="Paste the token from foobar2000"
+					placeholder={t("fooJean.token.placeholder")}
 					onChange={(event) => setDraft(event.target.value)}
 				/>
 			</label>
@@ -224,23 +240,26 @@ function TokenField({
 				aria-pressed={isVisible}
 				onClick={() => setIsVisible((current) => !current)}
 			>
-				{isVisible ? "Hide" : "Show"}
+				{t(isVisible ? "action.hide" : "action.show")}
 			</Button>
-			{onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}
+			{onCancel ? (
+				<Button onClick={onCancel}>{t("action.cancel")}</Button>
+			) : null}
 			<Button variant="primary" type="submit" disabled={draft.trim() === token}>
-				Save
+				{t("action.save")}
 			</Button>
 		</form>
 	);
 }
 
 export function TagWriting() {
+	const t = useTranslate();
 	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
 	const { allowedFields, isFieldEnabled, setFieldEnabled } = useTagWriting();
 	const { state, origin } = discovery;
 
-	const explained = explain(state);
-	const streaming = explainStreaming(state);
+	const explained = explain(state, t);
+	const streaming = explainStreaming(state, t);
 	const [isEditingToken, setIsEditingToken] = useState(false);
 
 	const needsToken = state.kind === "no-token" || state.kind === "unauthorized";
@@ -280,22 +299,21 @@ export function TagWriting() {
 			{allowedFields.length > 0 ? (
 				<div className={styles.fields}>
 					<div className={styles.fieldsHead}>
-						<span>What Jean may write</span>
-						<HelpHint label="About the write allowlist">
+						<span>{t("fooJean.fields.title")}</span>
+						<HelpHint label={t("fooJean.fields.help")}>
 							<p>
-								This foobar2000 permits these fields and no others. That list
-								lives under <code>{PANE}</code>.
+								<Trans
+									phrase="fooJean.fields.allowlist"
+									pane={<code>{PANE}</code>}
+								/>
 							</p>
-							<p>
-								Turning one off here narrows what Jean offers. It cannot widen
-								the list.
-							</p>
+							<p>{t("fooJean.fields.narrowOnly")}</p>
 						</HelpHint>
 					</div>
 					{allowedFields.map((field) => (
 						<Switch
 							key={field}
-							label={labelOfField(field)}
+							label={labelOfField(field, t)}
 							checked={isFieldEnabled(field)}
 							onChange={(enabled) => setFieldEnabled(field, enabled)}
 						/>
@@ -306,7 +324,7 @@ export function TagWriting() {
 							className={styles.quiet}
 							onClick={() => setIsEditingToken(true)}
 						>
-							Change token
+							{t("fooJean.token.change")}
 						</button>
 					) : null}
 				</div>
@@ -315,7 +333,7 @@ export function TagWriting() {
 			{isWorking ? null : (
 				<div className={styles.panelFoot}>
 					<Button onClick={recheck} disabled={isChecking}>
-						{isChecking ? "Checking..." : "Check again"}
+						{t(isChecking ? "fooJean.checking" : "fooJean.checkAgain")}
 					</Button>
 				</div>
 			)}

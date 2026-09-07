@@ -2,12 +2,14 @@ import { useEffect } from "react";
 
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
 import { readTrack } from "@/shared/api/beefweb";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { type PlaybackBadge, setFavicon } from "./favicon";
 import { useMediaSession } from "./useMediaSession";
 
 const NAME = "Jean";
 
 export function useDocumentIdentity() {
+	const t = useTranslate();
 	const { isError } = usePlayer();
 	const snapshot = useAudiblePlayer();
 
@@ -24,7 +26,7 @@ export function useDocumentIdentity() {
 				: "idle";
 
 	const title = isError
-		? `Disconnected · ${NAME}`
+		? `${t("player.disconnected")} · ${NAME}`
 		: hasTrack
 			? `${track?.title} — ${track?.artist} · ${NAME}`
 			: NAME;

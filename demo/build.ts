@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { build } from "vite";
 
+import { localePlugin, shippedLocales } from "../scripts/localePlugin.ts";
+
 // Two builds: the browser fetches a service worker by URL rather than importing
 // it, so the worker is bundled separately as one classic script at a stable
 // path. `sw.js` beside `index.html` is also what puts its scope at the root of
@@ -16,7 +18,10 @@ const OUT = resolve(ROOT, "dist-demo");
 
 // Null, as in a real build: the component's port is on the page's own host. The
 // worker answers before a request reaches any host, so that still holds.
-const define = { __PLAYER_HOST__: "null" };
+const define = {
+	__PLAYER_HOST__: "null",
+	__SHIPPED_LOCALES__: JSON.stringify(shippedLocales(ROOT)),
+};
 
 await build({
 	configFile: false,
@@ -26,7 +31,7 @@ await build({
 	base: "./",
 	publicDir: resolve(ROOT, "public"),
 	define,
-	plugins: [react()],
+	plugins: [react(), localePlugin()],
 	resolve: { alias: { "@": resolve(ROOT, "src") } },
 	build: { outDir: OUT, emptyOutDir: true },
 });

@@ -311,3 +311,60 @@
 	justify-content: space-between;
 	gap: 10px;
 }
+
+/* A native select: the OS picker on a phone is a better list than anything drawn here, and it
+   brings keyboard type-ahead and the right ARIA with it. The chevron is ours because
+   `appearance: none` is what lets the box match the inputs beside it. */
+.select {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px 8px 14px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--muted);
+	transition:
+		border-color 0.15s var(--ease),
+		box-shadow 0.15s var(--ease),
+		color 0.15s var(--ease);
+}
+
+.select:hover {
+	border-color: var(--border-strong);
+}
+
+.select:focus-within {
+	border-color: var(--accent-line);
+	color: var(--text);
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.select select {
+	flex: 1;
+	width: 0;
+	min-width: 0;
+	appearance: none;
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	font-size: 0.875rem;
+	color: var(--text);
+}
+
+.select select:focus,
+.select select:focus-visible {
+	outline: none;
+}
+
+.note[data-tone="warn"] {
+	color: var(--danger);
+}
+
+@media (max-width: 640px) {
+	/* Under 16px, iOS Safari zooms the page on focus and does not come back. */
+	.select select {
+		font-size: 1rem;
+	}
+}

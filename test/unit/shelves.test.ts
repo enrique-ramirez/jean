@@ -37,15 +37,16 @@ const album = (over: Partial<Album> = {}): Album => {
 const many = (count: number, over: (at: number) => Partial<Album>) =>
 	Array.from({ length: count }, (_, at) => album(over(at)));
 
-const titles = (albums: Album[]) =>
-	buildShelves(albums).map((shelf) => shelf.title);
+// By id rather than by title: a shelf's title is a phrase key resolved against
+// whatever language is showing, and its identity is not.
+const ids = (albums: Album[]) => buildShelves(albums).map((shelf) => shelf.id);
 
 test("a shelf that can only fill three entries is dropped rather than shown thin", () => {
 	const three = many(3, (at) => ({ plays: 10 + at, lastPlayed: Date.now() }));
-	assert.ok(!titles(three).includes("Most played"));
+	assert.ok(!ids(three).includes("top"));
 
 	const four = many(4, (at) => ({ plays: 10 + at, lastPlayed: Date.now() }));
-	assert.ok(titles(four).includes("Most played"));
+	assert.ok(ids(four).includes("top"));
 });
 
 test("an empty library gets no shelves at all, not an empty one", () => {
@@ -56,14 +57,14 @@ test("a library the player knows nothing about still opens on something", () => 
 	// No play counts, no ratings, no dates: a fresh install, or a player with no
 	// playback-statistics component. Every real shelf is empty and the fallback
 	// is the only thing between the user and a blank screen.
-	assert.deepEqual(titles(many(6, () => ({}))), ["Start somewhere"]);
+	assert.deepEqual(ids(many(6, () => ({}))), ["starter"]);
 });
 
 test("Never listened stays away when nothing has ever been played", () => {
 	// Every album reads zero, so offering the whole library as untouched would be
 	// a lie about a library Jean simply cannot see the history of.
-	const shelves = titles(many(6, () => ({})));
-	assert.ok(!shelves.includes("Never listened"));
+	const shelves = ids(many(6, () => ({})));
+	assert.ok(!shelves.includes("unopened"));
 });
 
 test("Your favourites needs eight rated albums before it will judge", () => {
@@ -72,8 +73,8 @@ test("Your favourites needs eight rated albums before it will judge", () => {
 	const rated = (count: number) =>
 		many(count, (at) => ({ ratedCount: 2, rating: 1 + (at % 5) }));
 
-	assert.ok(!titles(rated(7)).includes("Your favourites"));
-	assert.ok(titles(rated(12)).includes("Your favourites"));
+	assert.ok(!ids(rated(7)).includes("rated"));
+	assert.ok(ids(rated(12)).includes("rated"));
 });
 
 test("Remember these? offers nothing played inside the last eighteen months", () => {
@@ -87,12 +88,8 @@ test("Remember these? offers nothing played inside the last eighteen months", ()
 		...many(8, () => ({ plays: 4, playsPerTrack: 1, lastPlayed })),
 	];
 
-	assert.ok(
-		!titles(library(now - 30 * 24 * 60 * 60 * 1000)).includes(
-			"Remember these?",
-		),
-	);
-	assert.ok(titles(library(now - 4 * YEAR_MS)).includes("Remember these?"));
+	assert.ok(!ids(library(now - 30 * 24 * 60 * 60 * 1000)).includes("loved"));
+	assert.ok(ids(library(now - 4 * YEAR_MS)).includes("loved"));
 });
 
 test("a shelf holds at most twenty-four albums and still reports the whole count", () => {

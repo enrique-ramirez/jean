@@ -13,10 +13,12 @@ import { ratingItems, trackActions } from "@/domain/track/trackActions";
 import { useAddTracks } from "@/domain/track/useAddTracks";
 import { useQueueTracks } from "@/domain/track/useQueueTracks";
 import { readTrack } from "@/shared/api/beefweb";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { useNowPlayingRating } from "./useNowPlayingRating";
 
 export function useNowPlayingMenu() {
+	const t = useTranslate();
 	const snapshot = useAudiblePlayer();
 	const { data: playlists = [] } = usePlaylists();
 	const permissions = usePermissions();
@@ -52,12 +54,13 @@ export function useNowPlayingMenu() {
 			queueTracks,
 			addTracks,
 			credit: track?.artist,
+			t,
 			rating: canWrite
 				? {
 						id: "rate",
-						label: "Rating",
+						label: t("rating.title"),
 						icon: Star,
-						items: ratingItems(starsOf(raw), write),
+						items: ratingItems(starsOf(raw), write, t),
 					}
 				: null,
 		});
@@ -74,6 +77,7 @@ export function useNowPlayingMenu() {
 		raw,
 		canWrite,
 		write,
+		t,
 	]);
 
 	const element = (

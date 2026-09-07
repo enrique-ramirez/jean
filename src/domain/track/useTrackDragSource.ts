@@ -5,6 +5,7 @@ import {
 	usePlaylists,
 } from "@/domain/player/usePlayer";
 import type { TrackColumns } from "@/shared/api/types";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useDragSource } from "@/shared/ui/dnd";
 import { titleOf } from "./fields";
 import type { LibrarySource } from "./librarySource";
@@ -27,6 +28,7 @@ export function useTrackDragSource({
 	const { data: playlists = [] } = usePlaylists();
 	const permissions = usePermissions();
 	const addTracks = useAddTracks();
+	const t = useTranslate();
 	const { queueTracks } = useQueueTracks();
 
 	return useDragSource<number[]>({
@@ -37,14 +39,17 @@ export function useTrackDragSource({
 			if (!aimed) return null;
 			const { index, positions } = aimed;
 
-			const grabbed = titleOf(rows[index]);
+			const grabbed = titleOf(rows[index], t);
 
 			return {
 				count: positions.length,
 				label:
 					positions.length === 1
 						? grabbed
-						: `${grabbed} and ${positions.length - 1} more`,
+						: t("track.andMore", {
+								track: grabbed,
+								count: positions.length - 1,
+							}),
 				items: positions.map((position) => refAt(indices, position)),
 			};
 		},

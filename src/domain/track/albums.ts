@@ -35,9 +35,9 @@ const blankAlbum = (
 	key,
 	album,
 	match,
-	// The tag as it stands, which is the other half of the album's identity; `artist` is what to draw.
+	// The tag as it stands, not a display fallback: what to call an untagged record is a phrase,
+	// chosen where it renders.
 	artistTag: artist,
-	artist: artist ?? "Unknown artist",
 	refs: [] as number[],
 	plays: 0,
 	lastPlayed: 0,

@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { audibleAt } from "@/domain/player/position";
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { scrollParentOf } from "@/shared/lib/scrollParent";
 import styles from "./Lyrics.module.css";
 import { activeLineAt, type Lyrics as ParsedLyrics } from "./lyricsFormat";
@@ -14,9 +15,11 @@ const scrollerOf = (node: Element | null) =>
 const FOCUS = 0.34;
 
 function Following({ onResume }: { onResume: () => void }) {
+	const t = useTranslate();
+
 	return (
 		<button type="button" className={styles.resume} onClick={onResume}>
-			Resume following
+			{t("lyrics.resumeFollowing")}
 		</button>
 	);
 }
@@ -131,22 +134,23 @@ export function Lyrics({
 	snapshot: PlayerSnapshot | null | undefined;
 	onSeek: (at: number) => void;
 }) {
+	const t = useTranslate();
 	const { isPending } = useNowPlayingTrack();
 
-	if (isPending) return <p className={styles.notice}>Reading the tag…</p>;
+	if (isPending) return <p className={styles.notice}>{t("lyrics.reading")}</p>;
 
 	if (lyrics.kind === "none")
 		return (
 			<div className={styles.empty}>
 				<Mic2 size={28} strokeWidth={1.5} aria-hidden="true" />
-				<p>No lyrics found</p>
+				<p>{t("lyrics.none")}</p>
 			</div>
 		);
 
 	if (lyrics.kind === "plain")
 		return (
 			<div className={styles.scroller}>
-				<p className={styles.unsynced}>Unsynced</p>
+				<p className={styles.unsynced}>{t("lyrics.unsynced")}</p>
 				{lyrics.lines.map((line, index) => (
 					// biome-ignore lint/suspicious/noArrayIndexKey: plain text, repeats
 					<p key={index} className={styles.plainLine}>

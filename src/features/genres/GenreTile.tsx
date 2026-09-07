@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { genreHref } from "@/domain/library/genreRoute";
 import type { Genre } from "@/domain/track/genres";
 import type { LibrarySource } from "@/domain/track/librarySource";
-import { plural } from "@/shared/lib/text";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { GenreMark } from "./GenreMark";
 import styles from "./GenreTile.module.css";
@@ -20,6 +20,8 @@ export function GenreTile({
 	genre: Genre;
 	source: LibrarySource;
 }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const mark = useMemo(() => markOf(genre.name), [genre.name]);
 
 	const covers = useMemo(
@@ -33,8 +35,16 @@ export function GenreTile({
 	);
 
 	const countLabel = [
-		genre.albumCount > 0 ? plural(genre.albumCount, "album") : null,
-		plural(genre.trackCount, "track"),
+		genre.albumCount > 0
+			? t("artist.albumCount", {
+					count: genre.albumCount,
+					total: genre.albumCount,
+				})
+			: null,
+		t("view.trackCount", {
+			count: genre.trackCount,
+			total: genre.trackCount,
+		}),
 	]
 		.filter(Boolean)
 		.join(", ");
@@ -57,12 +67,12 @@ export function GenreTile({
 					{genre.albumCount > 0 ? (
 						<>
 							<DiscAlbum size={12} strokeWidth={2} />
-							{genre.albumCount.toLocaleString()}
+							{format.number(genre.albumCount)}
 							<span className={styles.separator}>·</span>
 						</>
 					) : null}
 					<Music2 size={12} strokeWidth={2} />
-					{genre.trackCount.toLocaleString()}
+					{format.number(genre.trackCount)}
 				</span>
 			</span>
 

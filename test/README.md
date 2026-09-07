@@ -14,7 +14,9 @@ pnpm test:ui                                           # pick and watch interact
 pnpm test:e2e --project=desktop -g "double-clicking"   # one test
 ```
 
-`test/alias.ts` is loaded through `--import` before the unit tests, as a `node:module` resolve hook. It teaches node two things about `src/` that its resolver does not know: `@/` is Vite's alias, and imports there carry no extension. Node's own type stripping does the rest, so there is no bundler and **no jsdom** anywhere in this repo.
+`test/alias.ts` is loaded through `--import` before the unit tests, as a `node:module` resolve hook. It teaches node three things about `src/` that it does not know: `@/` is Vite's alias, imports there carry no extension, and the values Vite substitutes through `define` are globals here rather than constants folded into a bundle. Node's own type stripping does the rest, so there is no bundler and **no jsdom** anywhere in this repo.
+
+`locales.test.ts` checks every translation in `public/locales/` against the English catalogue — unknown keys, plural forms, and fields the English does not carry. Nothing in a browser can see any of that: a wrong key falls back to English silently and a wrong field renders as `{prot}` on a screen nobody has opened.
 
 `pnpm test:e2e` builds first — `globalSetup` in `playwright.config.ts` runs `test/e2e/build.ts`, which is `vite build` alone — and serves that build from the fake, since that is beefweb's arrangement: one origin answering both the app and `/api`. There is no `webServer` block; the fake is a worker fixture and `baseURL` is set per worker to the port it landed on.
 

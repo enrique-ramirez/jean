@@ -3,9 +3,12 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "@/app/App";
+import { startLocale } from "@/shared/i18n/locale";
 import "@/shared/styles/global.css";
 
 const queryClient = new QueryClient();
+
+await startLocale();
 
 createRoot(document.getElementById("root") as HTMLElement).render(
 	<StrictMode>

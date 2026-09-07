@@ -3,6 +3,7 @@ import { LibrarySetup } from "@/domain/library/LibrarySetup";
 import type { Library } from "@/domain/library/useLibrary";
 import { albumsOf, type CoveredAlbum } from "@/domain/track/albums";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { GenreBars } from "./GenreBars";
 import { HomeHeader } from "./HomeHeader";
 import styles from "./HomeView.module.css";
@@ -38,6 +39,7 @@ export function HomeView({
 	canPlay: boolean;
 	canShuffle: boolean;
 }) {
+	const t = useTranslate();
 	const albums = useMemo(
 		() =>
 			library.rows.length === 0
@@ -57,8 +59,8 @@ export function HomeView({
 	);
 
 	const tracks = useMemo(
-		() => topTracksOf(library.rows, TOP_TRACKS, library.source.artworkUrl),
-		[library.rows, library.source],
+		() => topTracksOf(library.rows, TOP_TRACKS, library.source.artworkUrl, t),
+		[library.rows, library.source, t],
 	);
 
 	if (library.needsSetup) {
@@ -92,9 +94,7 @@ export function HomeView({
 
 			{shelves.length === 0 ? (
 				<p className={styles.notice}>
-					{library.isLoading
-						? "Reading your library..."
-						: "Nothing to show from your library yet."}
+					{library.isLoading ? t("home.reading") : t("home.nothingYet")}
 				</p>
 			) : (
 				<div className={styles.shelves}>

@@ -12,6 +12,7 @@ import { usePlaylistItems } from "@/domain/track/usePlaylistItems";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { playItem } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./PlaylistView.module.css";
 
 export function PlaylistView({
@@ -23,6 +24,7 @@ export function PlaylistView({
 	scrollRef: RefObject<HTMLElement | null>;
 	isCompactViewport: boolean;
 }) {
+	const t = useTranslate();
 	const { rows, loaded, total, isLoading, error, heat, patina, playedCount } =
 		usePlaylistItems(playlist?.id, playlist?.itemCount);
 
@@ -40,7 +42,7 @@ export function PlaylistView({
 	const finder = useFinder({
 		rows,
 		browserRef,
-		label: "Find in this playlist",
+		label: t("shortcut.openFinder"),
 	});
 
 	const stats = useMemo(
@@ -82,10 +84,12 @@ export function PlaylistView({
 			canFollowPlayback
 			onPlay={(index) => playItem(playlist.id, index)}
 			onOpenFinder={finder.open}
-			emptyNotice="This playlist is empty."
+			emptyNotice={t("playlist.empty")}
 			header={
 				<ViewHeader
-					eyebrow={playlist.isCurrent ? "Playing from" : "Playlist"}
+					eyebrow={t(
+						playlist.isCurrent ? "playlist.playingFrom" : "playlist.eyebrow",
+					)}
 					title={playlist.title}
 					stats={stats}
 					hasPlayCounts={hasPlayCounts}

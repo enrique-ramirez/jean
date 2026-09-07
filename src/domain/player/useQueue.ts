@@ -8,6 +8,7 @@ import {
 	removeFromPlayQueue,
 } from "@/shared/api/beefweb";
 import type { PlayQueueItem } from "@/shared/api/types";
+import { translate } from "@/shared/i18n/locale";
 import { inSequence } from "@/shared/lib/sequence";
 import { pushToast } from "@/shared/ui/toastStore";
 import { holdQueue, movePlan, QUEUE_KEY, readQueue, sameQueue } from "./queue";
@@ -50,7 +51,7 @@ export function useQueueActions() {
 				ok = false;
 				pushToast({
 					tone: "error",
-					message: "The player would not change the queue.",
+					message: translate("queue.refused"),
 				});
 			}
 			// Inside the hold, so a push cannot interleave between read and write.
@@ -113,8 +114,7 @@ export function useQueueActions() {
 			if (!current || !sameQueue(current, shown)) {
 				pushToast({
 					tone: "error",
-					message:
-						"The queue changed while you were dragging, so it was left alone.",
+					message: translate("queue.movedUnderYou"),
 				});
 				return;
 			}

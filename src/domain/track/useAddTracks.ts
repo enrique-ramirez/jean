@@ -3,7 +3,7 @@ import { useCallback } from "react";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { fetchPlaylists, removePlaylistItems } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
-import { plural } from "@/shared/lib/text";
+import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
 import type { LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
@@ -41,7 +41,7 @@ export function useAddTracks() {
 			const refuse = () =>
 				pushToast({
 					tone: "error",
-					message: `Nothing was added to ${target.title}. Smart playlists are built by the player and cannot be added to.`,
+					message: translate("add.smartPlaylist", { playlist: target.title }),
 				});
 
 			const before = await countOf().catch(() => null);
@@ -58,7 +58,7 @@ export function useAddTracks() {
 
 			if (before === null || after === null) {
 				pushToast({
-					message: `Added ${plural(count, "track")} to ${target.title}`,
+					message: translate("add.added", { count, playlist: target.title }),
 				});
 				return;
 			}
@@ -90,13 +90,13 @@ export function useAddTracks() {
 					);
 					await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 				} catch {
-					pushToast({ tone: "error", message: `Could not undo that.` });
+					pushToast({ tone: "error", message: translate("add.undoFailed") });
 				}
 			};
 
 			pushToast({
-				message: `Added ${plural(count, "track")} to ${target.title}`,
-				action: { label: "Undo", run: undo },
+				message: translate("add.added", { count, playlist: target.title }),
+				action: { label: translate("action.undo"), run: undo },
 			});
 		},
 		[queryClient],

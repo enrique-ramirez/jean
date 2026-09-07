@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
 import { PauseIcon, PlayIcon } from "@/shared/ui/icons";
 import styles from "./PlayToggle.module.css";
@@ -18,6 +18,7 @@ export function PlayToggle({
 	variant?: "bar" | "screen";
 	className?: string;
 }) {
+	const t = useTranslate();
 	const [motion, setMotion] = useState(MOTIONS[0]);
 
 	useEffect(() => {
@@ -43,7 +44,7 @@ export function PlayToggle({
 			data-size={variant}
 			data-playing={isPlaying}
 			data-motion={motion}
-			aria-label={isPlaying ? "Pause" : "Play"}
+			aria-label={t(isPlaying ? "player.pause" : "player.play")}
 			onClick={onToggle}
 		>
 			{isPlaying ? <PauseIcon /> : <PlayIcon />}

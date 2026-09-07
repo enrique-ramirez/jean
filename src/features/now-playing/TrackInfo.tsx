@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
 import styles from "./TrackInfo.module.css";
 import { TrackPanels } from "./TrackPanels";
@@ -30,6 +31,7 @@ export function TrackInfo({
 	trackKey: string;
 	onClose: () => void;
 }) {
+	const t = useTranslate();
 	const [exit, setExit] = useState<"up" | "down">("down");
 
 	const close = (towards: "up" | "down") => {
@@ -49,14 +51,14 @@ export function TrackInfo({
 			className={styles.screen}
 			data-now-playing=""
 			data-leaving={isOpen ? undefined : exit}
-			aria-label="Track information"
+			aria-label={t("panel.trackInfo")}
 			{...swipe}
 		>
 			<header className={styles.head}>
 				<button
 					type="button"
 					className={styles.dismiss}
-					aria-label="Close track information"
+					aria-label={t("panel.closeTrackInfo")}
 					onClick={() => close("down")}
 				>
 					<ChevronDown size={20} strokeWidth={2} />

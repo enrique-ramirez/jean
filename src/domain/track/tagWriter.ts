@@ -6,6 +6,7 @@ import {
 	writeTags,
 } from "@/shared/api/fooJean";
 import type { TrackIdentity } from "@/shared/api/types";
+import { translate } from "@/shared/i18n/locale";
 
 // Nothing outside this file may ask which implementation it is holding.
 export interface TagWriter {
@@ -29,7 +30,7 @@ export const NO_WRITER: TagWriter = {
 	write: async () => ({
 		ok: false,
 		reason: "unavailable",
-		message: "Tag writing is not available.",
+		message: translate("tagWrite.unavailable"),
 	}),
 };
 
@@ -50,7 +51,7 @@ const agentWriter = (
 				return {
 					ok: false,
 					reason: "unknown-track",
-					message: "That track has no path to write to.",
+					message: translate("tagWrite.noPath"),
 				};
 			return writeTags(origin, token, {
 				path: track.path,

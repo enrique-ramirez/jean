@@ -1,6 +1,6 @@
 import { Star } from "lucide-react";
 import { type PointerEvent as ReactPointerEvent, useState } from "react";
-
+import { translate } from "@/shared/i18n/locale";
 import styles from "./Stars.module.css";
 
 // A half is a filled star clipped over its outline: lucide has no half-star glyph.
@@ -89,7 +89,9 @@ export function StarsInput({
 						className={styles.star}
 						tabIndex={-1}
 						aria-label={
-							clears ? `Clear rating (${label})` : `Rate ${stars} of ${max}`
+							clears
+								? translate("rating.clearOn", { label })
+								: translate("rating.set", { stars, max })
 						}
 						onPointerEnter={(event) => arm(event, stars)}
 						onPointerDown={(event) => event.stopPropagation()}

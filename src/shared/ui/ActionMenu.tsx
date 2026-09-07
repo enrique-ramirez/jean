@@ -16,6 +16,7 @@ import { useDismissable } from "@/shared/hooks/useDismissable";
 import type { Point } from "@/shared/hooks/useLongPress";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useVisualViewport } from "@/shared/hooks/useVisualViewport";
+import { translate } from "@/shared/i18n/locale";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./ActionMenu.module.css";
 import { Input } from "./Input";
@@ -260,7 +261,7 @@ function usePanel({
 		);
 		return matched.length > 0
 			? matched
-			: [{ type: "message", text: "Nothing matches that." }];
+			: [{ type: "message", text: translate("menu.noMatch") }];
 	};
 
 	const body = (
@@ -540,7 +541,7 @@ function ActionSheet({
 				}
 				role="dialog"
 				aria-modal="true"
-				aria-label={header?.title ?? "Actions"}
+				aria-label={header?.title ?? translate("menu.actions")}
 				tabIndex={-1}
 				onKeyDown={onKeyDown}
 				onPointerDown={(event) => event.stopPropagation()}

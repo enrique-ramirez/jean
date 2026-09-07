@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import type { Phrase } from "@/shared/i18n/en";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -17,10 +19,12 @@ import { usePanelScroll } from "./usePanelScroll";
 
 type Tab = "lyrics" | "details" | "artist";
 
-const TABS: { id: Tab; label: string; binding: string }[] = [
-	{ id: "lyrics", label: "Lyrics", binding: "showLyrics" },
-	{ id: "details", label: "Details", binding: "showDetails" },
-	{ id: "artist", label: "Artist", binding: "showArtist" },
+type PanelPhrase = Extract<Phrase, `panel.${string}`>;
+
+const TABS: { id: Tab; label: PanelPhrase; binding: string }[] = [
+	{ id: "lyrics", label: "panel.lyrics", binding: "showLyrics" },
+	{ id: "details", label: "panel.details", binding: "showDetails" },
+	{ id: "artist", label: "panel.artist", binding: "showArtist" },
 ];
 
 export function TrackPanels({
@@ -40,6 +44,7 @@ export function TrackPanels({
 	onExpand?: () => void;
 	isExpanded?: boolean;
 }) {
+	const t = useTranslate();
 	const { track } = useNowPlayingTrack();
 	const [tab, setTab] = useState<Tab>("lyrics");
 	const [direction, setDirection] = useState(0);
@@ -96,11 +101,13 @@ export function TrackPanels({
 			<Tabs
 				className={styles.tabs}
 				value={tab}
-				label="Track views"
+				label={t("panel.trackViews")}
 				options={TABS.map((entry) => ({
 					value: entry.id,
-					label: entry.label,
-					mnemonic: mnemonicOf(entry.label, entry.binding),
+					label: t(entry.label),
+					// Read off the translated label, so a language whose word does not start with the key
+					// underlines nothing rather than lying about which key opens the tab.
+					mnemonic: mnemonicOf(t(entry.label), entry.binding),
 				}))}
 				onChange={select}
 			>
@@ -108,7 +115,7 @@ export function TrackPanels({
 					<button
 						type="button"
 						className={styles.expand}
-						aria-label="Full-screen lyrics"
+						aria-label={t("lyrics.fullScreen")}
 						onClick={onExpand}
 					>
 						<Maximize2 size={16} strokeWidth={2} />

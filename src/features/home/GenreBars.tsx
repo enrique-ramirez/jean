@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { GENRES_HREF, genreHref } from "@/domain/library/genreRoute";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./GenreBars.module.css";
 
 export interface GenreBar {
@@ -9,6 +10,8 @@ export interface GenreBar {
 }
 
 export function GenreBars({ genres }: { genres: GenreBar[] }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const largest = genres.reduce(
 		(most, genre) => Math.max(most, genre.count),
 		0,
@@ -19,7 +22,7 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 		<section className={styles.block} aria-labelledby="home-genres">
 			<h2 className={styles.heading} id="home-genres">
 				<a className={styles.open} href={GENRES_HREF}>
-					Genres
+					{t("home.genres")}
 					<ChevronRight
 						className={styles.chevron}
 						size={16}
@@ -36,7 +39,10 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 						<a
 							className={styles.bar}
 							href={genreHref(genre.name)}
-							title={`${genre.count.toLocaleString()} tracks, ${genre.share}% of your library`}
+							title={t("home.genreShare", {
+								count: genre.count,
+								share: genre.share,
+							})}
 						>
 							<span className={styles.name}>{genre.name}</span>
 							<span className={styles.track}>
@@ -45,9 +51,7 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 									style={{ width: `${(genre.count / largest) * 100}%` }}
 								/>
 							</span>
-							<span className={styles.count}>
-								{genre.count.toLocaleString()}
-							</span>
+							<span className={styles.count}>{format.number(genre.count)}</span>
 						</a>
 					</li>
 				))}

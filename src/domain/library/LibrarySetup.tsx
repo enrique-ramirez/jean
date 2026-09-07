@@ -4,11 +4,13 @@ import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { LIBRARY_TITLE, looksLikeLibrary } from "@/domain/track/jeanPlaylists";
 import { renamePlaylist } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
-import { plural } from "@/shared/lib/text";
+import { Trans } from "@/shared/i18n/Trans";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import styles from "./LibrarySetup.module.css";
 
 export function LibrarySetup({ playlists }: { playlists: PlaylistInfo[] }) {
+	const t = useTranslate();
 	const queryClient = useQueryClient();
 
 	const candidate = playlists.find(looksLikeLibrary) ?? null;
@@ -22,39 +24,40 @@ export function LibrarySetup({ playlists }: { playlists: PlaylistInfo[] }) {
 
 	return (
 		<div className={styles.setup}>
-			<p className={styles.eyebrow}>Search</p>
-			<h1 className={styles.title}>Point Jean at your library</h1>
+			<p className={styles.eyebrow}>{t("search.title")}</p>
+			<h1 className={styles.title}>{t("librarySetup.title")}</h1>
 
 			<p className={styles.body}>
-				beefweb can only see playlists, so foobar2000's Media Library has to
-				become one. In foobar2000: <b>Library → Search</b>, enter{" "}
-				<code>ALL</code> as the query, then save it as an autoplaylist named
-				exactly:
+				<Trans
+					phrase="librarySetup.how"
+					menu={<b>{t("librarySetup.menu")}</b>}
+					query={<code>ALL</code>}
+				/>
 			</p>
 
 			<p className={styles.name}>
 				<code>{LIBRARY_TITLE}</code>
 			</p>
 
-			<p className={styles.body}>
-				It holds every track you have and keeps itself in sync. The name is how
-				Jean knows the playlist is meant for it rather than one of yours -- so
-				it has to match, and Jean keeps it out of your sidebar once it does.
-			</p>
+			<p className={styles.body}>{t("librarySetup.why")}</p>
 
-			<p className={styles.aside}>
-				Jean only ever reads it. Nothing here creates, clears or reorders a
-				playlist.
-			</p>
+			<p className={styles.aside}>{t("librarySetup.readOnly")}</p>
 
 			{candidate ? (
 				<div className={styles.migrate}>
 					<p className={styles.migrateBody}>
-						You already have a playlist called <b>{candidate.title}</b>
-						{candidate.itemCount > 0
-							? ` (${plural(candidate.itemCount, "track")})`
-							: null}
-						. If that is your library, Jean can rename it.
+						{candidate.itemCount > 0 ? (
+							<Trans
+								phrase="librarySetup.candidateSized"
+								playlist={<b>{candidate.title}</b>}
+								count={candidate.itemCount}
+							/>
+						) : (
+							<Trans
+								phrase="librarySetup.candidate"
+								playlist={<b>{candidate.title}</b>}
+							/>
+						)}
 					</p>
 					<Button
 						variant="primary"
@@ -62,11 +65,13 @@ export function LibrarySetup({ playlists }: { playlists: PlaylistInfo[] }) {
 						disabled={adopt.isPending}
 						onClick={() => adopt.mutate()}
 					>
-						{adopt.isPending ? "Renaming..." : `Rename it to ${LIBRARY_TITLE}`}
+						{adopt.isPending
+							? t("librarySetup.renaming")
+							: t("librarySetup.rename", { name: LIBRARY_TITLE })}
 					</Button>
 					{adopt.error ? (
 						<p className={styles.error}>
-							Could not rename -- {adopt.error.message}
+							{t("librarySetup.renameFailed", { message: adopt.error.message })}
 						</p>
 					) : null}
 				</div>

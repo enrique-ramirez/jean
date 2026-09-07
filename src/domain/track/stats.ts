@@ -1,5 +1,5 @@
 import type { TrackColumns } from "@/shared/api/types";
-import { plural } from "@/shared/lib/text";
+import { translate } from "@/shared/i18n/locale";
 import { FIELD, numberOf, tagKey, value } from "./fields";
 
 const TOP_GENRES = 4;
@@ -79,15 +79,16 @@ export function spellDuration(seconds: number) {
 	const { days, hours, minutes } = parts;
 	if (days > 0)
 		return {
-			lead: plural(days, "day"),
-			trail: hours > 0 ? `${hours} hr` : null,
+			lead: translate("span.days", { count: days }),
+			trail: hours > 0 ? translate("span.hoursShort", { count: hours }) : null,
 		};
 	if (hours > 0)
 		return {
-			lead: plural(hours, "hour"),
-			trail: minutes > 0 ? `${minutes} min` : null,
+			lead: translate("span.hours", { count: hours }),
+			trail:
+				minutes > 0 ? translate("span.minutesShort", { count: minutes }) : null,
 		};
-	return { lead: plural(minutes, "minute"), trail: null };
+	return { lead: translate("span.minutes", { count: minutes }), trail: null };
 }
 
 export function formatDuration(seconds: number) {
@@ -95,7 +96,9 @@ export function formatDuration(seconds: number) {
 	if (!parts) return null;
 
 	const { days, hours, minutes } = parts;
-	if (days > 0) return `${plural(days, "day")} ${hours} hr`;
-	if (hours > 0) return `${hours} hr ${minutes} min`;
-	return `${minutes} min`;
+	if (days > 0)
+		return `${translate("span.days", { count: days })} ${translate("span.hoursShort", { count: hours })}`;
+	if (hours > 0)
+		return `${translate("span.hoursShort", { count: hours })} ${translate("span.minutesShort", { count: minutes })}`;
+	return translate("span.minutesShort", { count: minutes });
 }

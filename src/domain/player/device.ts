@@ -1,4 +1,5 @@
 import { readStoredState } from "@/shared/hooks/useStoredState";
+import { translate } from "@/shared/i18n/locale";
 
 export const DEVICE_ID_KEY = "jean.deviceId";
 export const DEVICE_NAME_KEY = "jean.deviceName";
@@ -49,15 +50,17 @@ export function defaultDeviceName(): string {
 	if (reported?.platform) {
 		switch (reported.platform) {
 			case "Android":
-				return reported.mobile ? "Android phone" : "Android tablet";
+				return translate(
+					reported.mobile ? "device.androidPhone" : "device.androidTablet",
+				);
 			case "Chrome OS":
-				return "Chromebook";
+				return translate("device.chromebook");
 			case "macOS":
-				return "Mac";
+				return translate("device.mac");
 			case "Windows":
-				return "Windows PC";
+				return translate("device.windows");
 			case "Linux":
-				return "Linux PC";
+				return translate("device.linux");
 		}
 	}
 
@@ -69,12 +72,12 @@ export function defaultDeviceName(): string {
 	// An iPad reports itself as a Mac, and the touch points are the only thing that tells them apart.
 	if (platform.includes("iPad") || (platform.includes("Mac") && touch > 1))
 		return "iPad";
-	if (platform.includes("Mac")) return "Mac";
-	if (platform.includes("Win")) return "Windows PC";
+	if (platform.includes("Mac")) return translate("device.mac");
+	if (platform.includes("Win")) return translate("device.windows");
 	if (platform.includes("Linux") || platform.includes("X11"))
-		return touch > 1 ? "Android phone" : "Linux PC";
+		return translate(touch > 1 ? "device.androidPhone" : "device.linux");
 
-	return "Browser";
+	return translate("device.browser");
 }
 
 export const deviceName = () =>

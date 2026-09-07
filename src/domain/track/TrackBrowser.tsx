@@ -15,12 +15,15 @@ import {
 } from "react";
 import type { TrackColumns } from "@/shared/api/types";
 import { useStoredState } from "@/shared/hooks/useStoredState";
+import type { Phrase } from "@/shared/i18n/en";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers } from "@/shared/lib/mergeHandlers";
 import { Button } from "@/shared/ui/Button";
+import type { IconComponent } from "@/shared/ui/icons";
 import { Menu } from "@/shared/ui/Menu";
-import { Segmented, type SegmentedOption } from "@/shared/ui/Segmented";
+import { Segmented } from "@/shared/ui/Segmented";
 import { ColumnsMenu } from "./ColumnsMenu";
 import { DEFAULT_COLUMN_IDS, resolveColumns } from "./columns";
 import {
@@ -49,10 +52,14 @@ import { useTrackSelection } from "./useTrackSelection";
 
 type Layout = "compact" | "album";
 
-const LAYOUTS: SegmentedOption<Layout>[] = [
-	{ value: "compact", label: "List", icon: LayoutList },
-	{ value: "album", label: "Albums", icon: ListMusic },
-];
+const LAYOUTS = [
+	{ value: "compact", label: "layout.list", icon: LayoutList },
+	{ value: "album", label: "layout.albums", icon: ListMusic },
+] as const satisfies readonly {
+	value: Layout;
+	label: Phrase;
+	icon: IconComponent;
+}[];
 
 const PAGE = 12;
 
@@ -106,7 +113,13 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 	},
 	ref: Ref<TrackBrowserHandle>,
 ) {
+	const t = useTranslate();
 	const listRef = useRef<TrackListHandle | null>(null);
+
+	const layouts = useMemo(
+		() => LAYOUTS.map((option) => ({ ...option, label: t(option.label) })),
+		[t],
+	);
 
 	const [layout, setLayout] = useStoredState<Layout>("jean.layout", "compact");
 	const [showHeat, setShowHeat] = useStoredState("jean.heat", true);
@@ -139,7 +152,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		setIsHeatInfoOpen(true);
 	}, [heatIntroSeen, hasPlayCounts, showHeat]);
 
-	const groups = useMemo(() => groupByAlbum(rows), [rows]);
+	const groups = useMemo(() => groupByAlbum(rows, t), [rows, t]);
 	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);
 
 	const { optional, template, albumTemplate } = useMemo(
@@ -419,8 +432,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 							<Button
 								icon={Flame}
 								aria-pressed={showHeat}
-								aria-label="Show play-count heat"
-								title="Play-count heat"
+								aria-label={t("heat.show")}
+								title={t("heat.title")}
 								onClick={() => {
 									setShowHeat((current) => !current);
 									if (isHeatInfoOpen) dismissHeatInfo();
@@ -435,8 +448,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 				<Segmented
 					value={layout}
 					onChange={setLayout}
-					options={LAYOUTS}
-					label="Track layout"
+					options={layouts}
+					label={t("layout.label")}
 				/>
 
 				<ColumnsMenu

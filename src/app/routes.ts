@@ -12,6 +12,8 @@ import {
 } from "@/domain/track/artistRoute";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import { SHELVES, type Shelf } from "@/features/home/shelves";
+import { en, type Phrase } from "@/shared/i18n/en";
+import { translate } from "@/shared/i18n/locale";
 
 export interface PlayingSet {
 	kind: string;
@@ -25,12 +27,14 @@ export interface PlayingRoute extends PlayingSet {
 	temporaryRow?: boolean;
 }
 
+type KindPhrase = Extract<Phrase, `route.${string}`>;
+
 // What a temporary sidebar row *is*. Shelves, genres and artists all arrive through one row, so
 // without this they are three different kinds of place drawn identically.
-export const KIND_LABEL: Record<string, string> = {
-	[SCRATCH_KIND.artist]: "Artist",
-	[SCRATCH_KIND.genre]: "Genre",
-	[SCRATCH_KIND.shelf]: "Shelf",
+export const KIND_LABEL: Record<string, KindPhrase> = {
+	[SCRATCH_KIND.artist]: "route.artist",
+	[SCRATCH_KIND.genre]: "route.genre",
+	[SCRATCH_KIND.shelf]: "route.shelf",
 };
 
 export const ROUTE = {
@@ -124,7 +128,14 @@ export function routeOfPlayingSet(
 			: null;
 	if (playing.kind !== SCRATCH_KIND.shelf) return null;
 
-	const shelf = SHELVES.find((entry) => entry.title === playing.label);
+	// The label on the player is the shelf's title as it read when the set was played, so a language
+	// changed since then would leave the row unrecognised. English is always in the bundle, which
+	// makes it the one other spelling worth trying.
+	const shelf = SHELVES.find(
+		(entry) =>
+			playing.label === translate(entry.title) ||
+			playing.label === en[entry.title],
+	);
 	return shelf
 		? { ...playing, route: shelfRoute(shelf.id), temporaryRow: true }
 		: null;

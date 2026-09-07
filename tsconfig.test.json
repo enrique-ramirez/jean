@@ -30,6 +30,12 @@
 		"src/shared/lib/sequence.ts",
 		"src/shared/lib/text.ts",
 		"src/shared/keyboard/keymap.ts",
+		"src/globals.d.ts",
+		"src/shared/lib/store.ts",
+		"src/shared/i18n/en.ts",
+		"src/shared/i18n/format.ts",
+		"src/shared/i18n/locale.ts",
+		"src/shared/i18n/message.ts",
 		"src/domain/track/fields.ts",
 		"playwright.config.ts"
 	]

@@ -5,6 +5,7 @@ import {
 	type StreamListener,
 	type StreamListeners,
 } from "@/shared/api/fooJean";
+import { translate } from "@/shared/i18n/locale";
 import { subscribers } from "@/shared/lib/store";
 import { deviceId } from "./device";
 import { listeningLagSeconds, listenTarget } from "./listenerStore";
@@ -100,7 +101,7 @@ export function otherListeners(
 	return (audience.listeners?.devices ?? [])
 		.filter((device) => device.deviceId !== self)
 		.map((device) => {
-			const name = device.name ?? "Unknown device";
+			const name = device.name ?? translate("device.unknown");
 			const nth = (seen.get(name) ?? 0) + 1;
 			seen.set(name, nth);
 			return { ...device, label: nth > 1 ? `${name} (${nth})` : name };

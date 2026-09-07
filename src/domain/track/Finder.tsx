@@ -9,6 +9,7 @@ import {
 import type { TrackColumns } from "@/shared/api/types";
 import { useDebounced } from "@/shared/hooks/useDebounced";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Input } from "@/shared/ui/Input";
@@ -38,6 +39,7 @@ export function Finder({
 	onConfirm: (index: number) => void;
 	onClose: () => void;
 }) {
+	const t = useTranslate();
 	const listRef = useRef<HTMLDivElement | null>(null);
 	const [active, setActive] = useState(0);
 	const debouncedActive = useDebounced(active, 90);
@@ -124,7 +126,7 @@ export function Finder({
 							type="button"
 							className={styles.close}
 							onClick={onClose}
-							aria-label="Close finder"
+							aria-label={t("finder.close")}
 						>
 							<X size={14} strokeWidth={2} />
 						</button>
@@ -155,10 +157,10 @@ export function Finder({
 							>
 								<span className={styles.names}>
 									<span className={styles.resultTitle}>
-										{titleOf(rows[index])}
+										{titleOf(rows[index], t)}
 									</span>
 									<span className={styles.resultArtist}>
-										{artistOf(rows[index])}
+										{artistOf(rows[index], t)}
 									</span>
 								</span>
 								<span className={styles.position}>#{index + 1}</span>

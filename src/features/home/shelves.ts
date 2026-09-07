@@ -1,13 +1,19 @@
 import { type Album, percentile } from "@/domain/track/albums";
-import { plural } from "@/shared/lib/text";
+import type { Phrase } from "@/shared/i18n/en";
+import type { Translate } from "@/shared/i18n/useTranslate";
 import { describeWhen, yearOf } from "./when";
+
+type ShelfPhrase = Extract<
+	Phrase,
+	`shelf.${string}.title` | `shelf.${string}.blurb`
+>;
 
 export interface Shelf {
 	id: string;
-	title: string;
-	blurb: string;
+	title: ShelfPhrase;
+	blurb: ShelfPhrase;
 	pick: (albums: Album[]) => Album[];
-	caption: (album: Album) => string | null;
+	caption: (album: Album, t: Translate, locale: string) => string | null;
 }
 
 export interface FilledShelf<A extends Album = Album> extends Shelf {
@@ -25,16 +31,14 @@ const MINIMUM = 4;
 
 const shelf = (
 	id: string,
-	title: string,
-	blurb: string,
+	title: ShelfPhrase,
+	blurb: ShelfPhrase,
 	pick: Shelf["pick"],
 	caption: Shelf["caption"],
 ): Shelf => ({ id, title, blurb, pick, caption });
 
 const byPlays = (a: Album, b: Album) => b.plays - a.plays;
 const byRecent = (a: Album, b: Album) => b.lastPlayed - a.lastPlayed;
-const plays = (count: number) => plural(Math.round(count), "play");
-
 // `sort(() => Math.random() - 0.5)` is biased: the result depends on the comparison order the engine happens to use.
 const shuffled = <T>(items: T[]): T[] =>
 	items
@@ -45,24 +49,25 @@ const shuffled = <T>(items: T[]): T[] =>
 export const SHELVES: Shelf[] = [
 	shelf(
 		"recent",
-		"Recently played",
-		"Where you have been lately",
+		"shelf.recent.title",
+		"shelf.recent.blurb",
 		(albums) => albums.filter((album) => album.lastPlayed > 0).sort(byRecent),
-		(album) => describeWhen(album.lastPlayed),
+		(album, t, locale) =>
+			describeWhen(album.lastPlayed, locale, t("when.today")),
 	),
 
 	shelf(
 		"top",
-		"Most played",
-		"The records you keep coming back to",
+		"shelf.top.title",
+		"shelf.top.blurb",
 		(albums) => albums.filter((album) => album.plays > 0).sort(byPlays),
-		(album) => plays(album.plays),
+		(album, t) => t("shelf.plays", { count: Math.round(album.plays) }),
 	),
 
 	shelf(
 		"rated",
-		"Your favourites",
-		"Albums you marked up yourself",
+		"shelf.rated.title",
+		"shelf.rated.blurb",
 		(albums) => {
 			const rated = albums.filter(
 				(album): album is WithRating => album.ratedCount >= 2,
@@ -77,13 +82,16 @@ export const SHELVES: Shelf[] = [
 				.filter((album) => album.rating >= good)
 				.sort((a, b) => b.rating - a.rating || b.ratedCount - a.ratedCount);
 		},
-		(album) =>
-			`${(album as WithRating).rating.toFixed(1)} stars, ${album.ratedCount} rated`,
+		(album, t) =>
+			t("shelf.ratedCaption", {
+				rating: (album as WithRating).rating.toFixed(1),
+				count: album.ratedCount,
+			}),
 	),
 	shelf(
 		"loved",
-		"Remember these?",
-		"Played to death, then put down",
+		"shelf.loved.title",
+		"shelf.loved.blurb",
 		(albums) => {
 			const played = albums.filter(
 				(album) =>
@@ -103,13 +111,13 @@ export const SHELVES: Shelf[] = [
 				)
 				.sort(byPlays);
 		},
-		(album) => `Not since ${yearOf(album.lastPlayed)}`,
+		(album, t) => t("shelf.notSince", { year: yearOf(album.lastPlayed) ?? "" }),
 	),
 
 	shelf(
 		"upgrade",
-		"Time for an upgrade",
-		"You play these a lot, and they are low bitrate",
+		"shelf.upgrade.title",
+		"shelf.upgrade.blurb",
 		(albums) => {
 			const lossy = albums.filter(
 				(album): album is WithBitrate =>
@@ -133,14 +141,17 @@ export const SHELVES: Shelf[] = [
 				.filter((album) => album.playsPerTrack >= busy && album.bitrate <= poor)
 				.sort(byPlays);
 		},
-		(album) =>
-			`${Math.round((album as WithBitrate).bitrate)} kbps, ${plays(album.plays)}`,
+		(album, t) =>
+			t("shelf.upgradeCaption", {
+				bitrate: Math.round((album as WithBitrate).bitrate),
+				plays: t("shelf.plays", { count: Math.round(album.plays) }),
+			}),
 	),
 
 	shelf(
 		"unopened",
-		"Never listened",
-		"In your library, never played",
+		"shelf.unopened.title",
+		"shelf.unopened.blurb",
 		(albums) =>
 			// With no playback-statistics component every album reads as zero, and the filter would offer the whole library.
 			albums.some((album) => album.plays > 0)
@@ -148,16 +159,21 @@ export const SHELVES: Shelf[] = [
 						.filter((album) => album.plays === 0)
 						.sort((a, b) => b.trackCount - a.trackCount)
 				: [],
-		(album) => plural(album.trackCount, "track"),
+		(album, t) =>
+			t("view.trackCount", {
+				count: album.trackCount,
+				total: album.trackCount,
+			}),
 	),
 ];
 
 const STARTER = shelf(
 	"starter",
-	"Start somewhere",
-	"A few records out of your library",
+	"shelf.starter.title",
+	"shelf.starter.blurb",
 	shuffled,
-	(album) => plural(album.trackCount, "track"),
+	(album, t) =>
+		t("view.trackCount", { count: album.trackCount, total: album.trackCount }),
 );
 
 const fill = <A extends Album>(

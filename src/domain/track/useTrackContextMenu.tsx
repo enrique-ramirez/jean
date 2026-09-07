@@ -12,7 +12,7 @@ import {
 } from "@/domain/player/usePlayer";
 import type { TrackColumns } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
-import { plural } from "@/shared/lib/text";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { artistOf, FIELD, titleOf, value } from "./fields";
 import type { LibrarySource } from "./librarySource";
@@ -43,6 +43,7 @@ export function useTrackContextMenu({
 	selection: Set<number>;
 	onSelectOnly: (index: number) => void;
 }) {
+	const t = useTranslate();
 	const { data: playlists = [] } = usePlaylists();
 	const permissions = usePermissions();
 	const addTracks = useAddTracks();
@@ -103,16 +104,20 @@ export function useTrackContextMenu({
 			queueTracks,
 			addTracks,
 			credit: count === 1 ? value(rows[positions[0]], FIELD.artist) : null,
+			t,
 			rating: rateable
 				? {
 						id: "rate",
-						label: "Rating",
+						label: t("rating.title"),
 						icon: Star,
-						items: ratingItems(starsOf(rawRating), (stars) =>
-							rate(
-								{ source, ref: itemIndices[0], row: rated as TrackColumns },
-								stars,
-							),
+						items: ratingItems(
+							starsOf(rawRating),
+							(stars) =>
+								rate(
+									{ source, ref: itemIndices[0], row: rated as TrackColumns },
+									stars,
+								),
+							t,
 						),
 					}
 				: null,
@@ -132,6 +137,7 @@ export function useTrackContextMenu({
 		rate,
 		rated,
 		rawRating,
+		t,
 	]);
 
 	const header = useMemo(() => {
@@ -139,18 +145,18 @@ export function useTrackContextMenu({
 		if (count > 1) {
 			return {
 				icon: ListMusic,
-				title: plural(count, "track"),
-				subtitle: "Selected",
+				title: t("view.trackCount", { count, total: count }),
+				subtitle: t("track.selected"),
 			};
 		}
 
 		const row = rows[positions[0]];
 		return {
 			icon: Music,
-			title: titleOf(row),
-			subtitle: artistOf(row),
+			title: titleOf(row, t),
+			subtitle: artistOf(row, t),
 		};
-	}, [count, positions, rows]);
+	}, [count, positions, rows, t]);
 
 	const element = (
 		<ActionMenu

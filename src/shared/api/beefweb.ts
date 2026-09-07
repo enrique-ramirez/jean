@@ -1,3 +1,4 @@
+import { translate } from "@/shared/i18n/locale";
 import type {
 	AddFromLibraryBody,
 	LibraryInfo,
@@ -251,8 +252,8 @@ export function readTrack(
 	if (!values?.length) return null;
 	const [artist, title, path, subsong] = values;
 	return {
-		artist: artist || "Unknown artist",
-		title: title || "Unknown title",
+		artist: artist || translate("track.unknownArtist"),
+		title: title || translate("track.unknownTitle"),
 		path: path || null,
 		subsong: Number(subsong) || 0,
 	};

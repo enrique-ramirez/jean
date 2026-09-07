@@ -1,11 +1,14 @@
 import type { ReactNode } from "react";
 import { genreHref } from "@/domain/library/genreRoute";
-import { pluralise } from "@/shared/lib/text";
+import { Trans } from "@/shared/i18n/Trans";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Chip } from "@/shared/ui/Chip";
 import { formatDuration, type TrackStats } from "./stats";
 import styles from "./ViewHeader.module.css";
 
 function PlayedMeter({ share }: { share: number }) {
+	const t = useTranslate();
+
 	return (
 		<div className={styles.meter}>
 			<div className={styles.meterTrack}>
@@ -14,7 +17,7 @@ function PlayedMeter({ share }: { share: number }) {
 					style={{ transform: `scaleX(${share})` }}
 				/>
 			</div>
-			<span>{Math.round(share * 100)}% played</span>
+			<span>{t("view.playedShare", { share: Math.round(share * 100) })}</span>
 		</div>
 	);
 }
@@ -40,6 +43,8 @@ export function ViewHeader({
 	aside?: ReactNode;
 	allGenresHref?: string;
 }) {
+	const t = useTranslate();
+	const format = useFormats();
 	const duration = formatDuration(stats.seconds);
 	const span =
 		stats.earliest && stats.latest
@@ -66,8 +71,11 @@ export function ViewHeader({
 						</>
 					) : null}
 					<span>
-						<b>{stats.trackCount.toLocaleString()}</b>{" "}
-						{pluralise(stats.trackCount, "track")}
+						<Trans
+							phrase="view.trackCount"
+							count={stats.trackCount}
+							total={<b>{format.number(stats.trackCount)}</b>}
+						/>
 					</span>
 					{duration ? (
 						<>
@@ -98,10 +106,10 @@ export function ViewHeader({
 						{allGenresHref && stats.genreCount > stats.topGenres.length ? (
 							<Chip
 								className={styles.wayOut}
-								label="All genres"
-								value={stats.genreCount.toLocaleString()}
+								label={t("view.allGenres")}
+								value={format.number(stats.genreCount)}
 								href={allGenresHref}
-								title="Every genre in your library"
+								title={t("view.everyGenre")}
 							/>
 						) : null}
 					</div>

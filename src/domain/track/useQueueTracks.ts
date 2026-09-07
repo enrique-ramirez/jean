@@ -10,6 +10,7 @@ import {
 	fetchPlayQueue,
 } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
 import { findQueuePlaylist, QUEUE_TITLE } from "./jeanPlaylists";
 import type { HoldingPlaylist, LibrarySource } from "./librarySource";
@@ -61,7 +62,7 @@ export function useQueueTracks() {
 			if (itemIndices.length > QUEUE_LIMIT) {
 				pushToast({
 					tone: "error",
-					message: `The queue takes ${QUEUE_LIMIT} tracks at a time — the player has no way to add them in bulk. Make a playlist for a set this size.`,
+					message: translate("queue.tooMany", { limit: QUEUE_LIMIT }),
 				});
 				return;
 			}
@@ -72,7 +73,7 @@ export function useQueueTracks() {
 			} catch {
 				pushToast({
 					tone: "error",
-					message: "Could not find somewhere to queue those tracks from.",
+					message: translate("queue.noSource"),
 				});
 				return;
 			}
@@ -80,7 +81,7 @@ export function useQueueTracks() {
 			if (targets.length < itemIndices.length) {
 				pushToast({
 					tone: "error",
-					message: "Some of those tracks could not be queued.",
+					message: translate("queue.partial"),
 				});
 			}
 

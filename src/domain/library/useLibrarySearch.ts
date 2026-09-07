@@ -25,9 +25,12 @@ import { bestMatches } from "@/domain/track/rankTracks";
 import { removePlaylist } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { readStoredState, useStoredState } from "@/shared/hooks/useStoredState";
+import type { Phrase } from "@/shared/i18n/en";
 import { fold, fuzzyScore, squash, TIER } from "@/shared/lib/text";
 import type { Library } from "./useLibrary";
 import { SCRATCH_PIN_KEY } from "./useScratchPlaylist";
+
+export type SearchSectionLabel = Extract<Phrase, `search.section.${string}`>;
 
 const PREVIEW_TRACKS = 8;
 const PREVIEW_ARTISTS = 2;
@@ -53,7 +56,7 @@ export type Suggestion =
 	| { kind: "track"; ref: number };
 
 export interface SearchSection {
-	label: string;
+	label: SearchSectionLabel;
 	// Everything the query named, not what the section shows: the heading answers "how much of this
 	// did you leave out".
 	count: number;
@@ -181,7 +184,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 		if (artists.length > 0)
 			built.push({
-				label: "Artists",
+				label: "search.section.artists",
 				count: artists.length,
 				suggestions: artists
 					.slice(0, PREVIEW_ARTISTS)
@@ -190,7 +193,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 		if (albums.length > 0)
 			built.push({
-				label: "Albums",
+				label: "search.section.albums",
 				count: albums.length,
 				suggestions: albums
 					.slice(0, PREVIEW_ALBUMS)
@@ -199,7 +202,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 		if (genres.length > 0)
 			built.push({
-				label: "Genre",
+				label: "search.section.genres",
 				count: genres.length,
 				suggestions: genres
 					.slice(0, PREVIEW_GENRES)
@@ -208,7 +211,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 		if (preview.length > 0)
 			built.push({
-				label: "Tracks",
+				label: "search.section.tracks",
 				count: draftMatched?.length ?? preview.length,
 				suggestions: preview.map((position) => ({
 					kind: "track",

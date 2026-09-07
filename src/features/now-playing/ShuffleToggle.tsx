@@ -1,6 +1,7 @@
 import { Shuffle } from "lucide-react";
 
 import type { usePlaybackOrder } from "@/domain/player/usePlayer";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 
 export function ShuffleToggle({
 	order,
@@ -11,14 +12,19 @@ export function ShuffleToggle({
 	className: string;
 	size: number;
 }) {
+	const t = useTranslate();
 	return (
 		<button
 			type="button"
 			className={className}
-			aria-label="Shuffle"
+			aria-label={t("player.shuffle")}
 			aria-pressed={order.isShuffle}
 			disabled={!order.canShuffle}
-			title={order.orderName ? `Playback order: ${order.orderName}` : "Shuffle"}
+			title={
+				order.orderName
+					? t("player.playbackOrder", { order: order.orderName })
+					: t("player.shuffle")
+			}
 			onClick={order.toggleShuffle}
 		>
 			<Shuffle size={size} strokeWidth={2} />

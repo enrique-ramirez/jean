@@ -21,14 +21,18 @@ import { useFinder } from "@/domain/track/useFinder";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { CreateAutoPlaylist } from "@/features/genres/CreateAutoPlaylist";
 import type { PlaylistInfo } from "@/shared/api/types";
+import type { Phrase } from "@/shared/i18n/en";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./LibraryListView.module.css";
 
-const FINDER_LABEL: Record<string, string> = {
-	[SCRATCH_KIND.all]: "Find in all music",
-	[SCRATCH_KIND.shelf]: "Find in this shelf",
-	[SCRATCH_KIND.genre]: "Find in this genre",
-	[SCRATCH_KIND.album]: "Find in this album",
-	[SCRATCH_KIND.artist]: "Find in this artist",
+type FinderPhrase = Extract<Phrase, `finder.in${string}`>;
+
+const FINDER_LABEL: Record<string, FinderPhrase> = {
+	[SCRATCH_KIND.all]: "finder.inAllMusic",
+	[SCRATCH_KIND.shelf]: "finder.inShelf",
+	[SCRATCH_KIND.genre]: "finder.inGenre",
+	[SCRATCH_KIND.album]: "finder.inAlbum",
+	[SCRATCH_KIND.artist]: "finder.inArtist",
 };
 
 export function LibraryListView({
@@ -58,6 +62,7 @@ export function LibraryListView({
 	emptyNotice?: ReactNode;
 	onOpenPlaylist?: (id: string) => void;
 }) {
+	const t = useTranslate();
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const { rows, indices, heat, patina, playedCount } = view;
 
@@ -90,7 +95,7 @@ export function LibraryListView({
 	const finder = useFinder({
 		rows,
 		browserRef,
-		label: FINDER_LABEL[kind] ?? "Find in this list",
+		label: t(FINDER_LABEL[kind] ?? "finder.inList"),
 	});
 
 	const { playAt, activeIndex } = useViewPlayback({

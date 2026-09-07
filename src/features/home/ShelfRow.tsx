@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import type { CoveredAlbum } from "@/domain/track/albums";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
 import type { FilledShelf } from "./shelves";
@@ -11,12 +12,13 @@ export function ShelfRow({
 	shelf: FilledShelf<CoveredAlbum>;
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 }) {
+	const t = useTranslate();
 	return (
 		<section className={styles.shelf} aria-labelledby={`shelf-${shelf.id}`}>
 			<header className={styles.header}>
 				<h2 className={styles.title} id={`shelf-${shelf.id}`}>
 					<a className={styles.open} href={`#/shelf/${shelf.id}`}>
-						{shelf.title}
+						{t(shelf.title)}
 						<ChevronRight
 							className={styles.chevron}
 							size={16}
@@ -25,7 +27,7 @@ export function ShelfRow({
 						/>
 					</a>
 				</h2>
-				<p className={styles.blurb}>{shelf.blurb}</p>
+				<p className={styles.blurb}>{t(shelf.blurb)}</p>
 			</header>
 
 			<ShelfScroller shelf={shelf} onPlayAlbum={onPlayAlbum} />

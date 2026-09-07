@@ -1,37 +1,47 @@
 import { ExternalLink } from "lucide-react";
+import { Trans } from "@/shared/i18n/Trans";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./Artist.module.css";
 import { useArtistInfo, useArtistInfoEnabled } from "./artistInfo";
 
 // The subject is a parameter rather than the playing track, so the artist page and the now-playing
 // screen ask about whoever they are each showing through one panel.
 export function Artist({ name }: { name: string | null | undefined }) {
+	const t = useTranslate();
 	const [isEnabled] = useArtistInfoEnabled();
 	const { data, isPending, isError } = useArtistInfo(name);
 
 	if (!isEnabled)
 		return (
 			<div className={styles.notice}>
-				<p>Artist information is off.</p>
+				<p>{t("artistInfo.off")}</p>
 				<p className={styles.hint}>
-					Everything else on this screen comes from your player. This one asks
-					MusicBrainz and Wikipedia, which means telling them what you are
-					listening to — so it is off until you turn it on, in{" "}
-					<b>Settings → Artist information</b>.
+					<Trans
+						phrase="artistInfo.offWhy"
+						setting={<b>{t("artistInfo.settingPath")}</b>}
+					/>
 				</p>
 			</div>
 		);
 
 	if (isPending)
-		return <p className={styles.notice}>Looking {name ? `${name} ` : ""}up…</p>;
+		return (
+			<p className={styles.notice}>
+				{name
+					? t("artistInfo.lookingUpNamed", { name })
+					: t("artistInfo.lookingUp")}
+			</p>
+		);
 
 	if (isError || !data)
 		return (
 			<div className={styles.notice}>
-				<p>Nothing found for {name ?? "this artist"}.</p>
-				<p className={styles.hint}>
-					Either the name in the tag matches no MusicBrainz entry, or this
-					device has no connection to reach it.
+				<p>
+					{name
+						? t("artistInfo.notFoundNamed", { name })
+						: t("artistInfo.notFound")}
 				</p>
+				<p className={styles.hint}>{t("artistInfo.notFoundWhy")}</p>
 			</div>
 		);
 
@@ -52,7 +62,7 @@ export function Artist({ name }: { name: string | null | undefined }) {
 				target="_blank"
 				rel="noreferrer noopener"
 			>
-				Read more on {data.sourceName}
+				{t("artistInfo.readMore", { source: data.sourceName })}
 				<ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
 			</a>
 		</div>

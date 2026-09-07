@@ -1,4 +1,7 @@
+import type { Phrase } from "@/shared/i18n/en";
 import { FIELD } from "./fields";
+
+export type ColumnLabel = Extract<Phrase, `column.${string}`>;
 
 export type ColumnKind =
 	| "text"
@@ -10,7 +13,7 @@ export type ColumnKind =
 
 export interface Column {
 	id: string;
-	label: string;
+	label: ColumnLabel;
 	width: string;
 	compactWidth?: string;
 	align?: "right";
@@ -21,7 +24,7 @@ export interface Column {
 export const OPTIONAL_COLUMNS: Column[] = [
 	{
 		id: "duration",
-		label: "Time",
+		label: "column.duration",
 		width: "4rem",
 		compactWidth: "3.25rem",
 		align: "right",
@@ -30,7 +33,7 @@ export const OPTIONAL_COLUMNS: Column[] = [
 	},
 	{
 		id: "rating",
-		label: "Rating",
+		label: "column.rating",
 		width: "5rem",
 		compactWidth: "4.5rem",
 		kind: "rating",
@@ -38,7 +41,7 @@ export const OPTIONAL_COLUMNS: Column[] = [
 	},
 	{
 		id: "playCount",
-		label: "Plays",
+		label: "column.playCount",
 		width: "3.75rem",
 		compactWidth: "2.75rem",
 		align: "right",
@@ -47,21 +50,21 @@ export const OPTIONAL_COLUMNS: Column[] = [
 	},
 	{
 		id: "album",
-		label: "Album",
+		label: "column.album",
 		width: "minmax(0, 1.4fr)",
 		kind: "text",
 		field: FIELD.album,
 	},
 	{
 		id: "lastPlayed",
-		label: "Last played",
+		label: "column.lastPlayed",
 		width: "6.5rem",
 		kind: "date",
 		field: FIELD.lastPlayed,
 	},
 	{
 		id: "year",
-		label: "Year",
+		label: "column.year",
 		width: "3.25rem",
 		align: "right",
 		kind: "text",
@@ -69,21 +72,21 @@ export const OPTIONAL_COLUMNS: Column[] = [
 	},
 	{
 		id: "genre",
-		label: "Genre",
+		label: "column.genre",
 		width: "minmax(0, 1fr)",
 		kind: "text",
 		field: FIELD.genre,
 	},
 	{
 		id: "codec",
-		label: "Codec",
+		label: "column.codec",
 		width: "4rem",
 		kind: "text",
 		field: FIELD.codec,
 	},
 	{
 		id: "bitrate",
-		label: "Rate",
+		label: "column.bitrate",
 		width: "4rem",
 		align: "right",
 		kind: "bitrate",

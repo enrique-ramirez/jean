@@ -11,6 +11,7 @@ There is one of these files beside each part of the app, for what is local to it
 | `src/shared/api/CLAUDE.md` | traps in beefweb's API and in `foo_jean`'s |
 | `src/shared/ui/CLAUDE.md` | menus, gestures, drag and drop, toasts, animation |
 | `src/shared/keyboard/CLAUDE.md` | the keymap and how bindings are declared |
+| `src/shared/i18n/CLAUDE.md` | the phrase catalogue, translations and the `Intl` formatters |
 | `src/domain/track/CLAUDE.md` | rows, refs, the virtualised list, ratings |
 | `src/domain/library/CLAUDE.md` | where the library comes from, playing a set, search results |
 | `src/domain/player/CLAUDE.md` | playback state, the queue, the volume curve, listening here |
@@ -32,6 +33,7 @@ There is one of these files beside each part of the app, for what is local to it
 - **The primary axis of quality is UX/UI, and performance is part of UX.** A feature that makes the interface slower has to justify itself.
 - **Fully responsive**, one codebase, no separate mobile build. Desktop is keyboard-first; mobile is aggressively optimised for touch targets, safe-area insets and payload.
 - **Light and dark themes, both designed.** Neither is `#000` / `#fff`.
+- **Everything a person can read is a phrase in the catalogue**, and English is the only language shipped in the bundle. A translation is a JSON file in `locales/` beside `index.html`, added by hand and never by Jean. `src/shared/i18n/CLAUDE.md` is the whole of it; the rule that gets broken first is a string literal written straight into JSX.
 - **Minimum required components: beefweb alone.** Everything beyond is optional, auto-detected and individually toggleable in Settings. A bare install MUST get a complete, coherent app — never a dead panel or an empty shelf. Keep the component table in `README.md` current.
 - **Run the suite before claiming a change works.** `pnpm lint`, `pnpm typecheck` and `pnpm test` MUST pass. See `CONTRIBUTING.md` for which parts of the suite are cheap enough to run freely.
 

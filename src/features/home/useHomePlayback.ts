@@ -6,6 +6,7 @@ import type { Album } from "@/domain/track/albums";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { type FilledShelf, refsOfShelf } from "./shelves";
 
 export function useHomePlayback({
@@ -17,6 +18,7 @@ export function useHomePlayback({
 	playlists: PlaylistInfo[];
 	navigate: (to: string) => void;
 }) {
+	const t = useTranslate();
 	const { play, canPlaySets } = usePlaySet({ library, playlists });
 	const order = usePlaybackOrder();
 
@@ -28,12 +30,12 @@ export function useHomePlayback({
 			navigate(`/shelf/${shelf.id}`);
 			await play({
 				kind: SCRATCH_KIND.shelf,
-				label: shelf.title,
+				label: t(shelf.title),
 				refs,
 				position,
 			});
 		},
-		[play, navigate],
+		[play, navigate, t],
 	);
 
 	const startEverything = useCallback(

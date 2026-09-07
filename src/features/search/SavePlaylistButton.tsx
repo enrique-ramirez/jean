@@ -7,7 +7,7 @@ import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { createPlaylist } from "@/shared/api/beefweb";
-import { plural } from "@/shared/lib/text";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
@@ -30,6 +30,7 @@ export function SavePlaylistButton({
 	onOpenChange: (isOpen: boolean) => void;
 	onOpenPlaylist: (id: string) => void;
 }) {
+	const t = useTranslate();
 	const queryClient = useQueryClient();
 	const [title, setTitle] = useState(search.query);
 	const inputRef = useRef<HTMLInputElement | null>(null);
@@ -84,16 +85,16 @@ export function SavePlaylistButton({
 					icon={ListPlus}
 					aria-expanded={isOpen}
 					disabled={trackCount === 0 || library.isLoading}
-					title={library.isLoading ? "Still reading your library" : undefined}
+					title={library.isLoading ? t("search.stillReading") : undefined}
 					onClick={() => onOpenChange(!isOpen)}
 				>
-					Save as playlist
+					{t("search.saveAsPlaylist")}
 				</Button>
 			}
 		>
 			<form className={styles.form} onSubmit={submit}>
 				<label className={styles.label} htmlFor="save-search-title">
-					New playlist from {plural(trackCount, "result")}
+					{t("search.newPlaylistFrom", { count: trackCount })}
 				</label>
 
 				<Input
@@ -103,25 +104,29 @@ export function SavePlaylistButton({
 					className={styles.input}
 					value={title}
 					onChange={(event) => setTitle(event.target.value)}
-					placeholder="Playlist name"
-					aria-label="Playlist name"
+					placeholder={t("playlist.name")}
+					aria-label={t("playlist.name")}
 					spellCheck="false"
 					autoComplete="off"
 					autoFocus
 				/>
 
 				{save.error ? (
-					<p className={styles.error}>Could not save -- {save.error.message}</p>
+					<p className={styles.error}>
+						{t("search.saveFailed", { message: save.error.message })}
+					</p>
 				) : null}
 
 				<div className={styles.actions}>
-					<Button onClick={() => onOpenChange(false)}>Cancel</Button>
+					<Button onClick={() => onOpenChange(false)}>
+						{t("action.cancel")}
+					</Button>
 					<Button
 						variant="primary"
 						type="submit"
 						disabled={title.trim().length === 0 || save.isPending}
 					>
-						{save.isPending ? "Saving..." : "Create"}
+						{t(save.isPending ? "action.saving" : "action.create")}
 					</Button>
 				</div>
 			</form>

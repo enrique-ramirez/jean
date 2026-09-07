@@ -1,11 +1,12 @@
-import { formatForDisplay } from "@tanstack/react-hotkeys";
 import { Maximize2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSwipe } from "@/shared/hooks/useSwipe";
-import { KEYMAP, SCOPE } from "@/shared/keyboard/keymap";
+import { SCOPE } from "@/shared/keyboard/keymap";
+import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
+import { Tabs } from "@/shared/ui/Tabs";
 import { Artist } from "./Artist";
 import { Details } from "./Details";
 import { Lyrics } from "./Lyrics";
@@ -21,14 +22,6 @@ const TABS: { id: Tab; label: string; binding: string }[] = [
 	{ id: "details", label: "Details", binding: "showDetails" },
 	{ id: "artist", label: "Artist", binding: "showArtist" },
 ];
-
-const mnemonicOf = (label: string, bindingId: string) => {
-	const key = KEYMAP.find((binding) => binding.id === bindingId)?.keys[0];
-	const shown = key === undefined ? "" : formatForDisplay(key);
-	return shown && label.toUpperCase().startsWith(shown.toUpperCase())
-		? shown.length
-		: 0;
-};
 
 export function TrackPanels({
 	variant,
@@ -100,28 +93,17 @@ export function TrackPanels({
 
 	return (
 		<div className={styles.panel} data-variant={variant} {...swipe}>
-			<nav className={styles.tabs} aria-label="Track views">
-				{TABS.map((entry) => {
-					const marked = mnemonicOf(entry.label, entry.binding);
-					return (
-						<button
-							key={entry.id}
-							type="button"
-							className={styles.tab}
-							aria-current={tab === entry.id}
-							data-active={tab === entry.id}
-							onClick={() => select(entry.id)}
-						>
-							{marked ? (
-								<span className={styles.key}>
-									{entry.label.slice(0, marked)}
-								</span>
-							) : null}
-							{entry.label.slice(marked)}
-						</button>
-					);
-				})}
-
+			<Tabs
+				className={styles.tabs}
+				value={tab}
+				label="Track views"
+				options={TABS.map((entry) => ({
+					value: entry.id,
+					label: entry.label,
+					mnemonic: mnemonicOf(entry.label, entry.binding),
+				}))}
+				onChange={select}
+			>
 				{onExpand && tab === "lyrics" && hasLyrics ? (
 					<button
 						type="button"
@@ -132,7 +114,7 @@ export function TrackPanels({
 						<Maximize2 size={16} strokeWidth={2} />
 					</button>
 				) : null}
-			</nav>
+			</Tabs>
 
 			<div
 				key={tab}

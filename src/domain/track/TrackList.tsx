@@ -256,7 +256,9 @@ export const TrackList = forwardRef(function TrackList(
 			const scroller = scrollRef.current;
 			if (!scroller) return null;
 
-			const row = scroller.querySelector('[data-active="true"]');
+			// `[data-row]` as well, or anything else in the scroller that marks itself active -- a tab
+			// strip in the header, say -- answers instead and the pill reports on that.
+			const row = scroller.querySelector('[data-row][data-active="true"]');
 			if (row) {
 				const rowRect = row.getBoundingClientRect();
 				const viewRect = scroller.getBoundingClientRect();

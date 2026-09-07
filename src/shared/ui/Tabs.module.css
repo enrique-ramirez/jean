@@ -1,0 +1,54 @@
+.tabs {
+	display: flex;
+	flex: none;
+	gap: 4px;
+	border-bottom: 1px solid var(--border);
+}
+
+.tab {
+	position: relative;
+	padding: 10px 14px;
+	border: none;
+	background: none;
+	color: var(--faint);
+	font-size: 0.75rem;
+	font-weight: 620;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	transition: color 0.15s var(--ease);
+}
+
+.key {
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+/* No keyboard to hint at, and the underline reads as emphasis rather than as a shortcut. */
+@media (hover: none), (pointer: coarse) {
+	.key {
+		text-decoration: none;
+	}
+}
+
+.tab:hover {
+	color: var(--muted);
+}
+
+.tab[aria-current="true"] {
+	color: var(--text);
+}
+
+.tab::after {
+	content: "";
+	position: absolute;
+	inset: auto 8px -1px;
+	height: 2px;
+	border-radius: 2px;
+	background: var(--accent);
+	transform: scaleX(0);
+	transition: transform 0.18s var(--ease);
+}
+
+.tab[aria-current="true"]::after {
+	transform: scaleX(1);
+}

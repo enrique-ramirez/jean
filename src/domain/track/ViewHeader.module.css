@@ -4,7 +4,8 @@
 	grid-template-columns: minmax(0, 1fr) auto;
 	grid-template-areas:
 		"naming aside"
-		"meta   aside";
+		"meta   aside"
+		"tabs   tabs";
 	align-content: start;
 	gap: 13px 24px;
 	padding: 28px 24px 20px;
@@ -24,6 +25,23 @@
 		transparent 72%
 	);
 	pointer-events: none;
+}
+
+/* Pulled out to the header's own edges and down onto its bottom padding, so the strip's baseline is
+ the header's border rather than a second line a gap below it. */
+.tabs {
+	grid-area: tabs;
+	margin: 0 -24px -20px;
+}
+
+/* On the strip rather than on this wrapper: padding insets the labels, where a border sits outside it
+ and goes on spanning the header. */
+.tabs > * {
+	padding-inline: 24px;
+}
+
+.header[data-tabs="true"] {
+	border-bottom: 0;
 }
 
 .naming {
@@ -130,6 +148,14 @@
 			"meta  meta";
 		gap: 16px 14px;
 		padding: 20px 16px 16px;
+	}
+
+	.tabs {
+		margin: 0 -16px -16px;
+	}
+
+	.tabs > * {
+		padding-inline: 16px;
 	}
 
 	.aside,

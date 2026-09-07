@@ -25,6 +25,7 @@ export function ViewHeader({
 	stats,
 	hasPlayCounts,
 	leading,
+	tabs,
 	actions,
 	aside,
 	allGenresHref,
@@ -34,6 +35,7 @@ export function ViewHeader({
 	stats: TrackStats;
 	hasPlayCounts?: boolean;
 	leading?: ReactNode;
+	tabs?: ReactNode;
 	actions?: ReactNode;
 	aside?: ReactNode;
 	allGenresHref?: string;
@@ -47,7 +49,7 @@ export function ViewHeader({
 			: null;
 
 	return (
-		<header className={styles.header}>
+		<header className={styles.header} data-tabs={tabs ? "true" : undefined}>
 			<div className={styles.naming}>
 				<p className={styles.eyebrow}>{eyebrow}</p>
 				<h1 className={styles.title}>{title}</h1>
@@ -107,6 +109,8 @@ export function ViewHeader({
 
 				<div className={styles.actions}>{actions}</div>
 			</div>
+
+			{tabs ? <div className={styles.tabs}>{tabs}</div> : null}
 		</header>
 	);
 }

@@ -15,8 +15,8 @@ import {
 	usePlayPause,
 	useSeekBy,
 } from "@/domain/player/usePlayer";
-import { artistRoute } from "@/domain/track/artistRoute";
-import { refsOfArtist } from "@/domain/track/artists";
+import { type ArtistTab, artistRoute } from "@/domain/track/artistRoute";
+import { type ArtistTracks, refsOfArtist } from "@/domain/track/artists";
 import {
 	ALL_MUSIC,
 	SCRATCH_KIND,
@@ -30,6 +30,7 @@ import {
 	refsOfGenre,
 	wholeLibrary,
 } from "@/domain/track/project";
+import { askToReveal } from "@/domain/track/revealTrack";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
 import { ArtistView } from "@/features/artist/ArtistView";
@@ -54,7 +55,9 @@ import {
 import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
+import { useSwipe } from "@/shared/hooks/useSwipe";
 import { SCOPE } from "@/shared/keyboard/keymap";
+import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import {
 	SHORTCUTS_KEYBOARD,
 	ShortcutSheet,
@@ -62,6 +65,7 @@ import {
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
 import { DragGhost } from "@/shared/ui/DragGhost";
+import { type TabOption, Tabs } from "@/shared/ui/Tabs";
 import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
 import { CommandPalette } from "./CommandPalette";
@@ -74,6 +78,21 @@ import { useScrollMemory } from "./useScrollMemory";
 import { useTheme } from "./useTheme";
 
 const SEEK_STEP = 5;
+
+const ARTIST_TABS: TabOption<ArtistTab>[] = [
+	{
+		value: "overview",
+		label: "Overview",
+		mnemonic: mnemonicOf("Overview", "switchArtistTab"),
+	},
+	{ value: "tracks", label: "Tracks" },
+];
+
+const EMPTY_ARTIST_TRACKS: ArtistTracks = {
+	own: new Int32Array(0),
+	guest: new Int32Array(0),
+	all: new Int32Array(0),
+};
 
 export function App() {
 	return (
@@ -114,6 +133,7 @@ function Shell() {
 		false,
 	);
 	const [isQueueDrawerOpen, setIsQueueDrawerOpen] = useState(false);
+	const [tabDirection, setTabDirection] = useState(0);
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -121,8 +141,17 @@ function Shell() {
 	const [openedFrom, setOpenedFrom] = useState("");
 	const shellRoute = isNowPlaying ? openedFrom : route;
 
-	const { shelf, genre, artist, isGenres, isSearch, isAll, isHome, isLibrary } =
-		resolveRoute(shellRoute);
+	const {
+		shelf,
+		genre,
+		artist,
+		artistTab,
+		isGenres,
+		isSearch,
+		isAll,
+		isHome,
+		isLibrary,
+	} = resolveRoute(shellRoute);
 
 	const library = useLibrary(playlists, {
 		wanted:
@@ -154,10 +183,7 @@ function Shell() {
 	}, [shelf, snapshot]);
 
 	const artistTracks = useMemo(
-		() =>
-			artist
-				? refsOfArtist(snapshot.rows, artist)
-				: { own: new Int32Array(0), guest: new Int32Array(0) },
+		() => (artist ? refsOfArtist(snapshot.rows, artist) : EMPTY_ARTIST_TRACKS),
 		[artist, snapshot.rows],
 	);
 
@@ -172,6 +198,11 @@ function Shell() {
 				position,
 			}),
 		[playSet, artist],
+	);
+
+	const artistView = useMemo(
+		() => (artist ? project(snapshot, artistTracks.all) : null),
+		[artist, snapshot, artistTracks.all],
 	);
 
 	const genreView = useMemo(
@@ -349,6 +380,46 @@ function Shell() {
 	);
 
 	const openSearch = useCallback(() => openRoute(ROUTE.search), [openRoute]);
+
+	const showArtistTab = useCallback(
+		(tab: ArtistTab) => {
+			if (!artist) return;
+			// Set here rather than derived from the route: a history navigation is not a swipe and has no
+			// direction to play, so it falls through with none.
+			setTabDirection(tab === "tracks" ? 1 : -1);
+			openRoute(artistRoute(artist, tab));
+		},
+		[artist, openRoute],
+	);
+
+	const artistTabs = useMemo(
+		() =>
+			artist ? (
+				<Tabs
+					value={artistTab}
+					label="Artist views"
+					options={ARTIST_TABS}
+					onChange={showArtistTab}
+				/>
+			) : null,
+		[artist, artistTab, showArtistTab],
+	);
+
+	// Left is the next tab, as it is on the now-playing panels. Touch only, and on `main` rather than
+	// a wrapper of its own: the track list takes its scroll element from there.
+	const artistSwipe = useSwipe({
+		onLeft: () => showArtistTab("tracks"),
+		onRight: () => showArtistTab("overview"),
+	});
+
+	useKeymap(
+		SCOPE.artist,
+		{
+			switchArtistTab: () =>
+				showArtistTab(artistTab === "tracks" ? "overview" : "tracks"),
+		},
+		{ enabled: Boolean(artist) },
+	);
 
 	const searchFor = useCallback(
 		(query: string) => {
@@ -549,7 +620,11 @@ function Shell() {
 					onDismiss={() => setIsSidebarOpen(false)}
 				/>
 
-				<main className={styles.main} ref={scrollRef}>
+				<main
+					className={styles.main}
+					ref={scrollRef}
+					{...(artist ? artistSwipe : null)}
+				>
 					{isHome ? (
 						<HomeView
 							library={library}
@@ -566,20 +641,6 @@ function Shell() {
 						/>
 					) : isGenres ? (
 						<GenresView library={library} onOpenRoute={openRoute} />
-					) : artist ? (
-						<ArtistView
-							name={artist}
-							library={library}
-							tracks={artistTracks}
-							onPlay={playArtist}
-							onShuffle={(refs) => {
-								playbackOrder.enableShuffle();
-								playArtist(refs, Math.floor(Math.random() * refs.length));
-							}}
-							onOpenAlbum={playArtist}
-							canPlay={home.canPlay}
-							canShuffle={home.canShuffle}
-						/>
 					) : isAll || shelf || genre ? (
 						<LibraryListView
 							library={library}
@@ -609,6 +670,58 @@ function Shell() {
 							isCompactViewport={isCompactViewport}
 							onOpenPlaylist={openPlaylist}
 						/>
+					) : artist ? (
+						<div
+							key={artistTab}
+							className={styles.artistTab}
+							data-direction={tabDirection}
+						>
+							{artistTab === "tracks" ? (
+								<LibraryListView
+									library={library}
+									view={artistView ?? EMPTY_VIEW}
+									kind={SCRATCH_KIND.artist}
+									label={artist}
+									eyebrow="Artist"
+									title={artist}
+									tabs={artistTabs}
+									playlists={playlists}
+									scrollRef={scrollRef}
+									isCompactViewport={isCompactViewport}
+									onOpenPlaylist={openPlaylist}
+									emptyNotice={
+										library.isLoading
+											? "Reading your library..."
+											: `Nothing by ${artist} in your library.`
+									}
+								/>
+							) : (
+								<ArtistView
+									tabs={artistTabs}
+									name={artist}
+									library={library}
+									tracks={artistTracks}
+									onPlay={playArtist}
+									onShuffle={(refs) => {
+										playbackOrder.enableShuffle();
+										playArtist(refs, Math.floor(Math.random() * refs.length));
+									}}
+									// Opens the tracks, lands on the record and starts it -- played inside the
+									// artist rather than alone, so the rest of them follow it.
+									onOpenAlbum={(refs) => {
+										const at = Array.prototype.indexOf.call(
+											artistTracks.all,
+											refs[0],
+										);
+										askToReveal(refs[0]);
+										showArtistTab("tracks");
+										if (at >= 0) playArtist(artistTracks.all, at);
+									}}
+									canPlay={home.canPlay}
+									canShuffle={home.canShuffle}
+								/>
+							)}
+						</div>
 					) : (
 						<PlaylistView
 							playlist={playlist}

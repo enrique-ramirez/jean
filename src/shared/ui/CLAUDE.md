@@ -48,6 +48,8 @@ Two primitives, deliberately separate. `useSortableList.ts` reorders a single li
 
 ## Controls
 
+**Tabs are not a segmented control, and Jean has both.** `Segmented` switches how one thing is drawn -- compact rows or album groups, the same list either way. `Tabs` moves between different things, and looks it: underlined, not a pill. Reaching for the wrong one is how a design language stops being one.
+
 **A switch is not a checkbox, and Jean has both.** The line is *when it takes effect*: a switch acts the moment it moves, a checkbox is a selection something else submits. `Switch.tsx` carries `role="switch"` rather than a styled checkbox, and **the label is inside the control** so the whole row is the target. `prefers-reduced-motion` drops the transition and keeps the movement — the travel is the affordance.
 
 **`HelpHint.tsx` holds a caveat worth having and not worth reading.** The label carries the setting; the hint carries the exception. Reach for it only when the text says something the label does not. It returns a **fragment**, and the head row it sits in must `flex-wrap`. It is deliberately not a popover: an absolutely positioned panel inside a scrolling column is clipped by that scroller.

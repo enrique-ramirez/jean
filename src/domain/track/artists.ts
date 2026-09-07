@@ -190,6 +190,9 @@ export function rankArtists(
 export interface ArtistTracks {
 	own: Int32Array;
 	guest: Int32Array;
+	// Both, in library order. The split is how the overview *draws* them; it is not two sets, and
+	// playing the artist from either surface has to mean the same thing.
+	all: Int32Array;
 }
 
 /**
@@ -203,10 +206,16 @@ export function refsOfArtist(
 ): ArtistTracks {
 	const wanted = tagKey(artist);
 	// An empty key would match every untagged row rather than nothing.
-	if (!wanted) return { own: new Int32Array(0), guest: new Int32Array(0) };
+	if (!wanted)
+		return {
+			own: new Int32Array(0),
+			guest: new Int32Array(0),
+			all: new Int32Array(0),
+		};
 
 	const own: number[] = [];
 	const guest: number[] = [];
+	const all: number[] = [];
 
 	for (let ref = 0; ref < rows.length; ref += 1) {
 		const row = rows[ref];
@@ -219,7 +228,14 @@ export function refsOfArtist(
 		)
 			own.push(ref);
 		else if (guests.some((name) => tagKey(name) === wanted)) guest.push(ref);
+		else continue;
+
+		all.push(ref);
 	}
 
-	return { own: Int32Array.from(own), guest: Int32Array.from(guest) };
+	return {
+		own: Int32Array.from(own),
+		guest: Int32Array.from(guest),
+		all: Int32Array.from(all),
+	};
 }

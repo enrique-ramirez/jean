@@ -1,4 +1,5 @@
 import { Play, Shuffle } from "lucide-react";
+import type { ReactNode } from "react";
 import { useMemo } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { ArtistTracks } from "@/domain/track/artists";
@@ -55,6 +56,7 @@ export function ArtistView({
 	name,
 	library,
 	tracks,
+	tabs,
 	onPlay,
 	onShuffle,
 	onOpenAlbum,
@@ -64,6 +66,7 @@ export function ArtistView({
 	name: string;
 	library: Library;
 	tracks: ArtistTracks;
+	tabs: ReactNode;
 	onPlay: (refs: Refs, position: number) => void;
 	onShuffle: (refs: Refs) => void;
 	onOpenAlbum: (refs: Refs, position: number) => void;
@@ -97,7 +100,7 @@ export function ArtistView({
 	const { hasPlayCounts } = useAvailableFields(own?.rows ?? []);
 
 	const held = (own?.rows.length ?? 0) + (guest?.rows.length ?? 0);
-	const allRefs = tracks.own.length > 0 ? tracks.own : tracks.guest;
+	const allRefs = tracks.all;
 
 	return (
 		<div className={styles.artist}>
@@ -106,6 +109,7 @@ export function ArtistView({
 				title={name}
 				stats={stats}
 				hasPlayCounts={hasPlayCounts}
+				tabs={tabs}
 				leading={
 					<>
 						<b>{discography.length.toLocaleString()}</b>{" "}
@@ -151,6 +155,49 @@ export function ArtistView({
 						? "Reading your library..."
 						: "Nothing by them in your library."}
 				</p>
+			) : null}
+
+			{own && history && hasPlayCounts ? (
+				<section className={styles.section}>
+					<h2 className={styles.heading}>Your history</h2>
+					<dl className={styles.history}>
+						<div>
+							<dt>Plays</dt>
+							<dd className="tabular">{history.plays.toLocaleString()}</dd>
+						</div>
+						<div>
+							<dt>Never played</dt>
+							<dd className="tabular">
+								{history.unplayed.toLocaleString()} of{" "}
+								{own.rows.length.toLocaleString()}
+							</dd>
+						</div>
+						{history.lastPlayed > 0 ? (
+							<div>
+								<dt>Last listened</dt>
+								<dd>{shortDate(history.lastPlayed)}</dd>
+							</div>
+						) : null}
+						{history.best ? (
+							<div>
+								<dt>Most played</dt>
+								<dd>
+									{history.best.title}{" "}
+									<span className={styles.faint}>
+										{plural(history.best.plays, "play")}
+									</span>
+								</dd>
+							</div>
+						) : null}
+					</dl>
+				</section>
+			) : null}
+
+			{held > 0 ? (
+				<section className={styles.section}>
+					<h2 className={styles.heading}>About</h2>
+					<Artist name={name} />
+				</section>
 			) : null}
 
 			{discography.length > 0 ? (
@@ -209,49 +256,6 @@ export function ArtistView({
 							</li>
 						))}
 					</ul>
-				</section>
-			) : null}
-
-			{own && history && hasPlayCounts ? (
-				<section className={styles.section}>
-					<h2 className={styles.heading}>Your history</h2>
-					<dl className={styles.history}>
-						<div>
-							<dt>Plays</dt>
-							<dd className="tabular">{history.plays.toLocaleString()}</dd>
-						</div>
-						<div>
-							<dt>Never played</dt>
-							<dd className="tabular">
-								{history.unplayed.toLocaleString()} of{" "}
-								{own.rows.length.toLocaleString()}
-							</dd>
-						</div>
-						{history.lastPlayed > 0 ? (
-							<div>
-								<dt>Last listened</dt>
-								<dd>{shortDate(history.lastPlayed)}</dd>
-							</div>
-						) : null}
-						{history.best ? (
-							<div>
-								<dt>Most played</dt>
-								<dd>
-									{history.best.title}{" "}
-									<span className={styles.faint}>
-										{plural(history.best.plays, "play")}
-									</span>
-								</dd>
-							</div>
-						) : null}
-					</dl>
-				</section>
-			) : null}
-
-			{held > 0 ? (
-				<section className={styles.section}>
-					<h2 className={styles.heading}>About</h2>
-					<Artist name={name} />
 				</section>
 			) : null}
 		</div>

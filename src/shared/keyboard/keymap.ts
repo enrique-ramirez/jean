@@ -25,6 +25,7 @@ export const SCOPE = {
 	sidebar: "sidebar",
 	playlist: "playlist",
 	genres: "genres",
+	artist: "artist",
 	finder: "finder",
 	search: "search",
 };
@@ -251,6 +252,16 @@ export const KEYMAP: Binding[] = [
 		group: "In the sidebar",
 		name: "Move playlist down",
 		keys: ["Alt+ArrowDown"],
+	},
+
+	// One key rather than an initial each: `T` for Tracks is the theme toggle, and a scoped binding
+	// quietly shadowing a global one is worse than a key that is not a first letter.
+	{
+		id: "switchArtistTab",
+		scope: SCOPE.artist,
+		group: "On an artist",
+		name: "Switch overview / tracks",
+		keys: ["O"],
 	},
 
 	{

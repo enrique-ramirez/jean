@@ -3,8 +3,9 @@
 	text-decoration: none;
 }
 
-.link:hover {
-	color: var(--text);
+.link:hover,
+.link:focus-visible {
+	color: var(--accent-text);
 	text-decoration: underline;
 	text-underline-offset: 2px;
 }

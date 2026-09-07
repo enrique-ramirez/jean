@@ -1,9 +1,16 @@
 .artist {
 	display: flex;
 	flex-direction: column;
-	gap: 34px;
+	gap: 30px;
+	padding-bottom: 40px;
+}
+
+/* `ViewHeader` carries its own gutter and draws to its own edges, so insetting it here leaves a gap
+ down the sides and none along the top -- which reads as a broken box the moment the page scrolls. */
+.section,
+.notice {
 	max-width: 1180px;
-	padding: 26px 28px 40px;
+	padding-inline: 24px;
 }
 
 .notice {
@@ -156,8 +163,13 @@
 
 @media (max-width: 720px) {
 	.artist {
-		gap: 28px;
-		padding: 18px 16px 32px;
+		gap: 24px;
+		padding-bottom: 32px;
+	}
+
+	.section,
+	.notice {
+		padding-inline: 16px;
 	}
 
 	.records {

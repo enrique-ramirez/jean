@@ -6,6 +6,7 @@ import {
 	scratchOf,
 	test,
 	trackPlayed,
+	trackRow,
 } from "./fixtures.ts";
 
 const ARTIST = "Babasónicos";
@@ -74,6 +75,57 @@ test.describe("an artist is a place", () => {
 			.toBe(scratchOf(player)?.id);
 		expect(trackPlayed(player)).toBeTruthy();
 		await expectPlayingFrom(page, ARTIST);
+	});
+});
+
+test.describe("two views of one artist", () => {
+	const tab = (page: Parameters<typeof openLibrary>[0], name: string) =>
+		page.getByRole("navigation", { name: "Artist views" }).getByRole("button", {
+			name,
+		});
+
+	test("the tracks tab is a place, not a toggle", async ({ page }) => {
+		await openArtist(page, ARTIST);
+		await tab(page, "Tracks").click();
+
+		await expect(trackRow(page, 0)).toBeAttached();
+		expect(await page.evaluate(() => location.hash)).toContain("/tracks");
+
+		// A place survives a reload and comes back to the same view.
+		await page.reload();
+		await expect(trackRow(page, 0)).toBeAttached();
+		await expect(tab(page, "Tracks")).toHaveAttribute("aria-current", "true");
+	});
+
+	test("it is the whole list view, scoped to them", async ({ page }) => {
+		await openArtist(page, ARTIST);
+		await tab(page, "Tracks").click();
+		await expect(trackRow(page, 0)).toBeAttached();
+
+		// The finder, the layout switch and the columns all come with it.
+		await expect(page.getByText("Find in this artist")).toBeVisible();
+		await expect(page.getByTitle("Albums")).toBeVisible();
+	});
+
+	test("one key moves between them, in both directions", async ({ page }) => {
+		await openArtist(page, ARTIST);
+		await page.locator("main").click({ position: { x: 20, y: 300 } });
+
+		await page.keyboard.press("o");
+		await expect(tab(page, "Tracks")).toHaveAttribute("aria-current", "true");
+
+		await page.keyboard.press("o");
+		await expect(tab(page, "Overview")).toHaveAttribute("aria-current", "true");
+	});
+
+	test("choosing a record opens the tracks and lands on it", async ({
+		page,
+	}) => {
+		await openArtist(page, ARTIST);
+		await page.locator("main").getByText("Jessico", { exact: true }).click();
+
+		expect(await page.evaluate(() => location.hash)).toContain("/tracks");
+		await expect(trackRow(page, 0)).toBeAttached();
 	});
 });
 

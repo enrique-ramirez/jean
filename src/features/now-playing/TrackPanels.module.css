@@ -5,62 +5,12 @@
 	min-width: 0;
 }
 
+/* Position only: the strip itself is `shared/ui/Tabs`. */
 .tabs {
 	position: sticky;
-	display: flex;
-	gap: 4px;
-	flex: none;
-	border-bottom: 1px solid var(--border);
 	top: var(--head-offset);
 	z-index: 1;
 	background: var(--bg);
-}
-
-.tab {
-	position: relative;
-	padding: 10px 14px;
-	border: none;
-	background: none;
-	color: var(--faint);
-	font-size: 0.75rem;
-	font-weight: 620;
-	letter-spacing: 0.09em;
-	text-transform: uppercase;
-	transition: color 0.15s var(--ease);
-}
-
-.key {
-	text-decoration: underline;
-	text-underline-offset: 3px;
-}
-
-@media (hover: none), (pointer: coarse) {
-	.key {
-		text-decoration: none;
-	}
-}
-
-.tab:hover {
-	color: var(--muted);
-}
-
-.tab[data-active="true"] {
-	color: var(--text);
-}
-
-.tab::after {
-	content: "";
-	position: absolute;
-	inset: auto 8px -1px;
-	height: 2px;
-	border-radius: 2px;
-	background: var(--accent);
-	transform: scaleX(0);
-	transition: transform 0.18s var(--ease);
-}
-
-.tab[data-active="true"]::after {
-	transform: scaleX(1);
 }
 
 .expand {

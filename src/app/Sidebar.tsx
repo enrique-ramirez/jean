@@ -45,7 +45,7 @@ import { plural } from "@/shared/lib/text";
 import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
 import { pushToast } from "@/shared/ui/toastStore";
-import { type PlayingRoute, ROUTE } from "./routes";
+import { KIND_LABEL, type PlayingRoute, ROUTE } from "./routes";
 import styles from "./Sidebar.module.css";
 import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
 
@@ -341,13 +341,18 @@ export function Sidebar({
 				/>
 
 				{playingFrom?.temporaryRow ? (
-					<NavRow
-						icon={Disc3}
-						label={playingFrom.name}
-						isPlaying={playingFrom.isPlaying}
-						isCurrent={route === playingFrom.route}
-						onClick={() => onOpenRoute(playingFrom.route)}
-					/>
+					<>
+						<p className={styles.heading}>
+							{KIND_LABEL[playingFrom.kind] ?? "Playing from"}
+						</p>
+						<NavRow
+							icon={Disc3}
+							label={playingFrom.name}
+							isPlaying={playingFrom.isPlaying}
+							isCurrent={route === playingFrom.route}
+							onClick={() => onOpenRoute(playingFrom.route)}
+						/>
+					</>
 				) : null}
 
 				<div className={styles.sectionHeader}>

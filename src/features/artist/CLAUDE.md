@@ -30,6 +30,18 @@ Who an artist is -- in `domain/track/artists.ts`, since the search index needs i
 
 **The discography is newest first, by each album's earliest year** -- the comment on `absorb()` in `home/albums.ts` has why earliest.
 
-**Guest spots are a separate section, never mixed into the records.** That separation is the whole reason the credit line is split at all.
+**Guest spots are a separate section, never mixed into the records.** That separation is the whole reason the credit line is split at all. It is how they are *drawn*, not two sets: `refsOfArtist` hands back `all` as well, and everything that plays an artist plays that, so the overview and the track list cannot mean different things by the same name.
+
+## Two views, one artist
+
+**The tabs are a route, `artist/<name>/tracks`, not a toggle.** A track list with its own sorting, selection and finder is a place: it survives a reload, and Back means something. The overview is the bare route.
+
+**The tracks tab is `LibraryListView`, unchanged.** Everything a playlist has -- the finder, the layout switch, the columns, the heat -- arrives by using the same component rather than by rebuilding a list scoped to one artist.
+
+**Both views draw one `ViewHeader`, and the tabs are a slot in it.** That is what keeps the name, the stats and the actions from moving as you switch.
+
+**Choosing a record on the overview opens the tracks and scrolls to it.** It does not play: the discography is for finding your way to a record, and a click that started the music would leave nowhere to go but back. `revealTrack.ts` carries the ask, and it carries a **ref rather than a position** -- the list that answers is not the one that asked.
+
+**One key rather than an initial each.** `T` for Tracks is the theme toggle, and a scoped binding quietly shadowing a global one is worse than a key that is not a first letter. The strip underlines a letter only when the key really is the label's initial.
 
 **The MusicBrainz panel is the same component the now-playing screen draws** -- its comment has why the subject is a parameter rather than the playing track.

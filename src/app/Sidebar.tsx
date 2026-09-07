@@ -359,7 +359,10 @@ export function Sidebar({
 
 				<div className={styles.sectionHeader}>
 					<p className={styles.heading}>
-						Playlists <kbd className={styles.hint}>{PALETTE_HINT}</kbd>
+						Playlists
+						{PALETTE_HINT ? (
+							<kbd className={styles.hint}>{PALETTE_HINT}</kbd>
+						) : null}
 					</p>
 					{canEdit ? (
 						<button

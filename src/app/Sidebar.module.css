@@ -26,7 +26,7 @@
 /* The heading's own casing and tracking are for a label, and both stretch a single keycap out of
  shape. */
 .hint {
-	margin-left: 2px;
+	margin-left: 6px;
 	padding: 0 4px;
 	border: 1px solid var(--border);
 	border-radius: 4px;
@@ -222,7 +222,7 @@
 	margin-top: 16px;
 }
 
-@media (max-width: 720px) {
+@media (hover: none), (pointer: coarse) {
 	.hint {
 		display: none;
 	}

@@ -360,9 +360,9 @@
 	--stars-gap: 6px;
 }
 
-/* A phone with the height to spare lifts the transport off the bottom edge, where the play button
- is an awkward reach. Above the inset rather than instead of it, so the clearance is the same felt
- distance wherever the system furniture ends. The middle row absorbs it. */
+/* Added atop the inset rather than replacing it, so the clearance holds regardless of what a
+   device reserves at the bottom. The middle row absorbs it -- the only one sized as a flexible
+   span. */
 @media (min-height: 700px) {
 	.screen[data-compact="true"] {
 		padding-bottom: calc(36px + env(safe-area-inset-bottom));

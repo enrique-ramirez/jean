@@ -63,8 +63,8 @@
 	border: 0;
 	border-radius: var(--radius-pill);
 	background: none;
-	font-size: 0.8125rem;
-	font-weight: 550;
+	font-size: 0.9375rem;
+	font-weight: 600;
 	color: var(--muted);
 	text-align: left;
 	transition:
@@ -78,11 +78,15 @@
 	color: var(--text);
 }
 
-/* Nowhere to go, so it is the name of the place and nothing more. */
 .place[data-at-top] {
 	background: none;
 	color: var(--muted);
 	cursor: default;
+}
+
+/* On the glyph rather than on the button, so the button's own colour states never reach it. */
+.place svg {
+	color: var(--accent-text);
 }
 
 .placeName {

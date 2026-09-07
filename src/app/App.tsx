@@ -91,6 +91,7 @@ import { Sidebar } from "./Sidebar";
 import { askToFocusSidebar } from "./sidebarFocus";
 import { useDocumentIdentity } from "./useDocumentIdentity";
 import { useHashRoute } from "./useHashRoute";
+import { useIsAtTop } from "./useIsAtTop";
 import { useScrollMemory } from "./useScrollMemory";
 
 const SEEK_STEP = 5;
@@ -351,18 +352,7 @@ function Shell() {
 		[],
 	);
 
-	// Every view change writes scrollTop and so fires this too, which is why the route is not a
-	// dependency. React bails out on an unchanged value, so this only costs a render at the crossing.
-	const [isAtTop, setIsAtTop] = useState(true);
-	useEffect(() => {
-		const scroller = scrollRef.current;
-		if (!scroller) return undefined;
-
-		const read = () => setIsAtTop(scroller.scrollTop <= 0);
-		read();
-		scroller.addEventListener("scroll", read, { passive: true });
-		return () => scroller.removeEventListener("scroll", read);
-	}, []);
+	const isAtTop = useIsAtTop(scrollRef);
 
 	const isSearchShown = !isCompactViewport || isSearchOpen;
 	const isCompactBarShut = isCompactViewport && !isSearchOpen;
@@ -648,8 +638,8 @@ function Shell() {
 						className={styles.place}
 						data-at-top={isAtTop || undefined}
 						onClick={backToTop}
-						// Named by its own text once there is nowhere to go, rather than by a promise it
-						// cannot keep.
+						// Omitted at the top: an unlabelled control's accessible name falls back to its
+						// visible text, and there is nowhere left for the label to promise going.
 						aria-label={isAtTop ? undefined : t("view.backToTop", { place })}
 					>
 						<span className={styles.placeName}>{place}</span>

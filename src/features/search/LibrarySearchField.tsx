@@ -30,7 +30,7 @@ export function LibrarySearchField({
 	onSelect: (suggestion: Suggestion) => void;
 	onDismiss: () => void;
 	// The reader has left the field, by blur or by the last rung of Escape below.
-	onLeave?: () => void;
+	onLeave: () => void;
 }) {
 	const t = useTranslate();
 	const format = useFormats();
@@ -150,7 +150,7 @@ export function LibrarySearchField({
 				onClick={open}
 				onBlur={() => {
 					search.onBlur();
-					onLeave?.();
+					onLeave();
 				}}
 				onKeyDown={onKeyDown}
 				placeholder={t(

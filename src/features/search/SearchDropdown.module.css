@@ -57,8 +57,18 @@
 }
 
 .cover,
-.face {
+.face,
+.glyph {
 	flex: 0 0 auto;
+}
+
+.glyph {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	color: var(--faint);
 }
 
 /* A record stands in for a face, so the shape says which kind of row this is: every cover in Jean is

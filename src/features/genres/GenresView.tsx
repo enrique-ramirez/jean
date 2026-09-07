@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { genreRoute } from "@/domain/library/genreRoute";
 import type { Library } from "@/domain/library/useLibrary";
+import { genresOf } from "@/domain/track/genres";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -12,7 +13,6 @@ import { Segmented } from "@/shared/ui/Segmented";
 import { GenreFinder } from "./GenreFinder";
 import styles from "./GenresView.module.css";
 import { GenreTile } from "./GenreTile";
-import { genresOf } from "./genres";
 
 type Order = "largest" | "name";
 

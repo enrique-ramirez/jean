@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import type { CoveredAlbum } from "./albums";
+import type { CoveredAlbum } from "@/domain/track/albums";
 import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
 import type { FilledShelf } from "./shelves";

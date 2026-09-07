@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
+import type { CoveredAlbum } from "@/domain/track/albums";
 import { useStoredState } from "@/shared/hooks/useStoredState";
-import type { CoveredAlbum } from "./albums";
 import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
 import tabs from "./ShelfTabs.module.css";

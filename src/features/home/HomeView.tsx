@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { LibrarySetup } from "@/domain/library/LibrarySetup";
 import type { Library } from "@/domain/library/useLibrary";
+import { albumsOf, type CoveredAlbum } from "@/domain/track/albums";
 import type { PlaylistInfo } from "@/shared/api/types";
-import { albumsOf, type CoveredAlbum } from "./albums";
 import { GenreBars } from "./GenreBars";
 import { HomeHeader } from "./HomeHeader";
 import styles from "./HomeView.module.css";

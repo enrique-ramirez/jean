@@ -1,0 +1,74 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { FIELD } from "../../src/domain/track/fields.ts";
+import { genreIndex, genresOf } from "../../src/domain/track/genres.ts";
+import { rankEntities } from "../../src/domain/track/rankEntities.ts";
+import { TIER } from "../../src/shared/lib/text.ts";
+
+// foobar joins a multi-valued tag with `; `, and Jean counts the join whole -- so the third row here
+// is its own genre and not a second Rock track.
+const LIBRARY: [genre: string, artist: string, album: string][] = [
+	["Rock", "Foo Fighters", "In Your Honor"],
+	["Rock", "Foo Fighters", "The Colour and the Shape"],
+	["Rock; Blues", "Blood, Sweat & Tears", "Child Is Father to the Man"],
+	["Electronic", "Daft Punk", "Discovery"],
+	["Electronic", "Daft Punk", "Discovery"],
+	["", "Untagged", "Field Recordings"],
+];
+
+const rows = LIBRARY.map(([genre, artist, album]) => {
+	const row: string[] = [];
+	row[FIELD.genre] = genre;
+	row[FIELD.artist] = artist;
+	row[FIELD.album] = album;
+	return row;
+});
+
+const genres = genresOf(rows);
+const find = (name: string) => genres.find((entry) => entry.name === name);
+
+test("a joined tag is one genre, not the genres inside it", () => {
+	assert.equal(find("Rock")?.trackCount, 2);
+	assert.equal(find("Rock; Blues")?.trackCount, 1);
+	assert.equal(find("Blues"), undefined);
+});
+
+test("an untagged row is in no genre at all", () => {
+	assert.equal(genres.length, 3);
+	assert.equal(find(""), undefined);
+});
+
+test("albums are counted per genre, and a record's tracks only once", () => {
+	assert.equal(find("Electronic")?.trackCount, 2);
+	assert.equal(find("Electronic")?.albumCount, 1);
+	assert.equal(find("Rock")?.albumCount, 2);
+});
+
+// `growingIndex`'s own comment has why a key on its own is not enough; this is that trap against a
+// tag foobar has joined.
+test("the index takes in rows that arrive after it was first asked for", () => {
+	const key = "library:6";
+
+	assert.equal(genreIndex(key, rows.slice(0, 1)).length, 1);
+
+	const grown = genreIndex(key, rows);
+	assert.equal(grown.length, 3);
+	assert.equal(grown.find((entry) => entry.name === "Rock")?.trackCount, 2);
+	assert.ok(grown.some((entry) => entry.name === "Electronic"));
+});
+
+// What the dropdown offers as a section: the whole-word floor, best first.
+const named = (query: string, floor = TIER.word) =>
+	rankEntities(genres, query, floor).map((entry) => entry.name);
+
+test("a name the query holds whole is offered; one it only contains is not", () => {
+	// Both the plain tag and the joined one hold `Rock` whole, and the bigger comes first.
+	assert.deepEqual(named("rock"), ["Rock", "Rock; Blues"]);
+	assert.deepEqual(named("blues"), ["Rock; Blues"]);
+	// `lectro` is inside `Electronic` and inside nothing whole.
+	assert.deepEqual(named("lectro"), []);
+});
+
+test("an empty query names nothing, whatever the floor", () => {
+	assert.deepEqual(named("   ", TIER.typo), []);
+});

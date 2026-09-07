@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { CoveredAlbum } from "@/domain/track/albums";
 import { AlbumCard } from "./AlbumCard";
-import type { CoveredAlbum } from "./albums";
 import styles from "./ShelfRow.module.css";
 import type { FilledShelf } from "./shelves";
 

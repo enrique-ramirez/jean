@@ -4,10 +4,10 @@ import {
 	artistIndex,
 	artistsOf,
 	namesAnArtist,
-	rankArtists,
 	refsOfArtist,
 } from "../../src/domain/track/artists.ts";
 import { FIELD } from "../../src/domain/track/fields.ts";
+import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
 // Tagging shapes taken off a real library, including the two that pull in opposite directions: a
@@ -137,7 +137,7 @@ test("a different library is built afresh rather than added to", () => {
 
 // What the dropdown offers as a section: the whole-word floor, best first.
 const named = (query: string, floor = TIER.word) =>
-	rankArtists(artists, query, floor).map((entry) => entry.name);
+	rankEntities(artists, query, floor).map((entry) => entry.name);
 
 test("a name the query holds whole is offered; one it only contains is not", () => {
 	assert.deepEqual(named("sirens"), ["Sleep With Sirens"]);
@@ -168,7 +168,7 @@ test("at the same rung, the artist you hold more of comes first", () => {
 	);
 
 	assert.deepEqual(
-		rankArtists(tied, "blue", TIER.word).map((e) => e.name),
+		rankEntities(tied, "blue", TIER.word).map((e) => e.name),
 		["Blue Dog", "Blue Cat"],
 	);
 });

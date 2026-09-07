@@ -1,5 +1,5 @@
+import type { Album } from "@/domain/track/albums";
 import { tagKey } from "@/domain/track/fields";
-import type { Album } from "./albums";
 
 export interface AlbumArtist<A extends Album = Album> {
 	key: string;

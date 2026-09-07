@@ -3,6 +3,8 @@ import {
 	genreOfRoute,
 	genreRoute,
 } from "@/domain/library/genreRoute";
+import type { Suggestion } from "@/domain/library/useLibrarySearch";
+import { albumOfRoute, albumRoute } from "@/domain/track/albumRoute";
 import {
 	type ArtistTab,
 	artistOfRoute,
@@ -43,9 +45,21 @@ const SHELF_PREFIX = "shelf/";
 
 const shelfRoute = (id: string) => `${SHELF_PREFIX}${id}`;
 
+// Every suggestion but a track is a place the query was a way of reaching, and picking one goes there.
+export const routeOfSuggestion = (
+	suggestion: Exclude<Suggestion, { kind: "track" }>,
+): string =>
+	suggestion.kind === "artist"
+		? artistRoute(suggestion.artist.name)
+		: suggestion.kind === "album"
+			? albumRoute(suggestion.album.artistTag, suggestion.album.album)
+			: genreRoute(suggestion.genre.name);
+
 export function resolveRoute(route: string): {
 	shelf: Shelf | null;
 	genre: string | null;
+	album: string | null;
+	albumArtist: string | null;
 	artist: string | null;
 	artistTab: ArtistTab;
 	isGenres: boolean;
@@ -62,11 +76,16 @@ export function resolveRoute(route: string): {
 		: null;
 
 	const genre = genreOfRoute(route);
+	const album = albumOfRoute(route);
 	const artist = artistOfRoute(route);
 
 	return {
 		shelf,
 		genre,
+		// Flat rather than the pair, so a caller's memo can depend on the two strings: `resolveRoute`
+		// runs every render and an object out of it is a new identity every time.
+		album: album?.album ?? null,
+		albumArtist: album?.artist ?? null,
 		artist: artist?.name ?? null,
 		artistTab: artist?.tab ?? "overview",
 		isGenres: route === ROUTE.genres,
@@ -82,6 +101,7 @@ export function resolveRoute(route: string): {
 			route === ROUTE.playing ||
 			shelf !== null ||
 			genre !== null ||
+			album !== null ||
 			artist !== null,
 	};
 }

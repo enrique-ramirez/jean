@@ -24,6 +24,7 @@ export const SCRATCH_KIND = {
 	search: "search",
 	shelf: "shelf",
 	genre: "genre",
+	album: "album",
 	artist: "artist",
 	all: "all music",
 } as const;

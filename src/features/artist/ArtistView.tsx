@@ -2,6 +2,7 @@ import { Play, Shuffle } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import type { Library } from "@/domain/library/useLibrary";
+import { albumsOf } from "@/domain/track/albums";
 import type { ArtistTracks } from "@/domain/track/artists";
 import {
 	FIELD,
@@ -15,7 +16,6 @@ import { project, type Refs, type TrackView } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
 import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { ViewHeader } from "@/domain/track/ViewHeader";
-import { albumsOf } from "@/features/home/albums";
 import { Artist } from "@/features/now-playing/Artist";
 import { plural, pluralise } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";

@@ -1,5 +1,6 @@
 import { Keyboard, Moon, PanelLeft, Settings, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GENRES_HREF } from "@/domain/library/genreRoute";
 import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
@@ -15,6 +16,8 @@ import {
 	usePlayPause,
 	useSeekBy,
 } from "@/domain/player/usePlayer";
+import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
+import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
 import { type ArtistTab, artistRoute } from "@/domain/track/artistRoute";
 import { type ArtistTracks, refsOfArtist } from "@/domain/track/artists";
 import {
@@ -34,9 +37,7 @@ import { askToReveal } from "@/domain/track/revealTrack";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
 import { ArtistView } from "@/features/artist/ArtistView";
-import { GenreCrumb } from "@/features/genres/GenreCrumb";
 import { GenresView } from "@/features/genres/GenresView";
-import { albumsOf } from "@/features/home/albums";
 import { HomeView } from "@/features/home/HomeView";
 import { buildShelves, refsOfShelf } from "@/features/home/shelves";
 import { useHomePlayback } from "@/features/home/useHomePlayback";
@@ -64,12 +65,18 @@ import {
 } from "@/shared/keyboard/ShortcutSheet";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
+import { Crumb } from "@/shared/ui/Crumb";
 import { DragGhost } from "@/shared/ui/DragGhost";
 import { type TabOption, Tabs } from "@/shared/ui/Tabs";
 import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
 import { CommandPalette } from "./CommandPalette";
-import { ROUTE, resolveRoute, routeOfPlayingSet } from "./routes";
+import {
+	ROUTE,
+	resolveRoute,
+	routeOfPlayingSet,
+	routeOfSuggestion,
+} from "./routes";
 import { Sidebar } from "./Sidebar";
 import { askToFocusSidebar } from "./sidebarFocus";
 import { useDocumentIdentity } from "./useDocumentIdentity";
@@ -144,6 +151,8 @@ function Shell() {
 	const {
 		shelf,
 		genre,
+		album,
+		albumArtist,
 		artist,
 		artistTab,
 		isGenres,
@@ -160,6 +169,7 @@ function Shell() {
 			isGenres ||
 			Boolean(shelf) ||
 			Boolean(genre) ||
+			Boolean(album) ||
 			Boolean(artist),
 	});
 	const search = useLibrarySearch(library, playlists);
@@ -210,6 +220,18 @@ function Shell() {
 		[genre, snapshot],
 	);
 
+	// The route carries the two halves normalised, so the record's own spelling comes back with its
+	// rows and is what the header draws.
+	const albumTracks = useMemo(
+		() => (album ? refsOfAlbum(snapshot.rows, albumArtist, album) : null),
+		[album, albumArtist, snapshot.rows],
+	);
+
+	const albumView = useMemo(
+		() => (albumTracks ? project(snapshot, albumTracks.refs) : null),
+		[albumTracks, snapshot],
+	);
+
 	const listView = shelf
 		? {
 				view: shelfView,
@@ -223,16 +245,24 @@ function Shell() {
 					view: genreView,
 					kind: SCRATCH_KIND.genre,
 					label: genre,
-					eyebrow: <GenreCrumb />,
+					eyebrow: <Crumb href={GENRES_HREF}>All genres</Crumb>,
 					title: genre,
 				}
-			: {
-					view: allMusic,
-					kind: SCRATCH_KIND.all,
-					label: "",
-					eyebrow: "Your library",
-					title: ALL_MUSIC,
-				};
+			: albumTracks
+				? {
+						view: albumView,
+						kind: SCRATCH_KIND.album,
+						label: albumTracks.album,
+						eyebrow: <AlbumCrumb artist={albumTracks.artist} />,
+						title: albumTracks.album,
+					}
+				: {
+						view: allMusic,
+						kind: SCRATCH_KIND.all,
+						label: "",
+						eyebrow: "Your library",
+						title: ALL_MUSIC,
+					};
 
 	const browsable = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
 
@@ -547,11 +577,11 @@ function Shell() {
 						openSearch();
 					}}
 					onSelect={(suggestion) => {
-						// An artist is somewhere the query was only ever a way of reaching, so the query is
-						// not promoted and the field goes back to whatever search is actually on screen.
-						if (suggestion.kind === "artist") {
+						if (suggestion.kind !== "track") {
+							// A place the query was only ever a way of reaching, so the query is not promoted
+							// and the field goes back to whatever search is actually on screen.
 							search.revert();
-							openRoute(artistRoute(suggestion.artist.name));
+							openRoute(routeOfSuggestion(suggestion));
 							return;
 						}
 
@@ -641,7 +671,7 @@ function Shell() {
 						/>
 					) : isGenres ? (
 						<GenresView library={library} onOpenRoute={openRoute} />
-					) : isAll || shelf || genre ? (
+					) : isAll || shelf || genre || album ? (
 						<LibraryListView
 							library={library}
 							view={listView.view ?? EMPTY_VIEW}
@@ -658,7 +688,9 @@ function Shell() {
 									? "Reading your library..."
 									: genre
 										? `Nothing tagged ${genre} in your library.`
-										: "Nothing in your library yet."
+										: album
+											? "That record is not in your library."
+											: "Nothing in your library yet."
 							}
 						/>
 					) : isSearch ? (

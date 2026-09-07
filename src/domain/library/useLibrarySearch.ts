@@ -11,13 +11,16 @@ import {
 	usePermissions,
 	usePlayer,
 } from "@/domain/player/usePlayer";
-import { type Artist, artistIndex, rankArtists } from "@/domain/track/artists";
+import { type Album, albumIndex } from "@/domain/track/albums";
+import { type Artist, artistIndex } from "@/domain/track/artists";
+import { type Genre, genreIndex } from "@/domain/track/genres";
 import {
 	isScratchPlaylist,
 	queryOfScratchPlaylist,
 } from "@/domain/track/jeanPlaylists";
 import { libraryIndex, searchLibrary } from "@/domain/track/libraryIndex";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
+import { rankEntities } from "@/domain/track/rankEntities";
 import { bestMatches } from "@/domain/track/rankTracks";
 import { removePlaylist } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
@@ -28,17 +31,44 @@ import { SCRATCH_PIN_KEY } from "./useScratchPlaylist";
 
 const PREVIEW_TRACKS = 8;
 const PREVIEW_ARTISTS = 2;
+const PREVIEW_ALBUMS = 3;
+const PREVIEW_GENRES = 1;
 
-// The floor passed to rankArtists; its comment in domain/track/artists.ts has why a whole-word
+// The floor passed to rankEntities; its comment in domain/track/rankEntities.ts has why a whole-word
 // match is what keeps a section honest.
 const SECTION_BAR = TIER.word;
 
 const EMPTY_PREVIEW: number[] = [];
-const EMPTY_ARTISTS: Artist[] = [];
+
+const NOTHING_NAMED: {
+	artists: Artist[];
+	albums: Album[];
+	genres: Genre[];
+} = { artists: [], albums: [], genres: [] };
 
 export type Suggestion =
 	| { kind: "artist"; artist: Artist }
+	| { kind: "album"; album: Album }
+	| { kind: "genre"; genre: Genre }
 	| { kind: "track"; ref: number };
+
+export interface SearchSection {
+	label: string;
+	// Everything the query named, not what the section shows: the heading answers "how much of this
+	// did you leave out".
+	count: number;
+	suggestions: Suggestion[];
+}
+
+// What a suggestion is *about*, where that is a thing in the library rather than one of its tracks.
+const entityOf = (suggestion: Suggestion) =>
+	suggestion.kind === "artist"
+		? suggestion.artist
+		: suggestion.kind === "album"
+			? suggestion.album
+			: suggestion.kind === "genre"
+				? suggestion.genre
+				: null;
 
 /**
  * Two queries, not one. `draft` is what is being typed and reaches no further than the field and its
@@ -120,17 +150,19 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 	const wanted = deferredDraft.trim();
 
-	const artists = useMemo(
-		() =>
-			index && wanted && library.key
-				? rankArtists(
-						artistIndex(library.key, library.rows),
-						wanted,
-						SECTION_BAR,
-					)
-				: EMPTY_ARTISTS,
-		[index, wanted, library.key, library.rows],
-	);
+	// One memo for the three, since they share a guard, a floor and a dependency array -- and because a
+	// downstream memo keyed on three separately built arrays is keyed on nothing.
+	const named = useMemo(() => {
+		const key = library.key;
+		const rows = library.rows;
+		if (!index || !wanted || !key) return NOTHING_NAMED;
+
+		return {
+			artists: rankEntities(artistIndex(key, rows), wanted, SECTION_BAR),
+			albums: rankEntities(albumIndex(key, rows), wanted, SECTION_BAR),
+			genres: rankEntities(genreIndex(key, rows), wanted, SECTION_BAR),
+		};
+	}, [index, wanted, library.key, library.rows]);
 
 	const matched = useMemo(
 		() => (index ? searchLibrary(index, query) : null),
@@ -142,33 +174,78 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		[library.snapshot, matched],
 	);
 
-	// One list in the order they are drawn, so the arrow keys need to know nothing about sections.
-	const suggestions = useMemo<Suggestion[]>(
-		() => [
-			...artists
-				.slice(0, PREVIEW_ARTISTS)
-				.map((artist) => ({ kind: "artist" as const, artist })),
-			...preview.map((position) => ({
-				kind: "track" as const,
-				ref: draftMatched ? draftMatched[position] : position,
-			})),
-		],
-		[artists, preview, draftMatched],
+	const sections = useMemo<SearchSection[]>(() => {
+		const built: SearchSection[] = [];
+
+		const { artists, albums, genres } = named;
+
+		if (artists.length > 0)
+			built.push({
+				label: "Artists",
+				count: artists.length,
+				suggestions: artists
+					.slice(0, PREVIEW_ARTISTS)
+					.map((artist) => ({ kind: "artist", artist })),
+			});
+
+		if (albums.length > 0)
+			built.push({
+				label: "Albums",
+				count: albums.length,
+				suggestions: albums
+					.slice(0, PREVIEW_ALBUMS)
+					.map((album) => ({ kind: "album", album })),
+			});
+
+		if (genres.length > 0)
+			built.push({
+				label: "Genre",
+				count: genres.length,
+				suggestions: genres
+					.slice(0, PREVIEW_GENRES)
+					.map((genre) => ({ kind: "genre", genre })),
+			});
+
+		if (preview.length > 0)
+			built.push({
+				label: "Tracks",
+				count: draftMatched?.length ?? preview.length,
+				suggestions: preview.map((position) => ({
+					kind: "track",
+					ref: draftMatched ? draftMatched[position] : position,
+				})),
+			});
+
+		return built;
+	}, [named, preview, draftMatched]);
+
+	// One list in the order they are drawn, so the arrow keys need to know nothing about sections and
+	// a heading can never take the cursor.
+	const suggestions = useMemo(
+		() => sections.flatMap((section) => section.suggestions),
+		[sections],
 	);
 
-	// Exactly one thing named this and nothing else did, so the query has one reading and the cursor
-	// starts on it -- which is what keeps the guess visible rather than hidden inside Enter. A track
-	// sharing the name makes it ambiguous again: `love` is a band and a hundred songs.
+	// Exactly one thing in the library was named exactly and nothing else was, so the query has one
+	// reading and the cursor starts on it -- which is what keeps the guess visible rather than hidden
+	// inside Enter. Anything else answering to the same name makes it ambiguous again, on either side:
+	// `love` is a band, a record and a hundred songs.
 	const preselect = useMemo(() => {
-		if (artists.length !== 1 || !wanted || !index || !draftMatched) return -1;
+		if (!wanted || !index || !draftMatched) return -1;
 
 		const query = squash(wanted);
-		if (fuzzyScore(artists[0].match, query) < TIER.exact) return -1;
+		const exact = [...named.artists, ...named.albums, ...named.genres].filter(
+			(entity) => fuzzyScore(entity.match, query) >= TIER.exact,
+		);
+		if (exact.length !== 1) return -1;
 
 		const folded = fold(wanted);
-		const named = draftMatched.some((ref) => index[ref].title === folded);
-		return named ? -1 : 0;
-	}, [artists, wanted, index, draftMatched]);
+		if (draftMatched.some((ref) => index[ref].title === folded)) return -1;
+
+		return suggestions.findIndex(
+			(suggestion) => entityOf(suggestion) === exact[0],
+		);
+	}, [named, suggestions, wanted, index, draftMatched]);
 
 	const focus = useCallback(() => {
 		request();
@@ -212,10 +289,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		isOpen,
 		open: useCallback(() => setIsOpen(true), []),
 		close: useCallback(() => setIsOpen(false), []),
-		preview,
-		draftMatched,
-		artists,
-		artistCount: artists.length,
+		sections,
 		suggestions,
 		preselect,
 		hasDraft: draft.trim().length > 0,

@@ -27,6 +27,7 @@ const FINDER_LABEL: Record<string, string> = {
 	[SCRATCH_KIND.all]: "Find in all music",
 	[SCRATCH_KIND.shelf]: "Find in this shelf",
 	[SCRATCH_KIND.genre]: "Find in this genre",
+	[SCRATCH_KIND.album]: "Find in this album",
 	[SCRATCH_KIND.artist]: "Find in this artist",
 };
 

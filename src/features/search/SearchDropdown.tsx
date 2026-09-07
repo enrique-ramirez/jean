@@ -1,6 +1,8 @@
+import { Shapes } from "lucide-react";
 import {
 	Fragment,
 	type MouseEvent,
+	type ReactNode,
 	type RefObject,
 	useLayoutEffect,
 	useRef,
@@ -10,7 +12,13 @@ import type {
 	LibrarySearch,
 	Suggestion,
 } from "@/domain/library/useLibrarySearch";
-import { artistOf, FIELD, titleOf, value } from "@/domain/track/fields";
+import {
+	artistOf,
+	coverIdentity,
+	FIELD,
+	titleOf,
+	value,
+} from "@/domain/track/fields";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { plural } from "@/shared/lib/text";
@@ -19,12 +27,94 @@ import styles from "./SearchDropdown.module.css";
 
 export const optionId = (position: number) => `search-result-${position}`;
 
+const ART = 36;
+
 function Heading({ label, count }: { label: string; count: number }) {
 	return (
 		<p className={styles.heading}>
 			{label} <span className={styles.count}>({count.toLocaleString()})</span>
 		</p>
 	);
+}
+
+const joined = (...parts: (string | null | false)[]) =>
+	parts.filter(Boolean).join(" · ");
+
+/**
+ * The kinds differ by what leads the row and by what the second line answers, and by nothing else.
+ *
+ * Every cover is asked for by identity as well as by address: the album a query names and a track on
+ * it are two rows in one panel pointing at one sleeve, and beefweb addresses that sleeve differently
+ * for each of them.
+ */
+function faceOf(
+	suggestion: Suggestion,
+	library: Library,
+): { key: string; leading: ReactNode; title: string; under: string } {
+	const cover = (ref: number, className: string) => (
+		<Artwork
+			src={library.source.artworkUrl(ref)}
+			identity={coverIdentity(library.rows[ref])}
+			size={ART}
+			className={className}
+		/>
+	);
+
+	switch (suggestion.kind) {
+		case "artist": {
+			const { artist } = suggestion;
+			return {
+				key: `artist:${artist.key}`,
+				leading:
+					artist.coverRefs.length > 0 ? (
+						cover(artist.coverRefs[0], styles.face)
+					) : (
+						<Artwork src={null} size={ART} className={styles.face} />
+					),
+				title: artist.name,
+				under: joined(
+					artist.albumCount > 0 && plural(artist.albumCount, "album"),
+					plural(artist.trackCount + artist.guestCount, "track"),
+				),
+			};
+		}
+
+		case "album": {
+			const { album } = suggestion;
+			return {
+				key: `album:${album.key}`,
+				leading: cover(album.refs[0], styles.cover),
+				title: album.album,
+				under: joined(album.artist, plural(album.trackCount, "track")),
+			};
+		}
+
+		case "genre": {
+			const { genre } = suggestion;
+			return {
+				key: `genre:${genre.key}`,
+				// A genre has no artwork and never will, and the slot is kept anyway so its name sits on
+				// the same line as every other row's.
+				leading: (
+					<span className={styles.glyph} aria-hidden="true">
+						<Shapes size={17} strokeWidth={2} />
+					</span>
+				),
+				title: genre.name,
+				under: plural(genre.trackCount, "track"),
+			};
+		}
+
+		default: {
+			const row = library.rows[suggestion.ref];
+			return {
+				key: `track:${suggestion.ref}`,
+				leading: cover(suggestion.ref, styles.cover),
+				title: titleOf(row),
+				under: joined(artistOf(row), value(row, FIELD.album)),
+			};
+		}
+	}
 }
 
 /**
@@ -107,7 +197,7 @@ export function SearchDropdown({
 }) {
 	const panel = useRef<HTMLDivElement | null>(null);
 	const list = useRef<HTMLDivElement | null>(null);
-	const { suggestions, artists, artistCount, draftCount } = search;
+	const { sections, suggestions } = search;
 	const aimedAt = useEarnedHover(suggestions);
 
 	useAnchoredBounds(anchor, panel);
@@ -117,9 +207,17 @@ export function SearchDropdown({
 	// ends at once.
 	const swipe = useSwipe({ onUp: onDismiss });
 
+	// Found by id rather than by child position: the headings are children of the list too, so the
+	// cursor's index and the element's index are several rows apart by the fourth section.
 	useLayoutEffect(() => {
-		list.current?.children[active]?.scrollIntoView({ block: "nearest" });
+		if (active < 0) return;
+		list.current
+			?.querySelector(`[id="${optionId(active)}"]`)
+			?.scrollIntoView({ block: "nearest" });
 	}, [active]);
+
+	// Where each section starts in the flat list the keyboard walks.
+	let from = 0;
 
 	return (
 		<div className={styles.panel} ref={panel} {...swipe}>
@@ -131,80 +229,45 @@ export function SearchDropdown({
 				</p>
 			) : (
 				<div className={styles.results} id={listId} role="listbox" ref={list}>
-					{suggestions.map((suggestion, index) => {
-						const isActive = index === active;
-						const props = {
-							id: optionId(index),
-							role: "option" as const,
-							"aria-selected": isActive,
-							className: styles.result,
-							"data-active": isActive,
-							"data-kind": suggestion.kind,
-							onMouseEnter: (event: MouseEvent) => {
-								if (aimedAt(event)) onActive(index);
-							},
-							onClick: () => onSelect(suggestion),
-						};
+					{sections.map((section) => {
+						const starts = from;
+						from += section.suggestions.length;
 
-						if (suggestion.kind === "artist") {
-							const { artist } = suggestion;
-							return (
-								<Fragment key={`artist:${artist.key}`}>
-									{index === 0 ? (
-										<Heading label="Artists" count={artistCount} />
-									) : null}
-									<button type="button" {...props}>
-										<Artwork
-											src={
-												artist.coverRefs.length > 0
-													? library.source.artworkUrl(artist.coverRefs[0])
-													: null
-											}
-											size={36}
-											className={styles.face}
-										/>
-										<span className={styles.text}>
-											<span className={styles.title}>{artist.name}</span>
-											<span className={styles.under}>
-												{[
-													artist.albumCount > 0
-														? plural(artist.albumCount, "album")
-														: null,
-													plural(
-														artist.trackCount + artist.guestCount,
-														"track",
-													),
-												]
-													.filter(Boolean)
-													.join(" · ")}
-											</span>
-										</span>
-									</button>
-								</Fragment>
-							);
-						}
-
-						const row = library.rows[suggestion.ref];
 						return (
-							<Fragment key={`track:${suggestion.ref}`}>
-								{index === artists.length ? (
-									<Heading label="Tracks" count={draftCount} />
-								) : null}
-								<button type="button" {...props}>
-									<Artwork
-										src={library.source.artworkUrl(suggestion.ref)}
-										size={36}
-										className={styles.cover}
-									/>
-									<span className={styles.text}>
-										<span className={styles.title}>{titleOf(row)}</span>
-										<span className={styles.under}>
-											{[artistOf(row), value(row, FIELD.album)]
-												.filter(Boolean)
-												.join(" · ")}
-										</span>
-									</span>
-								</button>
+							<Fragment key={section.label}>
+								<Heading label={section.label} count={section.count} />
+
+								{section.suggestions.map((suggestion, offset) => {
+									const index = starts + offset;
+									const isActive = index === active;
+									const { key, leading, title, under } = faceOf(
+										suggestion,
+										library,
+									);
+
+									return (
+										<button
+											key={key}
+											type="button"
+											id={optionId(index)}
+											role="option"
+											aria-selected={isActive}
+											className={styles.result}
+											data-active={isActive}
+											data-kind={suggestion.kind}
+											onMouseEnter={(event: MouseEvent) => {
+												if (aimedAt(event)) onActive(index);
+											}}
+											onClick={() => onSelect(suggestion)}
+										>
+											{leading}
+											<span className={styles.text}>
+												<span className={styles.title}>{title}</span>
+												<span className={styles.under}>{under}</span>
+											</span>
+										</button>
+									);
+								})}
 							</Fragment>
 						);
 					})}

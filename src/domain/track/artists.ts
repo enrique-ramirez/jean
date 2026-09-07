@@ -6,7 +6,8 @@ import {
 	value,
 } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
-import { type FuzzyKey, fuzzyKey, fuzzyScore, squash } from "@/shared/lib/text";
+import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
+import { growingIndex } from "./growingIndex";
 
 // Not an artist, and a page for it would be every compilation track in the library. Asked wherever a
 // name is about to become somewhere you can go -- the index, a credit drawn as links, the track menu
@@ -128,64 +129,7 @@ export function artistsOf(rows: TrackColumns[]): Artist[] {
 	return derive(byKey);
 }
 
-let held: {
-	key: string;
-	counted: number;
-	drafts: Map<string, Draft>;
-	artists: Artist[];
-} | null = null;
-
-/**
- * Extended in place as the library arrives, never cached on the key alone: **the key carries the
- * library's total count, so it does not change while rows are still streaming in**. Cached on it and
- * nothing else, this answers from whatever the first chunk happened to hold and never notices the
- * rest -- an artist the user has half of, or has not reached yet, is simply absent for the session.
- *
- * Asked for only once something needs it, so a session that never searches never builds it.
- */
-export function artistIndex(key: string, rows: TrackColumns[]): Artist[] {
-	if (held?.key !== key)
-		held = { key, counted: 0, drafts: new Map(), artists: [] };
-
-	if (held.counted !== rows.length) {
-		absorb(held.drafts, rows, held.counted);
-		held.counted = rows.length;
-		held.artists = derive(held.drafts);
-	}
-
-	return held.artists;
-}
-
-/**
- * The artists a query plausibly *names*, best first. The floor is what keeps a section honest: a list
- * of two shows two things however badly the second scored, so sorting alone cannot decide whether the
- * query is about an artist at all. Below a whole-word match, `blood` offers `youngbloodz` above two
- * hundred songs with the word in their titles.
- *
- * Entities take the whole ladder, unlike tracks: a track was filtered on the token before it was
- * ranked, so it can never reach the rungs that catch a typo, and an artist was not.
- */
-export function rankArtists(
-	artists: Artist[],
-	query: string,
-	floor: number,
-): Artist[] {
-	const squashed = squash(query);
-	if (squashed.length === 0) return [];
-
-	return (
-		artists
-			.map((artist) => ({ artist, score: fuzzyScore(artist.match, squashed) }))
-			.filter((entry) => entry.score >= floor)
-			// Then by how much of them the library holds: at the same rung, the one you own more of is
-			// more likely the one meant.
-			.sort(
-				(a, b) =>
-					b.score - a.score || b.artist.trackCount - a.artist.trackCount,
-			)
-			.map((entry) => entry.artist)
-	);
-}
+export const artistIndex = growingIndex(absorb, derive);
 
 export interface ArtistTracks {
 	own: Int32Array;

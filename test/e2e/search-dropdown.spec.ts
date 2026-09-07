@@ -17,6 +17,8 @@ import {
 const QUERY = "babasonicos";
 const OTHER = "nutshell";
 const ARTIST = "Babasónicos";
+const ALBUM = "Jessico";
+const GENRE = "Grunge";
 
 // Stated here rather than imported: how many results a preview shows is a decision, and a spec that
 // reads the number out of the code cannot disagree with a change to it.
@@ -27,6 +29,14 @@ const options = (page: Parameters<typeof openLibrary>[0]) =>
 
 const tracks = (page: Parameters<typeof openLibrary>[0]) =>
 	page.locator('[role="option"][data-kind="track"]');
+
+const ofKind = (page: Parameters<typeof openLibrary>[0], kind: string) =>
+	page.locator(`[role="option"][data-kind="${kind}"]`);
+
+const kinds = (page: Parameters<typeof openLibrary>[0]) =>
+	options(page).evaluateAll((rows) =>
+		rows.map((row) => row.getAttribute("data-kind")),
+	);
 
 const hash = (page: Parameters<typeof openLibrary>[0]) =>
 	page.evaluate(() => location.hash);
@@ -158,6 +168,98 @@ test.describe("what a query might mean", () => {
 			// and the app declines to guess.
 			await searchField(page).fill(QUERY);
 			await expect(options(page).first()).toBeVisible();
+			await expect(options(page).first()).toHaveAttribute(
+				"aria-selected",
+				"false",
+			);
+		});
+	});
+
+	test("an album the query names gets a section of its own", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await searchField(page).fill(ALBUM);
+
+		await expect(page.getByText("Albums (1)")).toBeVisible();
+		await expect(ofKind(page, "album")).toHaveCount(1);
+		// The record's own line answers who it is by and how much of it there is.
+		await expect(ofKind(page, "album")).toContainText(ARTIST);
+		await expect(ofKind(page, "album")).toContainText("12 tracks");
+	});
+
+	test("choosing an album opens the record and leaves the search alone", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await searchFor(page, OTHER);
+
+		await searchField(page).fill(ALBUM);
+		await ofKind(page, "album").click();
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: ALBUM }),
+		).toBeVisible();
+		// Up out of a record is whoever made it.
+		await expect(page.getByRole("link", { name: ARTIST })).toBeVisible();
+
+		// The query was only a way of reaching it, so it never became the search.
+		await expect(searchField(page)).toHaveValue(OTHER);
+		expect(playedFrom(player)).toBe(null);
+	});
+
+	test("a genre the query names is one quiet row, and it says how many there are", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await searchField(page).fill("rock");
+
+		// Four genres hold `Rock` whole; one row is drawn and the heading is where the
+		// other three are.
+		await expect(ofKind(page, "genre")).toHaveCount(1);
+		await expect(page.getByText("Genre (4)")).toBeVisible();
+	});
+
+	test("choosing a genre opens it", async ({ page, player }) => {
+		await openLibrary(page);
+		await searchField(page).fill(GENRE);
+
+		await ofKind(page, "genre").click();
+		await expect(
+			page.getByRole("heading", { level: 1, name: GENRE }),
+		).toBeVisible();
+		expect(playedFrom(player)).toBe(null);
+	});
+
+	test.describe("a query that names one of everything", () => {
+		// One track retagged so that the artist, a record and a genre all answer to
+		// the same word, which is the only way this small library holds four sections.
+		test.use({
+			retagged: {
+				Nutshell: { "%album%": ARTIST, "%genre%": ARTIST },
+			},
+		});
+
+		test("draws them artists, albums, genre, then tracks", async ({ page }) => {
+			await openLibrary(page);
+			await searchField(page).fill(QUERY);
+			await expect(options(page).first()).toBeVisible();
+
+			const drawn = await kinds(page);
+			expect(drawn.slice(0, 3)).toEqual(["artist", "album", "genre"]);
+			expect(drawn.slice(3).every((kind) => kind === "track")).toBe(true);
+		});
+
+		test("leaves the cursor on nothing, since the word has three readings", async ({
+			page,
+		}) => {
+			await openLibrary(page);
+			await searchField(page).fill(QUERY);
+			await expect(options(page).first()).toBeVisible();
+
+			// A record named exactly what the artist is called blocks the guess as
+			// surely as a track by that name does.
 			await expect(options(page).first()).toHaveAttribute(
 				"aria-selected",
 				"false",

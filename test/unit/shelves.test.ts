@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { Album } from "../../src/features/home/albums.ts";
+import type { Album } from "../../src/domain/track/albums.ts";
 import { buildShelves, refsOfShelf } from "../../src/features/home/shelves.ts";
 
 // Which shelves a library gets, and in what order their tracks are addressed.

@@ -1,6 +1,6 @@
+import type { CoveredAlbum } from "@/domain/track/albums";
 import { summarise } from "@/domain/track/stats";
 import type { TrackColumns } from "@/shared/api/types";
-import type { CoveredAlbum } from "./albums";
 import { type AlbumArtist, albumArtistsOf, mostPlayed } from "./artists";
 
 const GENRE_BARS = 14;

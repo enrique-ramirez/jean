@@ -1,0 +1,149 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { albumOfRoute, albumRoute } from "../../src/domain/track/albumRoute.ts";
+import {
+	albumIndex,
+	albumsOf,
+	refsOfAlbum,
+} from "../../src/domain/track/albums.ts";
+import { FIELD } from "../../src/domain/track/fields.ts";
+import { rankEntities } from "../../src/domain/track/rankEntities.ts";
+import { TIER } from "../../src/shared/lib/text.ts";
+
+// The two cases identity has to keep apart, and the one it has to fold together: one title by two
+// bands, one record whose album artist is spelt two ways, and a record with neither artist tag.
+const LIBRARY: [artist: string, albumArtist: string, album: string][] = [
+	["Blood, Sweat & Tears", "Blood, Sweat & Tears", "Blood, Sweat & Tears"],
+	["Johnny Cash", "Johnny Cash", "Blood, Sweat & Tears"],
+	["Daft Punk", "Daft Punk", "Discovery"],
+	["Daft Punk feat. Todd Edwards", "daft punk", "Discovery"],
+	["Foo Fighters", "", "The Colour and the Shape"],
+	["", "", "Field Recordings"],
+];
+
+const rowOf = ([artist, albumArtist, album]: (typeof LIBRARY)[number]) => {
+	const row: string[] = [];
+	row[FIELD.artist] = artist;
+	row[FIELD.albumArtist] = albumArtist;
+	row[FIELD.album] = album;
+	return row;
+};
+
+const rows = LIBRARY.map(rowOf);
+
+const albums = albumsOf(rows);
+const find = (artist: string, album: string) =>
+	albums.find(
+		(entry) =>
+			entry.album.toLowerCase() === album.toLowerCase() &&
+			entry.artist.toLowerCase() === artist.toLowerCase(),
+	);
+
+test("one title by two bands is two records", () => {
+	const shared = albums.filter(
+		(entry) => entry.album === "Blood, Sweat & Tears",
+	);
+	assert.equal(shared.length, 2);
+	assert.deepEqual(
+		shared.map((entry) => entry.trackCount),
+		[1, 1],
+	);
+});
+
+test("one record whose album artist is spelt two ways is one record", () => {
+	assert.equal(find("Daft Punk", "Discovery")?.trackCount, 2);
+});
+
+test("a missing album artist falls back to the track's own", () => {
+	assert.equal(find("Foo Fighters", "The Colour and the Shape")?.trackCount, 1);
+});
+
+test("a record with neither artist tag is still a record", () => {
+	const loose = find("Unknown artist", "Field Recordings");
+	assert.equal(loose?.trackCount, 1);
+	// What is drawn stands in for the tag; what addresses the record is the absence of one.
+	assert.equal(loose?.artistTag, null);
+});
+
+test("the rows a record's page draws are the ones its count promised", () => {
+	for (const album of albums) {
+		const found = refsOfAlbum(rows, album.artistTag, album.album);
+		assert.equal(found.refs.length, album.trackCount, album.album);
+	}
+});
+
+test("the record's own spelling comes back with its rows, not the route's", () => {
+	// What a route carries: both halves normalised, and lowercase.
+	const found = refsOfAlbum(rows, "daft punk", "discovery");
+	assert.equal(found.album, "Discovery");
+	assert.equal(found.artist, "Daft Punk");
+	assert.deepEqual([...found.refs], [2, 3]);
+});
+
+test("an empty title matches nothing rather than everything untagged", () => {
+	assert.equal(refsOfAlbum(rows, "Daft Punk", "  ").refs.length, 0);
+});
+
+test("a record survives the trip through its own address", () => {
+	for (const album of albums) {
+		const route = albumRoute(album.artistTag, album.album);
+		const back = albumOfRoute(route);
+		assert.ok(back, route);
+		assert.equal(
+			refsOfAlbum(rows, back.artist, back.album).refs.length,
+			album.trackCount,
+			route,
+		);
+	}
+});
+
+test("a route naming only half a record is not a record", () => {
+	assert.equal(albumOfRoute("album/discovery"), null);
+	assert.equal(albumOfRoute("album/daft%20punk/"), null);
+	assert.equal(albumOfRoute("artist/daft%20punk"), null);
+	// A hand-edited hash with a stray `%` throws inside `decodeURIComponent`.
+	assert.equal(albumOfRoute("album/daft%2/discovery"), null);
+});
+
+test("a title carrying a slash is not read as two segments", () => {
+	const route = albumRoute("Godspeed You! Black Emperor", "Yanqui U.X.O./Live");
+	assert.deepEqual(albumOfRoute(route), {
+		artist: "godspeed you! black emperor",
+		album: "yanqui u.x.o./live",
+	});
+});
+
+// `growingIndex`'s own comment has why a key on its own is not enough; this is that trap against
+// real tagging.
+test("the index takes in rows that arrive after it was first asked for", () => {
+	const key = "library:6";
+
+	assert.equal(albumIndex(key, rows.slice(0, 1)).length, 1);
+
+	const grown = albumIndex(key, rows);
+	assert.equal(grown.length, albums.length);
+	assert.equal(
+		grown.find((entry) => entry.album === "Discovery")?.trackCount,
+		2,
+	);
+});
+
+// What the dropdown offers as a section: the whole-word floor, best first.
+const named = (query: string, floor = TIER.word) =>
+	rankEntities(albums, query, floor).map((entry) => entry.album);
+
+test("a title the query holds whole is offered; one it only contains is not", () => {
+	assert.deepEqual(named("discovery"), ["Discovery"]);
+	assert.deepEqual(named("colour"), ["The Colour and the Shape"]);
+	// `scover` is inside `Discovery` and inside nothing whole, so the section stays shut.
+	assert.deepEqual(named("scover"), []);
+});
+
+test("two records sharing a title are two rows, not one", () => {
+	const both = rankEntities(albums, "blood, sweat & tears", TIER.word);
+	assert.equal(both.length, 2);
+	assert.deepEqual(
+		both.map((entry) => entry.artist),
+		["Blood, Sweat & Tears", "Johnny Cash"],
+	);
+});

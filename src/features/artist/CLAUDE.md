@@ -28,7 +28,7 @@ Who an artist is -- in `domain/track/artists.ts`, since the search index needs i
 
 **So the name is the hero, and covers are the aside.** It is `ViewHeader`, the same header every other view draws, which is what makes the fallback free: with no albums the aside simply does not render and the name carries the page alone.
 
-**The discography is newest first, by each album's earliest year** -- the comment on `absorb()` in `home/albums.ts` has why earliest.
+**The discography is newest first, by each album's earliest year** -- the comment on `absorb()` in `domain/track/albums.ts` has why earliest.
 
 **Guest spots are a separate section, never mixed into the records.** That separation is the whole reason the credit line is split at all. It is how they are *drawn*, not two sets: `refsOfArtist` hands back `all` as well, and everything that plays an artist plays that, so the overview and the track list cannot mean different things by the same name.
 

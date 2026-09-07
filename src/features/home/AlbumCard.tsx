@@ -1,6 +1,6 @@
+import type { CoveredAlbum } from "@/domain/track/albums";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./AlbumCard.module.css";
-import type { CoveredAlbum } from "./albums";
 
 export function AlbumCard({
 	album,

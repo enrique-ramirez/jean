@@ -2,10 +2,10 @@ import { useCallback } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import { usePlaySet } from "@/domain/library/usePlaySet";
 import { usePlaybackOrder } from "@/domain/player/usePlayer";
+import type { Album } from "@/domain/track/albums";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
 import type { PlaylistInfo } from "@/shared/api/types";
-import type { Album } from "./albums";
 import { type FilledShelf, refsOfShelf } from "./shelves";
 
 export function useHomePlayback({

@@ -1,5 +1,5 @@
+import { type Album, percentile } from "@/domain/track/albums";
 import { plural } from "@/shared/lib/text";
-import { type Album, percentile } from "./albums";
 import { describeWhen, yearOf } from "./when";
 
 export interface Shelf {

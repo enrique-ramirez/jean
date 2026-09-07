@@ -3,12 +3,12 @@ import type { CSSProperties } from "react";
 import { useMemo } from "react";
 
 import { genreHref } from "@/domain/library/genreRoute";
+import type { Genre } from "@/domain/track/genres";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import { plural } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";
 import { GenreMark } from "./GenreMark";
 import styles from "./GenreTile.module.css";
-import type { Genre } from "./genres";
 import { markOf } from "./mark";
 
 const MAX_TILT = 9;

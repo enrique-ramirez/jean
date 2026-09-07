@@ -74,6 +74,7 @@ import {
 	ShortcutSheet,
 } from "@/shared/keyboard/ShortcutSheet";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
+import { animateScrollTo } from "@/shared/ui/animateScroll";
 import { Button } from "@/shared/ui/Button";
 import { Crumb } from "@/shared/ui/Crumb";
 import { DragGhost } from "@/shared/ui/DragGhost";
@@ -347,16 +348,20 @@ function Shell() {
 						? artist
 						: (playlist?.title ?? "");
 
-	const backToTop = useCallback(
-		() => scrollRef.current?.scrollTo({ top: 0 }),
-		[],
-	);
+
+	const cancelScroll = useRef<(() => void) | null>(null);
+	const backToTop = useCallback(() => {
+		const scroller = scrollRef.current;
+		if (!scroller) return;
+		cancelScroll.current?.();
+		cancelScroll.current = animateScrollTo(scroller, () => 0);
+	}, []);
 
 	const isAtTop = useIsAtTop(scrollRef);
 
-	const isSearchShown = !isCompactViewport || isSearchOpen;
+
 	const isCompactBarShut = isCompactViewport && !isSearchOpen;
-	const isBrandShown = !isCompactViewport || !isSearchOpen;
+	const isBrandShown = !isCompactViewport || isCompactBarShut;
 
 	const jumpTo = useRef<string | null>(null);
 	const arrivingAtPlayingTrack = jumpTo.current === route;
@@ -649,7 +654,7 @@ function Shell() {
 					</button>
 				) : null}
 
-				{isSearchShown ? (
+				{isCompactBarShut ? null : (
 					<LibrarySearchField
 						search={search}
 						library={library}
@@ -690,7 +695,7 @@ function Shell() {
 							if (isSearch) navigate(`/${selectedId}`);
 						}}
 					/>
-				) : null}
+				)}
 
 				<div className={styles.actions}>
 					{isCompactBarShut ? (

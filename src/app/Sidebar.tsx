@@ -37,7 +37,7 @@ import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
-import { SCOPE } from "@/shared/keyboard/keymap";
+import { hintFor, SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
 import { isRefusal } from "@/shared/lib/refusal";
@@ -48,6 +48,8 @@ import { pushToast } from "@/shared/ui/toastStore";
 import { KIND_LABEL, type PlayingRoute, ROUTE } from "./routes";
 import styles from "./Sidebar.module.css";
 import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
+
+const PALETTE_HINT = hintFor("openPalette");
 
 function NavRow({
 	icon: Icon,
@@ -356,7 +358,9 @@ export function Sidebar({
 				) : null}
 
 				<div className={styles.sectionHeader}>
-					<p className={styles.heading}>Playlists</p>
+					<p className={styles.heading}>
+						Playlists <kbd className={styles.hint}>{PALETTE_HINT}</kbd>
+					</p>
 					{canEdit ? (
 						<button
 							type="button"

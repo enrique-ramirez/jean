@@ -3,7 +3,10 @@
 // `Shift+/` means "the ? on the physical slash key" -- true on US QWERTY and false on Dvorak, Spanish
 // and French. A shifted character therefore needs both spellings. Letters are safe either way.
 
-import type { RegisterableHotkey } from "@tanstack/react-hotkeys";
+import {
+	formatForDisplay,
+	type RegisterableHotkey,
+} from "@tanstack/react-hotkeys";
 
 // The hotkeys type excludes Shift+punctuation, so the cast is spelled once, here.
 const shifted = (key: string) => `Shift+${key}` as RegisterableHotkey;
@@ -449,3 +452,11 @@ export const KEYMAP_GROUPS = [
 
 export const bindingsIn = (group: string) =>
 	documented.filter((binding) => binding.group === group);
+
+// What to print on a keycap drawn beside the thing a binding opens, so a hint cannot come to
+// advertise a key the keymap no longer answers to.
+export function hintFor(id: string): string | null {
+	const binding = KEYMAP.find((entry) => entry.id === id);
+	if (!binding) return null;
+	return binding.shown?.[0] ?? formatForDisplay(binding.keys[0]);
+}

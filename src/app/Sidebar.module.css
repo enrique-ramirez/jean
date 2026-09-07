@@ -23,6 +23,20 @@
 	margin: 0;
 }
 
+/* The heading's own casing and tracking are for a label, and both stretch a single keycap out of
+ shape. */
+.hint {
+	margin-left: 2px;
+	padding: 0 4px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	font-family: var(--font-numeric);
+	font-size: 0.625rem;
+	letter-spacing: 0;
+	text-transform: none;
+	color: var(--faint);
+}
+
 .add {
 	display: grid;
 	flex: 0 0 auto;
@@ -206,6 +220,12 @@
 .heading:not(:first-child),
 .sectionHeader:not(:first-child) {
 	margin-top: 16px;
+}
+
+@media (max-width: 720px) {
+	.hint {
+		display: none;
+	}
 }
 
 .sidebar[data-collapsed="true"] {

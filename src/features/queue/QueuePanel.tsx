@@ -6,6 +6,7 @@ import type { QueueEntry } from "@/domain/player/queue";
 import { queuedSeconds, startsIn } from "@/domain/player/queue";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
+import { coverKey } from "@/domain/track/fields";
 import { artworkUrl } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
@@ -152,6 +153,7 @@ const QueueRow = memo(function QueueRow({
 			<Artwork
 				className={styles.tick}
 				src={artworkUrl(entry.playlistId, entry.itemIndex)}
+				identity={coverKey(entry.artist, entry.title, "track")}
 				size={32}
 			/>
 

@@ -8,6 +8,7 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
+import { coverKey } from "@/domain/track/fields";
 import { artworkUrl, readTrack } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
@@ -116,6 +117,9 @@ export function StatusBar({
 					<Artwork
 						key={hasTrack ? `${item.playlistId}:${item.index}` : "idle"}
 						src={hasTrack ? artworkUrl(item.playlistId, item.index) : null}
+						identity={
+							track ? coverKey(track.artist, track.title, "track") : undefined
+						}
 						size={44}
 						className={styles.art}
 					/>

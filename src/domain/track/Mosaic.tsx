@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { TrackColumns } from "@/shared/api/types";
 import { plural } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";
-import { FIELD, tagKey, value } from "./fields";
+import { coverIdentity } from "./fields";
 import type { LibrarySource } from "./librarySource";
 import styles from "./Mosaic.module.css";
 import { type Refs, refAt } from "./project";
@@ -29,23 +29,27 @@ const pickPositions = (seed: string | null, count: number, tiles: number) => {
 	);
 };
 
-function albumRefs(rows: TrackColumns[], indices: Refs | null): number[] {
+interface Tile {
+	ref: number;
+	identity: string | undefined;
+}
+
+// One tile per record, and each carries what record it is: a tile and a row drawing the same sleeve
+// then share one held picture rather than fetching it twice.
+function albumTiles(rows: TrackColumns[], indices: Refs | null): Tile[] {
 	const seen = new Set<string>();
-	const refs: number[] = [];
+	const tiles: Tile[] = [];
 
 	for (let at = 0; at < rows.length; at += 1) {
-		const row = rows[at];
-		const album = value(row, FIELD.album);
-		const artist =
-			value(row, FIELD.albumArtist) ?? value(row, FIELD.artist) ?? "";
-		const key = album ? `${tagKey(artist)}\u0000${tagKey(album)}` : `#${at}`;
+		const identity = coverIdentity(rows[at]);
+		const key = identity ?? `#${at}`;
 		if (seen.has(key)) continue;
 
 		seen.add(key);
-		refs.push(refAt(indices, at));
+		tiles.push({ ref: refAt(indices, at), identity });
 	}
 
-	return refs;
+	return tiles;
 }
 
 export function Mosaic({
@@ -61,7 +65,7 @@ export function Mosaic({
 	seed?: string | null;
 	size?: number | string;
 }) {
-	const albums = useMemo(() => albumRefs(rows, indices), [rows, indices]);
+	const albums = useMemo(() => albumTiles(rows, indices), [rows, indices]);
 	const tiles = tileCountFor(albums.length);
 
 	const positions = useMemo(
@@ -94,11 +98,12 @@ export function Mosaic({
 			data-ready={isReady ? "true" : undefined}
 			style={{ width: size, height: size }}
 		>
-			{positions.map((index, position) => (
+			{positions.map((tile, position) => (
 				<Artwork
 					// biome-ignore lint/suspicious/noArrayIndexKey: a fixed grid of tiles, never reordered, so the slot is the identity
-					key={`${index}-${position}`}
-					src={source.artworkUrl(index)}
+					key={`${tile.ref}-${position}`}
+					src={source.artworkUrl(tile.ref)}
+					identity={tile.identity}
 					size="100%"
 					className={styles.tile}
 					onSettled={settled}

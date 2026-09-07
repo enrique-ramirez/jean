@@ -12,7 +12,7 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
-import { readValue } from "@/domain/track/fields";
+import { coverKey, readValue } from "@/domain/track/fields";
 import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
 import { setRatingLayer } from "@/domain/track/ratingTarget";
 import { artworkUrl } from "@/shared/api/beefweb";
@@ -152,6 +152,12 @@ export function NowPlaying({
 	const artworkKey =
 		hasTrack && item ? `${item.playlistId}:${item.index}` : "idle";
 
+	// Keyed on the track rather than the album: the album arrives a request later than the cover is
+	// wanted, and an identity every track briefly shared would be worse than not sharing one.
+	const playingCover = track
+		? coverKey(track.artist, track.title, "track")
+		: null;
+
 	const album = readValue(details?.row[NOW_PLAYING_FIELD.album]);
 	const year = readValue(details?.row[NOW_PLAYING_FIELD.year]);
 
@@ -168,6 +174,7 @@ export function NowPlaying({
 
 	const wheel = useCoverWheel({
 		audibleTrackKey: hasTrack ? artworkKey : null,
+		audibleCover: hasTrack ? playingCover : null,
 		playerTrackKey:
 			liveItem && liveItem.index >= 0
 				? `${liveItem.playlistId}:${liveItem.index}`
@@ -204,6 +211,7 @@ export function NowPlaying({
 		<Artwork
 			key={artworkKey}
 			src={artwork}
+			identity={playingCover}
 			alt={album ? `${album} cover` : ""}
 			className={styles.cover}
 		/>

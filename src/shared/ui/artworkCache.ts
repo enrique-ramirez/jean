@@ -2,7 +2,12 @@
 // whole API, so a sleeve is cached as briefly as a status poll and nothing on the client can change
 // that. Cache Storage is the way out: it ignores caching headers entirely.
 
-const CACHE = "jean-artwork-v1";
+// v2 because v1 was keyed on the artwork address, which names a *position* in a playlist rather than
+// a picture. Everything it holds is suspect, so the rename discards it rather than carrying it over.
+const CACHE = "jean-artwork-v2";
+
+// Cache Storage keys are Requests, so an identity has to be spelled as a URL. It is never fetched.
+const addressOf = (key: string) => `/jean-artwork/${encodeURIComponent(key)}`;
 
 const BUDGET_BYTES = 500 * 1024 * 1024;
 
@@ -53,21 +58,21 @@ const evictTo = async (cache: Cache, budget: number) => {
 	}
 };
 
-export async function cachedArtwork(url: string): Promise<Blob | null> {
+export async function cachedArtwork(key: string): Promise<Blob | null> {
 	if (!canCacheArtwork()) return null;
 
 	try {
 		const cache = await caches.open(CACHE);
 		// `ignoreVary`: beefweb answers `Vary: Origin` and an image request carries no `Origin` header,
 		// so a match that honoured it would turn on a header neither side ever sends.
-		const held = await cache.match(url, { ignoreVary: true });
+		const held = await cache.match(addressOf(key), { ignoreVary: true });
 		return held ? await held.blob() : null;
 	} catch {
 		return null;
 	}
 }
 
-export async function keepArtwork(url: string, response: Response) {
+export async function keepArtwork(key: string, response: Response) {
 	if (!canCacheArtwork() || !response.ok) return;
 
 	await inTurn(async () => {
@@ -75,7 +80,7 @@ export async function keepArtwork(url: string, response: Response) {
 			const cache = await caches.open(CACHE);
 			if (heldBytes === null) heldBytes = (await countHeld(cache)).bytes;
 
-			await cache.put(url, response);
+			await cache.put(addressOf(key), response);
 			heldBytes += sizeOf(response);
 			await evictTo(cache, BUDGET_BYTES);
 		} catch {
@@ -111,43 +116,49 @@ export async function forgetArtwork() {
 	}
 }
 
-// One blob URL per address, shared and counted. `URL.createObjectURL` mints a new handle on every
-// call, and a track list draws one album across a dozen rows.
+// One blob URL per *picture*, shared and counted. `URL.createObjectURL` mints a new handle on every
+// call, and a track list draws one album across a dozen rows -- which under the old address-keyed
+// form were a dozen different keys the moment two views drew the same record.
 const handles = new Map<string, { url: string; refs: number }>();
 
-const share = (src: string, blob: Blob) => {
-	const held = handles.get(src);
+const share = (key: string, blob: Blob) => {
+	const held = handles.get(key);
 	if (held) {
 		held.refs += 1;
 		return held.url;
 	}
 
 	const url = URL.createObjectURL(blob);
-	handles.set(src, { url, refs: 1 });
+	handles.set(key, { url, refs: 1 });
 	return url;
 };
 
-export async function heldArtwork(src: string): Promise<string | null> {
+export async function heldArtwork(key: string): Promise<string | null> {
 	if (!canCacheArtwork()) return null;
 
-	const held = handles.get(src);
+	const held = handles.get(key);
 	if (held) {
 		held.refs += 1;
 		return held.url;
 	}
 
-	const stored = await cachedArtwork(src);
-	return stored ? share(src, stored) : null;
+	const stored = await cachedArtwork(key);
+	return stored ? share(key, stored) : null;
 }
 
-// The address to point an `<img>` at, and a claim on it. Every caller that holds one MUST drop it.
+/**
+ * The address to point an `<img>` at, and a claim on it. Every caller that holds one MUST drop it.
+ * `key` says which picture this is and `src` only says where to ask for it -- so a cover already held
+ * under another view's address is answered without a request.
+ */
 export async function holdArtwork(
+	key: string,
 	src: string,
 	signal: AbortSignal,
 ): Promise<string> {
 	if (!canCacheArtwork()) return src;
 
-	const held = await heldArtwork(src);
+	const held = await heldArtwork(key);
 	if (held) return held;
 
 	const response = await fetch(src, { signal });
@@ -155,17 +166,17 @@ export async function holdArtwork(
 	// to the file later has to turn up on the next look.
 	if (!response.ok) throw new Error(`no artwork: ${response.status}`);
 
-	await keepArtwork(src, response.clone());
-	return share(src, await response.blob());
+	await keepArtwork(key, response.clone());
+	return share(key, await response.blob());
 }
 
-export function dropArtwork(src: string) {
-	const held = handles.get(src);
+export function dropArtwork(key: string) {
+	const held = handles.get(key);
 	if (!held) return;
 
 	held.refs -= 1;
 	if (held.refs > 0) return;
 
-	handles.delete(src);
+	handles.delete(key);
 	URL.revokeObjectURL(held.url);
 }

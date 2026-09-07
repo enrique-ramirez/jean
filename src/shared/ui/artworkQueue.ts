@@ -10,7 +10,7 @@ const MAX_IN_FLIGHT = 3;
 export type ArtworkOutcome = "ok" | "failed";
 
 interface QueueEntry {
-	url: string;
+	key: string;
 	grant: () => void;
 	released: boolean;
 	pending: number;
@@ -22,11 +22,13 @@ let inFlight = 0;
 const SEEN_LIMIT = 4096;
 let seen = new Map<string, ArtworkOutcome>();
 
-export const outcomeFor = (url: string) => seen.get(url);
+// Keyed on what the picture *is*, so an album with no cover is learned once rather than 404ing for
+// every row that draws it -- on a mostly-uncovered library those are most of the traffic.
+export const outcomeFor = (key: string) => seen.get(key);
 
-const remember = (url: string, outcome: ArtworkOutcome) => {
+const remember = (key: string, outcome: ArtworkOutcome) => {
 	if (seen.size >= SEEN_LIMIT) seen = new Map();
-	seen.set(url, outcome);
+	seen.set(key, outcome);
 };
 
 const pump = () => {
@@ -40,8 +42,8 @@ const pump = () => {
 // Returns the release: call it with an outcome once the image settles, or with nothing if the row
 // goes away first. Releasing without an outcome must also stop the request, or the freed slot lets
 // this run wider than its cap.
-export function requestArtwork(url: string, grant: () => void) {
-	const entry: QueueEntry = { url, grant, released: false, pending: 0 };
+export function requestArtwork(key: string, grant: () => void) {
+	const entry: QueueEntry = { key, grant, released: false, pending: 0 };
 
 	entry.pending = setTimeout(() => {
 		entry.pending = 0;
@@ -52,7 +54,7 @@ export function requestArtwork(url: string, grant: () => void) {
 	return (outcome?: ArtworkOutcome) => {
 		if (entry.released) return;
 		entry.released = true;
-		if (outcome) remember(url, outcome);
+		if (outcome) remember(key, outcome);
 
 		if (entry.pending) {
 			clearTimeout(entry.pending);

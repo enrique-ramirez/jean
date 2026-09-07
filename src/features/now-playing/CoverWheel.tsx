@@ -18,6 +18,9 @@ const UNANSWERED_MS = 4000;
 
 interface Sleeve {
 	src: string;
+	// `null` where the sleeve is a guess rather than a known picture: a prefilled neighbour is only
+	// *probably* the next track, so nothing about it may be kept under its address.
+	identity?: string | null;
 	alt: string;
 }
 
@@ -27,6 +30,7 @@ const nodeOf = (at: number) => ((at % 3) + 3) % 3;
 
 export function useCoverWheel({
 	audibleTrackKey,
+	audibleCover,
 	playerTrackKey,
 	artwork,
 	alt,
@@ -35,6 +39,9 @@ export function useCoverWheel({
 	onSkip,
 }: {
 	audibleTrackKey: string | null;
+	// What the audible picture *is*. `audibleTrackKey` is a playlist position and says only that the
+	// track changed; it must never reach the cache as an identity.
+	audibleCover: string | null;
 	playerTrackKey: string | null;
 	artwork: string | null;
 	alt: string;
@@ -86,7 +93,9 @@ export function useCoverWheel({
 		const isFirst = seen.current === null;
 		seen.current = audibleTrackKey;
 
-		const sleeve = artwork ? { src: artwork, alt } : null;
+		const sleeve = artwork
+			? { src: artwork, alt, identity: audibleCover }
+			: null;
 		const asked = unanswered.current;
 		const outside = takeSkipAsked();
 
@@ -101,7 +110,7 @@ export function useCoverWheel({
 		const at = isFirst ? position : position + (outside ?? 1);
 		if (!isFirst) turnTo(at);
 		if (sleeve) setSleeves((held) => ({ ...held, [at]: sleeve }));
-	}, [audibleTrackKey, artwork, alt, position, turnTo]);
+	}, [audibleTrackKey, audibleCover, artwork, alt, position, turnTo]);
 
 	const confirmed = useRef<string | null>(null);
 	useEffect(() => {
@@ -119,7 +128,7 @@ export function useCoverWheel({
 				[position - 1, previousArtwork],
 			] as const) {
 				if (!src || filled[at]) continue;
-				filled[at] = { src, alt: "" };
+				filled[at] = { src, alt: "", identity: null };
 				added = true;
 			}
 			return added ? filled : held;
@@ -218,6 +227,7 @@ export function CoverWheel({
 				>
 					<Artwork
 						src={sleeve?.src}
+						identity={sleeve?.identity}
 						alt={sleeve?.alt ?? ""}
 						className={styles.cover}
 					/>

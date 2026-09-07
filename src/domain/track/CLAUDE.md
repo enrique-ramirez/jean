@@ -96,7 +96,7 @@ Prefer computed sizes where they are genuinely fixed and measurement where they 
 
 **It counts albums, never tracks.** Counted by tracks, a single-album playlist draws the same cover four times, since the tile count comes from the track count and the covers are picked by striding across *rows*.
 
-**Identity is album artist and title through `tagKey`, never the picture.** Comparing bytes would mean downloading them, which is the whole cost this avoids. A row with no album tag is its own entry: a folder of loose singles is a wall of different covers, not one record repeated.
+**Identity is `coverIdentity()`, the same thing the artwork cache keys on, and never the picture.** Comparing bytes would mean downloading them, which is the whole cost this avoids. A row with no album tag falls back to its own artist and title, so a folder of loose singles is a wall of different covers rather than one record repeated.
 
 **One hold for the whole mosaic, not one per tile.** `Artwork`'s per-tile placeholder is right for a single cover and wrong here: a grid of identical disc icons reads as a fault rather than as covers on their way. The tiles mount from the first frame — that is what makes them load — and stay hidden until the last has answered. `Artwork` reports through `onSettled`, from its *state* rather than from the `<img>` handlers, so the paths that never mount one report too.
 

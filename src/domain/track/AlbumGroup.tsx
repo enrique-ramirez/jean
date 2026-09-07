@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./AlbumGroup.module.css";
 import { ArtistLinks } from "./ArtistLinks";
-import { FIELD, featuring, sameTagValue, value } from "./fields";
+import { coverIdentity, FIELD, featuring, sameTagValue, value } from "./fields";
 import type { AlbumRun } from "./grouping";
 import type { TrackRenderProps } from "./listTypes";
 import { refAt } from "./project";
@@ -69,6 +69,7 @@ export function AlbumGroup({
 			<div className={styles.aside}>
 				<Artwork
 					src={source.artworkUrl(itemIndexOf(group.start))}
+					identity={coverIdentity(rows[group.start])}
 					size={coverSize}
 					className={styles.art}
 					alt={`${group.album} cover`}

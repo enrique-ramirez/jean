@@ -2,10 +2,14 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
+	openLibrary,
 	openSettings,
 	requestsTo,
+	searchFor,
 	settingsDialog,
 	test,
+	trackPlayed,
+	trackRow,
 } from "./fixtures.ts";
 
 // beefweb sends `Cache-Control: max-age=3, must-revalidate` on every response, artwork included, so
@@ -35,7 +39,9 @@ const held = (page: Page) =>
 	page.evaluate(async () => {
 		if (typeof caches === "undefined")
 			throw new Error("no Cache Storage in this context");
-		const cache = await caches.open("jean-artwork-v1");
+		// Must match `CACHE` in `src/shared/ui/artworkCache.ts`; the name carries the
+		// key format, so a change there is meant to discard what the old one held.
+		const cache = await caches.open("jean-artwork-v2");
 		return (await cache.keys()).length;
 	});
 
@@ -121,6 +127,33 @@ test.describe("artwork is kept between visits", () => {
 
 		expect(rows).toBeGreaterThan(8);
 		expect(handles).toBeLessThan(rows / 2);
+	});
+});
+
+test.describe("a cover is a picture, not a position", () => {
+	test("refilling a playlist does not leave the old cover behind", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		const barCover = () =>
+			page.locator("footer img").first().getAttribute("src");
+
+		// Two different sets played through Jean's one scratch playlist, so the second
+		// asks for the same address the first cached. Keyed on the address, the second
+		// track wears the first one's sleeve -- and Cache Storage keeps no headers, so
+		// it never revalidates its way out of it.
+		await searchFor(page, "nutshell");
+		await trackRow(page, 0).dblclick();
+		await expect.poll(() => trackPlayed(player)).toBeTruthy();
+		await expect.poll(barCover).not.toBeNull();
+		const first = await barCover();
+
+		await searchFor(page, "babasonicos");
+		await trackRow(page, 0).dblclick();
+		await expect.poll(() => trackPlayed(player)).not.toBe("Nutshell");
+
+		await expect.poll(barCover).not.toBe(first);
 	});
 });
 

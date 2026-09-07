@@ -168,6 +168,31 @@ export function creditedArtists(artist: string | null | undefined): {
 	return { lead: lead ?? null, guests };
 }
 
+/**
+ * What a cover *is*, as against where beefweb will hand it over. Its artwork address names a position
+ * in a playlist, so it stops meaning the same picture the moment anything edits that playlist -- and
+ * the same sleeve has a different address in every view that draws it. Identity fixes both.
+ *
+ * Album artist first, matching how albums are grouped everywhere else, or a compilation fragments
+ * into one cover per track artist. Null-separated so `A` + `B C` cannot collide with `A B` + `C`.
+ */
+export const coverKey = (
+	artist: string | null | undefined,
+	name: string,
+	kind: "album" | "track" = "album",
+) => `${kind}\u0000${tagKey(artist)}\u0000${tagKey(name)}`;
+
+export function coverIdentity(row: TrackColumns): string | undefined {
+	const artist = value(row, FIELD.albumArtist) ?? value(row, FIELD.artist);
+	const album = value(row, FIELD.album);
+	if (album) return coverKey(artist, album);
+
+	// No album tag is a gap in the tags rather than a reason to give up caching: the track stands as
+	// its own picture, which still beats fetching the same one once per view.
+	const title = value(row, FIELD.title);
+	return title ? coverKey(artist, title, "track") : undefined;
+}
+
 const escapeForRegExp = (text: string) =>
 	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

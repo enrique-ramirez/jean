@@ -18,8 +18,8 @@ type ArtworkState = "waiting" | "granted" | ArtworkOutcome;
 
 import styles from "./Artwork.module.css";
 
-const knownState = (src: string | null | undefined): ArtworkState | null =>
-	src ? (outcomeFor(src) ?? null) : src === null ? "failed" : null;
+const knownState = (key: string | null): ArtworkState | null =>
+	key ? (outcomeFor(key) ?? null) : null;
 
 // The artwork endpoint 404s for a track with no embedded cover, which is a normal state rather than
 // an error.
@@ -28,6 +28,7 @@ const knownState = (src: string | null | undefined): ArtworkState | null =>
 // whether the network is involved, and the artwork queue how many ask at once.
 export function Artwork({
 	src,
+	identity,
 	size,
 	alt = "",
 	className,
@@ -35,23 +36,31 @@ export function Artwork({
 }: {
 	// `undefined` is not known yet and holds the shimmer; `null` is there is no cover here and settles.
 	src: string | null | undefined;
+	// Which picture is meant, as against where to ask for it. beefweb addresses a cover by its position
+	// in a playlist, so the address stops meaning the same picture as soon as anything edits that
+	// playlist, and the same sleeve has a different address in every view. Everything that remembers a
+	// cover -- the store, the shared blob, whether it 404ed -- keys on this. Left out, the address is
+	// used, which is only safe where it cannot move: a path names a file, a playlist position does not.
+	// `null` says this picture cannot be identified *and* its address may move, so nothing is kept.
+	identity?: string | null;
 	size?: number | string;
 	alt?: string;
 	className?: string;
 	onSettled?: (outcome: ArtworkOutcome) => void;
 }) {
+	const key = identity === null ? null : (identity ?? src ?? null);
 	const [state, setState] = useState<ArtworkState>(
-		() => knownState(src) ?? "waiting",
+		() => knownState(key) ?? "waiting",
 	);
 	const [href, setHref] = useState<string | null>(null);
 	const box = useRef<HTMLDivElement | null>(null);
 	const release = useRef<((outcome?: ArtworkOutcome) => void) | null>(null);
 
 	useEffect(() => {
-		const known = knownState(src);
+		const known = knownState(key);
 
 		if (!src) {
-			setState(known ?? "waiting");
+			setState(src === null ? "failed" : "waiting");
 			setHref(null);
 			return;
 		}
@@ -68,7 +77,7 @@ export function Artwork({
 		setState(known ?? "waiting");
 		setHref(null);
 
-		if (!canCacheArtwork()) {
+		if (!canCacheArtwork() || !key) {
 			setHref(src);
 			if (!known) setState("granted");
 			return;
@@ -88,12 +97,12 @@ export function Artwork({
 		const dropClaim = () => {
 			if (!claimed) return;
 			claimed = false;
-			dropArtwork(src);
+			dropArtwork(key);
 		};
 
 		const resolve = async () => {
 			try {
-				const url = await holdArtwork(src, abort.signal);
+				const url = await holdArtwork(key, src, abort.signal);
 				claimed = true;
 
 				if (!live) {
@@ -112,7 +121,7 @@ export function Artwork({
 		};
 
 		let cancel = whenNearViewport(element, async () => {
-			const held = await heldArtwork(src);
+			const held = await heldArtwork(key);
 			if (held) claimed = true;
 			if (!live) {
 				dropClaim();
@@ -125,7 +134,7 @@ export function Artwork({
 				return;
 			}
 
-			release.current = requestArtwork(src, resolve);
+			release.current = requestArtwork(key, resolve);
 		});
 
 		return () => {
@@ -137,7 +146,7 @@ export function Artwork({
 			release.current?.();
 			release.current = null;
 		};
-	}, [src]);
+	}, [src, key]);
 
 	const settle = (outcome: ArtworkOutcome) => {
 		release.current?.(outcome);

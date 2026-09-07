@@ -1,9 +1,9 @@
 import {
+	coverKey,
 	FIELD,
 	lastPlayedOf,
 	numberOf,
 	playCountOf,
-	tagKey,
 	value,
 } from "@/domain/track/fields";
 import { ratingOf } from "@/domain/track/rating";
@@ -11,7 +11,10 @@ import type { TrackColumns } from "@/shared/api/types";
 
 const LOSSLESS = new Set(["FLAC", "ALAC", "WAV", "APE", "WAVPACK", "TAK"]);
 
-const keyOf = (artist: string, album: string) => tagKey(`${artist} ${album}`);
+// The raw tag, never a display fallback: `coverIdentity` folds a missing artist to nothing, so
+// standing in `Unknown artist` here would give the same record two identities.
+const keyOf = (artist: string | null | undefined, album: string) =>
+	coverKey(artist, album);
 
 const blankAlbum = (key: string, album: string, row: TrackColumns) => ({
 	key,
@@ -90,10 +93,7 @@ export function albumsOf(rows: TrackColumns[]): Album[] {
 		const album = value(row, FIELD.album);
 		if (!album) return into;
 
-		const artist =
-			value(row, FIELD.albumArtist) ??
-			value(row, FIELD.artist) ??
-			"Unknown artist";
+		const artist = value(row, FIELD.albumArtist) ?? value(row, FIELD.artist);
 		const key = keyOf(artist, album);
 
 		into.set(

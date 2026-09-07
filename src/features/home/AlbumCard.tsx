@@ -21,6 +21,7 @@ export function AlbumCard({
 			<span className={styles.cover}>
 				<Artwork
 					src={album.artworkUrl}
+					identity={album.key}
 					size="100%"
 					alt=""
 					className={styles.art}

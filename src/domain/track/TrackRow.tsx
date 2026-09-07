@@ -11,6 +11,7 @@ import { Stars, StarsInput } from "@/shared/ui/Stars";
 import type { Column } from "./columns";
 import {
 	artistOf,
+	coverIdentity,
 	FIELD,
 	lastPlayedOf,
 	numberOf,
@@ -214,7 +215,11 @@ function TrackRowComponent({
 			</span>
 
 			{showArtwork ? (
-				<Artwork src={source.artworkUrl(coverIndex)} size={34} />
+				<Artwork
+					src={source.artworkUrl(coverIndex)}
+					identity={coverIdentity(row)}
+					size={34}
+				/>
 			) : null}
 
 			<span className={styles.names} data-inline={note !== null}>

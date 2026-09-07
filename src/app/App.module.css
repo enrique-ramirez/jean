@@ -59,7 +59,6 @@
 	align-items: center;
 	gap: 3px;
 	min-width: 0;
-	margin-left: -4px;
 	padding: 5px 9px;
 	border: 0;
 	border-radius: var(--radius-pill);
@@ -77,6 +76,13 @@
 .place:active {
 	background: var(--surface-sunken);
 	color: var(--text);
+}
+
+/* Nowhere to go, so it is the name of the place and nothing more. */
+.place[data-at-top] {
+	background: none;
+	color: var(--muted);
+	cursor: default;
 }
 
 .placeName {
@@ -104,10 +110,6 @@
 
 	.topbar {
 		gap: 6px;
-	}
-
-	.brand {
-		margin-right: 0;
 	}
 }
 

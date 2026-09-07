@@ -21,6 +21,7 @@ export function LibrarySearchField({
 	onSubmit,
 	onSelect,
 	onDismiss,
+	onLeave,
 }: {
 	search: LibrarySearch;
 	library: Library;
@@ -28,6 +29,8 @@ export function LibrarySearchField({
 	onSubmit: () => void;
 	onSelect: (suggestion: Suggestion) => void;
 	onDismiss: () => void;
+	// The reader has left the field, by blur or by the last rung of Escape below.
+	onLeave?: () => void;
 }) {
 	const t = useTranslate();
 	const format = useFormats();
@@ -145,7 +148,10 @@ export function LibrarySearchField({
 				// Focus alone is not enough: a field the caret is already in fires nothing, so Escape
 				// followed by a click at the field would leave the panel shut with no way back but a key.
 				onClick={open}
-				onBlur={search.onBlur}
+				onBlur={() => {
+					search.onBlur();
+					onLeave?.();
+				}}
 				onKeyDown={onKeyDown}
 				placeholder={t(
 					library.needsSetup ? "search.setUp" : "search.yourLibrary",

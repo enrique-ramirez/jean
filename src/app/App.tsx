@@ -6,7 +6,6 @@ import {
 	Search,
 	Settings,
 	Sun,
-	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GENRES_HREF } from "@/domain/library/genreRoute";
@@ -352,8 +351,21 @@ function Shell() {
 		[],
 	);
 
+	// Every view change writes scrollTop and so fires this too, which is why the route is not a
+	// dependency. React bails out on an unchanged value, so this only costs a render at the crossing.
+	const [isAtTop, setIsAtTop] = useState(true);
+	useEffect(() => {
+		const scroller = scrollRef.current;
+		if (!scroller) return undefined;
+
+		const read = () => setIsAtTop(scroller.scrollTop <= 0);
+		read();
+		scroller.addEventListener("scroll", read, { passive: true });
+		return () => scroller.removeEventListener("scroll", read);
+	}, []);
+
 	const isSearchShown = !isCompactViewport || isSearchOpen;
-	const isPlaceShown = isCompactViewport && !isSearchOpen;
+	const isCompactBarShut = isCompactViewport && !isSearchOpen;
 	const isBrandShown = !isCompactViewport || !isSearchOpen;
 
 	const jumpTo = useRef<string | null>(null);
@@ -630,15 +642,20 @@ function Shell() {
 					</a>
 				) : null}
 
-				{isPlaceShown && place ? (
+				{isCompactBarShut && place ? (
 					<button
 						type="button"
 						className={styles.place}
+						data-at-top={isAtTop || undefined}
 						onClick={backToTop}
-						aria-label={t("view.backToTop", { place })}
+						// Named by its own text once there is nowhere to go, rather than by a promise it
+						// cannot keep.
+						aria-label={isAtTop ? undefined : t("view.backToTop", { place })}
 					>
 						<span className={styles.placeName}>{place}</span>
-						<ChevronUp size={14} strokeWidth={2.5} aria-hidden="true" />
+						{isAtTop ? null : (
+							<ChevronUp size={14} strokeWidth={2.5} aria-hidden="true" />
+						)}
 					</button>
 				) : null}
 
@@ -672,25 +689,27 @@ function Shell() {
 									position,
 								});
 						}}
+						onLeave={() => {
+							// A draft keeps the field: the suggestion being clicked is what blurred it. Left
+							// with nothing in it, there is nothing on screen for it to be about.
+							if (!search.hasDraft) setIsSearchOpen(false);
+						}}
 						onDismiss={() => {
 							search.clear();
+							setIsSearchOpen(false);
 							if (isSearch) navigate(`/${selectedId}`);
 						}}
 					/>
 				) : null}
 
 				<div className={styles.actions}>
-					{isCompactViewport ? (
+					{isCompactBarShut ? (
 						<Button
 							variant="ghost"
-							icon={isSearchOpen ? X : Search}
-							aria-label={t(
-								isSearchOpen ? "search.hide" : "search.yourLibrary",
-							)}
-							aria-expanded={isSearchOpen}
-							onClick={() =>
-								isSearchOpen ? setIsSearchOpen(false) : revealSearch()
-							}
+							icon={Search}
+							aria-label={t("search.yourLibrary")}
+							aria-expanded={false}
+							onClick={revealSearch}
 						/>
 					) : null}
 					<Button

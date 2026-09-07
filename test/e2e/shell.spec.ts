@@ -71,13 +71,18 @@ test.describe("the compact top bar", () => {
 		await openLibrary(page);
 		await expect(trackRow(page, 0)).toBeAttached();
 
+		// Nothing to offer until there is somewhere to go, so the chevron and the promise in the label
+		// arrive with the scroll and leave with it.
+		const named = topBar(page).getByRole("button", { name: /Back to the top/ });
+		await expect(named).toHaveCount(0);
+
 		await scrollTo(page, 2000);
 		await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
 
-		await topBar(page)
-			.getByRole("button", { name: /Back to the top/ })
-			.click();
+		await expect(named).toBeVisible();
+		await named.click();
 		await expect.poll(() => scrollTop(page)).toBe(0);
+		await expect(named).toHaveCount(0);
 	});
 
 	test("the theme is in Settings rather than in the bar", async ({ page }) => {
@@ -106,7 +111,7 @@ test.describe("the compact top bar", () => {
 		await expect.poll(surface).toBe(followed);
 	});
 
-	test("revealing the search hides the mark and the place, and closing brings them back", async ({
+	test("revealing the search hides the mark and the place, and leaving it empty brings them back", async ({
 		page,
 	}) => {
 		await openLibrary(page);
@@ -116,7 +121,31 @@ test.describe("the compact top bar", () => {
 		await expect(searchField(page)).toBeFocused();
 		await expect(mark).toHaveCount(0);
 
-		await topBar(page).getByRole("button", { name: "Close search" }).click();
+		await searchField(page).blur();
+		await expect(mark).toBeVisible();
+	});
+
+	// The panel's rows are clicked, and a click on one blurs the field on its way there.
+	test("a draft keeps the field through a blur", async ({ page }) => {
+		await openLibrary(page);
+		await revealSearch(page);
+
+		await searchField(page).fill("babasonicos");
+		await searchField(page).blur();
+		await expect(searchField(page)).toHaveValue("babasonicos");
+	});
+
+	test("Escape empties the field and then puts it away", async ({ page }) => {
+		await openLibrary(page);
+		await revealSearch(page);
+		const mark = topBar(page).getByRole("link", { name: "jean" });
+
+		await searchField(page).fill("babasonicos");
+		// The rungs, outermost first: the preview, then the edit, then the field itself.
+		await searchField(page).press("Escape");
+		await searchField(page).press("Escape");
+		await searchField(page).press("Escape");
+
 		await expect(mark).toBeVisible();
 	});
 });

@@ -451,6 +451,8 @@ test.describe("a draft is not the search", () => {
 		await searchFor(page, QUERY);
 
 		await page.getByLabel("Clear search").click();
+		// The compact bar puts the field away with the search, so ask for it back before reading it.
+		await revealSearch(page);
 		await expect(searchField(page)).toHaveValue("");
 		await openSidebar(page);
 		await expect(

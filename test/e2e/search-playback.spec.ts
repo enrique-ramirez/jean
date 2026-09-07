@@ -7,6 +7,7 @@ import {
 	openSidebar,
 	playedFrom,
 	requestsTo,
+	revealSearch,
 	scratchOf,
 	searchFor,
 	sidebar,
@@ -345,7 +346,9 @@ test.describe("clearing the search", () => {
 		await page.getByRole("button", { name: "Clear search" }).click();
 
 		// Ordered rather than timed: the field emptying says the handler ran, and a
-		// navigation after it says anything it sent has reached the player.
+		// navigation after it says anything it sent has reached the player. Revealed
+		// first, since the compact bar puts the field away with the search.
+		await revealSearch(page);
 		await expect(page.getByLabel("Search your library")).toHaveValue("");
 		await page.goto("/#/p5");
 		await expect(

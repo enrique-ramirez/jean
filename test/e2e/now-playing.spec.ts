@@ -228,6 +228,36 @@ test.describe("the screen a phone gets", () => {
 		expect(box.height).toBeGreaterThanOrEqual(view.height);
 	});
 
+	test("Play is lifted off the bottom edge where there is height to spare", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+
+		const play = nowPlayingScreen(page).getByRole("button", {
+			name: /^(Play|Pause)$/,
+		});
+		const clearance = async () => {
+			const box = (await play.boundingBox())!;
+			return page.viewportSize()!.height - (box.y + box.height);
+		};
+
+		const tall = await clearance();
+
+		// Polled: the box reads back before the media query the resize crossed has
+		// relaid the screen out.
+		await page.setViewportSize({ width: 375, height: 667 });
+		await expect
+			.poll(clearance, {
+				message: "a phone this short keeps its pixels for the artwork",
+			})
+			.toBeLessThan(tall);
+
+		expect(
+			await clearance(),
+			"and the transport is never pushed off the edge",
+		).toBeGreaterThan(0);
+	});
+
 	test("Play is in the middle of the row, whatever flanks it", async ({
 		page,
 	}) => {

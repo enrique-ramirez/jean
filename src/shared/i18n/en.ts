@@ -459,7 +459,6 @@ export const en = {
 	"route.home": "Home",
 	"route.shelf": "Shelf",
 	"search.clear": "Clear search",
-	"search.hide": "Close search",
 	"search.idle": {
 		one: "{count} track in your library. Title, artist and album, as you type — every word has to match, in any order.",
 		other:

@@ -120,15 +120,10 @@ function explain(state: TagWriterState, t: Translate): Explained {
 	}
 }
 
+// Only the refusal. That it *can* stream is said by the control appearing in the status bar.
 function explainStreaming(state: TagWriterState, t: Translate): string | null {
-	if (state.kind !== "ready") return null;
-	const { canStream, streamFormats } = state.capabilities;
-
-	if (!canStream) return t("fooJean.stream.none", { pane: PANE });
-
-	return t("fooJean.stream.formats", {
-		formats: (streamFormats ?? []).join(" and "),
-	});
+	if (state.kind !== "ready" || state.capabilities.canStream) return null;
+	return t("fooJean.stream.none", { pane: PANE });
 }
 
 function explainPairing(failure: PairFailure, t: Translate): string {
@@ -203,11 +198,9 @@ function PairButton({
 function TokenField({
 	token,
 	onSave,
-	onCancel,
 }: {
 	token: string;
 	onSave: (token: string) => void;
-	onCancel?: () => void;
 }) {
 	const t = useTranslate();
 	const [draft, setDraft] = useState(token);
@@ -242,9 +235,6 @@ function TokenField({
 			>
 				{t(isVisible ? "action.hide" : "action.show")}
 			</Button>
-			{onCancel ? (
-				<Button onClick={onCancel}>{t("action.cancel")}</Button>
-			) : null}
 			<Button variant="primary" type="submit" disabled={draft.trim() === token}>
 				{t("action.save")}
 			</Button>
@@ -260,11 +250,7 @@ export function TagWriting() {
 
 	const explained = explain(state, t);
 	const streaming = explainStreaming(state, t);
-	const [isEditingToken, setIsEditingToken] = useState(false);
-
 	const needsToken = state.kind === "no-token" || state.kind === "unauthorized";
-	const wantsToken = needsToken || isEditingToken;
-	const isWorking = state.kind === "ready" && !wantsToken;
 
 	return (
 		<section className={styles.panel} aria-labelledby="foo-jean">
@@ -281,20 +267,11 @@ export function TagWriting() {
 			{explained.fix ? <p className={styles.fix}>{explained.fix}</p> : null}
 			{streaming ? <p className={styles.fix}>{streaming}</p> : null}
 
-			{wantsToken && origin ? (
+			{needsToken && origin ? (
 				<PairButton origin={origin} onPaired={setToken} />
 			) : null}
 
-			{wantsToken ? (
-				<TokenField
-					token={token}
-					onSave={(next) => {
-						setToken(next);
-						setIsEditingToken(false);
-					}}
-					onCancel={needsToken ? undefined : () => setIsEditingToken(false)}
-				/>
-			) : null}
+			{needsToken ? <TokenField token={token} onSave={setToken} /> : null}
 
 			{allowedFields.length > 0 ? (
 				<div className={styles.fields}>
@@ -318,19 +295,10 @@ export function TagWriting() {
 							onChange={(enabled) => setFieldEnabled(field, enabled)}
 						/>
 					))}
-					{isWorking ? (
-						<button
-							type="button"
-							className={styles.quiet}
-							onClick={() => setIsEditingToken(true)}
-						>
-							{t("fooJean.token.change")}
-						</button>
-					) : null}
 				</div>
 			) : null}
 
-			{isWorking ? null : (
+			{state.kind === "ready" ? null : (
 				<div className={styles.panelFoot}>
 					<Button onClick={recheck} disabled={isChecking}>
 						{t(isChecking ? "fooJean.checking" : "fooJean.checkAgain")}

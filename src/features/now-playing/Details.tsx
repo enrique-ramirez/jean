@@ -1,5 +1,6 @@
 import { genreHref } from "@/domain/library/genreRoute";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
+import { albumHref } from "@/domain/track/albumRoute";
 import { readTimestamp, readValue } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
@@ -61,6 +62,7 @@ const genreOf = (genre: string | null) =>
 	genre ? genreHref(genre) : undefined;
 
 function groupsOf(row: TrackColumns, format: Formats): Group[] {
+	const album = read(row, F.album);
 	const bitrate = read(row, F.bitrate);
 	const profile = read(row, F.codecProfile);
 	const sampleRate = read(row, F.sampleRate);
@@ -70,7 +72,15 @@ function groupsOf(row: TrackColumns, format: Formats): Group[] {
 		{
 			title: "details.group.release",
 			rows: [
-				{ label: "details.album", value: read(row, F.album) },
+				{
+					label: "details.album",
+					value: album,
+					// The pair the record is addressed by, the way the library groups them: the album
+					// artist where the file has one, and whoever it is by where it does not.
+					href: album
+						? albumHref(read(row, F.albumArtist) ?? read(row, F.artist), album)
+						: undefined,
+				},
 				{
 					label: "details.albumArtist",
 					value: read(row, F.albumArtist),
@@ -164,7 +174,7 @@ export function Details() {
 									{row.credit ? (
 										<ArtistLinks credit={row.value} />
 									) : row.href && row.value ? (
-										<a className={styles.link} href={row.href}>
+										<a className="tag-link" href={row.href}>
 											{row.value}
 										</a>
 									) : (

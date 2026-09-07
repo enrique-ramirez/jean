@@ -118,6 +118,7 @@ export const en = {
 	"device.browser": "Browser",
 	"device.bufferFellBack":
 		"This connection kept running dry, so Jean went back to the browser's own buffer. It will try the short one again next time you listen.",
+	"device.bufferHelp": "About the short buffer",
 	"device.chromebook": "Chromebook",
 	"device.guess":
 		"A browser cannot read the name of the machine it is running on, so Jean guesses at the {kind} of device. Change it to whatever you would recognise from across the house.",
@@ -195,11 +196,8 @@ export const en = {
 	"fooJean.ready.noFields":
 		"Connected, and this install permits no fields to be written.",
 	"fooJean.ready.summary": "Connected to foo_jean {version} on port {port}.",
-	"fooJean.stream.formats":
-		"Streaming {formats}. The control is beside the volume in the status bar.",
 	"fooJean.stream.none":
 		"This copy of foo_jean does not stream audio, so Jean cannot play it on this device. Either it is older than the feature, or no encoder started — check {pane}.",
-	"fooJean.token.change": "Change token",
 	"fooJean.token.label": "Token",
 	"fooJean.token.placeholder": "Paste the token from foobar2000",
 	"fooJean.unauthorized.fix":
@@ -489,10 +487,7 @@ export const en = {
 	"settings.appearance.choose": "Theme",
 	"settings.appearance.dark": "Dark",
 	"settings.appearance.follow": "Match my system",
-	"settings.appearance.following":
-		"Following your system, which is set to {name}.",
 	"settings.appearance.light": "Light",
-	"settings.appearance.scope": "Applies straight away, on this device only.",
 	"settings.appearance.title": "Appearance",
 	"settings.artistInfo.enable": "Look up artists on MusicBrainz and Wikipedia",
 	"settings.artistInfo.help": "About artist lookups",
@@ -512,15 +507,12 @@ export const en = {
 	"settings.language.folder":
 		"The languages Jean ships with are files in {folder}, beside its index.html. Copy one to start your own — English itself is built into Jean, so that file is a template rather than the source.",
 	"settings.language.follow": "Match my browser",
-	"settings.language.following":
-		"Following your browser, which reads as {name}.",
 	"settings.language.help": "About languages",
 	"settings.language.partial": {
 		one: "{count} phrase is missing from this translation and shows in English.",
 		other:
 			"{count} phrases are missing from this translation and show in English.",
 	},
-	"settings.language.scope": "Applies straight away, on this device only.",
 	"settings.language.title": "Language",
 	"settings.language.upgrade":
 		"Copying a new build of Jean over an old one replaces the languages it ships with and leaves yours alone.",

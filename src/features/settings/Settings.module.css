@@ -187,6 +187,22 @@
 	min-width: 0;
 }
 
+/* The switch's row is `width: 100%` and the hint's body is `flex-basis: 100%` once open. Without
+ the override below, the switch claims the whole row and pushes the hint onto a line of its own
+ before its own body ever needs one. */
+.switchRow {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 2px;
+}
+
+.switchRow > button[role="switch"] {
+	width: auto;
+	flex: 1;
+	min-width: 0;
+}
+
 .label {
 	font-size: 0.75rem;
 	font-weight: 600;

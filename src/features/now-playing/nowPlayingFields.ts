@@ -13,6 +13,9 @@ const FIELDS = [
 
 	["album", "%album%"],
 	["albumArtist", "%album artist%"],
+	// Not drawn -- the stream already carries it. It is here because a record is addressed by the
+	// album artist falling back to this, the way the library groups them.
+	["artist", "%artist%"],
 	["year", "%year%"],
 	["date", "%date%"],
 	["genre", "%genre%"],

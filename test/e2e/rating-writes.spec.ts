@@ -624,24 +624,14 @@ test.describe("what the settings screen says", () => {
 	test.describe("a token that is stored and working", () => {
 		test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
-		test("collapses to a button instead of a filled field", async ({
-			page,
-		}) => {
+		// There is one token and it is working, so the panel offers no way to replace it -- the only
+		// thing a field here could do is break the connection it is reporting.
+		test("is never shown and never offered for editing", async ({ page }) => {
 			await settings(page);
-			await expect(page.getByLabel("Token")).toHaveCount(0);
 
-			await page.getByRole("button", { name: "Change token" }).click();
-			await expect(page.getByLabel("Token")).toBeVisible();
-		});
-
-		test("can be left alone again without changing it", async ({ page }) => {
-			await settings(page);
-			await page.getByRole("button", { name: "Change token" }).click();
-			await page.getByLabel("Token").fill("something-else-entirely-here-ok");
-			await page.getByRole("button", { name: "Cancel" }).click();
-
-			await expect(page.getByLabel("Token")).toHaveCount(0);
 			await expect(page.getByText(/Connected to foo_jean/)).toBeVisible();
+			await expect(page.getByLabel("Token")).toHaveCount(0);
+			await expect(page.getByRole("button", { name: /token/i })).toHaveCount(0);
 		});
 	});
 

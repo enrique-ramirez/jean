@@ -348,7 +348,6 @@ function Shell() {
 						? artist
 						: (playlist?.title ?? "");
 
-
 	const cancelScroll = useRef<(() => void) | null>(null);
 	const backToTop = useCallback(() => {
 		const scroller = scrollRef.current;
@@ -358,7 +357,6 @@ function Shell() {
 	}, []);
 
 	const isAtTop = useIsAtTop(scrollRef);
-
 
 	const isCompactBarShut = isCompactViewport && !isSearchOpen;
 	const isBrandShown = !isCompactViewport || isCompactBarShut;

@@ -1,4 +1,3 @@
-import styles from "./ArtistLinks.module.css";
 import { artistHref } from "./artistRoute";
 import { namesAnArtist } from "./artists";
 import { collapseRepeatedTag, isCreditSeparator, splitCredit } from "./fields";
@@ -29,7 +28,7 @@ export function ArtistLinks({
 					<a
 						// biome-ignore lint/suspicious/noArrayIndexKey: as above
 						key={at}
-						className={styles.link}
+						className="tag-link"
 						href={artistHref(collapseRepeatedTag(part.trim()))}
 						data-link=""
 					>

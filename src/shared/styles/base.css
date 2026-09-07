@@ -51,6 +51,18 @@ input {
 	white-space: nowrap;
 }
 
+.tag-link {
+	color: inherit;
+	text-decoration: none;
+}
+
+.tag-link:hover,
+.tag-link:focus-visible {
+	color: var(--accent-text);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
 .tabular {
 	font-family: var(--font-numeric);
 	font-variant-numeric: tabular-nums;

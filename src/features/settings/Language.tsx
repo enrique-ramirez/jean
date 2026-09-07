@@ -17,7 +17,7 @@ const FOLLOW_BROWSER = "";
 
 export function Language() {
 	const t = useTranslate();
-	const { active, chosen, available, missing, failed } = useLocale();
+	const { chosen, available, missing, failed } = useLocale();
 
 	// The boot path skips the custom list whenever this device already has a choice to honour, so a
 	// hand-added language would otherwise be missing from exactly the dropdown that offers it.
@@ -74,12 +74,6 @@ export function Language() {
 					</select>
 					<ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
 				</div>
-
-				<p className={styles.detail}>
-					{chosen === null
-						? t("settings.language.following", { name: nameOfLanguage(active) })
-						: t("settings.language.scope")}
-				</p>
 			</div>
 
 			{failed === null ? null : (

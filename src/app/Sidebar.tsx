@@ -57,7 +57,6 @@ function NavRow({
 	count,
 	isPlaying,
 	isCurrent,
-	isNested,
 	onClick,
 	rowProps,
 	itemProps,
@@ -68,7 +67,6 @@ function NavRow({
 	count?: ReactNode;
 	isPlaying?: boolean;
 	isCurrent?: boolean;
-	isNested?: boolean;
 	onClick?: () => void;
 	rowProps?: PropBag;
 	itemProps?: PropBag;
@@ -76,7 +74,7 @@ function NavRow({
 }) {
 	const t = useTranslate();
 	return (
-		<div className={styles.row} data-nested={isNested} {...rowProps}>
+		<div className={styles.row} {...rowProps}>
 			<button
 				type="button"
 				className={styles.item}
@@ -345,7 +343,6 @@ export function Sidebar({
 				<NavRow
 					icon={Shapes}
 					label={t("home.genres")}
-					isNested
 					isCurrent={route === ROUTE.genres}
 					onClick={() => onOpenRoute(ROUTE.genres)}
 				/>

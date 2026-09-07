@@ -12,6 +12,8 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
+import { ArtistLinks } from "@/domain/track/ArtistLinks";
+import { albumHref } from "@/domain/track/albumRoute";
 import { coverKey, readValue } from "@/domain/track/fields";
 import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
 import { setRatingLayer } from "@/domain/track/ratingTarget";
@@ -162,6 +164,7 @@ export function NowPlaying({
 
 	const album = readValue(details?.row[NOW_PLAYING_FIELD.album]);
 	const year = readValue(details?.row[NOW_PLAYING_FIELD.year]);
+	const albumArtist = readValue(details?.row[NOW_PLAYING_FIELD.albumArtist]);
 
 	const neighbours =
 		order.isInOrder && hasTrack && item
@@ -285,11 +288,22 @@ export function NowPlaying({
 								: (track?.title ?? t("player.nothingPlaying"))}
 						</h1>
 						<p className={`${styles.artist}${loading}`}>
-							{wheel.isAwaiting ? " " : (track?.artist ?? "—")}
+							{wheel.isAwaiting ? (
+								" "
+							) : track?.artist ? (
+								<ArtistLinks credit={track.artist} />
+							) : (
+								"—"
+							)}
 						</p>
 						{album && !wheel.isAwaiting ? (
 							<p className={styles.album}>
-								{album}
+								<a
+									className="tag-link"
+									href={albumHref(albumArtist ?? track?.artist, album)}
+								>
+									{album}
+								</a>
 								{year ? <span className={styles.year}> · {year}</span> : null}
 							</p>
 						) : null}

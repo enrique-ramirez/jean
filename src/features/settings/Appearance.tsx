@@ -15,7 +15,7 @@ const NAME = {
 
 export function Appearance() {
 	const t = useTranslate();
-	const { theme, chosen, choose } = useTheme();
+	const { chosen, choose } = useTheme();
 
 	return (
 		<section className={styles.panel}>
@@ -46,12 +46,6 @@ export function Appearance() {
 					</select>
 					<ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
 				</div>
-
-				<p className={styles.detail}>
-					{chosen === null
-						? t("settings.appearance.following", { name: t(NAME[theme]) })
-						: t("settings.appearance.scope")}
-				</p>
 			</div>
 		</section>
 	);

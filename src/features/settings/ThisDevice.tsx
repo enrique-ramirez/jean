@@ -56,17 +56,22 @@ export function ThisDevice() {
 
 			{canUseMse() ? (
 				<div className={styles.field}>
-					<Switch
-						checked={isLowLatency}
-						onChange={(next) => {
-							setLowLatency(next);
-							restartListening();
-						}}
-						label={t("device.shortBuffer")}
-					/>
-					<p className={styles.detail}>
-						{t(fellBack ? "device.bufferFellBack" : "device.shortBufferDetail")}
-					</p>
+					<div className={styles.switchRow}>
+						<Switch
+							checked={isLowLatency}
+							onChange={(next) => {
+								setLowLatency(next);
+								restartListening();
+							}}
+							label={t("device.shortBuffer")}
+						/>
+						<HelpHint label={t("device.bufferHelp")}>
+							<p>{t("device.shortBufferDetail")}</p>
+						</HelpHint>
+					</div>
+					{fellBack ? (
+						<p className={styles.detail}>{t("device.bufferFellBack")}</p>
+					) : null}
 				</div>
 			) : null}
 		</section>

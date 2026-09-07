@@ -156,9 +156,7 @@
 	"fooJean.ready.addFields": "Añade los campos que quieras en {pane}, en «Fields they may write», y reinicia foobar2000.",
 	"fooJean.ready.noFields": "Conectado, y esta instalación no permite escribir ningún campo.",
 	"fooJean.ready.summary": "Conectado a foo_jean {version} en el puerto {port}.",
-	"fooJean.stream.formats": "Emitiendo {formats}. El control está junto al volumen en la barra de estado.",
 	"fooJean.stream.none": "Esta copia de foo_jean no emite audio, así que Jean no puede reproducirlo en este dispositivo. O es anterior a esa función, o no arrancó ningún codificador — revisa {pane}.",
-	"fooJean.token.change": "Cambiar el testigo",
 	"fooJean.token.label": "Testigo",
 	"fooJean.token.placeholder": "Pega el testigo de foobar2000",
 	"fooJean.unauthorized.fix": "Compruébalo con el testigo de {pane}. Regenerarlo allí deja fuera a todos los clientes que tengan el anterior.",
@@ -433,13 +431,11 @@
 	"settings.language.fallback": "Una frase que tu archivo no traiga vuelve al inglés, así que una traducción a medias sirve desde la primera línea, y una escrita para una versión anterior de Jean sigue funcionando.",
 	"settings.language.folder": "Los idiomas que Jean trae de serie son archivos en {folder}, junto a su index.html. Copia uno para empezar el tuyo — el inglés va dentro de Jean, así que ese archivo es una plantilla y no la fuente.",
 	"settings.language.follow": "El de mi navegador",
-	"settings.language.following": "Siguiendo a tu navegador, que se lee como {name}.",
 	"settings.language.help": "Sobre los idiomas",
 	"settings.language.partial": {
 		"one": "Falta {count} frase en esta traducción y se muestra en inglés.",
 		"other": "Faltan {count} frases en esta traducción y se muestran en inglés."
 	},
-	"settings.language.scope": "Se aplica al momento, solo en este dispositivo.",
 	"settings.language.title": "Idioma",
 	"settings.language.upgrade": "Copiar una versión nueva de Jean encima de una antigua reemplaza los idiomas que trae de serie y deja los tuyos intactos.",
 	"settings.playback.cursorFollows": "El cursor sigue a la reproducción",

@@ -24,7 +24,7 @@ Tiers, ordered and not weighted: exact, prefix, word-start, substring, subsequen
 
 **The completion is stricter than the matcher.** A ghost sits *under* the real text, so it may only be offered where the best match starts with what was typed character for character.
 
-**Space opens the focused tile and stops the event** — it is the player's play/pause everywhere else. Arrows walk the grid, **reading the column count off the laid-out grid**: it is `auto-fill` and nothing in JavaScript knows it until the browser has decided. **Typing any other character lands in the field**, which is what makes the page keyboard-first without autofocusing it — autofocus on a phone opens the keyboard over the thing you came to look at.
+**Space opens the focused tile and stops the event** — it is the player's play/pause everywhere else. **Left and right stop the event too** — those keys seek the player everywhere else on the page. Arrows walk the grid, **reading the column count off the laid-out grid**: it is `auto-fill` and nothing in JavaScript knows it until the browser has decided. **Typing any other character lands in the field**, which is what makes the page keyboard-first without autofocusing it — autofocus on a phone opens the keyboard over the thing you came to look at.
 
 ## Create autoplaylist
 

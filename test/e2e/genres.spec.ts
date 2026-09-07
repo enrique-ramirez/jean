@@ -3,6 +3,7 @@ import {
 	expect,
 	openLibrary,
 	openSidebar,
+	requestsTo,
 	sidebar,
 	test,
 	viewHeader,
@@ -114,6 +115,29 @@ test.describe("the genres index", () => {
 			// The whole point: Space is the player's play/pause everywhere else, and a
 			// tile that opened a genre *and* paused the music is doing two things.
 			await expect.poll(() => player.player.playbackState).toBe("playing");
+		});
+
+		test("the arrows walk the grid and leave the track where it was", async ({
+			page,
+			player,
+		}) => {
+			player.player.playbackState = "playing";
+			await openGenres(page);
+
+			await tiles(page).first().focus();
+			await page.keyboard.press("ArrowRight");
+			await expect(tiles(page).nth(1)).toBeFocused();
+
+			await page.keyboard.press("ArrowLeft");
+			await expect(tiles(page).first()).toBeFocused();
+
+			// The same trap as Space: left and right seek five seconds everywhere else,
+			// and a grid you can walk must not scrub the track under you.
+			expect(
+				requestsTo(player, "/api/player").filter(
+					(entry) => entry.body?.relativePosition !== undefined,
+				),
+			).toHaveLength(0);
 		});
 
 		test("play/pause still works on this page when no tile has the caret", async ({

@@ -89,7 +89,10 @@ export function GenresView({
 					: 0);
 		if (step === 0) return;
 
+		// Stopped as well as prevented, for the same reason: left and right seek the player everywhere
+		// else, and walking the grid must not drag the track along with it.
 		event.preventDefault();
+		event.stopPropagation();
 		tiles[Math.min(Math.max(at + step, 0), tiles.length - 1)]?.focus();
 	};
 

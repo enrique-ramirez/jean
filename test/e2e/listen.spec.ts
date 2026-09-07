@@ -498,6 +498,14 @@ test.describe("what is audible, not what the player is doing", () => {
 	// Real time is the thing under test.
 	test.setTimeout(120_000);
 
+	// Everything asserted between the switch and the resume runs inside the lag, and
+	// the lag is what is being measured -- so it takes a budget of its own, well under
+	// it. The suite's ceiling is longer than the lag, and left on that one slow
+	// visibility check outlives the window it sits in: the readout catches up while
+	// the check is still polling, and a delay that worked reads as one that never
+	// happened.
+	const INSIDE_LAG = { timeout: 3000 };
+
 	test("stays on the track still coming out of the speaker", async ({
 		page,
 		player,
@@ -522,10 +530,10 @@ test.describe("what is audible, not what the player is doing", () => {
 		player.patchPlayer({ playbackState: "paused" });
 		await expect(
 			statusBar(page).getByRole("button", { name: "Play", exact: true }),
-		).toBeVisible();
+		).toBeVisible(INSIDE_LAG);
 
-		await expect(statusBar(page)).toContainText(HEARD.title);
-		await expect(statusBar(page)).not.toContainText(NEXT.title);
+		await expect(statusBar(page)).toContainText(HEARD.title, INSIDE_LAG);
+		await expect(statusBar(page)).not.toContainText(NEXT.title, INSIDE_LAG);
 
 		// A delay, not a freeze: it arrives when the audio does.
 		player.patchPlayer({ playbackState: "playing" });

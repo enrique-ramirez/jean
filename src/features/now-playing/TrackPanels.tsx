@@ -11,6 +11,7 @@ import { Details } from "./Details";
 import { Lyrics } from "./Lyrics";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
 import styles from "./TrackPanels.module.css";
+import { useNowPlayingTrack } from "./useNowPlayingTrack";
 import { usePanelScroll } from "./usePanelScroll";
 
 type Tab = "lyrics" | "details" | "artist";
@@ -46,6 +47,7 @@ export function TrackPanels({
 	onExpand?: () => void;
 	isExpanded?: boolean;
 }) {
+	const { track } = useNowPlayingTrack();
 	const [tab, setTab] = useState<Tab>("lyrics");
 	const [direction, setDirection] = useState(0);
 	const panelRef = useRef<HTMLDivElement | null>(null);
@@ -93,7 +95,7 @@ export function TrackPanels({
 		) : tab === "details" ? (
 			<Details />
 		) : (
-			<Artist />
+			<Artist name={track?.artist} />
 		);
 
 	return (

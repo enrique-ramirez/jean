@@ -371,10 +371,11 @@ export const openLibrary = async (page: Page) => {
 export const searchField = (page: Page) =>
 	page.getByLabel("Search your library");
 
-// Typing only fills the dropdown; the results page is a commitment, and Enter with nothing under the
-// cursor is the way to make it without also choosing a track.
+// The results page, specifically. Escape first because a query naming exactly one artist starts with
+// the cursor on them, and Enter there is a commitment to the artist rather than to the search.
 export const searchFor = async (page: Page, text: string) => {
 	await searchField(page).fill(text);
+	await searchField(page).press("Escape");
 	await searchField(page).press("Enter");
 	await expect(
 		page.getByRole("heading", { level: 1, name: text }),

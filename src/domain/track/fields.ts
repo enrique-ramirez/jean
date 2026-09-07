@@ -124,6 +124,50 @@ export const sameTagValue = (
 	b: string | null | undefined,
 ) => tagKey(a) === tagKey(b);
 
+/**
+ * foobar joins a multi-valued tag with `", "`, and a single value may hold commas of its own -- so a
+ * comma is ambiguous and the string alone cannot say which it is. Collapsing only where every part
+ * is the same name resolves the case that actually occurs, a tag written twice (`Foo Fighters, Foo
+ * Fighters`), and never cuts `Blood, Sweat & Tears` in half. It leaves genuine collaborations joined,
+ * which costs a spare entry rather than a missing one.
+ *
+ * The player can settle the rest: `$meta_num()` takes one argument, so it survives the column list
+ * being split on commas and would say how many values a tag holds. It is not asked, because that is
+ * a column on every row of every library read to disambiguate a case this rare.
+ */
+export function collapseRepeatedTag(value: string): string {
+	const parts = value.split(", ");
+	if (parts.length < 2) return value;
+
+	const first = tagKey(parts[0]);
+	return parts.every((part) => tagKey(part) === first) ? parts[0] : value;
+}
+
+// `feat.`, `ft.` and `featuring` are the only credit separators that cannot be part of a name. `&`,
+// `and`, `with`, `,` and `/` all appear inside real ones -- Simon & Garfunkel, Blood, Sweat & Tears,
+// Sleep With Sirens -- so splitting on any of them invents artists that do not exist.
+// The separator is captured, so a caller drawing the credit can put it back exactly as tagged.
+const FEATURING = /(\s+(?:feat|ft|featuring)\.?\s+)/i;
+
+// Alternating names and the separators between them, verbatim. Even indices are names.
+export const splitCredit = (artist: string) => artist.split(FEATURING);
+
+export const isCreditSeparator = (at: number) => at % 2 === 1;
+
+export function creditedArtists(artist: string | null | undefined): {
+	lead: string | null;
+	guests: string[];
+} {
+	if (!artist) return { lead: null, guests: [] };
+
+	const [lead, ...guests] = splitCredit(artist)
+		.filter((_, at) => !isCreditSeparator(at))
+		.map((part) => collapseRepeatedTag(part.trim()))
+		.filter(Boolean);
+
+	return { lead: lead ?? null, guests };
+}
+
 const escapeForRegExp = (text: string) =>
 	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

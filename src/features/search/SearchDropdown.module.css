@@ -56,8 +56,17 @@
 	background: var(--surface-sunken);
 }
 
-.cover {
+.cover,
+.face {
 	flex: 0 0 auto;
+}
+
+/* A record stands in for a face, so the shape says which kind of row this is: every cover in Jean is
+ square, and only an artist is round. Without it an artist and a track differ by their second line
+ alone, which is not a difference you can scan. */
+.face {
+	border-radius: var(--radius-pill);
+	overflow: hidden;
 }
 
 .text {

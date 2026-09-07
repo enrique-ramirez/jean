@@ -2,7 +2,10 @@ import { Search, X } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useState } from "react";
 import type { Library } from "@/domain/library/useLibrary";
-import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
+import type {
+	LibrarySearch,
+	Suggestion,
+} from "@/domain/library/useLibrarySearch";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { Input } from "@/shared/ui/Input";
 import styles from "./LibrarySearchField.module.css";
@@ -22,7 +25,7 @@ export function LibrarySearchField({
 	library: Library;
 	onChange: (query: string) => void;
 	onSubmit: () => void;
-	onSelect: (ref: number) => void;
+	onSelect: (suggestion: Suggestion) => void;
 	onDismiss: () => void;
 }) {
 	const {
@@ -31,8 +34,8 @@ export function LibrarySearchField({
 		isEdited,
 		draftCount,
 		isFiltering,
-		preview,
-		draftMatched,
+		suggestions,
+		preselect,
 		isOpen,
 		open,
 		close,
@@ -43,7 +46,7 @@ export function LibrarySearchField({
 	// Nothing to preview before there is a library, and "nothing matches that" would blame the query
 	// for it. The results page carries the setup flow instead.
 	const isShowing = isOpen && hasDraft && !library.needsSetup;
-	const hasOptions = isShowing && preview.length > 0;
+	const hasOptions = isShowing && suggestions.length > 0;
 	// Pointer-down rather than blur: a click on a row blurs the field on its way to the button, and a
 	// revert fired from that would empty the draft before the click that meant to commit it arrives.
 	const anchor = useDismissable<HTMLDivElement>(
@@ -56,10 +59,12 @@ export function LibrarySearchField({
 		{ onEscape: false },
 	);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: a new result set drops the cursor, not a read
+	// A new result set puts the cursor back where the query says it belongs -- usually nowhere, but on
+	// the one row a query with a single reading names.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the results changing is what fires this, not anything read from them
 	useEffect(() => {
-		setActive(-1);
-	}, [preview]);
+		setActive(preselect);
+	}, [suggestions, preselect]);
 
 	// Both take the caret with them: a panel left under an open software keyboard leaves the keyboard
 	// covering whatever the panel was hiding.
@@ -70,18 +75,17 @@ export function LibrarySearchField({
 
 	// Every way of committing lands here, including a click on a row, which reaches the panel rather
 	// than this field.
-	const commit = (ref: number | null) => {
+	const commit = (suggestion: Suggestion | null) => {
 		dismiss();
-		if (ref === null) onSubmit();
-		else onSelect(ref);
+		if (suggestion === null) onSubmit();
+		else onSelect(suggestion);
 	};
 
 	const move = (by: number) => {
-		if (preview.length === 0) return;
+		const { length } = suggestions;
+		if (length === 0) return;
 		const next = active + by;
-		setActive(
-			next < -1 ? preview.length - 1 : next >= preview.length ? -1 : next,
-		);
+		setActive(next < -1 ? length - 1 : next >= length ? -1 : next);
 	};
 
 	const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -120,11 +124,7 @@ export function LibrarySearchField({
 		if (event.key === "Enter") {
 			event.preventDefault();
 			// Space is deliberately not a second Enter here: it is a character.
-			commit(
-				hasOptions && active >= 0 && draftMatched
-					? draftMatched[preview[active]]
-					: null,
-			);
+			commit(hasOptions && active >= 0 ? suggestions[active] : null);
 		}
 	};
 

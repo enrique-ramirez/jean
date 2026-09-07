@@ -14,6 +14,7 @@ There is one of these files beside each part of the app, for what is local to it
 | `src/domain/track/CLAUDE.md` | rows, refs, the virtualised list, ratings |
 | `src/domain/library/CLAUDE.md` | where the library comes from, playing a set, search results |
 | `src/domain/player/CLAUDE.md` | playback state, the queue, the volume curve, listening here |
+| `src/features/artist/CLAUDE.md` | who an artist is, and their page |
 | `src/features/home/CLAUDE.md` | the home screen and its shelves |
 | `src/features/now-playing/CLAUDE.md` | the status bar, the screen, lyrics and details |
 | `src/features/queue/CLAUDE.md` | the play queue panel |

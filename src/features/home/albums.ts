@@ -25,6 +25,7 @@ const blankAlbum = (key: string, album: string, row: TrackColumns) => ({
 	lastPlayed: 0,
 	bitrateTotal: 0,
 	bitrateCount: 0,
+	year: null as number | null,
 	lossless: true,
 	ratings: [] as number[],
 });
@@ -38,6 +39,15 @@ const absorb = (album: AlbumDraft, ref: number, row: TrackColumns) => {
 
 	const played = lastPlayedOf(row);
 	if (played !== null && played > album.lastPlayed) album.lastPlayed = played;
+
+	// The earliest of them: a reissue often tags its own release year onto one or two tracks.
+	const year = numberOf(row, FIELD.year);
+	if (
+		year !== null &&
+		year > 1000 &&
+		(album.year === null || year < album.year)
+	)
+		album.year = year;
 
 	const bitrate = numberOf(row, FIELD.bitrate);
 	if (bitrate) {

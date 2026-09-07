@@ -1,7 +1,9 @@
-import { Check, ListEnd, ListMusic, ListPlus, Star } from "lucide-react";
-
+import { Check, ListEnd, ListMusic, ListPlus, Star, User } from "lucide-react";
+import { artistHref } from "@/domain/track/artistRoute";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { ActionNode } from "@/shared/ui/ActionMenu";
+import { namesAnArtist } from "./artists";
+import { creditedArtists } from "./fields";
 import { withoutJeanPlaylists } from "./jeanPlaylists";
 import type { LibrarySource } from "./librarySource";
 import { MAX_STARS } from "./rating";
@@ -39,6 +41,7 @@ export function trackActions({
 	queueTracks,
 	addTracks,
 	rating,
+	credit,
 }: {
 	count: number;
 	source: LibrarySource;
@@ -56,12 +59,55 @@ export function trackActions({
 		itemIndices: number[];
 	}) => void;
 	rating: ActionNode | null;
+	// The `%artist%` line of the one track this is about. A track list gives its rows no artist link
+	// of their own -- playing is what a row is for, and a link inside one is a target a finger misses
+	// -- so this is where an artist is reachable from a row at all.
+	credit?: string | null;
 }): ActionNode[] {
 	const targets = withoutJeanPlaylists(playlists).filter(
 		(entry) => entry.id !== source.playlistId,
 	);
 
+	// Setting the hash is what a link elsewhere in the app does; there is nothing else to navigate with
+	// from inside a menu.
+	const goTo = (name: string) => () => {
+		window.location.hash = artistHref(name);
+	};
+
+	const { lead, guests } = creditedArtists(count === 1 ? credit : null);
+	const named = [lead, ...guests].filter((name): name is string =>
+		namesAnArtist(name),
+	);
+
+	const first = named[0];
+	const artist: ActionNode[] = !first
+		? []
+		: named.length === 1
+			? [
+					{
+						id: "artist",
+						label: `Go to ${first}`,
+						icon: User,
+						onSelect: goTo(first),
+					},
+				]
+			: [
+					{
+						id: "artist",
+						label: "Go to artist",
+						icon: User,
+						items: named.map((name) => ({
+							id: `artist-${name}`,
+							label: name,
+							icon: User,
+							onSelect: goTo(name),
+						})),
+					},
+				];
+
 	return [
+		...artist,
+		...(artist.length > 0 ? [{ type: "separator" as const }] : []),
 		{
 			id: "queue",
 			label:

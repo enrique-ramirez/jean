@@ -1,7 +1,7 @@
 import { tagKey } from "@/domain/track/fields";
 import type { Album } from "./albums";
 
-export interface Artist<A extends Album = Album> {
+export interface AlbumArtist<A extends Album = Album> {
 	key: string;
 	name: string;
 	plays: number;
@@ -10,7 +10,7 @@ export interface Artist<A extends Album = Album> {
 	cover: A;
 }
 
-const blank = <A extends Album>(key: string, album: A): Artist<A> => ({
+const blank = <A extends Album>(key: string, album: A): AlbumArtist<A> => ({
 	key,
 	name: album.artist,
 	plays: 0,
@@ -19,7 +19,10 @@ const blank = <A extends Album>(key: string, album: A): Artist<A> => ({
 	cover: album,
 });
 
-export function artistsOf<A extends Album>(albums: A[]): Artist<A>[] {
+// Keyed on an album's own artist tag, not the artist index: a doubled tag like `Foo Fighters, Foo
+// Fighters` becomes two entries here. `domain/track/artists.ts` reads credits per track instead;
+// use that one where the count has to be right about who an artist is.
+export function albumArtistsOf<A extends Album>(albums: A[]): AlbumArtist<A>[] {
 	const byKey = albums.reduce((into, album) => {
 		const key = tagKey(album.artist);
 		const artist = into.get(key) ?? blank(key, album);
@@ -31,7 +34,7 @@ export function artistsOf<A extends Album>(albums: A[]): Artist<A>[] {
 
 		into.set(key, artist);
 		return into;
-	}, new Map<string, Artist<A>>());
+	}, new Map<string, AlbumArtist<A>>());
 
 	return [...byKey.values()];
 }

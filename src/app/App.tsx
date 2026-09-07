@@ -8,12 +8,15 @@ import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
 	useIsPlaying,
+	usePlaybackOrder,
 	usePlayer,
 	usePlayerStream,
 	usePlaylists,
 	usePlayPause,
 	useSeekBy,
 } from "@/domain/player/usePlayer";
+import { artistRoute } from "@/domain/track/artistRoute";
+import { refsOfArtist } from "@/domain/track/artists";
 import {
 	ALL_MUSIC,
 	SCRATCH_KIND,
@@ -23,11 +26,13 @@ import { askToJump } from "@/domain/track/jumpToPlaying";
 import {
 	EMPTY_VIEW,
 	project,
+	type Refs,
 	refsOfGenre,
 	wholeLibrary,
 } from "@/domain/track/project";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
+import { ArtistView } from "@/features/artist/ArtistView";
 import { GenreCrumb } from "@/features/genres/GenreCrumb";
 import { GenresView } from "@/features/genres/GenresView";
 import { albumsOf } from "@/features/home/albums";
@@ -116,14 +121,21 @@ function Shell() {
 	const [openedFrom, setOpenedFrom] = useState("");
 	const shellRoute = isNowPlaying ? openedFrom : route;
 
-	const { shelf, genre, isGenres, isSearch, isAll, isHome, isLibrary } =
+	const { shelf, genre, artist, isGenres, isSearch, isAll, isHome, isLibrary } =
 		resolveRoute(shellRoute);
 
 	const library = useLibrary(playlists, {
-		wanted: isHome || isAll || isGenres || Boolean(shelf) || Boolean(genre),
+		wanted:
+			isHome ||
+			isAll ||
+			isGenres ||
+			Boolean(shelf) ||
+			Boolean(genre) ||
+			Boolean(artist),
 	});
 	const search = useLibrarySearch(library, playlists);
 	const { play: playSet } = usePlaySet({ library, playlists });
+	const playbackOrder = usePlaybackOrder();
 	const home = useHomePlayback({ library, playlists, navigate });
 
 	const { write: ratePlaying } = useNowPlayingRating();
@@ -140,6 +152,27 @@ function Shell() {
 		);
 		return built ? project(snapshot, refsOfShelf(built)) : null;
 	}, [shelf, snapshot]);
+
+	const artistTracks = useMemo(
+		() =>
+			artist
+				? refsOfArtist(snapshot.rows, artist)
+				: { own: new Int32Array(0), guest: new Int32Array(0) },
+		[artist, snapshot.rows],
+	);
+
+	// Every way of starting an artist fills the same scratch under the same label, so the sidebar row
+	// and the status bar cannot disagree about where the sound came from.
+	const playArtist = useCallback(
+		(refs: Refs, position: number) =>
+			void playSet({
+				kind: SCRATCH_KIND.artist,
+				label: artist ?? "",
+				refs,
+				position,
+			}),
+		[playSet, artist],
+	);
 
 	const genreView = useMemo(
 		() => (genre ? project(snapshot, refsOfGenre(snapshot.rows, genre)) : null),
@@ -442,11 +475,19 @@ function Shell() {
 						search.commit();
 						openSearch();
 					}}
-					// Picking a track does not move you: the results are materialised so it has somewhere to
-					// play from, and the status bar and the sidebar say where the sound is coming from.
-					onSelect={(ref) => {
+					onSelect={(suggestion) => {
+						// An artist is somewhere the query was only ever a way of reaching, so the query is
+						// not promoted and the field goes back to whatever search is actually on screen.
+						if (suggestion.kind === "artist") {
+							search.revert();
+							openRoute(artistRoute(suggestion.artist.name));
+							return;
+						}
+
+						// A track does not move you: the results are materialised so it has somewhere to play
+						// from, and the status bar and the sidebar say where the sound is coming from.
 						const { query, refs } = search.commit();
-						const position = refs ? refs.indexOf(ref) : -1;
+						const position = refs ? refs.indexOf(suggestion.ref) : -1;
 						if (refs && position >= 0)
 							void playSet({
 								kind: SCRATCH_KIND.search,
@@ -525,6 +566,20 @@ function Shell() {
 						/>
 					) : isGenres ? (
 						<GenresView library={library} onOpenRoute={openRoute} />
+					) : artist ? (
+						<ArtistView
+							name={artist}
+							library={library}
+							tracks={artistTracks}
+							onPlay={playArtist}
+							onShuffle={(refs) => {
+								playbackOrder.enableShuffle();
+								playArtist(refs, Math.floor(Math.random() * refs.length));
+							}}
+							onOpenAlbum={playArtist}
+							canPlay={home.canPlay}
+							canShuffle={home.canShuffle}
+						/>
 					) : isAll || shelf || genre ? (
 						<LibraryListView
 							library={library}

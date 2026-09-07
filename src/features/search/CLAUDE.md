@@ -26,6 +26,18 @@ The library-wide search control. How its results become playable is in `src/doma
 
 **Space is a character**, never a second Enter: bound to activation it breaks every query with a space in it the moment somebody arrows down mid-thought.
 
+## Sections
+
+**A section appears because the query plausibly *is* one of those things, not because something in it matched.** `rankArtists`'s comment in `domain/track/artists.ts` has the floor this rests on and why a sort alone cannot stand in for it.
+
+**Entities take the full ladder in `shared/lib/text.ts`; tracks do not** -- the same comment has why.
+
+**An artist row is round and a track row is square** -- the comment on `.face` in `SearchDropdown.module.css` has why.
+
+**One flat list drives the keyboard** -- the comment on `suggestions` in `useLibrarySearch.ts` has why.
+
+**The cursor starts on a row only when the query has one reading** -- the comment on `preselect` in `useLibrarySearch.ts` has why.
+
 **The preview is ranked and the results page is not, deliberately.** Ranking eight of two hundred is the whole job; a page you can scroll and sort already answers "what matched" without an opinion, and giving it one would mean two orders for one query.
 
 **Which field matched outranks how well it matched.** Searching `blood` otherwise fills the preview with 10cc, whose *Bloody Tourists* carries its whole track list in on an album tag. The weights in `domain/track/rankTracks.ts` are large enough to move an album-only hit a rung down the ladder, and small enough that an exact album title still beats a passing mention in a song. Typo tolerance is absent there on purpose: everything offered for ranking already holds the token as a substring. Entities will not, and want the full ladder in `shared/lib/text.ts`.

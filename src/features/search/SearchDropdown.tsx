@@ -1,13 +1,31 @@
-import { type RefObject, useLayoutEffect, useRef } from "react";
+import {
+	Fragment,
+	type MouseEvent,
+	type RefObject,
+	useLayoutEffect,
+	useRef,
+} from "react";
 import type { Library } from "@/domain/library/useLibrary";
-import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
+import type {
+	LibrarySearch,
+	Suggestion,
+} from "@/domain/library/useLibrarySearch";
 import { artistOf, FIELD, titleOf, value } from "@/domain/track/fields";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { plural } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./SearchDropdown.module.css";
 
 export const optionId = (position: number) => `search-result-${position}`;
+
+function Heading({ label, count }: { label: string; count: number }) {
+	return (
+		<p className={styles.heading}>
+			{label} <span className={styles.count}>({count.toLocaleString()})</span>
+		</p>
+	);
+}
 
 /**
  * The panel is drawn below the field on a pointer viewport and fills the screen below the top bar on
@@ -84,13 +102,13 @@ export function SearchDropdown({
 	listId: string;
 	active: number;
 	onActive: (index: number) => void;
-	onSelect: (ref: number) => void;
+	onSelect: (suggestion: Suggestion) => void;
 	onDismiss: () => void;
 }) {
 	const panel = useRef<HTMLDivElement | null>(null);
 	const list = useRef<HTMLDivElement | null>(null);
-	const { preview, draftMatched, draftCount } = search;
-	const aimedAt = useEarnedHover(preview);
+	const { suggestions, artists, artistCount, draftCount } = search;
+	const aimedAt = useEarnedHover(suggestions);
 
 	useAnchoredBounds(anchor, panel);
 
@@ -103,57 +121,94 @@ export function SearchDropdown({
 		list.current?.children[active]?.scrollIntoView({ block: "nearest" });
 	}, [active]);
 
-	const rows = preview.map((position) => {
-		const ref = draftMatched ? draftMatched[position] : position;
-		return { position, ref, row: library.rows[ref] };
-	});
-
 	return (
 		<div className={styles.panel} ref={panel} {...swipe}>
-			{rows.length === 0 ? (
+			{suggestions.length === 0 ? (
 				<p className={styles.notice}>
 					{library.isLoading
 						? `Searching ${library.loaded.toLocaleString()} of ${library.total.toLocaleString()}...`
 						: "Nothing in your library matches that."}
 				</p>
 			) : (
-				<>
-					<p className={styles.heading}>
-						Tracks <span className={styles.count}>({draftCount})</span>
-					</p>
+				<div className={styles.results} id={listId} role="listbox" ref={list}>
+					{suggestions.map((suggestion, index) => {
+						const isActive = index === active;
+						const props = {
+							id: optionId(index),
+							role: "option" as const,
+							"aria-selected": isActive,
+							className: styles.result,
+							"data-active": isActive,
+							"data-kind": suggestion.kind,
+							onMouseEnter: (event: MouseEvent) => {
+								if (aimedAt(event)) onActive(index);
+							},
+							onClick: () => onSelect(suggestion),
+						};
 
-					<div className={styles.results} id={listId} role="listbox" ref={list}>
-						{rows.map(({ position, row, ref }, index) => (
-							<button
-								key={position}
-								type="button"
-								id={optionId(index)}
-								role="option"
-								aria-selected={index === active}
-								className={styles.result}
-								data-active={index === active}
-								onMouseEnter={(event) => {
-									if (aimedAt(event)) onActive(index);
-								}}
-								onClick={() => onSelect(ref)}
-							>
-								<Artwork
-									src={library.source.artworkUrl(ref)}
-									size={36}
-									className={styles.cover}
-								/>
-								<span className={styles.text}>
-									<span className={styles.title}>{titleOf(row)}</span>
-									<span className={styles.under}>
-										{[artistOf(row), value(row, FIELD.album)]
-											.filter(Boolean)
-											.join(" · ")}
+						if (suggestion.kind === "artist") {
+							const { artist } = suggestion;
+							return (
+								<Fragment key={`artist:${artist.key}`}>
+									{index === 0 ? (
+										<Heading label="Artists" count={artistCount} />
+									) : null}
+									<button type="button" {...props}>
+										<Artwork
+											src={
+												artist.coverRefs.length > 0
+													? library.source.artworkUrl(artist.coverRefs[0])
+													: null
+											}
+											size={36}
+											className={styles.face}
+										/>
+										<span className={styles.text}>
+											<span className={styles.title}>{artist.name}</span>
+											<span className={styles.under}>
+												{[
+													artist.albumCount > 0
+														? plural(artist.albumCount, "album")
+														: null,
+													plural(
+														artist.trackCount + artist.guestCount,
+														"track",
+													),
+												]
+													.filter(Boolean)
+													.join(" · ")}
+											</span>
+										</span>
+									</button>
+								</Fragment>
+							);
+						}
+
+						const row = library.rows[suggestion.ref];
+						return (
+							<Fragment key={`track:${suggestion.ref}`}>
+								{index === artists.length ? (
+									<Heading label="Tracks" count={draftCount} />
+								) : null}
+								<button type="button" {...props}>
+									<Artwork
+										src={library.source.artworkUrl(suggestion.ref)}
+										size={36}
+										className={styles.cover}
+									/>
+									<span className={styles.text}>
+										<span className={styles.title}>{titleOf(row)}</span>
+										<span className={styles.under}>
+											{[artistOf(row), value(row, FIELD.album)]
+												.filter(Boolean)
+												.join(" · ")}
+										</span>
 									</span>
-								</span>
-							</button>
-						))}
-					</div>
-				</>
+								</button>
+							</Fragment>
+						);
+					})}
+				</div>
 			)}
 		</div>
 	);

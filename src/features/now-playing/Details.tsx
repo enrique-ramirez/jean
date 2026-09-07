@@ -1,4 +1,5 @@
 import { genreHref } from "@/domain/library/genreRoute";
+import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { readTimestamp, readValue } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
 import styles from "./Details.module.css";
@@ -41,6 +42,7 @@ function played(raw: string | null) {
 }
 
 interface Row {
+	credit?: true;
 	label: string;
 	value: string | null;
 	href?: string;
@@ -65,7 +67,11 @@ function groupsOf(row: TrackColumns): Group[] {
 			title: "Release",
 			rows: [
 				{ label: "Album", value: read(row, F.album) },
-				{ label: "Album artist", value: read(row, F.albumArtist) },
+				{
+					label: "Album artist",
+					value: read(row, F.albumArtist),
+					credit: true,
+				},
 				{ label: "Released", value: released(row) },
 				{
 					label: "Genre",
@@ -136,7 +142,9 @@ export function Details() {
 							<div key={row.label} className={styles.row}>
 								<dt className={styles.label}>{row.label}</dt>
 								<dd className={styles.value}>
-									{row.href && row.value ? (
+									{row.credit ? (
+										<ArtistLinks credit={row.value} />
+									) : row.href && row.value ? (
 										<a className={styles.link} href={row.href}>
 											{row.value}
 										</a>

@@ -51,6 +51,7 @@ export function useNowPlayingMenu() {
 			canQueue,
 			queueTracks,
 			addTracks,
+			credit: track?.artist,
 			rating: canWrite
 				? {
 						id: "rate",
@@ -64,6 +65,7 @@ export function useNowPlayingMenu() {
 		source,
 		hasTrack,
 		item,
+		track?.artist,
 		playlists,
 		permissions,
 		canQueue,

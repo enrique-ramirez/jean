@@ -16,13 +16,17 @@ import {
 // Enough matches that the preview has to leave some out.
 const QUERY = "babasonicos";
 const OTHER = "nutshell";
+const ARTIST = "Babasónicos";
 
-// Stated here rather than imported from `PREVIEW_TRACKS`: how many results a preview shows is a
-// decision, and a spec that reads it out of the code cannot disagree with a change to it.
+// Stated here rather than imported: how many results a preview shows is a decision, and a spec that
+// reads the number out of the code cannot disagree with a change to it.
 const PREVIEW_TRACKS = 8;
 
 const options = (page: Parameters<typeof openLibrary>[0]) =>
 	page.getByRole("option");
+
+const tracks = (page: Parameters<typeof openLibrary>[0]) =>
+	page.locator('[role="option"][data-kind="track"]');
 
 const hash = (page: Parameters<typeof openLibrary>[0]) =>
 	page.evaluate(() => location.hash);
@@ -34,7 +38,9 @@ test.describe("previewing a search without leaving the page", () => {
 		await openLibrary(page);
 
 		await searchField(page).fill(QUERY);
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
+		// Whatever else it offers, the tracks it previews are capped.
+		await expect(tracks(page)).toHaveCount(PREVIEW_TRACKS);
 
 		// The point of the whole arrangement: a query is a question, not a departure.
 		expect(await hash(page)).toBe("#/p7");
@@ -49,7 +55,7 @@ test.describe("previewing a search without leaving the page", () => {
 		await openLibrary(page);
 
 		await searchField(page).fill(QUERY);
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 
 		// Backspacing to nothing and pressing Escape must land in the same place,
 		// not on an empty search page nobody asked to visit.
@@ -66,7 +72,7 @@ test.describe("previewing a search without leaving the page", () => {
 	}) => {
 		await openLibrary(page);
 		await searchField(page).fill(QUERY);
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 
 		await searchField(page).press("Escape");
 		await expect(options(page)).toHaveCount(0);
@@ -86,7 +92,7 @@ test.describe("previewing a search without leaving the page", () => {
 		// The caret never left, so focus alone fires nothing -- without a click handler
 		// there is no way back to the panel but the keyboard.
 		await searchField(page).click();
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 	});
 
 	test("an arrow reopens what Escape shut", async ({ page }) => {
@@ -96,7 +102,7 @@ test.describe("previewing a search without leaving the page", () => {
 		await expect(options(page)).toHaveCount(0);
 
 		await searchField(page).press("ArrowDown");
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 	});
 
 	test("a space is a character, not a second Enter", async ({ page }) => {
@@ -114,6 +120,72 @@ test.describe("previewing a search without leaving the page", () => {
 	});
 });
 
+test.describe("what a query might mean", () => {
+	test("an artist the query names gets a section of their own, above the tracks", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await searchField(page).fill(QUERY);
+
+		await expect(page.getByText("Artists", { exact: false })).toBeVisible();
+		// The artist leads, since a query naming one is most likely about them.
+		await expect(options(page).first()).toContainText(ARTIST);
+		await expect(options(page).first()).toContainText("album");
+	});
+
+	test("a query naming exactly one thing starts with the cursor on it", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await searchField(page).fill(QUERY);
+		await expect(options(page).first()).toContainText(ARTIST);
+
+		// The guess is the highlight rather than something Enter does invisibly.
+		await expect(options(page).first()).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+	});
+
+	test.describe("a word that names two different things", () => {
+		test.use({ retagged: { Bloodhail: { "%title%": ARTIST } } });
+
+		test("is left ambiguous, with nothing under the cursor", async ({
+			page,
+		}) => {
+			await openLibrary(page);
+			// A track is now titled exactly what the artist is called, so neither reading wins
+			// and the app declines to guess.
+			await searchField(page).fill(QUERY);
+			await expect(options(page).first()).toBeVisible();
+			await expect(options(page).first()).toHaveAttribute(
+				"aria-selected",
+				"false",
+			);
+		});
+	});
+
+	test("choosing an artist opens their page and leaves the search alone", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await searchFor(page, OTHER);
+
+		await searchField(page).fill(QUERY);
+		await options(page).first().click();
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: ARTIST }),
+		).toBeVisible();
+
+		// The query was only a way of reaching them, so it never became the search --
+		// the field goes back to whatever is still on screen behind, and nothing played.
+		await expect(searchField(page)).toHaveValue(OTHER);
+		expect(playedFrom(player)).toBe(null);
+	});
+});
+
 test.describe("committing to a result", () => {
 	test("Enter with nothing under the cursor opens the results and plays nothing", async ({
 		page,
@@ -121,8 +193,10 @@ test.describe("committing to a result", () => {
 	}) => {
 		await openLibrary(page);
 		await searchField(page).fill(QUERY);
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 
+		// Off the artist the query names, so that the cursor really is on nothing.
+		await searchField(page).press("Escape");
 		await searchField(page).press("Enter");
 		await expect(
 			page.getByRole("heading", { level: 1, name: QUERY }),
@@ -138,15 +212,16 @@ test.describe("committing to a result", () => {
 	}) => {
 		await openLibrary(page);
 		await searchField(page).fill(QUERY);
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 
-		await searchField(page).press("ArrowDown");
-		await searchField(page).press("ArrowDown");
-		const chosen = await options(page)
-			.nth(1)
+		// One step down from the artist the query names, which is the first track.
+		const chosen = await tracks(page)
+			.first()
 			.locator("span > span")
 			.first()
 			.innerText();
+		await searchField(page).press("ArrowDown");
+		await expect(tracks(page).first()).toHaveAttribute("aria-selected", "true");
 
 		await searchField(page).press("Enter");
 
@@ -169,14 +244,14 @@ test.describe("committing to a result", () => {
 	}) => {
 		await openLibrary(page);
 		await searchField(page).fill(QUERY);
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 
-		const chosen = await options(page)
+		const chosen = await tracks(page)
 			.first()
 			.locator("span > span")
 			.first()
 			.innerText();
-		await options(page).first().click();
+		await tracks(page).first().click();
 
 		await expect(options(page)).toHaveCount(0);
 		await expect.poll(() => trackPlayed(player)).toBe(chosen);
@@ -188,7 +263,7 @@ test.describe("committing to a result", () => {
 	}) => {
 		await openLibrary(page);
 		await searchField(page).fill(QUERY);
-		await options(page).first().click();
+		await tracks(page).first().click();
 
 		// The results had to be materialised for the track to play, so the search is
 		// no longer a draft and the sidebar carries it as somewhere to go.
@@ -283,7 +358,7 @@ test.describe("on a phone", () => {
 	}) => {
 		await openLibrary(page);
 		await searchField(page).fill(QUERY);
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 
 		const row = await options(page).nth(2).boundingBox();
 		expect(row).not.toBeNull();
@@ -303,7 +378,7 @@ test.describe("on a phone", () => {
 	}) => {
 		await openLibrary(page);
 		await searchField(page).fill(QUERY);
-		await expect(options(page)).toHaveCount(PREVIEW_TRACKS);
+		await expect(options(page).first()).toBeVisible();
 
 		const bar = await statusBar(page).boundingBox();
 		expect(bar).not.toBeNull();

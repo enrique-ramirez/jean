@@ -3,6 +3,7 @@ import {
 	genreOfRoute,
 	genreRoute,
 } from "@/domain/library/genreRoute";
+import { artistOfRoute, artistRoute } from "@/domain/track/artistRoute";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import { SHELVES, type Shelf } from "@/features/home/shelves";
 
@@ -33,6 +34,7 @@ const shelfRoute = (id: string) => `${SHELF_PREFIX}${id}`;
 export function resolveRoute(route: string): {
 	shelf: Shelf | null;
 	genre: string | null;
+	artist: string | null;
 	isGenres: boolean;
 	isSearch: boolean;
 	isAll: boolean;
@@ -47,10 +49,12 @@ export function resolveRoute(route: string): {
 		: null;
 
 	const genre = genreOfRoute(route);
+	const artist = artistOfRoute(route);
 
 	return {
 		shelf,
 		genre,
+		artist,
 		isGenres: route === ROUTE.genres,
 		isSearch: route === ROUTE.search,
 		isAll: route === ROUTE.all,
@@ -63,7 +67,8 @@ export function resolveRoute(route: string): {
 			route === ROUTE.search ||
 			route === ROUTE.playing ||
 			shelf !== null ||
-			genre !== null,
+			genre !== null ||
+			artist !== null,
 	};
 }
 
@@ -75,6 +80,10 @@ export function routeOfPlayingSet(
 		return { ...playing, route: ROUTE.all };
 	if (playing.kind === SCRATCH_KIND.search)
 		return { ...playing, route: ROUTE.search };
+	if (playing.kind === SCRATCH_KIND.artist)
+		return playing.label
+			? { ...playing, route: artistRoute(playing.label), temporaryRow: true }
+			: null;
 	if (playing.kind === SCRATCH_KIND.genre)
 		return playing.label
 			? { ...playing, route: genreRoute(playing.label), temporaryRow: true }

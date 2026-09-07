@@ -2,6 +2,7 @@ import { Fragment } from "react";
 
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./AlbumGroup.module.css";
+import { ArtistLinks } from "./ArtistLinks";
 import { FIELD, featuring, sameTagValue, value } from "./fields";
 import type { AlbumRun } from "./grouping";
 import type { TrackRenderProps } from "./listTypes";
@@ -75,7 +76,7 @@ export function AlbumGroup({
 				<div className={styles.caption}>
 					<div className={styles.title}>{group.album}</div>
 					<div className={styles.meta}>
-						{group.albumArtist}
+						<ArtistLinks credit={group.albumArtist} />
 						{group.year ? ` · ${group.year}` : ""}
 					</div>
 				</div>

@@ -24,6 +24,7 @@ export function ViewHeader({
 	title,
 	stats,
 	hasPlayCounts,
+	leading,
 	actions,
 	aside,
 	allGenresHref,
@@ -32,6 +33,7 @@ export function ViewHeader({
 	title: ReactNode;
 	stats: TrackStats;
 	hasPlayCounts?: boolean;
+	leading?: ReactNode;
 	actions?: ReactNode;
 	aside?: ReactNode;
 	allGenresHref?: string;
@@ -55,6 +57,12 @@ export function ViewHeader({
 
 			<div className={styles.meta}>
 				<div className={styles.stats}>
+					{leading ? (
+						<>
+							<span>{leading}</span>
+							<span className={styles.separator}>·</span>
+						</>
+					) : null}
 					<span>
 						<b>{stats.trackCount.toLocaleString()}</b>{" "}
 						{pluralise(stats.trackCount, "track")}

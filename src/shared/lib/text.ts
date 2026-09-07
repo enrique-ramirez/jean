@@ -96,12 +96,19 @@ function within(query: string, candidate: string, budget: number): boolean {
 	return previous[candidate.length] <= budget;
 }
 
-const EXACT = 6000;
-const PREFIX = 5000;
-const WORD = 4000;
-const SUBSTRING = 3000;
-const SUBSEQUENCE = 2000;
-const TYPO = 1000;
+// The rungs `fuzzyScore` returns, exported so a caller can set a floor rather than take whatever
+// matched: a list of two or three shows two or three things however badly the third scored.
+export const TIER = {
+	exact: 6000,
+	prefix: 5000,
+	word: 4000,
+	substring: 3000,
+	subsequence: 2000,
+	typo: 1000,
+} as const;
+
+const { exact: EXACT, prefix: PREFIX, word: WORD } = TIER;
+const { substring: SUBSTRING, subsequence: SUBSEQUENCE, typo: TYPO } = TIER;
 
 function isSubsequence(query: string, text: string): boolean {
 	let at = 0;

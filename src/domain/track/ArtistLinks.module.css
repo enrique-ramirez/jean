@@ -1,0 +1,10 @@
+.link {
+	color: inherit;
+	text-decoration: none;
+}
+
+.link:hover {
+	color: var(--text);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}

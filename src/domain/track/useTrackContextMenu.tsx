@@ -14,7 +14,7 @@ import type { TrackColumns } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { plural } from "@/shared/lib/text";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
-import { artistOf, titleOf } from "./fields";
+import { artistOf, FIELD, titleOf, value } from "./fields";
 import type { LibrarySource } from "./librarySource";
 import { type Refs, refAt } from "./project";
 import { isWritableScale, rawRatingWith, starsOf } from "./rating";
@@ -102,6 +102,7 @@ export function useTrackContextMenu({
 			canQueue,
 			queueTracks,
 			addTracks,
+			credit: count === 1 ? value(rows[positions[0]], FIELD.artist) : null,
 			rating: rateable
 				? {
 						id: "rate",
@@ -119,6 +120,7 @@ export function useTrackContextMenu({
 	}, [
 		count,
 		positions,
+		rows,
 		indices,
 		playlists,
 		source,

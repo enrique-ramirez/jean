@@ -199,6 +199,15 @@ export const KEYMAP: Binding[] = [
 		name: "shortcut.goToPlayingFrom",
 		keys: ["P"],
 	},
+	// Modified rather than bare `Home`, which the playlist scope binds to the cursor and would shadow
+	// it in exactly the long lists this exists for.
+	{
+		id: "backToTop",
+		scope: SCOPE.global,
+		group: "shortcutGroup.navigation",
+		name: "shortcut.backToTop",
+		keys: ["Mod+Home"],
+	},
 	{
 		id: "openSettings",
 		scope: SCOPE.global,

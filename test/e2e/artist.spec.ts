@@ -7,6 +7,7 @@ import {
 	test,
 	trackPlayed,
 	trackRow,
+	viewHeader,
 } from "./fixtures.ts";
 
 const ARTIST = "Babasónicos";
@@ -105,6 +106,24 @@ test.describe("two views of one artist", () => {
 		// The finder, the layout switch and the columns all come with it.
 		await expect(page.getByText("Find in this artist")).toBeVisible();
 		await expect(page.getByTitle("Albums")).toBeVisible();
+	});
+
+	// The compact header lays its areas out again, and a template that leaves the tab row out puts the
+	// strip in a column of its own instead -- which takes the whole width off the name beside it.
+	test("the strip is a row of its own, whatever the width", async ({
+		page,
+	}) => {
+		await openArtist(page, ARTIST);
+
+		const header = viewHeader(page);
+		const strip = header.getByRole("navigation", { name: "Artist views" });
+		const name = header.getByRole("heading", { level: 1, name: ARTIST });
+
+		const across = (await header.boundingBox())?.width ?? 0;
+		expect((await strip.boundingBox())?.width).toBe(across);
+		// Beside a fixed mosaic, so it cannot be most of the header -- but a title in a collapsed
+		// column is a fraction of it, and that is the failure this catches.
+		expect((await name.boundingBox())?.width).toBeGreaterThan(across / 2);
 	});
 
 	test("one key moves between them, in both directions", async ({ page }) => {

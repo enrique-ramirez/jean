@@ -5,6 +5,8 @@ import {
 	nowPlayingScreen,
 	openLibrary,
 	requestsTo,
+	scrollTo,
+	scrollTop,
 	scrollUntilMounted,
 	searchField,
 	searchFor,
@@ -121,6 +123,17 @@ test.describe("navigation and appearance", () => {
 
 		// Mod+K searches the whole library; '/' filters the list on screen.
 		await expect(searchField(page)).toBeFocused();
+	});
+
+	test("Mod+Home goes back to the top of the view", async ({ page }) => {
+		await expect(trackRow(page, 0)).toBeAttached();
+		await scrollTo(page, 2000);
+		await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
+
+		// Above the list rather than to its first row: bare Home is the cursor's, and the header is
+		// what a long playlist has scrolled off.
+		await page.keyboard.press("ControlOrMeta+Home");
+		await expect.poll(() => scrollTop(page)).toBe(0);
 	});
 
 	test("Mod+B hides the sidebar and brings it back", async ({ page }) => {

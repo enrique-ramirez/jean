@@ -1,4 +1,13 @@
-import { Keyboard, Moon, PanelLeft, Settings, Sun } from "lucide-react";
+import {
+	ChevronUp,
+	Keyboard,
+	Moon,
+	PanelLeft,
+	Search,
+	Settings,
+	Sun,
+	X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GENRES_HREF } from "@/domain/library/genreRoute";
 import { useLibrary } from "@/domain/library/useLibrary";
@@ -56,6 +65,7 @@ import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { useTheme } from "@/shared/hooks/useTheme";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
@@ -83,7 +93,6 @@ import { askToFocusSidebar } from "./sidebarFocus";
 import { useDocumentIdentity } from "./useDocumentIdentity";
 import { useHashRoute } from "./useHashRoute";
 import { useScrollMemory } from "./useScrollMemory";
-import { useTheme } from "./useTheme";
 
 const SEEK_STEP = 5;
 
@@ -138,6 +147,7 @@ function Shell() {
 		false,
 	);
 	const [isQueueDrawerOpen, setIsQueueDrawerOpen] = useState(false);
+	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [tabDirection, setTabDirection] = useState(0);
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -323,6 +333,29 @@ function Shell() {
 		[browsable, selectedId],
 	);
 
+	// Mirrors the branch order in the view switch below. Add a route to both, in the same order --
+	// nothing fails if they drift apart.
+	const place = isHome
+		? t("route.home")
+		: isGenres
+			? t("home.allGenres")
+			: isAll || shelf || genre || album
+				? listView.title
+				: isSearch
+					? t("search.title")
+					: artist
+						? artist
+						: (playlist?.title ?? "");
+
+	const backToTop = useCallback(
+		() => scrollRef.current?.scrollTo({ top: 0 }),
+		[],
+	);
+
+	const isSearchShown = !isCompactViewport || isSearchOpen;
+	const isPlaceShown = isCompactViewport && !isSearchOpen;
+	const isBrandShown = !isCompactViewport || !isSearchOpen;
+
 	const jumpTo = useRef<string | null>(null);
 	const arrivingAtPlayingTrack = jumpTo.current === route;
 
@@ -408,6 +441,27 @@ function Shell() {
 	);
 
 	const openSearch = useCallback(() => openRoute(ROUTE.search), [openRoute]);
+
+	// isSearchOpen defaults closed, so a reload landing directly on the search route needs this to
+	// show the field.
+	useEffect(() => {
+		if (isSearch) setIsSearchOpen(true);
+	}, [isSearch]);
+
+	// Focus follows only a deliberate reveal (revealSearch), never this effect: arriving at the
+	// results with the field already open must not raise a software keyboard over them.
+	const { focus: focusSearch } = search;
+	const focusOnReveal = useRef(false);
+	useEffect(() => {
+		if (!isSearchOpen || !focusOnReveal.current) return;
+		focusOnReveal.current = false;
+		focusSearch();
+	}, [isSearchOpen, focusSearch]);
+
+	const revealSearch = useCallback(() => {
+		focusOnReveal.current = true;
+		setIsSearchOpen(true);
+	}, []);
 
 	const showArtistTab = useCallback(
 		(tab: ArtistTab) => {
@@ -521,7 +575,11 @@ function Shell() {
 		volumeUp: () => volume.up(),
 		volumeDown: () => volume.down(),
 		toggleMute: () => volume.toggleMute(),
-		globalSearch: () => search.focus(),
+		globalSearch: () => {
+			revealSearch();
+			search.focus();
+		},
+		backToTop,
 		openPalette: () => setIsPaletteOpen(true),
 		toggleSidebar: () => {
 			toggleSidebar();
@@ -566,48 +624,75 @@ function Shell() {
 					onClick={toggleSidebar}
 				/>
 
-				{isCompactViewport ? null : (
-					<p className={styles.brand}>
+				{isBrandShown ? (
+					<a className={styles.brand} href={`#/${ROUTE.home}`}>
 						je<span>a</span>n
-					</p>
-				)}
+					</a>
+				) : null}
 
-				<LibrarySearchField
-					search={search}
-					library={library}
-					onChange={search.type}
-					onSubmit={() => {
-						search.commit();
-						openSearch();
-					}}
-					onSelect={(suggestion) => {
-						if (suggestion.kind !== "track") {
-							// A place the query was only ever a way of reaching, so the query is not promoted
-							// and the field goes back to whatever search is actually on screen.
-							search.revert();
-							openRoute(routeOfSuggestion(suggestion));
-							return;
-						}
+				{isPlaceShown && place ? (
+					<button
+						type="button"
+						className={styles.place}
+						onClick={backToTop}
+						aria-label={t("view.backToTop", { place })}
+					>
+						<span className={styles.placeName}>{place}</span>
+						<ChevronUp size={14} strokeWidth={2.5} aria-hidden="true" />
+					</button>
+				) : null}
 
-						// A track does not move you: the results are materialised so it has somewhere to play
-						// from, and the status bar and the sidebar say where the sound is coming from.
-						const { query, refs } = search.commit();
-						const position = refs ? refs.indexOf(suggestion.ref) : -1;
-						if (refs && position >= 0)
-							void playSet({
-								kind: SCRATCH_KIND.search,
-								label: query,
-								refs,
-								position,
-							});
-					}}
-					onDismiss={() => {
-						search.clear();
-						if (isSearch) navigate(`/${selectedId}`);
-					}}
-				/>
+				{isSearchShown ? (
+					<LibrarySearchField
+						search={search}
+						library={library}
+						onChange={search.type}
+						onSubmit={() => {
+							search.commit();
+							openSearch();
+						}}
+						onSelect={(suggestion) => {
+							if (suggestion.kind !== "track") {
+								// A place the query was only ever a way of reaching, so the query is not promoted
+								// and the field goes back to whatever search is actually on screen.
+								search.revert();
+								openRoute(routeOfSuggestion(suggestion));
+								return;
+							}
+
+							// A track does not move you: the results are materialised so it has somewhere to play
+							// from, and the status bar and the sidebar say where the sound is coming from.
+							const { query, refs } = search.commit();
+							const position = refs ? refs.indexOf(suggestion.ref) : -1;
+							if (refs && position >= 0)
+								void playSet({
+									kind: SCRATCH_KIND.search,
+									label: query,
+									refs,
+									position,
+								});
+						}}
+						onDismiss={() => {
+							search.clear();
+							if (isSearch) navigate(`/${selectedId}`);
+						}}
+					/>
+				) : null}
 
 				<div className={styles.actions}>
+					{isCompactViewport ? (
+						<Button
+							variant="ghost"
+							icon={isSearchOpen ? X : Search}
+							aria-label={t(
+								isSearchOpen ? "search.hide" : "search.yourLibrary",
+							)}
+							aria-expanded={isSearchOpen}
+							onClick={() =>
+								isSearchOpen ? setIsSearchOpen(false) : revealSearch()
+							}
+						/>
+					) : null}
 					<Button
 						variant="ghost"
 						className={styles.shortcuts}
@@ -622,14 +707,16 @@ function Shell() {
 						aria-expanded={isSettingsOpen}
 						onClick={() => setIsSettingsOpen(true)}
 					/>
-					<Button
-						variant="ghost"
-						icon={theme === "dark" ? Sun : Moon}
-						aria-label={
-							theme === "dark" ? t("theme.toLight") : t("theme.toDark")
-						}
-						onClick={toggleTheme}
-					/>
+					{isCompactViewport ? null : (
+						<Button
+							variant="ghost"
+							icon={theme === "dark" ? Sun : Moon}
+							aria-label={
+								theme === "dark" ? t("theme.toLight") : t("theme.toDark")
+							}
+							onClick={toggleTheme}
+						/>
+					)}
 				</div>
 			</header>
 

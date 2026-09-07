@@ -456,8 +456,10 @@ export const en = {
 	"rating.unrated": "Unrated",
 	"route.artist": "Artist",
 	"route.genre": "Genre",
+	"route.home": "Home",
 	"route.shelf": "Shelf",
 	"search.clear": "Clear search",
+	"search.hide": "Close search",
 	"search.idle": {
 		one: "{count} track in your library. Title, artist and album, as you type — every word has to match, in any order.",
 		other:
@@ -485,6 +487,14 @@ export const en = {
 	"search.stillReading": "Still reading your library",
 	"search.title": "Search",
 	"search.yourLibrary": "Search your library",
+	"settings.appearance.choose": "Theme",
+	"settings.appearance.dark": "Dark",
+	"settings.appearance.follow": "Match my system",
+	"settings.appearance.following":
+		"Following your system, which is set to {name}.",
+	"settings.appearance.light": "Light",
+	"settings.appearance.scope": "Applies straight away, on this device only.",
+	"settings.appearance.title": "Appearance",
 	"settings.artistInfo.enable": "Look up artists on MusicBrainz and Wikipedia",
 	"settings.artistInfo.help": "About artist lookups",
 	"settings.artistInfo.thisDevice": "this device",
@@ -545,6 +555,7 @@ export const en = {
 	"shelf.upgrade.blurb": "You play these a lot, and they are low bitrate",
 	"shelf.upgrade.title": "Time for an upgrade",
 	"shelf.upgradeCaption": "{bitrate} kbps, {plays}",
+	"shortcut.backToTop": "Back to the top",
 	"shortcut.clearSelection": "Clear selection",
 	"shortcut.cursorBottom": "Last track",
 	"shortcut.cursorDown": "Move down",
@@ -653,6 +664,7 @@ export const en = {
 	"track.unknownArtist": "Unknown artist",
 	"track.unknownTitle": "Unknown title",
 	"view.allGenres": "All genres",
+	"view.backToTop": "Back to the top of {place}",
 	"view.everyGenre": "Every genre in your library",
 	"view.playedShare": "{share}% played",
 	"view.trackCount": {

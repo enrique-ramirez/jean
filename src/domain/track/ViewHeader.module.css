@@ -143,9 +143,12 @@
 @media (max-width: 720px) {
 	.header {
 		grid-template-columns: auto minmax(0, 1fr);
+		/* A named area this template omits still gets an implicit column for the element assigned to
+		 it, which collapses the title beside it to nothing. Keep the tabs row named here. */
 		grid-template-areas:
 			"aside naming"
-			"meta  meta";
+			"meta  meta"
+			"tabs  tabs";
 		gap: 16px 14px;
 		padding: 20px 16px 16px;
 	}
@@ -183,6 +186,14 @@
 
 	.actions {
 		justify-content: space-between;
+	}
+
+	/* Anything past the play pair takes the rest of its line, so a wrapped one is a full-width row
+	 rather than a short button under a gap. The second selector reaches into Menu's own anchor div,
+	 which would otherwise grow around a trigger button that stayed its own width. */
+	.actions > :nth-child(n + 3),
+	.actions > :nth-child(n + 3) > button {
+		flex-grow: 1;
 	}
 }
 

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
+import { Appearance } from "./Appearance";
 import { ArtistInformation } from "./ArtistInformation";
 import { CachedArtwork } from "./CachedArtwork";
 import { Language } from "./Language";
@@ -100,6 +101,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 
 				<div className={styles.body}>
 					<TagWriting />
+					<Appearance />
 					<Language />
 					<Playback />
 					<ThisDevice />

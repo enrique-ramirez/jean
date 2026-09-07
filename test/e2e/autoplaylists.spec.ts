@@ -88,6 +88,28 @@ test.describe("creating one from a genre", () => {
 		expect(posts(player, "/autoplaylists").length).toBe(1);
 	});
 
+	// A wrapped action left at its own width is a short button under a gap the two above it filled.
+	test("it fills its row once the header is too narrow to hold three", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(!isMobile, "the actions only wrap in the compact header");
+		await page.setViewportSize({ width: 340, height: 900 });
+		await page.goto("/#/genre/Post%20Rock");
+
+		const play = viewHeader(page).getByRole("button", {
+			name: "Play",
+			exact: true,
+		});
+		const create = await createButton(page).boundingBox();
+		const above = await play.boundingBox();
+		const header = await viewHeader(page).boundingBox();
+
+		expect(create?.y).toBeGreaterThan((above?.y ?? 0) + (above?.height ?? 0));
+		// The header's own gutter is all that is left either side of it.
+		expect(create?.width).toBe((header?.width ?? 0) - 32);
+	});
+
 	test("it is named for the genre, with no prefix, and opens once made", async ({
 		page,
 		player,

@@ -3,6 +3,7 @@ import {
 	openLibrary,
 	openSidebar,
 	playedFrom,
+	revealSearch,
 	scratchOf,
 	searchField,
 	searchFor,
@@ -41,11 +42,17 @@ const kinds = (page: Parameters<typeof openLibrary>[0]) =>
 const hash = (page: Parameters<typeof openLibrary>[0]) =>
 	page.evaluate(() => location.hash);
 
+// Every test here is about the field, which the compact header keeps behind an icon.
+const openWithSearch = async (page: Parameters<typeof openLibrary>[0]) => {
+	await openLibrary(page);
+	await revealSearch(page);
+};
+
 test.describe("previewing a search without leaving the page", () => {
 	test("typing draws results over the view rather than replacing it", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
@@ -62,7 +69,7 @@ test.describe("previewing a search without leaving the page", () => {
 	test("emptying the field by hand leaves you exactly where Escape would", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
@@ -80,7 +87,7 @@ test.describe("previewing a search without leaving the page", () => {
 	test("Escape closes the preview before it clears the query", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 
@@ -94,7 +101,7 @@ test.describe("previewing a search without leaving the page", () => {
 	});
 
 	test("clicking the field reopens what Escape shut", async ({ page }) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await searchField(page).press("Escape");
 		await expect(options(page)).toHaveCount(0);
@@ -106,7 +113,7 @@ test.describe("previewing a search without leaving the page", () => {
 	});
 
 	test("an arrow reopens what Escape shut", async ({ page }) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await searchField(page).press("Escape");
 		await expect(options(page)).toHaveCount(0);
@@ -116,7 +123,7 @@ test.describe("previewing a search without leaving the page", () => {
 	});
 
 	test("a space is a character, not a second Enter", async ({ page }) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill("baba");
 		await searchField(page).press("ArrowDown");
 		await expect(options(page).first()).toHaveAttribute(
@@ -134,7 +141,7 @@ test.describe("what a query might mean", () => {
 	test("an artist the query names gets a section of their own, above the tracks", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 
 		await expect(page.getByText("Artists", { exact: false })).toBeVisible();
@@ -146,7 +153,7 @@ test.describe("what a query might mean", () => {
 	test("a query naming exactly one thing starts with the cursor on it", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toContainText(ARTIST);
 
@@ -163,7 +170,7 @@ test.describe("what a query might mean", () => {
 		test("is left ambiguous, with nothing under the cursor", async ({
 			page,
 		}) => {
-			await openLibrary(page);
+			await openWithSearch(page);
 			// A track is now titled exactly what the artist is called, so neither reading wins
 			// and the app declines to guess.
 			await searchField(page).fill(QUERY);
@@ -178,7 +185,7 @@ test.describe("what a query might mean", () => {
 	test("an album the query names gets a section of its own", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(ALBUM);
 
 		await expect(page.getByText("Albums (1)")).toBeVisible();
@@ -192,7 +199,7 @@ test.describe("what a query might mean", () => {
 		page,
 		player,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchFor(page, OTHER);
 
 		await searchField(page).fill(ALBUM);
@@ -212,7 +219,7 @@ test.describe("what a query might mean", () => {
 	test("a genre the query names is one quiet row, and it says how many there are", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill("rock");
 
 		// Four genres hold `Rock` whole; one row is drawn and the heading is where the
@@ -222,7 +229,7 @@ test.describe("what a query might mean", () => {
 	});
 
 	test("choosing a genre opens it", async ({ page, player }) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(GENRE);
 
 		await ofKind(page, "genre").click();
@@ -242,7 +249,7 @@ test.describe("what a query might mean", () => {
 		});
 
 		test("draws them artists, albums, genre, then tracks", async ({ page }) => {
-			await openLibrary(page);
+			await openWithSearch(page);
 			await searchField(page).fill(QUERY);
 			await expect(options(page).first()).toBeVisible();
 
@@ -254,7 +261,7 @@ test.describe("what a query might mean", () => {
 		test("leaves the cursor on nothing, since the word has three readings", async ({
 			page,
 		}) => {
-			await openLibrary(page);
+			await openWithSearch(page);
 			await searchField(page).fill(QUERY);
 			await expect(options(page).first()).toBeVisible();
 
@@ -271,7 +278,7 @@ test.describe("what a query might mean", () => {
 		page,
 		player,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchFor(page, OTHER);
 
 		await searchField(page).fill(QUERY);
@@ -293,7 +300,7 @@ test.describe("committing to a result", () => {
 		page,
 		player,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 
@@ -312,7 +319,7 @@ test.describe("committing to a result", () => {
 		page,
 		player,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 
@@ -344,7 +351,7 @@ test.describe("committing to a result", () => {
 		page,
 		player,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 
@@ -363,7 +370,7 @@ test.describe("committing to a result", () => {
 	test("playing a track makes the search real, so it can be got back to", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await tracks(page).first().click();
 
@@ -384,7 +391,7 @@ test.describe("a draft is not the search", () => {
 	test("typing over a committed search does not disturb the page behind it", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchFor(page, QUERY);
 
 		await searchField(page).fill(OTHER);
@@ -401,7 +408,7 @@ test.describe("a draft is not the search", () => {
 	test("Escape gives the draft back rather than ending the search", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchFor(page, QUERY);
 		await searchField(page).fill(OTHER);
 
@@ -427,7 +434,7 @@ test.describe("a draft is not the search", () => {
 		// and the clear button are for.
 		test.skip(isMobile, "nothing outside the panel to press");
 
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchFor(page, QUERY);
 		await searchField(page).fill(OTHER);
 		await expect(options(page).first()).toBeVisible();
@@ -440,7 +447,7 @@ test.describe("a draft is not the search", () => {
 	test("clearing is what ends a search, and it ends all of it", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchFor(page, QUERY);
 
 		await page.getByLabel("Clear search").click();
@@ -458,7 +465,7 @@ test.describe("on a phone", () => {
 	test("swiping up puts the panel back where it came from", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 
@@ -478,7 +485,7 @@ test.describe("on a phone", () => {
 	test("the preview covers the page under it, status bar included", async ({
 		page,
 	}) => {
-		await openLibrary(page);
+		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 

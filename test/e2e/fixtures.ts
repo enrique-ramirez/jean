@@ -261,8 +261,11 @@ export const closeSidebar = async (page: Page) => {
 	if ((await nav.count()) === 0) return;
 	if ((await nav.getAttribute("data-open")) !== "true") return;
 	// The scrim, not the toggle in the top bar: an open drawer overlaps its own
-	// toggle, so clicking that waits for a button the drawer is sitting on.
-	await page.getByRole("button", { name: "Close menu" }).click();
+	// toggle, so clicking that waits for a button the drawer is sitting on. Near
+	// the scrim's own right edge, since the drawer covers its middle on a phone.
+	const scrim = page.getByRole("button", { name: "Close menu" });
+	const across = (await scrim.boundingBox())?.width ?? 0;
+	await scrim.click({ position: { x: across - 8, y: 8 } });
 	await expect(nav).toHaveAttribute("data-open", "false");
 };
 
@@ -371,9 +374,20 @@ export const openLibrary = async (page: Page) => {
 export const searchField = (page: Page) =>
 	page.getByLabel("Search your library");
 
+// The compact header carries the field behind an icon, so most of what a spec does with it starts
+// here. Closes the drawer first, which covers the top bar on a phone and swallows the tap; desktop
+// has no icon and nothing to press.
+export const revealSearch = async (page: Page) => {
+	await closeSidebar(page);
+	const icon = page.getByRole("button", { name: "Search your library" });
+	if (await icon.isVisible()) await icon.click();
+	await expect(searchField(page)).toBeVisible();
+};
+
 // The results page, specifically. Escape first because a query naming exactly one artist starts with
 // the cursor on them, and Enter there is a commitment to the artist rather than to the search.
 export const searchFor = async (page: Page, text: string) => {
+	await revealSearch(page);
 	await searchField(page).fill(text);
 	await searchField(page).press("Escape");
 	await searchField(page).press("Enter");

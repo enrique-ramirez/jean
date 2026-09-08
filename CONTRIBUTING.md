@@ -41,6 +41,7 @@ pnpm test:live      # the small suite against a real player. Needs LIVE
 pnpm fake           # the fake player alone, on :8880
 pnpm demo           # build the live demo into dist-demo/
 pnpm demo:preview   # serve that
+pnpm update-claude  # refresh .claude/ from the ai-engineering kit
 ```
 
 `pnpm lint` and `pnpm typecheck` MUST pass. Both are seconds; run them freely. `pnpm test:unit` is nearly as cheap.
@@ -154,6 +155,8 @@ Each file has one job. `README.md` is what the project is and how to use it. `CO
 Two reviewers cover that rest, over uncommitted changes and in this order: `style-reviewer` for design, structure, naming and duplication, then `comment-reaper` for comments and the prose of documentation. Run both before asking for a commit. Comment density is the rule that slips first, and it slips a little at a time.
 
 `.claude/review-profile.md` is what tells both agents about this repository. The agents, the hooks and the voice files come from the `ai-engineering` kit and are the same in every project; the profile is the only part that is Jean's.
+
+`pnpm update-claude` takes the kit's current version of those files. It reports anything under `.claude/` that was edited here rather than in the kit, and moves it to `<name>.local.bak` rather than dropping it. A rule worth keeping belongs in the kit, so every project gets it; `.claude/register.local.txt` is the place for something that is genuinely only true of Jean.
 
 ## 10. Writing
 

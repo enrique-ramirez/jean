@@ -19,3 +19,5 @@ node_modules/.tmp
 *.tsbuildinfo
 *.local.txt
 .claude/settings.json.bak
+*.local.bak
+.claude/.review-kit.manifest

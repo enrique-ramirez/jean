@@ -9,10 +9,6 @@ import {
 import { autoscrollStep } from "@/shared/lib/dragGeometry";
 import { subscribers } from "@/shared/lib/store";
 
-// No pointer capture: capture retargets every later event to the capturing element, and the natural
-// one here is the scroll container, an ancestor of the rows, so a handler on a descendant would
-// never fire again.
-
 export interface DragPayload<T = unknown> {
 	items: T;
 	label: string;
@@ -67,8 +63,6 @@ export const setGhostElement = (element: HTMLElement | null) => {
 	ghostElement = element;
 };
 
-// A drag that started somewhere with `user-select: none` can still select text it passes over, so
-// the whole document is held still for the gesture.
 const setDocumentDragging = (on: boolean) => {
 	document.body.style.userSelect = on ? "none" : "";
 	document.body.style.cursor = on ? "grabbing" : "";
@@ -139,8 +133,6 @@ export function useDragSource<T = unknown>({
 
 	useEffect(() => teardown, [teardown]);
 
-	// Hit-testing on a frame rather than on the move event, so a target that scrolls under a
-	// stationary pointer still arms.
 	const tick = useCallback(() => {
 		const current = gesture.current;
 		if (!current?.started) return;
@@ -161,8 +153,6 @@ export function useDragSource<T = unknown>({
 	const onPointerDown = (event: ReactPointerEvent) => {
 		if (disabled || event.pointerType !== "mouse" || event.button !== 0) return;
 
-		// A gesture still in flight owns three window listeners whose references are about to become
-		// unreachable, and teardown could never remove them again.
 		teardown();
 		dragged.current = false;
 
@@ -208,7 +198,6 @@ export function useDragSource<T = unknown>({
 		current.onUp = () => {
 			const { started } = current;
 			const over = state.over;
-			// Read before `teardown` clears the state.
 			const refused = state.refusal !== null;
 			teardown();
 			if (started && over && !refused) latest.current.onDrop(over, payload);

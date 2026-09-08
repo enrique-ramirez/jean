@@ -6,10 +6,8 @@ import { expect, requestsTo, scrollTop, test, times } from "./fixtures.ts";
 const FAR = 25000;
 
 // Rows on screen once the list has stopped moving and the player has stopped
-// being asked for covers. Watched rather than waited out: the wait was a guess
-// at an animated scroll across a list 1.4 million pixels tall, and a truncation
-// of the request log taken while responses were still arriving counted the
-// first screenful into the jump it was meant to exclude.
+// being asked for covers. Watched rather than waited out, since a fixed
+// timeout either misses a slow scroll or reads the request log mid-flight.
 const settle = async (page: Page, player: FakePlayer) => {
 	let last = { at: -1, asked: -1 };
 	await expect
@@ -38,16 +36,15 @@ test.describe("artwork loading", () => {
 	}) => {
 		await page.goto("/#/p7");
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
-		// Let the first screenful arrive, so what follows measures the jump rather
-		// than the load.
 		await expect
 			.poll(() => requestsTo(player, "artwork").length)
 			.toBeGreaterThan(0);
 		await settle(page, player);
 		player.requests.length = 0;
 
-		// Following playback flies the list there, mounting and unmounting every
-		// row in between. Native lazy loading counts each of those as visible.
+		// Playing the far track flies the list there rather than scrolling it,
+		// since native lazy loading would count every row mounted and unmounted
+		// along the way as visible.
 		await page.evaluate(
 			(index: number) =>
 				fetch(`/api/player/play/p7/${index}`, { method: "POST" }),
@@ -58,8 +55,6 @@ test.describe("artwork loading", () => {
 		const rows = await settle(page, player);
 		const asked = requestsTo(player, "artwork").length;
 
-		// A little over one screenful: the destination is measured rather than
-		// computed, so the list settles through a row or two on arrival.
 		expect(
 			asked,
 			`${asked} artwork requests for ${rows} rows on screen`,
@@ -85,8 +80,6 @@ test.describe("artwork loading", () => {
 		const seen = requestsTo(player, "artwork").length;
 		player.requests.length = 0;
 
-		// Back over rows that have all been answered for once, including the ones
-		// with no cover at all.
 		await page.evaluate(() =>
 			(document.querySelector("main") as HTMLElement).scrollTo(0, 0),
 		);
@@ -107,11 +100,9 @@ test.describe("artwork loading", () => {
 test.describe("one cover per album, not per track", () => {
 	test.use({ settings: { "jean.layout": "compact" } });
 
-	const TRACKS = 54; // the captured fixture, in 12 albums
+	const TRACKS = 54;
 	const ALBUMS = 12;
 
-	// To the bottom rather than a fixed distance: how far 54 tracks run depends on
-	// the row height, and a walk that stops short is not the whole list.
 	const walkTheList = async (page: Page, player: FakePlayer) => {
 		await expect
 			.poll(
@@ -152,8 +143,6 @@ test.describe("one cover per album, not per track", () => {
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
 		await walkTheList(page, player);
 
-		// Distinct srcs rather than a count of requests: a count alone would also
-		// pass if the covers simply had not loaded.
 		const { rows, covers } = await page.evaluate(() => {
 			const drawn = [
 				...document.querySelectorAll<HTMLImageElement>('main [role="row"] img'),
@@ -188,8 +177,6 @@ test.describe("one cover per album, not per track", () => {
 			Object.defineProperty(window, "__mintedArtwork", { get: () => minted });
 		});
 
-		// Slower than the churn below, so rows are mounting and unmounting while the
-		// cover they share is still being fetched.
 		await page.route("**/api/artwork/**", async (route) => {
 			await new Promise((done) => setTimeout(done, 600));
 			await route.continue();
@@ -236,8 +223,6 @@ test.describe("one cover per album, not per track", () => {
 	});
 });
 
-// One component draws every cover in the app, and the reason is this: the hold
-// before the picture is the part the user sees on every screen.
 test.describe("what a cover looks like before it arrives", () => {
 	// Named rather than found by class: `data-state` is a shared idiom in here and
 	// a hashed module class is not a contract.
@@ -260,13 +245,10 @@ test.describe("what a cover looks like before it arrives", () => {
 
 		const first = cover(page).first();
 		await expect(first).toHaveAttribute("data-artwork", /waiting|granted/);
-		// The icon rather than a bare box: queued and downloading say the same
-		// thing, so they draw the same thing.
 		await expect(first.locator("svg")).toBeVisible();
 
-		// A browser paints alt text into the box the moment an <img> has a src and
-		// no bytes, which is what turned a screen of albums into a screen of the
-		// word "cover". Transparent until it has decoded is the whole fix.
+		// A browser paints alt text into the box the moment an <img> has a src
+		// and no bytes, so every cover stays transparent until it has decoded.
 		const showing = await page
 			.locator("main img")
 			.evaluateAll(

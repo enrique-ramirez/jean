@@ -1,5 +1,3 @@
-// Not named `lyrics.ts`: on a case-insensitive filesystem `'./Lyrics'` resolves here instead of to `Lyrics.tsx`.
-
 export interface LyricLine {
 	at: number;
 	text: string;
@@ -16,8 +14,6 @@ const TIMESTAMP = /^\[(\d{1,3}):([0-5]?\d)(?:[.:](\d{1,3}))?\]/;
 
 const ID_TAG = /^\[([a-z]{2,8}):(.*)\]$/i;
 
-// An LRC fraction is not always hundredths: `[00:12.5]` is five tenths, `[00:12.500]` five hundred milliseconds.
-// Pad, never divide by a guessed power of ten.
 const fractionSeconds = (digits: string | undefined) =>
 	digits ? Number(digits.padEnd(3, "0")) / 1000 : 0;
 

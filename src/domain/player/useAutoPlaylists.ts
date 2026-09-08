@@ -7,14 +7,9 @@ import { usePlaylists } from "./usePlayer";
 
 const KEY = "fooJeanPlaylists";
 
-// Absent, unreachable or unpaired this is an empty set and every playlist looks ordinary, so nothing
-// may treat "not an autoplaylist" as a fact rather than as the absence of one. It only ever removes
-// an affordance.
 export function useAutoPlaylists(): ReadonlySet<string> {
 	const { discovery } = useFooJean();
 	const { origin, token } = discovery;
-	// The join is on `beefwebId`, which beefweb assigns lazily, so this waits on the playlists query
-	// rather than racing it.
 	const { data: playlists } = usePlaylists();
 
 	const { data } = useQuery({

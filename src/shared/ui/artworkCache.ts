@@ -1,18 +1,9 @@
-// beefweb sends `Cache-Control: max-age=3, must-revalidate` on every response, one filter for the
-// whole API, so a sleeve is cached as briefly as a status poll and nothing on the client can change
-// that. Cache Storage is the way out: it ignores caching headers entirely.
-
-// v2 because v1 was keyed on the artwork address, which names a *position* in a playlist rather than
-// a picture. Everything it holds is suspect, so the rename discards it rather than carrying it over.
 const CACHE = "jean-artwork-v2";
 
-// Cache Storage keys are Requests, so an identity has to be spelled as a URL. It is never fetched.
 const addressOf = (key: string) => `/jean-artwork/${encodeURIComponent(key)}`;
 
 const BUDGET_BYTES = 500 * 1024 * 1024;
 
-// `caches` is secure-context only, so an install served over plain HTTP has none of this and must go
-// on working. Nothing here throws.
 export const canCacheArtwork = () =>
 	typeof caches !== "undefined" && typeof Response !== "undefined";
 
@@ -21,13 +12,10 @@ const sizeOf = (response: Response) =>
 
 let heldBytes: number | null = null;
 
-// Reading the total, adding to it and evicting against it is a read-modify-write, so stores are
-// serialised: two covers arriving together would each evict against the same stale total.
 let queue: Promise<unknown> = Promise.resolve();
 
 const inTurn = <T>(run: () => Promise<T>): Promise<T> => {
 	const next = queue.then(run, run);
-	// Swallowed on the chain, not on the caller's copy: one failed store must not stop the next.
 	queue = next.then(
 		() => undefined,
 		() => undefined,
@@ -116,9 +104,6 @@ export async function forgetArtwork() {
 	}
 }
 
-// One blob URL per *picture*, shared and counted. `URL.createObjectURL` mints a new handle on every
-// call, and a track list draws one album across a dozen rows -- which under the old address-keyed
-// form were a dozen different keys the moment two views drew the same record.
 const handles = new Map<string, { url: string; refs: number }>();
 
 const share = (key: string, blob: Blob) => {
@@ -148,7 +133,7 @@ export async function heldArtwork(key: string): Promise<string | null> {
 
 /**
  * The address to point an `<img>` at, and a claim on it. Every caller that holds one MUST drop it.
- * `key` says which picture this is and `src` only says where to ask for it -- so a cover already held
+ * `key` identifies the artwork itself; `src` only says where to ask for it -- so artwork already held
  * under another view's address is answered without a request.
  */
 export async function holdArtwork(
@@ -162,8 +147,6 @@ export async function holdArtwork(
 	if (held) return held;
 
 	const response = await fetch(src, { signal });
-	// A 404 is `no artwork found` for a track that has none, and deliberately not kept: a sleeve added
-	// to the file later has to turn up on the next look.
 	if (!response.ok) throw new Error(`no artwork: ${response.status}`);
 
 	await keepArtwork(key, response.clone());

@@ -1,7 +1,3 @@
-// What the four now-playing specs share: the lyric fixtures, the way onto the
-// screen, and the panels a phone keeps behind a button and a desktop keeps in a
-// leaf of the gatefold.
-
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
@@ -11,8 +7,6 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// The lyric tag is `$meta(unsynced lyrics)` and the name lies: it holds LRC
-// timestamps about a third of the time.
 const LYRIC = {
 	// Repeated timestamps on one line: a refrain sung twice.
 	synced: [
@@ -54,13 +48,10 @@ export const TAGGED = {
 		Deléctrico: { "$meta(unsynced lyrics)": LYRIC.boilerplate },
 		Pendejo: { "$meta(unsynced lyrics)": LYRIC.long },
 		"El Loco": { "$meta(unsynced lyrics)": LYRIC.longSynced },
-		// Soy Rock is left with no lyric tag at all -- the common case, at about
-		// three quarters of a real library.
+		// Soy Rock is left with no lyric tag at all -- the common case in a real library.
 	},
 };
 
-// What `foo_openlyrics` does when its search lands: the tag on the playing file
-// changes mid-track, and beefweb announces nothing at all.
 export const writeLyric = (player: FakePlayer, lyric: string) => {
 	const item = player.player.activeItem;
 	const track = player.playlistById(item.playlistId)?.items[item.index];
@@ -74,10 +65,6 @@ export const playRow = async (page: Page, row: number) => {
 	await openNowPlaying(page);
 };
 
-// Where the three panels are, which is a question about the viewport rather
-// than about the panels: the gatefold's right leaf, or the layer a phone opens
-// from the Lyrics button. Everything that reads one goes through here rather
-// than knowing which.
 export const trackInfo = (page: Page) =>
 	page.getByRole("region", { name: "Track information" });
 

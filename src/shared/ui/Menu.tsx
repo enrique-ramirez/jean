@@ -40,13 +40,9 @@ export function Menu({
 		const element = menuRef.current;
 		if (!element) return;
 
-		// Read with no correction in place, or each pass measures the previous pass's shift and
-		// compounds it.
 		element.style.setProperty("--menu-shift", "0px");
 		const rect = element.getBoundingClientRect();
 
-		// `clientWidth`, not `innerWidth`: it excludes a classic scrollbar, which `innerWidth` counts as
-		// space the menu is allowed to sit under.
 		const pastLeft = GUTTER - rect.left;
 		const pastRight =
 			rect.right - (document.documentElement.clientWidth - GUTTER);

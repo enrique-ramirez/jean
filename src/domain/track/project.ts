@@ -5,7 +5,6 @@ import type { PlaylistSnapshot } from "./playlistStore";
 // A ref is an integer: a playlist index on one source, a position in the paths array on the other.
 export type Refs = Int32Array | number[];
 
-// A view's rows and its source's refs are the same list only when nothing filtered them, which is what a null `indices` says.
 export const refAt = (indices: Refs | null | undefined, position: number) =>
 	indices ? indices[position] : position;
 
@@ -60,7 +59,6 @@ export const EMPTY_VIEW: TrackView = Object.freeze({
 // rule and the two have to stay in step, or the count beside a name disagrees with the tracks behind it.
 export function refsOfGenre(rows: TrackColumns[], genre: string): Int32Array {
 	const wanted = tagKey(genre);
-	// An empty key would match every untagged row rather than nothing.
 	if (!wanted) return new Int32Array(0);
 
 	return Int32Array.from(

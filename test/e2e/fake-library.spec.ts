@@ -15,14 +15,12 @@ interface LibraryNode {
 import { expect, inSequence, test } from "./fixtures.ts";
 
 // The fake's media library, checked against the shapes measured on a live
-// foobar2000 running beefweb 0.11~git.dc0fdfc and written down in ../../src/shared/api/README.md under
-// "The media library API". Where the OpenAPI spec and the live player
-// disagreed, the player won: there is no `pathSeparator` on the by-path
-// response, and `range` is a query parameter rather than a path segment.
+// foobar2000 running a pre-release beefweb 0.11 and written down in
+// ../../src/shared/api/README.md under "The media library API". Where the
+// OpenAPI spec and the live player disagreed, the player won: there is no
+// `pathSeparator` on the by-path response, and `range` is a query parameter
+// rather than a path segment.
 
-// Pinned on rather than inherited, so the library endpoints are still exercised
-// on a run that sends the rest of the suite down the autoplaylist fallback
-// (JEAN_NO_LIBRARY_API=1).
 test.use({ library: { supported: true, enabled: true } });
 
 const api = (request: APIRequestContext, path: string) =>
@@ -56,9 +54,6 @@ test.describe("the library the fake serves", () => {
 		expect(libraryItems.totalCount).toBe(54);
 		expect(libraryItems.items).toHaveLength(3);
 
-		// Relative to the media library folder and '/'-separated, even though the
-		// captured paths are absolute Windows ones: the live player reports
-		// pathSeparator as '\' and library paths still are not separated that way.
 		libraryItems.items.forEach((item: LibraryItem) => {
 			expect(item.path).not.toContain("\\");
 			expect(item.path).not.toMatch(/^[A-Z]:/);
@@ -106,7 +101,6 @@ test.describe("the library the fake serves", () => {
 			expect(node).not.toHaveProperty("columns");
 		});
 
-		// 54 captured tracks across three first-letter folders.
 		expect(libraryNodes.items.map((node: LibraryNode) => node.name)).toEqual([
 			"A",
 			"B",
@@ -165,7 +159,6 @@ test.describe("the library the fake serves", () => {
 		expect(response.status()).toBe(200);
 		expect((await response.body()).length).toBeGreaterThan(1000);
 
-		// A track that is not in the library is a 404, not an error.
 		const missing = await api(
 			request,
 			"/artwork/library?path=no/such/track.flac",
@@ -211,8 +204,6 @@ test.describe("adding from the library to a playlist", () => {
 	});
 });
 
-// DeaDBeeF, rather than a broken player: the state that sends Jean back to the
-// autoplaylist.
 test.describe("a player with no media library", () => {
 	test.use({ library: { supported: false } });
 
@@ -245,8 +236,6 @@ test.describe("a player with no media library", () => {
 });
 
 test.describe("a player whose library is switched off", () => {
-	// foobar2000 with no media library configured, which is a different state
-	// from a player that has no library API.
 	test.use({ library: { supported: true, enabled: false } });
 
 	test("it is supported but empty, and the endpoints still work", async ({
@@ -269,8 +258,6 @@ test.describe("what the fake will not pretend to do", () => {
 			"/library/items?columns=%25title%25&query=artist%20HAS%20x",
 		);
 
-		// A guessed filter would not return the player's set, so the fake refuses
-		// rather than approximating it.
 		expect(response.status()).toBe(400);
 	});
 

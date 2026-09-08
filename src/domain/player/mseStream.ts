@@ -1,10 +1,6 @@
 import { OggDemuxer } from "./oggDemux";
 import { initSegment, WebmMuxer } from "./webmMux";
 
-// Fed through MSE rather than handed a URL, which is the only way the buffer is ours: the browser
-// decides how much to gather before it starts, and on a stream delivered at 1x every second of that
-// is a second of lag for the whole session.
-
 const MIME = 'audio/webm; codecs="opus"';
 
 const START_MS = 250;
@@ -59,9 +55,6 @@ export function openMseStream(
 	function pump() {
 		if (!buffer || buffer.updating) return;
 
-		// A flush leaves the playhead where nothing is buffered, and the element sits there waiting for
-		// audio that was thrown away. A whole target's worth before jumping, not the first byte:
-		// landing on a few milliseconds of buffer empties it again at once.
 		if (resync && element.buffered.length > 0) {
 			const ready =
 				element.buffered.end(0) - element.buffered.start(0) >= START_MS / 1000;
@@ -167,8 +160,6 @@ export function openMseStream(
 			if (trimTimer) clearInterval(trimTimer);
 			URL.revokeObjectURL(src);
 		},
-		// The demuxer and the muxer deliberately survive this. OpusHead arrives once, at the top of the
-		// stream, so a demuxer restarted mid-stream waits for a header that is never coming.
 		flush() {
 			if (!buffer) return;
 			queue.length = 0;

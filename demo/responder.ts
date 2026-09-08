@@ -1,8 +1,5 @@
 import type { Responder } from "../test/fake-api/http.ts";
 
-// `ServerResponse` for a service worker, so the fake's routes never learn which
-// of the two they are answering.
-//
 // The `Response` resolves at `writeHead` rather than at `end`: the update stream
 // is answered and then written to for as long as the page is open.
 export interface Answer {

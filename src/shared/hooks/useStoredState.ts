@@ -2,8 +2,6 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 
 import { subscribers } from "@/shared/lib/store";
 
-// One value per key, shared by every hook that names it: two callers of one key must see each other's
-// writes, which a `useState` per caller does not do.
 const listeners = subscribers();
 const values = new Map<string, unknown>();
 
@@ -19,8 +17,6 @@ const read = <T>(key: string, fallback: T | (() => T)): T => {
 	}
 };
 
-// The same reference until something writes, which is what `useSyncExternalStore` requires of a
-// snapshot: a fresh object each call is an infinite render loop rather than a stale value.
 const held = <T>(key: string, fallback: T | (() => T)): T => {
 	if (!values.has(key)) values.set(key, read(key, fallback));
 	return values.get(key) as T;

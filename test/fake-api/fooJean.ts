@@ -3,22 +3,16 @@ import type { createState, Track } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
-// The optional tag-writing component, on a port of its own.
-
 export interface FooJeanOptions {
-	// What the discovery record says.
 	listening?: boolean;
 	error?: string;
 	portInUse?: boolean;
-	// Advertise a port other than the real one.
 	port?: number;
 
-	// `false` destroys the connection rather than answering 500. Those are
-	// different events in a browser.
 	reachable?: boolean;
 
-	// How many `/api/status` probes answer only after the client has given up on
-	// them. A loaded machine or a phone at the edge of the wifi, and the fault is
+	// A loaded machine or a phone at the edge of the wifi: how many `/api/status`
+	// probes answer only after the client has given up on them, with the fault
 	// gone by the next attempt.
 	slowStatus?: number;
 
@@ -32,44 +26,26 @@ export interface FooJeanOptions {
 	token?: string;
 	allowedFields?: string[];
 
-	// Force a status on `POST /api/tags`.
 	failWrites?: number | null;
 
-	// ---- autoplaylists ----
-	// `0` switches creation off, which is what `canCreateAutoPlaylists: false` means.
 	maxAutoPlaylists?: number;
 	// beefweb ids the component reports as already being autoplaylists, whether it
 	// made them or not. An autoplaylist created in foobar2000 itself looks like
 	// this and is not one Jean may update or delete.
 	autoPlaylists?: string[];
-	// What `POST /autoplaylists/preview` answers, before the query is even read: a
-	// player with no Media Library matches nothing whatever the query says.
 	libraryEnabled?: boolean;
-	// Force a status on `POST /api/autoplaylists`.
 	failCreate?: number | null;
 
-	// ---- streaming ----
-	// Absent on an older component, and absent means false. `streamFormats` is
-	// what goes on the wire.
 	canStream?: boolean;
 	// Best first, as the component reports it. An install whose Windows has no AAC
 	// encoder reports `opus` alone.
 	streamFormats?: string[];
-	// Formats this fake serves bytes for. Anything in `streamFormats` and not in
-	// here gets bytes that are not the declared type.
 	playableFormats?: string[];
-	// What the stream does once it is open. `short` ends after a second, for
-	// reconnect. `quiet` opens and then sends nothing, as a stopped player does.
 	streamBehaviour?: "ok" | "short" | "quiet";
-	// Seconds written the instant the connection opens, before the pump takes over
-	// at real time. Decides how far behind the live edge this listener lands.
 	streamPrime?: number;
-	// Force a status on `POST /api/stream/ticket`.
 	failTickets?: number | null;
 	ticketError?: string;
-	// Every ticket answers 401 at `GET /stream`, as an expired one does.
 	expireTickets?: boolean;
-	// Whether this install silences the player while somebody is listening.
 	canMuteWhileStreaming?: boolean;
 	// Devices the component reports as listening, beside whatever this browser
 	// opens. Named as a client named itself, and never carrying an address.
@@ -81,11 +57,7 @@ export interface FooJeanOptions {
 		listeningFor?: number;
 	}[];
 
-	// ---- pairing ----
-	// Whether somebody has pressed "Pair a device" on the player.
 	pairingOpen?: boolean;
-	// Force a status on `POST /api/pair`. 403 for a closed window, 429, and 404 for
-	// a component too old to have the route.
 	failPairing?: number | null;
 	pairingError?: string;
 }
@@ -135,7 +107,6 @@ export const fooJeanState = (options: FooJeanOptions | null): FooJeanFake => ({
 	...options,
 });
 
-// `null` for "not installed" rather than a 404, as beefweb answers.
 export const discoveryRecord = (fake: FooJeanFake, listeningPort: number) => {
 	if (!fake.installed) return null;
 	return {
@@ -151,7 +122,6 @@ export const discoveryRecord = (fake: FooJeanFake, listeningPort: number) => {
 	};
 };
 
-// The origin is reflected rather than `*`, as the component does it.
 const one = (value: string | string[] | undefined) =>
 	(Array.isArray(value) ? value[0] : value) ?? "";
 
@@ -181,7 +151,6 @@ const FAILURES: Record<number, unknown> = {
 	504: { written: false, error: "the player did not answer in time" },
 };
 
-// In place, so a reload reads the value back through beefweb.
 const applyTags = (
 	state: FakeState,
 	path: string,
@@ -190,7 +159,6 @@ const applyTags = (
 	const patch = (track: Track) => {
 		if (track["%path%"] !== path) return false;
 		for (const [field, value] of Object.entries(fields)) {
-			// An empty string removes the tag, which then resolves to '?'.
 			if (value === "") delete track[`%${field}%`];
 			else track[`%${field}%`] = value;
 		}
@@ -207,9 +175,7 @@ const applyTags = (
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// True where the client gave up before the answer came, which is what a probe
-// timeout looks like from this end. Bounded, so a client that waits forever
-// still gets its socket back.
+// Bounded, so a client that waits forever still gets its socket back.
 const abandoned = (response: Responder, within: number) =>
 	new Promise<boolean>((resolve) => {
 		const timer = setTimeout(() => resolve(false), within);
@@ -219,10 +185,6 @@ const abandoned = (response: Responder, within: number) =>
 		});
 	});
 
-// ---- the stream --------------------------------------------------------------
-
-// Issued tickets. Not single-use: Safari sends a `Range: bytes=0-1` probe before
-// fetching for real, so one playback start is two requests.
 // The device an <audio> element belongs to, remembered from the request that
 // minted its ticket: the element itself sends no body and no header.
 const ticketDevices = new Map<
@@ -233,6 +195,8 @@ const ticketDevices = new Map<
 const tickets = new Set<string>();
 let ticketSeq = 0;
 // Bounded the way the component bounds it: keep the last few, evict the oldest.
+// The count is opaque from here; treat it as the component's own choice, not a
+// number to tune.
 const TICKET_LIMIT = 16;
 
 const issue = () => {
@@ -252,8 +216,6 @@ const DECLARED_SECONDS = 3600;
 
 // Real playable bytes, in a codec neither `streamFormats` names: the browser has
 // to render `currentTime` against something, and the decoder is not under test.
-// `Uint8Array` and a `DataView` rather than a `Buffer`, because this module is
-// also bundled into the demo's service worker, where there is no node.
 function wavHeader() {
 	const data = DECLARED_SECONDS * BYTES_PER_SECOND;
 	const header = new Uint8Array(44);
@@ -286,19 +248,15 @@ function tone(seconds: number, phase: number) {
 		buffer[at] = Math.round(
 			Math.sin(((phase + at) * 2 * Math.PI * 440) / SAMPLE_RATE) * 600,
 		);
-	// Little-endian on every platform a browser or a player runs on.
 	return new Uint8Array(buffer.buffer);
 }
 
-// The clock starts before the fake does: the component starts with foobar2000,
-// long before any client connects, and a listener is behind the live edge.
 const PRERUN_MS = 60_000;
 const startedAt = Date.now() - PRERUN_MS;
 
 function timelineOf(state: FakeState) {
 	const streamTime = (Date.now() - startedAt) / 1000;
 
-	// The last few tracks, not the current one: a listener is behind the player.
 	if (state.streamMarks.length > 0) {
 		return {
 			streamTime,
@@ -311,7 +269,6 @@ function timelineOf(state: FakeState) {
 		};
 	}
 
-	// Nothing has started under this fake, so seed from the active item.
 	const item = state.player.activeItem;
 	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
 	const track = playlist?.items[item.index];
@@ -330,8 +287,6 @@ function timelineOf(state: FakeState) {
 	};
 }
 
-// One endless chunked response. No length, no `Range`, no seeking; it ends when
-// the client leaves.
 function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 	response.writeHead(200, {
 		"Content-Type": fake.playableFormats.includes(format)
@@ -356,15 +311,9 @@ function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 
 	response.write(wavHeader());
 
-	// Opens and then goes quiet: the header arrives, nothing follows, and there is
-	// no error to catch. Only a stall watchdog notices.
 	if (fake.streamBehaviour === "quiet") return;
 
-	// Primed with a burst, then real time. In Chromium a non-seekable WAV does not
-	// fire `loadedmetadata` until roughly twelve seconds of content have arrived --
-	// content, not bytes. That is a property of PCM in a container never meant to
-	// be streamed; Ogg and ADTS, which the component serves, are not affected. The
-	// lag this fake ends up with is `12 - prime`. See `test/README.md`.
+	// See test/README.md for the `12 - prime` arithmetic this rests on.
 	const PRIME_SECONDS = fake.streamBehaviour === "ok" ? fake.streamPrime : 1;
 	let phase = SAMPLE_RATE * PRIME_SECONDS;
 	response.write(tone(PRIME_SECONDS, 0));
@@ -380,9 +329,6 @@ function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 	response.on("close", () => clearInterval(pump));
 }
 
-// The component's routes, with no host in them: `agentServer.ts` gives them a
-// socket for the suite, the demo's service worker gives them a `fetch` event.
-// The body arrives already read, because only the host knows how to read one.
 export async function handleAgent({
 	state,
 	method,
@@ -401,12 +347,10 @@ export async function handleAgent({
 	const fake = state.fooJean;
 	const path = url.pathname;
 
-	// Before anything else, so a refused write is still visible to a spec.
 	state.record(method, path, body as never);
 
 	cors(headers, response);
 
-	// Answered without a credential, and identically for every path.
 	if (method === "OPTIONS") {
 		response.writeHead(204, {
 			"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
@@ -416,7 +360,6 @@ export async function handleAgent({
 		return response.end();
 	}
 
-	// Unauthenticated: a client checks it before trusting the discovery record.
 	if (path === "/api/status") {
 		if (fake.slowStatus > 0) {
 			fake.slowStatus -= 1;
@@ -430,10 +373,7 @@ export async function handleAgent({
 		});
 	}
 
-	// Unauthenticated: it is the route that hands the token out.
 	if (method === "POST" && path === "/api/pair") {
-		// A simple POST would skip the preflight, so the component refuses anything
-		// that is not JSON.
 		if (!one(headers["content-type"]).startsWith("application/json"))
 			return json(response, { error: "send application/json" }, 415);
 
@@ -447,7 +387,6 @@ export async function handleAgent({
 		if (!fake.pairingOpen)
 			return json(response, { error: "pairing is not open" }, 403);
 
-		// Single grant: the first success closes the window, as on the component.
 		fake.pairingOpen = false;
 		return json(response, { token: fake.token, apiVersion: fake.apiVersion });
 	}
@@ -509,14 +448,10 @@ export async function handleAgent({
 			canCreateAutoPlaylists: fake.maxAutoPlaylists > 0,
 			canStream: fake.canStream && fake.streamFormats.length > 0,
 			canMuteWhileStreaming: fake.canMuteWhileStreaming,
-			// Omitted rather than empty when the component does not stream, which is
-			// what an older one looks like.
 			...(fake.canStream ? { streamFormats: fake.streamFormats } : null),
 		});
 	}
 
-	// One entry per playlist, in playlist order, joined by the client on `beefwebId`.
-	// Not a playlist listing: it repeats nothing beefweb already answers.
 	if (path === "/api/playlists") {
 		return json(response, {
 			playlists: state.playlists.map((playlist, index) => ({
@@ -533,8 +468,6 @@ export async function handleAgent({
 	if (method === "POST" && path === "/api/autoplaylists/preview") {
 		const asked = body as { query?: string } | null;
 		const query = String(asked?.query ?? "");
-		// A query that does not parse is a 200 carrying `valid: false`: this is called
-		// while somebody types, so an unreadable query is data rather than an error.
 		const valid = query.length > 0 && !query.includes("((");
 		return json(response, {
 			valid,
@@ -565,8 +498,10 @@ export async function handleAgent({
 
 		return json(response, {
 			id: `00000000-0000-0000-0000-${String(state.playlists.length).padStart(12, "0")}`,
-			// Real beefweb assigns its ids lazily, and this fake has already made the
-			// playlist, so the join key is there straight away.
+			// Real beefweb assigns its ids lazily, so `beefwebId` is `null` there until
+			// beefweb's own playlists are next read. This fake has already made the
+			// playlist, so the join key is available immediately — a spec relying on
+			// that timing would not hold against a real install.
 			beefwebId: made.id,
 			index: state.playlists.length - 1,
 			title: made.title,

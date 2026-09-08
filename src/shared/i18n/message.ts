@@ -1,8 +1,3 @@
-/**
- * A message is either one string or a set of plural forms. `other` is the only form every language
- * has, so it is the only one required; `Intl.PluralRules` decides which of the rest a count selects
- * and falls back to `other` for a form the translator did not write.
- */
 export type PluralForms = { other: string } & Partial<
 	Record<Exclude<Intl.LDMLPluralRule, "other">, string>
 >;
@@ -16,21 +11,12 @@ type Fields<Text extends string> =
 		? Name | Fields<Rest>
 		: never;
 
-/**
- * What a message must be given to render. Plural forms always take `count`, since that is what
- * selects between them, and a form may name fields the others do not.
- */
 export type FieldsOf<Held extends Message> = Held extends string
 	? Fields<Held>
 	: Held extends PluralForms
 		? Fields<Extract<Held[keyof Held], string>> | "count"
 		: never;
 
-/**
- * An unknown field is left as it was written wherever this matches. A translator who mistypes one
- * then sees `{prot}` in the interface, which says where to look; dropping it would leave a hole
- * saying nothing.
- */
 const FIELD = /\{(\w+)\}/g;
 
 export const formOf = (

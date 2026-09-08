@@ -1,5 +1,3 @@
-// Two behaviours on one element share pointer handlers, and spreading one prop object after the
-// other silently drops the first.
 // biome-ignore lint/suspicious/noExplicitAny: these bags are assembled by the gesture hooks, merged, destructured and respread, so pinning every key would restate four hooks' return shapes at every stop
 export type PropBag = Record<string, any>;
 

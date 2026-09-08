@@ -19,8 +19,6 @@ const stamp = (at: number) => {
 	return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} ${pad(when.getHours())}:${pad(when.getMinutes())}:${pad(when.getSeconds())}`;
 };
 
-// Every other column answers '?', as a player does for an expression it cannot
-// resolve, so only the two fields under test carry anything.
 const row = (plays: number | null, lastPlayed?: number): string[] => {
 	const columns: string[] = new Array(TRACK_EXPRESSIONS.length).fill("?");
 	if (plays !== null) columns[FIELD.playCount] = String(plays);
@@ -30,9 +28,6 @@ const row = (plays: number | null, lastPlayed?: number): string[] => {
 };
 
 test("heat is logarithmic, so one outlier does not flatten everything else", () => {
-	// 163 plays against 107 and 72, which is the captured library's spread. On a
-	// linear scale 107 sits at 0.66, and a library holding one 5,000-play track
-	// would put every ordinary record at the bottom of the range.
 	const { heat } = deriveIntensity([row(163), row(107), row(72)]);
 
 	assert.equal(heat[0], 1);
@@ -46,7 +41,6 @@ test("the most played track in the set is the top of the scale", () => {
 });
 
 test("a track never played is flat rather than faded", () => {
-	// N/A in the last-played field is "no date", not "the beginning of time".
 	const { heat, patina } = deriveIntensity([row(100, Date.now()), row(0)]);
 
 	assert.equal(heat[1], 0);
@@ -86,8 +80,6 @@ test("patina reaches its ceiling at six years and stops there", () => {
 
 	assert.ok(Math.abs(patina[0] - 0.5) < 0.01, `three years read ${patina[0]}`);
 	assert.ok(patina[1] >= 0.99);
-	// Clamped: without it a track last heard in the nineties would ask to be
-	// shaded at seven times the full scale.
 	assert.equal(patina[2], 1);
 });
 

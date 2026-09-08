@@ -42,7 +42,6 @@ const kinds = (page: Parameters<typeof openLibrary>[0]) =>
 const hash = (page: Parameters<typeof openLibrary>[0]) =>
 	page.evaluate(() => location.hash);
 
-// Every test here is about the field, which the compact header keeps behind an icon.
 const openWithSearch = async (page: Parameters<typeof openLibrary>[0]) => {
 	await openLibrary(page);
 	await revealSearch(page);
@@ -56,10 +55,8 @@ test.describe("previewing a search without leaving the page", () => {
 
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
-		// Whatever else it offers, the tracks it previews are capped.
 		await expect(tracks(page)).toHaveCount(PREVIEW_TRACKS);
 
-		// The point of the whole arrangement: a query is a question, not a departure.
 		expect(await hash(page)).toBe("#/p7");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
@@ -74,8 +71,6 @@ test.describe("previewing a search without leaving the page", () => {
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 
-		// Backspacing to nothing and pressing Escape must land in the same place,
-		// not on an empty search page nobody asked to visit.
 		await searchField(page).fill("");
 		await expect(options(page)).toHaveCount(0);
 		expect(await hash(page)).toBe("#/p7");
@@ -157,7 +152,6 @@ test.describe("what a query might mean", () => {
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toContainText(ARTIST);
 
-		// The guess is the highlight rather than something Enter does invisibly.
 		await expect(options(page).first()).toHaveAttribute(
 			"aria-selected",
 			"true",
@@ -171,8 +165,6 @@ test.describe("what a query might mean", () => {
 			page,
 		}) => {
 			await openWithSearch(page);
-			// A track is now titled exactly what the artist is called, so neither reading wins
-			// and the app declines to guess.
 			await searchField(page).fill(QUERY);
 			await expect(options(page).first()).toBeVisible();
 			await expect(options(page).first()).toHaveAttribute(
@@ -190,7 +182,6 @@ test.describe("what a query might mean", () => {
 
 		await expect(page.getByText("Albums (1)")).toBeVisible();
 		await expect(ofKind(page, "album")).toHaveCount(1);
-		// The record's own line answers who it is by and how much of it there is.
 		await expect(ofKind(page, "album")).toContainText(ARTIST);
 		await expect(ofKind(page, "album")).toContainText("12 tracks");
 	});
@@ -208,10 +199,8 @@ test.describe("what a query might mean", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: ALBUM }),
 		).toBeVisible();
-		// Up out of a record is whoever made it.
 		await expect(page.getByRole("link", { name: ARTIST })).toBeVisible();
 
-		// The query was only a way of reaching it, so it never became the search.
 		await expect(searchField(page)).toHaveValue(OTHER);
 		expect(playedFrom(player)).toBe(null);
 	});
@@ -265,8 +254,6 @@ test.describe("what a query might mean", () => {
 			await searchField(page).fill(QUERY);
 			await expect(options(page).first()).toBeVisible();
 
-			// A record named exactly what the artist is called blocks the guess as
-			// surely as a track by that name does.
 			await expect(options(page).first()).toHaveAttribute(
 				"aria-selected",
 				"false",
@@ -288,8 +275,6 @@ test.describe("what a query might mean", () => {
 			page.getByRole("heading", { level: 1, name: ARTIST }),
 		).toBeVisible();
 
-		// The query was only a way of reaching them, so it never became the search --
-		// the field goes back to whatever is still on screen behind, and nothing played.
 		await expect(searchField(page)).toHaveValue(OTHER);
 		expect(playedFrom(player)).toBe(null);
 	});
@@ -304,14 +289,12 @@ test.describe("committing to a result", () => {
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 
-		// Off the artist the query names, so that the cursor really is on nothing.
 		await searchField(page).press("Escape");
 		await searchField(page).press("Enter");
 		await expect(
 			page.getByRole("heading", { level: 1, name: QUERY }),
 		).toBeVisible();
 		await expect(options(page)).toHaveCount(0);
-		// Opening the results is not choosing one of them.
 		expect(playedFrom(player)).toBe(null);
 	});
 
@@ -323,7 +306,6 @@ test.describe("committing to a result", () => {
 		await searchField(page).fill(QUERY);
 		await expect(options(page).first()).toBeVisible();
 
-		// One step down from the artist the query names, which is the first track.
 		const chosen = await tracks(page)
 			.first()
 			.locator("span > span")
@@ -397,7 +379,6 @@ test.describe("a draft is not the search", () => {
 		await searchField(page).fill(OTHER);
 		await expect(options(page).first()).toBeVisible();
 
-		// The whole point: the page answers the last question, not the one being typed.
 		await expect(
 			page.getByRole("heading", { level: 1, name: QUERY }),
 		).toBeVisible();
@@ -419,7 +400,6 @@ test.describe("a draft is not the search", () => {
 		await searchField(page).press("Escape");
 		await expect(searchField(page)).toHaveValue(QUERY);
 
-		// However many more times: ending a search is the clear button's job alone.
 		await searchField(page).press("Escape");
 		await searchField(page).press("Escape");
 		await expect(searchField(page)).toHaveValue(QUERY);
@@ -429,9 +409,6 @@ test.describe("a draft is not the search", () => {
 	});
 
 	test("walking away from a draft discards it", async ({ page, isMobile }) => {
-		// Skipped on a phone because the panel covers everything below the top bar:
-		// there is nothing to press that is not the panel, which is what the swipe
-		// and the clear button are for.
 		test.skip(isMobile, "nothing outside the panel to press");
 
 		await openWithSearch(page);
@@ -494,8 +471,6 @@ test.describe("on a phone", () => {
 		const bar = await statusBar(page).boundingBox();
 		expect(bar).not.toBeNull();
 
-		// Asked of the document rather than measured: what matters is that a tap
-		// aimed at the transport lands on the panel instead.
 		const covered = await page.evaluate(
 			([x, y]) => {
 				const at = document.elementFromPoint(x, y);

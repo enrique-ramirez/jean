@@ -29,7 +29,6 @@ export function LibrarySearchField({
 	onSubmit: () => void;
 	onSelect: (suggestion: Suggestion) => void;
 	onDismiss: () => void;
-	// The reader has left the field, by blur or by the last rung of Escape below.
 	onLeave: () => void;
 }) {
 	const t = useTranslate();
@@ -49,24 +48,17 @@ export function LibrarySearchField({
 	} = search;
 	const [active, setActive] = useState(-1);
 
-	// Nothing to preview before there is a library, and "nothing matches that" would blame the query
-	// for it. The results page carries the setup flow instead.
 	const isShowing = isOpen && hasDraft && !library.needsSetup;
 	const hasOptions = isShowing && suggestions.length > 0;
-	// Pointer-down rather than blur: a click on a row blurs the field on its way to the button, and a
-	// revert fired from that would empty the draft before the click that meant to commit it arrives.
 	const anchor = useDismissable<HTMLDivElement>(
 		isShowing,
 		() => {
 			close();
 			revert();
 		},
-		// Off: the field keeps Escape for itself, since it has several things to undo and the order matters.
 		{ onEscape: false },
 	);
 
-	// A new result set puts the cursor back where the query says it belongs -- usually nowhere, but on
-	// the one row a query with a single reading names.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the results changing is what fires this, not anything read from them
 	useEffect(() => {
 		setActive(preselect);
@@ -79,8 +71,6 @@ export function LibrarySearchField({
 		search.inputRef.current?.blur();
 	};
 
-	// Every way of committing lands here, including a click on a row, which reaches the panel rather
-	// than this field.
 	const commit = (suggestion: Suggestion | null) => {
 		dismiss();
 		if (suggestion === null) onSubmit();
@@ -97,8 +87,6 @@ export function LibrarySearchField({
 	const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
 		if (event.key === "Escape") {
 			event.preventDefault();
-			// Outermost first, one rung per press: panel, then edit, then caret. Never the search itself --
-			// ending one is the clear button's job, since the rungs are indistinguishable on screen.
 			if (isShowing) close();
 			else if (isEdited) revert();
 			else event.currentTarget.blur();
@@ -112,8 +100,6 @@ export function LibrarySearchField({
 				return;
 			}
 
-			// Closed over a query the user has not cleared -- the arrow reopens it, as it would any
-			// combobox. With nothing typed there is nothing to reopen, so the key goes to the list behind.
 			if (hasDraft) {
 				event.preventDefault();
 				open();
@@ -129,7 +115,6 @@ export function LibrarySearchField({
 
 		if (event.key === "Enter") {
 			event.preventDefault();
-			// Space is deliberately not a second Enter here: it is a character.
 			commit(hasOptions && active >= 0 ? suggestions[active] : null);
 		}
 	};
@@ -145,8 +130,6 @@ export function LibrarySearchField({
 				value={draft}
 				onChange={(event) => onChange(event.target.value)}
 				onFocus={search.onFocus}
-				// Focus alone is not enough: a field the caret is already in fires nothing, so Escape
-				// followed by a click at the field would leave the panel shut with no way back but a key.
 				onClick={open}
 				onBlur={() => {
 					search.onBlur();

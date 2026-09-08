@@ -47,8 +47,6 @@ export function useQueueActions() {
 	// cannot hold a queue either.
 	const canQueue = permissions.changePlaylists !== false;
 
-	// The player passes through every intermediate state of a queue mutation and pushes each one, so
-	// the pushes are held until the truth has been read back.
 	const underQueueHold = useCallback(
 		async (run: () => Promise<unknown>) => {
 			const release = holdQueue();
@@ -79,8 +77,6 @@ export function useQueueActions() {
 		[queryClient],
 	);
 
-	// Sequential, and it has to be: fired concurrently these land in whatever order the network
-	// settles on, and the order is the point of a queue.
 	const queue = useCallback(
 		async (pairs: QueueTarget[], at?: number) => {
 			if (!canQueue || pairs.length === 0) return;
@@ -92,9 +88,6 @@ export function useQueueActions() {
 
 			const shown = queryClient.getQueryData<PlayQueueItem[]>(QUEUE_KEY);
 
-			// The cached length decides this, and it is allowed to be wrong: an append lands at the end
-			// whatever moved above it, so a drop past the last row costs neither a read nor a refusal.
-			// Only a rebuild needs the truth.
 			if (at !== undefined && at < (shown?.length ?? 0)) {
 				const current = await fetchPlayQueue().catch(() => null);
 				if (!current || !sameQueue(current, shown)) {
@@ -136,8 +129,6 @@ export function useQueueActions() {
 		async (from: number, to: number) => {
 			if (!canQueue || from === to) return;
 
-			// A track ending mid-drag consumes the head and shifts every index the plan is built from, so
-			// a queue that moved is refused rather than half-applied.
 			const current = await fetchPlayQueue().catch(() => null);
 			const shown = queryClient.getQueryData<PlayQueueItem[]>(QUEUE_KEY);
 			if (!current || !sameQueue(current, shown)) {

@@ -48,8 +48,6 @@ test.describe("choosing a language", () => {
 		await page.reload();
 
 		await expect(page.locator("html")).toHaveAttribute("lang", "es");
-		// The heading is a plural form selected by `Intl.PluralRules`, so it proves
-		// rather more than a fixed string would.
 		await expect(page.locator("main")).toContainText("pistas");
 	});
 
@@ -69,8 +67,6 @@ test.describe("choosing a language", () => {
 test.describe("a browser that asks for a language Jean has", () => {
 	test.use({ locale: "es-AR" });
 
-	// Matched by language before region, so a catalogue named `es` answers a
-	// browser set to Argentina and nobody ships one file per country.
 	test("opens in it, without anyone choosing", async ({ page }) => {
 		await page.goto("/");
 

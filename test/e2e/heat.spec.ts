@@ -24,8 +24,6 @@ const shading = async (page: Page, row: number) => {
 	}, row);
 };
 
-// The virtualiser only mounts rows near the viewport, so the furthest row read
-// below has to be waited for.
 const openWithEveryRow = async (page: Page) => {
 	await openLibrary(page);
 	await expect(page.locator(`[data-row="${NEVER}"]`)).toBeAttached();
@@ -228,8 +226,6 @@ test.describe("the shading introduces itself", () => {
 });
 
 test.describe("an install with no play counts", () => {
-	// No playback-statistics component, so the field resolves to '?' on every row,
-	// exactly as it would on a real player.
 	test.use({
 		withoutFields: ["%lastfm_play_count%", "%lastfm_last_played%"],
 		firstRun: true,
@@ -260,7 +256,6 @@ test.describe("an install with no play counts", () => {
 		await expect(
 			page.getByRole("menuitem", { name: "What the shading means" }),
 		).toHaveCount(0);
-		// Column toggles are menuitemcheckbox rather than menuitem.
 		await expect(
 			page.getByRole("menuitemcheckbox", { name: "Artwork" }),
 		).toBeVisible();
@@ -275,7 +270,6 @@ test.describe("an install with no play counts", () => {
 test.describe("the wash and the row gutter", () => {
 	test.beforeEach(({ page }) => openWithEveryRow(page));
 
-	// How far the row's content sits inside the wash's leading edge.
 	const leadOf = (page: Page) =>
 		page.evaluate(() => {
 			const row = document.querySelector('[data-row="0"]') as HTMLElement;

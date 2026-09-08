@@ -7,10 +7,6 @@ import {
 
 import { clamp } from "@/shared/lib/math";
 
-// Pressing and moving starts a text selection, and dragging a selection is a native drag: the browser
-// then follows the pointer with a snapshot of the control instead of moving the thumb. On touch, the
-// browser keeps the gesture for panning without `touch-action`; capture does not save this, and
-// `touch-action` intersects down the tree, so it belongs on the track itself.
 const GRABBABLE = Object.freeze({
 	userSelect: "none",
 	WebkitUserSelect: "none",

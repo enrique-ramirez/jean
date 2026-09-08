@@ -13,14 +13,12 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// The captured playlists, in the order the fake serves them. Ids are neither
-// contiguous nor in index order, as on a real install.
 const DEFAULT_PLAYLIST = "Default Playlist";
 const LIBRARY = "Library";
 const FAVORITES = "Favorites";
 const SPANISH = "Rock en Español";
 // An autoplaylist, indistinguishable from the rest over the API: it accepts a
-// copy with a 204 and adds nothing. See `useAddTracks`.
+// copy with a 204 rather than a 4xx, and adds nothing. See `useAddTracks`.
 const AUTO = "Recently Added";
 
 // Rows are direct children of the nav; so is the section header, hence the
@@ -65,7 +63,6 @@ test.describe("creating a playlist", () => {
 
 		await expect.poll(() => titlesInOrder(player)).toContain("New playlist");
 
-		// The view does not change.
 		await expect(
 			page.getByRole("heading", { level: 1, name: LIBRARY }),
 		).toBeVisible();
@@ -96,8 +93,6 @@ test.describe("creating a playlist", () => {
 			page.getByRole("textbox", { name: "Rename New playlist" }),
 		).toBeFocused();
 
-		// The click blurs the field, which commits the untouched name -- so the
-		// second one has to find the collision and count past it.
 		await add.click();
 
 		await expect.poll(() => titlesInOrder(player)).toContain("New playlist 2");
@@ -204,8 +199,6 @@ test.describe("the drawer", () => {
 		await openApp(page);
 		await expect(link(page, LIBRARY)).toBeVisible();
 
-		// Clicked near the edge: the scrim covers the whole viewport and sits under
-		// the drawer, so its middle is behind the thing it dismisses.
 		const scrim = page.getByRole("button", { name: "Close menu" });
 		const box = await scrim.boundingBox();
 		await scrim.click({ position: { x: box!.width - 8, y: box!.height / 2 } });
@@ -304,8 +297,6 @@ test.describe("reordering playlists", () => {
 			from!.y + from!.height / 2,
 		);
 		await page.mouse.down();
-		// Past the middle of the row below, in steps: the gesture only becomes a
-		// drag once it has travelled, and one jump reports a single move event.
 		await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height * 0.75, {
 			steps: 12,
 		});
@@ -334,9 +325,6 @@ test.describe("reordering playlists", () => {
 			y: from!.y + from!.height / 2,
 		};
 
-		// Down past the threshold and back, so the release lands on the row it
-		// started on and the browser dispatches a click on the button inside it.
-		// Ending the drag elsewhere would leave the click at a common ancestor.
 		await page.mouse.move(centre.x, centre.y);
 		await page.mouse.down();
 		await page.mouse.move(centre.x, centre.y + from!.height * 1.5, {
@@ -360,8 +348,6 @@ test.describe("reordering playlists", () => {
 	}) => {
 		await openApp(page);
 
-		// Registered only while a row holds focus: these are ordinary arrow keys
-		// with a modifier and must not fire while the cursor is in the track list.
 		await link(page, DEFAULT_PLAYLIST).focus();
 		await page.keyboard.press("Alt+ArrowDown");
 
@@ -413,7 +399,6 @@ test.describe("dragging tracks onto a playlist", () => {
 		await expect(target).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
-		// One request whatever the count: indices go up, nothing else does.
 		await expectSettlesAt(
 			player,
 			() => requestsTo(player, "/items/copy").length,
@@ -441,8 +426,6 @@ test.describe("dragging tracks onto a playlist", () => {
 		await openApp(page);
 		await scrollUntilMounted(page, trackRow(page, 0));
 
-		// It arms like any other row: nothing in the API distinguishes an
-		// autoplaylist, so the refusal is only knowable from the count not moving.
 		const target = await dragTrackTo(page, 0, AUTO);
 		await expect(target).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
@@ -459,20 +442,12 @@ test.describe("dragging tracks onto a playlist", () => {
 		page,
 		player,
 	}) => {
-		// The gesture holds the whole document still while it runs -- without that
-		// it selects text it passes over, and dragging a selection is a native drag
-		// that paints a snapshot of it under the pointer. Whatever ends the drag has
-		// to give that back, and abandoning one over empty space is the ordinary way
-		// to end it.
 		await openApp(page);
 		await scrollUntilMounted(page, trackRow(page, 0));
 
-		// Armed over a real target first, so this is a drag that genuinely ran
-		// rather than a press that never passed the threshold.
 		const target = await dragTrackTo(page, 0, FAVORITES);
 		await expect(target).toHaveAttribute("data-drop-over", "true");
 
-		// Then away and let go over nothing at all.
 		await page.mouse.move(4, 4, { steps: 8 });
 		await page.mouse.up();
 
@@ -482,9 +457,6 @@ test.describe("dragging tracks onto a playlist", () => {
 			0,
 		);
 
-		// The heading, because it is text nothing else claims. A document still
-		// held at `user-select: none` cannot be selected at all, and a page that
-		// stops selecting is a page that stops feeling like a page.
 		await page.getByRole("heading", { level: 1, name: LIBRARY }).dblclick();
 		expect(
 			await page.evaluate(() => window.getSelection()?.isCollapsed ?? true),
@@ -500,8 +472,6 @@ test.describe("dragging tracks onto a playlist", () => {
 
 		const target = await dragTrackTo(page, 0, LIBRARY);
 
-		// Dropping a library track back into the library would copy it beside
-		// itself, and an autoplaylist would refuse the write anyway.
 		await expect(target).not.toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 

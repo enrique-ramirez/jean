@@ -105,7 +105,6 @@ export function useTrackSelection(total: number, viewKey: string) {
 
 	const clear = useCallback(() => setSelection(new Set()), []);
 
-	// Memoised: a fresh object would change identity every render and defeat the memo on every row.
 	return useMemo(
 		() => ({
 			cursor,

@@ -39,9 +39,6 @@ interface Entry {
 	isStarted: boolean;
 }
 
-// On a playlist almost all the cost is the round trip, so paint from one modest chunk and then
-// fetch large concurrent ones. The media library endpoint has no cache and re-enumerates on every
-// call, so concurrency buys nothing there.
 const STRATEGY = {
 	playlist: { firstChunk: 2500, chunkSize: 7500, concurrency: 4 },
 	library: { firstChunk: 500, chunkSize: Infinity, concurrency: 1 },
@@ -112,7 +109,6 @@ const fetchChunk = async (
 function entryFor(key: string): Entry {
 	const held = entries.get(key);
 	if (held) {
-		// Re-inserted, since the eviction below reads insertion order as recency.
 		entries.delete(key);
 		entries.set(key, held);
 		return held;
@@ -166,7 +162,6 @@ async function load(entry: Entry, source: LoadSource) {
 	const subsongs: number[] | null = isLibrary ? [] : null;
 
 	const publish = (totalCount: number, isLoading: boolean) => {
-		// A fresh array reference each time, so consumers re-render.
 		const snapshot = [...rows];
 		emit(entry, {
 			rows: snapshot,
@@ -180,8 +175,6 @@ async function load(entry: Entry, source: LoadSource) {
 		});
 	};
 
-	// Rows are read at the timer rather than captured at the call, so a coalesced run publishes the
-	// newest set and never a stale one.
 	let scheduled: ReturnType<typeof setTimeout> | null = null;
 	let deferred: { totalCount: number; isLoading: boolean } | null = null;
 
@@ -223,8 +216,6 @@ async function load(entry: Entry, source: LoadSource) {
 			(_, at) => rows.length + at * step,
 		);
 
-		// Chunks land out of order but rows may only grow in order, so a chunk waits here until the gap
-		// in front of it is filled.
 		const pending = new Map<number, Chunk>();
 		const queue = [...offsets];
 		let appended = 0;

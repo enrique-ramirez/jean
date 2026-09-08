@@ -28,8 +28,6 @@ test.describe("the command palette", () => {
 
 	test.beforeEach(async ({ page }) => {
 		await openLibrary(page);
-		// A bare letter: Mod+Shift+P opens a private window in Firefox and its
-		// derivatives, and the browser wins that one.
 		await page.keyboard.press("g");
 		await expect(palette(page)).toBeVisible();
 	});
@@ -38,8 +36,6 @@ test.describe("the command palette", () => {
 		page,
 	}) => {
 		await expect(paletteField(page)).toBeFocused();
-		// All music, then the fixture's four user playlists plus the autoplaylist;
-		// `#Jean Library` is the only one held back.
 		await expect(results(page)).toHaveCount(6);
 		await expect(results(page).first()).toHaveText(/^All music/);
 		await expect(results(page).first()).toHaveAttribute(
@@ -51,10 +47,6 @@ test.describe("the command palette", () => {
 	test("the first result stays active under a pointer that has not moved", async ({
 		page,
 	}) => {
-		// Where the third result sits. The palette opens in the same place every
-		// time, so parking the pointer there and reopening puts a row under a
-		// cursor that never moved -- which is what the palette is normally used
-		// like, since it is opened by a key.
 		const box = (await results(page).nth(2).boundingBox())!;
 		await page.keyboard.press("Escape");
 		await expect(palette(page)).toHaveCount(0);
@@ -68,7 +60,6 @@ test.describe("the command palette", () => {
 			"true",
 		);
 
-		// And again for a query typed under the same still pointer.
 		await paletteField(page).fill("e");
 		await expect(results(page).first()).toHaveAttribute(
 			"aria-selected",
@@ -82,9 +73,6 @@ test.describe("the command palette", () => {
 		const target = results(page).nth(3);
 		const box = (await target.boundingBox())!;
 
-		// Somewhere else first: the first mouseenter has no earlier position to be
-		// compared against and is refused, so one synthetic move onto a row proves
-		// nothing either way.
 		await page.mouse.move(4, 4);
 		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 
@@ -96,7 +84,6 @@ test.describe("the command palette", () => {
 
 		await paletteField(page).fill("all mus");
 		await expect(results(page)).toHaveCount(1);
-		// The section is drawn only when the filter left something under it.
 		await expect(palette(page)).not.toContainText("Playlists");
 
 		await page.keyboard.press("Enter");
@@ -203,11 +190,7 @@ test.describe("the shelf that is playing", () => {
 	});
 });
 
-// beefweb has no library API, so "the library" is whichever playlist the user
-// points Jean at.
 test.describe("the first run, with no library playlist", () => {
-	// The setup screen exists only for a player with no media library API and no
-	// autoplaylist to fall back on.
 	test.use({ withoutLibraryPlaylist: true, library: { supported: false } });
 
 	test("it names the exact strings to type", async ({ page }) => {
@@ -238,7 +221,6 @@ test.describe("the first run, with no library playlist", () => {
 		page,
 		player,
 	}) => {
-		// The fixture still has an ordinary playlist titled 'Library'.
 		expect(player.playlists.some((entry) => entry.title === "Library")).toBe(
 			true,
 		);
@@ -267,7 +249,6 @@ test.describe("the first run, with no library playlist", () => {
 		await searchFor(page, "babasonicos");
 		await expect(trackRow(page, 0)).toBeAttached();
 
-		// Renamed, not copied.
 		await expectSettlesAt(
 			player,
 			() => requestsTo(player, "/playlists/add").length,
@@ -280,8 +261,6 @@ test.describe("the first run, with no library playlist", () => {
 			false,
 		);
 
-		// The name is on the player rather than in this browser, so it survives a
-		// reload and holds on the next device too.
 		await page.reload();
 		await searchFor(page, "babasonicos");
 		await expect(
@@ -302,14 +281,12 @@ test.describe("the library playlist is Jean's, not furniture", () => {
 		await page.goto("/#/p7");
 		await openSidebar(page);
 		await expect(sidebar(page).getByText("#Jean Library")).toHaveCount(0);
-		// The ordinary playlist that merely shares the word is still right there.
 		await expect(
 			sidebar(page)
 				.getByRole("button")
 				.filter({ hasText: /^Library/ }),
 		).toHaveCount(1);
 
-		// p8 is `#Jean Library`, and routing to it lands somewhere else.
 		await page.goto("/#/p8");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "#Jean Library" }),
@@ -353,9 +330,6 @@ test.describe("where a view puts you when you come back to it", () => {
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
 
-		// Rows arrive a chunk at a time, so the content is often too short to hold
-		// the offset at the moment the view comes back; the restore keeps trying
-		// for about a second.
 		await expectNear(page, LEFT_AT);
 	});
 });
@@ -376,9 +350,6 @@ test.describe("landing on the front door", () => {
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
 		await trackRow(page, 0).dblclick();
-		// Polled on playback rather than on the click: the set is written to the
-		// scratch playlist first and played a round trip later, and a reload before
-		// then lands on a player with nothing playing.
 		await expect
 			.poll(() => player.player.activeItem.index)
 			.toBeGreaterThanOrEqual(0);
@@ -423,7 +394,6 @@ test.describe("landing on the front door", () => {
 			.poll(() => player.player.activeItem.index)
 			.toBeGreaterThanOrEqual(0);
 
-		// Somewhere the user asked to be, so nothing opens over it.
 		await page.goto("/#/home");
 		await expect(nowPlayingScreen(page)).toBeHidden();
 	});
@@ -436,8 +406,6 @@ test.describe("chrome that only means something with a keyboard", () => {
 		await page.goto("/");
 		const shortcuts = page.getByRole("button", { name: "Keyboard shortcuts" });
 
-		// A pointer question rather than a width one: a narrow desktop window still
-		// has a keyboard.
 		await expect(shortcuts).toBeVisible({
 			visible: info.project.name !== "mobile",
 		});

@@ -17,7 +17,6 @@ const pairRequests = (player: FakePlayer) =>
 	requestsTo(player, "/api/pair").filter((entry) => entry.method === "POST");
 
 test.describe("pairing a device", () => {
-	// Installed, running, and no token stored here yet.
 	test.use({ fooJean: { pairingOpen: true } });
 
 	test("one press replaces the whole token", async ({ page, player }) => {
@@ -92,7 +91,6 @@ test.describe("pairing a device", () => {
 });
 
 test.describe("when no window is open", () => {
-	// The common case: Pair pressed here before it was pressed on the player.
 	test.use({ fooJean: {} });
 
 	test("it says which button to press, by menu path", async ({ page }) => {
@@ -117,7 +115,6 @@ test.describe("when no window is open", () => {
 		await pairButton(page).click();
 		await expect(settingsDialog(page)).toContainText("No pairing window");
 
-		// Somebody walks to the player and presses the button.
 		player.fooJean.pairingOpen = true;
 
 		await pairButton(page).click();

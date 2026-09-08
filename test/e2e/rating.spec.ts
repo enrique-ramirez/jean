@@ -40,19 +40,15 @@ test.describe("reading a rating", () => {
 		await expect(stars(page, 2)).toHaveAccessibleName("3.5 of 5 stars");
 	});
 
-	// The scale is read off the magnitude, because the field declares none.
 	test("a 0-100 rating is rescaled rather than ignored", async ({ page }) => {
 		await expect(stars(page, 4)).toHaveAccessibleName("5 of 5 stars");
 		await expect(stars(page, 5)).toHaveAccessibleName("4 of 5 stars");
 	});
 
-	// 196 is what Windows Media Player writes for four stars.
 	test("a POPM byte reads as the stars its writer meant", async ({ page }) => {
 		await expect(stars(page, 6)).toHaveAccessibleName("4 of 5 stars");
 	});
 
-	// `0` and `-1` are two taggers' spellings of "unrated". A number past every
-	// convention is not clamped to full marks.
 	test("sentinels and nonsense read as unrated, not as a score", async ({
 		page,
 	}) => {

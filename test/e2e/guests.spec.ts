@@ -20,9 +20,6 @@ const RETAGGED = {
 
 const names = (row: Locator) => row.locator("[data-inline]");
 
-// How many lines the names cell draws, measured rather than read off an
-// attribute: one is the guests sitting beside the title, two is the artist
-// under it. A row with nothing to add draws one span and answers 1.
 const linesOf = (row: Locator) =>
 	names(row).evaluate((cell) => {
 		const [first, second] = [...cell.children].map((span) =>
@@ -89,9 +86,6 @@ test.describe("guests on an album row", () => {
 		await page.goto("/#/p7");
 		await scrollUntilMounted(page, rowByTitle(page, GUESTS));
 
-		// A short title against a long guest list. The flexbox default shares the
-		// shrink between them, which cuts 'Nutshell' to 'Nuts...' on a phone while
-		// drawing most of the guests.
 		const title = names(rowByTitle(page, GUESTS)).locator("span").first();
 		await expect(title).toHaveText(GUESTS);
 
@@ -161,8 +155,6 @@ test.describe("an album row with two lines has room for them", () => {
 		);
 		expect(slack).toBeGreaterThanOrEqual(6);
 
-		// Only the two-line row grows: a row that gave every album row the extra
-		// height would satisfy the slack above and look wrong everywhere else.
 		const heightOf = (title: string) =>
 			rowByTitle(page, title).evaluate(
 				(row: HTMLElement) => row.getBoundingClientRect().height,

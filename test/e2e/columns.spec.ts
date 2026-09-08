@@ -113,8 +113,6 @@ test.describe("the artwork toggle", () => {
 });
 
 test.describe("a field the player cannot resolve", () => {
-	// With no playback-statistics component installed, %lastfm_play_count% comes
-	// back '?' on every row.
 	test.use({ withoutFields: ["%lastfm_play_count%"] });
 
 	test("it is offered as unavailable rather than quietly dropped", async ({
@@ -142,9 +140,6 @@ test.describe("a field the player cannot resolve", () => {
 	});
 });
 
-// foo_playcount is the ordinary component and foo_enhanced_playcount the one that adds the
-// scrobbled figures on top; neither ships with foobar2000. An install with only the first holds
-// the data under a different name, so the column has to read either spelling to find it.
 test.describe("a player that spells play counts the other way", () => {
 	test.use({
 		withoutFields: ["%lastfm_play_count%", "%lastfm_last_played%"],

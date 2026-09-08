@@ -1,15 +1,3 @@
-// Measures the media library API against the playlist read Jean uses today.
-//
-// The library endpoint has no caching: every call enumerates the library and
-// computes a relative path per item. So chunking may not pay the way it does for
-// playlist reads, and `%path%` arrives on every item whether Jean wants it or
-// not.
-//
-//   PLAYER=player.local:8880 node test/measure-library.ts
-//
-// It needs a real player with a real library; the fake cannot answer questions
-// about a server-side cost it does not have.
-
 import { TRACK_EXPRESSIONS } from "../src/domain/track/fields.ts";
 import type { LibraryInfo, PlaylistInfo } from "../src/shared/api/types.ts";
 
@@ -59,8 +47,6 @@ async function sample(label: string, path: string, opts?: { gzip?: boolean }) {
 	return { elapsed: median(runs), bytes };
 }
 
-// Wire weight, which is what actually crosses the network, versus what the
-// parser has to chew through.
 async function weigh(label: string, path: string) {
 	const gz = await fetchOnce(path, { gzip: true });
 	console.log(
@@ -154,8 +140,6 @@ for (const n of [1, 500, 2000, 5000, 10000, 20000, 30441]) {
 	);
 	sweep.push([n, r.elapsed]);
 }
-// Least squares over the sweep: the intercept is what a call costs before it has
-// returned a single row, which is the enumeration.
 const n = sweep.length;
 const sx = sweep.reduce((a, [x]) => a + x, 0);
 const sy = sweep.reduce((a, [, y]) => a + y, 0);

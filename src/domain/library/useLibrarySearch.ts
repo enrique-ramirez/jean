@@ -57,13 +57,10 @@ export type Suggestion =
 
 export interface SearchSection {
 	label: SearchSectionLabel;
-	// Everything the query named, not what the section shows: the heading answers "how much of this
-	// did you leave out".
 	count: number;
 	suggestions: Suggestion[];
 }
 
-// What a suggestion is *about*, where that is a thing in the library rather than one of its tracks.
 const entityOf = (suggestion: Suggestion) =>
 	suggestion.kind === "artist"
 		? suggestion.artist
@@ -73,11 +70,6 @@ const entityOf = (suggestion: Suggestion) =>
 				? suggestion.genre
 				: null;
 
-/**
- * Two queries, not one. `draft` is what is being typed and reaches no further than the field and its
- * dropdown; `query` is the search the app is actually showing, and only a commitment moves it. What
- * the field says and what the page shows can therefore differ, but only while the caret is in it.
- */
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const permissions = usePermissions();
 	const { data: playerSnapshot } = usePlayer();
@@ -229,10 +221,6 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		[sections],
 	);
 
-	// Exactly one thing in the library was named exactly and nothing else was, so the query has one
-	// reading and the cursor starts on it -- which is what keeps the guess visible rather than hidden
-	// inside Enter. Anything else answering to the same name makes it ambiguous again, on either side:
-	// `love` is a band, a record and a hundred songs.
 	const preselect = useMemo(() => {
 		if (!wanted || !index || !draftMatched) return -1;
 

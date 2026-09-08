@@ -9,8 +9,6 @@ import styles from "./ShortcutSheet.module.css";
 
 export const SHORTCUTS_KEYBOARD = "shortcuts";
 
-// `formatForDisplay` returns a whole chord space-joined, and a keycap is one key. Space comes back
-// as a glyph rather than as a gap, which is what makes the space a safe separator.
 const capsOf = (binding: Binding) =>
 	(binding.shown ?? binding.keys.map((key) => formatForDisplay(key))).map(
 		(chord) => chord.split(" ").filter(Boolean),

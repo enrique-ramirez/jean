@@ -7,9 +7,6 @@ import { type FooJeanOptions, fooJeanState } from "./fooJean.ts";
 import capturedLibrary from "./library.json" with { type: "json" };
 import capturedPlayer from "./player.json" with { type: "json" };
 
-// A captured track: a title-formatting expression to the value the player
-// answered with. A missing key is a field this player cannot resolve, which
-// `evaluate` turns back into '?'.
 export type Track = Record<string, string>;
 
 // Where the stream last changed what a given stream time means, in wall-clock
@@ -23,15 +20,11 @@ export interface StreamMark {
 
 const STREAM_MARKS = 6;
 
-// What the fake holds, not what it serves: `PlaylistInfo` carries a count
-// rather than the items.
 export interface FakePlaylist {
 	id: string;
 	title: string;
 	isCurrent: boolean;
 	items: Track[];
-	// Never served: `PlaylistInfo` does not say which kind of playlist this is.
-	// A write to an autoplaylist answers 204 and is ignored, as on the real player.
 	isAuto?: boolean;
 }
 
@@ -47,7 +40,6 @@ interface CapturedAlbum {
 	tracks: Track[];
 }
 
-// beefweb pushes only what changed, so every key is optional and never false.
 interface Changed {
 	player?: boolean;
 	playlists?: boolean;
@@ -63,13 +55,9 @@ export interface RecordedRequest {
 	body: Record<string, any> | null;
 }
 
-// Imported rather than read off disk: the fake also runs in a service worker for
-// the demo build, which has no filesystem.
 const LIBRARY = capturedLibrary as { albums: CapturedAlbum[] };
 const CAPTURED_PLAYER = capturedPlayer as unknown as PlayerState;
 
-// beefweb reports index -1 rather than omitting activeItem when nothing is
-// playing, so the app tests `index >= 0`.
 const IDLE_ITEM = {
 	columns: [],
 	duration: -1,
@@ -79,8 +67,8 @@ const IDLE_ITEM = {
 	position: -1,
 };
 
-// What a manual skip pushes while the player opens the next file. Not `IDLE_ITEM`: the two agree on `index: -1` and
-// disagree on the rest, and the gap is reported with `playbackState` still `playing`. See ../../src/shared/api/README.md.
+// What a manual skip pushes while the player opens the next file. See the
+// manual-skip trap in ../../src/shared/api/README.md.
 const GAP_ITEM = {
 	columns: [],
 	duration: 0,
@@ -94,10 +82,6 @@ const tracksOf = (album: string) =>
 	LIBRARY.albums.find((entry) => entry.slug === album)?.tracks ?? [];
 const allTracks = () => LIBRARY.albums.flatMap((album) => album.tracks);
 
-// Ids are not contiguous and not in index order: on a real install, creating one
-// playlist produced p7, not p6.
-// A library-sized playlist synthesised from the captured tracks, for behaviour
-// that only appears past a few thousand rows.
 export function generateTracks(count: number): Track[] {
 	const source = allTracks();
 	const tracks: Track[] = new Array(count);
@@ -113,10 +97,6 @@ export function generateTracks(count: number): Track[] {
 	return tracks;
 }
 
-// A library of a stated shape, for what varies between collections: size,
-// albums, artists, genres, track length, the years it spans. Built from a
-// captured track, so `omit` drops a tag entirely -- which is not the same as
-// blanking it, since a field the player cannot resolve answers '?'.
 export function libraryOfShape({
 	tracks = 12,
 	albums = 1,
@@ -147,7 +127,6 @@ export function libraryOfShape({
 	const built: Track[] = new Array(tracks);
 
 	for (let index = 0; index < tracks; index += 1) {
-		// An album belongs to one artist, so the artist follows the album.
 		const album = index % albums;
 		const artist = album % artists;
 		const year =
@@ -171,13 +150,9 @@ export function libraryOfShape({
 			"%genre%": `Genre ${(index % genres) + 1}`,
 			"%year%": String(year),
 			"%length_seconds%": String(seconds),
-			// Under the same root the capture uses, so the library-relative paths
-			// still come out the way a real player reports them.
 			"%path%": `C:\\Music\\S\\Artist ${artist + 1}\\Album ${album + 1}\\${Math.floor(index / subsongsPerFile) + 1}.mp3`,
 		};
 
-		// Absent on an ordinary file, as it is on the capture: a player answers '?'
-		// for it and Jean reads that as subsong 0.
 		if (subsongsPerFile > 1)
 			track["%subsong%"] = String((index % subsongsPerFile) + 1);
 
@@ -188,15 +163,6 @@ export function libraryOfShape({
 	return built;
 }
 
-// ---- media library (beefweb 0.11+) -------------------------------------
-//
-// Every captured track sits under the one media library folder the fixtures use, so
-// library-relative paths derive from `%path%`: strip the root, flip separators.
-// The live player returns them `/`-separated even on Windows, where
-// `pathSeparator` is `\` -- `B/Babasónicos/(2001) Jessico/01. Los Calientes.mp3`.
-
-// The deepest directory every track shares, which is what foobar2000 would have
-// been pointed at.
 const libraryRoot = (tracks: Track[]) => {
 	const paths = tracks.map((track) =>
 		(track["%path%"] ?? "").split("\\").slice(0, -1),
@@ -218,8 +184,6 @@ export function libraryItemsOf(tracks: Track[]): LibraryEntry[] {
 	return tracks.map((track) => ({
 		track,
 		path: libraryPathOf(track, rootDepth),
-		// Several tracks inside one file share a path, so this is the rest of the
-		// address. The capture holds no cue sheets, so there it is 0 throughout.
 		subsong: Number(track["%subsong%"]) || 0,
 	}));
 }
@@ -248,12 +212,7 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		isCurrent: false,
 		items: tracksOf("jessico"),
 	},
-	// The autoplaylist a user makes when Jean asks them to, and the only way to see
-	// a library on a player without the media library API. It sits beside an
-	// ordinary playlist called 'Library', so nothing may adopt a playlist by title.
 	{ id: "p8", title: "#Jean Library", isCurrent: false, items: allTracks() },
-	// A visible autoplaylist with an ordinary name: `#Jean Library` above is hidden
-	// from the sidebar and the add-to-playlist menu, so no write can reach it.
 	{
 		id: "p9",
 		title: "Recently Added",
@@ -263,20 +222,14 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 	},
 ];
 
-// An expression the player cannot resolve comes back as '?'; one that resolves
-// to nothing comes back as ''. Capability detection rests on the difference.
 export const evaluate = (track: Track, expression: string) =>
 	track[expression] ?? "?";
 
 const columnsFor = (track: Track, expressions: string[]) =>
 	expressions.map((expression) => evaluate(track, expression));
 
-// The library reports a relative `/`-joined path and the player an absolute
-// Windows one. The common root cancels; the separator does not.
 const pathKey = (value: unknown) => String(value).replace(/\\/g, "/");
 
-// How the media library hands a set back: album artist, album, track number.
-// Not the path order the library endpoint pages in.
 const browseOrder = (a: Track, b: Track) =>
 	String(evaluate(a, "%album artist%")).localeCompare(
 		String(evaluate(b, "%album artist%")),
@@ -292,24 +245,12 @@ export function createState({
 	playlists = DEFAULT_PLAYLISTS(),
 	player,
 	librarySize,
-	// The media library the 0.11 API serves. Distinct from `librarySize`, which
-	// inflates an ordinary playlist; this also replaces `#Jean Library`.
 	mediaLibrarySize,
-	// The media library stated outright. See `libraryOfShape`.
 	mediaLibrary,
-	// Expressions this player cannot resolve. Dropping them makes evaluate() answer
-	// '?', as a real player does for a field no component provides.
 	withoutFields = [],
-	// `supported: false` is DeaDBeeF, where every library endpoint answers 501.
-	// `enabled: false` is foobar2000 with no media library configured.
 	library = {},
-	// Tag values the capture does not carry, keyed by track title: it holds no
-	// featured artist and no compilation.
 	retagged = {},
-	// The optional tag-writing component; see `fooJean.ts` for its states.
 	fooJean = null,
-	// Where a track's cover comes from when it is not one of the captured ones.
-	// Absent, a track outside the capture has no cover.
 	artworkOf = null,
 }: {
 	playlists?: FakePlaylist[];
@@ -370,8 +311,6 @@ export function createState({
 		if (autoplaylist) autoplaylist.items = libraryTracks;
 	}
 
-	// Inflates the ordinary playlist the browsing specs open, not the autoplaylist
-	// search reads. The media library the API serves is the captured one either way.
 	if (librarySize) {
 		const library = playlists.find((entry) => entry.title === "Library");
 		if (library) library.items = generateTracks(librarySize);
@@ -381,38 +320,22 @@ export function createState({
 
 	const state = {
 		playlists,
-		// Volume and playback order come off the real player; what is playing does not,
-		// because the captured track is not in the fixture.
 		player: {
 			...structuredClone(CAPTURED_PLAYER),
 			playbackState: "stopped",
 			activeItem: { ...IDLE_ITEM },
 			...player,
 		},
-		// The track, not its position, which is what foobar2000 holds: the index is
-		// looked up on read.
 		playQueue: [] as { playlistId: string; track: Track }[],
 		library: { supported: true, enabled: true, ...library },
-		// Milliseconds to hold a write before answering. See POST /__control/latency.
 		latency: 0,
-		// Milliseconds a skip spends reporting `GAP_ITEM`. Off by default: the gap is asynchronous, and a spec that
-		// does not assert on it should not have to wait for one. See POST /__control/skipGap.
 		skipGapMs: 0,
-		// Every request the app made, in order.
 		requests: [] as RecordedRequest[],
-		// Open `GET /api/query` update streams -- not `openStreams` below, which
-		// counts audio sockets. Held so a test can drop one the way a wifi hiccup
-		// does: EventSource reconnects on its own and beefweb replays a full
-		// snapshot on connect, which is the reasoning `usePlayer` rests on and
-		// nothing else exercises. See POST /__control/dropStream.
 		updateStreams: new Set<() => void>(),
-		// Where each of the last few tracks began, in wall-clock milliseconds;
-		// `fooJean.ts` puts them on the stream clock. Same bound as the component's.
+		// Same bound as the component's; `fooJean.ts` puts these on the stream clock.
 		streamMarks: [] as StreamMark[],
 	};
 
-	// beefweb pushes on change and never on a timer, so there is no interval behind
-	// this. Position advances in the app's own interpolation.
 	const notify = (changed: Changed) => {
 		const message: Changed = {};
 		if (changed.player) message.player = true;
@@ -424,7 +347,6 @@ export function createState({
 	const byId = (id: string) =>
 		state.playlists.find((entry) => entry.id === id) ?? null;
 
-	// A queued track leaves the queue when it starts.
 	const consume = (playlist: FakePlaylist, index: number) => {
 		const at = state.playQueue.findIndex(
 			(entry) =>
@@ -436,8 +358,6 @@ export function createState({
 		return true;
 	};
 
-	// A track began, or the player moved within one. Both change what a given
-	// stream time means, so the component marks both.
 	const mark = (track: Track, position: number) => {
 		state.streamMarks = [
 			...state.streamMarks.slice(1 - STREAM_MARKS),
@@ -504,8 +424,6 @@ export function createState({
 		withSkipGap(() => setActive(playlist, next, "playing"));
 	};
 
-	// An orphan's columns are still the removed track's: the real player hands back
-	// whatever fell into the freed slot.
 	const queuePayload = (expressions: string[] = []) =>
 		state.playQueue.map((entry) => {
 			const playlist = byId(entry.playlistId);
@@ -518,26 +436,19 @@ export function createState({
 		});
 
 	return {
-		// Named rather than spread: mutations work in place, but a spread would copy
-		// `playlists` and detach it the first time something reassigned the array.
 		player: state.player,
-		// On the facade as well as the inner state: the router reads it before every
-		// write and the control surface assigns to it.
 		latency: state.latency,
-		// Accessors rather than a copy: `step` reads this from inside the closure, long after the control surface set it.
 		get skipGapMs() {
 			return state.skipGapMs;
 		},
 		set skipGapMs(ms: number) {
 			state.skipGapMs = ms;
 		},
-		// What the player would report, rather than the track objects held inside.
 		get playQueue() {
 			return queuePayload();
 		},
 		requests: state.requests,
 		updateStreams: state.updateStreams,
-		// A getter because `mark` replaces the array rather than pushing into it.
 		get streamMarks() {
 			return state.streamMarks;
 		},
@@ -546,10 +457,6 @@ export function createState({
 		// Which `?format=` each stream was opened with, in order; `requests` records
 		// paths without their query.
 		streamFormats: [] as string[],
-		// Sockets holding `GET /api/stream` right now, and the most that were ever
-		// held at once. A client that leaks a connection past a reconnect leaves the
-		// old one open, which `requests` cannot show and which the component counts
-		// against `maxConcurrentStreams`.
 		openStreams: 0,
 		peakStreams: 0,
 		// Somebody asked to hear the player alongside the listeners, either by
@@ -568,16 +475,11 @@ export function createState({
 				listeningFor: number;
 			}
 		>(),
-		// Separate objects from the playlists' whenever `withoutFields` is in play,
-		// so a tag write has to reach both.
 		libraryTracks,
 		get playlists() {
 			return state.playlists;
 		},
 
-		// The hold is a volume, so a client watching the player sees it change. The
-		// real one has nothing to announce: foobar2000's own volume moved, and
-		// beefweb pushes that like any other.
 		announceHold() {
 			notify({ player: true });
 		},
@@ -593,8 +495,6 @@ export function createState({
 
 		playlistById: byId,
 
-		// The six fields PlaylistInfo has, no more. totalTime is 0 because the real
-		// player returns 0, however long the playlist runs.
 		playlistsPayload: () =>
 			state.playlists.map((entry, index) => ({
 				id: entry.id,
@@ -605,11 +505,8 @@ export function createState({
 				totalTime: 0,
 			})),
 
-		// True while the component is silencing the player for a listener. Derived
-		// rather than set, so a fixture that starts with somebody already listening
-		// starts muted, exactly as reconnecting to a running install would.
-		// `this` rather than `state`: these live on the object being built here,
-		// where `state` is the raw one it is built from.
+		// Derived rather than set, so a fixture that starts with somebody already
+		// listening starts muted, exactly as reconnecting to a running install would.
 		get playerHeld(): boolean {
 			if (!this.fooJean.canMuteWhileStreaming || this.holdReleased)
 				return false;
@@ -622,9 +519,6 @@ export function createState({
 			const track = playlist?.items[item.index];
 			return {
 				...state.player,
-				// foobar2000 has no mute flag -- mute is the volume at -100 dB -- so a
-				// hold the component takes for a listener is visible to every beefweb
-				// client, and Jean is built on exactly that being true.
 				volume: this.playerHeld
 					? { ...state.player.volume, isMuted: true, value: -100 }
 					: state.player.volume,
@@ -716,17 +610,12 @@ export function createState({
 					item.duration,
 				);
 			}
-			// A seek is a mark: the same stream time now means a different place in
-			// the track.
 			if (item.position !== before) {
 				const track = byId(item.playlistId)?.items[item.index];
 				if (track) mark(track, item.position);
 			}
 			if (body.volume != null) {
 				state.player.volume.value = body.volume;
-				// Mute is the volume, so a fader moved off the floor is how the
-				// component learns the mute it took is no longer its own -- and it
-				// never takes it again inside the same spell of listening.
 				if (body.volume > state.player.volume.min && this.playerHeld)
 					this.holdReleased = true;
 			}
@@ -766,7 +655,6 @@ export function createState({
 		},
 
 		addPlaylist(title: string): PlaylistInfo {
-			// Ids keep climbing and are never reused, as the player's do.
 			const used = state.playlists.map((entry) => Number(entry.id.slice(1)));
 			const id = `p${Math.max(0, ...used) + 1}`;
 			const playlist: FakePlaylist = {
@@ -807,7 +695,6 @@ export function createState({
 			const from = state.playlists.findIndex((entry) => entry.id === id);
 			if (from < 0) return false;
 			const [moved] = state.playlists.splice(from, 1);
-			// A negative index means last, per the spec.
 			state.playlists.splice(
 				index < 0 ? state.playlists.length : index,
 				0,
@@ -818,14 +705,13 @@ export function createState({
 		},
 
 		// Item changes push `player` and not `playlists`, as beefweb does: an add, a
-		// rename or a delete produces a `playlists` message; a copy or a remove of items
-		// does not. So `itemCount` in PlaylistInfo goes stale from the first write on.
+		// rename or a delete produces a `playlists` message; a copy or a remove of
+		// items does not. So `itemCount` in PlaylistInfo goes stale from the first
+		// write on.
 		copyItems(sourceId: string, targetId: string, indices: number[]) {
 			const source = byId(sourceId);
 			const target = byId(targetId);
 			if (!source || !target) return false;
-			// On foobar2000 2.25.3 a copy into an autoplaylist answers 204 exactly as a
-			// copy into an ordinary playlist does, and adds nothing. Not a 404.
 			if (target.isAuto) return true;
 			// Appended without a duplicate check and in the source's order rather than the
 			// caller's, because that is what the player does. `add-from-library` too, so it
@@ -843,18 +729,13 @@ export function createState({
 			if (!playlist) return false;
 			const drop = new Set(indices);
 			playlist.items = playlist.items.filter((_, index) => !drop.has(index));
-			// See copyItems: item changes do not push `playlists` on a real player.
-			// They do move the queue: everything below a removed row renumbers.
 			notify({ player: true, playQueue: true });
 			return true;
 		},
 
-		// The playlists push a real player sends only when the set of playlists changes.
 		notifyPlaylists() {
 			notify({ playlists: true });
 		},
-
-		// ---- media library ---------------------------------------------------
 
 		libraryInfo() {
 			const { supported, enabled } = state.library;
@@ -883,8 +764,6 @@ export function createState({
 		}) {
 			const items = libraryItemsOf(libraryTracks);
 
-			// Default order is file path, per the spec, which also warns library items are
-			// "produced by applying search criteria rather than naturally ordered".
 			const key =
 				sort && sort !== "%path%"
 					? (entry: LibraryEntry) => evaluate(entry.track, sort)
@@ -909,7 +788,6 @@ export function createState({
 			};
 		},
 
-		// One level of the tree, folders first with a recursive count, then tracks.
 		libraryNodesPayload({
 			path,
 			offset,
@@ -941,7 +819,6 @@ export function createState({
 				}
 			}
 
-			// Byte-wise and case-sensitive, as the player is: 'Zappa' sorts before 'abba'.
 			const byName = (a: { name: string }, b: { name: string }) =>
 				a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 			const items = [
@@ -997,11 +874,8 @@ export function createState({
 		) {
 			const playlist = byId(playlistId);
 			if (!playlist) return false;
-			// See copyItems: an autoplaylist takes the request and drops it.
 			if (playlist.isAuto) return true;
 
-			// Keyed by the pair: a cue sheet files several tracks at one path and the
-			// player takes all of them.
 			const addressOf = (path: string, subsong = 0) =>
 				`${path}\u0000${subsong}`;
 			const known = new Map(
@@ -1010,9 +884,6 @@ export function createState({
 					entry,
 				]),
 			);
-			// Omitting `items` adds the whole library, per the spec. The live player ignores
-			// both the order asked for and the library's own path order: a set arrives in
-			// the media library's browse order -- album artist, album, track number.
 			const chosen = (
 				items ??
 				[...known.values()].map((entry) => ({
@@ -1037,8 +908,6 @@ export function createState({
 			return true;
 		},
 
-		// `{ by, desc, random }`. The expression is evaluated per track, as the column
-		// list is, so `%path%` sorts by path.
 		sortItems(
 			playlistId: string,
 			{ by, desc, random }: { by: string; desc?: boolean; random?: boolean },
@@ -1069,7 +938,6 @@ export function createState({
 			return artworkOf?.(entry.track) ?? null;
 		},
 
-		// `queueIndex` is accepted and ignored, as foobar2000 does.
 		queueAdd(playlistId: string, itemIndex: number) {
 			const playlist = byId(playlistId);
 			const track = playlist?.items[itemIndex];

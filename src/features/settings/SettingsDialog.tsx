@@ -20,7 +20,6 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 
 	useKeyboardOwnership(SETTINGS_KEYBOARD);
 
-	// Read through a ref so the effect below installs once per open: `onDismiss` is rebuilt on every render, and re-running the effect refocuses the dialog out of whatever field is being typed into.
 	const dismiss = useRef(onDismiss);
 	dismiss.current = onDismiss;
 

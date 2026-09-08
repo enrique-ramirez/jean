@@ -15,11 +15,6 @@ export type { Translate };
 export const useLocale = (): LocaleState =>
 	useSyncExternalStore(subscribeToLocale, localeState);
 
-/**
- * A fresh identity each time the language changes, which is the point: `translate` reads the
- * current catalogue through a module the caller cannot depend on, so a memo keyed on a stable
- * function would go on showing the language the reader just left.
- */
 export function useTranslate(): Translate {
 	const state = useLocale();
 
@@ -34,7 +29,6 @@ export function useTranslate(): Translate {
 
 export type Formats = ReturnType<typeof useFormats>;
 
-/** The `Intl` formatters for whatever language is showing, so a figure matches the words beside it. */
 export function useFormats() {
 	const { active } = useLocale();
 

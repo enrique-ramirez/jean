@@ -5,8 +5,6 @@ import { bestMatches } from "../../src/domain/track/rankTracks.ts";
 import { type RowText, rowMatches } from "../../src/domain/track/searchText.ts";
 import { fold, tokenize } from "../../src/shared/lib/text.ts";
 
-// A slice of what `blood` really turns up in a library of thirty thousand, including the trap: the
-// whole of 10cc's *Bloody Tourists* matches on its album tag and nothing else.
 const LIBRARY: [title: string, artist: string, album: string][] = [
 	["Life Is Bloody", "2 Mello", "Nastlevania"],
 	["Cosmos Be Damned (Youngbloodz vs. FFVII Mashup)", "2 Mello", "Nastlevania"],

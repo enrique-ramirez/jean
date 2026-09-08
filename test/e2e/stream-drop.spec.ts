@@ -1,12 +1,6 @@
 import type { Page } from "./fixtures.ts";
 import { expect, openLibrary, statusBar, test, trackRow } from "./fixtures.ts";
 
-// `usePlayer` sets `staleTime: Infinity` and `refetchOnWindowFocus: false` and
-// says why: EventSource reconnects on its own and beefweb replays a full
-// snapshot on connect, so a dropped stream needs no resync. That reasoning is
-// the whole of Jean's answer to a flaky link and nothing else in the suite ever
-// drops the stream.
-
 const dropTheStream = async (page: Page) => {
 	const answer = await page.request.post("/__control/dropStream");
 	const { dropped } = (await answer.json()) as { dropped: number };

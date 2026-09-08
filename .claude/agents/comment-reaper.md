@@ -38,6 +38,21 @@ Anything claiming to be a trap, an external constraint or an invariant goes thro
 
 A strong model reconstructs almost anything, so testing with one measures the model rather than the code. **A fact a strong model recalls and a weaker one cannot is exactly the fact a human maintainer needs.** That is the whole reason for the weaker model; do not "improve" this by using a better one.
 
+### The sub-agent already has `CLAUDE.md`, and you cannot stop that
+
+The harness injects this project's `CLAUDE.md` into every agent you spawn, whatever your prompt says. Verified in the sibling repository: a sub-agent told to use no tools quoted its first two lines back. So the reader you are testing arrives holding the project's own notes — the very external facts a comment is most likely to restate.
+
+Do not fight it. It is also the truth about who reads this code: an agent working here always has that file, and a person can open it. Instead, **make the sub-agent name which source it used**, and read the verdict accordingly:
+
+| the answer came from | what to do |
+|---|---|
+| this code | **Delete.** |
+| `CLAUDE.md` or `ARCHITECTURE.md` | **Delete.** The fact already has its one home, and the comment is the second copy. |
+| general knowledge of an external system | **Move it** to `ARCHITECTURE.md`, or `src/shared/api/README.md` for anything the player answers, then delete the comment. |
+| nowhere — it could not answer | **Keep it.** |
+
+This makes a *kept* comment a strong result: the reader had the code, the project's own notes and its training, and still got it wrong.
+
 ### Two ways to leak the answer, both of which void the result
 
 **Do not use the comment's vocabulary in the question.** If you ask "why does this debounce before querying beefweb?" you have already supplied the answer. Write the question from the *stripped code*, as though you had never seen the comment.
@@ -48,11 +63,7 @@ Where you can, ask from the other direction too: "here is the code; is anything 
 
 ### The three verdicts
 
-| the sub-agent answered | what to do |
-|---|---|
-| correctly, citing this code | **Delete.** The code already says it. |
-| correctly, but from knowledge of beefweb, foobar2000, `foo_jean`, a browser, React or TanStack Query | **Move it.** The fact is real and does not belong on the line. `ARCHITECTURE.md`, or `src/shared/api/README.md` for anything about what the player answers. The code says nothing, or points there in a clause. |
-| wrongly, or not at all | **Keep it.** This is the rare comment that earned its place. |
+The table above is the whole of it: delete when the answer came from the code or from a document that already owns the fact, move the fact out when it came from knowledge of an external system, keep only what nothing recovered.
 
 Batch by file: one sub-agent per file asked several questions is cheaper and works as well.
 

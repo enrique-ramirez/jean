@@ -19,8 +19,6 @@ export function Language() {
 	const t = useTranslate();
 	const { chosen, available, missing, failed } = useLocale();
 
-	// The boot path skips the custom list whenever this device already has a choice to honour, so a
-	// hand-added language would otherwise be missing from exactly the dropdown that offers it.
 	useEffect(() => {
 		void discover();
 	}, []);

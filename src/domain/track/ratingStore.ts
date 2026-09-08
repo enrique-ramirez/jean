@@ -3,9 +3,6 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { TrackColumns } from "@/shared/api/types";
 import { subscribers } from "@/shared/lib/store";
 
-// What a rating write put on a row: beefweb never pushes a tag change, so nothing else will.
-// Keyed by the row array itself, so the entry dies with the load it patches and there is no
-// invalidation to get wrong.
 const written = new WeakMap<TrackColumns, string>();
 
 const listeners = subscribers();

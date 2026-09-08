@@ -14,8 +14,6 @@ export function subscribers(): Subscribers {
 				listeners.delete(listener);
 			};
 		},
-		// A copy: a listener may unsubscribe from inside its own notification, and mutating the set
-		// mid-iteration would skip its neighbour.
 		notify: () => {
 			[...listeners].forEach((listener) => {
 				listener();

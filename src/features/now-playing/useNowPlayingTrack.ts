@@ -6,9 +6,6 @@ import { fetchActiveItemColumns, readTrack } from "@/shared/api/beefweb";
 import type { TrackColumns } from "@/shared/api/types";
 import { NOW_PLAYING_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
 
-// Keyed on the file rather than the playlist position, which moves whenever anything above it is edited.
-// The parameters are primitives because `readTrack` builds a fresh object every render, so a callback
-// keyed on the track itself would be rebuilt every render and could never be depended on from an effect.
 const keyOf = (path: string | null, subsong: number) =>
 	path ? ["nowPlaying", path, subsong] : ["nowPlaying", null];
 
@@ -30,14 +27,11 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 			const row = await fetchActiveItemColumns(NOW_PLAYING_EXPRESSIONS);
 			if (!row) return null;
 
-			// The endpoint answers with whatever is playing when it is served, so a track that ended in flight would cache
-			// the next track's tags under this key.
 			const answered = row[NOW_PLAYING_FIELD.path];
 			if (answered !== path) return null;
 
 			return { row, path: answered };
 		},
-		// beefweb pushes nothing when a tag changes, and a write from Jean patches this cache directly.
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
 		retry: false,

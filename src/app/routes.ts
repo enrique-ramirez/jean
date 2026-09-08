@@ -29,8 +29,6 @@ export interface PlayingRoute extends PlayingSet {
 
 type KindPhrase = Extract<Phrase, `route.${string}`>;
 
-// What a temporary sidebar row *is*. Shelves, genres and artists all arrive through one row, so
-// without this they are three different kinds of place drawn identically.
 export const KIND_LABEL: Record<string, KindPhrase> = {
 	[SCRATCH_KIND.artist]: "route.artist",
 	[SCRATCH_KIND.genre]: "route.genre",
@@ -49,7 +47,6 @@ const SHELF_PREFIX = "shelf/";
 
 const shelfRoute = (id: string) => `${SHELF_PREFIX}${id}`;
 
-// Every suggestion but a track is a place the query was a way of reaching, and picking one goes there.
 export const routeOfSuggestion = (
 	suggestion: Exclude<Suggestion, { kind: "track" }>,
 ): string =>
@@ -86,8 +83,6 @@ export function resolveRoute(route: string): {
 	return {
 		shelf,
 		genre,
-		// Flat rather than the pair, so a caller's memo can depend on the two strings: `resolveRoute`
-		// runs every render and an object out of it is a new identity every time.
 		album: album?.album ?? null,
 		albumArtist: album?.artist ?? null,
 		artist: artist?.name ?? null,

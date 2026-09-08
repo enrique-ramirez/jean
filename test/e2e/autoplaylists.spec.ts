@@ -18,8 +18,6 @@ const PAIRED = { fooJeanToken: "0123456789abcdef0123456789abcdef" };
 const createButton = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: "Create autoplaylist" });
 
-// Posts only. The component is on a port of its own and the body is JSON, so every
-// write is preceded by a CORS preflight and counting bare requests counts both.
 const posts = (player: FakePlayer, path: string) =>
 	requestsTo(player, path).filter((entry) => entry.method === "POST");
 
@@ -79,10 +77,7 @@ test.describe("creating one from a genre", () => {
 		await page.goto("/#/genre/Post%20Rock");
 		await createButton(page).click();
 
-		// The player's own count, not Jean's: Jean matches the tag in JavaScript and
-		// this is foobar2000 answering its own query against the Media Library.
 		await expect(page.getByText(/The player matches 13 tracks/)).toBeVisible();
-		// Once, not once per render: the preview runs on foobar2000's main thread.
 		expect(posts(player, "/autoplaylists/preview").length).toBe(1);
 		// Nothing is created by looking -- the only post so far is the preview itself.
 		expect(posts(player, "/autoplaylists").length).toBe(1);

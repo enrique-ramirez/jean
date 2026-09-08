@@ -8,8 +8,6 @@ export type IconComponent = ComponentType<{
 	"aria-hidden"?: boolean | "true" | "false";
 }>;
 
-// `fill` and `strokeWidth` come after the spread deliberately: a caller passing `strokeWidth={2}`
-// must not be able to un-solid these.
 const solid = (
 	Icon: ComponentType<ComponentProps<typeof Play>>,
 	strokeWidth = 1.5,

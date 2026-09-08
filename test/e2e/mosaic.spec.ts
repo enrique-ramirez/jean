@@ -4,15 +4,12 @@ import { expect, test } from "./fixtures.ts";
 // `#/all` for anything shaped: `libraryShape` replaces the media library and the `#Jean Library`
 // autoplaylist, and leaves the captured playlists alone -- so `p7` there is still the real five.
 //
-// The covers of a set, drawn as one picture. Everything here is counted in **albums**, never tracks:
-// counted in tracks, a 21-track single-album playlist drew the same cover four times, and a two-album
-// one drew four copies of the first while the second never appeared.
+// The covers of a set, drawn as one picture. Everything here is counted in **albums**, never tracks.
 
 const mosaic = (page: Page) => page.locator("main header [data-tiles]");
 
 const tiles = (page: Page) => mosaic(page).locator("[data-artwork]");
 
-// The mosaic has answered for every cover it is going to draw.
 const drawn = async (page: Page) => {
 	await expect(mosaic(page)).toBeVisible();
 	await expect(mosaic(page)).toHaveAttribute("data-ready", "true");
@@ -34,7 +31,6 @@ test.describe("how many covers", () => {
 
 		test("draws it once, and says nothing about a count", async ({ page }) => {
 			await page.goto("/#/all");
-			// Twenty-one tracks used to draw four tiles, all of them the same record.
 			await expectShape(page, "1", null);
 		});
 	});
@@ -110,7 +106,6 @@ test.describe("one album, one cover", () => {
 	test("the tiles are different records, not the same one repeated", async ({
 		page,
 	}) => {
-		// The captured library: five albums, each with its own sleeve.
 		await page.goto("/#/p7");
 		await drawn(page);
 
@@ -166,7 +161,6 @@ test.describe("while the covers are arriving", () => {
 				.evaluate((tile) => getComputedStyle(tile).opacity);
 			expect(Number(shown)).toBe(0);
 
-			// Still holding, rather than having flipped ready while nothing answered.
 			await expect(hold).toHaveCount(1);
 			await expect(mosaic(page)).not.toHaveAttribute("data-ready", "true");
 		} finally {

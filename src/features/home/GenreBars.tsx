@@ -35,7 +35,6 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 			<ul className={styles.bars}>
 				{genres.map((genre) => (
 					<li key={genre.name}>
-						{/* A route rather than a search: beefweb's search index covers title, artist and album, not genre. */}
 						<a
 							className={styles.bar}
 							href={genreHref(genre.name)}

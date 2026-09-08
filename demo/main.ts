@@ -1,10 +1,6 @@
 import { TOKEN_KEY } from "../src/shared/api/fooJean";
 import "./badge.css";
 
-// The only file that knows the app is a demo. It installs the player (a service
-// worker, see `sw.ts`), waits until that worker is the one answering, and only
-// then mounts the app's own `main.tsx`, imported unchanged.
-
 const DISMISSED = "jean.demoChipDismissed";
 
 // The token the component would have handed over at pairing, seeded so a visitor
@@ -18,8 +14,6 @@ const SEED: Record<string, unknown> = {
 	"jean.settingsSeen": true,
 };
 
-// Everything the demo remembers: the player's state in the worker's journal, and
-// the settings under the app's own keys.
 async function reset() {
 	await fetch("/__demo/reset", { method: "POST" }).catch(() => {});
 	for (const key of Object.keys(localStorage))
@@ -53,8 +47,6 @@ const chip = () => {
 
 	element.querySelector(".demo-chip-close")?.addEventListener("click", () => {
 		localStorage.setItem(DISMISSED, "true");
-		// Before the node goes: the listener closes over it, so leaving it on
-		// `window` retains a chip nothing can see.
 		window.removeEventListener("hashchange", follow);
 		element.remove();
 	});

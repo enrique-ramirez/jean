@@ -29,11 +29,6 @@ const drawn = (
 	return typeof value === "number" ? numbers.format(value) : value;
 };
 
-/**
- * A sentence with something drawn inside it — a figure in bold, a link, a genre in the reader's own
- * emphasis. The whole sentence stays one phrase, so a translator can put the parts in the order
- * their language wants rather than the order English happens to need.
- */
 export function Trans<Key extends Phrase>({
 	phrase,
 	...slots

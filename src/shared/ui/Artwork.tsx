@@ -21,11 +21,6 @@ import styles from "./Artwork.module.css";
 const knownState = (key: string | null): ArtworkState | null =>
 	key ? (outcomeFor(key) ?? null) : null;
 
-// The artwork endpoint 404s for a track with no embedded cover, which is a normal state rather than
-// an error.
-// Three gates, and none of them is `loading="lazy"`, whose answer to "is this visible" is yes for
-// every row a jump scrolls past: `whenNearViewport` decides whether to ask at all, `artworkCache`
-// whether the network is involved, and the artwork queue how many ask at once.
 export function Artwork({
 	src,
 	identity,
@@ -71,9 +66,6 @@ export function Artwork({
 			return;
 		}
 
-		// `ok` means this address resolved earlier in this session, so the hold is not shown again -- but
-		// the picture still has to be resolved: a blob URL belongs to whichever component made it and
-		// was revoked when that one went away.
 		setState(known ?? "waiting");
 		setHref(null);
 
@@ -86,11 +78,7 @@ export function Artwork({
 		const element = box.current;
 		if (!element) return;
 
-		// Set true here and not only in the cleanup: StrictMode mounts, unmounts and remounts in
-		// development, and a flag only ever cleared would be permanently off on the second run.
 		let live = true;
-		// One address is one refcounted blob URL shared by every row drawing that album, so a drop this
-		// component never claimed revokes a picture still on screen elsewhere.
 		let claimed = false;
 		const abort = new AbortController();
 
@@ -154,8 +142,6 @@ export function Artwork({
 		setState(outcome);
 	};
 
-	// Reported from the state rather than from the `<img>` handlers, so the paths that settle without
-	// ever mounting one report too.
 	const settledRef = useRef(onSettled);
 	settledRef.current = onSettled;
 	useEffect(() => {
@@ -165,8 +151,6 @@ export function Artwork({
 	const classes = classNames(styles.artwork, className);
 
 	return (
-		// The only element here that outlives the picture arriving, so a gesture that began on a sleeve
-		// is still on the same element when the sleeve resolves.
 		<div
 			ref={box}
 			className={classes}
@@ -183,8 +167,6 @@ export function Artwork({
 			)}
 
 			{href && (state === "granted" || state === "ok") ? (
-				// Transparent until it has loaded, which keeps the alt text off the screen: the browser
-				// paints it in the box the moment the element exists.
 				<img
 					className={styles.image}
 					src={href}

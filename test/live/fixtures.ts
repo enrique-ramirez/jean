@@ -2,22 +2,11 @@ import { test as base, expect } from "@playwright/test";
 
 import { fieldTable } from "../../src/shared/api/fieldTable.ts";
 
-// A real foobar2000 rather than the fake, so nothing here may assume what is in it: whatever a
-// spec needs about the library it reads off the player first. That is also the point of these
-// specs -- everywhere the fake supplies both sides of a comparison it is only checking that a
-// string equals itself, and a path join, a decoded cover and an SSE update are three of those.
-//
 //   LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='D:\SomeFolder' pnpm test:live
-//
-// `LIVE` is the url the app is served at, since beefweb serves its own client at the root and
-// Jean under a `urlMappings` prefix. The api origin is taken from it.
 
 const LIBRARY_PLAYLIST = "#Jean Library";
 
-// Pairs rather than a bare list, because the player answers positionally: written out separately,
-// the day somebody inserts an expression in the middle is the day a row reports its album as its
-// artist. A comma inside an expression would split beefweb's own `columns` list the same way, so
-// these stay comma-free too.
+// A comma inside an expression would split beefweb's own `columns` list, so these stay comma-free.
 const { expressions, index: FIELD } = fieldTable([
 	["path", "%path%"],
 	["title", "%title%"],
@@ -101,15 +90,12 @@ const readInstall = async (origin: string): Promise<Install> => {
 		rating: values[FIELD.rating],
 	}));
 
-	// The guard. One track outside the named root is enough to stop, because the alternative is
-	// discovering afterwards that the queue and the tags written belonged to somebody's library.
 	const strays = tracks.filter((track) => !track.path.startsWith(root));
 	if (strays.length)
 		throw new Error(
 			`${strays.length} of ${tracks.length} tracks sit outside ${root} -- refusing to drive this player. First: ${strays[0]?.path}`,
 		);
 
-	// null is the not-installed answer, and is the common case.
 	const record = await api<unknown>(origin, "/clientconfig/foo_jean");
 
 	return {
@@ -126,8 +112,6 @@ interface LiveFixtures {
 	install: Install;
 }
 
-// The same seeds the fake suite uses, for the same reason: the play-count shading introduces
-// itself on first sight and would otherwise cover the toolbar in every spec.
 const SEEDED_SETTINGS = {
 	"jean.heatIntroSeen": true,
 	"jean.settingsSeen": true,
@@ -136,8 +120,8 @@ const SEEDED_SETTINGS = {
 // No test-scoped fixtures of its own -- `page` below overrides a built-in. `Record<string, never>`
 // would give it an index signature, under which `install` resolves as `never`.
 export const test = base.extend<Record<never, never>, LiveFixtures>({
-	// Worker-scoped, so the library is read once rather than per test. It takes the url from the
-	// environment rather than from `baseURL`, which is test-scoped and cannot be depended on here.
+	// Worker-scoped, so it takes the url from the environment rather than from `baseURL`, which is
+	// test-scoped and cannot be depended on here.
 	install: [
 		// biome-ignore lint/correctness/noEmptyPattern: playwright reads dependencies off this pattern
 		async ({}, use) => {

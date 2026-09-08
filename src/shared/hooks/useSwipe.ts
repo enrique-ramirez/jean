@@ -4,6 +4,7 @@ import { scrollParentOf } from "@/shared/lib/scrollParent";
 
 const FLICK_MS = 600;
 const AXIS_LOCK = 8;
+const BOTTOM_SLACK_PX = 1;
 
 // Touch events rather than pointer events: the browser cancels the pointer stream the moment it
 // claims a gesture for scrolling, so a pointer-based version only sees gestures on regions that do
@@ -55,12 +56,10 @@ export function useSwipe({
 				y: touch.clientY,
 				at: event.timeStamp,
 				wasAtTop: !scroller || scroller.scrollTop <= 0,
-				// A pixel of slack: a box scrolled to its end lands a fraction short of it, row heights and
-				// the scrollport both being fractional.
 				wasAtBottom:
 					!scroller ||
 					scroller.scrollTop + scroller.clientHeight >=
-						scroller.scrollHeight - 1,
+						scroller.scrollHeight - BOTTOM_SLACK_PX,
 				axis: null,
 			};
 		},

@@ -19,8 +19,6 @@ export function useTheme() {
 		document.documentElement.dataset.theme = theme;
 	}, [theme]);
 
-	// Always an explicit theme: clearing chosen back to null would do nothing when the system already
-	// matches it.
 	const toggle = () => choose(theme === "dark" ? "light" : "dark");
 
 	return { theme, chosen, choose, toggle };

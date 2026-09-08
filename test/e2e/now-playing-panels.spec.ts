@@ -96,16 +96,11 @@ test.describe("the details panel", () => {
 		await expect(panel).toContainText("Publisher");
 		await expect(panel).toContainText("Discos Manzana");
 
-		// The fake resolves nothing for these, as a real player answers `?` for a
-		// tag the file does not carry.
 		await expect(panel).not.toContainText("BPM");
 		await expect(panel).not.toContainText("ReplayGain");
 	});
 });
 
-// The phone's whole restructure in one describe: no tabs on the player, a
-// button into the panels, and a horizontal flick that means the next track
-// rather than the next tab.
 test.describe("the panels a phone opens", () => {
 	test.use(TAGGED);
 
@@ -318,7 +313,6 @@ test.describe("the panels a phone opens", () => {
 		expect(box.x).toBe(0);
 		expect(box.x + box.width).toBe(view.width);
 
-		// The content is still inset; it is only the scroller that is not.
 		const line = (await body.getByText("Dancing in the dark").boundingBox())!;
 		expect(line.x).toBeGreaterThanOrEqual(20);
 	});

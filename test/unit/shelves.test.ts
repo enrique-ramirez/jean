@@ -37,8 +37,6 @@ const album = (over: Partial<Album> = {}): Album => {
 const many = (count: number, over: (at: number) => Partial<Album>) =>
 	Array.from({ length: count }, (_, at) => album(over(at)));
 
-// By id rather than by title: a shelf's title is a phrase key resolved against
-// whatever language is showing, and its identity is not.
 const ids = (albums: Album[]) => buildShelves(albums).map((shelf) => shelf.id);
 
 test("a shelf that can only fill three entries is dropped rather than shown thin", () => {
@@ -54,22 +52,15 @@ test("an empty library gets no shelves at all, not an empty one", () => {
 });
 
 test("a library the player knows nothing about still opens on something", () => {
-	// No play counts, no ratings, no dates: a fresh install, or a player with no
-	// playback-statistics component. Every real shelf is empty and the fallback
-	// is the only thing between the user and a blank screen.
 	assert.deepEqual(ids(many(6, () => ({}))), ["starter"]);
 });
 
 test("Never listened stays away when nothing has ever been played", () => {
-	// Every album reads zero, so offering the whole library as untouched would be
-	// a lie about a library Jean simply cannot see the history of.
 	const shelves = ids(many(6, () => ({})));
 	assert.ok(!shelves.includes("unopened"));
 });
 
 test("Your favourites needs eight rated albums before it will judge", () => {
-	// A percentile over three albums calls one of them a favourite. The gate is
-	// about having enough to have an opinion, not about the shelf's own minimum.
 	const rated = (count: number) =>
 		many(count, (at) => ({ ratedCount: 2, rating: 1 + (at % 5) }));
 
@@ -102,10 +93,6 @@ test("a shelf holds at most twenty-four albums and still reports the whole count
 });
 
 test("refsOfShelf is ascending across albums, not shelf order", () => {
-	// beefweb's add-from-library ignores the order of `items` and adds them in
-	// the library's own, so a position computed against shelf order addresses a
-	// different track. The shelf here is sorted by plays, which puts the album
-	// holding the higher refs first.
 	const shelf = buildShelves([
 		album({ refs: Int32Array.from([40, 41]), plays: 90, lastPlayed: 1 }),
 		album({ refs: Int32Array.from([10, 11]), plays: 80, lastPlayed: 1 }),
@@ -118,7 +105,6 @@ test("refsOfShelf is ascending across albums, not shelf order", () => {
 });
 
 test("refsOfShelf sorts numerically, not as text", () => {
-	// `Array.prototype.sort` with no comparator would put 100 before 9.
 	const shelf = buildShelves([
 		album({ refs: Int32Array.from([9, 100]), plays: 5, lastPlayed: 1 }),
 		album({ refs: Int32Array.from([20, 3]), plays: 4, lastPlayed: 1 }),

@@ -21,8 +21,6 @@ export interface ActiveItem {
 }
 
 export interface PlayerInfo {
-	// `name` distinguishes foobar2000 from DeaDBeeF and is the one to branch on. `title` is a display
-	// name, identical to it on foobar2000.
 	name: string;
 	title?: string;
 	version: string;

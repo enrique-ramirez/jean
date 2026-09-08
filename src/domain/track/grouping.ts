@@ -78,8 +78,6 @@ export function groupByAlbum(rows: TrackColumns[], t: Translate): AlbumRun[] {
 	}));
 }
 
-// Artwork is addressed per row, so without this the browser cannot tell that a record's tracks
-// share one picture.
 export function albumCoverRows(groups: AlbumRun[], length: number) {
 	const cover = new Int32Array(length);
 	groups.forEach((group) => {

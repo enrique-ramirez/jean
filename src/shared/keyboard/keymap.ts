@@ -1,8 +1,3 @@
-// Punctuation is declared as the character typed, never as the unshifted key plus Shift. The matcher
-// compares `event.key` first and falls back to `event.code` through a QWERTY punctuation map, so
-// `Shift+/` means "the ? on the physical slash key" -- true on US QWERTY and false on Dvorak, Spanish
-// and French. A shifted character therefore needs both spellings. Letters are safe either way.
-
 import {
 	formatForDisplay,
 	type RegisterableHotkey,
@@ -13,7 +8,6 @@ import type { Phrase } from "@/shared/i18n/en";
 export type ShortcutName = Extract<Phrase, `shortcut.${string}`>;
 export type ShortcutGroup = Extract<Phrase, `shortcutGroup.${string}`>;
 
-// The hotkeys type excludes Shift+punctuation, so the cast is spelled once, here.
 const shifted = (key: string) => `Shift+${key}` as RegisterableHotkey;
 
 export interface Binding {
@@ -156,7 +150,6 @@ export const KEYMAP: Binding[] = [
 		name: "shortcut.globalSearch",
 		keys: ["Mod+K"],
 	},
-	// A bare letter: `Mod+Shift+P` opens a private window in Firefox and never reaches the page.
 	{
 		id: "openPalette",
 		scope: SCOPE.global,

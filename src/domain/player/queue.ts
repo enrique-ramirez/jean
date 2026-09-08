@@ -14,9 +14,6 @@ export interface QueueTarget {
 	itemIndex: number;
 }
 
-// The insertion point rides in the target id. `dnd.ts` publishes which target is under the pointer
-// and nothing finer, so a target per gap is what lets the drop line move without a pointer position
-// in the store notifying the app on every frame.
 export const queueDropAt = (at: number) => `${QUEUE_DROP_TARGET}@${at}`;
 
 export const queueDropIndex = (id: string) => {
@@ -47,8 +44,6 @@ export interface QueueEntry {
 	artist: string;
 	duration: number;
 	offset: number;
-	// beefweb reports `itemIndex: -1` for a track removed from its playlist and leaves `columns`
-	// holding whatever fell into the freed slot. Branch on the index, never on the columns.
 	isOrphan: boolean;
 }
 
@@ -86,8 +81,6 @@ export const queuedSeconds = (entries: QueueEntry[]) =>
 export const startsIn = (entry: QueueEntry, remaining: number) =>
 	remaining + entry.offset;
 
-// The same rebuild as `movePlan` and for the same reason: everything from the insertion point down
-// comes off and goes back on with the new tracks ahead of it.
 export function insertPlan(
 	current: PlayQueueItem[],
 	at: number,
@@ -100,8 +93,6 @@ export function insertPlan(
 	};
 }
 
-// A reorder is a rebuild: `queueIndex` on `/playqueue/add` is accepted and silently ignored, so
-// there is no insert to ask for. Removals come off from the top, the player renumbering on each one.
 export function movePlan(current: PlayQueueItem[], from: number, to: number) {
 	const next = [...current];
 	const [item] = next.splice(from, 1);
@@ -126,8 +117,6 @@ export const sameQueue = (
 			item.itemIndex === b?.[at]?.itemIndex,
 	);
 
-// Deleting a playlist the queue points into crashes foo_beefweb and takes foobar2000 with it, so
-// this runs first and its answer gates the delete.
 export async function dequeuePlaylist(playlistId: string) {
 	const queued = await fetchPlayQueue().catch(() => null);
 	if (!queued) return false;

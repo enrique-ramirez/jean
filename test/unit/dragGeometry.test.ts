@@ -9,7 +9,6 @@ import {
 	targetFor,
 } from "../../src/shared/lib/dragGeometry.ts";
 
-// Four rows of the same height, laid out from the top of the viewport.
 const EVEN: RowBox[] = [
 	{ top: 0, height: 40 },
 	{ top: 40, height: 40 },
@@ -29,8 +28,6 @@ test("a row that has not travelled stays where it is", () => {
 });
 
 test("the swap happens when the rows cross, not when they touch", () => {
-	// Overlapping row 2 is not enough: the dragged row's centre has to pass row 2's own centre,
-	// which for even rows is a whole row of travel rather than half of one.
 	assert.equal(targetFor({ tops: EVEN, from: 1 }, 39), 1);
 	assert.equal(targetFor({ tops: EVEN, from: 1 }, 41), 2);
 });
@@ -50,8 +47,6 @@ test("the landing lines a row up with the top of the slot it moved up into", () 
 });
 
 test("going down, the row lands against the bottom of the target rather than its top", () => {
-	// The tall row 0 dropped onto the short row 1: its top comes to rest at row 1's bottom minus its
-	// own height, which is not row 1's top.
 	assert.equal(landingOffset({ tops: UNEVEN, from: 0, to: 1 }), 20);
 	assert.equal(landingOffset({ tops: UNEVEN, from: 0, to: 2 }), 80);
 });
@@ -86,8 +81,6 @@ test("dragging up slides the rows it passes down instead", () => {
 });
 
 test("a displaced row slides to the top its neighbour had, whatever the heights", () => {
-	// Row 1 is 20 tall between two 60s. Passed downwards it takes row 0's top, and passed upwards it
-	// takes row 2's, so the travel differs by direction rather than being one row height either way.
 	assert.equal(offsetFor({ tops: UNEVEN, from: 0, to: 1, offset: 40 }, 1), -60);
 	assert.equal(offsetFor({ tops: UNEVEN, from: 2, to: 1, offset: -40 }, 1), 20);
 });

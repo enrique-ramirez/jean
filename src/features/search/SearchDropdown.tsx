@@ -121,8 +121,6 @@ function faceOf(
 			const { genre } = suggestion;
 			return {
 				key: `genre:${genre.key}`,
-				// A genre has no artwork and never will, and the slot is kept anyway so its name sits on
-				// the same line as every other row's.
 				leading: (
 					<span className={styles.glyph} aria-hidden="true">
 						<Shapes size={17} strokeWidth={2} />
@@ -149,14 +147,10 @@ function faceOf(
 }
 
 /**
- * The panel is drawn below the field on a pointer viewport and fills the screen below the top bar on
- * a compact one, and both of those are one set of coordinates rather than two components -- so they
- * are measured here and spent in the stylesheet, where the breakpoint lives.
- *
- * `dvh` is no help for the second one: neither platform shrinks the layout viewport for the software
- * keyboard, so a panel sized to the screen puts its own last rows behind the keys with no scroll
- * left to reach them. The inset is written to the element rather than to state, since iOS emits a
- * stream of these while the keyboard animates.
+ * `dvh` is no help here: neither platform shrinks the layout viewport for the software keyboard, so a
+ * panel sized to the screen puts its own last rows behind the keys with no scroll left to reach them.
+ * The inset is written to the element rather than to state, since iOS emits a stream of these while
+ * the keyboard animates.
  */
 function useAnchoredBounds(
 	anchor: RefObject<HTMLElement | null>,
@@ -171,8 +165,6 @@ function useAnchoredBounds(
 
 		const apply = () => {
 			const box = from.getBoundingClientRect();
-			// The panel hangs from the field on a pointer viewport and from the whole bar on a compact one,
-			// where it is full-bleed and would otherwise stack its own edge against the bar's.
 			const bar = from.closest("header") ?? from;
 			element.style.setProperty("--anchor-bottom", `${box.bottom}px`);
 			element.style.setProperty(
@@ -234,13 +226,8 @@ export function SearchDropdown({
 
 	useAnchoredBounds(anchor, panel);
 
-	// Up rather than down: the panel hangs from the top, so up is the way it came. `useSwipe` holds it
-	// back until the list has nothing left to scroll, and a list short enough not to scroll is at both
-	// ends at once.
 	const swipe = useSwipe({ onUp: onDismiss });
 
-	// Found by id rather than by child position: the headings are children of the list too, so the
-	// cursor's index and the element's index are several rows apart by the fourth section.
 	useLayoutEffect(() => {
 		if (active < 0) return;
 		list.current
@@ -248,8 +235,7 @@ export function SearchDropdown({
 			?.scrollIntoView({ block: "nearest" });
 	}, [active]);
 
-	// Where each section starts in the flat list the keyboard walks.
-	let from = 0;
+	let cursor = 0;
 
 	return (
 		<div className={styles.panel} ref={panel} {...swipe}>
@@ -265,15 +251,15 @@ export function SearchDropdown({
 			) : (
 				<div className={styles.results} id={listId} role="listbox" ref={list}>
 					{sections.map((section) => {
-						const starts = from;
-						from += section.suggestions.length;
+						const sectionStart = cursor;
+						cursor += section.suggestions.length;
 
 						return (
 							<Fragment key={section.label}>
 								<Heading label={section.label} count={section.count} />
 
 								{section.suggestions.map((suggestion, offset) => {
-									const index = starts + offset;
+									const index = sectionStart + offset;
 									const isActive = index === active;
 									const { key, leading, title, under } = faceOf(
 										suggestion,

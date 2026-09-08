@@ -33,8 +33,6 @@ const RATED = {
 const readOnlyStars = (page: Page, row: number) =>
 	trackRow(page, row).getByRole("img", { name: /stars|Unrated/ });
 
-// An image when read-only, a group of buttons when writable, both naming the
-// value.
 const ratingOf = (page: Page, row: number) =>
 	readOnlyStars(page, row).or(
 		trackRow(page, row).getByRole("group", { name: /stars|Unrated/ }),
@@ -134,7 +132,6 @@ test.describe("with foo_jean and a token", () => {
 		player,
 	}) => {
 		await openLibrary(page);
-		// Deléctrico is at 3, so the third star is the one that clears it.
 		await trackRow(page, 2)
 			.getByRole("button", { name: "Clear rating (3 of 5 stars)" })
 			.click();
@@ -205,7 +202,6 @@ test.describe("with foo_jean and a token", () => {
 	}) => {
 		await openLibrary(page);
 
-		// Los Calientes is at 5, so its fifth star is the one that would clear it.
 		await trackRow(page, 0)
 			.getByRole("button", { name: "Clear rating (5 of 5 stars)" })
 			.hover();
@@ -272,7 +268,6 @@ test.describe("rating with the number keys", () => {
 
 	test("rates the row under the cursor", async ({ page, player }) => {
 		await openLibrary(page);
-		// Down twice from row 0 puts the cursor on Deléctrico.
 		await page.keyboard.press("ArrowDown");
 		await page.keyboard.press("ArrowDown");
 		await page.keyboard.press("4");

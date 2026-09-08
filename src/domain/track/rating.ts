@@ -3,15 +3,11 @@ import { FIELD, numberOf, readNumber, sampleRows } from "./fields";
 
 export const MAX_STARS = 5;
 
-// POPM's byte, on the thresholds Windows Explorer, foobar2000 and MediaMonkey share. Lopsided
-// rather than even fifths, since they centre on the values Windows Media Player writes.
 const POPM_FLOORS = [224, 160, 96, 32, 1];
 
 const popmStars = (raw: number) =>
 	MAX_STARS - POPM_FLOORS.findIndex((floor) => raw >= floor);
 
-// A bare number with no declared scale, so the magnitude picks it. Above 255 is not a rating in any
-// convention, so it is not read as one and specifically not clamped to five stars.
 export function starsOf(raw: number | null): number | null {
 	if (raw === null || raw <= 0) return null; // `0` and `-1` are two spellings of "unrated"
 	if (raw <= MAX_STARS) return raw; // foobar2000's native scale, halves and all

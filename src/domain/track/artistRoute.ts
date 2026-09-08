@@ -9,10 +9,6 @@ export const artistRoute = (name: string, tab: ArtistTab = "overview") =>
 export const artistHref = (name: string, tab: ArtistTab = "overview") =>
 	`#/${artistRoute(name, tab)}`;
 
-/**
- * The name is percent-encoded, so a `/` inside one cannot be mistaken for the tab. Decoded inside a
- * `try`: a hand-edited hash with a stray `%` in it throws rather than returning anything.
- */
 export function artistOfRoute(
 	route: string,
 ): { name: string; tab: ArtistTab } | null {

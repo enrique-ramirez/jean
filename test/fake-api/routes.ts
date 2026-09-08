@@ -2,14 +2,8 @@ import { discoveryRecord } from "./fooJean.ts";
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { createState } from "./state.ts";
 
-// The routes, with no host in them. `server.ts` wires them to a node socket for
-// the suite; the demo build's service worker wires the same ones to a `fetch`
-// event.
-
 type FakeState = ReturnType<typeof createState>;
 
-// beefweb's update-stream payload: each key is present only when that part
-// changed.
 interface UpdatePayload {
 	player?: unknown;
 	playlists?: unknown;
@@ -29,7 +23,6 @@ interface ApiRequest {
 	body: RequestBody;
 	headers: RequestHeaders;
 	response: Responder;
-	// Known only after `listen`, so it is read per request rather than stored.
 	agentPort: number;
 	artwork: ArtworkServer;
 }
@@ -42,9 +35,6 @@ export type ArtworkServer = (
 	response: Responder,
 ) => boolean | Promise<boolean>;
 
-// beefweb splits the comma-joined columns parameter before evaluating it, which
-// is why a multi-argument title-format function such as $if(a,b,c) is unusable
-// as a column. Split the same way, so it breaks here too.
 const parseColumns = (value: string | null) => (value ? value.split(",") : []);
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -63,11 +53,8 @@ export async function handleApi({
 	const segments = path.split("/").filter(Boolean).slice(1);
 	const [head, ...rest] = segments;
 
-	// Against an in-memory player every request settles before the next pointer
-	// event; a real one does not.
 	if (method === "POST" && state.latency > 0) await delay(state.latency);
 
-	// ---- streaming -------------------------------------------------------
 	if (method === "GET" && head === "query" && rest[0] === "updates") {
 		return streamUpdates({ state, url, response });
 	}
@@ -80,17 +67,17 @@ export async function handleApi({
 			payload.player = state.playerPayload(trcolumns);
 		if (url.searchParams.get("playlists") === "true")
 			payload.playlists = state.playlistsPayload();
-		// `qcolumns` is the spelling that works here, and only here.
 		if (url.searchParams.get("playQueue") === "true")
 			payload.playQueue = state.queuePayload(qcolumns);
 		return json(response, payload);
 	}
 
-	// ---- player ----------------------------------------------------------
 	if (head === "player") {
 		if (method === "GET") {
-			// Ignores trcolumns and returns an empty columns array, because the real
-			// endpoint does. Now-playing text has to come from /api/query.
+			// Ignores trcolumns and always returns an empty columns array — the real
+			// endpoint does the same, so now-playing text has to come from /api/query
+			// instead. Not obviously intentional from this route alone; do not "fix"
+			// it to honour trcolumns without checking a real player first.
 			return json(response, { player: { ...state.playerPayload([]) } });
 		}
 		if (method === "POST" && rest.length === 0) {
@@ -123,11 +110,6 @@ export async function handleApi({
 		}
 	}
 
-	// ---- media library (beefweb 0.11+) ------------------------------------
-	//
-	// `/library/info` always answers, because that is how a client discovers it
-	// has no library. Everything else is 501 when the player has no support,
-	// which is what DeaDBeeF does.
 	if (head === "library") {
 		if (method === "GET" && rest[0] === "info")
 			return json(response, state.libraryInfo());
@@ -135,13 +117,11 @@ export async function handleApi({
 		if (!state.library.supported) return empty(response, 501);
 
 		// `range` is a query parameter here, not a path segment as it is for
-		// playlist items, and it is optional: everything is returned without it.
+		// playlist items — beefweb's own choice, not this fake's.
 		const range = url.searchParams.get("range");
 		const [offset, count] = range ? range.split(":").map(Number) : [0, null];
 		const expressions = parseColumns(url.searchParams.get("columns"));
 
-		// The player's own query syntax, which is not the token matching Jean does
-		// client-side. Refused rather than approximated.
 		if (url.searchParams.get("query")) {
 			return json(
 				response,
@@ -186,7 +166,6 @@ export async function handleApi({
 		}
 	}
 
-	// ---- playlists -------------------------------------------------------
 	if (head === "playlists") {
 		if (method === "GET" && rest.length === 0) {
 			return json(response, { playlists: state.playlistsPayload() });
@@ -277,8 +256,6 @@ export async function handleApi({
 	}
 
 	if (method === "POST" && head === "playqueue" && rest[0] === "add") {
-		// One item per request, and no bulk form: on the live player both
-		// {items:[...]} and an array itemIndex come back 400.
 		if (!body || !Number.isInteger(body.itemIndex))
 			return json(response, { error: "itemIndex" }, 400);
 		return state.queueAdd(body.plref, body.itemIndex)
@@ -287,8 +264,6 @@ export async function handleApi({
 	}
 
 	if (method === "POST" && head === "playqueue" && rest[0] === "remove") {
-		// The live player's words: "either queueIndex or plref plus itemIndex
-		// parameters are required". A bulk `items` array is a 400 here too.
 		const hasPair =
 			typeof body?.plref === "string" && Number.isInteger(body?.itemIndex);
 		if (!body || (!Number.isInteger(body.queueIndex) && !hasPair))
@@ -302,8 +277,6 @@ export async function handleApi({
 	}
 
 	if (method === "GET" && head === "playqueue") {
-		// `columns` here, NOT `qcolumns` -- that spelling only works on /api/query,
-		// and asking the wrong one is a blank panel rather than an error.
 		return json(response, {
 			playQueue: state.queuePayload(
 				parseColumns(url.searchParams.get("columns")),
@@ -311,16 +284,14 @@ export async function handleApi({
 		});
 	}
 
-	// ---- client config ---------------------------------------------------
-	//
-	// `null` is a real answer rather than a 404. The component writes this file on
+	// `null` here is a real answer, not an error: it says nothing is stored under
+	// this id, not that the request failed. The component writes this file on
 	// every start and removes it on a clean shutdown, so absent is common.
 	if (method === "GET" && head === "clientconfig") {
 		if (rest[0] !== "foo_jean") return json(response, null);
 		return json(response, discoveryRecord(state.fooJean, agentPort));
 	}
 
-	// ---- artwork ---------------------------------------------------------
 	if (method === "GET" && head === "artwork" && rest[0] === "library") {
 		if (!state.library.supported) return empty(response, 501);
 		const file = state.libraryArtworkFor(url.searchParams.get("path") ?? "");
@@ -330,7 +301,6 @@ export async function handleApi({
 
 	if (method === "GET" && head === "artwork" && rest.length === 2) {
 		const file = state.artworkFor(rest[0], Number(rest[1]));
-		// 404 is the normal answer for a track with no embedded cover, not an error.
 		if (!file) return empty(response, 404);
 		return artwork(file, headers, response);
 	}
@@ -338,9 +308,6 @@ export async function handleApi({
 	return false;
 }
 
-// beefweb's stream: a full snapshot on connect, then a message whenever
-// something changes, carrying only the parts that changed. No heartbeat and no
-// position ticks -- long silences are normal.
 function streamUpdates({
 	state,
 	url,
@@ -422,8 +389,6 @@ export function handleControl({
 		return empty(response);
 	}
 
-	// The desktop reaching into a playlist while Jean is looking at it. Undo holds
-	// a range of indices that is only correct while nothing else has touched it.
 	if (action === "append") {
 		return state.copyItems(input.sourceId, input.targetId, input.items)
 			? empty(response)
@@ -440,10 +405,6 @@ export function handleControl({
 		return empty(response);
 	}
 
-	// Every open update stream, hung up on without warning -- a wifi hiccup, a
-	// proxy timing out, a phone coming back from sleep. The browser reconnects by
-	// itself and the fake replays a full snapshot, which is exactly what
-	// `usePlayer` says it depends on and nothing else here exercises.
 	if (action === "dropStream") {
 		const dropped = state.updateStreams.size;
 		for (const drop of [...state.updateStreams]) drop();

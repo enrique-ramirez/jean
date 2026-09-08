@@ -59,8 +59,6 @@ export function useSortableList({
 	// attribute.
 	const [state, setState] = useState<SortState | null>(null);
 
-	// Cached per index: a fresh closure every render detaches and reattaches every row's ref on every
-	// pointer move.
 	const setItemRef = (index: number) => {
 		refCallbacks.current[index] ??= (element: HTMLElement | null) => {
 			itemRefs.current[index] = element;
@@ -102,7 +100,6 @@ export function useSortableList({
 		const tick = () => {
 			const before = scroller.scrollTop;
 			scroller.scrollTop += drag.current?.step ?? 0;
-			// Rows were measured in viewport coordinates, so scrolling moves them out from under the pointer.
 			if (drag.current) drag.current.scrolled += scroller.scrollTop - before;
 			const moved = scroller.scrollTop !== before;
 			frame.current = moved ? requestAnimationFrame(tick) : null;
@@ -184,9 +181,6 @@ export function useSortableList({
 		onReorder(current.from, to);
 	};
 
-	// A handle claims the pointer up front; the row must not. Capture retargets the compatibility
-	// mousedown and mouseup, so click fires on the row rather than on the link inside it and
-	// navigation silently stops working.
 	const begin = (
 		index: number,
 		event: ReactPointerEvent,

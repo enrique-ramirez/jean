@@ -34,8 +34,6 @@ interface Tile {
 	identity: string | undefined;
 }
 
-// One tile per record, and each carries what record it is: a tile and a row drawing the same sleeve
-// then share one held picture rather than fetching it twice.
 function albumTiles(rows: TrackColumns[], indices: Refs | null): Tile[] {
 	const seen = new Set<string>();
 	const tiles: Tile[] = [];

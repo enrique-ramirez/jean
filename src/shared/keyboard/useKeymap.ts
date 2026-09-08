@@ -6,8 +6,6 @@ import { KEYMAP } from "./keymap";
 
 type HotkeyHandler = (event: KeyboardEvent, context: unknown) => void;
 
-// `handledIds` is the memo's dependency rather than `handlers`, which is a fresh object every render
-// and would re-register every binding every time.
 export function useKeymap(
 	scope: string,
 	handlers: Record<string, HotkeyHandler | undefined>,

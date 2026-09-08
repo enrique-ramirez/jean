@@ -1,11 +1,3 @@
-// Two facts about strings decide the shape here:
-//
-//   - Slicing a string keeps the whole original alive, so remainders sliced out of the responses
-//     would hold every response string and save nothing. Joining a run of them into one string is
-//     what lets the originals go.
-//   - A string is held one byte per character only if every character in it fits, so one accented
-//     filename doubles whatever it is joined to. The remainders are joined in blocks to bound that.
-
 const BLOCK = 256;
 
 const grownTo = (indices: Int32Array<ArrayBuffer>, length: number) => {

@@ -50,7 +50,6 @@ export function useScratchPlaylist({
 		[playlist, held],
 	);
 
-	// Serialised: two quick calls would otherwise interleave a rebuild with a refill and leave the playlist holding half of each.
 	const pending = useRef<Promise<string | null> | null>(null);
 
 	const ensure = useCallback(
@@ -76,7 +75,6 @@ export function useScratchPlaylist({
 				else if (target.title !== title) await renamePlaylist(target.id, title);
 				setPinnedId(target.id);
 
-				// Read off the player, not off `target`: beefweb never pushes item changes, so a cached `itemCount` is stale from the first write on.
 				const heldCount = source.needsHeldCount
 					? ((await fetchPlaylists()).find((entry) => entry.id === target.id)
 							?.itemCount ?? 0)

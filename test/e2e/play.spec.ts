@@ -68,9 +68,6 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 				"no keyboard on the phone",
 			);
 
-			// Arrow keys move a cursor held in state rather than DOM focus: the
-			// virtualiser unmounts the focused row the moment it scrolls away. The
-			// cursor starts on the first row, so one press is row 1.
 			await expect(trackRow(page, 0)).toHaveAttribute("data-cursor", "true");
 			await page.keyboard.press("ArrowDown");
 			await expect(trackRow(page, 1)).toHaveAttribute("data-cursor", "true");
@@ -173,8 +170,6 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 			page,
 			player,
 		}) => {
-			// A hold ends in a synthetic click, which useLongPress swallows in its
-			// capture phase.
 			await pressAndHold(page, trackRow(page, THIRD_TRACK.index));
 
 			await expect(page.getByRole("dialog")).toBeVisible();

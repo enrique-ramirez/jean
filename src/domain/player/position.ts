@@ -2,8 +2,6 @@ import { readTrack } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { listeningPosition } from "./listenerStore";
 
-// Interpolated forward from the last update: beefweb reports a position only when it sends one, and
-// those can be minutes apart.
 export function positionAt(
 	snapshot: PlayerSnapshot | null | undefined,
 	now: number,

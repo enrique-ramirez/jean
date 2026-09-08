@@ -153,7 +153,6 @@ export const SHELVES: Shelf[] = [
 		"shelf.unopened.title",
 		"shelf.unopened.blurb",
 		(albums) =>
-			// With no playback-statistics component every album reads as zero, and the filter would offer the whole library.
 			albums.some((album) => album.plays > 0)
 				? albums
 						.filter((album) => album.plays === 0)

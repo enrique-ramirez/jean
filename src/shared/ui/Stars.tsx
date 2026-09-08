@@ -46,8 +46,6 @@ export function Stars({
 	);
 }
 
-// Pointer-only and deliberately not focusable: the virtualiser unmounts rows as they scroll and
-// would take focus with them. Keyboard and touch rate through the track menu.
 export function StarsInput({
 	value,
 	max = 5,

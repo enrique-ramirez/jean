@@ -8,8 +8,6 @@ import {
 } from "@/shared/api/fooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
-// One probe for the whole app: every caller names this key, so the second to mount reads the first
-// one's result rather than fetching.
 const KEY = "fooJean";
 
 const ABSENT: FooJeanDiscovery = {

@@ -19,8 +19,6 @@ const POLL_MS: Record<Exclude<Watching, "off">, number> = {
 
 export interface Audience {
 	listeners: StreamListeners | null;
-	// Sampled on the same tick rather than published: it moves continuously, and a store notifying on
-	// it would repaint the app.
 	lagSeconds: number | null;
 }
 

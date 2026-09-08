@@ -18,8 +18,6 @@ import {
 const queuePanel = (page: Page) =>
 	page.getByRole("complementary", { name: "Queue" });
 
-// The status-bar button, which is also the only drop target: dragging is
-// mouse-only. On a phone the button lives on the now-playing screen instead.
 const queueButton = (page: Page) =>
 	statusBar(page).getByRole("button", { name: /^Queue/ });
 
@@ -29,9 +27,8 @@ const anyQueueButton = async (page: Page) => {
 	return nowPlayingScreen(page).getByRole("button", { name: /^Queue/ });
 };
 
-// Idempotent: queueing a track opens the panel by itself, so a spec that queues
-// before it looks would otherwise toggle the open one shut. Closed, the panel is
-// parked off the right edge rather than hidden, which no visibility check sees.
+// Closed, the panel is parked off the right edge rather than hidden, so
+// `toBeHidden()` would not see it either way.
 const openQueue = async (page: Page) => {
 	if ((await queuePanel(page).getAttribute("data-open")) !== "true")
 		(await anyQueueButton(page)).click();
@@ -46,12 +43,9 @@ const queueTracks = async (page: Page, isMobile: boolean, index = 0) => {
 	else await row.click({ button: "right" });
 	const item = page.getByRole("menuitem", { name: "Add to queue" });
 	await item.click();
-	// The sheet plays a 220ms exit, and a second hold fired into it is swallowed.
 	await expect(item).toHaveCount(0);
 };
 
-// Read off the playlist: a queue entry is a playlist and a position, and the
-// control surface resolves no columns.
 const queuedTitles = (player: FakePlayer) =>
 	player.playQueue.map((entry) => {
 		const playlist = player.playlists.find(
@@ -119,14 +113,11 @@ test.describe("putting things in the queue", () => {
 			{ steps: 16 },
 		);
 
-		// Armed on an animation frame rather than on the move event, so this is a
-		// poll and not a read.
 		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
 		expect(requestsTo(player, "/playqueue/add")).toHaveLength(1);
-		// A drop lands away from the pointer, so it has to show what it did: the panel opens on a drop as it does on the menu action.
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 		await expect(queueRows(page)).toHaveCount(1);
 	});
@@ -144,7 +135,9 @@ test.describe("putting things in the queue", () => {
 		const before = queuedTitles(player);
 
 		const source = await trackRow(page, 0).boundingBox();
-		// The upper half of the first row, which is the gap above it: the id carries the index and the two halves point at different ones, so aiming at the row is not enough.
+		// A row's id carries its index, but the drop line above a row and the
+		// row itself are two separate targets sharing that id -- aiming at the
+		// row's upper half, not its middle, is what lands on the line above it.
 		const first = (await queueRows(page).first().boundingBox())!;
 
 		await page.mouse.move(
@@ -194,7 +187,6 @@ test.describe("putting things in the queue", () => {
 		await page.mouse.up();
 
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(2);
-		// Nothing came off: an append is one request whatever is above it.
 		expect(requestsTo(player, "/playqueue/remove")).toHaveLength(0);
 	});
 
@@ -216,7 +208,6 @@ test.describe("putting things in the queue", () => {
 		await page.mouse.move(source!.x + 90, source!.y + 40, { steps: 8 });
 
 		await expect(queueButton(page)).toHaveAttribute("data-drop-target");
-		// Armed is not the same as under the pointer.
 		await expect(queueButton(page)).not.toHaveAttribute("data-drop-over");
 
 		await page.mouse.up();
@@ -232,8 +223,6 @@ test.describe("putting things in the queue", () => {
 
 		const source = await trackRow(page, 0).boundingBox();
 		const drop = await queueButton(page).boundingBox();
-		// Left of the button is the Next-track button, so a point there arms only
-		// if the grown hit area really is what the document hit test lands on.
 		const beside = { x: drop!.x - 6, y: drop!.y + drop!.height / 2 };
 
 		await page.mouse.move(
@@ -245,8 +234,6 @@ test.describe("putting things in the queue", () => {
 		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
-		// At rest that point is not the button's, so nothing beside it has lost a
-		// strip of itself for the session.
 		const stillCaught = await page.evaluate(
 			(point) =>
 				Boolean(
@@ -266,9 +253,6 @@ test.describe("putting things in the queue", () => {
 		test.skip(isMobile, "there is no Next button on a compact viewport");
 		await openLibrary(page);
 
-		// Where the two buttons sit, not what order the accessibility tree lists
-		// them in: the claim is spatial, and a DOM walk also fails open -- rename
-		// either button and indexOf answers -1, silently pointing at labels[0].
 		const boxOf = async (name: string | RegExp) =>
 			(await statusBar(page).getByRole("button", { name }).boundingBox())!;
 		const next = await boxOf("Next track");
@@ -314,8 +298,6 @@ test.describe("putting things in the queue", () => {
 	}) => {
 		await openLibrary(page);
 
-		// On a phone the button is on the now-playing screen and the tracks being
-		// queued are in the list behind it, so close it again after reading.
 		const badge = async () => {
 			const button = await anyQueueButton(page);
 			const name = await button.getAttribute("aria-label");
@@ -350,7 +332,6 @@ test.describe("queueing opens the panel", () => {
 
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 		await expect(queueRows(page)).toHaveCount(1);
-		// The panel is the confirmation and the row is the undo, so nothing is announced on top of it.
 		await expect(page.getByRole("status")).toHaveCount(0);
 	});
 
@@ -362,11 +343,9 @@ test.describe("queueing opens the panel", () => {
 		await queueTracks(page, isMobile);
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 
-		// A point left of the panel, whatever is there to take it: on a phone that is the scrim, on a desktop the list itself.
 		const box = (await queuePanel(page).boundingBox())!;
 		await page.mouse.click(box.x / 2, box.y + 120);
 
-		// The docked panel is furniture and stays through the app being used behind it; the overlay is a sheet and goes.
 		await expect(queuePanel(page)).toHaveAttribute(
 			"data-open",
 			isMobile ? "false" : "true",
@@ -381,7 +360,6 @@ test.describe("queueing opens the panel", () => {
 		await queueTracks(page, isMobile);
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 
-		// The press outside fires first and the click after it: without the toggle being named to the dismissal, the two cancel out and the button stops closing what it opened.
 		(await anyQueueButton(page)).click();
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
 	});
@@ -470,7 +448,6 @@ test.describe("queueing opens the panel", () => {
 		await queueTracks(page, isMobile);
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 
-		// One short queue, so the scroller is at both ends at once -- which is exactly the state a vertical dismissal would have fired from.
 		for (const [dy, name] of [
 			[-160, "up"],
 			[160, "down"],
@@ -560,7 +537,6 @@ test.describe("the panel", () => {
 
 		await openQueue(page);
 
-		// An empty queue has no rows, so nothing else on this panel is ticking.
 		const label = queuePanel(page).getByText(/left of this track/);
 		const first = await label.textContent();
 		await expect
@@ -591,15 +567,11 @@ test.describe("the panel", () => {
 
 		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
 		await page.mouse.down();
-		// In steps, and past the middle of the target row: the gesture only becomes
-		// a drag once it has travelled, and one jump is a single move event.
 		await page.mouse.move(to.x + to.width / 2, to.y + to.height * 0.25, {
 			steps: 12,
 		});
 		await page.mouse.up();
 
-		// The player's own queue, not the rows on screen: the panel is optimistic
-		// and a reorder that never reached the player looks identical here.
 		await expect
 			.poll(() => queuedTitles(player), { timeout: 10_000 })
 			.toEqual([before[2], before[0], before[1]]);
@@ -741,7 +713,6 @@ test.describe("what the player does with it", () => {
 		await queueTracks(page, isMobile, 9);
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
 
-		// Through the player, not the UI: Next is desktop-only.
 		await page.evaluate(() => fetch("/api/player/next", { method: "POST" }));
 
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(0);
@@ -894,8 +865,6 @@ test.describe("queueing a row that is in no playlist", () => {
 	});
 });
 
-// A cue sheet, a disc image or a single-file mix: several tracks inside one file,
-// which the media library addresses as one path and a subsong each.
 test.describe("queueing several tracks that share one file", () => {
 	test.use({ libraryShape: { tracks: 12, subsongsPerFile: 3 } });
 
@@ -917,8 +886,6 @@ test.describe("queueing several tracks that share one file", () => {
 		await page.goto("/#/all");
 		await expect(trackRow(page, 0)).toBeAttached();
 
-		// Rows 0 to 2 are the three subsongs of the first file, so a read-back matched
-		// on the path alone answers with the first of them three times.
 		await trackRow(page, 0).click();
 		await trackRow(page, 2).click({ modifiers: ["Shift"] });
 		await queueTracks(page, isMobile, 1);

@@ -10,8 +10,6 @@ import { FIELD } from "../../src/domain/track/fields.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
-// Tagging shapes taken off a real library, including the two that pull in opposite directions: a
-// name written twice, and a name with a comma in it.
 const LIBRARY: [artist: string, albumArtist: string, album: string][] = [
 	["Foo Fighters", "Foo Fighters, Foo Fighters", "In Your Honor"],
 	["Foo Fighters", "Foo Fighters, Foo Fighters", "The Colour and the Shape"],
@@ -76,7 +74,6 @@ test("a lead credited in both tags counts its track once", () => {
 
 test("Various Artists is not an artist", () => {
 	assert.equal(find("various artists"), undefined);
-	// The composer on that compilation still is.
 	assert.equal(find("nobuo uematsu")?.trackCount, 1);
 });
 
@@ -108,9 +105,8 @@ test("the counts a page shows are the rows it draws", () => {
 	}
 });
 
-// The library arrives a chunk at a time under a key that never changes, since the key carries the
-// total the player reported rather than what has landed. An index that reads the key alone answers
-// from the first chunk for the rest of the session.
+// `growingIndex`'s own comment has why a key on its own is not enough; this is that trap with a
+// doubled tag rather than a joined one.
 test("the index takes in rows that arrive after it was first asked for", () => {
 	const key = "library:10";
 
@@ -121,7 +117,6 @@ test("the index takes in rows that arrive after it was first asked for", () => {
 	assert.ok(grown.length > 1, "the rest of the library reached the index");
 	assert.ok(grown.some((entry) => entry.key === "sinead harnett"));
 
-	// And the counts are the whole library's, not the first chunk's plus a second pass over it.
 	assert.equal(
 		grown.find((entry) => entry.key === "foo fighters")?.trackCount,
 		2,
@@ -135,15 +130,12 @@ test("a different library is built afresh rather than added to", () => {
 	assert.equal(other[0].key, "blood, sweat & tears");
 });
 
-// What the dropdown offers as a section: the whole-word floor, best first.
 const named = (query: string, floor = TIER.word) =>
 	rankEntities(artists, query, floor).map((entry) => entry.name);
 
 test("a name the query holds whole is offered; one it only contains is not", () => {
 	assert.deepEqual(named("sirens"), ["Sleep With Sirens"]);
-	// `Garfunkel` is a whole word of the name, so it stands.
 	assert.deepEqual(named("garfunkel"), ["Simon & Garfunkel"]);
-	// `unk` is inside `Daft Punk` and inside nothing whole, so the section stays shut.
 	assert.deepEqual(named("unk"), []);
 });
 
@@ -152,7 +144,6 @@ test("an exact name beats one that merely starts with the query", () => {
 });
 
 test("at the same rung, the artist you hold more of comes first", () => {
-	// Two names of the same length matching the same way, so nothing but the library separates them.
 	const tied = artistsOf(
 		[
 			["Blue Cat", "Blue Cat", "One"],

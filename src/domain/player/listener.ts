@@ -1,8 +1,6 @@
 import type { FooJeanDiscovery, StreamMark } from "@/shared/api/fooJean";
 import { clamp } from "@/shared/lib/math";
 
-// The codecs parameter is not optional for Ogg: bare `audio/ogg` can answer for Vorbis alone.
-// `audio/aac` is the string browsers answer to for ADTS.
 import { canUseMse } from "./mseStream";
 
 const MIME: Record<string, string[]> = {
@@ -12,8 +10,6 @@ const MIME: Record<string, string[]> = {
 
 let probe: HTMLAudioElement | null = null;
 
-// `canPlayType` returns `''`, `'maybe'` or `'probably'`. Only `''` is a real answer, and the other
-// two are not a ranking.
 export const playsNatively = (format: string) => {
 	probe ??= document.createElement("audio");
 	const types = MIME[format];
@@ -21,13 +17,9 @@ export const playsNatively = (format: string) => {
 	return types.some((type) => probe?.canPlayType(type) !== "");
 };
 
-// No browser takes Ogg in an element or in MSE, so Safari answers `''` for Opus and would never be
-// offered it. The remux reaches it anyway, handing the element WebM, so a format is reachable by
-// either route and the two are not one question.
 const isPlayable = (format: string) =>
 	playsNatively(format) || (format === "opus" && canUseMse());
 
-// `?format=` outside `streamFormats` is a 400, so this only ever excludes.
 export const playableFormats = (offered: readonly string[] | undefined) =>
 	(offered ?? []).filter(isPlayable);
 
@@ -71,10 +63,6 @@ export function resolveListener({
 	};
 }
 
-// The element's first sample is the live edge and delivery is 1x, so the lag falls out of
-// `streamTimeAtConnect + (currentTime - bufferedStart)` rather than being measured.
-// `bufferedStart` is the timebase origin rather than a depth: browsers differ over whether
-// `currentTime` starts at zero or at the stream's granule position.
 export const anchorOf = (streamTimeAtConnect: number, bufferedStart: number) =>
 	streamTimeAtConnect - bufferedStart;
 
@@ -102,7 +90,6 @@ export function audibleMark(
 	return marks.findLast((entry) => entry.at <= audible) ?? null;
 }
 
-// Null is not a failure: it means drive the bar from beefweb as usual.
 export function audiblePosition(
 	anchor: number | null,
 	marks: readonly StreamMark[],

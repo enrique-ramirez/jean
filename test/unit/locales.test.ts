@@ -7,11 +7,6 @@ import { fileURLToPath } from "node:url";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { Message } from "../../src/shared/i18n/message.ts";
 
-// The translations Jean ships with are the example every other one is copied
-// from, so a stale key or an invented field in one of them teaches the mistake.
-// Nothing in a browser can see this: a wrong key silently falls back to English
-// and a wrong field renders as `{prot}` on a screen nobody has opened.
-
 const FOLDER = join(
 	dirname(fileURLToPath(import.meta.url)),
 	"../../public/locales",

@@ -38,8 +38,6 @@ function readId(bytes: Uint8Array, at: number): [string, number] {
 	return [id, length];
 }
 
-// Returns -1 for the reserved all-ones length, which is how a live stream opens an element
-// it cannot measure.
 function readSize(bytes: Uint8Array, at: number): [number, number] {
 	const length = vintLength(bytes[at]);
 
@@ -130,7 +128,6 @@ test("the Segment is opened with an unknown length, because a live stream has no
 	const at = parse(bytes).findIndex((node) => node.id === "18538067");
 	assert.ok(at >= 0, "no Segment");
 
-	// Its id ends where its size begins, and that size must be the reserved all-ones.
 	const start = bytes.indexOf(0x18);
 	assert.equal(readSize(bytes, start + 4)[0], -1);
 });
@@ -144,8 +141,6 @@ test("the track declares Opus, and carries the head it was given", () => {
 	assert.equal(uint(find(nodes, "9f")?.payload ?? new Uint8Array()), 2);
 });
 
-// Without it a decoder has no idea how much to discard after a seek, and every flush leaves
-// audible damage at the join.
 test("SeekPreRoll is declared", () => {
 	const nodes = parse(initSegment(track));
 
@@ -161,7 +156,6 @@ test("nothing added is nothing to send", () => {
 
 test("blocks carry the running timecode, and clusters restart the offset", () => {
 	const muxer = new WebmMuxer();
-	// 20 ms each, so three seconds is 150 packets and spans several clusters.
 	for (let i = 0; i < 150; i++) muxer.add(Uint8Array.of(0x80, i & 0xff), 20);
 
 	const nodes = parse(muxer.take() ?? new Uint8Array());
@@ -181,7 +175,6 @@ test("blocks carry the running timecode, and clusters restart the offset", () =>
 		previous = timecode;
 
 		for (const block of cluster.children.filter((node) => node.id === "a3")) {
-			// Track number, then a signed 16-bit offset from the cluster's own timecode.
 			assert.equal(block.payload[0], 0x81);
 			const offset = new DataView(
 				block.payload.buffer,

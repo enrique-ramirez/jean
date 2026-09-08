@@ -2,7 +2,6 @@ import { FIELD, playCountOf, value } from "@/domain/track/fields";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
 
-// Not named `topTracks.ts`: a case-insensitive filesystem cannot tell it from `TopTracks.tsx`, and `'./TopTracks'` would resolve to whichever the compiler probes first.
 export interface TopTrack {
 	ref: number;
 	title: string;

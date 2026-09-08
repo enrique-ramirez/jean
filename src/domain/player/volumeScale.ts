@@ -1,15 +1,11 @@
 import type { Volume } from "@/shared/api/types";
 import { clamp } from "@/shared/lib/math";
 
-// Linear in perceived loudness: about +10 dB is twice as loud, so `max + 10 * log2(f)` makes equal
-// distances on the fader equal ratios of loudness.
 const LOUDNESS_DOUBLING_DB = 10;
 
 const loudness = (db: number, max: number) =>
 	2 ** ((db - max) / LOUDNESS_DOUBLING_DB);
 
-// The curve approaches zero without reaching it, so the bottom of the fader has to be the player's
-// own floor rather than a level the thumb can never arrive at. Which floor that is differs by player.
 const floorOf = (volume: Volume) => loudness(volume.min, volume.max);
 
 export function volumeToFraction(volume: Volume | null | undefined): number {

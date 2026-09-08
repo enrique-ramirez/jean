@@ -27,9 +27,6 @@ export function useAddTracks() {
 			const count = itemIndices.length;
 			if (count === 0) return;
 
-			// From the player rather than the cache: item changes are never pushed, so a cached itemCount
-			// is stale from the first edit on. The read is also what makes undo exact, since items are
-			// appended at precisely [itemCount, itemCount + count).
 			const countOf = async () => {
 				const playlists = await fetchPlaylists();
 				queryClient.setQueryData(PLAYLISTS_KEY, playlists);

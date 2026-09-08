@@ -113,8 +113,6 @@ test.describe("artwork is kept between visits", () => {
 		await page.goto("/#/p7");
 		await settle(page);
 
-		// `createObjectURL` mints a new handle per call, so a dozen rows of one album
-		// would be a dozen copies of the same picture in memory unless they share.
 		const { rows, handles } = await page.evaluate(() => {
 			const drawn = [
 				...document.querySelectorAll<HTMLImageElement>('main [role="row"] img'),

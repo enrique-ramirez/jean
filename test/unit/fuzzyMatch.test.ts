@@ -3,7 +3,6 @@ import test from "node:test";
 
 import { fuzzyKey, fuzzyScore, squash } from "../../src/shared/lib/text.ts";
 
-// The genres a real library actually holds, spelled the several ways a decade of tagging spells them.
 const GENRES = [
 	"Heavy Metal",
 	"Power Metal",
@@ -18,7 +17,6 @@ const GENRES = [
 
 const keys = new Map(GENRES.map((name) => [name, fuzzyKey(name)]));
 
-// What the page does per keystroke: score every genre, drop the misses, best first.
 const ranked = (query: string) => {
 	const squashed = squash(query);
 	return GENRES.map((name) => ({

@@ -47,7 +47,6 @@ const settle = (page: Page) =>
 		SETTLE_FLOOR_MS,
 	);
 
-// How far the playing row's middle is from the view's, in pixels.
 const offCentre = (page: Page) =>
 	page.evaluate(() => {
 		const scroller = document.querySelector("main");
@@ -93,7 +92,6 @@ const expectCentredOrClamped = async (page: Page, index: number) => {
 		.toBe("at rest");
 };
 
-// The first fully visible row at or past the middle of the view.
 const rowInTheMiddle = (page: Page) =>
 	page.evaluate(() => {
 		const scroller = document.querySelector("main");
@@ -158,7 +156,7 @@ test.describe("following playback", () => {
 		// of sixteen, and the only way to provoke it against a 54-track fixture.
 		player.copyItems("p5", "p7", [0]);
 		// Item changes are not pushed by a real player, so the growth has to be
-		// announced the way a landing chunk announces itself. See state.js.
+		// announced the way a landing chunk announces itself. See state.ts.
 		player.notifyPlaylists();
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "55");
 

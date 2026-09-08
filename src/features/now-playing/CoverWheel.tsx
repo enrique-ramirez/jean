@@ -18,14 +18,10 @@ const UNANSWERED_MS = 4000;
 
 interface Sleeve {
 	src: string;
-	// `null` where the sleeve is a guess rather than a known picture: a prefilled neighbour is only
-	// *probably* the next track, so nothing about it may be kept under its address.
 	identity?: string | null;
 	alt: string;
 }
 
-// Three nodes serve every position on the rim, so sleeves are recycled rather than remounted: a touch whose target
-// leaves the document stops being delivered.
 const nodeOf = (at: number) => ((at % 3) + 3) % 3;
 
 export function useCoverWheel({

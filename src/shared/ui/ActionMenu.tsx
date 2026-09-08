@@ -82,13 +82,9 @@ export function ActionMenu({
 }) {
 	const isCompact = useIsCompactViewport();
 
-	// The trigger forgets which row was clicked as the menu closes, so the last open state is held
-	// here or the sheet slides out empty.
 	const shown = useRef({ anchor, header, actions });
 	if (isOpen) shown.current = { anchor, header, actions };
 
-	// Derived during render rather than in an effect: from an effect there is one commit in which the
-	// menu is neither open nor leaving, and that remount re-runs the surface's focus effect.
 	const [isLeaving, setIsLeaving] = useState(false);
 	const [wasOpen, setWasOpen] = useState(isOpen);
 

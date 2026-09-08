@@ -17,23 +17,14 @@ type FakeState = ReturnType<typeof createState>;
 // biome-ignore lint/suspicious/noExplicitAny: see above
 type RequestBody = Record<string, any> | null;
 
-// The server, plus the seam a test run swaps the player through.
 export interface FakeServer extends Server {
 	readonly state: FakeState;
 	reset: (next?: FakeState) => FakeState;
-	// `foo_jean`, on a port of its own. Started and stopped by the fixture that
-	// owns this one.
 	agent: Server;
 }
 
-// The socket under `routes.ts`, plus the two things a real filesystem answers:
-// the build beefweb serves and the cover art.
-
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-// beefweb refuses a request body over 1 MiB by hanging up rather than answering:
-// past the cap the socket is closed mid-upload, which arrives at the client as a
-// network error and not as a status code.
 const MAX_BODY_BYTES = 1024 * 1024;
 
 const readBody = (request: IncomingMessage): Promise<RequestBody> =>
@@ -67,8 +58,6 @@ export function createServer({
 	state?: FakeState;
 	serveDir?: string | null;
 } = {}): FakeServer {
-	// Held in a box rather than closed over, so a test run can swap the whole
-	// player out without tearing the server down.
 	const held = { state };
 	const agent = createFooJeanServer(() => held.state);
 
@@ -100,8 +89,6 @@ export function createServer({
 			);
 		}
 
-		// A control surface the app knows nothing about, so tests can reach the
-		// player's state without going through the UI under test.
 		if (path.startsWith("/__control/")) {
 			const body = method === "POST" ? await readBody(request) : null;
 			return handleControl({ state, path, body, response });
@@ -133,8 +120,6 @@ function serveStatic(root: string, path: string, response: ServerResponse) {
 	const relative = path === "/" ? "/index.html" : path;
 	const file = join(root, normalize(relative).replace(/^(\.\.[/\\])+/, ""));
 	if (!existsSync(file) || !statSync(file).isFile()) {
-		// No SPA fallback, because beefweb's static server has none: a deep path
-		// is a genuine 404 there, which is why the app uses hash routing.
 		return empty(response, 404);
 	}
 	return serveFile(file, response);
@@ -180,7 +165,6 @@ const serveArtwork: ArtworkServer = (name, requestHeaders, response) => {
 		return true;
 	}
 
-	// Read whole rather than piped: `Responder` is not a node stream.
 	response.writeHead(200, headers);
 	response.end(readFileSync(file));
 	return true;

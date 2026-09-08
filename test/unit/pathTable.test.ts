@@ -61,7 +61,6 @@ test("a directory recurring out of path order still reads back", () => {
 	assert.deepEqual(readBack(paths), paths);
 });
 
-// The remainders are joined in blocks, so the boundaries are where an off-by-one would show.
 test("reading across block boundaries", () => {
 	const paths = Array.from(
 		{ length: 1030 },

@@ -23,8 +23,6 @@ import {
 } from "./listenerStore";
 import { useVolume } from "./usePlayer";
 
-// foo_jean captures audio before foobar2000's own volume, so while the sound is here the player's
-// fader changes nothing anyone can hear.
 const deviceVolume = (value: number, isMuted: boolean): Volume => ({
 	type: "db",
 	min: DEVICE_VOLUME_FLOOR_DB,
@@ -63,7 +61,6 @@ export function useListener() {
 		phase: live.phase,
 		format: live.format,
 		isOn,
-		// Null where the platform will not have it: on iOS `audio.volume` is a documented no-op.
 		volume: live.canSetVolume
 			? deviceVolume(live.volumeDb, live.isMuted)
 			: null,

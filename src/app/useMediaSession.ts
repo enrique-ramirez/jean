@@ -40,7 +40,6 @@ function setHandlers(
 		try {
 			target.setActionHandler(action, handlers[action] ?? null);
 		} catch {
-			// A browser that does not know an action throws rather than ignoring it.
 		}
 	}
 }
@@ -49,7 +48,6 @@ function setPosition(duration: number, position: number) {
 	const target = session();
 	if (!target?.setPositionState) return;
 
-	// A position beyond the duration is a TypeError in Chrome, and a live stream's own clock runs past the track it is carrying.
 	const length = Number.isFinite(duration) && duration > 0 ? duration : 0;
 	try {
 		target.setPositionState(
@@ -62,7 +60,6 @@ function setPosition(duration: number, position: number) {
 					},
 		);
 	} catch {
-		// A duration the browser refuses costs the scrubber, not the session.
 	}
 }
 
@@ -130,7 +127,6 @@ export function useMediaSession(
 		}
 
 		setHandlers({
-			// beefweb offers one toggle, and the OS sends `play` even while playing, so each half checks first.
 			play: () => {
 				if (!isPlaying) playPause();
 			},

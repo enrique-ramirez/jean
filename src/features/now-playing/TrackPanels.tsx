@@ -54,7 +54,6 @@ export function TrackPanels({
 
 	const hasLyrics = lyrics.kind !== "none";
 
-	// Restoring an offset writes `scrollTop`, which the synced-lyric follow reads as a manual scroll and gives up on.
 	usePanelScroll(panelRef, `${tab}:${trackKey}`, {
 		enabled: !(tab === "lyrics" && lyrics.kind === "synced"),
 	});
@@ -107,8 +106,6 @@ export function TrackPanels({
 				options={TABS.map((entry) => ({
 					value: entry.id,
 					label: t(entry.label),
-					// Read off the translated label, so a language whose word does not start with the key
-					// underlines nothing rather than lying about which key opens the tab.
 					mnemonic: mnemonicOf(t(entry.label), entry.binding),
 				}))}
 				onChange={select}

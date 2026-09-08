@@ -9,13 +9,6 @@ import { append, clear, type Entry, load } from "./journal.ts";
 import { type CapturedLibrary, demoLibrary } from "./library.ts";
 import { answer } from "./responder.ts";
 
-// The demo's player, on the same routes the suite runs against, so the page can
-// be static files and still be the whole app.
-//
-// A service worker rather than a patched `fetch` because covers are
-// `<img src="/api/artwork/...">`, and only a worker catches those. The app runs
-// unmodified, still believing it is talking to beefweb on the same origin.
-
 declare const self: ServiceWorkerGlobalScope;
 
 // The port the component advertises. Nothing listens on it, but the app is
@@ -51,8 +44,7 @@ const build = (library: CapturedLibrary) => {
 			playlists: demo.playlists,
 			mediaLibrary: demo.tracks,
 			artworkOf: demo.artworkOf,
-			// Installed, listening and paired; see `demo/CLAUDE.md`. `canStream:
-			// false` is a real state the app draws rather than a hole in the fake.
+			// Installed, listening and paired; see `demo/CLAUDE.md`.
 			fooJean: {
 				port: AGENT_PORT,
 				allowedFields: ["rating"],
@@ -62,8 +54,6 @@ const build = (library: CapturedLibrary) => {
 	);
 };
 
-// Null until the library has been fetched, so everything below awaits `booted`
-// before reading it.
 let state: ReturnType<typeof build> | null = null;
 
 const headersOf = (request: Request): RequestHeaders => {
@@ -89,8 +79,6 @@ const readBody = async (request: Request) => {
 		return { refused: false, body: null };
 	}
 };
-
-// ---- artwork ---------------------------------------------------------------
 
 // Answered with the player's own cache terms. Without them the browser refetches
 // a cover it drew a moment ago, and the rows of one album are one request each
@@ -122,13 +110,9 @@ const artwork: ArtworkServer = async (name, headers, response) => {
 	return true;
 };
 
-// ---- the journal -----------------------------------------------------------
-
 const isAgent = (url: URL) =>
 	url.hostname === self.location.hostname && url.port === String(AGENT_PORT);
 
-// Replayed on the way up, so a reload or a worker shut down between two clicks
-// keeps what was done to the player.
 const dispatch = async (
 	player: NonNullable<typeof state>,
 	entry: Entry,
@@ -158,8 +142,6 @@ const dispatch = async (
 		});
 };
 
-// The library has to arrive before there is a player to answer with, and the
-// journal has to be replayed into it before the page is told what is in it.
 const start = async () => {
 	const player = build(await fetchLibrary());
 	for (const entry of await load())
@@ -172,11 +154,8 @@ const start = async () => {
 // awaiting it at the top of that function would hit the temporal dead zone.
 let booted = start();
 
-// ---- serving ---------------------------------------------------------------
-
 async function serve(request: Request, url: URL): Promise<Response> {
 	await booted;
-	// Non-null by construction: `start` is what assigns it.
 	const player = state as NonNullable<typeof state>;
 
 	// Nothing here reads the log, and a demo left open all afternoon would grow an
@@ -227,7 +206,6 @@ async function serve(request: Request, url: URL): Promise<Response> {
 	);
 }
 
-// The demo's own control surface, which the app knows nothing about.
 async function control(url: URL): Promise<Response> {
 	if (url.pathname.endsWith("/reset")) {
 		await clear();

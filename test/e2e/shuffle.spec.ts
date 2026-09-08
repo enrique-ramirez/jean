@@ -17,7 +17,6 @@ import {
 	viewHeader,
 } from "./fixtures.ts";
 
-// foobar2000's playback orders, from the captured player.
 const SHUFFLE_TRACKS = 4;
 const REPEAT_PLAYLIST = 1;
 
@@ -77,7 +76,6 @@ test.describe("the header shuffle starts a shuffled run", () => {
 			"aria-pressed",
 			"true",
 		);
-		// One track, once -- not a queue built one request at a time.
 		expect(requestsTo(player, "/player/play/")).toHaveLength(1);
 		expect(player.playQueue).toEqual([]);
 		expect(requestsTo(player, "/playqueue/")).toEqual([]);
@@ -125,16 +123,11 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		isMobile,
 	}) => {
 		await headerShuffle(page).click();
-		// Waited on the player rather than on aria-pressed: the order change and the
-		// play are sent concurrently, so the toggle can flicker back to unpressed
-		// before it settles.
 		await expect.poll(() => player.player.playbackMode).toBe(SHUFFLE_TRACKS);
 
 		await headerShuffle(page).click();
 		await expect.poll(() => requestsTo(player, "/player/play/").length).toBe(2);
 
-		// The property rather than the request count: the button sets shuffle rather
-		// than flipping it, and asking for it twice is harmless.
 		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
@@ -188,8 +181,6 @@ test.describe("the status bar shuffle is the mode", () => {
 			expect(barLabels[0]).toBe("Show current track");
 			expect(barLabels[barLabels.length - 1]).toMatch(/^(Play|Pause)$/);
 		} else {
-			// Asserted by position rather than as a full list: the middle button is
-			// Play or Pause depending on what the player is doing.
 			expect(barLabels[1]).toBe("Shuffle");
 			expect(barLabels[2]).toBe("Previous track");
 			expect(barLabels).toContain("Next track");

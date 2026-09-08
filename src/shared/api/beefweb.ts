@@ -28,8 +28,6 @@ export const QUEUE_FIELD = { artist: 0, title: 1, duration: 2 };
 
 const queueColumns = encode(QUEUE_COLUMNS);
 
-// Change-driven, not a ticker: beefweb pushes on track change, pause, volume and playlist edits, and
-// a long silence is normal.
 export const UPDATES_URL = `/api/query/updates?player=true&playlists=true&playQueue=true&trcolumns=${nowPlayingColumns}&qcolumns=${queueColumns}`;
 
 const id = encodeURIComponent;
@@ -115,7 +113,6 @@ export const artworkUrl = (playlistId: string, index: number) =>
 
 export async function fetchLibraryInfo(): Promise<LibraryInfo> {
 	const response = await fetch("/api/library/info");
-	// 404 on a beefweb with no such route, 501 on DeaDBeeF. Both mean no media library.
 	if (response.status === 404 || response.status === 501) {
 		return { supported: false, enabled: false, itemCount: 0 };
 	}
@@ -217,6 +214,7 @@ export async function createPlaylist(title: string): Promise<PlaylistInfo> {
 
 export const renamePlaylist = (playlistId: string, title: string) =>
 	post(`/api/playlists/${id(playlistId)}`, { title });
+// Deleting a playlist the play queue points into crashes foo_beefweb and takes foobar2000 with it.
 export const removePlaylist = (playlistId: string) =>
 	post(`/api/playlists/remove/${id(playlistId)}`);
 export const movePlaylist = (playlistId: string, index: number) =>
@@ -233,7 +231,6 @@ export const copyPlaylistItems = (
 		items: Array.from(items),
 	});
 
-// Deleting a playlist the play queue points into crashes foo_beefweb and takes foobar2000 with it.
 export const clearPlaylist = (playlistId: string) =>
 	post(`/api/playlists/${id(playlistId)}/clear`);
 
@@ -259,8 +256,6 @@ export function readTrack(
 	};
 }
 
-// The player reports an absolute path and the media library reports one relative to the library
-// folders, forward-slashed. Jean is never told where those folders are, so the two match by suffix.
 export function libraryPathMatcher(absolute: string | null | undefined) {
 	if (!absolute) return () => false;
 	const flat = absolute.replaceAll("\\", "/");
@@ -268,8 +263,6 @@ export function libraryPathMatcher(absolute: string | null | undefined) {
 		Boolean(relative) && (flat === relative || flat.endsWith(`/${relative}`));
 }
 
-// The caller must verify the identity it gets back: this reports whatever is playing now, not the
-// track that was asked about.
 export async function fetchActiveItemColumns(
 	expressions: string[],
 ): Promise<TrackColumns | null> {

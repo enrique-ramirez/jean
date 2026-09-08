@@ -84,8 +84,6 @@ export function handleMenuKeys(
 	const rove = ROVE[event.key];
 	if (!rove) return;
 
-	// Enter and Space are deliberately absent: the item is a real button, and preventing the default
-	// is what would stop it being pressed.
 	focus(rove(at));
 	event.preventDefault();
 }

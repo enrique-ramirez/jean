@@ -21,7 +21,6 @@ test("an accented tag goes through untouched", () => {
 
 test("a quote in the tag is doubled, which is how the player escapes one", () => {
 	assert.equal(genreQuery('Rock "n" Roll'), '%genre% IS "Rock ""n"" Roll"');
-	// Unescaped this closes the string early and the rest parses as more query.
 	assert.ok(!genreQuery('a" OR %genre% IS "b').includes('a" OR'));
 });
 

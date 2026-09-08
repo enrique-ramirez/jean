@@ -12,8 +12,6 @@ export function DragGhost() {
 		// Two elements on purpose: a CSS animation beats an inline style, so an entrance that touched
 		// `transform` would override the position written every frame.
 		<div ref={setGhostElement} className={styles.ghost}>
-			{/* The refusal replaces what is being dragged rather than sitting beside it: the eye is on
-			    the pointer, and "why not" is the only thing worth reading once the answer is no. */}
 			<div
 				className={styles.pill}
 				data-armed={over ? "true" : undefined}

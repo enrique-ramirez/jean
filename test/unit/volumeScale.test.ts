@@ -32,8 +32,6 @@ test("the ends of the travel are the player's own ends", () => {
 });
 
 test("half the travel is half as loud, which is -10 dB", () => {
-	// The curve is linear in perceived loudness rather than in decibels: a fader
-	// reporting the raw range would put half way at -50.
 	assert.ok(Math.abs(fractionToVolume(DB, 0.5) + 10) < 0.1);
 });
 
@@ -43,16 +41,12 @@ test("a fraction outside the fader is clamped rather than extrapolated", () => {
 });
 
 test("a player whose silence is nearer to zero keeps the same shape", () => {
-	// DeaDBeeF reports -50 rather than -100, so the bottom of the fader has to be
-	// that floor and not a level the thumb can never reach.
 	const shallow = { ...DB, min: -50 };
 	assert.equal(fractionToVolume(shallow, 0), -50);
 	assert.equal(volumeToFraction({ ...shallow, value: -50 }), 0);
 });
 
 test("a player with no travel to describe answers zero rather than NaN", () => {
-	// min === max: the span the fraction divides by is zero, and `log2(0)` is
-	// -Infinity, so both directions have to refuse rather than compute.
 	const flat = { ...DB, min: 0, max: 0, value: 0 };
 	assert.equal(volumeToFraction(flat), 0);
 	assert.equal(fractionToVolume(flat, 0.5), 0);

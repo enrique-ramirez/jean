@@ -37,7 +37,6 @@ export function CreateAutoPlaylist({
 		if (!isOpen) setTitle(genre);
 	}, [isOpen, genre]);
 
-	// The preview runs on foobar2000's main thread, so it is asked once per query rather than once per keystroke.
 	const { data: preview } = useQuery({
 		queryKey: ["fooJeanPreview", origin, query],
 		queryFn: () =>
@@ -51,8 +50,6 @@ export function CreateAutoPlaylist({
 	const create = useMutation({
 		mutationFn: async () => {
 			if (!origin || !token) throw new Error("foo_jean is not reachable.");
-			// No `key`: the component 409s on a second playlist carrying one, and a genre autoplaylist is the
-			// user's to rename or delete.
 			const made = await createAutoPlaylist(origin, token, {
 				title: title.trim(),
 				query,

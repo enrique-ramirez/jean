@@ -9,10 +9,6 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// The OS media controls. Nothing here presses one: `setActionHandler` has no
-// getter and Playwright cannot deliver a media key, so what is asserted is the
-// metadata and the state, which is what a lock screen draws.
-
 const play = async (page: Page) => {
 	await openLibrary(page);
 	await trackRow(page, 0).dblclick();
@@ -44,9 +40,6 @@ test.describe("the media session", () => {
 			statusBar(page).getByRole("button", { name: "Pause", exact: true }),
 		).toBeVisible();
 
-		// A session claims the OS controls, and this device is making no sound to
-		// claim them with: the buttons would point a lock screen at audio coming
-		// out of another room.
 		expect(await session(page)).toMatchObject({ state: "none", title: null });
 	});
 

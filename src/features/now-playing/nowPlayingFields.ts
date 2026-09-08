@@ -1,7 +1,6 @@
 import { alternativeReader } from "@/domain/track/fields";
 import { fieldTable } from "@/shared/api/fieldTable";
 
-// This list must never reach the stream: `UPDATES_URL` re-evaluates its `trcolumns` on every push.
 // beefweb splits `trcolumns` on commas before evaluating, so no multi-argument title-format function may appear here.
 
 const LYRICS_EXPRESSION = "$meta(unsynced lyrics)";
@@ -55,8 +54,6 @@ export const {
 	index: NOW_PLAYING_FIELD,
 } = fieldTable(FIELDS);
 
-// The lyric alone, for the re-read a track gets while it plays. The path comes with it because the
-// player answers about whatever is playing when the request is served, not about what was asked for.
 export const { expressions: LYRICS_EXPRESSIONS, index: LYRICS_FIELD } =
 	fieldTable([
 		["path", "%path%"],

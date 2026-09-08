@@ -59,7 +59,6 @@ export function useLibrary(playlists: PlaylistInfo[], { wanted = false } = {}) {
 
 	return {
 		...library,
-		// Depend on this, not on the object this hook returns: that is rebuilt every render, so a `useMemo` keyed on it never hits.
 		snapshot: library,
 		key,
 		source,

@@ -32,8 +32,6 @@ export interface Artist {
 interface Draft {
 	name: string;
 	key: string;
-	// Built once with the draft rather than when the list is derived, since deriving happens again
-	// every time a chunk of library arrives and squashing every name each time is the expensive half.
 	match: FuzzyKey;
 	trackCount: number;
 	guestCount: number;
@@ -149,7 +147,6 @@ export function refsOfArtist(
 	artist: string,
 ): ArtistTracks {
 	const wanted = tagKey(artist);
-	// An empty key would match every untagged row rather than nothing.
 	if (!wanted)
 		return {
 			own: new Int32Array(0),

@@ -51,8 +51,6 @@ import {
 const PLAYER_KEY = ["player"];
 export const PLAYLISTS_KEY = ["playlists"];
 
-// The item and its anchor are paired: a held item given a fresh `syncedAt` rewinds the seek bar by
-// the width of the gap.
 let held: { item: ActiveItem; syncedAt: number } | null = null;
 
 const holdThroughGap = (player: PlayerState, syncedAt: number) => {
@@ -96,8 +94,6 @@ export function usePlayerStream() {
 				queryClient.setQueryData(QUEUE_KEY, playQueue);
 		};
 
-		// EventSource reconnects on its own and beefweb replays a full snapshot on connect, so a
-		// dropped stream needs no resync here.
 		return () => source.close();
 	}, [queryClient]);
 }
@@ -120,8 +116,6 @@ export function usePlaylists() {
 		queryKey: PLAYLISTS_KEY,
 		queryFn: fetchPlaylists,
 		staleTime: Infinity,
-		// beefweb's `playlists` event fires when the set of playlists changes and stays silent when
-		// their contents do, so every `itemCount` is stale from the first edit onwards.
 		refetchOnWindowFocus: true,
 	});
 }
@@ -131,8 +125,6 @@ export function usePermissions(): Partial<Permissions> {
 	return data?.player?.permissions ?? {};
 }
 
-// Absent means allowed: a player reporting no permissions object at all is permissive, and a strict
-// `=== true` reads it as read-only and takes the affordances away.
 export const canChangePlaylists = (permissions: Partial<Permissions>) =>
 	permissions.changePlaylists !== false;
 
@@ -227,8 +219,6 @@ export function usePlaylistActions() {
 				),
 		),
 
-		// Deleting a playlist the queue points into crashes the player, so the queue is cleared first
-		// and the delete abandoned if it will not go.
 		remove: usePlaylistPatch(
 			async (id: string) => {
 				const release = holdQueue();
@@ -323,8 +313,6 @@ export const useSeekBy = () =>
 		return { activeItem: { ...item, position } };
 	});
 
-// The order enum differs between players and versions, so the modes are found by name and never by
-// index.
 function findShuffleIndex(names: string[]) {
 	const lower = names.map((name) => name.toLowerCase());
 

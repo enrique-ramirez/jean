@@ -32,10 +32,6 @@ const openFinder = async (page: Page) => {
 
 // Both layouts: the dropdown is the same either way, but what it marks is rows,
 // and album mode renders those inside groups.
-//
-// `test.use` goes inside a describe, not beside one. At file scope it applies to
-// the whole file however many times it is called, so a per-layout loop that
-// wrote it outside the describe would run every case under the last layout.
 ["compact", "album"].forEach((layout) => {
 	test.describe(`the finder in ${layout} layout`, () => {
 		test.use({ settings: { "jean.layout": layout } });
@@ -427,9 +423,9 @@ test.describe("the field is one field", () => {
 			const input = document.querySelector(
 				'input[aria-label="Find in this playlist"]',
 			) as HTMLElement;
-			// Either way of drawing one counts: the shared field spreads a shadow
-			// where it used to draw an outline, and the question here is which
-			// element wears it rather than which property does.
+			// Either way of drawing one counts: the shared field draws the ring as a
+			// shadow rather than an outline, and the question here is which element
+			// wears it rather than which property does.
 			const ringOf = (element: Element) => {
 				const style = getComputedStyle(element);
 				const outline =

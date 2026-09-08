@@ -182,9 +182,6 @@ export const TrackList = forwardRef(function TrackList(
 				const element = scrollRef.current;
 				if (!element) return;
 
-				// Measured off the row rather than computed from the index: in album mode the virtualiser's
-				// items are groups, so centring an index centres the album and leaves the track wherever it
-				// falls inside it.
 				const rowRect = () =>
 					element
 						.querySelector(`[data-row="${index}"]`)
@@ -216,8 +213,6 @@ export const TrackList = forwardRef(function TrackList(
 
 				if (!animate) {
 					virtualizer.scrollToIndex(target, { align });
-					// The row exists now even if it did not a moment ago, so a second pass puts the track
-					// where the group just went.
 					if (align === "center") {
 						requestAnimationFrame(() => {
 							const refined = centreOnRow();

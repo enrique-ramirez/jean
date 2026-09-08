@@ -80,8 +80,6 @@ test("ids are unique, because a handler is looked up by one", () => {
 });
 
 test("a binding with two registrations tells the sheet what one key to draw", () => {
-	// Two spellings of `?` are one key to press, and the help overlay renders
-	// from this array: without `shown` it lists the same shortcut twice.
 	for (const binding of KEYMAP) {
 		if (binding.keys.length < 2 || binding.hidden) continue;
 		assert.ok(

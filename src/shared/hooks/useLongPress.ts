@@ -15,7 +15,6 @@ const HOLD_MS = 420;
 const SLOP_PX = 10;
 const ECHO_MS = 700;
 
-// Spread `style` onto the pressable element, or iOS draws its own selection callout over the menu.
 const PRESSABLE = Object.freeze({
 	WebkitTouchCallout: "none",
 	WebkitUserSelect: "none",

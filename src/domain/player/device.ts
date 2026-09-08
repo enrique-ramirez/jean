@@ -4,8 +4,6 @@ import { translate } from "@/shared/i18n/locale";
 export const DEVICE_ID_KEY = "jean.deviceId";
 export const DEVICE_NAME_KEY = "jean.deviceName";
 
-// `crypto.randomUUID` is secure-context only, and Jean is routinely served over plain HTTP on a LAN.
-// `getRandomValues` is not restricted that way.
 const randomId = () => {
 	const bytes = new Uint8Array(16);
 	crypto.getRandomValues(bytes);
@@ -31,10 +29,6 @@ export function deviceId(): string {
 
 	return id;
 }
-
-// A browser cannot learn the name of the machine it runs on, so this guesses at the kind of device
-// and Settings is where anyone who cares writes something better. Nothing branches on the answer,
-// which is what separates it from the user-agent detection this codebase does not do.
 
 interface ClientHints {
 	platform?: string;

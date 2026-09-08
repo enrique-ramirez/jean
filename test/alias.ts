@@ -1,12 +1,3 @@
-// Three things about `src/` that node does not know: `@/` is Vite's alias for
-// `src/`, imports inside `src/` are written without an extension, and Vite's
-// `define` substitutions are globals here rather than constants folded into the
-// bundle. The e2e specs meet none of them -- they drive the built app over HTTP
-// -- but a unit test importing a module from `src/` meets all three, so
-// `pnpm test:unit` loads this first. Registered here rather than worked around
-// by rewriting imports: the alias is a contribution rule, enforced by Biome per
-// tier, and a module reaching for a fallback is a branch nothing ships.
-
 import { registerHooks } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

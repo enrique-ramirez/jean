@@ -16,11 +16,6 @@ import {
 } from "./fixtures.ts";
 import { playRow, trackInfo } from "./nowPlaying.ts";
 
-// The screen itself: the ways in and out, the set it says it is playing from,
-// the shape a phone gets and the gestures over it. The three panels are in
-// `now-playing-panels.spec.ts`, the lyric in `now-playing-lyrics.spec.ts` and
-// the rim in `now-playing-wheel.spec.ts`.
-
 test.describe("the way in and the way out", () => {
 	test("the status bar block opens it and the chevron closes it", async ({
 		page,
@@ -138,8 +133,6 @@ test.describe("the set it is playing from", () => {
 		).toBeVisible();
 	});
 
-	// Following is off throughout, so nothing but the header can be moving the
-	// view: on arrival the follow would centre the playing row by itself.
 	test.describe("it lands on the track, not at the top of the set", () => {
 		test.use({
 			mediaLibrarySize: 400,
@@ -159,8 +152,6 @@ test.describe("the set it is playing from", () => {
 			await trackRow(page, FAR).dblclick();
 			await expect(trackRow(page, FAR)).toHaveAttribute("data-active", "true");
 
-			// The set is left at the top, so the offset it remembers is not the
-			// track and arriving at it proves something.
 			await scrollTo(page, 0);
 			await expect.poll(() => scrollTop(page)).toBe(0);
 		};
@@ -187,8 +178,6 @@ test.describe("the set it is playing from", () => {
 		test("and from the set it is already showing", async ({ page }) => {
 			await playFarAndLeaveTheTop(page);
 
-			// Nothing to navigate to: the screen closes onto the list it was opened
-			// over, and the row still has to be found.
 			await openThePlayingSet(page);
 
 			await expect.poll(() => isRowOnScreen(page, FAR)).toBe(true);
@@ -198,8 +187,6 @@ test.describe("the set it is playing from", () => {
 	test("it is a line and not a button when the set has nowhere to open", async ({
 		page,
 	}) => {
-		// A playlist the user is playing straight from is not a set Jean
-		// materialised, so the header says "Now playing" and offers nothing.
 		await openLibrary(page);
 		await trackRow(page, 0).dblclick();
 		await openNowPlaying(page);
@@ -278,8 +265,6 @@ test.describe("the screen a phone gets", () => {
 	});
 });
 
-// The screen's own transport holds two controls that follow a finger, and both
-// sit inside the surface the dismiss and tab gestures are read from.
 test.describe("a control that follows the finger keeps the gesture", () => {
 	test.skip(
 		({ isMobile }) => !isMobile,
@@ -305,9 +290,6 @@ test.describe("a control that follows the finger keeps the gesture", () => {
 			{ x, y: box.y + box.height * 0.85 },
 		);
 
-		// The hash rather than the element: dismissing navigates at once but takes
-		// the length of the exit animation to leave the screen, so a visible
-		// screen alone would pass with the dismissal already in flight.
 		await expect(page).toHaveURL(/#\/playing$/);
 		await expect(screen).toBeVisible();
 
@@ -333,8 +315,6 @@ test.describe("a control that follows the finger keeps the gesture", () => {
 		);
 
 		expect(player.player.activeItem.index).toBe(playing);
-		// The scrub itself still landed: the gesture belongs to the bar, not to
-		// nobody.
 		await expect
 			.poll(() =>
 				requestsTo(player, "/api/player").filter(
@@ -345,14 +325,11 @@ test.describe("a control that follows the finger keeps the gesture", () => {
 	});
 });
 
-// The player is the track, so a sideways flick is the next one.
 test.describe("skipping with a flick", () => {
 	test.skip(({ isMobile }) => !isMobile, "this is the touch gesture");
 
 	const flick = async (page: Page, from: number, to: number) => {
 		const box = (await nowPlayingScreen(page).boundingBox())!;
-		// Across the artwork, which is the middle of the screen and the thing the
-		// gesture is aimed at.
 		const y = box.y + box.height * 0.4;
 		await touchDrag(
 			page,
@@ -390,7 +367,6 @@ test.describe("skipping with a flick", () => {
 		);
 
 		await expect(trackInfo(page)).toBeVisible();
-		// Up is not a skip, and it is not a dismissal either.
 		expect(player.player.activeItem.index).toBe(0);
 		await expect(page).toHaveURL(/#\/playing$/);
 	});
@@ -399,7 +375,6 @@ test.describe("skipping with a flick", () => {
 test.describe("the gap a skip leaves", () => {
 	// See ../../src/shared/api/README.md for what foobar2000 does during a skip and why.
 
-	// Every title the screen showed, in order, caught as it changed: the gap is far too short to poll for.
 	const watchTitles = (page: Page) =>
 		page.evaluate(() => {
 			const screen = document.querySelector("[data-now-playing]");
@@ -436,7 +411,6 @@ test.describe("the gap a skip leaves", () => {
 		player.next();
 		await expect.poll(() => player.player.activeItem.index).toBe(1);
 
-		// Two titles and nothing between them: the one that was playing, then the one that is.
 		const titles = await titlesSeen(page);
 		expect(titles).not.toContain("Nothing playing");
 		expect(titles).toHaveLength(2);
@@ -449,7 +423,6 @@ test.describe("the gap a skip leaves", () => {
 		await playRow(page, 0);
 		await watchTitles(page);
 
-		// The gap and a stop are told apart by `playbackState`, so the empty state has to survive the hold.
 		player.stop();
 
 		await expect(nowPlayingScreen(page).locator("h1")).toHaveText(
@@ -461,7 +434,6 @@ test.describe("the gap a skip leaves", () => {
 		page,
 		player,
 	}) => {
-		// All music, because a playlist played straight from has no set to name and the header would say nothing anyway.
 		await page.goto("/#/all");
 		await trackRow(page, 0).dblclick();
 		await openNowPlaying(page);
@@ -473,8 +445,6 @@ test.describe("the gap a skip leaves", () => {
 		await watchTitles(page);
 		player.next();
 
-		// `usePlayingFrom` reads the active item's `playlistId`, which the gap blanks: unheld, the header falls back to
-		// the contextless "Now playing" for as long as the skip takes.
 		await expect(header).toContainText("Playing from");
 		expect(await titlesSeen(page)).not.toContain("Nothing playing");
 	});

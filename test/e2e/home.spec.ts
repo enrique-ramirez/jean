@@ -137,7 +137,6 @@ test.describe("the closing band", () => {
 		const tracks = page.getByRole("region", { name: "Your top tracks" });
 		await expect(tracks).toBeVisible();
 
-		// Off the tooltip rather than the row's text, which starts with the rank.
 		const first = tracks.getByRole("button").first();
 		const title = (await first.getAttribute("title"))?.split(" — ").pop();
 		await first.click();

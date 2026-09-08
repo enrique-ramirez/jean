@@ -33,7 +33,6 @@ const currentTime = (page: Page) =>
 		return audio ? audio.currentTime : null;
 	});
 
-// The elapsed side of the status bar's `mm:ss/mm:ss` readout, in seconds.
 const elapsedSeconds = async (page: Page) => {
 	const text = (await statusBar(page).innerText()).replace(/\s+/g, " ");
 	const match = /(\d+):(\d\d)\s*\/\s*\d+:\d\d/.exec(text);
@@ -337,7 +336,6 @@ test.describe("an install with no encoder", () => {
 	test("does not offer the control at all", async ({ page }) => {
 		await page.goto("/");
 		await expect(statusBar(page).getByRole("button")).not.toHaveCount(0);
-		// `canStream` absent or false means the button does not render.
 		await expect(listenButton(page)).toHaveCount(0);
 	});
 });

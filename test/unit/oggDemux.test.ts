@@ -3,9 +3,6 @@ import test from "node:test";
 
 import { OggDemuxer } from "../../src/domain/player/oggDemux.ts";
 
-// A page carrying the given packets, laced the way libogg would: 255 for every whole
-// segment a packet fills, then the remainder. A packet of exactly 255 bytes therefore ends
-// with a zero-length segment, which is the case that catches naive readers.
 function page(packets: Uint8Array[]): Uint8Array {
 	const lacing: number[] = [];
 	for (const packet of packets) {
@@ -35,8 +32,6 @@ function page(packets: Uint8Array[]): Uint8Array {
 	return out;
 }
 
-// A packet whose first byte is a real Opus table of contents, so duration is read rather
-// than assumed. Config 16 is CELT at 2.5 ms; the low two bits are the frame count code.
 const packet = (toc: number, length: number) =>
 	Uint8Array.from({ length }, (_, i) => (i === 0 ? toc : i & 0xff));
 
@@ -59,13 +54,10 @@ test("a packet split across two pages is rejoined, not delivered twice", () => {
 	const demuxer = new OggDemuxer();
 	demuxer.push(page([HEAD, TAGS]));
 
-	// 300 bytes laces as 255 + 45, and libogg would end the page mid-packet.
 	const long = packet(0x80, 300);
 	const first = page([long.subarray(0, 255)]);
-	// The continuation carries the rest with no packet boundary before it.
 	const second = page([long.subarray(255)]);
 
-	// Built by hand rather than by `page`, which always terminates its last packet.
 	first[26] = 1;
 	first[27] = 255;
 
@@ -105,7 +97,6 @@ test("bytes before the capture pattern are skipped rather than misread", () => {
 });
 
 test("duration comes from the packet's own table of contents", () => {
-	// config 1 is SILK narrowband at 20 ms; config 16 is CELT at 2.5 ms.
 	const cases: [number, number][] = [
 		[1 << 3, 20],
 		[(0 << 3) | 0, 10],
@@ -126,7 +117,6 @@ test("a two-frame packet is worth two frames", () => {
 	const demuxer = new OggDemuxer();
 	demuxer.push(page([HEAD, TAGS]));
 
-	// Code 1 is two frames of equal size, so 20 ms of config 1 is 40 ms of audio.
 	const [only] = demuxer.push(page([packet((1 << 3) | 1, 30)]));
 
 	assert.equal(only.duration, 40);

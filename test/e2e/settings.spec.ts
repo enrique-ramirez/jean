@@ -211,8 +211,6 @@ test.describe("the settings dialog", () => {
 	});
 });
 
-// ---- cursor follows playback ------------------------------------------------
-
 const cursorRow = (page: Page) => page.locator('[data-cursor="true"]');
 
 test.describe("cursor follows playback", () => {
@@ -222,7 +220,6 @@ test.describe("cursor follows playback", () => {
 	}) => {
 		await openLibrary(page);
 
-		// Driven on the player, with nothing clicked here.
 		player.playItem("p7", 6);
 		await expect(statusBar(page)).toContainText("La Fox");
 
@@ -275,8 +272,6 @@ test.describe("cursor follows playback", () => {
 		});
 	});
 });
-
-// ---- playback follows cursor ------------------------------------------------
 
 test.describe("playback follows cursor", () => {
 	test.use({

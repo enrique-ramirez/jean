@@ -10,10 +10,6 @@ export interface TabOption<T extends string> {
 	mnemonic?: number;
 }
 
-/**
- * Tabs, and deliberately not `Segmented`: a segmented control switches how one thing is drawn, where
- * tabs move between different things. Keeping the two apart is what stops either from meaning both.
- */
 export function Tabs<T extends string>({
 	value,
 	options,

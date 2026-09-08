@@ -1,13 +1,5 @@
 import type { FakePlaylist, Track } from "../test/fake-api/state.ts";
 
-// The library the demo browses: real albums captured off a real foobar2000 by
-// `test/fake-api/capture.ts --albums demo/albums.ts`. Which records, and why
-// those, is in `albums.ts`. Nothing here is synthesised, so every shelf on the
-// home screen is a true statement about a real collection.
-//
-// `library.json` is fetched rather than bundled: it is 1.9 MB, and the service
-// worker carrying it is revalidated on every visit.
-
 export interface CapturedAlbum {
 	albumArtist: string;
 	album: string;
@@ -24,15 +16,9 @@ export interface CapturedLibrary {
 const albumKey = (track: Track) =>
 	`${track["%album artist%"]} ${track["%album%"]}`;
 
-// ---- recency ---------------------------------------------------------------
-
-// A capture is a photograph of one afternoon, so a year later it says "last
-// played: a year ago" about everything and the recency shelves stop meaning
-// anything. The whole capture is slid forward once on load: the newest date
-// becomes today and the rest follow, so relative distances are untouched and no
-// date is invented.
 const DATE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
 const FIELD = "%lastfm_last_played%";
+const HOURS_BEHIND_NOW = 3;
 
 const parse = (value: string | undefined) => {
 	const parts = DATE.exec(value ?? "");
@@ -64,9 +50,7 @@ const slideForward = (tracks: Track[]) => {
 	}
 	if (newest === 0) return;
 
-	// A few hours short of now, so the newest track was played this morning rather
-	// than this second.
-	const shift = Date.now() - 3 * 60 * 60 * 1000 - newest;
+	const shift = Date.now() - HOURS_BEHIND_NOW * 60 * 60 * 1000 - newest;
 	if (shift <= 0) return;
 
 	for (const track of tracks) {
@@ -74,8 +58,6 @@ const slideForward = (tracks: Track[]) => {
 		if (at) track[FIELD] = format(new Date(at.getTime() + shift));
 	}
 };
-
-// ---- the library -----------------------------------------------------------
 
 export interface DemoLibrary {
 	tracks: Track[];
@@ -147,8 +129,6 @@ export function demoLibrary(captured: CapturedLibrary): DemoLibrary {
 
 	const byAlbum = new Map(captured.albums.map((album) => [album.slug, album]));
 
-	// Keyed by album rather than by track: the rows of one record share a cover,
-	// so they share the file name the worker is asked for.
 	const covers = new Map<string, string>();
 	for (const album of captured.albums) {
 		const first = album.tracks[0];

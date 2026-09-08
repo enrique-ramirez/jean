@@ -9,7 +9,6 @@ import { PlayIcon } from "@/shared/ui/icons";
 import styles from "./HomeHeader.module.css";
 import type { LibraryStats } from "./libraryStats";
 
-// Two types, not one: a door's noun is pluralised by its count, a hint is one fixed word.
 type DoorPhrase = Extract<Phrase, `home.door.${string}`>;
 type HintPhrase = Extract<Phrase, `home.hint.${string}`>;
 

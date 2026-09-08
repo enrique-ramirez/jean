@@ -68,7 +68,6 @@ test.describe("reading the lyric tag", () => {
 
 		await expect(panel).toContainText("Unsynced");
 		await expect(panel).toContainText("Wait a minute, let me finish");
-		// Not seekable, because there is nothing to seek to.
 		await expect(
 			panel.getByRole("button", { name: "Wait a minute, let me finish" }),
 		).toHaveCount(0);
@@ -167,7 +166,6 @@ test.describe("a lyric read through the stream", () => {
 		await panelTab(panel, "Lyrics").click();
 		const active = panel.locator('[data-state="active"]');
 
-		// Played to, not seeked to: this is the setup.
 		await expect(active).toHaveText("Give you all my time", {
 			timeout: 90_000,
 		});

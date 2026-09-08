@@ -20,8 +20,6 @@ export function useContextMenu({ disabled = false } = {}) {
 		if (disabled) return;
 		event.preventDefault();
 
-		// The Menu key and Shift+F10 report no coordinates, so anchor to the element rather than to the
-		// top-left corner of the window.
 		if (event.clientX === 0 && event.clientY === 0) {
 			const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 			openAt({ x: rect.left + 16, y: rect.bottom - 4 });

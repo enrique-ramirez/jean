@@ -207,7 +207,6 @@ test.describe("the now-playing arrow", () => {
 	test("it points the way it is pointing", async ({ page, player }) => {
 		await showPill(page, player);
 
-		// The playing track is below the viewport, so the arrow points down.
 		await expect(pill(page)).toHaveAttribute("data-direction", "down");
 		await expect(pill(page).locator("svg")).toBeVisible();
 	});

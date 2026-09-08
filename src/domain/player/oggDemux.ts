@@ -1,5 +1,5 @@
 // Pulls Opus packets back out of the Ogg stream the component serves, to be put into a container
-// MSE will take. No browser takes Ogg in MSE.
+// MSE will take.
 
 export interface OpusPacket {
 	data: Uint8Array;

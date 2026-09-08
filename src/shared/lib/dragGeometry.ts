@@ -58,7 +58,6 @@ export function offsetFor(
 const ZONE_PX = 56;
 const MAX_STEP_PX = 14;
 
-// Positive is downwards, so a caller adds it to `scrollTop`.
 export function autoscrollStep(
 	{ top, bottom }: { top: number; bottom: number },
 	y: number,

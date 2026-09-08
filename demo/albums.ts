@@ -22,11 +22,8 @@
 export interface DemoAlbum {
 	albumArtist: string;
 	album: string;
-	// Capture the lyric text for this album, not just the length probe. Off by
-	// default and per album, because a lyric is licensed text: six albums is
-	// enough to show the tab, the scroll-in-time and tapping a line to seek.
-	// `Vessel` carries some plain and some timed lyrics, so both code paths are on
-	// screen.
+	// `Vessel` carries some plain and some timed lyrics, so both code paths are
+	// on screen.
 	lyrics?: true;
 }
 
@@ -34,7 +31,6 @@ export interface DemoAlbum {
 // punctuation and accents included. A title the capture cannot match is an album
 // silently dropped.
 export const ALBUMS: DemoAlbum[] = [
-	// ---- widely recognised -------------------------------------------------
 	{ albumArtist: "Metallica", album: "Metallica" },
 	{ albumArtist: "Nirvana", album: "Nevermind", lyrics: true },
 	{ albumArtist: "Oasis", album: "(What's the Story) Morning Glory?" },
@@ -80,7 +76,6 @@ export const ALBUMS: DemoAlbum[] = [
 	{ albumArtist: "Korn", album: "MTV Unplugged" },
 	{ albumArtist: "Nirvana", album: "MTV Unplugged in New York" },
 
-	// ---- more from the same artists ----------------------------------------
 	// One album per artist would make every artist page a single row and the
 	// "more by" shelf meaningless.
 	{ albumArtist: "The Beatles", album: "Abbey Road" },
@@ -149,7 +144,6 @@ export const ALBUMS: DemoAlbum[] = [
 	{ albumArtist: "Tiësto", album: "Just Be" },
 	{ albumArtist: "Limp Bizkit", album: "Three Dollar Bill, Yall$" },
 
-	// ---- filling the gaps --------------------------------------------------
 	{ albumArtist: "Green Day", album: "Dookie" },
 	{ albumArtist: "Green Day", album: "American Idiot" },
 	{ albumArtist: "Linkin Park", album: "Hybrid Theory" },
@@ -213,8 +207,8 @@ export const ALBUMS: DemoAlbum[] = [
 	{ albumArtist: "Rodrigo y Gabriela", album: "Area 52" },
 	{ albumArtist: "Rata Blanca", album: "Magos, espadas y rosas" },
 	{ albumArtist: "Carbon Based Lifeforms", album: "World of Sleepers" },
-	// The most-played record in the library, and 67 tracks of it: one album longer
-	// than most playlists.
+	// The most-played record in the library, and long enough that one album
+	// outlasts most playlists.
 	{
 		albumArtist: "Yasunori Mitsuda, Various Artists",
 		album: "Chrono Cross Original Soundtrack",

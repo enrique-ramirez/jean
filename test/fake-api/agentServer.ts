@@ -6,10 +6,6 @@ import type { createState } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
-// The socket under `handleAgent`. The component runs beside the player rather
-// than inside it, so every call to it is cross-origin and can fail by not
-// answering at all. Hence a listener of its own rather than a beefweb route.
-
 const readBody = (request: IncomingMessage): Promise<unknown> =>
 	new Promise((resolve) => {
 		let raw = "";
@@ -25,8 +21,6 @@ const readBody = (request: IncomingMessage): Promise<unknown> =>
 		});
 	});
 
-// Reads the same state box the beefweb fake does, so both halves of the feature
-// land in one `player.requests` log.
 export function createFooJeanServer(current: () => FakeState): Server {
 	const server = createHttpServer(async (request, response) => {
 		const state = current();
@@ -44,7 +38,6 @@ export function createFooJeanServer(current: () => FakeState): Server {
 		});
 	});
 
-	// Not answering is a state, and not the same as answering badly.
 	server.on("connection", (socket) => {
 		if (!current().fooJean.reachable) socket.destroy();
 	});

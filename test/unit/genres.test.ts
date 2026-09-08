@@ -5,8 +5,6 @@ import { genreIndex, genresOf } from "../../src/domain/track/genres.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
-// foobar joins a multi-valued tag with `; `, and Jean counts the join whole -- so the third row here
-// is its own genre and not a second Rock track.
 const LIBRARY: [genre: string, artist: string, album: string][] = [
 	["Rock", "Foo Fighters", "In Your Honor"],
 	["Rock", "Foo Fighters", "The Colour and the Shape"],
@@ -57,15 +55,12 @@ test("the index takes in rows that arrive after it was first asked for", () => {
 	assert.ok(grown.some((entry) => entry.name === "Electronic"));
 });
 
-// What the dropdown offers as a section: the whole-word floor, best first.
 const named = (query: string, floor = TIER.word) =>
 	rankEntities(genres, query, floor).map((entry) => entry.name);
 
 test("a name the query holds whole is offered; one it only contains is not", () => {
-	// Both the plain tag and the joined one hold `Rock` whole, and the bigger comes first.
 	assert.deepEqual(named("rock"), ["Rock", "Rock; Blues"]);
 	assert.deepEqual(named("blues"), ["Rock; Blues"]);
-	// `lectro` is inside `Electronic` and inside nothing whole.
 	assert.deepEqual(named("lectro"), []);
 });
 

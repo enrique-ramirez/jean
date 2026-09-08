@@ -1,4 +1,3 @@
-// Fold both sides: an accented query stops matching an index that was folded when it was built.
 const COMBINING_MARKS = /\p{Diacritic}/gu;
 
 export const fold = (text: string) =>
@@ -57,11 +56,6 @@ export const fuzzyKey = (text: string): FuzzyKey => ({
 
 const budgetFor = (length: number) => (length < 5 ? 0 : length < 9 ? 1 : 2);
 
-/**
- * What separates two candidates that matched the same way: the shorter one is more of the query. The
- * window is wide enough that it never reaches the rung below, so it orders within a tier and never
- * across one -- which is what lets a caller add its own weighting on top.
- */
 export const closenessTo = (text: string, query: string) =>
 	Math.max(0, 999 - Math.abs(text.length - query.length));
 

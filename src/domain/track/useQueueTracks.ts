@@ -33,8 +33,6 @@ export function useQueueTracks() {
 
 		const queued = held ? await fetchPlayQueue().catch(() => null) : null;
 
-		// From the player: item changes are never pushed, so a cached count is stale from the first
-		// append on.
 		const playlists = await fetchPlaylists();
 		const itemCount =
 			playlists.find((entry) => entry.id === target.id)?.itemCount ?? 0;

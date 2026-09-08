@@ -28,8 +28,6 @@ const blankAlbum = (
 	key: string,
 	album: string,
 	artist: string | null,
-	// Built once with the album rather than when the list is derived, since deriving happens again
-	// every time a chunk of library arrives and squashing every title each time is the expensive half.
 	match: FuzzyKey,
 ) => ({
 	key,
@@ -156,7 +154,6 @@ export function refsOfAlbum(
 	album: string,
 ): AlbumTracks {
 	const wanted = keyOf(artist, album);
-	// An empty title would match every untagged row rather than nothing.
 	if (!tagKey(album)) return { refs: new Int32Array(0), album, artist: null };
 
 	const refs: number[] = [];

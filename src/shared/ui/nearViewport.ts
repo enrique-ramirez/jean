@@ -14,8 +14,6 @@ const observerFor = () => {
 			for (const entry of entries) {
 				if (!entry.isIntersecting) continue;
 				const seen = waiting.get(entry.target);
-				// Unobserved before the callback runs: the callback starts a request, and a second entry for
-				// the same element while that is in flight would start another.
 				waiting.delete(entry.target);
 				observer?.unobserve(entry.target);
 				seen?.();

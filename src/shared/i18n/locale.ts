@@ -86,8 +86,6 @@ interface PluralShape {
 	other?: unknown;
 }
 
-// Unknown keys are dropped rather than refused, so a translation written against an older release
-// goes on working.
 function parse(body: unknown): Partial<Record<Phrase, Message>> {
 	if (typeof body !== "object" || body === null || Array.isArray(body))
 		throw new Error("not an object");
@@ -105,7 +103,6 @@ async function fetchCatalogue(code: string) {
 	return parse(await response.json());
 }
 
-// A stock install has no custom.json; the 404 means "none" and is never reported.
 async function fetchCustom(): Promise<string[]> {
 	try {
 		const response = await fetch(fileIn(CUSTOM_FILE));

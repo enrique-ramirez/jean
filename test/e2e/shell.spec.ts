@@ -12,8 +12,6 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// 320px, which is the narrowest phone still worth drawing for and the width every
-// piece of chrome has to survive.
 const NARROWEST = { width: 320, height: 640 };
 
 const overflow = (page: Page) =>

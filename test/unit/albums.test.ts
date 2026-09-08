@@ -10,8 +10,6 @@ import { FIELD } from "../../src/domain/track/fields.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
-// The two cases identity has to keep apart, and the one it has to fold together: one title by two
-// bands, one record whose album artist is spelt two ways, and a record with neither artist tag.
 const LIBRARY: [artist: string, albumArtist: string, album: string][] = [
 	["Blood, Sweat & Tears", "Blood, Sweat & Tears", "Blood, Sweat & Tears"],
 	["Johnny Cash", "Johnny Cash", "Blood, Sweat & Tears"],
@@ -74,7 +72,6 @@ test("the rows a record's page draws are the ones its count promised", () => {
 });
 
 test("the record's own spelling comes back with its rows, not the route's", () => {
-	// What a route carries: both halves normalised, and lowercase.
 	const found = refsOfAlbum(rows, "daft punk", "discovery");
 	assert.equal(found.album, "Discovery");
 	assert.equal(found.artist, "Daft Punk");
@@ -102,7 +99,6 @@ test("a route naming only half a record is not a record", () => {
 	assert.equal(albumOfRoute("album/discovery"), null);
 	assert.equal(albumOfRoute("album/daft%20punk/"), null);
 	assert.equal(albumOfRoute("artist/daft%20punk"), null);
-	// A hand-edited hash with a stray `%` throws inside `decodeURIComponent`.
 	assert.equal(albumOfRoute("album/daft%2/discovery"), null);
 });
 
@@ -114,8 +110,6 @@ test("a title carrying a slash is not read as two segments", () => {
 	});
 });
 
-// `growingIndex`'s own comment has why a key on its own is not enough; this is that trap against
-// real tagging.
 test("the index takes in rows that arrive after it was first asked for", () => {
 	const key = "library:6";
 
@@ -129,14 +123,12 @@ test("the index takes in rows that arrive after it was first asked for", () => {
 	);
 });
 
-// What the dropdown offers as a section: the whole-word floor, best first.
 const named = (query: string, floor = TIER.word) =>
 	rankEntities(albums, query, floor).map((entry) => entry.album);
 
 test("a title the query holds whole is offered; one it only contains is not", () => {
 	assert.deepEqual(named("discovery"), ["Discovery"]);
 	assert.deepEqual(named("colour"), ["The Colour and the Shape"]);
-	// `scover` is inside `Discovery` and inside nothing whole, so the section stays shut.
 	assert.deepEqual(named("scover"), []);
 });
 

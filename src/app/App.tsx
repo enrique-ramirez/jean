@@ -206,8 +206,6 @@ function Shell() {
 		[artist, snapshot.rows],
 	);
 
-	// Every way of starting an artist fills the same scratch under the same label, so the sidebar row
-	// and the status bar cannot disagree about where the sound came from.
 	const playArtist = useCallback(
 		(refs: Refs, position: number) =>
 			void playSet({
@@ -334,8 +332,6 @@ function Shell() {
 		[browsable, selectedId],
 	);
 
-	// Mirrors the branch order in the view switch below. Add a route to both, in the same order --
-	// nothing fails if they drift apart.
 	const place = isHome
 		? t("route.home")
 		: isGenres
@@ -447,8 +443,6 @@ function Shell() {
 
 	const openSearch = useCallback(() => openRoute(ROUTE.search), [openRoute]);
 
-	// isSearchOpen defaults closed, so a reload landing directly on the search route needs this to
-	// show the field.
 	useEffect(() => {
 		if (isSearch) setIsSearchOpen(true);
 	}, [isSearch]);
@@ -488,8 +482,6 @@ function Shell() {
 					options={ARTIST_TABS.map((tab) => ({
 						...tab,
 						label: t(tab.label),
-						// Read off the translated label, so a language whose word does not start with the
-						// key underlines nothing rather than lying about which key opens the tab.
 						mnemonic: mnemonicOf(t(tab.label), "switchArtistTab"),
 					}))}
 					onChange={showArtistTab}
@@ -531,7 +523,6 @@ function Shell() {
 	useEffect(() => {
 		if (resumed.current || !hasPlayer || !hasPlaylists) return;
 		resumed.current = true;
-		// `index` is -1 whenever the player is stopped.
 		if (route !== "" || !activeItem || activeItem.index < 0) return;
 
 		if (playingRoute) {
@@ -663,15 +654,11 @@ function Shell() {
 						}}
 						onSelect={(suggestion) => {
 							if (suggestion.kind !== "track") {
-								// A place the query was only ever a way of reaching, so the query is not promoted
-								// and the field goes back to whatever search is actually on screen.
 								search.revert();
 								openRoute(routeOfSuggestion(suggestion));
 								return;
 							}
 
-							// A track does not move you: the results are materialised so it has somewhere to play
-							// from, and the status bar and the sidebar say where the sound is coming from.
 							const { query, refs } = search.commit();
 							const position = refs ? refs.indexOf(suggestion.ref) : -1;
 							if (refs && position >= 0)
@@ -683,8 +670,6 @@ function Shell() {
 								});
 						}}
 						onLeave={() => {
-							// A draft keeps the field: the suggestion being clicked is what blurred it. Left
-							// with nothing in it, there is nothing on screen for it to be about.
 							if (!search.hasDraft) setIsSearchOpen(false);
 						}}
 						onDismiss={() => {
@@ -839,8 +824,6 @@ function Shell() {
 										playbackOrder.enableShuffle();
 										playArtist(refs, Math.floor(Math.random() * refs.length));
 									}}
-									// Opens the tracks, lands on the record and starts it -- played inside the
-									// artist rather than alone, so the rest of them follow it.
 									onOpenAlbum={(refs) => {
 										const at = Array.prototype.indexOf.call(
 											artistTracks.all,

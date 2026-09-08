@@ -24,8 +24,6 @@ const positionOf = (snapshot: PlayerSnapshot) =>
 
 const JUMP = 2;
 
-// Nothing in a beefweb update says "seek", so it is read off the position disagreeing with the
-// interpolation.
 const looksLikeSeek = (last: PlayerSnapshot, next: PlayerSnapshot) =>
 	Math.abs(positionOf(next) - positionAt(last, next.syncedAt)) > JUMP;
 
@@ -48,7 +46,6 @@ export function rememberSnapshot(next: PlayerSnapshot) {
 	refreshTimeline();
 }
 
-// Returns the given snapshot by identity whenever nothing is listening, which `useElapsed` depends on.
 export function useAudibleSnapshot(live: PlayerSnapshot | null | undefined) {
 	const audiblePath = useSyncExternalStore(
 		subscribeListening,

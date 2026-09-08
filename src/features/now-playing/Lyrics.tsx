@@ -48,8 +48,6 @@ function Synced({
 		return () => cancelAnimationFrame(frame);
 	}, [lines, snapshot]);
 
-	// Scrolling programmatically fires the same `scroll` event a finger does, so the guard is a flag rather than
-	// anything read off the event.
 	const isAutoScrolling = useRef(false);
 
 	const hasPlaced = useRef(false);
@@ -60,8 +58,6 @@ function Synced({
 		if (!isFollowing || !element || !container) return;
 
 		isAutoScrolling.current = true;
-		// Measured against the scroller: `offsetTop` is relative to the nearest positioned ancestor, which on the
-		// gatefold is not the scroller.
 		const top =
 			container.scrollTop +
 			element.getBoundingClientRect().top -
@@ -75,7 +71,6 @@ function Synced({
 		});
 		hasPlaced.current = true;
 
-		// `scrollend` is not everywhere yet, so the flag is time-boxed instead.
 		const timer = setTimeout(() => {
 			isAutoScrolling.current = false;
 		}, 700);

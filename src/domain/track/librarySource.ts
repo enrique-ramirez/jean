@@ -75,12 +75,9 @@ interface ItemChunk {
 const itemsFor = (paths: PathTable, subsongs: number[], refs: Refs) =>
 	Array.from(refs, (ref) => ({ path: paths.at(ref), subsong: subsongs[ref] }));
 
-// The player files a set in the media library's browse order rather than the order it was sent, and
-// that order cannot be predicted, so it is overwritten.
 const sortToLibraryOrder = (targetId: string) =>
 	sortPlaylistItems(targetId, LIBRARY_SORT);
 
-// beefweb hangs up over 1 MiB, and it arrives as a network error rather than a status.
 const MAX_BODY_BYTES = 768 * 1024;
 
 const chunkedItems = (items: { path: string; subsong: number }[]) =>
@@ -144,9 +141,6 @@ const queueViaHolding =
 			refs.length,
 			["%path%", "%subsong%"],
 		);
-		// The playlist answers with an absolute, platform-separated path and the library with a relative,
-		// forward-slashed one, so they only meet by suffix. A cue sheet or a single-file mix puts many
-		// tracks at one path, so the subsong tells them apart and each landed row is claimed once.
 		const landedRows = landed.rows.map((row) => ({
 			matches: libraryPathMatcher(row[0]),
 			subsong: Number(row[1]) || 0,
@@ -181,8 +175,6 @@ const fromMediaLibrary = ({
 
 	artworkUrl: (ref: number) => libraryArtworkUrl(paths.at(ref), subsongs[ref]),
 
-	// The item's `path` field is relative, while the `%path%` column is the player's absolute
-	// rendering, so the check is against the relative one already held.
 	identify: async (ref: number, _row: TrackColumns, columns: string[] = []) => {
 		const held = paths.at(ref);
 		if (!held) return null;

@@ -31,8 +31,6 @@ const stretchOf = (seconds: number) =>
 		STRETCH_MAX_PX,
 	);
 
-// Identities, never positions: these are React's keys, so a reorder would otherwise remount every row below the
-// drop and re-request its artwork.
 const rowKeys = (entries: QueueEntry[]) => {
 	const seen = new Map<string, number>();
 	return entries.map((entry) => {
@@ -174,8 +172,6 @@ const QueueRow = memo(function QueueRow({
 			className={styles.row}
 			data-drop-line={hasDropLine ? "true" : undefined}
 			{...merged}
-			// After the spread and composed rather than replacing: the sortable hook owns `transform` on this element for
-			// the length of a drag.
 			style={
 				{
 					...style,

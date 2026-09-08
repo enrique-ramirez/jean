@@ -256,15 +256,11 @@ export type FooJeanState =
 
 export interface FooJeanDiscovery {
 	state: FooJeanState;
-	// Non-null exactly when the probe succeeded, so holding it is the proof the port answered
-	// `/api/status` as `foo_jean`. Pairing needs that before it has a token.
 	origin: string | null;
 	token: string | null;
 	retryable: boolean;
 }
 
-// The order is the security model: read the hint, prove the port with an unauthenticated call, and
-// only then attach the token. Skipping the middle step hands a credential to whoever forged the record.
 export async function discoverFooJean(
 	token: string | null,
 ): Promise<FooJeanDiscovery> {
@@ -346,12 +342,9 @@ export type TicketFailure =
 
 export type TicketResult = { ok: true; ticket: StreamTicket } | TicketFailure;
 
-// Busy and unavailable are both 503; the error string is all that separates them.
 const isBusy = (message: string) =>
 	/busy|listener|concurrent|too many/i.test(message);
 
-// A ticket is not single-use: Safari sends a `Range: bytes=0-1` probe before fetching for real, so
-// one playback start is two requests.
 export async function issueStreamTicket(
 	origin: string,
 	token: string,
@@ -457,10 +450,6 @@ export type PairFailure =
 
 export type PairResult = { ok: true; token: string } | PairFailure;
 
-// Pairing is a write, so the caller must probe `/api/status` first and confirm this really is
-// `foo_jean` before posting to the port a forgeable record named.
-// The `Content-Type: application/json` is what makes this preflighted: the component refuses anything
-// else, so no page can fire a simple POST blind and spend the single grant.
 export async function pairWithAgent(
 	origin: string,
 	name: string,
@@ -482,7 +471,6 @@ export async function pairWithAgent(
 
 	const { message } = await messageOf(response, `HTTP ${response.status}`);
 
-	// The two 403s are told apart by the error string: one is a button to press, the other is a network.
 	if (response.status === 403)
 		return /local network/i.test(message)
 			? { ok: false, reason: "not-local", message }

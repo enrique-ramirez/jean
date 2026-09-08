@@ -511,7 +511,6 @@ function PlaylistRow({
 				"data-drop-over": isDropOver ? "true" : undefined,
 				"data-drop-refuses": isAuto ? t("playlist.autoRefuses") : undefined,
 				...rowState,
-				// Merged rather than spread: both objects set onPointerDown, Move, Up and Cancel, and the second would win all four.
 				...mergeHandlers(gestures, dragProps),
 			}}
 		>

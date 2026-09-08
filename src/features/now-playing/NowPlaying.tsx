@@ -118,8 +118,6 @@ export function NowPlaying({
 
 	const keyboardOwner = useKeyboardOwner();
 
-	// `isOpen` gates first: the component stays mounted while the screen is down, and a listener registered then eats
-	// every Escape in the app.
 	const ownsEscape =
 		isOpen &&
 		!isInfoOpen &&
@@ -133,7 +131,6 @@ export function NowPlaying({
 		if (!isCompactViewport) setIsInfoOpen(false);
 	}, [isCompactViewport]);
 
-	// `readValue` rather than truthiness: an unresolved beefweb field answers `?`, which is truthy.
 	const lyrics = useMemo(
 		() => parseLyrics(readValue(details?.row[NOW_PLAYING_FIELD.lyrics])),
 		[details],

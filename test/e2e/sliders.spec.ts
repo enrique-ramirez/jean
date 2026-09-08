@@ -17,8 +17,6 @@ const volume = (page: Page) => page.getByRole("slider", { name: "Volume" });
 const seekBar = (page: Page) =>
 	page.getByRole("slider", { name: "Playback position" });
 
-// On a phone the volume slider is a column inside a popover rather than a row
-// in the status bar, so it has to be opened before it exists.
 const showVolume = async (page: Page) => {
 	if (await volume(page).count()) return;
 	await page.getByRole("button", { name: "Volume" }).click();
@@ -38,7 +36,6 @@ test.describe("the volume slider", () => {
 		await showVolume(page);
 	});
 
-	// Where the fader lands, in dB, after a drag to that fraction of its travel.
 	const landsAt = async (page: Page, player: FakePlayer, fraction: number) => {
 		const before = volumesSent(player).length;
 		await dragTo(page, volume(page), fraction);
@@ -46,8 +43,6 @@ test.describe("the volume slider", () => {
 		return volumesSent(player).at(-1);
 	};
 
-	// The curve is linear in perceived loudness, where about +10 dB is twice as
-	// loud. A linear-in-dB fader would land at -50 here.
 	test("half the travel is half as loud, which is -10 dB", async ({
 		page,
 		player,
@@ -69,7 +64,6 @@ test.describe("the volume slider", () => {
 		expect(landed).toBeLessThan(-23);
 	});
 
-	// Equal distances along the fader are equal ratios of loudness.
 	test("ten points is worth about the same everywhere, near the top", async ({
 		page,
 		player,
@@ -103,10 +97,8 @@ test.describe("the volume slider", () => {
 			page,
 			player,
 		}) => {
-			// Reading: the floor the player reported has to draw as empty, not as a thirtieth full.
 			await expect(volume(page)).toHaveAttribute("aria-valuenow", "0");
 
-			// And writing: the end of the travel asks for that same floor rather than short of it.
 			await dragTo(page, volume(page), 0);
 			await expect.poll(() => volumesSent(player).at(-1)).toBe(-50);
 
@@ -119,23 +111,16 @@ test.describe("the volume slider", () => {
 		page,
 		player,
 	}) => {
-		// The fake answers in microseconds, so without added latency every pointer
-		// move would find no request in flight and send its own.
 		await page.request.post("/__control/latency", { data: { ms: 100 } });
 
 		const MOVES = 40;
 		await dragTo(page, volume(page), 0.6, MOVES);
 
-		// The tail of the queue has to land before any of this can be counted.
 		await expectSettlesAt(player, () => volumesSent(player).length > 0, true);
 		const sent = volumesSent(player);
 
-		// One in flight at a time, newest queued behind it: one request per pointer
-		// event floods the player, and the responses can land out of order.
 		expect(sent.length).toBeLessThan(MOVES / 2);
 
-		// Whatever was queued during the last flight is still sent afterwards, so
-		// the player ends on the value the drag finished on.
 		expect(player.player.volume.value).toBe(sent.at(-1));
 		expect(sent.at(-1)).toBeGreaterThan(-20);
 		expect(sent.at(-1)).toBeLessThan(-5);
@@ -144,8 +129,6 @@ test.describe("the volume slider", () => {
 	test("the reported value is a percentage of the fader, not of the decibels", async ({
 		page,
 	}) => {
-		// -100..0 dB is the player's range; a slider that reported it raw would say
-		// 77% for a volume most of the way down.
 		await dragTo(page, volume(page), 0.5);
 
 		const reported = async () =>
@@ -164,8 +147,6 @@ test.describe("the seek bar", () => {
 	}) => {
 		await openLibrary(page);
 
-		// Attempted rather than declared: a bar that reported itself unseekable and
-		// then took the drag anyway would seek a player that is playing nothing.
 		await dragTo(page, seekBar(page), 0.5, 10);
 
 		await expectSettlesAt(
@@ -198,11 +179,6 @@ test.describe("the seek bar", () => {
 		expect(landed).toBeLessThan(155);
 	});
 
-	// Both faders take their gesture from `useDragFraction`, so this is the one
-	// place the guarantee is worth asserting: press and move without it and the
-	// browser starts a text selection, and dragging a selection is a native drag
-	// -- it paints a translucent snapshot of what was selected and follows the
-	// pointer with that instead of moving the thumb.
 	test("scrubbing leaves no selection dragging under the pointer", async ({
 		page,
 	}) => {
@@ -218,11 +194,6 @@ test.describe("the seek bar", () => {
 	});
 });
 
-// Driven through CDP rather than dispatched as DOM events: what is under test
-// is the browser's own decision about who the gesture belongs to. Without
-// `touch-action: none` on the track it reads the finger as panning the page,
-// sends `pointercancel` and stops delivering moves. A dispatched `pointermove`
-// would sail past that and pass either way.
 test.describe("dragging the fader with a finger", () => {
 	test.skip(({ isMobile }) => !isMobile, "this is the touch gesture");
 
@@ -234,12 +205,9 @@ test.describe("dragging the fader with a finger", () => {
 	) => {
 		const at = (fraction: number) => ({
 			x: box.x + box.width / 2,
-			// The column runs bottom-up: the top of the track is the maximum.
 			y: box.y + box.height * (1 - fraction),
 		});
 
-		// More steps than the default: what is under test here is that every move
-		// arrives, not what the gesture is read as at the end of it.
 		await touchDrag(page, at(from), at(to), 12);
 	};
 
@@ -247,9 +215,8 @@ test.describe("dragging the fader with a finger", () => {
 		await openLibrary(page);
 		await showVolume(page);
 
-		// A thumb is about 44px of contact. Just off the slider is the popover,
-		// which does not claim the gesture, so the browser reads the same downward
-		// drag as a page pan and takes it.
+		// Just off the slider is the popover, which does not claim the gesture, so
+		// the browser reads the same downward drag as a page pan and takes it.
 		const box = await volume(page).boundingBox();
 		expect(
 			box!.width,
@@ -267,10 +234,6 @@ test.describe("dragging the fader with a finger", () => {
 		const box = (await volume(page).boundingBox())!;
 		await swipe(page, box, 0.9, 0.25);
 
-		// The swipe crosses most of the track, so a cancelled pointer stream shows
-		// up as a value far from the target rather than as a rounding difference.
-		// One retrying assertion: read once, it can catch a value the fader was
-		// still passing through.
 		await expect
 			.poll(
 				async () =>

@@ -115,8 +115,6 @@ test.describe("typing at a menu", () => {
 		await openLibrary(page);
 		await openTargets(page, isMobile);
 
-		// The filter folds accents through the same `fold()` as the library search
-		// and the finder.
 		await filterField(page).fill("espanol");
 
 		await expect(menuItem(page, "Rock en Español")).toBeVisible();
@@ -237,7 +235,6 @@ test.describe("a dropdown owns the keyboard too", () => {
 		await page.keyboard.press("Escape");
 
 		await expect(columnOption(page, "Artwork")).toHaveCount(0);
-		// The same key clears the track selection when no menu is open.
 		await expect(
 			page.locator('[role="row"][data-selected="true"]'),
 		).toHaveCount(1);
@@ -311,7 +308,6 @@ test.describe("a player that will not let Jean change playlists", () => {
 		await openLibrary(page);
 		await openTrackMenu(page, isMobile);
 
-		// Present and disabled rather than absent.
 		await expect(menuItem(page, "Add to playlist")).toBeDisabled();
 	});
 });

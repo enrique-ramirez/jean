@@ -1,10 +1,5 @@
-// The writes made to the demo player, replayed against a new one on the way up.
-//
-// The browser stops an idle service worker after about thirty seconds and starts
-// a fresh one for the next request, taking everything the player held with it.
-// The library is rebuilt from a seed, so only the difference is worth keeping.
-//
-// In the Cache API rather than IndexedDB: it is one JSON blob under one key.
+// The library is rebuilt from a seed on every restart, so only the difference from it is worth
+// journalling. In the Cache API rather than IndexedDB: it is one JSON blob under one key.
 
 export interface Entry {
 	method: string;
@@ -14,8 +9,10 @@ export interface Entry {
 
 const CACHE = "jean-demo";
 const KEY = "/__demo/journal";
+const SAVE_DEBOUNCE_MS = 500;
 
-// Replaying a longer journal costs a slower first paint. The oldest go first.
+// A longer journal costs a slower first paint on the replay, so it is capped; the oldest entries
+// are the ones dropped.
 const LIMIT = 400;
 
 let entries: Entry[] = [];
@@ -37,8 +34,7 @@ const save = async () => {
 export function append(entry: Entry) {
 	entries.push(entry);
 	if (entries.length > LIMIT) entries.splice(0, entries.length - LIMIT);
-	// Debounced: a drag sends a burst of writes and is worth one serialisation.
-	if (!saving) saving = setTimeout(save, 500);
+	if (!saving) saving = setTimeout(save, SAVE_DEBOUNCE_MS);
 }
 
 export async function clear() {

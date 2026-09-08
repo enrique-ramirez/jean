@@ -22,8 +22,6 @@ export function useCoalescedWrite<T>(write: (value: T) => unknown) {
 			// Leave the local value alone; the player's next push corrects it.
 		} finally {
 			inFlight.current = false;
-			// Not guarded on being mounted: a flag reset in an effect cleanup is never set back by
-			// StrictMode's remount, so the guard would be permanently on in development.
 			flush();
 		}
 	}, []);

@@ -1,7 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-// One MediaQueryList per query, held for the life of the tab: `subscribe` and `getSnapshot` both run
-// on every render, so a fresh one tears down and re-adds a listener each time.
 interface QueryStore {
 	subscribe: (onChange: () => void) => () => void;
 	matches: () => boolean;

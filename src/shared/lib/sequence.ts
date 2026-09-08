@@ -3,8 +3,6 @@ export const inSequence = <T>(
 	run: (item: T, index: number) => unknown,
 ): Promise<unknown> =>
 	items.reduce<Promise<unknown>>(
-		// Returned, never discarded: `void run(...)` here still calls each step in turn and hands
-		// `undefined` to `then`, so nothing waits for anything and the sequencing is silently gone.
 		(done, item, index) => done.then(() => run(item, index)),
 		Promise.resolve(),
 	);

@@ -1,16 +1,3 @@
-// Pulls fixture data off a real player. Everything it writes is committed, so
-// the tests themselves never touch a real player.
-//
-// With no arguments it writes the test fixture, five albums chosen for the
-// branches the UI has:
-//
-//   node test/fake-api/capture.ts --url http://player.local:8880
-//
-// Given a list and somewhere to put it, it writes the demo's larger library
-// instead:
-//
-//   node test/fake-api/capture.ts --albums demo/albums.ts --out demo
-
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -55,14 +42,6 @@ const EXPRESSIONS = [
 	"$len($meta(unsynced lyrics))",
 ];
 
-// The fixture albums cover the branches the UI has rather than a representative
-// library:
-//
-//   Jessico            accented artist, for fold(); hot throughout
-//   Deja Entendu       the heat range -- one 0-play track among 180-play ones
-//   Jar Of Flies       FLAC rather than MP3, and short
-//   Lafcadio           never played at all: no heat, no patina, no last-played
-//   Deathconsciousness two discs, so %tracknumber% restarts mid-album
 interface Wanted {
 	albumArtist: string;
 	album: string;
@@ -99,16 +78,10 @@ const args = new Map(
 const base =
 	args.get("--url") ?? process.env.BEEFWEB_URL ?? "http://localhost:8880";
 
-// Where library.json and artwork/ land. Defaults to beside this file.
 const out = args.has("--out") ? resolve(args.get("--out") as string) : null;
 
-// A module exporting `ALBUMS`, so the list can carry comments a JSON file could
-// not.
 const listed = args.get("--albums");
 
-// The covers a real player serves are as large as whatever is embedded in the
-// file, which for 150 albums is tens of megabytes of repository. `sips` is
-// macOS-only, so a machine without it gets full-size covers and is told so.
 const COVER_PIXELS = 400;
 const sips = spawnSync("sips", ["--help"]).status === 0;
 
@@ -118,8 +91,6 @@ const shrink = (file: string) => {
 	return true;
 };
 
-// Both halves of the name matter: `MTV Unplugged` is Korn's and Nirvana's, and a
-// slug taken from the album alone would overwrite the other's cover.
 const slugOf = (wanted: Wanted, taken: Set<string>) => {
 	if (wanted.slug) return wanted.slug;
 	const kebab = (text: string) =>
@@ -184,10 +155,6 @@ async function main() {
 		)
 	).json()) as { playlistItems: PlaylistItemsResponse };
 
-	// Keyed by expression, not the positional arrays the API returns, so the fake
-	// can answer whatever column set the app asks for. It also preserves what
-	// capability detection rests on: an expression absent from the object
-	// resolves to '?', exactly as an unsupported field does on a real player.
 	const toTrack = (
 		item: { columns: string[] },
 		index: number,
@@ -200,7 +167,6 @@ async function main() {
 
 	const all = playlistItems.items.map(toTrack);
 
-	// Second pass, one column wide, and only when an album asked for lyrics.
 	const wanted = await albumsToCapture();
 	const lyrics = new Map<number, string>();
 	if (wanted.some((album) => album.lyrics)) {
@@ -211,8 +177,6 @@ async function main() {
 		).json()) as { playlistItems: PlaylistItemsResponse };
 		withLyrics.items.forEach((item, index) => {
 			const text = item.columns[0];
-			// `?` is a player that cannot resolve the field; '' is a file with
-			// nothing in it. Neither is a lyric.
 			if (text && text !== "?") lyrics.set(index, text);
 		});
 	}
@@ -275,9 +239,6 @@ async function main() {
 		`${JSON.stringify({ capturedFrom: `${info.player.info.title} ${info.player.info.version} / beefweb ${info.player.info.pluginVersion}`, expressions: EXPRESSIONS, albums }, null, 2)}\n`,
 	);
 
-	// The player state, so the fake's idle state is a real one rather than a guess
-	// at which fields beefweb sends. It belongs to the fake rather than to a
-	// library, so a demo capture leaves it alone.
 	if (!listed) {
 		const { player } = (await (
 			await get(

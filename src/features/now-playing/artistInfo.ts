@@ -20,9 +20,6 @@ export interface ArtistInfo {
 const MUSICBRAINZ = "https://musicbrainz.org/ws/2";
 const WIKIPEDIA = "https://en.wikipedia.org/api/rest_v1/page/summary";
 
-// MusicBrainz asks for a descriptive `User-Agent` and a browser cannot send one: it is a forbidden header name and
-// `fetch` drops it silently.
-
 interface MbArtist {
 	id: string;
 	name: string;
@@ -56,7 +53,6 @@ async function wikipediaTitle(
 	const id = wikidata.split("/").pop();
 	if (!id) return null;
 
-	// `v1`: the `v0` path most examples still show is a 404.
 	const response = await fetch(
 		`https://www.wikidata.org/w/rest.php/wikibase/v1/entities/items/${id}/sitelinks/enwiki`,
 		{ signal, headers: { Accept: "application/json" } },

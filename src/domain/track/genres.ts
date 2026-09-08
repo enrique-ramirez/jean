@@ -17,8 +17,6 @@ export interface Genre {
 interface Draft {
 	name: string;
 	key: string;
-	// Built once with the draft rather than when the list is derived, since deriving happens again
-	// every time a chunk of library arrives and squashing every name each time is the expensive half.
 	match: FuzzyKey;
 	trackCount: number;
 	albums: Map<string, { ref: number; trackCount: number }>;

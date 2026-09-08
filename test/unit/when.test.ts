@@ -30,9 +30,6 @@ test("the same moment reads differently in two languages", () => {
 });
 
 test("it capitalises in the locale rather than in ASCII", () => {
-	// `Intl` returns a lower-case phrase and a caption starts a line, so the
-	// first letter grows -- in Turkish a dotless i, which `toUpperCase` gets
-	// wrong.
 	const shown = describeWhen(daysAgo(3), "en", "Today") as string;
 	assert.equal(shown[0], shown[0].toUpperCase());
 });

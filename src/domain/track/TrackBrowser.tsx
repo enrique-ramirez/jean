@@ -546,7 +546,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 						) : (
 							<ArrowDown size={14} />
 						)}
-						Now playing
+						{t("player.nowPlaying")}
 					</button>
 				</div>
 			) : null}

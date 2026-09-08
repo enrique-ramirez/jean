@@ -40,6 +40,7 @@ function setHandlers(
 		try {
 			target.setActionHandler(action, handlers[action] ?? null);
 		} catch {
+			// A browser that does not know an action throws rather than ignoring it.
 		}
 	}
 }
@@ -60,6 +61,7 @@ function setPosition(duration: number, position: number) {
 					},
 		);
 	} catch {
+		// A duration the browser refuses costs the scrubber, not the session.
 	}
 }
 

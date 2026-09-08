@@ -72,7 +72,7 @@ Two consequences before adding a route. **Anything reaching for a socket, a file
 
 Tracks are stored as objects keyed by title-formatting expression, not as the positional arrays the API returns: the fake has to answer whatever column set is asked of it, and **an expression the fixture does not carry resolves to `?`**, exactly as an unsupported field does on a real player. Dropping `%lastfm_play_count%` from a fixture is how you test an install with no playback-statistics component.
 
-**`DEFAULT_PLAYLISTS()` builds six**, and the shape is deliberate. `p1 p7 p2 p5` are ordinary playlists whose ids are neither contiguous nor in index order, which is what a real install looks like; `p7` is current, and is where `openLibrary` goes. `p8` is `#Jean Library`, the autoplaylist Jean resolves as the library and the one `withoutLibraryPlaylist` renames. `p9` is `Recently Added` with `isAuto` set — a visible autoplaylist with an ordinary name, so "the player fills this one itself" is covered.
+**`DEFAULT_PLAYLISTS()` builds six**, and the shape is deliberate. `p1 p7 p2 p5` are ordinary playlists whose ids are neither contiguous nor in index order, which is what a real install looks like; `p7` is current, and is where `openLibrary` goes. `p8` is `#Jean Library`, the autoplaylist Jean resolves as the library and the one `withoutLibraryPlaylist` removes. `p9` is `Recently Added` with `isAuto` set — a visible autoplaylist with an ordinary name, so "the player fills this one itself" is covered.
 
 The cover art is real and downscaled by `capture.ts`, which shells out to macOS `sips` and says so when it cannot. Nothing but the fake reads `artwork/`.
 
@@ -104,7 +104,9 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 - **The timeline carries a history and the clock starts before the fake does.** `state.streamMarks` records where recent tracks began, backdated by the position the player was at, since a listener is always *behind* the live edge. `startedAt` is a minute in the past, since the component starts with foobar2000 long before any client connects.
 - **`streamPrime` decides whether this fake has a lag at all**, and the default removes it. A spec about the lag asks for a smaller prime and waits while Chromium accumulates the rest at real time. **`12 - prime`** is the arithmetic; size a margin against a loaded machine, never against the nominal figure.
 
-**The one place the fake is deliberately kinder.** The stream serves WAV rather than Ogg Opus — there is no encoder in a Node fake — and in Chromium a non-seekable WAV does not fire `loadedmetadata` until a substantial amount of *content* has arrived. Not bytes: the same byte rate with a longer primed burst starts playing far sooner. That is a property of PCM in a container never meant to be streamed. So the healthy stream hands over a burst up front and then feeds at 1x, which starts sooner than a real one would; what that could hide — a long gap between asking and hearing — is covered by `quiet` instead.
+**One place the fake is deliberately kinder.** The stream serves WAV rather than Ogg Opus — there is no encoder in a Node fake — and in Chromium a non-seekable WAV does not fire `loadedmetadata` until a substantial amount of *content* has arrived. Not bytes: the same byte rate with a longer primed burst starts playing far sooner. That is a property of PCM in a container never meant to be streamed. So the healthy stream hands over a burst up front and then feeds at 1x, which starts sooner than a real one would; what that could hide — a long gap between asking and hearing — is covered by `quiet` instead.
+
+**One place it is kinder by accident.** `POST /api/autoplaylists` answers with `beefwebId` already filled in, because the fake made the playlist itself a line earlier. Real beefweb assigns its playlist ids lazily and answers `null` there until its own playlists are next read; `../src/shared/api/README.md` has the join and the fallback to `index`. A spec that takes the id straight off the create response passes here and fails against a real install.
 
 ### Measuring against a real player
 
@@ -198,7 +200,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `libraryShape` | states a library outright: counts, durations, years, tags to omit, whether an artist is spelled two ways, how many subsongs share a file. A description rather than built tracks, since an option's top level does not survive the trip to the worker as an array (nested arrays are fine) |
 | `withoutFields` | removes title-formatting expressions, so the player answers `?` as a real one does. `['%lastfm_play_count%']` is an install with no playback-statistics component, and everything built on play counts must disappear rather than break |
 | `withoutPlaylists` | empties everything but Jean's own — the player a fresh install would find |
-| `withoutLibraryPlaylist` | renames the playlist Jean resolves as the library, the only way to reach the first-run setup screen |
+| `withoutLibraryPlaylist` | removes the playlist Jean resolves as the library, the only way to reach the first-run setup screen |
 | `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches **both** sources, so a retagged spec holds on a fallback run too |
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |

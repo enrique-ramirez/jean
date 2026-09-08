@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./AlbumGroup.module.css";
 import { ArtistLinks } from "./ArtistLinks";
@@ -29,6 +30,7 @@ export function AlbumGroup({
 	onSelect,
 	isCompactViewport,
 }: TrackRenderProps & { group: AlbumRun }) {
+	const t = useTranslate();
 	const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER;
 	const itemIndexOf = (position: number) => refAt(indices, position);
 
@@ -72,7 +74,7 @@ export function AlbumGroup({
 					identity={coverIdentity(rows[group.start])}
 					size={coverSize}
 					className={styles.art}
-					alt={`${group.album} cover`}
+					alt={t("album.coverAlt", { album: group.album })}
 				/>
 				<div className={styles.caption}>
 					<div className={styles.title}>{group.album}</div>
@@ -87,7 +89,9 @@ export function AlbumGroup({
 				{runs.map((run) => (
 					<Fragment key={run.start}>
 						{run.number === null ? null : (
-							<h3 className={styles.disc}>Disc {run.number}</h3>
+							<h3 className={styles.disc}>
+								{t("album.disc", { number: run.number })}
+							</h3>
 						)}
 						{Array.from({ length: run.count }, (_, offset) =>
 							track(run.start + offset),

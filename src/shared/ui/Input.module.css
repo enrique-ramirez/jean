@@ -23,10 +23,6 @@
 	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
 }
 
-.field[data-filled="true"] .leading {
-	color: var(--accent);
-}
-
 /* `width: 0`, not only `min-width: 0`: an `<input>` asserts a default width up the tree otherwise. */
 .input {
 	flex: 1;
@@ -61,6 +57,10 @@
 	flex: 0 0 auto;
 	align-items: center;
 	gap: 6px;
+}
+
+.field[data-filled="true"] .leading {
+	color: var(--accent);
 }
 
 .field[data-size="sm"] {

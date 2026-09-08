@@ -136,7 +136,7 @@ export function CommandPalette({
 
 				<div className={styles.results} role="listbox">
 					{results.length === 0 ? (
-						<p className={styles.empty}>Nothing here matches that.</p>
+						<p className={styles.empty}>{t("palette.noMatch")}</p>
 					) : (
 						<>
 							{matchedViews.map((entry, position) =>
@@ -144,7 +144,7 @@ export function CommandPalette({
 							)}
 
 							{matchedPlaylists.length > 0 ? (
-								<p className={styles.heading}>Playlists</p>
+								<p className={styles.heading}>{t("palette.playlists")}</p>
 							) : null}
 							{matchedPlaylists.map((entry, position) =>
 								row(entry, matchedViews.length + position, false),

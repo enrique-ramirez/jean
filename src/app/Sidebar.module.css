@@ -10,6 +10,16 @@
 	border-right: 1px solid var(--border);
 }
 
+.heading {
+	margin: 4px 0 6px;
+	padding: 0 10px;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
 .sectionHeader {
 	display: flex;
 	align-items: center;
@@ -61,16 +71,6 @@
 .add:disabled {
 	opacity: 0.5;
 	cursor: default;
-}
-
-.heading {
-	margin: 4px 0 6px;
-	padding: 0 10px;
-	font-size: 0.6875rem;
-	font-weight: 600;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	color: var(--faint);
 }
 
 .row {

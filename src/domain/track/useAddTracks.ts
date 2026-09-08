@@ -75,7 +75,7 @@ export function useAddTracks() {
 				if (!current || current.itemCount !== after) {
 					pushToast({
 						tone: "error",
-						message: `${target.title} has changed since then, so nothing was removed.`,
+						message: translate("add.undoStale", { playlist: target.title }),
 					});
 					return;
 				}

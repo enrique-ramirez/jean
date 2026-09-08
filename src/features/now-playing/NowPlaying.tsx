@@ -202,11 +202,11 @@ export function NowPlaying({
 
 	const fromLine = from?.isPlaying ? (
 		<>
-			<span className={styles.fromLabel}>Playing from</span>
+			<span className={styles.fromLabel}>{t("playlist.playingFrom")}</span>
 			<b>{from.name}</b>
 		</>
 	) : (
-		<span className={styles.fromLabel}>Now playing</span>
+		<span className={styles.fromLabel}>{t("player.nowPlaying")}</span>
 	);
 
 	const cover = (

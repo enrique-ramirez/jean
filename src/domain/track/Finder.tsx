@@ -137,7 +137,7 @@ export function Finder({
 			{query.trim().length > 0 ? (
 				<div className={styles.results} role="listbox" ref={listRef}>
 					{results.length === 0 ? (
-						<p className={styles.empty}>Nothing here matches that.</p>
+						<p className={styles.empty}>{t("finder.noMatch")}</p>
 					) : (
 						results.map((index: number, position: number) => (
 							<button

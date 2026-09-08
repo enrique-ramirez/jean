@@ -30,6 +30,10 @@ export const en = {
 	"add.smartPlaylist":
 		"Nothing was added to {playlist}. Smart playlists are built by the player and cannot be added to.",
 	"add.undoFailed": "Could not undo that.",
+	"add.undoStale": "{playlist} has changed since then, so nothing was removed.",
+	"album.coverAlt": "{album} cover",
+	"album.crumb": "Album",
+	"album.disc": "Disc {number}",
 	"artist.about": "About",
 	"artist.albumCount": {
 		one: "{total} album",
@@ -143,6 +147,7 @@ export const en = {
 	"finder.inGenre": "Find in this genre",
 	"finder.inList": "Find in this list",
 	"finder.inShelf": "Find in this shelf",
+	"finder.noMatch": "Nothing here matches that.",
 	"fooJean.absent.install":
 		"Install it into foobar2000 and restart the player.",
 	"fooJean.absent.soon":
@@ -354,6 +359,8 @@ export const en = {
 	"menu.actions": "Actions",
 	"menu.noMatch": "Nothing matches that.",
 	"palette.goTo": "Go to",
+	"palette.noMatch": "Nothing here matches that.",
+	"palette.playlists": "Playlists",
 	"panel.artist": "Artist",
 	"panel.closeTrackInfo": "Close track information",
 	"panel.details": "Details",
@@ -386,6 +393,7 @@ export const en = {
 	"player.volumeAt": "{label} {percent}%",
 	"player.volumeHere": "Volume on this device",
 	"playlist.autoRefuses": "Autoplaylists fill themselves",
+	"playlist.chooseOne": "Select a playlist to begin.",
 	"playlist.createRefused": "The player would not create a playlist.",
 	"playlist.delete": "Delete playlist",
 	"playlist.deleteBlockedByQueue":

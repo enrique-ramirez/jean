@@ -52,18 +52,6 @@
 	box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.track[data-active="true"] .title {
-	color: var(--accent-text);
-	font-weight: 600;
-}
-
-.track[data-match="true"] .title {
-	text-decoration: underline;
-	text-decoration-color: var(--accent);
-	text-decoration-thickness: 2px;
-	text-underline-offset: 3px;
-}
-
 .index {
 	text-align: left;
 	color: var(--faint);
@@ -88,6 +76,18 @@
 	font-size: 0.875rem;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.track[data-active="true"] .title {
+	color: var(--accent-text);
+	font-weight: 600;
+}
+
+.track[data-match="true"] .title {
+	text-decoration: underline;
+	text-decoration-color: var(--accent);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
 }
 
 .note {

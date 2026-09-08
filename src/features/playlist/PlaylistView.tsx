@@ -54,7 +54,7 @@ export function PlaylistView({
 	);
 
 	if (!playlist)
-		return <p className={styles.notice}>Select a playlist to begin.</p>;
+		return <p className={styles.notice}>{t("playlist.chooseOne")}</p>;
 
 	if (error) {
 		return (

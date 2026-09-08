@@ -498,10 +498,6 @@ export async function handleAgent({
 
 		return json(response, {
 			id: `00000000-0000-0000-0000-${String(state.playlists.length).padStart(12, "0")}`,
-			// Real beefweb assigns its ids lazily, so `beefwebId` is `null` there until
-			// beefweb's own playlists are next read. This fake has already made the
-			// playlist, so the join key is available immediately — a spec relying on
-			// that timing would not hold against a real install.
 			beefwebId: made.id,
 			index: state.playlists.length - 1,
 			title: made.title,

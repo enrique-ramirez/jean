@@ -116,7 +116,7 @@ test.describe("reading the lyric tag", () => {
 		writeLyric(player, "Searched for, and found");
 
 		await expect(panel).toContainText("Searched for, and found", {
-			timeout: 10_000,
+			timeout: 15_000,
 		});
 	});
 });

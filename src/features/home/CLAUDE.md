@@ -4,7 +4,7 @@ The front door: what the library *is*, then shelves built out of the play counts
 
 ## The two verbs
 
-**A shelf's heading opens it; its covers play it.** The heading is a link — hash routing, so it opens in a tab on a modified click — and the blurb beside it is deliberately not part of the target.
+**A shelf's heading opens it; its covers play it.** The heading is a link, hash routing, so it opens in a tab on a modified click, and the blurb beside it is deliberately not part of the target.
 
 **Opening writes nothing and starts nothing.** The scratch playlist keeps whatever it was holding, which is the browsing-and-playing separation the whole design rests on. See `src/domain/library/CLAUDE.md`.
 
@@ -18,16 +18,16 @@ These are what stop the screen lying about a library it has never seen.
 
 - **Thresholds are percentiles of this library, never constants.** A library whose busiest album has three plays still has a top quartile.
 - **A percentile is not a promise that the title is true.** On a library played daily, the bottom quartile of recency is still recent, so "played to death, then forgotten" offers records from last month. **Where a shelf claims something about time it MUST carry an absolute floor as well.**
-- **A shelf that cannot fill honestly does not render.** No ratings, no starred shelf. No playback statistics at all and "Never opened" is not "you never played these", it is *Jean cannot tell* — so it says nothing. If nothing qualifies, Home falls back to one row drawn at random: every install has a library, and an apology is not a home screen.
-- **A figure at nothing is not drawn, and nouns are pluralised only when the count earns it.** **A figure the player cannot answer for is not drawn at all** — no genre tag means no genres figure, never "0 genres", since zero is a claim and this is an absence. The same goes for the named half of a card: an install with no play counts gets the count and no "most played", never a record picked arbitrarily and captioned as a favourite.
+- **A shelf that cannot fill honestly does not render.** No ratings, no starred shelf. No playback statistics at all and "Never opened" is not "you never played these", it is *Jean cannot tell*, so it says nothing. If nothing qualifies, Home falls back to one row drawn at random: every install has a library, and an apology is not a home screen.
+- **A figure at nothing is not drawn, and nouns are pluralised only when the count earns it.** **A figure the player cannot answer for is not drawn at all.** No genre tag means no genres figure, never "0 genres", since zero is a claim and this is an absence. The same goes for the named half of a card: an install with no play counts gets the count and no "most played", never a record picked arbitrarily and captioned as a favourite.
 - **The counts are the user's music, not Jean's plumbing.** Jean's own playlists are filtered out, or the header disagrees with the sidebar beside it.
-- **A shelf carries a caption saying *why this record is here*** — the play count, the year, the bitrate.
+- **A shelf carries a caption saying *why this record is here***: the play count, the year, the bitrate.
 
 `test/e2e/library-header.spec.ts` holds the shapes this has to survive, through the `libraryShape` fixture option documented in [test/README.md](../../../test/README.md).
 
 ## The genre bars
 
-**A genre bar opens a genre route. It MUST NOT run a search** — the search index covers title, artist and album and **not genre**, so a genre name would look for tracks with those words in their titles and find almost none. The genre route is a filter over rows Jean already holds: no request, no playlist, and it works on a bare beefweb install, which is what "Home must never depend on `foo_jean`" requires.
+**A genre bar opens a genre route. It MUST NOT run a search.** The search index covers title, artist and album and **not genre**, so a genre name would look for tracks with those words in their titles and find almost none. The genre route is a filter over rows Jean already holds: no request, no playlist, and it works on a bare beefweb install, which is what "Home must never depend on `foo_jean`" requires.
 
 **The bar's figure and the view behind it have to be the same set**, so the matcher and the counter are the same one. The e2e spec asserts the count against the grid's row count.
 
@@ -43,4 +43,4 @@ Two things about the form are forced by real data. Bars are **horizontal**: a ve
 
 **A destination is an anchor; an action is a button.** A card that is nothing but a route is a link. A card that runs a *search* cannot be, since a search's query lives in memory rather than in the hash and an anchor there would promise a tab that opens on an empty field. Two consequences of that split are easy to hit: a `<button>` centres its text where an `<a>` does not, and `text-overflow` acts on a block's own text and not on an anonymous text node beside a flex sibling.
 
-**The shelf scroller's stylesheet is shared with the free row's section**, since a hover rule reaches from the section into the scroller. **The tabbed variant's stylesheet MUST NOT re-declare a property the shared one also sets on a class they both use** — two rules of equal specificity in different modules are decided by import order.
+**The shelf scroller's stylesheet is shared with the free row's section**, since a hover rule reaches from the section into the scroller. **The tabbed variant's stylesheet MUST NOT re-declare a property the shared one also sets on a class they both use.** Two rules of equal specificity in different modules are decided by import order.

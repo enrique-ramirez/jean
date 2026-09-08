@@ -50,7 +50,7 @@ export function useStoredState<T>(
 			try {
 				localStorage.setItem(key, JSON.stringify(resolved));
 			} catch {
-				// Private mode, quota — the setting just does not persist.
+				// Private mode, quota: the setting just does not persist.
 			}
 			listeners.notify();
 		},

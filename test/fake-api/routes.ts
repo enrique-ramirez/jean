@@ -74,7 +74,7 @@ export async function handleApi({
 
 	if (head === "player") {
 		if (method === "GET") {
-			// Ignores trcolumns and always returns an empty columns array — the real
+			// Ignores trcolumns and always returns an empty columns array. The real
 			// endpoint does the same, so now-playing text has to come from /api/query
 			// instead. Not obviously intentional from this route alone; do not "fix"
 			// it to honour trcolumns without checking a real player first.
@@ -117,7 +117,7 @@ export async function handleApi({
 		if (!state.library.supported) return empty(response, 501);
 
 		// `range` is a query parameter here, not a path segment as it is for
-		// playlist items — beefweb's own choice, not this fake's.
+		// playlist items. That is beefweb's own choice, not this fake's.
 		const range = url.searchParams.get("range");
 		const [offset, count] = range ? range.split(":").map(Number) : [0, null];
 		const expressions = parseColumns(url.searchParams.get("columns"));

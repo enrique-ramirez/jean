@@ -17,3 +17,5 @@ test-results/
 playwright-report/
 node_modules/.tmp
 *.tsbuildinfo
+*.local.txt
+.claude/settings.json.bak

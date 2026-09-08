@@ -460,7 +460,7 @@ export function createState({
 		openStreams: 0,
 		peakStreams: 0,
 		// Somebody asked to hear the player alongside the listeners, either by
-		// raising its fader — which is what `patchPlayer` watches for — or through
+		// raising its fader, which is what `patchPlayer` watches for, or through
 		// `DELETE /api/stream/hold`. Cleared when the last listener leaves.
 		holdReleased: false,
 		// Devices this fake is streaming to, keyed by the id they named themselves

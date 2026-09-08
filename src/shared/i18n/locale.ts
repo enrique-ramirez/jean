@@ -72,7 +72,7 @@ const writeChoice = (code: string | null) => {
 		if (code === null) localStorage.removeItem(CHOICE_KEY);
 		else localStorage.setItem(CHOICE_KEY, JSON.stringify(code));
 	} catch {
-		// Private mode, quota — the choice just does not survive the tab.
+		// Private mode, quota: the choice just does not survive the tab.
 	}
 };
 
@@ -202,7 +202,7 @@ export type Translate = <Key extends Phrase>(
 ) => string;
 
 /**
- * For anything outside a render — a toast raised from a store, the document title. A component uses
+ * For anything outside a render: a toast raised from a store, the document title. A component uses
  * `useTranslate`, which re-renders when the language changes where this does not.
  */
 export function translate<Key extends Phrase>(

@@ -10,31 +10,31 @@ The player is `test/fake-api/`, the same one the suite runs against, wired to a 
 
 **A patched `window.fetch` cannot do this job.** Covers are `<img src="/api/artwork/…">` and only a worker sees those; the same goes for the update stream and the component's own port, both of which the app reaches without going through anything Jean could hand it.
 
-**The component is answered too.** `foo_jean` listens on a port of its own, so the app builds a cross-origin URL and the worker answers *that* — cross-origin requests from a controlled page are still its to answer, and a response it makes itself is subject to neither CORS nor a preflight. So discovery, the status probe, pairing and a rating write all run here exactly as they run against a real install.
+**The component is answered too.** `foo_jean` listens on a port of its own, so the app builds a cross-origin URL and the worker answers *that*, since cross-origin requests from a controlled page are still its to answer, and a response it makes itself is subject to neither CORS nor a preflight. So discovery, the status probe, pairing and a rating write all run here exactly as they run against a real install.
 
-**`canStream: false`**, since there is no audio in the bundle — a real state the app already draws, not a hole in the fake.
+**`canStream: false`**, since there is no audio in the bundle: a real state the app already draws, not a hole in the fake.
 
 ## The library is real, and that is the point
 
 Captured off a real player by the same tool that captures the test fixture. `albums.ts` names the records and says why each is there; `library.json` and `artwork/` are what came back, and both are committed.
 
-**It MUST stay real.** The front door is a set of claims about a collection — what you play most, what you played to death and put down, what you have never opened, how the genres divide — and against generated data every one of those is a picture of the generator. Real records also carry what nobody would think to invent: an album with four genres in one tag, two neighbouring records spelling one genre differently, a multi-disc live set, an album half in one codec and half in another. **A genre list showing two spellings of one genre is Jean being right** — see the tag-hygiene rule in `CONTRIBUTING.md`.
+**It MUST stay real.** The front door is a set of claims about a collection: what you play most, what you played to death and put down, what you have never opened, how the genres divide. Against generated data every one of those is a picture of the generator. Real records also carry what nobody would think to invent: an album with four genres in one tag, two neighbouring records spelling one genre differently, a multi-disc live set, an album half in one codec and half in another. **A genre list showing two spellings of one genre is Jean being right**; see the tag-hygiene rule in `CONTRIBUTING.md`.
 
-**Two things are adjusted, both deliberately.** Last-played dates are slid forward on load so the newest becomes today, with relative distances untouched: a capture is a photograph of one afternoon, and a demo still serving it a year later says "a year ago" about everything. And lyrics are captured for a handful of albums only, flagged in `albums.ts` — enough to show the tab, the scroll-in-time and tapping a line to seek, without a public repo carrying licensed lyrics wholesale. Everywhere else the Lyrics tab shows its empty state, which is what an install without `foo_openlyrics` looks like.
+**Two things are adjusted, both deliberately.** Last-played dates are slid forward on load so the newest becomes today, with relative distances untouched: a capture is a photograph of one afternoon, and a demo still serving it a year later says "a year ago" about everything. And lyrics are captured for a handful of albums only, flagged in `albums.ts`, enough to show the tab, the scroll-in-time and tapping a line to seek, without a public repo carrying licensed lyrics wholesale. Everywhere else the Lyrics tab shows its empty state, which is what an install without `foo_openlyrics` looks like.
 
 ## The clock is the one thing added to the player
 
-The fake never ticks — beefweb pushes on change and never on a timer, and a suite depending on a tick would test something the player does not do. A demo where the track never ends is a demo of one row, so `clock.ts` wraps the state and fires **at the end of a track only**, the way a player does. It also writes the true position back before anything reads it, since the fake holds whatever position it was last told about and a pause that skipped that would report the track back at its start.
+The fake never ticks, because beefweb pushes on change and never on a timer, and a suite depending on a tick would test something the player does not do. A demo where the track never ends is a demo of one row, so `clock.ts` wraps the state and fires **at the end of a track only**, the way a player does. It also writes the true position back before anything reads it, since the fake holds whatever position it was last told about and a pause that skipped that would report the track back at its start.
 
 It wraps rather than living in `fake-api/`: the tests want none of it.
 
 ## What a service worker costs
 
-**The browser stops an idle worker** and starts a fresh one for the next request, taking the player's state with it. So the library is re-read from `library.json` — fetched rather than bundled, or the whole capture would be revalidated and re-downloaded for every change to anything else in the worker — and the *writes* are journalled to the Cache API and replayed on the way up (`journal.ts`). A reload keeps your ratings and your playlists, and so does a worker the browser shut down mid-session. The journal is capped, and the chip's Reset button (or `?reset`) clears it. Position within a track is not journalled: a replay puts a track back at its start.
+**The browser stops an idle worker** and starts a fresh one for the next request, taking the player's state with it. So the library is re-read from `library.json`, fetched rather than bundled, or the whole capture would be revalidated and re-downloaded for every change to anything else in the worker. The *writes* are journalled to the Cache API and replayed on the way up (`journal.ts`). A reload keeps your ratings and your playlists, and so does a worker the browser shut down mid-session. The journal is capped, and the chip's Reset button (or `?reset`) clears it. Position within a track is not journalled: a replay puts a track back at its start.
 
 ## Building it
 
-`pnpm demo` runs **two** Vite builds into `dist-demo/`, since a service worker is fetched by URL rather than imported: the app bundles normally, and `sw.ts` bundles separately to `sw.js` beside `index.html` — which is also what puts its scope at the root of the demo rather than inside `assets/`. `base` is relative, so the same output works under any prefix without a rebuild.
+`pnpm demo` runs **two** Vite builds into `dist-demo/`, since a service worker is fetched by URL rather than imported: the app bundles normally, and `sw.ts` bundles separately to `sw.js` beside `index.html`, which is also what puts its scope at the root of the demo rather than inside `assets/`. `base` is relative, so the same output works under any prefix without a rebuild.
 
 ## Adding to it
 

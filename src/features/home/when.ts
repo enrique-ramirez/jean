@@ -2,7 +2,7 @@ import { datesIn, relativeIn } from "@/shared/i18n/format";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-// A caption starts a line, and `Intl` capitalises nothing — an English relative phrase comes back
+// A caption starts a line, and `Intl` capitalises nothing. An English relative phrase comes back
 // lower-case and a Spanish month name is lower-case by convention. Which letter grows is the
 // locale's business: Turkish dotted i is the case everyone gets wrong with `toUpperCase`.
 const capitalise = (text: string, locale: string) =>

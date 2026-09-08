@@ -14,6 +14,7 @@ import { Details } from "./Details";
 import { Lyrics } from "./Lyrics";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
 import styles from "./TrackPanels.module.css";
+import { useLyricsRecheck } from "./useLyricsRecheck";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 import { usePanelScroll } from "./usePanelScroll";
 
@@ -46,6 +47,7 @@ export function TrackPanels({
 }) {
 	const t = useTranslate();
 	const { track } = useNowPlayingTrack();
+	useLyricsRecheck();
 	const [tab, setTab] = useState<Tab>("lyrics");
 	const [direction, setDirection] = useState(0);
 	const panelRef = useRef<HTMLDivElement | null>(null);

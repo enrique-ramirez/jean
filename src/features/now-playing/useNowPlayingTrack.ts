@@ -3,13 +3,14 @@ import { useCallback } from "react";
 
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { fetchActiveItemColumns, readTrack } from "@/shared/api/beefweb";
-import type { NowPlayingTrack, TrackColumns } from "@/shared/api/types";
+import type { TrackColumns } from "@/shared/api/types";
 import { NOW_PLAYING_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
 
-const keyOf = (track: NowPlayingTrack | null) =>
-	track?.path
-		? ["nowPlaying", track.path, track.subsong]
-		: ["nowPlaying", null];
+// Keyed on the file rather than the playlist position, which moves whenever anything above it is edited.
+// The parameters are primitives because `readTrack` builds a fresh object every render, so a callback
+// keyed on the track itself would be rebuilt every render and could never be depended on from an effect.
+const keyOf = (path: string | null, subsong: number) =>
+	path ? ["nowPlaying", path, subsong] : ["nowPlaying", null];
 
 export interface NowPlayingDetails {
 	row: TrackColumns;
@@ -20,9 +21,10 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 	const snapshot = useAudiblePlayer();
 	const track = readTrack(snapshot?.player);
 	const path = track?.path ?? null;
+	const subsong = track?.subsong ?? 0;
 
 	const query = useQuery({
-		queryKey: keyOf(track),
+		queryKey: keyOf(path, subsong),
 		enabled: enabled && path !== null,
 		queryFn: async (): Promise<NowPlayingDetails | null> => {
 			const row = await fetchActiveItemColumns(NOW_PLAYING_EXPRESSIONS);
@@ -42,19 +44,29 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 	});
 
 	const queryClient = useQueryClient();
-	const setRating = useCallback(
-		(raw: string) => {
+	const patch = useCallback(
+		(field: number, raw: string) => {
 			queryClient.setQueryData(
-				keyOf(track),
+				keyOf(path, subsong),
 				(current: NowPlayingDetails | null | undefined) => {
 					if (!current) return current;
 					const row = [...current.row];
-					row[NOW_PLAYING_FIELD.rating] = raw;
+					row[field] = raw;
 					return { ...current, row };
 				},
 			);
 		},
-		[queryClient, track],
+		[queryClient, path, subsong],
+	);
+
+	const setRating = useCallback(
+		(raw: string) => patch(NOW_PLAYING_FIELD.rating, raw),
+		[patch],
+	);
+
+	const setLyrics = useCallback(
+		(raw: string) => patch(NOW_PLAYING_FIELD.lyrics, raw),
+		[patch],
 	);
 
 	return {
@@ -62,5 +74,6 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 		details: query.data ?? null,
 		isPending: enabled && query.isPending && path !== null,
 		setRating,
+		setLyrics,
 	};
 }

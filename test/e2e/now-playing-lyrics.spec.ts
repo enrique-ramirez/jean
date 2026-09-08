@@ -10,7 +10,13 @@ import {
 	test,
 	trackRow,
 } from "./fixtures.ts";
-import { openPanels, panelTab, playRow, TAGGED } from "./nowPlaying.ts";
+import {
+	openPanels,
+	panelTab,
+	playRow,
+	TAGGED,
+	writeLyric,
+} from "./nowPlaying.ts";
 
 test.describe("reading the lyric tag", () => {
 	test.use(TAGGED);
@@ -93,6 +99,25 @@ test.describe("reading the lyric tag", () => {
 
 		await expect(panel).toContainText("No lyrics found");
 		await expect(panel).not.toContainText("foo_openlyrics");
+	});
+
+	// The reason the panel looks again at all: a search that lands after the track
+	// started would otherwise show nothing until the next time it is played.
+	test("a lyric written mid-track arrives without a reload", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await playRow(page, 3);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+		await expect(panel).toContainText("No lyrics found");
+
+		writeLyric(player, "Searched for, and found");
+
+		await expect(panel).toContainText("Searched for, and found", {
+			timeout: 10_000,
+		});
 	});
 });
 

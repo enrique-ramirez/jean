@@ -73,6 +73,10 @@ Sleeves on the rim of a circle whose centre is far below the screen, so one rota
 
 It is **keyed on the file**, not on the playlist position, which moves whenever anything above it is edited. And the answer is **verified rather than trusted**: the player reports whatever is playing when the request is *served*, so a track that ended in flight would otherwise cache the next track's lyrics under this one's key.
 
+**The lyric alone is looked at again while the track plays.** `foo_openlyrics` searches when a track starts and writes the tag when it lands, and beefweb announces nothing when a tag changes — so a lyric that arrives a few seconds late would otherwise wait for the next play. Three rules hold the cost down: the looks are a fixed short series and stop at the first hit, they run only while the panels are mounted, and they ask for the lyric column alone. Re-reading the whole set instead would overwrite an optimistic rating with the value on disk.
+
+**A patch reaches that cache by path and subsong, never by the track object.** `readTrack` builds a fresh one every render, so a callback keyed on it is rebuilt every render and can never be depended on from an effect.
+
 **Every value goes through `readValue()`.** Read raw, a field the player cannot resolve is the literal string `?`, which is perfectly truthy — so the panel draws a one-line lyric consisting of a question mark on every track without the tag.
 
 ## Lyrics

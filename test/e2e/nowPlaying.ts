@@ -2,7 +2,7 @@
 // screen, and the panels a phone keeps behind a button and a desktop keeps in a
 // leaf of the gatefold.
 
-import type { Locator, Page } from "./fixtures.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
 	nowPlayingScreen,
@@ -57,6 +57,15 @@ export const TAGGED = {
 		// Soy Rock is left with no lyric tag at all -- the common case, at about
 		// three quarters of a real library.
 	},
+};
+
+// What `foo_openlyrics` does when its search lands: the tag on the playing file
+// changes mid-track, and beefweb announces nothing at all.
+export const writeLyric = (player: FakePlayer, lyric: string) => {
+	const item = player.player.activeItem;
+	const track = player.playlistById(item.playlistId)?.items[item.index];
+	if (!track) throw new Error("nothing is playing to write a lyric onto");
+	track["$meta(unsynced lyrics)"] = lyric;
 };
 
 export const playRow = async (page: Page, row: number) => {

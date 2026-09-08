@@ -55,8 +55,7 @@ A `CLAUDE.md` is not feature documentation. Flag any description of what a scree
 
 ## Voice
 
-- Documentation and comments: `house`
-- Text posted under a person's name: `house`
+`enrique`, both for prose already in this repository and for anything the agents write into it, including their reports. Where that persona file is not in the checkout, which is the normal case on somebody else's machine, `house`.
 
 ## Product decisions
 

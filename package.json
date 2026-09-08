@@ -18,7 +18,7 @@
 		"test:ui": "playwright test --ui",
 		"fake": "node test/fake-api/main.ts --port 8880",
 		"test:live": "playwright test --project=live",
-		"update-claude": "\"${AI_ENGINEERING:-../ai-engineering}/bin/install.sh\" . --mode copy --force"
+		"sync-kit": "\"${AI_ENGINEERING:-../ai-engineering}/bin/install.sh\" . --mode copy --force"
 	},
 	"dependencies": {
 		"@tanstack/react-hotkeys": "^0.10.0",

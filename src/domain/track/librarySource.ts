@@ -1,3 +1,4 @@
+import type { QueueTarget } from "@/domain/player/queue";
 import {
 	addFromLibrary,
 	artworkUrl,
@@ -24,11 +25,6 @@ import type { Refs } from "./project";
 export interface ResolvedTrack {
 	identity: TrackIdentity;
 	columns: string[];
-}
-
-export interface QueueTarget {
-	playlistId: string;
-	itemIndex: number;
 }
 
 export interface HoldingPlaylist {

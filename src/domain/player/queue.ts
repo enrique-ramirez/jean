@@ -9,6 +9,22 @@ import { descending, inSequence } from "@/shared/lib/sequence";
 export const QUEUE_KEY = ["playQueue"];
 export const QUEUE_DROP_TARGET = "jean:queue";
 
+export interface QueueTarget {
+	playlistId: string;
+	itemIndex: number;
+}
+
+// The insertion point rides in the target id. `dnd.ts` publishes which target is under the pointer
+// and nothing finer, so a target per gap is what lets the drop line move without a pointer position
+// in the store notifying the app on every frame.
+export const queueDropAt = (at: number) => `${QUEUE_DROP_TARGET}@${at}`;
+
+export const queueDropIndex = (id: string) => {
+	if (!id.startsWith(`${QUEUE_DROP_TARGET}@`)) return null;
+	const at = Number(id.slice(QUEUE_DROP_TARGET.length + 1));
+	return Number.isInteger(at) ? at : null;
+};
+
 let held = 0;
 
 export const isQueueStreamHeld = () => held > 0;
@@ -69,6 +85,20 @@ export const queuedSeconds = (entries: QueueEntry[]) =>
 
 export const startsIn = (entry: QueueEntry, remaining: number) =>
 	remaining + entry.offset;
+
+// The same rebuild as `movePlan` and for the same reason: everything from the insertion point down
+// comes off and goes back on with the new tracks ahead of it.
+export function insertPlan(
+	current: PlayQueueItem[],
+	at: number,
+	added: QueueTarget[],
+) {
+	const from = Math.max(0, Math.min(at, current.length));
+	return {
+		removals: descending(current.length - 1, from),
+		additions: [...added, ...current.slice(from)],
+	};
+}
 
 // A reorder is a rebuild: `queueIndex` on `/playqueue/add` is accepted and silently ignored, so
 // there is no insert to ask for. Removals come off from the top, the player renumbering on each one.

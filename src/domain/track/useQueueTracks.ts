@@ -53,9 +53,11 @@ export function useQueueTracks() {
 		async ({
 			source,
 			itemIndices,
+			at,
 		}: {
 			source: LibrarySource;
 			itemIndices: Refs;
+			at?: number;
 		}) => {
 			if (!canQueue || itemIndices.length === 0) return;
 
@@ -85,7 +87,7 @@ export function useQueueTracks() {
 				});
 			}
 
-			await queue(targets);
+			await queue(targets, at);
 		},
 		[canQueue, holding, queue],
 	);

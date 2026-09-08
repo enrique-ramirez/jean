@@ -11,7 +11,15 @@ import type { PlayQueueItem } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
 import { inSequence } from "@/shared/lib/sequence";
 import { pushToast } from "@/shared/ui/toastStore";
-import { holdQueue, movePlan, QUEUE_KEY, readQueue, sameQueue } from "./queue";
+import {
+	holdQueue,
+	insertPlan,
+	movePlan,
+	QUEUE_KEY,
+	type QueueTarget,
+	readQueue,
+	sameQueue,
+} from "./queue";
 import { askToShowQueue } from "./showQueue";
 import { usePermissions } from "./usePlayer";
 
@@ -74,18 +82,39 @@ export function useQueueActions() {
 	// Sequential, and it has to be: fired concurrently these land in whatever order the network
 	// settles on, and the order is the point of a queue.
 	const queue = useCallback(
-		async (pairs: { playlistId: string; itemIndex: number }[]) => {
+		async (pairs: QueueTarget[], at?: number) => {
 			if (!canQueue || pairs.length === 0) return;
 
 			askToShowQueue();
 
-			await underQueueHold(() =>
-				inSequence(pairs, (pair) =>
-					addToPlayQueue(pair.playlistId, pair.itemIndex),
-				),
-			);
+			let removals: number[] = [];
+			let additions: QueueTarget[] = pairs;
+
+			const shown = queryClient.getQueryData<PlayQueueItem[]>(QUEUE_KEY);
+
+			// The cached length decides this, and it is allowed to be wrong: an append lands at the end
+			// whatever moved above it, so a drop past the last row costs neither a read nor a refusal.
+			// Only a rebuild needs the truth.
+			if (at !== undefined && at < (shown?.length ?? 0)) {
+				const current = await fetchPlayQueue().catch(() => null);
+				if (!current || !sameQueue(current, shown)) {
+					pushToast({
+						tone: "error",
+						message: translate("queue.movedUnderYou"),
+					});
+					return;
+				}
+				({ removals, additions } = insertPlan(current, at, pairs));
+			}
+
+			await underQueueHold(async () => {
+				await inSequence(removals, removeFromPlayQueue);
+				await inSequence(additions, (item) =>
+					addToPlayQueue(item.playlistId, item.itemIndex),
+				);
+			});
 		},
-		[canQueue, underQueueHold],
+		[canQueue, queryClient, underQueueHold],
 	);
 
 	const remove = useCallback(

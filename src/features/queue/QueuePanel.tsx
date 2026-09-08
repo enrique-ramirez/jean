@@ -3,7 +3,7 @@ import { type CSSProperties, memo, useMemo } from "react";
 
 import { formatTime, positionAt } from "@/domain/player/position";
 import type { QueueEntry } from "@/domain/player/queue";
-import { queuedSeconds, startsIn } from "@/domain/player/queue";
+import { queueDropAt, queuedSeconds, startsIn } from "@/domain/player/queue";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { coverKey } from "@/domain/track/fields";
@@ -17,6 +17,7 @@ import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
 import { Artwork } from "@/shared/ui/Artwork";
+import { useDragState } from "@/shared/ui/dnd";
 import styles from "./QueuePanel.module.css";
 import { useQueueClock } from "./queueClock";
 
@@ -94,11 +95,33 @@ function StartsIn({
 	);
 }
 
+function DropZones({ at }: { at: number | null }) {
+	if (at === null) return null;
+	return (
+		<>
+			<span
+				className={styles.dropZone}
+				data-edge="top"
+				data-drop-target={queueDropAt(at)}
+				aria-hidden="true"
+			/>
+			<span
+				className={styles.dropZone}
+				data-edge="bottom"
+				data-drop-target={queueDropAt(at + 1)}
+				aria-hidden="true"
+			/>
+		</>
+	);
+}
+
 const QueueRow = memo(function QueueRow({
 	entry,
 	snapshot,
 	isPlaying,
 	canQueue,
+	dropAt,
+	hasDropLine,
 	onRemove,
 	rowProps,
 	handleProps,
@@ -108,6 +131,8 @@ const QueueRow = memo(function QueueRow({
 	snapshot: PlayerSnapshot | null | undefined;
 	isPlaying: boolean;
 	canQueue: boolean;
+	dropAt: number | null;
+	hasDropLine: boolean;
 	onRemove: () => void;
 	rowProps: PropBag;
 	handleProps: PropBag;
@@ -116,7 +141,13 @@ const QueueRow = memo(function QueueRow({
 	const t = useTranslate();
 	if (entry.isOrphan) {
 		return (
-			<li className={styles.row} data-orphan="true" {...itemProps}>
+			<li
+				className={styles.row}
+				data-orphan="true"
+				data-drop-line={hasDropLine ? "true" : undefined}
+				{...itemProps}
+			>
+				<DropZones at={dropAt} />
 				<span className={styles.tick} aria-hidden="true" />
 				<span className={styles.names}>
 					<span className={styles.title}>{t("queue.orphan")}</span>
@@ -141,6 +172,7 @@ const QueueRow = memo(function QueueRow({
 	return (
 		<li
 			className={styles.row}
+			data-drop-line={hasDropLine ? "true" : undefined}
 			{...merged}
 			// After the spread and composed rather than replacing: the sortable hook owns `transform` on this element for
 			// the length of a drag.
@@ -151,6 +183,8 @@ const QueueRow = memo(function QueueRow({
 				} as CSSProperties
 			}
 		>
+			<DropZones at={dropAt} />
+
 			<Artwork
 				className={styles.tick}
 				src={artworkUrl(entry.playlistId, entry.itemIndex)}
@@ -225,10 +259,17 @@ export function QueuePanel({
 		disabled: !canQueue,
 	});
 
-	const ref = useDismissable<HTMLElement>(isOpen, onDismiss, {
-		ignore: "[data-queue-toggle]",
-		onEscape: false,
-	});
+	const ref = useDismissable<HTMLElement>(
+		isOpen && isCompactViewport,
+		onDismiss,
+		{
+			ignore: "[data-queue-toggle]",
+			onEscape: false,
+		},
+	);
+
+	const drag = useDragState();
+	const isDropping = isOpen && canQueue && drag.isDragging;
 
 	const keyboardOwner = useKeyboardOwner();
 
@@ -251,6 +292,7 @@ export function QueuePanel({
 				ref={ref}
 				className={styles.panel}
 				data-open={isOpen}
+				data-dropping={isDropping ? "true" : undefined}
 				aria-label={t("queue.title")}
 				{...swipe}
 				inert={isOpen ? undefined : true}
@@ -284,14 +326,24 @@ export function QueuePanel({
 					</button>
 				</header>
 
-				<section className={styles.scroller} ref={scrollRef}>
+				<section
+					className={styles.scroller}
+					ref={scrollRef}
+					data-drop-scroller=""
+					data-drop-target={isDropping ? queueDropAt(count) : undefined}
+				>
 					<div className={styles.origin} data-live={isPlaying}>
 						<span className={styles.pip} aria-hidden="true" />
 						<Remaining snapshot={snapshot} isPlaying={isPlaying} />
 					</div>
 
 					{count === 0 ? (
-						<div className={styles.empty}>
+						<div
+							className={styles.empty}
+							data-drop-over={
+								isDropping && drag.over === queueDropAt(0) ? "true" : undefined
+							}
+						>
 							<p className={styles.emptyLead}>{t("queue.empty")}</p>
 							<p className={styles.emptyBody}>{t("queue.emptyBody")}</p>
 							<p className={styles.emptyHint}>
@@ -300,21 +352,35 @@ export function QueuePanel({
 							</p>
 						</div>
 					) : (
-						<ol className={styles.rail}>
-							{entries.map((entry, index) => (
-								<QueueRow
-									key={keys[index]}
-									entry={entry}
-									snapshot={snapshot}
-									isPlaying={isPlaying}
-									canQueue={canQueue}
-									onRemove={() => remove(entry.at)}
-									rowProps={dragProps(index) as PropBag}
-									handleProps={handleProps(index) as PropBag}
-									itemProps={itemProps(index) as PropBag}
+						<>
+							<ol className={styles.rail}>
+								{entries.map((entry, index) => (
+									<QueueRow
+										key={keys[index]}
+										entry={entry}
+										snapshot={snapshot}
+										isPlaying={isPlaying}
+										canQueue={canQueue}
+										dropAt={isDropping ? index : null}
+										hasDropLine={drag.over === queueDropAt(index)}
+										onRemove={() => remove(entry.at)}
+										rowProps={dragProps(index) as PropBag}
+										handleProps={handleProps(index) as PropBag}
+										itemProps={itemProps(index) as PropBag}
+									/>
+								))}
+							</ol>
+
+							{isDropping ? (
+								<div
+									className={styles.tail}
+									data-drop-line={
+										drag.over === queueDropAt(count) ? "true" : undefined
+									}
+									aria-hidden="true"
 								/>
-							))}
-						</ol>
+							) : null}
+						</>
 					)}
 				</section>
 			</aside>

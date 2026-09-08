@@ -1,4 +1,4 @@
-import { QUEUE_DROP_TARGET } from "@/domain/player/queue";
+import { QUEUE_DROP_TARGET, queueDropIndex } from "@/domain/player/queue";
 import {
 	canChangePlaylists,
 	usePermissions,
@@ -59,6 +59,12 @@ export function useTrackDragSource({
 		onDrop: (id, payload) => {
 			if (id === QUEUE_DROP_TARGET) {
 				queueTracks({ source, itemIndices: payload.items });
+				return;
+			}
+
+			const at = queueDropIndex(id);
+			if (at !== null) {
+				queueTracks({ source, itemIndices: payload.items, at });
 				return;
 			}
 

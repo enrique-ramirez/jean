@@ -16,7 +16,7 @@ The **mode** is global player state, one of it rather than one per view. The **a
 
 **Queueing opens the panel and raises no toast on success.** The row the track lands on is the undo; an undo carried on a toast would be a range built from the queue length before its own write, so with several on screen only the newest could still be applied. Errors do toast.
 
-**A reorder is a rebuild, because there is no insert.** `queueIndex` is accepted and *silently ignored* on add, so moving an entry means removing everything from the earlier of the two positions and adding it back in the new order. Three things follow:
+**A reorder is a rebuild, because there is no insert.** `queueIndex` is accepted and *silently ignored* on add, so moving an entry means removing everything from the earlier of the two positions and adding it back in the new order. **Queueing a track into a position is the same rebuild with the track ahead of the tail; queueing onto the end is not one at all** — an append lands at the end whatever moved above it, so it neither re-reads nor refuses. Three things follow:
 
 - **Only the tail is rebuilt.** Everything above the earlier position is untouched, so a drag near the bottom is cheap and a drag from the top is not.
 - **The queue is re-read before the plan is built.** This is the one operation whose arithmetic cannot survive being stale — a track ending mid-drag consumes the head and shifts every index under it — so a queue that moved is refused rather than half-applied.

@@ -131,6 +131,73 @@ test.describe("putting things in the queue", () => {
 		await expect(queueRows(page)).toHaveCount(1);
 	});
 
+	test("a track dropped into the panel lands where the line was", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "drag is mouse-only; touch has the menu");
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 1);
+		await queueTracks(page, isMobile, 2);
+		await expect(queueRows(page)).toHaveCount(2);
+		const before = queuedTitles(player);
+
+		const source = await trackRow(page, 0).boundingBox();
+		// The upper half of the first row, which is the gap above it: the id carries the index and the two halves point at different ones, so aiming at the row is not enough.
+		const first = (await queueRows(page).first().boundingBox())!;
+
+		await page.mouse.move(
+			source!.x + source!.width / 2,
+			source!.y + source!.height / 2,
+		);
+		await page.mouse.down();
+		await page.mouse.move(first.x + first.width / 2, first.y + 4, {
+			steps: 16,
+		});
+		await expect(queueRows(page).first()).toHaveAttribute(
+			"data-drop-line",
+			"true",
+		);
+		await page.mouse.up();
+
+		// `queueIndex` on add is accepted and ignored, so an insert is the tail coming off and going back on with the new track ahead of it -- which is exactly what the two it was dropped above surviving in order proves.
+		await expect
+			.poll(() => queuedTitles(player).slice(1), { timeout: 10_000 })
+			.toEqual(before);
+		await expect(queueRows(page)).toHaveCount(3);
+	});
+
+	test("a drop below the last row appends without rebuilding", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "drag is mouse-only; touch has the menu");
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 1);
+		await expect(queueRows(page)).toHaveCount(1);
+
+		const source = await trackRow(page, 0).boundingBox();
+		const panel = (await queuePanel(page).boundingBox())!;
+
+		await page.mouse.move(
+			source!.x + source!.width / 2,
+			source!.y + source!.height / 2,
+		);
+		await page.mouse.down();
+		await page.mouse.move(
+			panel.x + panel.width / 2,
+			panel.y + panel.height - 40,
+			{ steps: 16 },
+		);
+		await page.mouse.up();
+
+		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(2);
+		// Nothing came off: an append is one request whatever is above it.
+		expect(requestsTo(player, "/playqueue/remove")).toHaveLength(0);
+	});
+
 	test("the button announces itself only while a drag is in flight", async ({
 		page,
 		isMobile,
@@ -287,7 +354,10 @@ test.describe("queueing opens the panel", () => {
 		await expect(page.getByRole("status")).toHaveCount(0);
 	});
 
-	test("a press outside puts it away", async ({ page, isMobile }) => {
+	test("a press outside puts away the overlay and leaves the dock", async ({
+		page,
+		isMobile,
+	}) => {
 		await openLibrary(page);
 		await queueTracks(page, isMobile);
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
@@ -296,7 +366,11 @@ test.describe("queueing opens the panel", () => {
 		const box = (await queuePanel(page).boundingBox())!;
 		await page.mouse.click(box.x / 2, box.y + 120);
 
-		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+		// The docked panel is furniture and stays through the app being used behind it; the overlay is a sheet and goes.
+		await expect(queuePanel(page)).toHaveAttribute(
+			"data-open",
+			isMobile ? "false" : "true",
+		);
 	});
 
 	test("the button that opened it still closes it", async ({
@@ -357,7 +431,6 @@ test.describe("queueing opens the panel", () => {
 		test.skip(isMobile, "selecting rows is a pointer path");
 		await openLibrary(page);
 
-		// Selected first: a press on the list is also the press outside that puts the panel away, so it cannot be done in the other order.
 		await trackRow(page, 2).click();
 		await expect(trackRow(page, 2)).toHaveAttribute("aria-selected", "true");
 

@@ -118,23 +118,26 @@ The standard is one thing: control complexity so a person can read the result. C
 
 ## 8. Comments
 
-Comments are a **last resort**. Prefer an intention-revealing name, or extract a function whose name says what the comment would have said.
+Write a comment when the code is correct **because of something outside this repository**, and name that thing: what beefweb, foobar2000, DeaDBeeF, `foo_jean`, a browser or a library actually does. Every other claim a reader can check by reading; that one they cannot.
 
-A comment is justified only when it records one of:
+Everything else that seems to want a sentence is a name you have not found yet, a function you have not extracted, or a fact that belongs in a document.
 
-- a **trap** — something the next reader would otherwise revert into;
-- an **external constraint** — what the player, the browser or a library actually does;
-- a **non-obvious invariant** no name could carry.
+1. **Why a value was chosen is a named constant.** A duration, a threshold, a breakpoint, a `staleTime`. A name says it at every use rather than once above one of them.
+2. **What the code does is the code.** If following it needs prose, the prose is a bug report against the structure — fix the structure.
+3. **How the parts fit is `ARCHITECTURE.md`; what the player answers is `src/shared/api/README.md`.** An external fact that bites in several files is written there once, and the files depending on it say nothing, or point there in a clause.
+4. **Specs carry more.** A spec's name states the behaviour; a comment may state why the case exists at all and what breaks without it. That is documentation and it earns its place. Narrating the assertions is not.
 
-The test is one question: **would somebody doing the next piece of work get it wrong without this?** If the comment only explains why the current thing looks the way it does, it goes.
+**The test, before you write one.** Strip the comment and hand the code to somebody competent who has not seen it:
 
-Never narrate what the code does. Never date a comment, never sign one, never record what the code used to be. Git holds history.
+| they get it right | verdict |
+|---|---|
+| from the code | it was never needed |
+| only because they happen to know beefweb, or how Safari handles it | the fact is real; it belongs in the docs |
+| they cannot get it at all | write the comment |
 
-**No rationale and no rejected alternatives.** Not why a weight, a colour or a spacing was chosen; not what was tried first. Products evolve and recording every decision is a maintenance burden that drifts from the code and then contradicts it. The rare survivor is a rule that binds future work — write it as an imperative ("do not replace the banding with one detected scale per library"), never as the story of a decision.
+`src/` should be near zero. An exception is allowed, and should be rare enough that meeting one is a surprise. `.claude/agents/comment-reaper.md` runs that test with an agent that has not seen the file.
 
-Where a lint rule fires on something deliberate, the suppression carries its reason. The `useExhaustiveDependencies` suppressions in this codebase are all one shape — a dependency that exists to *fire* an effect rather than to be read inside it — which the rule cannot model, so `lint:fix` would remove every one and break the feature silently. Read them before running it.
-
-Tests get a little more room: a spec is documentation, and a note saying *why* a case matters earns its place.
+**A lint suppression is code, not a comment, and carries its reason.** The `useExhaustiveDependencies` suppressions here are all one shape — a dependency that exists to *fire* an effect rather than to be read inside it — which the rule cannot model, so `lint:fix` would remove every one and break the feature silently. Read them before running it.
 
 ## 9. Documentation
 

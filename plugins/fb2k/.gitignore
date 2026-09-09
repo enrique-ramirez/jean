@@ -1,0 +1,39 @@
+# The foobar2000 SDK is fetched, never vendored -- its licence does not permit
+# redistribution. scripts/fetch-sdk.ps1 puts it here.
+sdk/*
+!sdk/.gitkeep
+
+# libopus and libogg, fetched by scripts/fetch-opus.{sh,ps1} rather than vendored:
+# four megabytes of C this repository has nothing to say about.
+third_party/opus/
+third_party/ogg/
+
+# MSBuild
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+*.user
+*.suo
+*.sdf
+*.opendb
+*.VC.db
+.vs/
+
+# Packaged component
+*.fb2k-component
+dist/
+
+.DS_Store
+
+# How you get a build onto your player is yours, and it carries a host and paths.
+scripts/deploy.local.sh
+
+# Working notes and story drafts. Personal, unfinished, and not the record --
+# what gets decided ends up in CLAUDE.md or docs/ instead.
+_todo/
+*.local.txt
+.claude/settings.json.bak
+*.local.bak
+.claude/.review-kit.manifest

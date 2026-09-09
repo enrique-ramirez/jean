@@ -1,0 +1,39 @@
+# Nothing in the ordinary build runs the generator, so a spec edit and the committed types
+# drifting apart is exactly what would otherwise go unnoticed. The conformance suite is not run
+# here: it drives a player over HTTP, and there is no player on a runner. `contract/README.md`
+# is the rest.
+
+name: contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned here rather than through a `packageManager` field, which would also start policing
+      # every local pnpm the repo is used with.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm types:api
+
+      - name: the committed types still match the contract
+        run: git diff --exit-code

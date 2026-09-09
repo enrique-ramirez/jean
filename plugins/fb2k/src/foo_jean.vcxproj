@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  foo_jean, built as an x64 foobar2000 component.
+
+  Four things here are load-bearing and each fails in a way that does not name
+  itself. README.md, "Everything that stood between a clean VS install and that
+  DLL", has the full list with symptoms.
+
+  1. pfc builds as "$(Configuration) FB2K" while every other SDK project builds as
+     "$(Configuration)". Encoded as SetConfiguration metadata on the pfc
+     ProjectReference below, which is why building this .vcxproj directly works.
+  2. /d2notypeopt is mandatory on anything touching SDK classes.
+  3. WTL reaches the compiler through Directory.Build.targets at the repo root,
+     never through /p:UseEnv=true.
+  4. OutDir is set explicitly, because the build drives this .vcxproj directly and
+     $(SolutionDir) is then undefined.
+
+  x64 only. beefweb ships x64 and the top level of a .fb2k-component zip is where
+  legacy x86 is looked for, so an x86 build would need somewhere to go before it
+  needed building.
+-->
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{5CC3CAD8-D73A-4B04-989E-5492C568D105}</ProjectGuid>
+    <RootNamespace>foo_jean</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <!--
+      v143 rather than the v142 the SDK's projects declare. build.ps1 also passes
+      /p:PlatformToolset=v143 so the SDK builds at all; setting it here as well is
+      what lets this project open and build in the IDE without that override.
+    -->
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <PropertyGroup>
+    <OutDir>$(MSBuildThisFileDirectory)..\bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)..\obj\$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>foo_jean</TargetName>
+    <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>fb2k/PCH.h</PrecompiledHeaderFile>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <!--
+        Three roots. src/ so our own headers are reached as "core/..." and
+        "fb2k/..."; the repo root so vendored headers are reached as
+        "third_party/..."; sdk/ so SDK headers are reached as
+        <foobar2000/SDK/foobar2000.h>, which is how the SDK's own headers
+        cross-include each other.
+      -->
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);$(MSBuildThisFileDirectory)..;$(MSBuildThisFileDirectory)..\sdk;$(MSBuildThisFileDirectory)..\third_party\opus\include;$(MSBuildThisFileDirectory)..\third_party\ogg\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!-- 4715: not all control paths return a value. The SDK treats it as an error and so do we. -->
+      <TreatSpecificWarningsAsErrors>4715</TreatSpecificWarningsAsErrors>
+      <!--
+        Object files mirror the source directories rather than landing in one flat
+        folder. core/ and fb2k/ are two halves of the same design and deliberately
+        share names, so core\preferences.cpp and fb2k\preferences.cpp would otherwise
+        both write preferences.obj and the second would silently win. The symptom is
+        an LNK2001 naming functions you can see defined in a file you can see being
+        compiled.
+      -->
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <!--
+        shared.dll is foobar2000's own; this is its import library. The SDK static
+        libs arrive through ProjectReference. ws2_32 and bcrypt are not listed
+        either: cpp-httplib carries a #pragma comment(lib) for the first and
+        src/fb2k/config_file.cpp for the second, and listing them here as well
+        would mean two places to keep in step.
+      -->
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)..\sdk\foobar2000\shared\shared-$(Platform).lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>_DEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- Trap 2. Do not remove, and do not overwrite AdditionalOptions wholesale. -->
+      <AdditionalOptions>/d2notypeopt %(AdditionalOptions)</AdditionalOptions>
+      <StringPooling>true</StringPooling>
+    </ClCompile>
+    <Link>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!--
+    src/core/ is the portable half: it must not see a foobar2000 header, and the
+    precompiled header *is* the foobar2000 SDK. Compiling it without the PCH is
+    what turns that rule from a convention into a build failure if it is broken.
+
+    It also has to be this way round for http_server.cpp specifically: cpp-httplib
+    includes <winsock2.h>, which must be seen before anything pulls in
+    <windows.h>, and the SDK pulls in <windows.h>. Wrong order and the build fails
+    deep inside Winsock with errors that mention none of this.
+
+    Warnings are dialled down because these are the files that include the
+    vendored headers, which are 48,000 lines we do not own.
+  -->
+  <ItemGroup>
+    <ClCompile Include="core\*.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level1</WarningLevel>
+      <TreatSpecificWarningsAsErrors />
+    </ClCompile>
+  </ItemGroup>
+
+  <!--
+    libopus and libogg, fetched by scripts/fetch-opus.ps1. Compiled straight into the DLL
+    rather than through a library project of their own, because that would mean carrying a
+    .vcxproj for somebody else's code and keeping it in step with their releases.
+
+    Warnings off and no precompiled header: this is 139 C files we do not own, and the PCH
+    is the foobar2000 SDK, which is C++. The object directory is flat and separate, which
+    is safe only because no two of these share a basename. That is checked, and worth
+    rechecking after a version bump.
+  -->
+  <ItemGroup>
+    <ClCompile Include="..\third_party\opus\src\*.c;..\third_party\opus\celt\*.c;..\third_party\opus\silk\*.c;..\third_party\opus\silk\float\*.c;..\third_party\ogg\src\*.c"
+               Exclude="..\third_party\opus\src\opus_demo.c;..\third_party\opus\src\repacketizer_demo.c;..\third_party\opus\src\opus_compare.c;..\third_party\opus\celt\opus_custom_demo.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAs>CompileAsC</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <ObjectFileName>$(IntDir)codec\</ObjectFileName>
+      <PreprocessorDefinitions>OPUS_BUILD;USE_ALLOCA;HAVE_LRINTF;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\third_party\opus;$(MSBuildThisFileDirectory)..\third_party\opus\include;$(MSBuildThisFileDirectory)..\third_party\opus\celt;$(MSBuildThisFileDirectory)..\third_party\opus\silk;$(MSBuildThisFileDirectory)..\third_party\opus\silk\float;$(MSBuildThisFileDirectory)..\third_party\ogg\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClCompile Include="fb2k\PCH.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="fb2k\*.cpp" Exclude="fb2k\PCH.cpp" />
+  </ItemGroup>
+
+  <!--
+    The preferences page's dialog template. rc.exe reaches "resource.h" relative to
+    the .rc itself, so ResourceCompile needs no include directories of its own. It
+    must not be given them through /p:UseEnv=true either: that is trap 3 above, and
+    rc.exe failing on winres.h is where it shows up first.
+  -->
+  <ItemGroup>
+    <ResourceCompile Include="fb2k\*.rc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClInclude Include="core\*.h" />
+    <ClInclude Include="fb2k\*.h" />
+    <!-- doctest belongs to the test build, not the DLL. -->
+    <ClInclude Include="..\third_party\*.h" Exclude="..\third_party\doctest.h" />
+    <ClInclude Include="..\third_party\*.hpp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Trap 1 lives here. pfc has "Debug FB2K" and "Release FB2K" configurations
+      alongside plain "Debug" and "Release"; only the FB2K ones omit the pfc copies
+      of crashHook and winFormatSystemErrorMessageHook that foobar2000_SDK.lib also
+      defines. SetConfiguration is passed to the referenced project as a global
+      property and overrides the Configuration inherited from this build, including
+      one given on the msbuild command line.
+    -->
+    <ProjectReference Include="..\sdk\pfc\pfc.vcxproj">
+      <Project>{ebfffb4e-261d-44d3-b89c-957b31a0bf9c}</Project>
+      <SetConfiguration>Configuration=$(Configuration) FB2K</SetConfiguration>
+    </ProjectReference>
+    <ProjectReference Include="..\sdk\foobar2000\SDK\foobar2000_SDK.vcxproj">
+      <Project>{e8091321-d79d-4575-86ef-064ea1a4a20d}</Project>
+    </ProjectReference>
+    <!-- Provides the exported entry point foobar2000 looks for when loading the DLL. -->
+    <ProjectReference Include="..\sdk\foobar2000\foobar2000_component_client\foobar2000_component_client.vcxproj">
+      <Project>{71ad2674-065b-48f5-b8b0-e1f9d3892081}</Project>
+    </ProjectReference>
+    <!--
+      Deliberately absent: foobar2000_sdk_helpers and libPPUI. The helpers will
+      likely be referenced once there is tag writing to do; libPPUI is a list
+      control library for UI this component does not draw. Neither is added on
+      speculation; if the link starts asking for symbols, it will name them.
+    -->
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

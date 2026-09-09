@@ -2,9 +2,9 @@ import { cp, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { buildDemo } from "@jean/ui/demo/build.ts";
 import { build, type Plugin } from "vite";
 
-import { buildDemo } from "../demo/build.ts";
 import {
 	type Embed,
 	frameSrc,
@@ -17,7 +17,7 @@ import { inline, part, section } from "./readme.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const OUT = resolve(ROOT, "dist-site");
+const OUT = resolve(HERE, "dist-site");
 
 const attr = (value: string) =>
 	value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -133,7 +133,10 @@ await build({
 	build: { outDir: OUT, emptyOutDir: true },
 });
 
-await cp(resolve(ROOT, "public/favicon.svg"), resolve(OUT, "favicon.svg"));
+await cp(
+	fileURLToPath(import.meta.resolve("@jean/ui/public/favicon.svg")),
+	resolve(OUT, "favicon.svg"),
+);
 
 await buildDemo(resolve(OUT, "demo"));
 

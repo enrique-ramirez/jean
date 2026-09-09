@@ -1,0 +1,12 @@
+# Normalised on the way in, so an edit made on the Windows build machine cannot commit
+# CRLF. Everything tracked here is already LF except the .sln below.
+* text=auto eol=lf
+
+# Visual Studio rewrites this one with CRLF whatever is committed, so it is checked out
+# that way deliberately. Without this, every VS session reports the whole file as modified.
+*.sln text eol=crlf
+
+# cpp-httplib, nlohmann/json and doctest: 57,000 lines against 10,000 of this component's
+# own, so without this GitHub's language bar and every pull request describe somebody
+# else's code. Left diffable on purpose -- a version bump is worth reading.
+third_party/** linguist-vendored

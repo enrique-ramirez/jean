@@ -1,0 +1,27 @@
+<!--
+  Puts WTL on the include path for every project built from this tree, including
+  the SDK's own, without editing anything under sdk/ — which matters because
+  sdk/ is fetched rather than committed and gets deleted to re-fetch.
+
+  MSBuild imports this automatically: it walks up from each .vcxproj looking for
+  the nearest Directory.Build.targets, and every SDK project sits under this
+  directory. `.targets` rather than `.props` on purpose: props are imported
+  before Microsoft.Cpp.props and would be overwritten by it, while targets are
+  imported last and win.
+
+  This replaced setting INCLUDE with /p:UseEnv=true, which appears to work and
+  then breaks the *resource* compiler: UseEnv swaps MSBuild's computed search
+  paths for the environment wholesale, so rc.exe loses the Windows SDK's `um`
+  directory and every .rc fails with "cannot open include file 'winres.h'" — a
+  header sitting right there in the SDK, which makes it a genuinely confusing
+  error to land on. Appending to $(IncludePath) leaves everything else exactly
+  as the toolchain computed it.
+
+  Note for anyone editing this comment: an XML comment may not contain two
+  consecutive hyphens. Prose punctuation costs a build here.
+-->
+<Project>
+  <PropertyGroup>
+    <IncludePath>$(IncludePath);$(MSBuildThisFileDirectory)sdk\wtl\Include</IncludePath>
+  </PropertyGroup>
+</Project>

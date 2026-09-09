@@ -1,0 +1,65 @@
+// The preferences page's layout. src/fb2k/preferences.cpp is the behaviour.
+//
+// Fixed size: foobar2000 sizes a preferences page to the space the host window has and
+// does not scroll it, so a page taller than the smallest window somebody might use is a
+// page with content nobody can reach. Two pages rather than one for the same reason: all
+// five groups together do not fit. IDD_PREFERENCES holds what is set once; IDD_DEVICES
+// holds who may connect.
+//
+// Dialog units are relative to FONT 8, "MS Shell Dlg"; changing either invalidates every
+// coordinate below. A wrapping LTEXT needs more height than its lines add up to, or the
+// text reads squeezed.
+//
+// "resource.h" is reached relative to this file, which is how rc.exe resolves a quoted
+// include -- ResourceCompile does not inherit the C++ include directories.
+
+#include <windows.h>
+
+#include "resource.h"
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+IDD_PREFERENCES DIALOGEX 0, 0, 332, 232
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Networking", IDC_STATIC, 7, 7, 318, 68
+    LTEXT           "Port:", IDC_STATIC, 14, 22, 32, 10
+    EDITTEXT        IDC_PORT, 50, 20, 46, 14, ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Address:", IDC_STATIC, 14, 42, 32, 10
+    EDITTEXT        IDC_BIND, 50, 40, 104, 14, ES_AUTOHSCROLL
+    LTEXT           "0.0.0.0 is every local interface. 127.0.0.1 is this machine only.",
+                    IDC_STATIC, 14, 58, 304, 10
+
+    GROUPBOX        "Allowed origins", IDC_STATIC, 7, 79, 318, 56
+    LTEXT           "One per line. Empty allows any origin.", IDC_STATIC, 14, 91, 304, 10
+    EDITTEXT        IDC_ORIGINS, 14, 103, 304, 24,
+                    ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
+
+    GROUPBOX        "Fields this may write", IDC_STATIC, 7, 139, 318, 56
+    LTEXT           "One per line. Nothing outside this list is ever written.", IDC_STATIC,
+                    14, 151, 304, 10
+    EDITTEXT        IDC_FIELDS, 14, 163, 304, 24,
+                    ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
+
+    LTEXT           "", IDC_CONFIG_PATH, 7, 203, 318, 22
+END
+
+IDD_DEVICES DIALOGEX 0, 0, 332, 172
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Authentication", IDC_STATIC, 7, 7, 318, 70
+    LTEXT           "Token:", IDC_STATIC, 14, 24, 32, 10
+    EDITTEXT        IDC_TOKEN, 50, 22, 194, 14, ES_AUTOHSCROLL
+    PUSHBUTTON      "Regenerate", IDC_REGENERATE, 250, 21, 68, 16
+    LTEXT           "Sent as Authorization: Bearer <token>. Regenerating locks out every client holding the old one.",
+                    IDC_STATIC, 14, 42, 304, 22
+
+    GROUPBOX        "Pairing", IDC_STATIC, 7, 81, 318, 82
+    LTEXT           "Opens a two-minute window during which one device on this network may read the token. Press this, then press Pair in Jean.",
+                    IDC_STATIC, 14, 93, 230, 26
+    PUSHBUTTON      "Pair a device", IDC_PAIR, 250, 95, 68, 16
+    LTEXT           "", IDC_PAIR_STATUS, 14, 123, 304, 18
+    LTEXT           "", IDC_PAIR_HISTORY, 14, 143, 304, 14
+END

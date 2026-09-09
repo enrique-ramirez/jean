@@ -1,0 +1,681 @@
+#include "third_party/httplib.h"
+
+#include "core/device.h"
+#include "core/http_server.h"
+#include "core/log.h"
+#include "core/pairing.h"
+#include "core/rate_limit.h"
+#include "core/stream_ticket.h"
+#include "core/text.h"
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <thread>
+
+namespace jean {
+
+namespace {
+
+void respond(httplib::Response& res, int status, std::string body) {
+    res.status = status;
+    res.set_content(std::move(body), "application/json");
+}
+
+constexpr int kPlaylistBurst = 30;
+constexpr auto kPlaylistRefill = std::chrono::seconds(1);
+
+constexpr size_t kMaxOutstandingTickets = 16;
+
+constexpr int kPairBurst = 10;
+constexpr auto kPairRefill = std::chrono::seconds(6);
+
+constexpr char kPairPath[] = "/api/pair";
+
+constexpr char kNoStreaming[] = "streaming is not available";
+
+constexpr char kSendJson[] = "send application/json";
+
+bool isJsonRequest(const httplib::Request& req) {
+    return toLower(req.get_header_value("Content-Type")).rfind("application/json", 0) == 0;
+}
+
+void denyCachingAndRanges(httplib::Response& res) {
+    res.set_header("Cache-Control", "no-store");
+    res.set_header("Accept-Ranges", "none");
+}
+
+ListenerStatus listening() {
+    ListenerStatus status;
+    status.listening = true;
+    return status;
+}
+
+ListenerStatus refused(std::string why) {
+    ListenerStatus status;
+    status.error = std::move(why);
+    return status;
+}
+
+ListenerStatus portTaken(std::string why) {
+    auto status = refused(std::move(why));
+    status.portInUse = true;
+    return status;
+}
+
+#ifdef _WIN32
+constexpr int kAddressOption = SO_EXCLUSIVEADDRUSE;
+constexpr const char* kAddressOptionName = "SO_EXCLUSIVEADDRUSE";
+// Only Windows lets a second socket bind a port this one is already listening on, so only
+// there does losing the option cost anything but a retry after a restart.
+constexpr bool kAddressOptionIsMandatory = true;
+#else
+constexpr int kAddressOption = SO_REUSEADDR;
+constexpr const char* kAddressOptionName = "SO_REUSEADDR";
+constexpr bool kAddressOptionIsMandatory = false;
+#endif
+
+bool setAddressOption(socket_t sock) {
+    const int on = 1;
+    return setsockopt(sock, SOL_SOCKET, kAddressOption, reinterpret_cast<const char*>(&on),
+                      sizeof(on)) == 0;
+}
+
+void applyLimits(httplib::Server& server) {
+    server.set_read_timeout(10, 0);
+    server.set_write_timeout(10, 0);
+    server.set_payload_max_length(kMaxBodyBytes);
+}
+
+const char* reasonFor(int status) {
+    switch (status) {
+        case 404:
+            return "not found";
+        case 413:
+            return "request too large";
+        case 501:
+            return "not implemented";
+        default:
+            return "request failed";
+    }
+}
+
+// cpp-httplib answers its own 404s and 413s with an empty body, so every response this
+// component gives carries a JSON "error" key only if those are filled in too.
+void fillInEmptyErrors(httplib::Server& server) {
+    server.set_error_handler([](const httplib::Request&, httplib::Response& res) {
+        using Routing = httplib::Server::HandlerResponse;
+
+        if (!res.body.empty())
+            return Routing::Unhandled;
+
+        respond(res, res.status, errorDocument(reasonFor(res.status)));
+        return Routing::Handled;
+    });
+}
+
+void reportFailuresWithoutLeaking(httplib::Server& server) {
+    server.set_exception_handler(
+        [](const httplib::Request&, httplib::Response& res, std::exception_ptr thrown) {
+            try {
+                std::rethrow_exception(std::move(thrown));
+            } catch (const std::exception& e) {
+                logError(std::string("request handler threw: ") + e.what());
+            } catch (...) {
+                logError("request handler threw an unknown exception");
+            }
+
+            respond(res, 500, errorDocument("internal error"));
+        });
+}
+
+}  // namespace
+
+struct HttpServer::Impl {
+    Impl(Settings s, Audience& a, Player p, TicketMint mint)
+        : settings(std::move(s)),
+          audience(a),
+          player(std::move(p)),
+          tickets(std::move(mint), std::chrono::seconds(settings.streamTicketTtlSeconds),
+                  kMaxOutstandingTickets) {}
+
+    const Settings settings;
+    Audience& audience;
+    const Player player;
+    httplib::Server server;
+    std::thread thread;
+    std::atomic<bool> stopping{false};
+    std::atomic<bool> addressOptionRefused{false};
+
+    TicketStore tickets;
+
+    RateLimiter playlistChanges{kPlaylistBurst, kPlaylistRefill};
+
+    RateLimiter pairAttempts{kPairBurst, kPairRefill};
+    PairingWindow pairing{std::chrono::seconds(kPairingWindowSeconds)};
+
+    std::atomic<bool> complainedAboutRate{false};
+
+    bool originAllowed(const std::string& origin, const std::string& path,
+                       const std::string& host) const {
+        if (origin.empty())
+            return false;
+
+        if (!settings.allowedOrigins.empty())
+            return std::any_of(settings.allowedOrigins.begin(), settings.allowedOrigins.end(),
+                               [&origin](const std::string& permitted) {
+                                   return equalsIgnoringCase(origin, permitted);
+                               });
+
+        if (path == kPairPath) {
+            const auto from = hostOfOrigin(origin);
+            return !from.empty() && from == hostOfOrigin("x://" + host);
+        }
+
+        return true;
+    }
+
+    void applyCors(const httplib::Request& req, httplib::Response& res) const {
+        // Set even when refusing, or a cache serves one origin's answer to another.
+        res.set_header("Vary", "Origin");
+
+        const auto origin = req.get_header_value("Origin");
+        if (!originAllowed(origin, req.path, req.get_header_value("Host")))
+            return;
+
+        res.set_header("Access-Control-Allow-Origin", origin);
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Authorization, Content-Type");
+        res.set_header("Access-Control-Max-Age", "600");
+    }
+
+    bool authorized(const httplib::Request& req) const {
+        if (settings.authToken.empty())
+            return false;
+
+        const auto header = req.get_header_value("Authorization");
+
+        constexpr char kScheme[] = "bearer ";
+        constexpr size_t kSchemeLength = sizeof(kScheme) - 1;
+
+        if (header.size() <= kSchemeLength)
+            return false;
+        if (toLower(header.substr(0, kSchemeLength)) != kScheme)  // RFC 9110: case-insensitive
+            return false;
+
+        return secureEquals(header.substr(kSchemeLength), settings.authToken);
+    }
+
+    httplib::Server::HandlerResponse filter(const httplib::Request& req,
+                                            httplib::Response& res) const {
+        using Routing = httplib::Server::HandlerResponse;
+
+        applyCors(req, res);
+        res.set_header("X-Content-Type-Options", "nosniff");
+
+        if (req.method == "OPTIONS") {
+            res.status = 204;
+            return Routing::Handled;
+        }
+
+        if (req.path == "/api/status" || req.path == "/api/stream" || req.path == kPairPath)
+            return Routing::Unhandled;
+
+        if (!authorized(req)) {
+            // No WWW-Authenticate: sending it pops a native browser credential dialog, and
+            // no browser can satisfy this scheme anyway.
+            respond(res, 401, errorDocument("authentication required"));
+            return Routing::Handled;
+        }
+
+        return Routing::Unhandled;
+    }
+
+    bool changingTooFast() {
+        if (playlistChanges.allow(std::chrono::steady_clock::now())) {
+            complainedAboutRate = false;
+            return false;
+        }
+
+        if (!complainedAboutRate.exchange(true)) {
+            logError(
+                "refusing playlist changes: they are arriving faster than this component "
+                "will make them, which usually means a client is looping");
+        }
+
+        return true;
+    }
+
+    void addPairingRoute() {
+        server.Post(kPairPath, [this](const httplib::Request& req, httplib::Response& res) {
+            if (!isJsonRequest(req)) {
+                respond(res, 415, errorDocument(kSendJson));
+                return;
+            }
+
+            if (!pairAttempts.allow(std::chrono::steady_clock::now())) {
+                respond(res, 429, errorDocument("too many pairing attempts"));
+                return;
+            }
+
+            const auto asked = parseDeviceName(req.body);
+            if (!asked.ok()) {
+                respond(res, 400, errorDocument(asked.refusal));
+                return;
+            }
+
+            const auto name = sanitised(asked.device).name;
+
+            const auto outcome =
+                pairing.claim(std::chrono::steady_clock::now(), std::chrono::system_clock::now(),
+                              req.remote_addr, name);
+
+            if (outcome == PairingWindow::Result::AddressNotPrivate) {
+                logError("refused a pairing request from " + req.remote_addr +
+                         ": pairing is available on the local network only");
+                respond(res, 403, errorDocument("pairing is available on the local network only"));
+                return;
+            }
+
+            if (outcome == PairingWindow::Result::NotOpen) {
+                respond(res, 403, errorDocument("pairing is not open"));
+                return;
+            }
+
+            logInfo("paired with " + req.remote_addr +
+                    (name.empty() ? std::string() : " (" + name + ")"));
+            respond(res, 200, pairedDocument(settings.authToken));
+        });
+    }
+
+    static bool readDeviceIdentity(const httplib::Request& req, httplib::Response& res,
+                                   DeviceIdentity& device) {
+        if (!isJsonRequest(req)) {
+            respond(res, 415, errorDocument(kSendJson));
+            return false;
+        }
+
+        const auto asked = parseDeviceIdentity(req.body);
+        if (!asked.ok()) {
+            respond(res, 400, errorDocument(asked.refusal));
+            return false;
+        }
+
+        device = asked.device;
+        return true;
+    }
+
+    bool streamingAvailable() const { return player.openStream && !player.streamFormats.empty(); }
+
+    void addStreamRoutes() {
+        server.Post("/api/stream/ticket",
+                    [this](const httplib::Request& req, httplib::Response& res) {
+                        if (!streamingAvailable()) {
+                            respond(res, 503, errorDocument(kNoStreaming));
+                            return;
+                        }
+
+                        DeviceIdentity device;
+                        if (!req.body.empty()) {
+                            if (!readDeviceIdentity(req, res, device))
+                                return;
+                        }
+
+                        const auto issued = tickets.issue(std::chrono::steady_clock::now(), device);
+                        if (issued.ticket.empty()) {
+                            respond(res, 503, errorDocument("could not generate a stream ticket"));
+                            return;
+                        }
+
+                        respond(res, 200,
+                                streamTicketDocument(issued.ticket,
+                                                     static_cast<int>(issued.expiresIn.count())));
+                    });
+
+        server.Get("/api/stream/listeners", [this](const httplib::Request&,
+                                                   httplib::Response& res) {
+            denyCachingAndRanges(res);
+            respond(res, 200,
+                    streamListenersDocument(audience.roster(std::chrono::steady_clock::now()),
+                                            audience.connections(), settings.maxConcurrentStreams,
+                                            player.outputHeld && player.outputHeld()));
+        });
+
+        server.Delete("/api/stream/hold", [this](const httplib::Request&, httplib::Response& res) {
+            if (!player.releaseOutput) {
+                respond(res, 503, errorDocument("this install does not mute the player"));
+                return;
+            }
+
+            player.releaseOutput();
+            res.status = 204;
+        });
+
+        server.Post("/api/stream/leave",
+                    [this](const httplib::Request& req, httplib::Response& res) {
+                        DeviceIdentity device;
+                        if (!readDeviceIdentity(req, res, device))
+                            return;
+
+                        if (device.id.empty()) {
+                            respond(res, 400, errorDocument("deviceId is required"));
+                            return;
+                        }
+
+                        audience.leave(device.id);
+                        res.status = 204;
+                    });
+
+        server.Get("/api/stream/timeline", [this](const httplib::Request&, httplib::Response& res) {
+            if (!player.readTimeline) {
+                respond(res, 503, errorDocument(kNoStreaming));
+                return;
+            }
+
+            denyCachingAndRanges(res);
+            respond(res, 200, player.readTimeline());
+        });
+
+        server.Get("/api/stream", [this](const httplib::Request& req, httplib::Response& res) {
+            const auto admission =
+                tickets.admits(req.get_param_value("ticket"), std::chrono::steady_clock::now());
+            if (!admission) {
+                respond(res, 401, errorDocument("a valid stream ticket is required"));
+                return;
+            }
+
+            if (!streamingAvailable()) {
+                respond(res, 503, errorDocument(kNoStreaming));
+                return;
+            }
+
+            const auto format = req.has_param("format") ? req.get_param_value("format")
+                                                        : player.streamFormats.front();
+
+            if (std::find(player.streamFormats.begin(), player.streamFormats.end(), format) ==
+                player.streamFormats.end()) {
+                respond(res, 400,
+                        errorDocument("this install does not encode '" + format +
+                                      "'; GET /api/capabilities lists what it does"));
+                return;
+            }
+
+            auto membership =
+                audience.join(admission.device, format, std::chrono::steady_clock::now());
+            if (!membership) {
+                respond(res, 503,
+                        errorDocument("this component is already serving as many streams as "
+                                      "it is configured to"));
+                return;
+            }
+
+            auto opened = player.openStream(format);
+            if (!opened.session) {
+                respond(res, 503, errorDocument(kNoStreaming));
+                return;
+            }
+
+            denyCachingAndRanges(res);
+
+            const std::shared_ptr<StreamSession> session(std::move(opened.session));
+            res.set_chunked_content_provider(
+                opened.contentType,
+                [session, held = std::move(membership)](size_t, httplib::DataSink& sink) {
+                    std::vector<std::uint8_t> bytes;
+                    if (!session->next(bytes)) {
+                        sink.done();
+                        return true;
+                    }
+
+                    // cpp-httplib's is_writable() is the only way to notice a listener gone
+                    // mid-pause, when no audio is arriving to fail a write against.
+                    if (bytes.empty())
+                        return sink.is_writable();
+
+                    sink.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+                    return true;
+                });
+        });
+    }
+
+    void addTagRoutes() {
+        server.Post("/api/tags", [this](const httplib::Request& req, httplib::Response& res) {
+            const auto request = parseTagWrite(req.body, settings);
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal), tagRefusedDocument(request));
+                return;
+            }
+
+            const auto outcome =
+                askIfAvailable(player.writeTags, TagWriteOutcome::unavailable, request.write);
+            if (outcome != TagWriteOutcome::written) {
+                respond(res, httpStatusFor(outcome), tagFailedDocument(outcome));
+                return;
+            }
+
+            respond(res, 200, tagWrittenDocument(request.write));
+        });
+    }
+
+    static std::optional<PlaylistResult> attempt(httplib::Response& res,
+                                                 const AutoPlaylistRequest& request,
+                                                 const std::function<PlaylistResult()>& ask) {
+        if (!request.ok()) {
+            if (request.refusal == PlaylistRefusal::tooFast)
+                res.set_header("Retry-After", "1");
+
+            respond(res, httpStatusFor(request.refusal), playlistRefusedDocument(request));
+            return std::nullopt;
+        }
+
+        auto result = ask();
+        if (result.outcome != PlaylistOutcome::done) {
+            respond(res, httpStatusFor(result.outcome), playlistFailedDocument(result));
+            return std::nullopt;
+        }
+
+        return result;
+    }
+
+    template <typename Callback, typename Unavailable, typename... Args>
+    static Unavailable askIfAvailable(const Callback& ask, Unavailable whenUnavailable,
+                                      Args&&... args) {
+        return ask ? ask(std::forward<Args>(args)...) : whenUnavailable;
+    }
+
+    AutoPlaylistRequest refuseChange(AutoPlaylistRequest request) {
+        if (request.ok() && changingTooFast()) {
+            request.refusal = PlaylistRefusal::tooFast;
+            request.detail = "playlist changes are arriving faster than they can be made";
+        }
+        return request;
+    }
+
+    void addPlaylistRoutes() {
+        server.Get("/api/playlists", [this](const httplib::Request&, httplib::Response& res) {
+            const auto result = askIfAvailable(player.listPlaylists,
+                                               PlaylistsResult{PlaylistOutcome::unavailable, {}});
+
+            if (result.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(result.outcome),
+                        playlistFailedDocument(playlistFailure(result.outcome)));
+                return;
+            }
+
+            respond(res, 200, playlistsDocument(result.playlists));
+        });
+
+        server.Post("/api/autoplaylists/preview", [this](const httplib::Request& req,
+                                                         httplib::Response& res) {
+            const auto request = parseQueryPreview(req.body);
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal), playlistRefusedDocument(request));
+                return;
+            }
+
+            const auto preview =
+                askIfAvailable(player.previewQuery, previewFailure(PlaylistOutcome::unavailable),
+                               request.spec.query);
+
+            if (preview.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(preview.outcome),
+                        playlistFailedDocument(playlistFailure(preview.outcome)));
+                return;
+            }
+
+            respond(res, 200, queryPreviewDocument(preview));
+        });
+
+        server.Post("/api/autoplaylists", [this](const httplib::Request& req,
+                                                 httplib::Response& res) {
+            const auto request = refuseChange(parseAutoPlaylist(req.body, Need::required));
+
+            const auto created = attempt(res, request, [this, &request] {
+                return askIfAvailable(player.createAutoPlaylist,
+                                      playlistFailure(PlaylistOutcome::unavailable), request.spec);
+            });
+
+            if (created)
+                respond(res, 200, playlistDocument(created->playlist));
+        });
+
+        constexpr char kById[] = R"(/api/autoplaylists/([0-9a-f-]{36}))";
+
+        server.Post(kById, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto id = req.matches[1].str();
+            const auto request =
+                refuseChange(withId(parseAutoPlaylist(req.body, Need::optional), id));
+
+            const auto updated = attempt(res, request, [this, &request, &id] {
+                return askIfAvailable(player.updateAutoPlaylist,
+                                      playlistFailure(PlaylistOutcome::unavailable), id,
+                                      request.spec);
+            });
+
+            if (updated)
+                respond(res, 200, playlistDocument(updated->playlist));
+        });
+
+        server.Delete(kById, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto id = req.matches[1].str();
+            const auto request = refuseChange(withId(AutoPlaylistRequest(), id));
+
+            const auto removed = attempt(res, request, [this, &id] {
+                return askIfAvailable(player.removeAutoPlaylist,
+                                      playlistFailure(PlaylistOutcome::unavailable), id);
+            });
+
+            if (removed)
+                respond(res, 200, playlistRemovedDocument(id));
+        });
+    }
+
+    static AutoPlaylistRequest withId(AutoPlaylistRequest request, const std::string& id) {
+        if (request.ok() && !isPlaylistId(id)) {
+            request.refusal = PlaylistRefusal::badId;
+            request.detail = "the playlist id must be one this component reported";
+        }
+        return request;
+    }
+};
+
+HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint)
+    : impl_(std::make_unique<Impl>(std::move(settings), audience, std::move(player),
+                                   std::move(mint))) {}
+
+HttpServer::~HttpServer() {
+    stop();
+}
+
+ListenerStatus HttpServer::start() {
+    auto& impl = *impl_;
+    auto& server = impl.server;
+
+    server.set_socket_options([&impl](socket_t sock) {
+        if (!setAddressOption(sock))
+            impl.addressOptionRefused = true;
+    });
+
+    server.set_tcp_nodelay(true);
+
+    applyLimits(server);
+    reportFailuresWithoutLeaking(server);
+    fillInEmptyErrors(server);
+
+    server.set_pre_routing_handler([&impl](const httplib::Request& req, httplib::Response& res) {
+        return impl.filter(req, res);
+    });
+
+    server.Get("/api/status", [](const httplib::Request&, httplib::Response& res) {
+        respond(res, 200, statusDocument());
+    });
+
+    server.Get("/api/capabilities", [&impl](const httplib::Request&, httplib::Response& res) {
+        respond(res, 200,
+                capabilitiesDocument(impl.settings, impl.player.streamFormats,
+                                     impl.player.releaseOutput != nullptr));
+    });
+
+    impl.addTagRoutes();
+    impl.addPlaylistRoutes();
+    impl.addStreamRoutes();
+    impl.addPairingRoute();
+
+    if (impl.settings.authToken.empty())
+        return refused("no authentication token configured; refusing to listen");
+
+    if (!server.bind_to_port(impl.settings.bindAddress, impl.settings.port)) {
+        return portTaken("could not bind " + impl.settings.bindAddress + ":" +
+                         std::to_string(impl.settings.port) + "; the port is in use");
+    }
+
+    if (impl.addressOptionRefused) {
+        const std::string what = std::string("the listening socket refused ") + kAddressOptionName;
+        if constexpr (kAddressOptionIsMandatory) {
+            server.stop();
+            return refused(what +
+                           "; another socket could bind this port and take half its traffic");
+        }
+        logError(what + "; a restart may have to wait for the port");
+    }
+
+    impl.thread = std::thread([&impl] { impl.server.listen_after_bind(); });
+
+    return listening();
+}
+
+void HttpServer::openPairingWindow() {
+    if (impl_)
+        impl_->pairing.open(std::chrono::steady_clock::now());
+}
+
+void HttpServer::closePairingWindow() {
+    if (impl_)
+        impl_->pairing.close();
+}
+
+HttpServer::PairingState HttpServer::pairingState() const {
+    PairingState state;
+    if (!impl_)
+        return state;
+
+    const auto now = std::chrono::steady_clock::now();
+    state.open = impl_->pairing.isOpen(now);
+    state.remainingSeconds = static_cast<int>(impl_->pairing.remaining(now).count());
+    state.history = impl_->pairing.history();
+    return state;
+}
+
+void HttpServer::stop() {
+    if (!impl_ || impl_->stopping.exchange(true))
+        return;
+
+    impl_->server.stop();
+
+    if (impl_->thread.joinable())
+        impl_->thread.join();
+}
+
+}  // namespace jean

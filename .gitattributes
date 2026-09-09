@@ -13,7 +13,7 @@
 
 # ---- captured libraries ----------------------------------------------------
 #
-# Both of these come out of `test/fake-api/capture.ts` and are committed so that
+# Both of these come out of `ui/test/fake-api/capture.ts` and are committed so that
 # neither the suite nor the demo ever touches a real player. **Neither is ever
 # edited by hand**, which is what the attributes below are really recording.
 #
@@ -29,10 +29,20 @@
 # file's 54,000 lines, since play counts and last-played dates move whenever the
 # owner listens to something. `git diff` says the files differ and stops, which
 # is more use than a diff no one can read.
-demo/library.json -diff -merge linguist-generated
+ui/demo/library.json -diff -merge linguist-generated
 
 # Deliberately still diffable, unlike the demo's. It is 1,300 lines, and a
 # re-capture changes what every spec in the suite runs against -- which is
 # exactly the diff a reviewer should be able to open and read.
-test/fake-api/library.json -merge linguist-generated
-test/fake-api/player.json -merge linguist-generated
+ui/test/fake-api/library.json -merge linguist-generated
+ui/test/fake-api/player.json -merge linguist-generated
+
+# ---- vendored libraries ----------------------------------------------------
+#
+# cpp-httplib, nlohmann/json and doctest, as single headers: 57,000 lines against
+# 10,000 of the component's own. **Linguist reads the repository root and nothing
+# else**, so the same rule in `plugins/fb2k/.gitattributes` counts for nothing
+# here, and without this line the language bar and every pull request describe
+# somebody else's code. Left diffable on purpose -- a version bump is worth
+# reading.
+plugins/fb2k/third_party/** linguist-vendored

@@ -1,0 +1,20 @@
+{
+	"name": "@jean/site",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "node build.ts",
+		"preview": "vite preview --outDir dist-site --port 8124",
+		"typecheck": "tsc -b",
+		"test:unit": "node --test \"test/*.test.ts\""
+	},
+	"dependencies": {
+		"@jean/ui": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^26.4.0",
+		"marked": "^18.0.12",
+		"typescript": "^7.0.2",
+		"vite": "^8.2.2"
+	}
+}

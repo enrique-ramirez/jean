@@ -8,14 +8,14 @@
 	"files": {
 		"includes": [
 			"**",
-			"!dist",
-			"!dist-demo",
-			"!dist-site",
-			"!test-results",
-			"!playwright-report",
-			"!test/fake-api/*.json",
-			"!demo/library.json",
-			"!src/shared/api/fooJeanSchema.d.ts",
+			"!**/dist",
+			"!**/dist-demo",
+			"!**/dist-site",
+			"!**/test-results",
+			"!**/playwright-report",
+			"!ui/test/fake-api/*.json",
+			"!ui/demo/library.json",
+			"!ui/src/shared/api/fooJeanSchema.d.ts",
 			"!pnpm-lock.yaml"
 		]
 	},
@@ -62,7 +62,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["src/shared/**"],
+			"includes": ["ui/src/shared/**"],
 			"linter": {
 				"rules": {
 					"style": {
@@ -82,7 +82,7 @@
 			}
 		},
 		{
-			"includes": ["src/domain/**"],
+			"includes": ["ui/src/domain/**"],
 			"linter": {
 				"rules": {
 					"style": {
@@ -102,7 +102,7 @@
 			}
 		},
 		{
-			"includes": ["src/features/**"],
+			"includes": ["ui/src/features/**"],
 			"linter": {
 				"rules": {
 					"style": {
@@ -123,11 +123,12 @@
 		},
 		{
 			"includes": [
-				"test/**",
-				"scripts/**",
-				"vite.config.ts",
-				"demo/build.ts",
-				"site/build.ts"
+				"ui/test/**",
+				"ui/scripts/**",
+				"ui/vite.config.ts",
+				"ui/demo/build.ts",
+				"site/build.ts",
+				"site/test/**"
 			],
 			"linter": {
 				"rules": {

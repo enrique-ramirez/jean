@@ -1,5 +1,5 @@
-@import "../src/shared/styles/fonts.css";
-@import "../src/shared/styles/tokens.css";
+@import "../ui/src/shared/styles/fonts.css";
+@import "../ui/src/shared/styles/tokens.css";
 
 :root {
 	--display: "Montserrat", var(--font);

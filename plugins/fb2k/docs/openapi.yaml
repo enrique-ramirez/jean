@@ -1,0 +1,1381 @@
+openapi: 3.1.0
+
+# The HTTP surface of foo_jean, in full.
+#
+# Hand-written, and the contract. The component does not serve it: code generation happens at build time, and an unauthenticated route describing this component's own surface adds nothing a reader of the repository does not already have. Fetch it from the repo.
+#
+# Generate a TypeScript client with:
+#
+#   pnpm types:api
+#
+# `tests/api_contract_test.cpp` pins the exact key set of every document the component produces. `scripts/test.sh` checks that the version below matches `src/core/version.h`.
+
+info:
+  title: foo_jean
+  version: 0.1.0
+  summary: Tag writing and autoplaylists for foobar2000, over HTTP, for clients that beefweb cannot serve.
+  description: |
+    A foobar2000 component exposing what [beefweb](https://github.com/hyperblast/beefweb) does not: writing metadata tags, managing autoplaylists, and streaming the player's own output.
+
+    ## Relationship to beefweb
+
+    This component runs beside beefweb on its own port and replaces no beefweb endpoint. `GET /playlists` is an annotation, not a playlist listing: beefweb reports titles, item counts and order, and this reports only what beefweb cannot say — which playlists are autoplaylists — plus the ids needed to join the two answers.
+
+    A client MUST ask beefweb for its playlists and this component for the annotations, in that order. See `PlaylistAnnotation`.
+
+    ## Versioning
+
+    `apiVersion` is the number to branch on. It moves independently of the component version: a patch release does not move it, a breaking change to any shape here does. Read it from `GET /status` and refuse a number the client does not understand.
+
+    ## Authentication
+
+    Three routes answer without a bearer token: `GET /status`, `POST /pair` and `GET /stream`. Every other route requires `Authorization: Bearer <token>`. The scheme is matched case-insensitively and the token is compared in constant time. There is no unauthenticated mode: a component with no token configured refuses to listen.
+
+    The two unauthenticated routes that do something carry credentials of their own. `POST /pair` requires a window opened at the player and a private source address. `GET /stream` requires a ticket from `POST /stream/ticket`.
+
+    The token is generated on first run into `<profile>/foo_jean/config.json`. Copy it out by hand or obtain it through `POST /pair`. It is absent from the discovery record.
+
+    ## Finding the component
+
+    See `DiscoveryRecord`. That record is writable by anyone who can reach beefweb, so it is a hint and never a destination for a credential.
+
+    ## Reachability
+
+    `bindAddress` defaults to `0.0.0.0`, every local interface, so a browser on another device on the same network reaches the component without configuration. It can be narrowed to `127.0.0.1`.
+
+    A component that is advertised but does not answer the status probe is either narrowed that way or behind a firewall. That is a distinct state from an absent component, and a client SHOULD report it as such rather than as "not installed".
+
+    ## CORS
+
+    Any origin is reflected by default, so a client works wherever it is served from: beefweb on the next port, a dev server, a phone. `Vary: Origin` is set on every response, and the origin is echoed rather than answered with a literal `*`, which would forbid credentialed mode. `POST /pair` is the exception — with no `allowedOrigins` configured it admits only an origin on the host the request was addressed to, since it is the route that hands out the token.
+
+    CORS decides which page may read a response. The bearer token decides who is served. The token travels in a header rather than a cookie, so every request carrying it is preflighted, and a page without it gets a `401` whatever the CORS headers say.
+
+    Set `allowedOrigins` in `<profile>/foo_jean/config.json` to narrow to a list, matched on the whole origin string and case-insensitively.
+
+    `OPTIONS` preflight is answered `204` without a credential, identically for every path, so it reveals nothing about which routes exist.
+
+    ## Errors
+
+    Every response with a status of 400 or above is `application/json` carrying at least an `error` string, including the unrouted `404` and the oversized `413` that cpp-httplib generates itself.
+
+    Responses from `POST /tags` also carry `written: false`, except the `413` and the `401`, which are refused before the route is reached. Branch on the status rather than on the presence of `written`.
+
+  contact:
+    name: foo_jean
+    url: https://github.com/enrique-ramirez/foo_jean
+  license:
+    name: TBD
+
+servers:
+  - url: http://{host}:{port}/api
+    description: The component, on its own port beside beefweb.
+    variables:
+      host:
+        default: 127.0.0.1
+        description: The machine running foobar2000.
+      port:
+        default: "8881"
+        description: From the discovery record. beefweb's own default is 8880.
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: discovery
+    description: Finding the component and asking what it can do.
+  - name: tags
+    description: Writing metadata to files the player already manages.
+  - name: playlists
+    description: |
+      Autoplaylists, and which playlists are autoplaylists.
+  - name: stream
+    description: |
+      Listening to the player's own output. foobar2000 decodes and sequences; this carries the result to a browser.
+  - name: pairing
+    description: |
+      Handing the token to a device without transcribing it.
+
+paths:
+  /status:
+    get:
+      tags: [discovery]
+      operationId: getStatus
+      summary: Identify the component. Needs no credential.
+      description: |
+        Tells "foo_jean is here" from "nothing is listening" without spending a credential, so the port named in a discovery record can be checked before a token is sent to it.
+
+        It reports nothing a port scan would not. The field allowlist is absent from it and requires authentication.
+      security: []
+      responses:
+        "200":
+          description: The component is listening.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+              examples:
+                default:
+                  value:
+                    name: foo_jean
+                    version: 0.1.0
+                    apiVersion: 1
+                    authRequired: true
+
+  /pair:
+    post:
+      tags: [pairing]
+      operationId: pair
+      summary: Read the token, during a window opened at the player.
+      description: |
+        Returns the bearer token, so a device need not have 64 hex characters typed into it. The owner presses **Pair a device** in `File → Preferences → Tools → Jean`, then the user presses Pair in the client. The window is open for 120 seconds.
+
+        Three bounds apply, and none is optional:
+
+        - Single grant. The first success closes the window. Pairing a second device takes a second press.
+        - Private source addresses only: RFC1918, loopback and link-local, and their IPv6 equivalents. A forwarded port or a tunnel cannot be paired through. The address is checked before the window is consulted, so a caller from outside learns nothing about whether a window is open and cannot spend a grant.
+        - The pairing history is recorded and shown in the preferences pane, so a pairing the owner did not perform is discoverable afterwards.
+
+        `Content-Type: application/json` is required. A simple `POST` needs no CORS preflight, so without this requirement a page on any origin could fire one blind and spend the grant. Requiring JSON forces every cross-origin caller to be preflighted, and with no `allowedOrigins` configured this route answers a preflight only for an origin on the host the request was addressed to.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  maxLength: 64
+                  description: |
+                    What to call this device in the pairing history. Optional, and it MUST stay optional: requiring a name reintroduces the typing this route removes. Display text only. A value containing control characters is stored as empty rather than refused, since it is written to a log where a newline would forge a line.
+            examples:
+              named: { value: { name: Living room TV } }
+              anonymous: { value: {} }
+      responses:
+        "200":
+          description: |
+            The token. The only response in this API that carries it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Paired" }
+              examples:
+                default:
+                  value:
+                    token: 8f14e45fceea167a5a36dedd4bea2543f14e45fceea167a5a36dedd4bea2543a
+                    apiVersion: 1
+        "400":
+          description: A body that is not a JSON object, or a name that is not short text.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: |
+            No window is open, or the caller is not on the local network. The `error` string distinguishes them: the first is fixed by a press at the player, the second is a fact about the network. A caller from outside is answered before the window is consulted, so it cannot infer one from the other.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                shut: { value: { error: pairing is not open } }
+                remote: { value: { error: pairing is available on the local network only } }
+        "415":
+          description: |
+            The request was not `application/json`. This requirement is what forces a cross-origin caller to be preflighted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: |
+            Pairing attempts are rate-limited on a budget of their own, separate from every other route. A burst of ten is allowed, refilling at one every six seconds.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /capabilities:
+    get:
+      tags: [discovery]
+      operationId: getCapabilities
+      summary: What this install permits.
+      description: |
+        The write allowlist and the streaming and autoplaylist limits for this install. A client SHOULD render controls for the fields named here and nothing else, rather than being configured with its own copy of the list.
+      responses:
+        "200":
+          description: What may be written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Capabilities" }
+              examples:
+                ratingOnly:
+                  summary: The default install.
+                  value:
+                    apiVersion: 1
+                    allowedFields: ["rating"]
+                    canWrite: true
+                    maxAutoPlaylists: 100
+                    canCreateAutoPlaylists: true
+                writesDisabled:
+                  summary: allowedFields emptied and maxAutoPlaylists zeroed in config.json.
+                  value:
+                    apiVersion: 1
+                    allowedFields: []
+                    canWrite: false
+                    maxAutoPlaylists: 0
+                    canCreateAutoPlaylists: false
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /tags:
+    post:
+      tags: [tags]
+      operationId: writeTags
+      summary: Write metadata to one track.
+      description: |
+        The player performs the write, through `metadb_io_v2`, so foobar2000's own database is current when this returns and a client re-reading the value through beefweb sees the new one.
+
+        Three conditions must hold, and they fail with different statuses:
+
+        1. Every field is on the allowlist (`403`). Names are compared case-insensitively.
+        2. The path is a plain absolute local path (`400`). No relative path, no `..` segment, no UNC share, no URL scheme.
+        3. foobar2000 already manages the track (`404`): it is in the Media Library or in an open playlist. The SDK will build a handle for any path at all, so a path being well-formed says nothing about the player knowing it.
+
+        The first two are decided before the player is involved.
+
+        Only the named fields are touched; everything else in the file is left alone. An empty string removes a field rather than setting it to empty, which is how a rating is cleared rather than set to `"0"`.
+
+        Writes are not batched. One track per request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TagWriteRequest" }
+            examples:
+              setRating:
+                summary: Rate a track four stars.
+                value:
+                  path: 'C:\Music\Fictional Artist\Imaginary Album\01 Track.mp3'
+                  fields: { rating: "4" }
+              clearRating:
+                summary: Remove the rating tag entirely.
+                value:
+                  path: 'C:\Music\Fictional Artist\Imaginary Album\01 Track.mp3'
+                  fields: { rating: "" }
+              subsong:
+                summary: One track inside a cue sheet or disc image.
+                value:
+                  path: 'C:\Music\Fictional Artist\Imaginary Album\disc.flac'
+                  subsong: 3
+                  fields: { rating: "5" }
+      responses:
+        "200":
+          description: |
+            Written, and foobar2000's database is current. The body echoes what was written, so a client that updated its own view optimistically can reconcile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagWritten" }
+              examples:
+                default:
+                  value:
+                    written: true
+                    path: 'C:\Music\Fictional Artist\Imaginary Album\01 Track.mp3'
+                    subsong: 0
+                    fields: { rating: "4" }
+        "400":
+          description: |
+            The request is malformed, names no path, names an unacceptable path, or has nothing to write. Retrying it unchanged will not help.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagRefused" }
+              examples:
+                unsafePath:
+                  value:
+                    written: false
+                    error: unacceptable path
+                    detail: "'path' must be a plain absolute local path"
+                caseCollision:
+                  summary: Two spellings of one tag, refused rather than guessed at.
+                  value:
+                    written: false
+                    error: malformed request
+                    detail: "'rating' is named twice, differing only in case"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: |
+            The field is not on this install's allowlist. A `403` rather than a `400` because the request was understood and retrying it unchanged will never work. `field` names the offending field, and a client SHOULD stop offering that control.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagRefused" }
+              examples:
+                notAllowed:
+                  value:
+                    written: false
+                    error: field not allowed
+                    detail: artist
+                    field: artist
+        "404":
+          description: |
+            foobar2000 does not manage that track: the path names nothing, or it names a real file the player has not been told about. Nothing was written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagFailed" }
+              examples:
+                unknown:
+                  value: { written: false, error: foobar2000 does not know that track }
+        "413":
+          description: |
+            The body exceeds 256 KB and was refused before it was parsed. The component answers and closes while the rest of the body may still be in flight, so a client sending something very large may see a dropped connection instead of this response. Both mean refused.
+
+            One of the two failures that does not carry `written`; the other is the `401`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: The player could not write the tags. No reason is given, because error text leaks filesystem paths.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagFailed" }
+        "503":
+          description: Tag writing is unavailable in this build.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagFailed" }
+        "504":
+          description: |
+            The player did not finish within 30 seconds. The write MAY still complete afterwards, so a client MUST re-read the value rather than assume it did not.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagFailed" }
+
+  /playlists:
+    get:
+      tags: [playlists]
+      operationId: getPlaylists
+      summary: Which playlists are autoplaylists, and which this component created.
+      description: |
+        Not a playlist listing. beefweb answers that at `GET http://<player>:8880/api/playlists`, with titles, item counts, total time and which playlist is current. This route reports only what beefweb cannot, and repeats none of it.
+
+        One entry per playlist, in playlist order. Join it to beefweb's answer on `beefwebId`, falling back to `index`. `title` is for checking a join, not for display.
+
+        ### Ask beefweb first
+
+        beefweb assigns its playlist ids lazily, when it next rebuilds its map. A playlist this component has just created therefore reports `beefwebId: null` until beefweb looks again, and creating it is enough to make beefweb do so. A client MUST request beefweb's playlists before this route for the join to be complete.
+      responses:
+        "200":
+          description: One annotation per playlist.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [playlists]
+                properties:
+                  playlists:
+                    type: array
+                    items: { $ref: "#/components/schemas/PlaylistAnnotation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /autoplaylists:
+    post:
+      tags: [playlists]
+      operationId: createAutoPlaylist
+      summary: Create an autoplaylist.
+      description: |
+        Creates a playlist and hands it to foobar2000's own autoplaylist client, so the core keeps it filled and keeps it after this component is uninstalled.
+
+        An autoplaylist filters the Media Library and nothing else. On an install with no Media Library configured every autoplaylist is empty and nothing in the player says why. Call `POST /autoplaylists/preview` first and read its `libraryEnabled`.
+
+        The playlist is real and visible in foobar2000's own playlist tabs, so `title` is what somebody looking at the player will read. Nothing in this API parses it, no prefix is required or implied, and the user may rename it freely. What a title means -- whether a playlist is a client's own plumbing or the user's music -- is the client's to decide and the client's to encode.
+
+        Existing playlists are never converted. There is no route that turns an existing playlist into an autoplaylist, because the core replaces the contents of a playlist when it takes one over.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutoPlaylistRequest" }
+            examples:
+              keyed:
+                summary: Tagged with a key the client recognises later, so it can find its own again.
+                value:
+                  title: "Rock"
+                  key: "folder:genre:Rock"
+                  query: "%genre% IS Rock"
+              sorted:
+                summary: Kept in order by the core, which also stops the user reordering it by hand.
+                value:
+                  title: "Recently Added"
+                  query: "%added% DURING LAST 4 WEEKS"
+                  sort: "%added%"
+                  forceSort: true
+      responses:
+        "200":
+          description: Created. The body is the annotation, as `GET /playlists` would report it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistAnnotation" }
+        "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/PlaylistConflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /autoplaylists/preview:
+    post:
+      tags: [playlists]
+      operationId: previewQuery
+      summary: Try a query without creating anything.
+      description: |
+        Compiles the query with foobar2000's own parser and counts what it matches in the Media Library. Nothing is created and nothing changes.
+
+        A query that does not parse is a `200` here, carrying `valid: false` and the player's own message. This is the route a client calls while somebody is typing, so an unreadable query is data rather than an error. Creating with the same query is a `400`.
+
+        A client SHOULD debounce this: it runs on foobar2000's main thread, and one request per keystroke is one main-thread callback per keystroke. A client SHOULD also read `libraryEnabled` — `matches: 0` with `libraryEnabled: false` means the install has no Media Library, and any autoplaylist created from the query will be empty.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  maxLength: 4096
+                  description: |
+                    foobar2000 query syntax. MUST NOT be empty: the player reads an empty query as matching everything.
+            examples:
+              default:
+                value: { query: "%genre% IS Rock" }
+      responses:
+        "200":
+          description: The query was tried. Read `valid` before `matches`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueryPreview" }
+              examples:
+                matched:
+                  value: { valid: true, error: "", matches: 412, libraryEnabled: true }
+                unreadable:
+                  value:
+                    valid: false
+                    error: "Query syntax error"
+                    matches: 0
+                    libraryEnabled: true
+                noLibrary:
+                  summary: A valid query on an install with no Media Library.
+                  value: { valid: true, error: "", matches: 0, libraryEnabled: false }
+        "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /autoplaylists/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+    post:
+      tags: [playlists]
+      operationId: updateAutoPlaylist
+      summary: Point an autoplaylist at a different query.
+      description: |
+        Replaces the specification. `query`, `sort`, `key` and `forceSort` end up exactly as this request states them, so a client MUST send the whole record rather than only the parts being changed; omitting `key` clears it. The `managed` object from `GET /playlists` has that shape, so read-modify-write is the way to call this.
+
+        `title` is the exception: omit it to leave the name alone. Resending a remembered title would undo a rename made in the player.
+
+        The playlist itself is kept, and with it its id, its position and beefweb's id for it. Deleting and recreating changes all three.
+
+        Only playlists this component created can be updated. Anything else is a `403`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutoPlaylistRequest" }
+            examples:
+              requeried:
+                summary: Change what it collects, leave what it is called.
+                value: { query: "%genre% IS Jazz" }
+      responses:
+        "200":
+          description: Updated. The body is the annotation as it now stands.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistAnnotation" }
+        "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotOurs" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "409": { $ref: "#/components/responses/PlaylistConflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500":
+          description: |
+            The player refused. If the new query compiles but the core then declines to attach it, the playlist is left as an ordinary playlist that this component still recognises as its own; sending the request again with a query the player accepts restores it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+    delete:
+      tags: [playlists]
+      operationId: removeAutoPlaylist
+      summary: Delete an autoplaylist this component created.
+      description: |
+        Removes the playlist and the autoplaylist client with it.
+
+        Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself. A client that needs to delete an arbitrary playlist MUST ask beefweb, which will delete any playlist for any caller that can reach it.
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [removed, id]
+                properties:
+                  removed: { type: boolean, const: true }
+                  id: { type: string }
+        "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotOurs" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /stream/ticket:
+    post:
+      tags: [stream]
+      operationId: issueStreamTicket
+      summary: Get a short-lived credential for one stream connection.
+      description: |
+        An `<audio>` element cannot send an `Authorization` header, so the credential for `GET /stream` travels in the query string. That makes it a capability URL, and a short lifetime is what bounds it: a ticket expires in `expiresIn` seconds and grants nothing but the audio already being played.
+
+        A ticket is not single-use. Safari's media element probes a source with a `Range: bytes=0-1` request before fetching it for real, so one playback start is two requests and a single-use ticket cannot serve Safari at all. A ticket is good until it expires; `maxConcurrentStreams` bounds how many streams may be open at once.
+
+        A client SHOULD call this immediately before opening the stream rather than at page load, and MUST request a fresh ticket when reconnecting. Clients MUST NOT store a ticket, log it, or put it anywhere a bearer token would not go.
+
+        This is also where a device says who it is, because it is the only part of opening a stream a client controls: an `<audio>` element sends no body and no header of its own. The identity rides the ticket to the connection it opens, so `GET /stream/listeners` can group sockets into devices. A request with no body is an anonymous listener rather than a refusal.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceIdentity" }
+      responses:
+        "200":
+          description: A ticket, good until it expires.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamTicket" }
+              examples:
+                issued:
+                  value:
+                    ticket: 8f14e45fceea167a5a36dedd4bea2543f14e45fceea167a5a36dedd4bea2543a
+                    expiresIn: 120
+        "400":
+          description: A body that is not a JSON object, or a `deviceId` or `name` that is not short text.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "415":
+          description: A body was sent and was not `application/json`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/StreamUnavailable" }
+
+  /stream/listeners:
+    get:
+      tags: [stream]
+      operationId: getStreamListeners
+      summary: Who is listening, and whether the player was silenced for them.
+      description: |
+        The audience, counted two ways at once. **Connections** are what cost a thread and what `maxConcurrentStreams` bounds. **Devices** are what a person reads, and one device is routinely two connections — Safari probes a source with `Range: bytes=0-1` before fetching it for real — or three across a reconnect. A client MUST count devices anywhere it says how many people are listening.
+
+        This is a roster and not a set of targets. Audio cannot be sent to a device that is not already asking for it: starting playback in a browser needs a gesture on that browser, so there is nothing here for a client to press.
+
+        Nothing in it names a network address or a user agent. A device is called what it called itself.
+      responses:
+        "200":
+          description: The audience as it stands.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamListeners" }
+              examples:
+                twoDevices:
+                  value:
+                    devices:
+                      - deviceId: 3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8
+                        name: Android phone
+                        format: opus
+                        connections: 1
+                        listeningFor: 412
+                      - deviceId: 9d21b7f4-8c60-4e15-a3b2-77c1e0f5a9d3
+                        name: null
+                        format: aac
+                        connections: 2
+                        listeningFor: 18
+                    connections: 3
+                    maxConnections: 8
+                    playerMuted: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /stream/hold:
+    delete:
+      tags: [stream]
+      operationId: releaseOutputHold
+      summary: Ask for the player to be audible alongside the listeners.
+      description: |
+        While anybody is listening this component silences the player, so that choosing a device moves the sound rather than doubling it. This asks for both at once instead.
+
+        There is no route that *takes* the hold. A client says it wants both outputs; when they should be one is the component's to decide, and it decides again the moment everybody has stopped listening — the choice is scoped to the spell of listening it was made in, not to a connection, so a reconnect does not undo it and the next session does not inherit it.
+
+        Clients SHOULD warn before offering this. The stream runs a second or two behind the player, which is fine a room apart and an echo in the same room; `GET /stream/timeline` is how a client can say by how much rather than hedging.
+
+        Idempotent, and it says nothing about whether there was a hold to release: with nobody listening there is nothing to give back and nothing has gone wrong.
+      responses:
+        "204":
+          description: Noted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503":
+          description: This install does not mute the player, so there is never a hold. `canMuteWhileStreaming` says so in advance.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stream/leave:
+    post:
+      tags: [stream]
+      operationId: leaveStream
+      summary: Say that a device stopped listening on purpose.
+      description: |
+        A closed socket does not say why it closed. A handoff back to the player and a wireless dropout look identical from here, and they want opposite answers: the first should give the player its sound back at once, the second must not unmute into a gap the client is about to reconnect across. So a device that stopped deliberately says so, and everything else waits out the linger.
+
+        Best effort, and never required. A client that crashes, a tab that closes and a request that fails all end the same way a moment later. Ignored while the device still holds a connection, and it can only ever end its own linger — a `deviceId` nobody sent is not a way to unmute the player.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceIdentity" }
+      responses:
+        "204":
+          description: Noted, whether or not there was anything to end.
+        "400":
+          description: No `deviceId`, or a body that is not a JSON object.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "415":
+          description: The body was not `application/json`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stream/timeline:
+    get:
+      tags: [stream]
+      operationId: getStreamTimeline
+      summary: What is audible, in the stream's own clock.
+      description: |
+        The player's reported position is not what a listener is hearing: the stream runs a second or two behind it, so a progress bar or lyrics driven from beefweb's `GET /player` run ahead of the audio. This route is how a client corrects that.
+
+        `audio.currentTime` counts rendered audio: it advances only as sound leaves the speaker. The only unknown is the stream time of the first sample the element played, and it is recoverable:
+
+        ```js
+        // once, when the element starts playing
+        const connectedAt = performance.now();
+        const { streamTime } = await (await fetch(base + "/stream/timeline", auth)).json();
+        const anchor = streamTime - (performance.now() - connectedAt) / 1000;
+
+        // any time after
+        const audible = anchor + player.currentTime;
+        const mark = marks.findLast(m => m.at <= audible);
+        const position = mark ? mark.position + (audible - mark.at) : null;
+        ```
+
+        A client MUST re-anchor after every reconnect, because `currentTime` restarts. It MAY re-poll occasionally and re-derive `anchor` to shed clock drift, which is milliseconds over a few minutes.
+
+        Browsers differ over whether `currentTime` starts at zero or at the stream's own granule position, which is a large number for a listener joining a long-running stream. Deriving `anchor` as above works either way, and a client can tell which it got from whether `anchor` came out near zero.
+      responses:
+        "200":
+          description: The stream clock, and where the last few tracks began.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamTimeline" }
+              examples:
+                midTrack:
+                  value:
+                    streamTime: 491.46
+                    marks:
+                      - at: 402.1
+                        path: 'C:\Music\Émile Fictif\Canción Inventada\06 Café Imaginario.mp3'
+                        subsong: 0
+                        position: 0
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/StreamUnavailable" }
+
+  /stream:
+    get:
+      tags: [stream]
+      operationId: openStream
+      summary: Listen to what foobar2000 is playing.
+      description: |
+        A single unbounded response carrying the player's own output: the same audio the speakers get, with its DSP chain and ReplayGain applied. There is no length, no `Range` and no seeking. Seeking means asking foobar2000 to seek, which moves every listener at once.
+
+        The response is chunked and ends when the client disconnects, the component stops, or the listener falls too far behind to be sent contiguous audio. A client MUST reconnect rather than treat the end as a stop: a dropped connection is ordinary on a wireless network, and an `<audio>` element does not retry by itself.
+
+        This route takes a ticket rather than a bearer token, because an `<audio>` element cannot send a header. Without a valid ticket it answers `401`, and a bearer token is not accepted in its place.
+      security: []
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          description: From `POST /stream/ticket`. Valid until it expires, not consumed by this request.
+          schema: { type: string }
+        - name: format
+          in: query
+          required: false
+          description: |
+            One of the `streamFormats` from `GET /capabilities`. Omit it to get the first, which is the best this install offers. A format the install does not encode is a `400` rather than a silent substitution.
+          schema: { type: string }
+          examples:
+            safari: { value: aac }
+      responses:
+        "200":
+          description: |
+            Audio, until something ends it. `Cache-Control` is `no-store`, there is no
+            `Content-Length`, and `Accept-Ranges` is `none` — a live stream has no length
+            to take a range of, and a `Range` request is answered with the stream from the
+            live edge like any other.
+          content:
+            audio/ogg:
+              schema: { type: string, format: binary }
+            audio/aac:
+              schema: { type: string, format: binary }
+        "400":
+          description: A format this install does not encode.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: |
+            No ticket, an unknown ticket, or an expired one. All three answer identically, so a caller cannot sort guesses into wrong and too late.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/StreamUnavailable" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        `Authorization: Bearer <token>`, from `<profile>/foo_jean/config.json`. At least 32 characters; a shorter token in the config file is refused and the component does not listen.
+
+  responses:
+    PlaylistRefused:
+      description: |
+        The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, or an id this component did not issue.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistRefusal" }
+          examples:
+            noQuery:
+              value: { error: unacceptable query, detail: "'query' is required" }
+            queryTooLong:
+              value: { error: unacceptable query, detail: "'query' must be printable text of at most 4096 characters" }
+            notJson:
+              value: { error: malformed request, detail: "could not parse it as JSON: [json.exception.parse_error.101] parse error at line 1, column 1: syntax error while parsing value - invalid literal; last read: 'n'" }
+
+    NotOurs:
+      description: |
+        The playlist exists and this component did not create it. Retrying will never work, and no configuration grants it.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            default:
+              value: { error: that playlist was not created by foo_jean, detail: "" }
+
+    NoSuchPlaylist:
+      description: No playlist has that id. It may have been deleted in the player.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
+    PlaylistConflict:
+      description: |
+        Another playlist already has that `key`, or this install is at `maxAutoPlaylists`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            keyInUse:
+              value: { error: another playlist already has that key, detail: "folder:genre:Rock" }
+            tooMany:
+              value: { error: this install's autoplaylist limit is reached, detail: "this install allows 100 and already has 100" }
+
+    TooManyRequests:
+      description: |
+        Playlist changes are arriving faster than this component will make them. The limit bounds how fast a client bug can fill the player with playlists; it is not a security control.
+
+        A burst of thirty is allowed, refilling at one a second, shared across creating, updating and deleting. Reading and previewing are not limited. `Retry-After` is sent in seconds.
+      headers:
+        Retry-After:
+          schema: { type: string }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistRefusal" }
+
+    PlayerRefused:
+      description: |
+        The player refused. No reason is given, because error text leaks filesystem paths.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
+    PlayerTooSlow:
+      description: |
+        The player did not finish within 30 seconds. The work MAY still complete afterwards, so a client MUST re-read `GET /playlists` rather than assume it did not.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
+    PlaylistUnavailable:
+      description: |
+        Autoplaylists are not available in this install, either because the component could not reach that part of the player or because `maxAutoPlaylists` is `0` in `config.json`. `GET /capabilities` reports this in advance.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
+    StreamUnavailable:
+      description: |
+        Either this install does not stream, because no encoder started or `streamingEnabled` is false, or it is already serving as many connections as `maxConcurrentStreams` allows. The `error` string distinguishes them, and a client SHOULD present the second as busy and retry rather than as unsupported. `GET /capabilities` reports the first in advance.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    Unauthorized:
+      description: |
+        No token, the wrong token, or the wrong scheme.
+
+        No `WWW-Authenticate` header is sent. It would raise a native browser credential dialog over the client's own UI, and no browser can satisfy this scheme.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            default:
+              value: { error: authentication required }
+
+  schemas:
+    Status:
+      type: object
+      additionalProperties: false
+      required: [name, version, apiVersion, authRequired]
+      properties:
+        name:
+          type: string
+          const: foo_jean
+          description: |
+            Always this value. A client following a discovery record MUST check it before sending a token: the record can be forged, and this is what confirms the port it named is running foo_jean.
+        version:
+          type: string
+          description: The component's own version. Informational; branch on apiVersion instead.
+          examples: ["0.1.0"]
+        apiVersion:
+          type: integer
+          description: The shape of this API. A client MUST refuse a number it does not understand.
+          examples: [1]
+        authRequired:
+          type: boolean
+          const: true
+          description: Always true. There is no unauthenticated mode.
+
+    Capabilities:
+      type: object
+      additionalProperties: false
+      required:
+        [apiVersion, allowedFields, canWrite, maxAutoPlaylists, canCreateAutoPlaylists,
+         canStream, streamFormats, canMuteWhileStreaming]
+      properties:
+        apiVersion:
+          type: integer
+          examples: [1]
+        allowedFields:
+          type: array
+          description: |
+            Tag names this install permits, lower case by convention and matched case-insensitively. Anything not named here is refused with a `403`.
+          items: { type: string }
+          examples: [["rating"]]
+        canWrite:
+          type: boolean
+          description: |
+            Exactly `allowedFields.length > 0`. A convenience, not a second source of truth.
+        maxAutoPlaylists:
+          type: integer
+          minimum: 0
+          description: |
+            How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
+
+            The cap bounds a client bug rather than an attacker; whoever holds the token can already write tags.
+          examples: [100]
+        canCreateAutoPlaylists:
+          type: boolean
+          description: Exactly `maxAutoPlaylists > 0`. The same kind of convenience as `canWrite`.
+        canStream:
+          type: boolean
+          description: |
+            Exactly `streamFormats.length > 0`. False on an install where the component loaded but no encoder started, where `streamingEnabled` is false, and on any component version that predates streaming. A client MUST hide the listen control when it is false rather than offer it and fail.
+        streamFormats:
+          type: array
+          items: { type: string }
+          description: |
+            What `GET /stream?format=` accepts, best first. `opus` is Ogg Opus, which every current browser except older Safari plays. `aac` is AAC-LC in ADTS, for Safari before 18.4.
+
+            A client SHOULD omit `format` and take the first entry unless it knows the browser needs otherwise. The list varies by install: one whose Windows has no AAC encoder reports `opus` alone.
+          examples: [["opus", "aac"]]
+        canMuteWhileStreaming:
+          type: boolean
+          description: |
+            Whether this install silences the player while somebody is listening to the stream. `muteWhileStreaming` in `config.json`, and the player owner's decision rather than a client's: there is no route that changes it.
+
+            The capture is taken before the player's volume, so muting leaves the stream at full level. False makes the player one more speaker alongside every listener, which is fine a room apart from them and an echo in the same one — the stream runs a second or two behind.
+
+    StreamTimeline:
+      type: object
+      additionalProperties: false
+      required: [streamTime, marks]
+      properties:
+        streamTime:
+          type: number
+          description: |
+            Seconds of audio encoded since the component started. Not wall-clock time and not the player's position. It is the clock `marks[].at` is expressed in.
+        marks:
+          type: array
+          description: |
+            Where the stream last changed what a given stream time means, oldest first: a track starting, or a seek within one. The list is bounded, so a player left running for a day does not grow it; a client needs only the marks around what it is currently hearing.
+
+            A seek produces a mark because the track does not change but its position does. Without one a client goes on deriving positions from before the jump.
+          items:
+            type: object
+            additionalProperties: false
+            required: [at, path, subsong, position]
+            properties:
+              at:
+                type: number
+                description: Stream time at which this track's audio began.
+              path:
+                type: string
+                description: |
+                  A plain absolute local path, the same form beefweb reports for `%path%` and the same form `POST /tags` accepts, so a client can join the two on equality.
+
+                  Not the form the player stores: on a portable install foobar2000's canonical path is `file-relative://..\Music\x.mp3` for the file beefweb calls `C:\Music\x.mp3`. This route resolves it.
+              subsong: { type: integer }
+              position:
+                type: number
+                description: |
+                  Where the player was within the track at `at`. Zero except when a listener connects mid-track or somebody seeks.
+
+    Paired:
+      type: object
+      additionalProperties: false
+      required: [token, apiVersion]
+      properties:
+        token:
+          type: string
+          description: |
+            The bearer token, in full. A client MUST store it where it would store one pasted by hand, and MUST NOT log it or put it in a URL.
+        apiVersion:
+          type: integer
+          description: The shape of this API, so a client can refuse a version it does not know.
+          examples: [1]
+
+    DeviceIdentity:
+      type: object
+      additionalProperties: false
+      properties:
+        deviceId:
+          type: string
+          maxLength: 64
+          description: |
+            Opaque, and stable for as long as the device keeps its storage. It is what groups a device's connections into one listener, so a reconnect and Safari's `Range` probe do not read as three people.
+
+            Untrusted: it labels a row in somebody else's picker and nothing branches on it, and anyone already holding the token could send another device's. A client SHOULD generate one at random and keep it, and MUST NOT derive it from anything about the person using it.
+          examples: ["3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8"]
+        name:
+          type: string
+          maxLength: 64
+          description: |
+            What to call this device in a picker. Empty, absent, unprintable or overlong all become no name at all — the label is refused, never the request, because a bad name must not cost somebody their audio.
+          examples: ["Android phone"]
+
+    StreamListeners:
+      type: object
+      additionalProperties: false
+      required: [devices, connections, maxConnections, playerMuted]
+      properties:
+        devices:
+          type: array
+          description: Connected devices, longest-listening first. A device inside its linger has gone and is not here.
+          items:
+            type: object
+            additionalProperties: false
+            required: [deviceId, name, format, connections, listeningFor]
+            properties:
+              deviceId:
+                type: string
+                description: |
+                  As the device sent it, or `#<n>` for a connection that named nothing. Each anonymous connection is its own device: merging them would report two strangers as one person.
+              name:
+                type: [string, "null"]
+                description: Null when the device did not name itself, so a client can tell that from a name it chose.
+              format:
+                type: string
+                examples: [opus]
+              connections:
+                type: integer
+                description: |
+                  Sockets this device holds. Routinely two — Safari probes a source with `Range: bytes=0-1` before fetching it for real.
+                examples: [2]
+              listeningFor:
+                type: integer
+                description: Seconds since this device's oldest live connection opened.
+        connections:
+          type: integer
+          description: |
+            Every socket, across every device. This is what `maxConnections` bounds, and it is not the number a person should be shown.
+        maxConnections:
+          type: integer
+          description: "`maxConcurrentStreams` from `config.json`."
+        playerMuted:
+          type: boolean
+          description: |
+            Whether the player is silent *because somebody is listening*, as opposed to muted by hand. foobar2000 has no mute flag — mute is the volume at -100 dB — so a client reading beefweb sees a fader at the bottom either way, and this is what tells it which sentence to put next to it.
+
+            False the moment anybody unmutes the player from either end: the hold never argues, and stays released until nobody is listening.
+
+    StreamTicket:
+      type: object
+      additionalProperties: false
+      required: [ticket, expiresIn]
+      properties:
+        ticket:
+          type: string
+          description: |
+            Opaque. Send it as the `ticket` query parameter and discard it once the connection is open.
+        expiresIn:
+          type: integer
+          description: Seconds from now.
+          examples: [120]
+
+    TagWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [path, fields]
+      properties:
+        path:
+          type: string
+          maxLength: 4096
+          description: |
+            The track's path, exactly as beefweb reports `%path%`: a plain absolute local path. No URL scheme, not even `file://`, no UNC share, no `..` segment, no relative path.
+
+            With `subsong`, this is the whole of a track's identity. Playlist items have no id and any mutation invalidates indices, so a path is the only stable handle a client has.
+          examples: ['C:\Music\Fictional Artist\Imaginary Album\01 Track.mp3']
+        subsong:
+          type: integer
+          minimum: 0
+          description: |
+            Which track inside the file, for cue sheets and disc images. Omit it for an ordinary file; a missing value is read as 0.
+
+            No `default:` is declared here. openapi-typescript treats a property that has one as always present and emits it non-optional, which would force every caller to pass a subsong it does not have.
+        fields:
+          type: object
+          minProperties: 1
+          description: |
+            Tag name to value. Every name MUST be on the allowlist. Two names differing only in case are refused rather than guessed at, since foobar2000 tag names are case-insensitive and that is two instructions for one tag.
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: integer
+            description: |
+              A whole number is accepted and rendered as text, so `4` and `"4"` are the same request. An empty string removes the tag. Fractional numbers, booleans and nulls are refused.
+          examples: [{ rating: "4" }]
+
+    TagWritten:
+      type: object
+      additionalProperties: false
+      required: [written, path, subsong, fields]
+      properties:
+        written: { type: boolean, const: true }
+        path: { type: string }
+        subsong: { type: integer, minimum: 0 }
+        fields:
+          type: object
+          description: What was written, normalised to strings.
+          additionalProperties: { type: string }
+
+    TagRefused:
+      description: |
+        A refusal the client can act on. The request was understood and declined before the player was involved.
+      type: object
+      additionalProperties: false
+      required: [written, error, detail]
+      properties:
+        written: { type: boolean, const: false }
+        error:
+          type: string
+          description: The category of refusal.
+          enum:
+            - malformed request
+            - missing path
+            - unacceptable path
+            - no fields to write
+            - field not allowed
+        detail:
+          type: string
+          description: |
+            What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text.
+        field:
+          type: string
+          description: |
+            Present only when `error` is `field not allowed`, naming the field. A client SHOULD use it to stop offering that control.
+
+    TagFailed:
+      description: The request was acceptable and the attempt failed.
+      type: object
+      additionalProperties: false
+      required: [written, error]
+      properties:
+        written: { type: boolean, const: false }
+        error:
+          type: string
+          enum:
+            - foobar2000 does not know that track
+            - the player could not write the tags
+            - the player did not answer in time
+            - tag writing is not available
+
+    PlaylistAnnotation:
+      description: |
+        What this component knows about one playlist that beefweb does not report, and nothing else. Title, item count, total time and which playlist is current all come from beefweb.
+      type: object
+      additionalProperties: false
+      required: [id, beefwebId, index, title, isAutoPlaylist, managed]
+      properties:
+        id:
+          type: string
+          description: |
+            foobar2000's own playlist GUID, lower case and dashed. Stable across renames, reordering and restarts, and never reused. It is what the routes here address, and what a client SHOULD store to find a playlist again later.
+          examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
+        beefwebId:
+          type: [string, "null"]
+          description: |
+            beefweb's id for the same playlist, read from the property beefweb keeps it in. This is the join key between the two APIs, and it is exact, unlike matching on a title foobar2000 permits duplicates of or on an index that changes under both.
+
+            `null` when beefweb has not assigned one yet, which is the case for a playlist just created here until beefweb next rebuilds its map. Request beefweb's playlists first and this is filled in.
+
+            Read, never written: it is another component's bookkeeping.
+          examples: ["p3"]
+        index:
+          type: integer
+          minimum: 0
+          description: |
+            Position in the player, and the fallback join key when `beefwebId` is null. Not identity: creating, deleting or reordering a playlist changes it.
+        title:
+          type: string
+          description: |
+            For checking a join rather than for display. beefweb's answer is the one to show; this is a snapshot from a different request.
+        isAutoPlaylist:
+          type: boolean
+          description: |
+            Whether the playlist is an autoplaylist. This is the question beefweb cannot answer. True for any autoplaylist, including ones made in foobar2000 before this component was installed.
+        managed:
+          description: |
+            What this component stored when it created the playlist, or `null` for every playlist it did not create, including autoplaylists made in the player. This is how a client tells a folder it manages from an autoplaylist that was already there.
+
+            It is kept as a foobar2000 playlist property, the same mechanism beefweb uses for its ids, so it travels with the playlist through renames and restarts and is removed with the playlist.
+          oneOf:
+            - { $ref: "#/components/schemas/ManagedAutoPlaylist" }
+            - type: "null"
+
+    ManagedAutoPlaylist:
+      type: object
+      additionalProperties: false
+      required: [key, query, sort, forceSort]
+      properties:
+        key:
+          type: string
+          description: |
+            Whatever the client sent, handed back verbatim. Empty when none was given.
+        query:
+          type: string
+          description: |
+            The query the playlist was created with. Editing the query in foobar2000's own dialog makes this stale, and the component cannot detect that: the SDK offers no way to read an autoplaylist's current query back.
+        sort:
+          type: string
+        forceSort:
+          type: boolean
+
+    AutoPlaylistRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: |
+            What the playlist is called in foobar2000's own tabs. Required when creating, optional when updating; omitting it on an update leaves the name alone rather than renaming the playlist to whatever the client last knew.
+
+            What somebody looking at the player will read on the tab. Nothing in this API parses it, and the user may rename it freely -- so a client that needs to recognise its own playlists later MUST use `key`, never the title.
+
+            No control characters, which would be line breaks in a playlist tab.
+        key:
+          type: string
+          maxLength: 256
+          description: |
+            Opaque to this component: stored, handed back and compared for equality, never interpreted. A client puts here whatever lets it recognise its own playlists later, such as `folder:genre:Rock`, rather than encoding a convention in the title, which the user can edit.
+
+            MUST be unique across the playlists this component created. A second playlist with the same key is a `409` rather than a duplicate, so the same create request is safe to send twice.
+          examples: ["folder:genre:Rock"]
+        query:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: |
+            foobar2000's own query syntax, passed through untouched. This component never composes or interprets it; the player owns that language and is the only thing that can say whether a query parses.
+
+            Quoting is therefore the client's responsibility. A value taken from library data and pasted in unquoted can produce a valid query that is not the one intended, and no validation here can catch that. Use `POST /autoplaylists/preview` to see what a query matches.
+          examples: ["%genre% IS Rock"]
+        sort:
+          type: string
+          maxLength: 4096
+          description: A title-formatting pattern to sort by. Optional.
+          examples: ["%album artist%|%date%|%album%"]
+        forceSort:
+          type: boolean
+          description: |
+            Keep the playlist sorted, and stop the user reordering it by hand. Optional, and false when absent.
+
+    QueryPreview:
+      type: object
+      additionalProperties: false
+      required: [valid, error, matches, libraryEnabled]
+      properties:
+        valid:
+          type: boolean
+          description: Whether foobar2000 could read the query. Check this before `matches`.
+        error:
+          type: string
+          description: |
+            The player's own message when `valid` is false, and empty otherwise. Safe to show a person: it describes the query they typed, not anything on the disk.
+        matches:
+          type: integer
+          minimum: 0
+          description: How many tracks in the Media Library the query matches. `0` when invalid.
+        libraryEnabled:
+          type: boolean
+          description: |
+            Whether this install has a Media Library configured. Autoplaylists filter the Media Library and nothing else, so `false` means every autoplaylist is empty whatever the query. A client SHOULD say so before somebody creates one, which is why this is reported here rather than on `/capabilities`.
+
+    PlaylistRefusal:
+      description: |
+        A refusal the client can act on. The request was understood and declined before the player was involved.
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          enum:
+            - malformed request
+            - unacceptable title
+            - unacceptable key
+            - unacceptable query
+            - unacceptable sort
+            - unacceptable playlist id
+            - too many requests
+        detail:
+          type: string
+          description: |
+            What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text.
+
+    PlaylistFailed:
+      description: The request was acceptable and the attempt failed.
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          enum:
+            - foobar2000 could not read that query
+            - no such playlist
+            - that playlist was not created by foo_jean
+            - another playlist already has that key
+            - this install's autoplaylist limit is reached
+            - the player could not do that
+            - the player did not answer in time
+            - autoplaylists are not available
+        detail:
+          type: string
+          description: |
+            Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show.
+
+    Error:
+      description: |
+        The minimum shape every failing response carries. It says nothing about what broke inside the component, because error text leaks filesystem paths.
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    DiscoveryRecord:
+      description: |
+        Served by beefweb, not by this component, at `GET http://<player>:8880/api/clientconfig/foo_jean`. It is same-origin for anything beefweb serves, so finding the component is one request rather than a port scan. The component writes it on every start and removes it on a clean shutdown.
+
+        `null` means the component is not installed.
+
+        ### This record is not evidence
+
+        `POST /api/clientconfig/{id}` is a documented beefweb route, `changeClientConfig` defaults to on, and beefweb ships with no authentication. Anyone who can reach beefweb can therefore overwrite this record and name any port, and the forgery lasts until the component next starts. A client that read a port from here and posted its bearer token to it would hand the token to whoever wrote the file.
+
+        A client MUST treat this record as a hint. Call unauthenticated `GET /status` on the advertised port first, require `name` to be `foo_jean` and an `apiVersion` the client understands, and only then send the token.
+      type: object
+      required: [name, version, apiVersion, port, authRequired, listening]
+      properties:
+        name: { type: string, const: foo_jean }
+        version: { type: string, examples: ["0.1.0"] }
+        apiVersion: { type: integer, examples: [1] }
+        port:
+          type: integer
+          description: Where the component says it is listening. Verify before trusting.
+          examples: [8881]
+        authRequired: { type: boolean, const: true }
+        listening:
+          type: boolean
+          description: |
+            False when the component loaded but could not bind. Not the same as an absent record, and a client SHOULD report it: "installed but could not start on port 8881" is something a person can act on, where a silently disabled feature is not.
+        error:
+          type: string
+          description: Present only when `listening` is false. Safe to show a person.
+          examples: ["could not bind 0.0.0.0:8881; the port is in use"]
+        portInUse:
+          type: boolean
+          description: |
+            Present only when `listening` is false, and separated from other failures because it has a specific remedy: change `port` in `<profile>/foo_jean/config.json`. The usual cause is another server on that port.

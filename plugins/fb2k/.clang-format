@@ -1,0 +1,40 @@
+# Both of the foobar2000 components this project takes its shape from --
+# foo_openlyrics and foo_scrobble -- ship one of these, so it is ecosystem
+# convention rather than an import from elsewhere. The settings below describe the
+# style the code was already written in; running clang-format should be a no-op on
+# a clean tree.
+#
+#   scripts/format.sh            rewrite the tree
+#   scripts/format.sh --check    fail if anything is unformatted
+#
+# third_party/ is excluded by the script, not here: those are 48,000 lines we do not
+# own and reformatting them would make every upgrade a merge.
+---
+Language: Cpp
+BasedOnStyle: Google
+
+ColumnLimit: 100
+IndentWidth: 4
+AccessModifierOffset: -4
+NamespaceIndentation: None
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+# Closing-brace markers on namespaces. These files nest an anonymous namespace
+# inside jean, and a bare } at the bottom of a screen tells you nothing.
+FixNamespaceComments: true
+
+SpacesBeforeTrailingComments: 2
+
+# Sorted within each block, and the blank lines between blocks are load-bearing:
+# src/core/http_server.cpp must include third_party/httplib.h before anything else,
+# because it pulls in <winsock2.h> and the SDK pulls in <windows.h>. Keeping that
+# include in a block of its own is what makes sorting safe.
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve

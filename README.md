@@ -151,7 +151,7 @@ A phrase your file does not carry falls back to English, so a half-finished tran
 
 **Names outside Jean stay in their own language.** `Library → Search`, the `File → Preferences → Tools → Jean` pane, foo_jean's own labels: those are things to find on a foobar2000 screen that is in English whatever Jean is showing, and translating them sends people looking for a menu that is not there.
 
-A translation you would like shipped is welcome as a pull request. Put it in `public/locales/` and `pnpm test:unit` will check it against the catalogue.
+A translation you would like shipped is welcome as a pull request. Put it in `ui/public/locales/` and `pnpm test:unit` will check it against the catalogue.
 
 ## Keyboard
 
@@ -170,4 +170,4 @@ Everything is reachable from the keyboard on desktop, and `?` shows you what is 
 
 ## Working on Jean
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) is the development loop and the conventions. [ARCHITECTURE.md](./ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do. [src/shared/api/README.md](src/shared/api/README.md) is the reference for what the player answers. [test/README.md](./test/README.md) is the suite and the fake player it runs against.
+[CONTRIBUTING.md](./ui/CONTRIBUTING.md) is the development loop and the conventions. [ARCHITECTURE.md](./ui/ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do. [ui/src/shared/api/README.md](ui/src/shared/api/README.md) is the reference for what the player answers. [test/README.md](./ui/test/README.md) is the suite and the fake player it runs against.

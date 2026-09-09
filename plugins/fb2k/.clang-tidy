@@ -1,0 +1,100 @@
+# Static analysis. Not run by the build -- it needs a compilation database the MSBuild
+# build does not produce -- but scripts/lint.sh runs it over src/core/ and tests/, which
+# compile standalone on any machine and are where the security-sensitive code lives.
+#
+#   scripts/lint.sh                     everything (slow: doctest is a large header)
+#   scripts/lint.sh src/core/text.cpp   one file
+#
+# The selection leans on bugprone, cert and the analyzer. cppcoreguidelines and modernize
+# are included only where they say something about this codebase: it is already C++17,
+# already uses smart pointers, and does not need to be told about trailing return types.
+#
+# Every check turned off below is turned off for a reason, and the reason is written
+# under it. A silent `-check-name` in this list is how a real finding gets buried.
+#
+# There is exactly one `---` in this file, and it belongs where it is. A second one
+# starts a second YAML document, which clang-tidy does not read -- so the CheckOptions
+# below silently stop applying and you spend an afternoon wondering why an option you
+# can see in the file has no effect.
+---
+Checks: >
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  misc-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-emplace,
+  modernize-loop-convert,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  -bugprone-easily-swappable-parameters,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -readability-braces-around-statements,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity,
+  -misc-use-anonymous-namespace,
+  -misc-static-initialization-cycle,
+  -readability-trailing-comma,
+  -performance-enum-size,
+  -portability-avoid-pragma-once
+
+# Why the last five are off:
+#
+#   misc-use-anonymous-namespace, misc-static-initialization-cycle
+#     Both fire once per doctest TEST_CASE, on the DOCTEST_ANON_FUNC_n and
+#     DOCTEST_ANON_VAR_n the macro expands to. That is 300-odd warnings about a header
+#     we do not own, and they drown everything worth reading.
+#
+#   readability-trailing-comma
+#     Would fight .clang-format, which owns layout here. Two tools disagreeing about
+#     where a comma goes is a loop, not a standard.
+#
+#   performance-enum-size
+#     Wants std::uint8_t bases on two-value enums. These exist to name things, not to
+#     pack them, and the suggestion costs more clarity than it saves bytes.
+#
+#   portability-avoid-pragma-once
+#     Every header here is `#pragma once` on purpose. The one exception is
+#     src/fb2k/resource.h, which uses classic guards because rc.exe's preprocessor is
+#     not the compiler's -- and that exception carries its own comment.
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/src/(core|fb2k)/.*'
+
+CheckOptions:
+  # camelCase for functions and variables, PascalCase for types, kThing for constants,
+  # g_thing for the handful of file-scope statics -- which is what the code already does.
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key: readability-identifier-naming.VariableCase
+    value: camelBack
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: '_'
+  - key: readability-identifier-naming.GlobalConstantPrefix
+    value: 'k'
+  - key: readability-identifier-naming.ConstexprVariablePrefix
+    value: 'k'
+  - key: readability-identifier-naming.GlobalVariablePrefix
+    value: 'g_'
+
+  # `if (!ptr)` is how C++ is written everywhere, including in the SDK. The check stays
+  # on for everything else, which is what caught std::isalpha's int being used as a
+  # truth value in src/core/tag_write.cpp.
+  - key: readability-implicit-bool-conversion.AllowPointerConditions
+    value: 'true'
+
+  # `const auto* value` rather than `const auto *const value`. Spelling the pointer out
+  # is a good suggestion; the second const is noise on a local we never rebind.
+  - key: readability-qualified-auto.AddConstToQualified
+    value: 'false'

@@ -1,45 +1,125 @@
 # Jean
 
-Jean (/ʝan/) is a replacement web UI for the [beefweb](https://github.com/hyperblast/beefweb) plugin. It drives foobar2000, and DeaDBeeF as best it can, from any browser on your network. Your library, on the phone in your pocket, without a subscription or an account or a company in the middle.
+<!-- site:tagline -->
+Jean (/ʝan/) is a different face for [beefweb](https://github.com/hyperblast/beefweb), the plugin that puts a small web server inside foobar2000 and DeaDBeeF. It plays nothing itself. Your player does that, on the machine it has always done it on, and Jean is what you point a browser at: full keyboard control at a desk, gestures sized for a thumb on a phone, and a front door built to hand you back the records you already own and had forgotten about.
+<!-- /site:tagline -->
 
-**[Try it](https://enrique-ramirez.github.io/jean/)**: the whole app, running against a library and a player that live entirely in your browser tab. Nothing to install. Nothing actually plays.
+**[Try it](https://enrique-ramirez.github.io/jean/demo/)**: the whole interface, running against a library and a player that live entirely in your browser tab. Nothing to install. Nothing actually plays.
 
 ## What it does
 
-- **Browses** your playlists and your whole library, as a list or grouped by album, over a virtualised view that does not care how many tracks you own.
-- **Searches** without making you find the accents. `babasonicos` finds `Babasónicos`. Play from the results and playback stays in them. Keep them as a playlist in one click, or leave them: a search lives on the player, so it survives a reload and shows up on your other devices.
-- **Finds within** whatever list is on screen and jumps you there, rather than hiding everything else.
-- **Opens on what you own**: the hours, the records, the artists, the years it spans, then shelves built out of your play counts. Most played. Your favourites. Records you played to death and put down. Records you play constantly and only own as a bad rip. Records you have never once opened.
-- **Shows what's playing** properly: big artwork, the rating, and tabs for lyrics, the tags the file actually carries, and who the artist is. Lyrics scroll in time when they carry LRC timestamps, and tapping a line seeks there.
-- **Writes ratings back to your tags**, with `foo_jean` installed. Without it the stars are read-only.
-- **Manages playlists**: create, rename, reorder by dragging, drop tracks in from anywhere. Adding tracks comes with an undo; deleting a playlist asks first.
-- **Moves the sound to you.** With `foo_jean`, a control beside the volume plays what the player is playing, here, in this browser, and mutes the player so the sound moves rather than doubles. It names who else is listening and can put the speakers back on alongside everyone.
-- **Indexes your genres**, all of them, found by typing, and turns any of them into an autoplaylist the player keeps filled.
-- **Draws the play queue as a timetable**, so every row says when it will play.
+<!-- site:rediscover -->
+### Re-discover what you already own
 
-Light and dark, both actually designed. English and Spanish, with any other language a JSON file away. Full keyboard control on desktop. On a phone the sidebar is a drawer, menus arrive as sheets, the volume fader is sized for a thumb, and anything that only means something with a keyboard attached is not there.
+Every list shades its rows by how often you have played them, so a playlist you thought you knew shows its cold spots at a glance. The front door is built out of the same counts. Records you play constantly. Records you played to death and then put down. Records you only own a bad rip of. Records you have never once opened. Genres carry their own figures, and when nothing appeals, one button shuffles the lot.
+<!-- /site:rediscover -->
+
+<!-- site:search -->
+### Find anything in it
+
+One box takes the whole library and answers as you type, sorted into artists, records and tracks. Accents are optional, so you can type a name the way you say it rather than the way it is spelt. Inside whatever list is already on screen, a second finder narrows that list and jumps you to the row instead of hiding everything around it. A search you keep is a real address: it lives on the player, survives a reload, and turns up on the other devices in the house.
+<!-- /site:search -->
+
+<!-- site:nowplaying -->
+### Your music, your way
+
+The now-playing screen is the one that stays open on a phone. Big artwork, the rating under your thumb, the transport where your hand already is, and tabs for the lyrics, the tags the file actually carries, and who the artist is. Lyrics scroll in time when the file carries the timestamps, and tapping a line seeks there. Light and dark are both drawn rather than one inverted from the other, so pick whichever suits the room.
+<!-- /site:nowplaying -->
+
+<!-- site:more -->
+- **Browses** your playlists and your whole library, as a list or grouped by album, over a virtualised view that does not care how many tracks you own.
+- **Manages playlists**: create, rename, reorder by dragging, drop tracks in from anywhere. Adding tracks comes with an undo; deleting a playlist asks first.
+- **Draws the play queue as a timetable**, so every row says when it will play.
+- **Indexes your genres**, all of them, found by typing, and turns any of them into an autoplaylist the player keeps filled.
+<!-- /site:more -->
+
+<!-- site:closing -->
+English and Spanish, with any other language a JSON file away. On a phone the sidebar is a drawer, menus arrive as sheets, and anything that only means something with a keyboard attached is not there.
 
 Anything your library cannot support is not drawn. No ratings, no starred shelf. No playback statistics, no play-history shelves at all. A library with no genre tags does not get told it has none.
+<!-- /site:closing -->
 
-## What you need
+## The extra
 
-**One component.** Everything else is detected at runtime and stays out of sight when it is absent, so a bare beefweb install gets a complete app rather than a screen full of dead buttons.
+<!-- site:extra -->
+[`foo_jean`](https://github.com/enrique-ramirez/foo_jean) is a component of Jean's own, and everything above works without it. Install it and two more things switch on.
 
-| | Component | What it buys you |
-|---|---|---|
-| **Required** | [`foo_beefweb`](https://github.com/hyperblast/beefweb) | Playback, playlists, the play queue, outputs, artwork, filesystem browsing |
-| **Recommended** | `foo_beefweb` **0.11+** | The media library, read directly rather than through an autoplaylist. Skips the setup step below entirely |
-| **Optional** | `foo_enhanced_playcount` *or* `foo_playcount` | Play counts and last-played dates, which are what the play-history shelves are made of |
-| **Optional** | [`foo_jean`](https://github.com/enrique-ramirez/foo_jean) | Writing ratings back to your tags. Turning a genre into an autoplaylist, and knowing which playlists the player fills itself, neither of which beefweb can express. And listening on this device, with the roster of who else is, plus the track on your lock screen and media keys wherever Jean is served over HTTPS |
-| **Optional** | anything that publishes title-formatting fields | Jean probes for the fields it knows and turns on whatever answers |
+**Rate a track from the browser.** The stars stop being read-only, and a rating you set here is written into the file's own tags, where every other program that reads your library will find it.
 
-Some of the good parts need nothing at all, since they read tags your files already carry: **lyrics**, from the `UNSYNCED LYRICS` tag ([`foo_openlyrics`](https://github.com/jacquesh/foo_openlyrics) is a good way to fill it; Jean only reads it), plus ratings, ReplayGain, composer, publisher and the rest of the standard metadata.
+**Send the sound to whatever you are holding.** A control beside the volume plays what the player is playing, here, in this tab, and mutes the player as it hands over, so the music follows you to the kitchen instead of doubling. It names who else is listening, and it can put the speakers back on alongside everyone.
+<!-- /site:extra -->
 
-## Point it at your library
+## Requirements
 
-**On beefweb 0.11+, skip this.** That release has a media library API, Jean asks for it first, and there is nothing to set up.
+<!-- site:requirements -->
+Jean is not a music player, and on its own it does nothing at all. It draws a player that is already running somewhere else, so two things have to be in place before it has anything to talk to.
 
-Earlier releases have no library API at all: beefweb sees playlists and the filesystem and nothing else. So Jean needs a playlist that mirrors the library, and the right kind is an **autoplaylist**: a live Media Library query that keeps itself in sync.
+**A player that beefweb runs in.** foobar2000 on Windows, or DeaDBeeF on Linux, macOS or BSD. There is no foobar2000 build of beefweb for macOS, so a Mac means DeaDBeeF.
+
+**[beefweb](https://github.com/hyperblast/beefweb), installed and enabled in it.** This is the piece that answers a browser at all. Playback, playlists, the queue, artwork and the library itself all arrive through it, and Jean is a face drawn on top.
+
+Two more are optional:
+
+| | |
+|---|---|
+| `foo_playcount` or `foo_enhanced_playcount` | Jean is compatible with both. They are where the play counts and last-played dates come from, which is what the shelves and the row shading are made of. Without one, none of that is drawn |
+| [`foo_jean`](https://github.com/enrique-ramirez/foo_jean) | The extra above: ratings written back to your tags, and the sound sent to this device |
+<!-- /site:requirements -->
+
+## Install
+
+<!-- site:install -->
+**1. Download [the latest release](https://github.com/enrique-ramirez/jean/releases) and unzip it.**
+
+**2. Put what came out of the zip into a folder called `jean`, beside your beefweb settings.** The files go straight in. A `jean` folder holding a second `jean` folder is the usual slip, and beefweb serves nothing at all when it happens:
+
+```
+beefweb/
+├── config.json
+├── jean/
+│   ├── index.html
+│   ├── favicon.svg
+│   ├── assets/
+│   └── locales/
+```
+
+Replacing a copy you already have? Delete the old `jean` folder rather than unzipping over it, or yesterday's files pile up beside today's. If you wrote your own translation, keep `locales/custom.json`: that one is yours.
+
+**3. Open `config.json`, in that same folder, in any text editor** and tell beefweb where the `jean` folder is. Create the file if it is not there:
+
+```json
+{
+  "urlMappings": {
+    "/jean": "C:\\Users\\you\\AppData\\Roaming\\foobar2000-v2\\beefweb\\jean"
+  }
+}
+```
+
+Write the full path, not a shortened one, and on Windows double every backslash exactly as above.
+
+**4. Restart the player.** It reads that file once, at startup.
+
+**5. Open `http://<the player's computer>:8880/jean/`** in any browser in the house. The trailing slash matters.
+
+Jean now lives at `/jean`, and the interface beefweb came with is still at `/`. Nothing has been replaced, so if you hate it, delete the folder.
+<!-- /site:install -->
+
+### Where the beefweb folder is
+
+<!-- site:profiles -->
+| Setup | Location |
+|---|---|
+| foobar2000, Windows | `%APPDATA%\foobar2000-v2\beefweb\` |
+| foobar2000, **portable install** | next to the executable, at `<install dir>\profile\beefweb\` rather than `%APPDATA%` |
+| DeaDBeeF, Linux/BSD | `~/.config/deadbeef/beefweb/` |
+| DeaDBeeF, macOS | `~/Library/Preferences/deadbeef/beefweb/` |
+
+The portable case catches people out. Copying to `%APPDATA%` there fails quietly: the files land, and beefweb goes on serving the interface it came with.
+<!-- /site:profiles -->
+
+### If Jean asks for a library playlist
+
+Newer beefweb releases hand Jean the media library directly, and there is nothing to do. Older ones cannot: beefweb sees playlists and the filesystem and nothing else. When yours is one of those, Jean says so on first run and asks for a playlist that mirrors the library. The right kind is an **autoplaylist**, a live Media Library query that keeps itself in sync.
 
 In foobar2000: **Library → Search**, enter `ALL` as the query, and save the result as an autoplaylist. Name it exactly this:
 
@@ -48,50 +128,6 @@ In foobar2000: **Library → Search**, enter `ALL` as the query, and save the re
 ```
 
 The name is how Jean knows the playlist is meant for it, so it has to match. If you already have one called `Library`, Jean will spot it and offer to rename it for you. Once it matches, Jean keeps it out of its own sidebar. It stays visible in foobar2000, where you can ignore it. Every other playlist stays yours; Jean never quietly reinterprets one as something else.
-
-## Put it on your player
-
-Jean is a static build. `pnpm build` produces a `dist/` folder: an `index.html`, a favicon, a `locales/` folder and an `assets/` folder with one JS and one CSS file. Copy it where the player can read it, point beefweb at it, restart.
-
-**1. Build.**
-
-```sh
-pnpm install
-pnpm build
-```
-
-**2. Copy `dist/` somewhere the player process can read.** **Empty `assets/` first if you are replacing an older build.** Asset filenames are content-hashed, so old bundles pile up rather than being overwritten. Empty the *whole* folder only if you have not written a translation of your own; `locales/custom.json` is yours and nothing else replaces it.
-
-**3. Point beefweb at it** in `config.json`, in the beefweb profile directory. Create the file if it is not there:
-
-```json
-{
-  "urlMappings": {
-    "/jean": "C:\\Music\\jean"
-  }
-}
-```
-
-**The path must be absolute**, with backslashes escaped for JSON on Windows. Relative paths and the `webroot/` fallthrough documented on beefweb's `master` branch are not in release 0.10, where a relative path silently 404s.
-
-**4. Restart the player.** `config.json` is read at startup and never again.
-
-**5. Open `http://<player-host>:8880/jean/`**, or whatever port beefweb is set to. The trailing slash matters.
-
-Jean then lives at `/jean` while the stock UI stays at `/`. Nothing to uninstall, and an instant fallback if you hate it.
-
-### Where the beefweb profile directory is
-
-| Setup | Location |
-|---|---|
-| foobar2000, Windows | `%APPDATA%\foobar2000-v2\beefweb\` |
-| foobar2000, **portable install** | next to the executable, at `<install dir>\profile\beefweb\` rather than `%APPDATA%` |
-| DeaDBeeF, Linux/BSD | `~/.config/deadbeef/beefweb/` |
-| DeaDBeeF, macOS | `~/Library/Preferences/deadbeef/beefweb/` |
-
-The portable case catches people out. A deploy to `%APPDATA%` there fails silently: the files copy fine and beefweb goes on serving the stock UI.
-
-**There is no foobar2000 build of beefweb for macOS.** The released component carries Windows binaries and nothing else. DeaDBeeF on macOS is a different question, and does work.
 
 ### You do not have to tell Jean your port
 

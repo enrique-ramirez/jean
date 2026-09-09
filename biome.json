@@ -10,6 +10,7 @@
 			"**",
 			"!dist",
 			"!dist-demo",
+			"!dist-site",
 			"!test-results",
 			"!playwright-report",
 			"!test/fake-api/*.json",
@@ -121,7 +122,13 @@
 			}
 		},
 		{
-			"includes": ["test/**", "scripts/**", "vite.config.ts", "demo/build.ts"],
+			"includes": [
+				"test/**",
+				"scripts/**",
+				"vite.config.ts",
+				"demo/build.ts",
+				"site/build.ts"
+			],
 			"linter": {
 				"rules": {
 					"suspicious": {

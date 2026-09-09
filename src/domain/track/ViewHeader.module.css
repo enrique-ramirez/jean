@@ -79,6 +79,7 @@
 
 .title {
 	margin: 0;
+	font-family: var(--font-display);
 	font-size: clamp(1.75rem, 4.2vw, 3rem);
 	font-weight: 680;
 	line-height: 1.05;

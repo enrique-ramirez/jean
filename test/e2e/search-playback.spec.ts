@@ -616,3 +616,46 @@ test.describe("marking the row that is playing", () => {
 		await expect(marked).toContainText("Los Calientes");
 	});
 });
+
+test.describe("a search is an address", () => {
+	test("a link straight to a query arrives at its results", async ({
+		page,
+	}) => {
+		await page.goto(`/#/search/${encodeURIComponent(QUERY.text)}`);
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: QUERY.text }),
+		).toBeVisible();
+		await expect(trackRow(page, 0)).toBeAttached();
+		await expect(page.getByLabel("Search your library")).toHaveValue(
+			QUERY.text,
+		);
+	});
+
+	test("typing one puts it in the address, so a reload comes back to it", async ({
+		page,
+	}) => {
+		await search(page, QUERY.text);
+		expect(await page.evaluate(() => location.hash)).toBe(
+			`#/search/${encodeURIComponent(QUERY.text)}`,
+		);
+
+		await page.reload();
+		await expect(
+			page.getByRole("heading", { level: 1, name: QUERY.text }),
+		).toBeVisible();
+		await expect(trackRow(page, 0)).toBeAttached();
+	});
+
+	test("a query with a slash in it survives the round trip", async ({
+		page,
+	}) => {
+		await page.goto("/#/search");
+		await searchFor(page, "ac/dc");
+
+		expect(await page.evaluate(() => location.hash)).toBe(
+			`#/search/${encodeURIComponent("ac/dc")}`,
+		);
+		await expect(page.getByLabel("Search your library")).toHaveValue("ac/dc");
+	});
+});

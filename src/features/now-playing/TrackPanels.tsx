@@ -13,16 +13,15 @@ import { Artist } from "./Artist";
 import { Details } from "./Details";
 import { Lyrics } from "./Lyrics";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
+import { PANEL_TABS, type PanelTab } from "./panelRoute";
 import styles from "./TrackPanels.module.css";
 import { useLyricsRecheck } from "./useLyricsRecheck";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 import { usePanelScroll } from "./usePanelScroll";
 
-type Tab = "lyrics" | "details" | "artist";
-
 type PanelPhrase = Extract<Phrase, `panel.${string}`>;
 
-const TABS: { id: Tab; label: PanelPhrase; binding: string }[] = [
+const TABS: { id: PanelTab; label: PanelPhrase; binding: string }[] = [
 	{ id: "lyrics", label: "panel.lyrics", binding: "showLyrics" },
 	{ id: "details", label: "panel.details", binding: "showDetails" },
 	{ id: "artist", label: "panel.artist", binding: "showArtist" },
@@ -36,6 +35,8 @@ export function TrackPanels({
 	trackKey,
 	onExpand,
 	isExpanded = false,
+	tab: chosen,
+	onSelectTab,
 }: {
 	variant: "gatefold" | "screen";
 	lyrics: ParsedLyrics;
@@ -44,11 +45,13 @@ export function TrackPanels({
 	trackKey: string;
 	onExpand?: () => void;
 	isExpanded?: boolean;
+	tab: PanelTab | null;
+	onSelectTab: (tab: PanelTab) => void;
 }) {
 	const t = useTranslate();
 	const { track } = useNowPlayingTrack();
 	useLyricsRecheck();
-	const [tab, setTab] = useState<Tab>("lyrics");
+	const tab = chosen ?? PANEL_TABS[0];
 	const [direction, setDirection] = useState(0);
 	const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -61,14 +64,14 @@ export function TrackPanels({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the track settling fires this, hasLyrics is only read
 	useEffect(() => {
 		if (variant !== "gatefold" || !trackKey) return;
-		setTab(hasLyrics ? "lyrics" : "details");
-	}, [variant, trackKey]);
+		onSelectTab(hasLyrics ? "lyrics" : "details");
+	}, [variant, trackKey, onSelectTab]);
 
-	const select = (next: Tab) => {
+	const select = (next: PanelTab) => {
 		const from = TABS.findIndex((entry) => entry.id === tab);
 		const to = TABS.findIndex((entry) => entry.id === next);
 		setDirection(to > from ? 1 : -1);
-		setTab(next);
+		onSelectTab(next);
 	};
 
 	const step = (by: number) => {

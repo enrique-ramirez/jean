@@ -14,7 +14,7 @@ import {
 	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
-import { playRow, trackInfo } from "./nowPlaying.ts";
+import { expectPanelOpen, panelTab, playRow, trackInfo } from "./nowPlaying.ts";
 
 test.describe("the way in and the way out", () => {
 	test("the status bar block opens it and the chevron closes it", async ({
@@ -447,5 +447,43 @@ test.describe("the gap a skip leaves", () => {
 
 		await expect(header).toContainText("Playing from");
 		expect(await titlesSeen(page)).not.toContain("Nothing playing");
+	});
+});
+
+test.describe("the panel is part of the address", () => {
+	test.skip(({ isMobile }) => isMobile, "the panels are a sheet on a phone");
+
+	test("opening one puts it there, so the screen can be linked to", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		const screen = nowPlayingScreen(page);
+
+		await panelTab(screen, "Details").click();
+		await expect(page).toHaveURL(/#\/playing\/details$/);
+
+		await panelTab(screen, "Lyrics").click();
+		await expect(page).toHaveURL(/#\/playing\/lyrics$/);
+	});
+
+	test("a link straight to one opens on it", async ({ page }) => {
+		await playRow(page, 0);
+
+		await page.goto("/#/playing/details");
+		await expect(nowPlayingScreen(page)).toBeVisible();
+		await expectPanelOpen(nowPlayingScreen(page), "Details");
+	});
+
+	test("choosing a panel does not fill the history", async ({ page }) => {
+		await playRow(page, 0);
+		const screen = nowPlayingScreen(page);
+
+		await panelTab(screen, "Details").click();
+		await expect(page).toHaveURL(/#\/playing\/details$/);
+		await panelTab(screen, "Artist").click();
+		await expect(page).toHaveURL(/#\/playing\/artist$/);
+
+		await page.goBack();
+		await expect(screen).toBeHidden();
 	});
 });

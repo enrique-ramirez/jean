@@ -6,6 +6,7 @@ import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
+import type { PanelTab } from "./panelRoute";
 import styles from "./TrackInfo.module.css";
 import { TrackPanels } from "./TrackPanels";
 
@@ -21,6 +22,8 @@ export function TrackInfo({
 	onSeek,
 	trackKey,
 	onClose,
+	tab,
+	onSelectTab,
 }: {
 	isOpen: boolean;
 	title: string;
@@ -30,6 +33,8 @@ export function TrackInfo({
 	onSeek: (at: number) => void;
 	trackKey: string;
 	onClose: () => void;
+	tab: PanelTab | null;
+	onSelectTab: (tab: PanelTab) => void;
 }) {
 	const t = useTranslate();
 	const [exit, setExit] = useState<"up" | "down">("down");
@@ -76,6 +81,8 @@ export function TrackInfo({
 				snapshot={snapshot}
 				onSeek={onSeek}
 				trackKey={trackKey}
+				tab={tab}
+				onSelectTab={onSelectTab}
 			/>
 		</section>
 	);

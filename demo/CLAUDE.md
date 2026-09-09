@@ -32,12 +32,16 @@ It wraps rather than living in `fake-api/`: the tests want none of it.
 
 **The browser stops an idle worker** and starts a fresh one for the next request, taking the player's state with it. So the library is re-read from `library.json`, fetched rather than bundled, or the whole capture would be revalidated and re-downloaded for every change to anything else in the worker. The *writes* are journalled to the Cache API and replayed on the way up (`journal.ts`). A reload keeps your ratings and your playlists, and so does a worker the browser shut down mid-session. The journal is capped, and the chip's Reset button (or `?reset`) clears it. Position within a track is not journalled: a replay puts a track back at its start.
 
+## Frames on the site page
+
+A demo opened with `?embed` is one of the windows on the landing page rather than the demo itself, and `embed.ts` is everything that follows from it: no chip, a record already playing so a frame is not a stopped player, the settings a frame declares for itself, and a `localStorage` the frame keeps to itself. `site/CLAUDE.md` says why that last one is not the real one.
+
 ## Building it
 
 `pnpm demo` runs **two** Vite builds into `dist-demo/`, since a service worker is fetched by URL rather than imported: the app bundles normally, and `sw.ts` bundles separately to `sw.js` beside `index.html`, which is also what puts its scope at the root of the demo rather than inside `assets/`. `base` is relative, so the same output works under any prefix without a rebuild.
 
 ## Adding to it
 
-Nothing, usually. A feature becomes demoable when its routes land in `test/fake-api/` for its own specs, which is where they were going anyway. The demo needs touching only when a feature needs *state* the fake has no route for, or a seeded setting to be worth looking at, and `main.ts` holds those and holds nothing else.
+Nothing, usually. A feature becomes demoable when its routes land in `test/fake-api/` for its own specs, which is where they were going anyway. The demo needs touching only when a feature needs *state* the fake has no route for, or a seeded setting to be worth looking at, and `main.ts` holds those and holds nothing else. What a frame on the site page needs is the exception, and it lives in `embed.ts` rather than growing this file.
 
 Adding a record is one line in `albums.ts` and a re-capture, which needs a player in reach. **Nothing in the suite depends on this library**, so getting it wrong costs a rebuild rather than a red suite.

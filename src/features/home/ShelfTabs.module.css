@@ -10,6 +10,7 @@
 
 .heading {
 	margin: 0;
+	font-family: var(--font-display);
 	font-size: 1.0625rem;
 	font-weight: 600;
 	letter-spacing: -0.01em;
@@ -39,6 +40,7 @@
 	background: none;
 	color: var(--faint);
 	font: inherit;
+	font-family: var(--font-display);
 	font-size: 0.75rem;
 	font-weight: 620;
 	letter-spacing: 0.09em;

@@ -1,0 +1,637 @@
+@import "../src/shared/styles/fonts.css";
+@import "../src/shared/styles/tokens.css";
+
+:root {
+	--display: "Montserrat", var(--font);
+	--sans: "Rethink Sans", var(--font);
+	--content: 1140px;
+	--measure: 60ch;
+	--gutter: clamp(1.25rem, 5vw, 4rem);
+	--rule: 1px solid var(--border);
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font: 400 17px / 1.6 var(--sans);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 3px;
+	border-radius: 3px;
+}
+
+a {
+	color: var(--text);
+	text-decoration-color: var(--accent-line);
+	text-underline-offset: 3px;
+}
+
+a:hover {
+	text-decoration-color: var(--accent);
+}
+
+code {
+	font-family: var(--font-numeric);
+	font-size: 0.88em;
+	color: var(--text);
+	background: var(--surface);
+	padding: 0.12em 0.36em;
+	border-radius: var(--radius-sm);
+}
+
+pre {
+	max-width: min(100%, 46rem);
+	margin: 1.25rem 0;
+	padding: 1rem 1.15rem;
+	overflow-x: auto;
+	border: var(--rule);
+	border-radius: var(--radius-sm);
+	background: var(--surface-sunken);
+}
+
+pre code {
+	padding: 0;
+	background: none;
+	font-size: 0.9rem;
+	line-height: 1.6;
+}
+
+.band {
+	max-width: var(--content);
+	margin: 0 auto;
+	padding-inline: var(--gutter);
+}
+
+.masthead {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 2rem;
+	padding-block: 1.5rem;
+}
+
+.brand {
+	font: 700 1.3rem / 1 var(--display);
+	letter-spacing: -0.025em;
+	text-decoration: none;
+}
+
+.mark {
+	color: var(--accent);
+}
+
+.masthead nav {
+	display: flex;
+	gap: clamp(1rem, 3vw, 2rem);
+	font-size: 0.95rem;
+}
+
+.masthead a:not(.brand) {
+	color: var(--muted);
+	text-decoration: none;
+}
+
+.masthead a:not(.brand):hover {
+	color: var(--text);
+}
+
+.hero {
+	padding-block: clamp(2rem, 7vw, 5rem) 0;
+}
+
+h1 {
+	margin: 0 0 1.5rem;
+	font-family: var(--display);
+	font-weight: 700;
+	font-synthesis: none;
+	font-size: clamp(2.75rem, 8vw, 5.25rem);
+	line-height: 1;
+	letter-spacing: -0.035em;
+}
+
+.lede {
+	max-width: var(--measure);
+	margin: 0 0 clamp(2rem, 5vw, 3.5rem);
+	font-size: 1.2rem;
+	color: var(--muted);
+}
+
+.embed {
+	display: grid;
+	gap: 0.6rem;
+	margin: 0;
+	min-width: 0;
+}
+
+.frame {
+	position: relative;
+	overflow: hidden;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	background: var(--surface-sunken);
+	box-shadow: 0 24px 70px -24px oklch(0 0 0 / 0.75);
+}
+
+.frame iframe {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border: 0;
+}
+
+.frame--wide {
+	height: clamp(520px, 72vh, 760px);
+}
+
+.frame--column {
+	max-width: 900px;
+	height: 640px;
+}
+
+.frame-hold {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	color: var(--faint);
+	font-size: 0.9rem;
+}
+
+.frame[data-ready] .frame-hold {
+	display: none;
+}
+
+.frame-catch {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	cursor: pointer;
+}
+
+.frame[data-live] .frame-catch {
+	display: none;
+}
+
+.frame[data-live] {
+	border-color: var(--accent-line);
+}
+
+.frame-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.frame-screen {
+	color: var(--faint);
+	font-size: 0.85rem;
+	letter-spacing: 0.01em;
+}
+
+.frame-pill {
+	padding: 0.4rem 0.8rem;
+	border: var(--rule);
+	border-radius: var(--radius-pill);
+	background: var(--surface-raised);
+	box-shadow: var(--shadow);
+	color: var(--text);
+	font: 500 0.85rem / 1 var(--sans);
+	cursor: pointer;
+}
+
+.frame-pill:hover {
+	border-color: var(--border-strong);
+}
+
+.embed:has(.frame[data-live]) .frame-pill {
+	border-color: var(--accent-line);
+	color: var(--muted);
+	font-weight: 400;
+}
+
+.frame-note {
+	margin: 1rem 0 0;
+	max-width: var(--measure);
+	font-size: 0.95rem;
+	color: var(--faint);
+}
+
+.features {
+	display: grid;
+	gap: clamp(4rem, 9vw, 7rem);
+	padding-block: clamp(4.5rem, 11vw, 8rem) 0;
+}
+
+.feature {
+	display: grid;
+	gap: 1.75rem;
+}
+
+.feature-copy {
+	max-width: var(--measure);
+}
+
+.feature h2 {
+	margin: 0 0 0.5rem;
+	font-family: var(--display);
+	font-weight: 700;
+	font-synthesis: none;
+	font-size: clamp(1.85rem, 4vw, 2.75rem);
+	line-height: 1.05;
+	letter-spacing: -0.03em;
+}
+
+.feature p {
+	margin: 0;
+	font-size: 1.15rem;
+	color: var(--muted);
+}
+
+.feature p code {
+	padding: 0;
+	background: none;
+	color: var(--text);
+}
+
+.more ul {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+	gap: 1.75rem clamp(2rem, 5vw, 4rem);
+	margin: 0;
+	padding: clamp(2rem, 5vw, 3rem) 0 0;
+	border-top: var(--rule);
+	list-style: none;
+	color: var(--muted);
+}
+
+.more li {
+	max-width: 34rem;
+}
+
+.more strong {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.closing {
+	max-width: var(--measure);
+	color: var(--muted);
+}
+
+section h2.title {
+	margin: 0 0 1.5rem;
+	font-family: var(--display);
+	font-weight: 700;
+	font-synthesis: none;
+	font-size: clamp(1.85rem, 4vw, 2.75rem);
+	line-height: 1.05;
+	letter-spacing: -0.03em;
+}
+
+.needs,
+.get {
+	padding-block: clamp(4.5rem, 11vw, 8rem) 0;
+}
+
+.needs p,
+.get p {
+	max-width: var(--measure);
+	color: var(--muted);
+}
+
+.needs strong,
+.get strong {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.scroller {
+	overflow-x: auto;
+	margin: 2rem 0;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.98rem;
+	text-align: left;
+}
+
+/* A markdown table with no header still writes the row. Nothing to read, so nothing to draw. */
+thead:has(th:empty) {
+	display: none;
+}
+
+th {
+	padding: 0 1.25rem 0.7rem 0;
+	border-bottom: var(--rule);
+	color: var(--faint);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+td {
+	padding: 0.9rem 1.25rem 0.9rem 0;
+	border-top: var(--rule);
+	color: var(--muted);
+	vertical-align: top;
+}
+
+td:first-child {
+	color: var(--text);
+	white-space: nowrap;
+}
+
+td:last-child,
+th:last-child {
+	padding-inline-end: 0;
+	min-width: 22rem;
+}
+
+details {
+	max-width: var(--measure);
+	margin-block: 2.5rem;
+	padding-block-start: 1rem;
+	border-top: var(--rule);
+}
+
+summary {
+	cursor: pointer;
+	color: var(--text);
+	font-weight: 600;
+}
+
+details table {
+	font-size: 0.92rem;
+}
+
+details td:last-child {
+	min-width: 0;
+}
+
+footer {
+	margin-top: clamp(5rem, 12vw, 9rem);
+	padding-block: 2.5rem 3.5rem;
+	border-top: var(--rule);
+	color: var(--faint);
+	font-size: 0.95rem;
+}
+
+footer a {
+	color: var(--muted);
+	text-decoration: none;
+}
+
+footer a:hover {
+	color: var(--text);
+}
+
+@keyframes rise {
+	from {
+		opacity: 0;
+		transform: translateY(16px);
+	}
+}
+
+.hero .frame {
+	animation: rise 700ms var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+}
+
+@media (max-width: 720px) {
+	.masthead nav a:not(:last-child) {
+		display: none;
+	}
+
+	.masthead a {
+		white-space: nowrap;
+	}
+}
+
+@media (max-width: 760px) {
+	.scroller {
+		overflow: visible;
+	}
+
+	.scroller table,
+	.scroller tbody,
+	.scroller tr,
+	.scroller td {
+		display: block;
+	}
+
+	.scroller thead {
+		display: none;
+	}
+
+	.scroller tr {
+		padding-block: 1.1rem;
+		border-top: var(--rule);
+	}
+
+	.scroller td {
+		padding: 0 0 0.35rem;
+		border: 0;
+		white-space: normal;
+	}
+
+	.scroller td:first-child {
+		color: var(--faint);
+		font-size: 0.85rem;
+	}
+
+	.scroller td:last-child {
+		min-width: 0;
+	}
+}
+
+/* The comparison */
+
+.compare {
+	--split: 50%;
+
+	position: relative;
+	width: 100%;
+	max-width: 392px;
+	height: 740px;
+	margin-inline: auto;
+	transition: max-width 320ms var(--ease);
+}
+
+.compare[data-wide] {
+	max-width: 100%;
+	height: clamp(520px, 74vh, 740px);
+}
+
+.compare .frame {
+	position: absolute;
+	inset: 0;
+	height: 100%;
+}
+
+.compare-over {
+	position: absolute;
+	inset: 0;
+	clip-path: inset(0 0 0 var(--split));
+}
+
+.compare-line {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: var(--split);
+	z-index: 3;
+	width: 2px;
+	margin-inline-start: -1px;
+	background: var(--accent);
+	pointer-events: none;
+}
+
+.compare-line::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	width: 36px;
+	height: 36px;
+	transform: translate(-50%, -50%);
+	border: 2px solid var(--accent);
+	border-radius: 50%;
+	background: var(--bg);
+}
+
+/* A range input carries the dragging, the arrow keys and the screen reader; the line above is all
+ * of it the reader sees. Vertical gestures stay with the page, so a thumb travelling down the page
+ * still scrolls it. */
+.compare-range {
+	position: absolute;
+	inset: 0;
+	z-index: 4;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	appearance: none;
+	background: none;
+	cursor: ew-resize;
+	touch-action: pan-y;
+}
+
+.compare-range::-webkit-slider-thumb {
+	appearance: none;
+	width: 40px;
+	height: 40px;
+}
+
+.compare-range::-moz-range-thumb {
+	width: 40px;
+	height: 40px;
+	border: 0;
+	background: none;
+}
+
+.compare-range:focus-visible {
+	outline: none;
+}
+
+.compare-range:focus-visible ~ .compare-line::after {
+	outline: 2px solid var(--accent);
+	outline-offset: 4px;
+}
+
+.frame-narrow {
+	padding: 0.4rem 0.8rem;
+	border: var(--rule);
+	border-radius: var(--radius-pill);
+	background: var(--surface-raised);
+	color: var(--text);
+	font: 500 0.85rem / 1 var(--sans);
+	cursor: pointer;
+}
+
+.frame-narrow:hover {
+	border-color: var(--border-strong);
+}
+
+/* At this width the page is already the phone, and both halves draw the phone layout anyway. */
+@media (max-width: 900px) {
+	.frame-narrow {
+		display: none;
+	}
+
+	.compare {
+		height: min(80vh, 700px);
+	}
+}
+
+/* The extra */
+
+.extra {
+	padding-block: clamp(4.5rem, 11vw, 8rem) 0;
+}
+
+.eyebrow {
+	margin: 0 0 0.75rem;
+	color: var(--accent);
+	font-family: var(--display);
+	font-size: 0.8rem;
+	font-weight: 700;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.extra-panel {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+	gap: 0 clamp(2rem, 5vw, 4rem);
+	padding: clamp(1.75rem, 4vw, 3rem);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.extra-panel > .eyebrow,
+.extra-panel > .eyebrow + p {
+	grid-column: 1 / -1;
+}
+
+/* Outranks `.extra p` on specificity rather than on the order the rules happen to sit in. */
+.extra p.eyebrow {
+	color: var(--accent);
+}
+
+.extra p {
+	margin-block: 0 1rem;
+	max-width: var(--measure);
+	color: var(--muted);
+}
+
+.extra-panel > .eyebrow + p {
+	margin-block-end: 2rem;
+	font-size: 1.2rem;
+	color: var(--text);
+}
+
+.extra strong {
+	color: var(--text);
+	font-weight: 600;
+}

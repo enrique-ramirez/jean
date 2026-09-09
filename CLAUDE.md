@@ -23,6 +23,7 @@ There is one of these files beside each part of the app, for what is local to it
 | `src/features/search/CLAUDE.md` | the search control |
 | `src/app/CLAUDE.md` | the shell, breakpoints, themes, the tab, the media session |
 | `demo/CLAUDE.md` | the live demo |
+| `site/CLAUDE.md` | the landing page, and where its words come from |
 
 ## Ground rules
 

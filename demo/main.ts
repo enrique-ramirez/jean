@@ -1,7 +1,17 @@
 import { TOKEN_KEY } from "../src/shared/api/fooJean";
 import "./badge.css";
+import {
+	applySettings,
+	focusSearch,
+	isEmbed,
+	isolateStorage,
+	seedPlayback,
+} from "./embed.ts";
 
 const DISMISSED = "jean.demoChipDismissed";
+
+const params = new URLSearchParams(location.search);
+const embedded = isEmbed(params);
 
 // The token the component would have handed over at pairing, seeded so a visitor
 // arrives at a paired install. Pairing itself is a screen in Settings.
@@ -102,6 +112,8 @@ async function start() {
 			);
 		});
 
+	if (embedded) isolateStorage();
+
 	// JSON, because that is how `useStoredState` reads: a bare string parses as
 	// nothing and the app reports a component it has no token for.
 	localStorage.setItem(TOKEN_KEY, JSON.stringify(DEMO_TOKEN));
@@ -109,8 +121,16 @@ async function start() {
 		if (localStorage.getItem(key) === null)
 			localStorage.setItem(key, JSON.stringify(value));
 
+	applySettings(params);
+
+	if (embedded) await seedPlayback();
+
 	await import("../src/main");
-	chip();
+	if (!embedded) return chip();
+
+	// After the app has drawn, since the field it wants does not exist until then.
+	if (params.get("focus") === "search")
+		requestAnimationFrame(() => void focusSearch());
 }
 
 void start();

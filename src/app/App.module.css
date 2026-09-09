@@ -42,6 +42,7 @@
 .brand {
 	flex: 0 0 auto;
 	margin: 0 6px 0 2px;
+	font-family: var(--font-display);
 	font-size: 1rem;
 	font-weight: 650;
 	letter-spacing: -0.02em;

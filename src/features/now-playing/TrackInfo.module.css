@@ -92,6 +92,7 @@
 
 .title {
 	margin: 0;
+	font-family: var(--font-display);
 	font-size: 1.0625rem;
 	font-weight: 660;
 	line-height: 1.3;

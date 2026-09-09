@@ -3,6 +3,7 @@ import {
 	genreOfRoute,
 	genreRoute,
 } from "@/domain/library/genreRoute";
+import { queryOfRoute, searchRoute } from "@/domain/library/searchRoute";
 import type { Suggestion } from "@/domain/library/useLibrarySearch";
 import { albumOfRoute, albumRoute } from "@/domain/track/albumRoute";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/domain/track/artistRoute";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import { SHELVES, type Shelf } from "@/features/home/shelves";
+import { PLAYING_ROUTE } from "@/features/now-playing/panelRoute";
 import { en, type Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 
@@ -40,7 +42,7 @@ export const ROUTE = {
 	all: "all",
 	genres: GENRES_ROUTE,
 	search: "search",
-	playing: "playing",
+	playing: PLAYING_ROUTE,
 } as const;
 
 const SHELF_PREFIX = "shelf/";
@@ -58,6 +60,7 @@ export const routeOfSuggestion = (
 
 export function resolveRoute(route: string): {
 	shelf: Shelf | null;
+	searchQuery: string | null;
 	genre: string | null;
 	album: string | null;
 	albumArtist: string | null;
@@ -77,18 +80,20 @@ export function resolveRoute(route: string): {
 		: null;
 
 	const genre = genreOfRoute(route);
+	const searchQuery = queryOfRoute(route);
 	const album = albumOfRoute(route);
 	const artist = artistOfRoute(route);
 
 	return {
 		shelf,
+		searchQuery,
 		genre,
 		album: album?.album ?? null,
 		albumArtist: album?.artist ?? null,
 		artist: artist?.name ?? null,
 		artistTab: artist?.tab ?? "overview",
 		isGenres: route === ROUTE.genres,
-		isSearch: route === ROUTE.search,
+		isSearch: route === ROUTE.search || searchQuery !== null,
 		isAll: route === ROUTE.all,
 		isHome: route === "" || route === ROUTE.home,
 		isLibrary:
@@ -97,6 +102,7 @@ export function resolveRoute(route: string): {
 			route === ROUTE.all ||
 			route === ROUTE.genres ||
 			route === ROUTE.search ||
+			searchQuery !== null ||
 			route === ROUTE.playing ||
 			shelf !== null ||
 			genre !== null ||
@@ -112,7 +118,7 @@ export function routeOfPlayingSet(
 	if (playing.kind === SCRATCH_KIND.all)
 		return { ...playing, route: ROUTE.all };
 	if (playing.kind === SCRATCH_KIND.search)
-		return { ...playing, route: ROUTE.search };
+		return { ...playing, route: searchRoute(playing.label ?? "") };
 	if (playing.kind === SCRATCH_KIND.artist)
 		return playing.label
 			? { ...playing, route: artistRoute(playing.label), temporaryRow: true }

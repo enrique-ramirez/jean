@@ -34,6 +34,7 @@ import { parseLyrics } from "./lyricsFormat";
 import styles from "./NowPlaying.module.css";
 import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import { PlayToggle } from "./PlayToggle";
+import type { PanelTab } from "./panelRoute";
 import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsedSeconds } from "./SeekBar";
 import { ShuffleToggle } from "./ShuffleToggle";
@@ -85,6 +86,8 @@ export function NowPlaying({
 	onToggleQueue,
 	onOpenPlayingFrom,
 	onDismiss,
+	tab,
+	onSelectTab,
 }: {
 	isOpen: boolean;
 	isCompactViewport: boolean;
@@ -92,6 +95,8 @@ export function NowPlaying({
 	onToggleQueue: () => void;
 	onOpenPlayingFrom?: () => void;
 	onDismiss: () => void;
+	tab: PanelTab | null;
+	onSelectTab: (tab: PanelTab) => void;
 }) {
 	const t = useTranslate();
 	const isPresent = usePresence(isOpen, SLIDE_MS);
@@ -331,6 +336,8 @@ export function NowPlaying({
 							trackKey={settledPath ?? ""}
 							onExpand={() => setIsLyricsFull(true)}
 							isExpanded={isLyricsFull}
+							tab={tab}
+							onSelectTab={onSelectTab}
 						/>
 					)}
 				</div>
@@ -411,6 +418,8 @@ export function NowPlaying({
 					onSeek={(at) => seek.mutate(at)}
 					trackKey={settledPath ?? ""}
 					onClose={() => setIsInfoOpen(false)}
+					tab={tab}
+					onSelectTab={onSelectTab}
 				/>
 			) : null}
 

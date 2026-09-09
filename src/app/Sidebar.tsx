@@ -24,6 +24,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { isSearchRoute } from "@/domain/library/searchRoute";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useAutoPlaylists } from "@/domain/player/useAutoPlaylists";
 import {
@@ -120,7 +121,7 @@ export function Sidebar({
 	onSelect: (id: string) => void;
 	search: LibrarySearch;
 	isSearchOpen: boolean;
-	onOpenSearch: () => void;
+	onOpenSearch: (query?: string) => void;
 	route: string;
 	onOpenRoute: (route: string) => void;
 	playingFrom: PlayingRoute | null;
@@ -315,12 +316,11 @@ export function Sidebar({
 							icon={Search}
 							label={search.query || search.remembered}
 							count={search.hasQuery ? format.number(search.matchCount) : ""}
-							isPlaying={playingRoute === "search"}
+							isPlaying={playingRoute !== null && isSearchRoute(playingRoute)}
 							isCurrent={isSearchOpen}
-							onClick={() => {
-								if (!search.hasQuery) search.restore();
-								onOpenSearch();
-							}}
+							onClick={() =>
+								onOpenSearch(search.query || search.remembered || undefined)
+							}
 						/>
 					</>
 				) : null}

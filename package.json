@@ -8,6 +8,8 @@
 		"preview": "vite preview",
 		"demo": "node demo/build.ts",
 		"demo:preview": "vite preview --outDir dist-demo",
+		"site": "node site/build.ts",
+		"site:preview": "vite preview --outDir dist-site --port 8124",
 		"typecheck": "tsc -b",
 		"lint": "biome check",
 		"lint:fix": "biome check --write",
@@ -35,6 +37,7 @@
 		"@types/react": "^19.2.18",
 		"@types/react-dom": "^19.2.5",
 		"@vitejs/plugin-react": "^6.1.1",
+		"marked": "^18.0.12",
 		"typescript": "^7.0.2",
 		"vite": "^8.2.2"
 	}

@@ -98,7 +98,9 @@
 	--sidebar-width: 260px;
 	--queue-width: 300px;
 
-	--font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font:
+		"Rethink Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font-display: "Montserrat", var(--font);
 	--font-numeric: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
 
 	--ease: cubic-bezier(0.32, 0.72, 0, 1);

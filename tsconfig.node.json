@@ -23,6 +23,10 @@
 	"include": [
 		"vite.config.ts",
 		"demo/build.ts",
+		"site/build.ts",
+		"site/embeds.ts",
+		"site/labels.ts",
+		"site/readme.ts",
 		"scripts/localePlugin.ts",
 		"test/fake-api/**/*.ts",
 		"src/shared/api/types.ts",

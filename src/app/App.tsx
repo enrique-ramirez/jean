@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GENRES_HREF } from "@/domain/library/genreRoute";
+import { searchRoute } from "@/domain/library/searchRoute";
 import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
@@ -50,6 +51,12 @@ import { buildShelves, refsOfShelf } from "@/features/home/shelves";
 import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { LibraryListView } from "@/features/library/LibraryListView";
 import { NowPlaying } from "@/features/now-playing/NowPlaying";
+import {
+	isPlayingRoute,
+	type PanelTab,
+	panelOfRoute,
+	playingRoute as routeOfPanel,
+} from "@/features/now-playing/panelRoute";
 import { StatusBar } from "@/features/now-playing/StatusBar";
 import { useNowPlayingRating } from "@/features/now-playing/useNowPlayingRating";
 import { PlaylistView } from "@/features/playlist/PlaylistView";
@@ -153,12 +160,13 @@ function Shell() {
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
-	const isNowPlaying = route === ROUTE.playing;
+	const isNowPlaying = isPlayingRoute(route);
 	const [openedFrom, setOpenedFrom] = useState("");
 	const shellRoute = isNowPlaying ? openedFrom : route;
 
 	const {
 		shelf,
+		searchQuery,
 		genre,
 		album,
 		albumArtist,
@@ -304,15 +312,29 @@ function Shell() {
 	const restoredSearch = useRef(false);
 	const {
 		hasQuery,
+		query: committedQuery,
+		commit: commitSearch,
 		remembered: rememberedQuery,
 		restore: restoreSearch,
 	} = search;
+
 	useEffect(() => {
-		if (restoredSearch.current || !isSearch || hasQuery || !rememberedQuery)
+		if (!searchQuery || searchQuery === committedQuery) return;
+		commitSearch(searchQuery);
+	}, [searchQuery, committedQuery, commitSearch]);
+
+	useEffect(() => {
+		if (
+			restoredSearch.current ||
+			!isSearch ||
+			hasQuery ||
+			searchQuery ||
+			!rememberedQuery
+		)
 			return;
 		restoredSearch.current = true;
 		restoreSearch();
-	}, [isSearch, hasQuery, rememberedQuery, restoreSearch]);
+	}, [isSearch, hasQuery, searchQuery, rememberedQuery, restoreSearch]);
 
 	const lastPlaylistId = useRef<string | null>(null);
 	useEffect(() => {
@@ -441,7 +463,10 @@ function Shell() {
 		[openRoute],
 	);
 
-	const openSearch = useCallback(() => openRoute(ROUTE.search), [openRoute]);
+	const openSearch = useCallback(
+		(query?: string) => openRoute(query ? searchRoute(query) : ROUTE.search),
+		[openRoute],
+	);
 
 	useEffect(() => {
 		if (isSearch) setIsSearchOpen(true);
@@ -509,7 +534,7 @@ function Shell() {
 	const searchFor = useCallback(
 		(query: string) => {
 			search.commit(query);
-			openSearch();
+			openSearch(query);
 		},
 		[search.commit, openSearch],
 	);
@@ -538,6 +563,13 @@ function Shell() {
 		setIsSettingsOpen(true);
 		setSettingsSeen(true);
 	}, [settingsSeen, hasPlaylists, library.needsSetup, setSettingsSeen]);
+
+	// Replaced rather than pushed: the panel behind a track is not somewhere the reader asked to
+	// travel back through, and the track settling picks one on its own.
+	const selectPanel = useCallback(
+		(tab: PanelTab) => navigate(`/${routeOfPanel(tab)}`, { replace: true }),
+		[navigate],
+	);
 
 	const closeNowPlaying = useCallback(
 		() => navigate(`/${openedFrom}`),
@@ -648,10 +680,7 @@ function Shell() {
 						search={search}
 						library={library}
 						onChange={search.type}
-						onSubmit={() => {
-							search.commit();
-							openSearch();
-						}}
+						onSubmit={() => openSearch(search.commit().query)}
 						onSelect={(suggestion) => {
 							if (suggestion.kind !== "track") {
 								search.revert();
@@ -849,6 +878,8 @@ function Shell() {
 
 				<NowPlaying
 					isOpen={isNowPlaying}
+					tab={panelOfRoute(route)}
+					onSelectTab={selectPanel}
 					isCompactViewport={isCompactViewport}
 					isQueueOpen={isQueueOpen}
 					onToggleQueue={toggleQueue}

@@ -382,7 +382,7 @@ test.describe("a draft is not the search", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: QUERY }),
 		).toBeVisible();
-		expect(await hash(page)).toBe("#/search");
+		expect(await hash(page)).toBe(`#/search/${encodeURIComponent(QUERY)}`);
 		await expect(searchField(page)).toHaveValue(OTHER);
 	});
 

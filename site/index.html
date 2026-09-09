@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0e1013" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>Jean, a web interface for foobar2000 and DeaDBeeF</title>
+    <meta
+      name="description"
+      content="Jean is a different face for the beefweb plugin. It drives the foobar2000 or DeaDBeeF you already run, from any browser in the house, and hands you back the records you had forgotten you own."
+    />
+    <meta
+      property="og:title"
+      content="Jean, a web interface for foobar2000 and DeaDBeeF"
+    />
+    <meta
+      property="og:description"
+      content="A different face for the beefweb plugin. Your player keeps playing; Jean is what you point a browser at."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="stylesheet" href="./site.css" />
+  </head>
+  <body>
+    <header class="masthead band">
+      <a class="brand" href="#top">je<span class="mark">a</span>n</a>
+      <nav>
+        <a href="#meet-jean">Meet Jean</a>
+        <a href="#requirements">Requirements</a>
+        <a href="#install">Install</a>
+        <a href="demo/">Preview</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero band">
+        <h1>Meet Je<span class="mark">a</span>n</h1>
+        <p class="lede"><!--slot:tagline--></p>
+        <!--slot:hero-->
+        <p class="frame-note">
+          Every window on this page is the interface itself, running against a
+          library that lives in your browser tab. None of them is a screenshot.
+          Take one and click around.
+        </p>
+      </section>
+
+      <section class="features band" id="meet-jean">
+        <!--slot:sections-->
+
+        <div class="more"><!--slot:more--></div>
+        <div class="closing"><!--slot:closing--></div>
+      </section>
+
+      <section class="extra band" id="extra">
+        <div class="extra-panel">
+          <p class="eyebrow">The extra</p>
+          <!--slot:extra-->
+        </div>
+      </section>
+
+      <section class="needs band" id="requirements">
+        <h2 class="title">Requirements</h2>
+        <!--slot:requirements-->
+      </section>
+
+      <section class="get band" id="install">
+        <h2 class="title">Install</h2>
+        <!--slot:install-->
+        <details>
+          <summary>Where the beefweb folder is</summary>
+          <!--slot:profiles-->
+        </details>
+      </section>
+    </main>
+
+    <footer class="band">
+      <p>
+        je<span class="mark">a</span>n, made with a great deal of care by
+        <a href="https://github.com/enrique-ramirez">Enrique Ramírez</a>.
+      </p>
+    </footer>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,9 +1,7 @@
-# Builds the demo on every push to main and publishes it to GitHub Pages, so the
-# demo is whatever Jean is rather than whatever it was the day somebody last
-# remembered to build it. The whole player is in the bundle -- see `demo/` --
-# and Pages serves static files, which is all this needs.
+# Publishes the landing page and the demo together. `site/CLAUDE.md` is what the page is
+# built out of, and why it is built at all.
 
-name: demo
+name: site
 
 on:
   push:
@@ -15,8 +13,6 @@ permissions:
   pages: write
   id-token: write
 
-# One deploy at a time, and the newest wins: a queued build of an older commit
-# is not worth publishing.
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -27,8 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pinned here rather than through a `packageManager` field, which would
-      # also start policing every local pnpm the repo is used with.
+      # Pinned here rather than through a `packageManager` field, which would also start policing
+      # every local pnpm the repo is used with.
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -40,14 +36,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Typechecked before it is bundled, the way `pnpm build` does it: Vite
-      # never typechecks, so nothing else would.
+      # Typechecked before it is bundled, the way `pnpm build` does it: Vite never typechecks, so
+      # nothing else would.
       - run: pnpm typecheck
-      - run: pnpm demo
+      - run: pnpm test:unit
+      - run: pnpm site
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist-demo
+          path: dist-site
 
   deploy:
     needs: build

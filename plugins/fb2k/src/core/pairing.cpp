@@ -105,9 +105,8 @@ std::optional<Bytes> parseIpv6(const std::string& text) {
             const auto quad = parseIpv4(text.substr(at));
             if (!quad || count + 2 > 8)
                 return std::nullopt;
-            groups[count++] = static_cast<uint16_t>(((*quad)[0] << 8) | (*quad)[1]);
-            groups[count++] = static_cast<uint16_t>(((*quad)[2] << 8) | (*quad)[3]);
-            at = text.size();
+            groups[count++] = static_cast<uint16_t>(((*quad)[0] << 8U) | (*quad)[1]);
+            groups[count++] = static_cast<uint16_t>(((*quad)[2] << 8U) | (*quad)[3]);
             break;
         }
 
@@ -145,8 +144,8 @@ std::optional<Bytes> parseIpv6(const std::string& text) {
 
     Bytes bytes{};
     const auto place = [&bytes, &groups](size_t from, size_t to) {
-        bytes[to * 2] = static_cast<uint8_t>(groups[from] >> 8);
-        bytes[(to * 2) + 1] = static_cast<uint8_t>(groups[from] & 0xff);
+        bytes[to * 2] = static_cast<uint8_t>(groups[from] >> 8U);
+        bytes[(to * 2) + 1] = static_cast<uint8_t>(groups[from] & 0xffU);
     };
 
     if (gap) {
@@ -173,11 +172,11 @@ bool isLoopback(const Bytes& bytes) {
 }
 
 bool isUniqueLocal(const Bytes& bytes) {
-    return (bytes[0] & 0xfe) == 0xfc;
+    return (bytes[0] & 0xfeU) == 0xfcU;
 }
 
 bool isLinkLocal(const Bytes& bytes) {
-    return bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80;
+    return bytes[0] == 0xfe && (bytes[1] & 0xc0U) == 0x80U;
 }
 
 bool isV4Mapped(const Bytes& bytes) {

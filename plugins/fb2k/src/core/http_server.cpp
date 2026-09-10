@@ -476,10 +476,8 @@ struct HttpServer::Impl {
                         }
 
                         DeviceIdentity device;
-                        if (!req.body.empty()) {
-                            if (!readDeviceIdentity(req, res, device))
-                                return;
-                        }
+                        if (!req.body.empty() && !readDeviceIdentity(req, res, device))
+                            return;
 
                         const auto issued = tickets.issue(std::chrono::steady_clock::now(), device);
                         if (issued.ticket.empty()) {
@@ -768,7 +766,7 @@ struct HttpServer::Impl {
     template <typename Callback, typename Unavailable, typename... Args>
     static Unavailable askIfAvailable(const Callback& ask, Unavailable whenUnavailable,
                                       Args&&... args) {
-        return ask ? ask(std::forward<Args>(args)...) : whenUnavailable;
+        return ask ? ask(std::forward<Args>(args)...) : std::move(whenUnavailable);
     }
 
     AutoPlaylistRequest refuseChange(AutoPlaylistRequest request) {

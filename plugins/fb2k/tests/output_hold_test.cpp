@@ -97,7 +97,7 @@ DeviceIdentity laptop() {
 TEST_CASE("the player is silenced while somebody listens and given its sound back after") {
     Audience audience(8, 0s);
     FakePlayer player;
-    OutputHold hold(audience, player.seam(), true);
+    const OutputHold hold(audience, player.seam(), true);
 
     {
         const auto held = audience.join(phone(), "opus", Audience::Clock::now());
@@ -161,7 +161,7 @@ TEST_CASE("a second listener does not mute a player that is already muted for th
     FakePlayer player;
 
     {
-        OutputHold hold(audience, player.seam(), true);
+        const OutputHold hold(audience, player.seam(), true);
 
         const auto first = audience.join(phone(), "opus", Audience::Clock::now());
         REQUIRE(becomes(player.muted, true));
@@ -181,7 +181,7 @@ TEST_CASE("a player muted by hand is left alone, and left muted") {
     player.setLevel(FakePlayer::kMuted);
 
     {
-        OutputHold hold(audience, player.seam(), true);
+        const OutputHold hold(audience, player.seam(), true);
         const auto held = audience.join(phone(), "opus", Audience::Clock::now());
         REQUIRE(held);
     }
@@ -240,7 +240,7 @@ TEST_CASE("a reconnect inside the linger does not let the player back") {
     FakePlayer player;
 
     {
-        OutputHold hold(audience, player.seam(), true);
+        const OutputHold hold(audience, player.seam(), true);
 
         {
             const auto held = audience.join(phone(), "opus", Audience::Clock::now());
@@ -260,7 +260,7 @@ TEST_CASE("a reconnect inside the linger does not let the player back") {
 TEST_CASE("the player keeps its sound when muteWhileStreaming is off") {
     Audience audience(8, 0s);
     FakePlayer player;
-    OutputHold hold(audience, player.seam(), false);
+    const OutputHold hold(audience, player.seam(), false);
 
     const auto held = audience.join(phone(), "opus", Audience::Clock::now());
     REQUIRE(held);
@@ -280,7 +280,7 @@ TEST_CASE("shutting down gives the player its sound back") {
     const auto held = audience.join(phone(), "opus", Audience::Clock::now());
 
     {
-        OutputHold hold(audience, player.seam(), true);
+        const OutputHold hold(audience, player.seam(), true);
         REQUIRE(becomes(player.muted, true));
     }
 
@@ -353,7 +353,7 @@ TEST_CASE("releasing with nobody listening is not a way to suppress the next hol
 TEST_CASE("an install that never mutes offers nothing to release") {
     Audience audience(8, 0s);
     FakePlayer player;
-    OutputHold hold(audience, player.seam(), false);
+    const OutputHold hold(audience, player.seam(), false);
 
     CHECK_FALSE(hold.enabled());
 }

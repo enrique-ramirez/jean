@@ -77,7 +77,7 @@ void note(Statuses& seen, const std::string& route, const httplib::Result& respo
 
 std::string listed(const std::set<int>& statuses) {
     std::string text;
-    for (int status : statuses)
+    for (const int status : statuses)
         text += (text.empty() ? "" : " ") + std::to_string(status);
 
     return text;

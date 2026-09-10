@@ -291,7 +291,7 @@ private:
         const size_t count = ordered_.get_count();
         for (size_t base = 0; base < count && !stopping_; base += kQuerySlice) {
             const pfc::list_partial_ref_t<metadb_handle_ptr> slice(
-                ordered_, base, std::min(kQuerySlice, count - base));
+                ordered_, base, std::min<size_t>(kQuerySlice, count - base));
 
             metadb_->queryMultiParallelEx_<Worker>(
                 slice,

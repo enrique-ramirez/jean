@@ -78,7 +78,7 @@ public:
 
     void open(const std::string& ticket) {
         threads_.emplace_back(
-            [this, ticket] { server_.client().Get("/api/stream?ticket=" + ticket); });
+            [this, url = "/api/stream?ticket=" + ticket] { server_.client().Get(url); });
     }
 
     ~Listeners() {
@@ -208,7 +208,7 @@ TEST_CASE("a connection that named nothing is a row with a null name") {
     const auto body = rosterOf(server, 1);
 
     CHECK(body["devices"][0]["name"].is_null());
-    CHECK(body["devices"][0]["deviceId"].get<std::string>().rfind("#", 0) == 0);
+    CHECK(body["devices"][0]["deviceId"].get<std::string>().rfind('#', 0) == 0);
 }
 
 TEST_CASE("an unusable name costs the label and not the audio") {
@@ -257,7 +257,7 @@ TEST_CASE("the roster says whether the player was silenced for these listeners")
 TEST_CASE("the roster is behind the token, like everything but the stream itself") {
     const Source source;
     const TestServer server(servingSettings(), source.player());
-    Listeners live(server, source);
+    const Listeners live(server, source);
 
     const auto response = server.client().Get("/api/stream/listeners");
     REQUIRE(response);
@@ -267,7 +267,7 @@ TEST_CASE("the roster is behind the token, like everything but the stream itself
 TEST_CASE("leaving is noted, and says nothing about whether there was anything to end") {
     const Source source;
     const TestServer server(servingSettings(), source.player());
-    Listeners live(server, source);
+    const Listeners live(server, source);
 
     const auto response = post(server, "/api/stream/leave", R"({"deviceId":"phone-1"})");
     REQUIRE(response);

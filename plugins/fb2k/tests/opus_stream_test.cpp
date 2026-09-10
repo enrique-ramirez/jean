@@ -186,11 +186,13 @@ TEST_CASE("a second write continues the same logical stream") {
 // delivered at 1x, so a listener who starts behind stays behind. libogg's own default gathers
 // 4096 bytes, a quarter of a second at this bitrate.
 TEST_CASE("a page carries about as much audio as it was asked to") {
+    const size_t frames = size_t{OpusStream::kSampleRate} * 5;
+
     OpusStream stream(2, 128000);
-    const auto pcm = tone(OpusStream::kSampleRate * 5, 2);
+    const auto pcm = tone(frames, 2);
 
     std::vector<std::uint8_t> out;
-    stream.write(pcm.data(), OpusStream::kSampleRate * 5, out);
+    stream.write(pcm.data(), frames, out);
 
     const auto seen = scan(out);
     REQUIRE(seen.granules.size() > 4);

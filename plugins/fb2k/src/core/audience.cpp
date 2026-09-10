@@ -35,7 +35,7 @@ public:
         : state_(std::move(state)), key_(std::move(key)), connection_(connection) {}
 
     ~Membership() {
-        {
+        try {
             const std::lock_guard<std::mutex> held(state_->mutex);
 
             state_->entries.erase(std::remove_if(state_->entries.begin(), state_->entries.end(),
@@ -46,6 +46,9 @@ public:
 
             if (!stillHolding(state_->entries, key_))
                 state_->departures.push_back({key_, Clock::now() + state_->linger});
+        } catch (...) {
+            state_->changed.notify_all();
+            return;
         }
 
         state_->changed.notify_all();

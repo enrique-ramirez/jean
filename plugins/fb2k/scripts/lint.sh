@@ -21,12 +21,42 @@ esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if command -v clang-tidy >/dev/null 2>&1; then
-  tidy=clang-tidy
-elif [ -x "$(brew --prefix llvm 2>/dev/null)/bin/clang-tidy" ]; then
-  tidy="$(brew --prefix llvm)/bin/clang-tidy"
-else
-  echo "clang-tidy not found. 'brew install llvm' on macOS, or install the clang-tidy package." >&2
+# clang-tidy adds and retunes checks between releases, so an unpinned one turns a clean tree
+# dirty on the next machine and teaches everybody to ignore the gate. This is the version this
+# repository is clean against; CLANG_TIDY overrides the search for anyone who knows better.
+required_major=23
+
+# Assigned separately, because a failing command substitution inside an array literal aborts
+# the script under `set -e` before it can say what is wrong.
+kegged=""
+plain=""
+if command -v brew >/dev/null 2>&1; then
+  kegged="$(brew --prefix "llvm@$required_major" 2>/dev/null || true)"
+  plain="$(brew --prefix llvm 2>/dev/null || true)"
+fi
+
+candidates=(
+  "${CLANG_TIDY:-}"
+  "clang-tidy-$required_major"
+  "${kegged:+$kegged/bin/clang-tidy}"
+  clang-tidy
+  "${plain:+$plain/bin/clang-tidy}"
+)
+
+tidy=""
+for candidate in "${candidates[@]}"; do
+  [ -n "$candidate" ] || continue
+  command -v "$candidate" >/dev/null 2>&1 || continue
+  if [ "$("$candidate" --version | sed -n 's/.*LLVM version \([0-9][0-9]*\).*/\1/p')" = "$required_major" ]; then
+    tidy="$candidate"
+    break
+  fi
+done
+
+if [ -z "$tidy" ]; then
+  echo "clang-tidy $required_major not found. 'brew install llvm@$required_major' on macOS," >&2
+  echo "or install clang-tidy-$required_major. Set CLANG_TIDY to point at one elsewhere." >&2
+  echo "Another version will report different findings, which is why this refuses to guess." >&2
   exit 127
 fi
 

@@ -100,12 +100,12 @@ std::vector<SpecRoute> publishedRoutes() {
         if (keyAt(line, 6, "security: []") && !routes.empty())
             routes.back().needsNoToken = true;
 
-        if (const auto status = statusKeyAt(line, 8); !status.empty() && !routes.empty()) {
-            if (std::all_of(status.begin(), status.end(), [](char digit) {
-                    return std::isdigit(static_cast<unsigned char>(digit)) != 0;
-                }))
-                routes.back().statuses.insert(std::stoi(status));
-        }
+        if (const auto status = statusKeyAt(line, 8);
+            !status.empty() && !routes.empty() &&
+            std::all_of(status.begin(), status.end(), [](char digit) {
+                return std::isdigit(static_cast<unsigned char>(digit)) != 0;
+            }))
+            routes.back().statuses.insert(std::stoi(status));
     }
 
     return routes;

@@ -19,7 +19,12 @@ OutputHold::~OutputHold() {
 
     audience_.close();
     thread_.join();
-    apply(false);
+
+    try {
+        apply(false);
+    } catch (...) {
+        return;
+    }
 }
 
 void OutputHold::watch() {

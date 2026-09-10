@@ -17,6 +17,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo="$(cd "$root/../.." && pwd)"
 opus="$root/third_party/opus"
 ogg="$root/third_party/ogg"
 
@@ -52,11 +53,11 @@ codec="$root/bin/codec$suffix"
 
 assert_openapi_version_matches_code() {
   local spec_version code_version
-  spec_version=$(sed -n 's/^  version: *//p' "$root/docs/openapi.yaml" | head -1)
+  spec_version=$(sed -n 's/^  version: *//p' "$repo/contract/openapi.yaml" | head -1)
   code_version=$(sed -n 's/.*kVersion\[\] *= *"\([^"]*\)".*/\1/p' "$root/src/core/version.h")
 
   if [ "$spec_version" != "$code_version" ]; then
-    echo "docs/openapi.yaml says version '$spec_version'; src/core/version.h says '$code_version'" >&2
+    echo "contract/openapi.yaml says version '$spec_version'; plugins/fb2k/src/core/version.h says '$code_version'" >&2
     exit 1
   fi
 }

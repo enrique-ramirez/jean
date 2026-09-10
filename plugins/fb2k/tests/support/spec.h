@@ -6,7 +6,7 @@
 
 namespace jean::testing {
 
-// One operation docs/openapi.yaml publishes.
+// One operation contract/openapi.yaml publishes.
 struct SpecRoute {
     // GET, POST or DELETE, as a client would send it.
     std::string method;
@@ -20,7 +20,7 @@ struct SpecRoute {
     std::set<int> statuses;
 };
 
-// Every operation docs/openapi.yaml publishes. The spec is the contract and changes in the
+// Every operation contract/openapi.yaml publishes. The spec is the contract and changes in the
 // same pass as any route, so a test driven by this cannot quietly omit one -- and a route
 // that wants to answer without a credential has to say so in the contract to get away with
 // it, where a reviewer will see it.

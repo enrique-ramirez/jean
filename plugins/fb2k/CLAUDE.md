@@ -20,7 +20,7 @@ This file holds only what cannot be read off the code: the priorities, the rules
 - **How to write code here is `plugins/fb2k/CONTRIBUTING.md`, and *Design*, *Comments* and *Documentation* are the three that get ignored first.** Structure must earn its place, and documentation states only the current design.
 - **Write a comment only for a fact from outside this repository**, and name the system it is about. Why a value was chosen is a named constant; what the code does is the code; how the pieces fit is `plugins/fb2k/ARCHITECTURE.md`; what the player does is *Facts about the player*, below. An external fact lives in one place, and it is usually not a source file. `src/` is near zero and an exception should be a surprise; tests carry more, because why a case exists is worth saying.
 - **`src/fb2k/` is reviewed, not tested, until `scripts/build.ps1` has run.** Say which of the two you did.
-- **`docs/openapi.yaml` changes in the same pass as any change to a response shape, status code or error string.** `tests/api_contract_test.cpp` pins the key sets; it cannot write the prose.
+- **`contract/openapi.yaml`, at the repository root rather than in this tree, changes in the same pass as any change to a response shape, status code or error string.** `tests/api_contract_test.cpp` pins the key sets; it cannot write the prose.
 - **Measure, do not assume.** Nearly every plausible approach to this problem is wrong in a way that only shows up on a real install. Where a claim in the docs is a measurement, re-run it rather than reasoning about it.
 
 ## Driving the player

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { parse } from "yaml";
 
-const SPEC = new URL("../plugins/fb2k/docs/openapi.yaml", import.meta.url);
+const SPEC = new URL("./openapi.yaml", import.meta.url);
 
 export interface Schema {
 	type?: string | string[];

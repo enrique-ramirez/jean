@@ -108,6 +108,12 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 
 **One place it is kinder by accident.** `POST /api/autoplaylists` answers with `beefwebId` already filled in, because the fake made the playlist itself a line earlier. Real beefweb assigns its playlist ids lazily and answers `null` there until its own playlists are next read; `../src/shared/api/README.md` has the join and the fallback to `index`. A spec that takes the id straight off the create response passes here and fails against a real install.
 
+### Three gaps against the contract
+
+These are not on purpose and are not fixed. `contract/` found them and `../../_todo/TODO.md` carries them. `POST` and `DELETE /api/autoplaylists/{id}` have no route here at all, so they fall to the catch-all and answer `error` where the contract publishes a `detail` beside it; the `503` from `POST /api/autoplaylists` has the same gap; and `GET /api/capabilities` omits `streamFormats` when `canStream` is false, which the contract requires either way.
+
+Reproducing them takes more than pointing the suite at a default fake. Nothing serves this side on a port of its own: `main.ts` starts the beefweb server, and the agent gets a `listen` only inside the Playwright worker fixture, so no command puts `CONTRACT_URL` in front of it. The defaults then hide two of the three, since `maxAutoPlaylists` is `0`, so the create refuses and the update and the delete are skipped rather than driven, and `canStream` is `true`.
+
 ### Measuring against a real player
 
 `test/measure-library.ts` times the media library endpoints against a real player and a real library, since the questions it answers are about server-side cost and the fake has none:

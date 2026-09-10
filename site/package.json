@@ -12,9 +12,9 @@
 		"@jean/ui": "workspace:*"
 	},
 	"devDependencies": {
-		"@types/node": "^26.4.0",
-		"marked": "^18.0.12",
-		"typescript": "^7.0.2",
-		"vite": "^8.2.2"
+		"@types/node": "catalog:",
+		"marked": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:"
 	}
 }

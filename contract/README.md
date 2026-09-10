@@ -1,12 +1,17 @@
 # The contract
 
-`plugins/fb2k/docs/openapi.yaml` is the HTTP contract between Jean and whatever writes tags, keeps autoplaylists and streams audio for it. `foo_jean` is the implementation that exists; nothing in the contract is about foobar2000, and nothing here assumes it.
+`openapi.yaml` is the HTTP contract between Jean and whatever writes tags, keeps autoplaylists and streams audio for it. `foo_jean` is the implementation that exists; nothing in the contract is about foobar2000, and nothing here assumes it.
 
 This package is the two things that hang off that file: a conformance suite any implementation can be driven with, and the step that regenerates Jean's TypeScript client from it.
 
-## Where the spec lives, and why not here
+## What reads it
 
-It stays at `plugins/fb2k/docs/openapi.yaml`. Two things read it there at run time. `plugins/fb2k/tests/support/spec.cpp` opens it by taking `__FILE__` and stripping a literal path suffix, and `plugins/fb2k/scripts/test.sh` checks its `version:` against `kVersion` in `plugins/fb2k/src/core/version.h`. Both break silently if the file moves, and neither is something a grep for the filename would turn up. The plugin tree is also what gets copied to a Windows build machine, so a spec kept anywhere else would stop travelling with the build it describes.
+Four things, each of which spells the path out for itself, so a move breaks all four at once:
+
+- `spec.ts`, which inlines every `$ref` and hands the operations to both suites.
+- `pnpm types:api`, which regenerates `ui/src/shared/api/fooJeanSchema.d.ts`.
+- `plugins/fb2k/tests/support/spec.cpp`, which opens it at run time by taking `__FILE__` and stripping the literal suffix in `kSelf` to reach the repository root.
+- `plugins/fb2k/scripts/test.sh` and `test.ps1`, which climb to the repository root and check the spec's `version:` against `kVersion` in `plugins/fb2k/src/core/version.h` before either builds anything.
 
 ## Running the suite
 
@@ -56,4 +61,4 @@ pnpm types:api
 
 Nothing in the ordinary build runs it, which is how it can go stale without anybody noticing, so `.github/workflows/contract.yml` runs it and fails when the result differs from what is committed. Regenerate in the same change as any spec edit.
 
-The generator lives in this package rather than beside the file it writes because it needs a TypeScript 5. It builds its output through the compiler's node factory, and the native TypeScript 7 that the rest of the repository runs does not expose `ts.factory` at all, so the generator throws as it loads.
+**The generator is fetched by `pnpm dlx` at the pinned version rather than installed.** `openapi-typescript` builds its output through the compiler's node factory, and the native TypeScript 7 this repository runs does not expose `ts.factory` at all, so an installed copy would drag a second TypeScript into the workspace to load against.

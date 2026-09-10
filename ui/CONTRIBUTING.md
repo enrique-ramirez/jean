@@ -29,18 +29,22 @@ No player in reach? `pnpm fake` serves the in-memory one on `:8880`, and `BEEFWE
 pnpm dev            # dev server, HMR, /api proxied
 pnpm build          # typecheck, then bundle into dist/
 pnpm preview        # serve that build
-pnpm typecheck      # tsc across app, fake player and specs
+pnpm typecheck      # tsc across every package
 pnpm lint           # biome check
 pnpm lint:fix       # biome check --write
 pnpm format         # biome format --write
 pnpm test           # test:unit, then test:e2e
-pnpm test:unit      # node --test over test/unit/
+pnpm test:unit      # node --test, every package
 pnpm test:e2e       # playwright, desktop and mobile
 pnpm test:ui        # pick and watch tests interactively
 pnpm test:live      # the small suite against a real player. Needs LIVE
+pnpm test:contract  # drive a running plugin against the specification. Needs CONTRACT_URL
 pnpm fake           # the fake player alone, on :8880
 pnpm demo           # build the live demo into dist-demo/
 pnpm demo:preview   # serve that
+pnpm site           # build the landing page into site/dist-site/
+pnpm site:preview   # serve that
+pnpm types:api      # regenerate the typed client from the specification
 pnpm sync-kit       # refresh .claude/ from the ai-engineering kit
 ```
 
@@ -88,6 +92,8 @@ demo/         the live demo -- the same fake, in a service worker
 4. A file whose home is unclear is usually in the wrong tier. Shared infrastructure is not a feature; a domain concept is not one view of it.
 
 [ARCHITECTURE.md](./ARCHITECTURE.md) is why those boundaries sit there, where state lives, and what the two optional-component seams are.
+
+That tree is `ui/`, and this file governs it. Three siblings share the repository: `site/` is the landing page, its own package, built by `pnpm site` and published to Pages with the demo underneath it; `contract/` is the API specification every plugin implements and the conformance suite that measures one; `plugins/fb2k/` is the foobar2000 component, which is C++ and has a `plugins/fb2k/CONTRIBUTING.md` of its own. Commands run from the repository root and the root `package.json` delegates them, so nothing here needs running from inside `ui/`.
 
 ## 5. Design
 

@@ -102,9 +102,9 @@ This boundary pays twice. A decision moved into `core/` becomes coverable by a s
 | `plugins/fb2k/ARCHITECTURE.md` | how the pieces fit, which thread owns what, why the boundaries sit there |
 | `plugins/fb2k/CLAUDE.md` | what an agent cannot read off the code: the priorities, the rules about touching a real player, and the measured facts that constrain the design |
 | `plugins/fb2k/src/README.md` | the source tree, file by file |
-| `plugins/fb2k/docs/openapi.yaml` | the HTTP contract, hand-written, and what clients generate types from |
+| `contract/openapi.yaml` | the HTTP contract, hand-written, and what clients generate types from |
 
-`plugins/fb2k/docs/openapi.yaml` is the contract. A change to a response shape, a status code or an error string that does not change the spec in the same diff is a defect whatever else it is. Check every route list, status code, default and field name against it, and say which side is wrong rather than assuming it is the prose.
+`contract/openapi.yaml` is the contract. A change to a response shape, a status code or an error string that does not change the spec in the same diff is a defect whatever else it is. Check every route list, status code, default and field name against it, and say which side is wrong rather than assuming it is the prose.
 
 ### Where an external fact belongs
 

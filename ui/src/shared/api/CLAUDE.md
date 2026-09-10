@@ -10,6 +10,6 @@ The beefweb client, the wire types, and the one discovery both optional-componen
 
 ## Types
 
-**`foo_jean`'s types are generated from the component's OpenAPI document**, which is the contract: `npx openapi-typescript ../foo_jean/docs/openapi.yaml`, committed, with no codegen step in `pnpm build`, which would make the build depend on a sibling repo being checked out.
+**`foo_jean`'s types are generated from `contract/openapi.yaml`**, which is the contract: `pnpm types:api` writes `fooJeanSchema.d.ts` and it is committed, with no codegen step in `pnpm build`. `contract/README.md` is how the committed copy is kept honest.
 
 **`types.ts` is hand-written and is the contract for beefweb.** Deliberately not generated: beefweb's own OpenAPI document describes 0.10, and the parts Jean leans on hardest, the media library API and fields that are *absent* rather than empty, are either newer than it or not expressible in it. The fake player is checked against these same types, which is the point: a response shape drifting from what the app expects is the bug the suite exists to catch.

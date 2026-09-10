@@ -8,7 +8,7 @@ openapi: 3.1.0
 #
 #   pnpm types:api
 #
-# `tests/api_contract_test.cpp` pins the exact key set of every document the component produces. `scripts/test.sh` checks that the version below matches `src/core/version.h`.
+# `plugins/fb2k/tests/api_contract_test.cpp` pins the exact key set of every document the component produces. `plugins/fb2k/scripts/test.sh` checks that the version below matches `plugins/fb2k/src/core/version.h`.
 
 info:
   title: foo_jean

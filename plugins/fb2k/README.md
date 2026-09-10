@@ -100,10 +100,10 @@ The page is stricter than the file parser, deliberately: a hand-edited file must
 
 ## The API
 
-**[`docs/openapi.yaml`](docs/openapi.yaml) is the contract.** Every shape, status and error string is written down there, hand-written, and a typed client is one command away. The component does not serve it; fetch it from the repository.
+**[`contract/openapi.yaml`](../../contract/openapi.yaml) is the contract.** Every shape, status and error string is written down there, hand-written, and a typed client is one command away. The component does not serve it; fetch it from the repository.
 
 ```sh
-npx openapi-typescript docs/openapi.yaml -o fooJean.d.ts
+npx openapi-typescript contract/openapi.yaml -o fooJean.d.ts
 ```
 
 | route | what it does |
@@ -209,11 +209,13 @@ scripts/lint.sh                           # clang-tidy over src/core/ and tests/
 
 On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
 
+`plugins/fb2k/CONTRIBUTING.md` rule 11 is what a machine that runs the suite needs beyond this directory.
+
 `--sanitize=` takes `address`, `thread` or `leaks`. Each instrumented build keeps its own object directory under `bin/`, so a plain run and an instrumented one never contaminate each other. `leaks` is macOS's own tool rather than LeakSanitizer, which has no implementation on this platform, and it inspects the ordinary uninstrumented build because it refuses an ASan heap; it is a conservative scanner, so a clean run promises less than a green LeakSanitizer run would, and it exists on macOS alone.
 
 The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover lives in `src/core/`, which compiles standalone. They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about a bearer token or a CORS header is about the bytes a browser would see. Run the suite more than once before believing it; `tests/support/test_server.cpp` retries a port race.
 
-Covered: authentication, CORS and preflight, every way a hand-edited `config.json` can be wrong, the discovery record, the listener and its port collision, pairing, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, and every key set and status `docs/openapi.yaml` publishes.
+Covered: authentication, CORS and preflight, every way a hand-edited `config.json` can be wrong, the discovery record, the listener and its port collision, pairing, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, and every key set and status `contract/openapi.yaml` publishes.
 
 **Nothing here covers `src/fb2k/`.** That half needs the SDK and compiles for the first time on the build machine.
 
@@ -226,7 +228,6 @@ Three end-to-end checks run against a real player. `scripts/verify-tag-write.ps1
 ```
 src/core/     the portable half. Knows nothing about foobar2000
 src/fb2k/     everything that touches the SDK, or Windows
-docs/         openapi.yaml -- the HTTP contract, and what clients generate types from
 tests/        the suite, which runs against src/core/ on any machine
 third_party/  cpp-httplib, nlohmann/json, doctest -- single MIT headers, committed.
               libopus and libogg land here too, fetched rather than committed
@@ -236,6 +237,8 @@ bin/, obj/, dist/   build output and the packaged component (gitignored)
 ```
 
 `plugins/fb2k/ARCHITECTURE.md` is how the pieces fit and which thread owns what, `src/README.md` maps the source tree file by file, `plugins/fb2k/CONTRIBUTING.md` is how to write code in it, and `third_party/README.md` carries the vendored versions.
+
+The HTTP contract is not in this tree. `contract/openapi.yaml` sits at the repository root, beside the conformance suite that measures an implementation against it.
 
 ## Licence
 

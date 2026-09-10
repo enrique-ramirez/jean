@@ -12,7 +12,7 @@ namespace jean::testing {
 
 namespace {
 
-constexpr char kSelf[] = "tests/support/spec.cpp";
+constexpr char kSelf[] = "plugins/fb2k/tests/support/spec.cpp";
 
 // The compiler is given absolute source paths, so this finds the specification without the
 // test binary having to be started from any particular directory. __FILE__ carries whichever
@@ -24,7 +24,7 @@ std::string specPath() {
     const auto tail = self.rfind(kSelf);
 
     REQUIRE_MESSAGE(tail != std::string::npos, "cannot locate the repository from ", self);
-    return self.substr(0, tail) + "docs/openapi.yaml";
+    return self.substr(0, tail) + "contract/openapi.yaml";
 }
 
 bool startsWith(const std::string& line, const std::string& prefix) {
@@ -57,7 +57,7 @@ std::string statusKeyAt(const std::string& line, size_t indent) {
 // of key: the file is written by hand and this is the whole grammar it uses.
 std::vector<SpecRoute> publishedRoutes() {
     std::ifstream file(specPath());
-    REQUIRE_MESSAGE(file.is_open(), "cannot read docs/openapi.yaml");
+    REQUIRE_MESSAGE(file.is_open(), "cannot read contract/openapi.yaml");
 
     std::vector<SpecRoute> routes;
     std::string path;

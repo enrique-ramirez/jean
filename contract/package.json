@@ -4,17 +4,16 @@
 	"type": "module",
 	"scripts": {
 		"typecheck": "tsc -b",
-		"types:api": "openapi-typescript ../plugins/fb2k/docs/openapi.yaml --output ../ui/src/shared/api/fooJeanSchema.d.ts",
+		"types:api": "pnpm dlx openapi-typescript@7.13.0 ./openapi.yaml --output ../ui/src/shared/api/fooJeanSchema.d.ts",
 		"test:unit": "node --test \"test/spec.test.ts\"",
 		"test:conformance": "node --test \"test/conformance.test.ts\""
 	},
 	"dependencies": {
-		"yaml": "^2.9.0"
+		"yaml": "catalog:"
 	},
 	"devDependencies": {
 		"@jean/ui": "workspace:*",
-		"@types/node": "^26.4.0",
-		"openapi-typescript": "^7.13.0",
-		"typescript": "^5.9.3"
+		"@types/node": "catalog:",
+		"typescript": "catalog:"
 	}
 }

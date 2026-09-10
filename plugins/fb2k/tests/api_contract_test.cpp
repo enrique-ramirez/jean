@@ -1,5 +1,5 @@
 // A tripwire on the wire format: these pin the exact key set of every document this component
-// publishes, so a field added, renamed or dropped without editing docs/openapi.yaml turns one
+// publishes, so a field added, renamed or dropped without editing contract/openapi.yaml turns one
 // red. The last case does the same for the statuses of the stream routes, by driving them and
 // comparing what came back against what the specification says they answer. Anything about
 // behaviour belongs in the other files.
@@ -39,7 +39,7 @@ Keys keysOf(const std::string& document) {
     return keys;
 }
 
-constexpr char kUpdateSpec[] = "shape changed -- update docs/openapi.yaml to match";
+constexpr char kUpdateSpec[] = "shape changed -- update contract/openapi.yaml to match";
 
 // One byte, once, so a stream ends by itself rather than holding a thread.
 class OneChunk : public StreamSession {
@@ -85,19 +85,19 @@ std::string listed(const std::set<int>& statuses) {
 
 }  // namespace
 
-TEST_CASE("GET /status is the shape docs/openapi.yaml publishes") {
+TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
     CHECK(keysOf(statusDocument()) == Keys{"name", "version", "apiVersion", "authRequired"});
 }
 
-TEST_CASE("GET /capabilities is the shape docs/openapi.yaml publishes") {
+TEST_CASE("GET /capabilities is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
     CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true)) ==
           Keys{"apiVersion", "allowedFields", "canWrite", "maxAutoPlaylists",
                "canCreateAutoPlaylists", "canStream", "streamFormats", "canMuteWhileStreaming"});
 }
 
-TEST_CASE("a listener roster is the shape docs/openapi.yaml publishes") {
+TEST_CASE("a listener roster is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     AudienceMember member;
@@ -111,17 +111,17 @@ TEST_CASE("a listener roster is the shape docs/openapi.yaml publishes") {
           Keys{"devices", "connections", "maxConnections", "playerMuted"});
 }
 
-TEST_CASE("a stream ticket is the shape docs/openapi.yaml publishes") {
+TEST_CASE("a stream ticket is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
     CHECK(keysOf(streamTicketDocument("ticket-1", 120)) == Keys{"ticket", "expiresIn"});
 }
 
-TEST_CASE("a pairing answer is the shape docs/openapi.yaml publishes") {
+TEST_CASE("a pairing answer is the shape contract/openapi.yaml publishes") {
     // The one document carrying the token, read by a caller that has proved only its address.
     CHECK(keysOf(pairedDocument(std::string(kToken))) == Keys{"token", "apiVersion"});
 }
 
-TEST_CASE("a stream timeline is the shape docs/openapi.yaml publishes") {
+TEST_CASE("a stream timeline is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     StreamMark mark;
@@ -136,7 +136,7 @@ TEST_CASE("a stream timeline is the shape docs/openapi.yaml publishes") {
           Keys{"at", "path", "subsong", "position"});
 }
 
-TEST_CASE("a successful write is the shape docs/openapi.yaml publishes") {
+TEST_CASE("a successful write is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     TagWrite write;
@@ -146,7 +146,7 @@ TEST_CASE("a successful write is the shape docs/openapi.yaml publishes") {
     CHECK(keysOf(tagWrittenDocument(write)) == Keys{"written", "path", "subsong", "fields"});
 }
 
-TEST_CASE("a refusal is the shape docs/openapi.yaml publishes") {
+TEST_CASE("a refusal is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     const auto refused =
@@ -160,12 +160,12 @@ TEST_CASE("a refusal is the shape docs/openapi.yaml publishes") {
     CHECK(keysOf(tagRefusedDocument(malformed)) == Keys{"written", "error", "detail"});
 }
 
-TEST_CASE("a failure is the shape docs/openapi.yaml publishes") {
+TEST_CASE("a failure is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
     CHECK(keysOf(tagFailedDocument(TagWriteOutcome::trackNotKnown)) == Keys{"written", "error"});
 }
 
-TEST_CASE("the discovery record is the shape docs/openapi.yaml publishes") {
+TEST_CASE("the discovery record is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     CHECK(keysOf(discoveryDocument(servingSettings(), listeningStatus())) ==
@@ -180,7 +180,7 @@ TEST_CASE("the discovery record is the shape docs/openapi.yaml publishes") {
                "portInUse"});
 }
 
-TEST_CASE("a playlist annotation is the shape docs/openapi.yaml publishes") {
+TEST_CASE("a playlist annotation is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     PlaylistAnnotation playlist;
@@ -196,7 +196,7 @@ TEST_CASE("a playlist annotation is the shape docs/openapi.yaml publishes") {
     CHECK(keysOf(playlistsDocument({playlist})) == Keys{"playlists"});
 }
 
-TEST_CASE("what foo_jean stored about a playlist is the shape docs/openapi.yaml publishes") {
+TEST_CASE("what foo_jean stored about a playlist is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     PlaylistAnnotation playlist;
@@ -206,7 +206,7 @@ TEST_CASE("what foo_jean stored about a playlist is the shape docs/openapi.yaml 
     CHECK(keysOf(managed.dump()) == Keys{"key", "query", "sort", "forceSort"});
 }
 
-TEST_CASE("the other playlist answers are the shapes docs/openapi.yaml publishes") {
+TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     CHECK(keysOf(playlistRemovedDocument(kPlaylistId)) == Keys{"removed", "id"});
@@ -223,7 +223,7 @@ TEST_CASE("the other playlist answers are the shapes docs/openapi.yaml publishes
           Keys{"valid", "error", "matches", "libraryEnabled"});
 }
 
-TEST_CASE("the playlist statuses docs/openapi.yaml documents are the ones we answer with") {
+TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we answer with") {
     INFO(kUpdateSpec);
 
     CHECK(httpStatusFor(PlaylistRefusal::malformedBody) == 400);
@@ -246,7 +246,7 @@ TEST_CASE("the playlist statuses docs/openapi.yaml documents are the ones we ans
 }
 
 // The spec enumerates these, so a client may switch on them: renaming one moves kApiVersion.
-TEST_CASE("the error strings docs/openapi.yaml enumerates are the ones we send") {
+TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we send") {
     INFO(kUpdateSpec);
 
     CHECK(describe(TagWriteRefusal::malformedBody) == "malformed request");
@@ -278,7 +278,7 @@ TEST_CASE("the error strings docs/openapi.yaml enumerates are the ones we send")
     CHECK(describe(PlaylistOutcome::unavailable) == "autoplaylists are not available");
 }
 
-TEST_CASE("the statuses docs/openapi.yaml documents are the ones we answer with") {
+TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer with") {
     INFO(kUpdateSpec);
 
     CHECK(httpStatusFor(TagWriteRefusal::malformedBody) == 400);
@@ -294,7 +294,7 @@ TEST_CASE("the statuses docs/openapi.yaml documents are the ones we answer with"
     CHECK(httpStatusFor(TagWriteOutcome::unavailable) == 503);
 }
 
-TEST_CASE("the versions docs/openapi.yaml states are the versions we report") {
+TEST_CASE("the versions contract/openapi.yaml states are the versions we report") {
     INFO(kUpdateSpec);
     CHECK(std::string(kVersion) == "0.1.0");
     CHECK(kApiVersion == 1);
@@ -304,7 +304,7 @@ TEST_CASE("the versions docs/openapi.yaml states are the versions we report") {
 // are where the two drifted apart. Every refusal each of them can make is driven here and the
 // answer compared with what the specification publishes, so the code and the spec are compared
 // by something other than a reader.
-TEST_CASE("no stream route answers a status docs/openapi.yaml does not document") {
+TEST_CASE("no stream route answers a status contract/openapi.yaml does not document") {
     INFO(kUpdateSpec);
 
     const TestServer serving(servingSettings(), wiredUp());

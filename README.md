@@ -170,4 +170,6 @@ Everything is reachable from the keyboard on desktop, and `?` shows you what is 
 
 ## Working on Jean
 
-[CONTRIBUTING.md](./ui/CONTRIBUTING.md) is the development loop and the conventions. [ARCHITECTURE.md](./ui/ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do. [ui/src/shared/api/README.md](ui/src/shared/api/README.md) is the reference for what the player answers. [test/README.md](./ui/test/README.md) is the suite and the fake player it runs against.
+Jean is a pnpm workspace. `ui/` is the app. `site/` is the landing page. `contract/` is the HTTP specification a player plugin implements and the suite that measures one against it. `plugins/fb2k/` is `foo_jean` itself, in C++, with a `CONTRIBUTING.md` of its own.
+
+[ui/CONTRIBUTING.md](./ui/CONTRIBUTING.md) is the development loop and the conventions. [ui/ARCHITECTURE.md](./ui/ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do. [ui/src/shared/api/README.md](ui/src/shared/api/README.md) is the reference for what the player answers. [ui/test/README.md](./ui/test/README.md) is the suite and the fake player it runs against.

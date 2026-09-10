@@ -2,3 +2,21 @@ packages:
   - ui
   - site
   - contract
+
+catalog:
+  '@biomejs/biome': 2.5.11
+  '@playwright/test': 1.62.1
+  '@tanstack/react-hotkeys': 0.10.0
+  '@tanstack/react-query': 5.102.8
+  '@tanstack/react-virtual': 3.14.10
+  '@types/node': 26.4.0
+  '@types/react': 19.2.18
+  '@types/react-dom': 19.2.5
+  '@vitejs/plugin-react': 6.1.1
+  lucide-react: 1.37.0
+  marked: 18.0.12
+  react: 19.2.8
+  react-dom: 19.2.8
+  typescript: 7.0.2
+  vite: 8.2.2
+  yaml: 2.9.0

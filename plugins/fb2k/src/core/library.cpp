@@ -96,14 +96,6 @@ std::string frame(const json& header, const std::string& blob) {
     return message;
 }
 
-bool beforeInLibrary(const TrackOrder& a, const TrackOrder& b) {
-    if (a.relativePath != b.relativePath)
-        return a.relativePath < b.relativePath;
-    if (a.subsong != b.subsong)
-        return a.subsong < b.subsong;
-    return a.canonicalPath < b.canonicalPath;
-}
-
 void ensureEveryIdResolves(Column& column) {
     if (!column.ids.empty() && column.dictionary.values.empty())
         column.dictionary.intern("");
@@ -184,12 +176,19 @@ RelativePathParts splitRelativePath(const std::string& path) {
     return {path.substr(0, separator + 1), path.substr(separator + 1)};
 }
 
-std::vector<size_t> ordinalOrder(const std::vector<TrackOrder>& tracks) {
+std::vector<size_t> ordinalOrder(const std::vector<TrackOrder>& tracks,
+                                 const PathComparison& comparePaths) {
     std::vector<size_t> order(tracks.size());
     std::iota(order.begin(), order.end(), size_t{0});
 
-    std::sort(order.begin(), order.end(),
-              [&tracks](size_t a, size_t b) { return beforeInLibrary(tracks[a], tracks[b]); });
+    std::sort(order.begin(), order.end(), [&tracks, &comparePaths](size_t a, size_t b) {
+        const int byPath = comparePaths(a, b);
+        if (byPath != 0)
+            return byPath < 0;
+        if (tracks[a].subsong != tracks[b].subsong)
+            return tracks[a].subsong < tracks[b].subsong;
+        return tracks[a].canonicalPath < tracks[b].canonicalPath;
+    });
 
     return order;
 }

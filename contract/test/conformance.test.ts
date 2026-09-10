@@ -23,6 +23,7 @@ const context: Context = {
 	playlistId: null,
 	managed: null,
 	ticket: null,
+	revision: null,
 };
 
 function address(operation: Operation, attempt: Attempt) {

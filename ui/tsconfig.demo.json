@@ -21,7 +21,8 @@
 		"test/fake-api/http.ts",
 		"test/fake-api/routes.ts",
 		"test/fake-api/state.ts",
-		"test/fake-api/fooJean.ts"
+		"test/fake-api/fooJean.ts",
+		"test/fake-api/jlib.ts"
 	],
 	// The worker has its own scope below, and `build.ts` is node's.
 	"exclude": ["demo/sw.ts", "demo/build.ts"]

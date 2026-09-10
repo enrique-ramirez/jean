@@ -123,6 +123,7 @@ npx openapi-typescript contract/openapi.yaml -o fooJean.d.ts
 | `GET /api/library/export` | The whole library, in the columns the request declares, as one binary snapshot. |
 | `GET /api/library/changes` | What moved since a revision, per column. |
 | `POST /api/library/refresh` | Walk the library again and replace the snapshot. Rate limited. |
+| `GET /api/artwork` | The front cover of one library track, addressed by its library-relative path. |
 | `POST /api/stream/ticket` | A short-lived credential for one stream connection, and where a device says who it is. |
 | `GET /api/stream` | Listen. Takes a ticket in the query string, and `?format=opus\|aac`. |
 | `GET /api/stream/timeline` | What is audible, in the stream's own clock. |
@@ -172,13 +173,23 @@ Asking takes two steps, because the first build is the slow one. Ask, and take e
 
 The body is a four-character tag, a length, a JSON header and a blob: one dictionary of strings and one array of ids per column, every offset four-byte aligned so that a typed-array view over the buffer is legal. `contract/openapi.yaml` carries the whole of it. Read it as an `ArrayBuffer` rather than as text. A snapshot past the component's ceiling answers `413` rather than a truncated body.
 
-**An ordinal is a track's position in the snapshot, and it is the only handle these routes use.** Ordinals are in library-relative path order, ties broken by subsong and then by the player's own canonical path, so the order is total and does not shuffle between rebuilds. An ordinal means nothing across a `structure` change.
+**An ordinal is a track's position in the snapshot, and it is the only handle these routes use.** Ordinals are in library-relative path order, compared the way foobar2000 compares paths itself rather than byte by byte: a run of digits counts as a number and case does not count at all, so `2 Mello` comes before `10cc`. Ties are broken by subsong and then by the player's own canonical path, so the order is total and does not shuffle between rebuilds. An ordinal means nothing across a `structure` change.
 
 Both generations sit in `GET /api/library`. `structure` moves when tracks are added or removed, and a client seeing it move exports again, because ordinals have shifted under it. `revision` moves when rows change in place, and a client seeing only that asks `GET /api/library/changes?since=…` for a patch. A delta names the columns that moved and carries their changed ids and the dictionary entries added since, so a play count going up says nothing about titles. A different `structure` is a `409`, and a `since` older than the retained window is a `410`.
 
 **Two mechanisms keep the snapshot current, and neither is a promise.** foobar2000's own change notifications cover a real tag change, wherever it came from, and every track is re-read as it stops playing, which is what catches a play count that no component announced. A component keeping its data privately and publishing it through a title-formatting hook can leave a value stale until that track next plays, and foobar2000's own playlist columns show the same stale value. `POST /api/library/refresh` is the hand on the wheel, and it is rate limited.
 
 None of these routes is reachable without the bearer token. A library says where somebody keeps their files and what they listen to.
+
+### Artwork
+
+`GET /api/artwork?track=…` is one front cover. The address is a track's library-relative path, `directory` and `filename` from the snapshot concatenated, and it is a lookup key rather than a path: the component matches it against what the player reported and joins it to nothing, so there is no file outside the media library to name. An address the snapshot does not carry is a `404` and never another record's sleeve.
+
+**A relative path rather than an ordinal, so one album is one URL for as long as the file is there.** An ordinal means nothing across a `structure` change, so a URL built from one would have to name the generation and would then change every time a track was added anywhere in the library, emptying a browser's cache of every cover at once. A client points every row of a record at the one address and lets the browser store, deduplicate and revalidate it.
+
+`Cache-Control: no-cache` says to keep the bytes and ask before drawing them again. The `ETag` is a fold over the size and modification time of whichever file the picture came from, taken with a `stat`: a conditional request costs that stat and never a read or a decode. **It is also the only thing that sees a folder image change**, which foobar2000 announces to nobody.
+
+The body is `image/jpeg`, `image/png`, `image/gif`, `image/webp` or `image/bmp`, decided from the bytes rather than from a filename, and anything else is a `404`. Covers are never compressed. A picture past 16 MiB is a `413`. Requests are bounded by a burst of 300 refilling one every 50 milliseconds, which a grid of covers never meets and a looping client does.
 
 ### Streaming
 
@@ -237,7 +248,7 @@ On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\tes
 
 The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover lives in `src/core/`, which compiles standalone. They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about a bearer token or a CORS header is about the bytes a browser would see. Run the suite more than once before believing it; `tests/support/test_server.cpp` retries a port race.
 
-Covered: authentication, CORS and preflight, every way a hand-edited `config.json` can be wrong, the discovery record, the listener and its port collision, pairing, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, and every key set and status `contract/openapi.yaml` publishes.
+Covered: authentication, CORS and preflight, every way a hand-edited `config.json` can be wrong, the discovery record, the listener and its port collision, pairing, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
 
 **Nothing here covers `src/fb2k/`.** That half needs the SDK and compiles for the first time on the build machine.
 

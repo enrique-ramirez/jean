@@ -294,6 +294,17 @@ export const en = {
 	"library.noAlbum": "That record is not in your library.",
 	"library.noArtist": "Nothing by {artist} in your library.",
 	"library.noGenre": "Nothing tagged {genre} in your library.",
+	"library.readDetail": "{message} ({detail})",
+	"library.readFailed": "foo_jean could not answer for the library.",
+	"library.readRefused":
+		"foo_jean would not accept the columns Jean asked for.",
+	"library.readTimedOut":
+		"foo_jean is still building the library. Give it a moment and try again.",
+	"library.readTooLarge":
+		"This library is larger than foo_jean will send in one piece.",
+	"library.readUnauthorized": "foo_jean did not accept this device's token.",
+	"library.readUnavailable": "foo_jean is not serving the media library.",
+	"library.readUnreachable": "Could not reach foo_jean.",
 	"library.reading": "Reading your library…",
 	"librarySetup.candidate":
 		"You already have a playlist called {playlist}. If that is your library, Jean can rename it.",

@@ -7,7 +7,6 @@ import { ArtistLinks } from "./ArtistLinks";
 import { coverIdentity, FIELD, featuring, sameTagValue, value } from "./fields";
 import type { AlbumRun } from "./grouping";
 import type { TrackRenderProps } from "./listTypes";
-import { refAt } from "./project";
 import { TrackRow } from "./TrackRow";
 
 export const ALBUM_COVER = 160;
@@ -16,7 +15,6 @@ export const ALBUM_COVER_COMPACT = 72;
 export function AlbumGroup({
 	group,
 	rows,
-	indices,
 	source,
 	columns,
 	template,
@@ -32,22 +30,21 @@ export function AlbumGroup({
 }: TrackRenderProps & { group: AlbumRun }) {
 	const t = useTranslate();
 	const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER;
-	const itemIndexOf = (position: number) => refAt(indices, position);
 
 	const runs = group.discs ?? [
 		{ number: null, start: group.start, count: group.count },
 	];
 
 	const track = (index: number) => {
-		const artist = value(rows[index], FIELD.artist);
+		const artist = value(rows.at(index), FIELD.artist);
 		const guest = featuring(artist, group.albumArtist);
 
 		return (
 			<TrackRow
 				key={index}
-				row={rows[index]}
+				rows={rows}
 				index={index}
-				itemIndex={itemIndexOf(index)}
+				itemIndex={rows.ref(index)}
 				source={source}
 				columns={columns}
 				template={template}
@@ -70,8 +67,8 @@ export function AlbumGroup({
 		<section className={styles.group} data-compact={isCompactViewport}>
 			<div className={styles.aside}>
 				<Artwork
-					src={source.artworkUrl(itemIndexOf(group.start))}
-					identity={coverIdentity(rows[group.start])}
+					src={source.artworkUrl(rows.ref(group.start))}
+					identity={coverIdentity(rows.at(group.start))}
 					size={coverSize}
 					className={styles.art}
 					alt={t("album.coverAlt", { album: group.album })}

@@ -8,10 +8,10 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { TrackColumns } from "@/shared/api/types";
 import { Button } from "@/shared/ui/Button";
 import { Finder } from "./Finder";
 import type { TrackBrowserHandle } from "./listTypes";
+import type { TrackRows } from "./project";
 import styles from "./useFinder.module.css";
 import { search, useSearchIndex } from "./useSearchIndex";
 
@@ -20,7 +20,7 @@ export function useFinder({
 	browserRef,
 	label,
 }: {
-	rows: TrackColumns[];
+	rows: TrackRows;
 	browserRef: RefObject<TrackBrowserHandle | null>;
 	label: string;
 }) {
@@ -33,8 +33,8 @@ export function useFinder({
 	const deferredQuery = useDeferredValue(query);
 	const index = useSearchIndex(rows, isFinding);
 	const { matches, results } = useMemo(
-		() => search(index, deferredQuery),
-		[index, deferredQuery],
+		() => search(index, rows, deferredQuery),
+		[index, rows, deferredQuery],
 	);
 
 	const inputRef = useRef<HTMLInputElement | null>(null);

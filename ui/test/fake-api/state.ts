@@ -4,6 +4,13 @@ import type {
 	PlaylistInfo,
 } from "../../src/shared/api/types.ts";
 import { type FooJeanOptions, fooJeanState } from "./fooJean.ts";
+import {
+	changedColumn,
+	type Dictionary,
+	dictionary,
+	encodeJlib,
+	wholeColumn,
+} from "./jlib.ts";
 import capturedLibrary from "./library.json" with { type: "json" };
 import capturedPlayer from "./player.json" with { type: "json" };
 
@@ -230,6 +237,9 @@ const columnsFor = (track: Track, expressions: string[]) =>
 
 const pathKey = (value: unknown) => String(value).replace(/\\/g, "/");
 
+const byLibraryPath = (a: LibraryEntry, b: LibraryEntry) =>
+	pathKey(a.path).localeCompare(pathKey(b.path)) || a.subsong - b.subsong;
+
 const browseOrder = (a: Track, b: Track) =>
 	String(evaluate(a, "%album artist%")).localeCompare(
 		String(evaluate(b, "%album artist%")),
@@ -252,6 +262,7 @@ export function createState({
 	retagged = {},
 	fooJean = null,
 	artworkOf = null,
+	countsPlays = false,
 }: {
 	playlists?: FakePlaylist[];
 	// Null as well as absent, because the Playwright fixtures default every
@@ -265,6 +276,7 @@ export function createState({
 	retagged?: Record<string, Track>;
 	fooJean?: FooJeanOptions | null;
 	artworkOf?: ((track: Track) => string | null) | null;
+	countsPlays?: boolean | null;
 } = {}) {
 	const patches = new Map(Object.entries(retagged));
 	// Applied to the media library as well as to the playlists below: the two
@@ -334,6 +346,19 @@ export function createState({
 		updateStreams: new Set<() => void>(),
 		// Same bound as the component's; `fooJean.ts` puts these on the stream clock.
 		streamMarks: [] as StreamMark[],
+		libraryFeed: {
+			structure: 0,
+			revision: 0,
+			columns: [] as string[],
+			building: null as string[] | null,
+			structureFrom: 0,
+			dictionaries: new Map<string, Dictionary>(),
+			history: [] as {
+				revision: number;
+				changed: Map<string, number[]>;
+				sizes: Map<string, number>;
+			}[],
+		},
 	};
 
 	const notify = (changed: Changed) => {
@@ -370,6 +395,11 @@ export function createState({
 		];
 	};
 
+	const activeTrack = () => {
+		const item = state.player.activeItem;
+		return byId(item.playlistId)?.items[item.index] ?? null;
+	};
+
 	const setActive = (
 		playlist: FakePlaylist,
 		index: number,
@@ -377,6 +407,10 @@ export function createState({
 	) => {
 		const track = playlist.items[index];
 		if (!track) return;
+
+		const leaving = activeTrack();
+		if (leaving && leaving !== track) countPlay(leaving);
+
 		mark(track, 0);
 		const dequeued = consume(playlist, index);
 		state.player.activeItem = {
@@ -423,6 +457,141 @@ export function createState({
 		if (next < 0 || next >= playlist.items.length) return;
 		withSkipGap(() => setActive(playlist, next, "playing"));
 	};
+
+	const feed = state.libraryFeed;
+
+	const RETAINED_REVISIONS = 32;
+
+	const PLAY_COUNT = "%lastfm_play_count%";
+
+	const ordinalOrder = () => libraryItemsOf(libraryTracks).sort(byLibraryPath);
+
+	const dictionaryFor = (name: string) => {
+		const held = feed.dictionaries.get(name);
+		if (held) return held;
+		const made = dictionary();
+		feed.dictionaries.set(name, made);
+		return made;
+	};
+
+	const remember = (changed: Map<string, number[]>) => {
+		feed.history.push({
+			revision: feed.revision,
+			changed,
+			sizes: new Map(
+				[...feed.dictionaries].map(([name, dict]) => [
+					name,
+					dict.values.length,
+				]),
+			),
+		});
+		if (feed.history.length > RETAINED_REVISIONS) feed.history.shift();
+	};
+
+	const buildLibrary = () => {
+		const items = ordinalOrder();
+		const cut = (path: string) => path.lastIndexOf("/") + 1;
+		const bone = (name: string, values: string[]) =>
+			wholeColumn(null, dictionaryFor(name), values);
+
+		return {
+			items,
+			columns: feed.columns.map((expression) =>
+				wholeColumn(
+					expression,
+					dictionaryFor(expression),
+					items.map((entry) => String(evaluate(entry.track, expression))),
+				),
+			),
+			spine: {
+				directory: bone(
+					"directory",
+					items.map((entry) => entry.path.slice(0, cut(entry.path))),
+				),
+				filename: bone(
+					"filename",
+					items.map((entry) => entry.path.slice(cut(entry.path))),
+				),
+				subsong: bone(
+					"subsong",
+					items.map((entry) => String(entry.subsong)),
+				),
+			},
+		};
+	};
+
+	function finishLibraryBuild() {
+		if (!feed.building) return;
+		feed.columns = feed.building;
+		feed.building = null;
+		feed.structure += 1;
+		feed.revision += 1;
+		feed.structureFrom = feed.revision;
+		feed.dictionaries.clear();
+		feed.history.length = 0;
+		buildLibrary();
+		remember(new Map());
+	}
+
+	function countPlay(track: Track) {
+		if (!countsPlays || !feed.columns.includes(PLAY_COUNT)) return;
+
+		const items = ordinalOrder();
+		const ordinal = items.findIndex(
+			(entry) => entry.track["%path%"] === track["%path%"],
+		);
+		if (ordinal < 0) return;
+
+		const row = items[ordinal].track;
+		row[PLAY_COUNT] = String(Number(row[PLAY_COUNT] ?? 0) + 1);
+		dictionaryFor(PLAY_COUNT).id(row[PLAY_COUNT] as string);
+
+		feed.revision += 1;
+		remember(new Map([[PLAY_COUNT, [ordinal]]]));
+	}
+
+	function libraryChanges(since: number) {
+		if (since < feed.structureFrom) return { status: 409 as const };
+
+		const at = feed.history.findIndex((entry) => entry.revision === since);
+		if (at < 0) return { status: 410 as const };
+
+		const moved = new Map<string, Set<number>>();
+		for (const entry of feed.history.slice(at + 1))
+			for (const [name, ordinals] of entry.changed) {
+				const held = moved.get(name) ?? new Set<number>();
+				moved.set(name, held);
+				for (const ordinal of ordinals) held.add(ordinal);
+			}
+
+		const items = ordinalOrder();
+		const sizes = feed.history[at].sizes;
+
+		return {
+			status: 200 as const,
+			bytes: encodeJlib({
+				kind: "delta",
+				structure: feed.structure,
+				revision: feed.revision,
+				since,
+				trackCount: items.length,
+				columns: [...moved].map(([name, ordinals]) =>
+					changedColumn(
+						name,
+						dictionaryFor(name),
+						sizes.get(name) ?? 0,
+						[...ordinals]
+							.sort((a, b) => a - b)
+							.map((ordinal) => ({
+								ordinal,
+								value: String(evaluate(items[ordinal].track, name)),
+							})),
+					),
+				),
+				spine: {},
+			}),
+		};
+	}
 
 	const queuePayload = (expressions: string[] = []) =>
 		state.playQueue.map((entry) => {
@@ -476,6 +645,7 @@ export function createState({
 			}
 		>(),
 		libraryTracks,
+		libraryFeed: state.libraryFeed,
 		get playlists() {
 			return state.playlists;
 		},
@@ -749,6 +919,24 @@ export function createState({
 			};
 		},
 
+		libraryExport(): Uint8Array<ArrayBuffer> {
+			const built = buildLibrary();
+			return encodeJlib({
+				kind: "snapshot",
+				structure: state.libraryFeed.structure,
+				revision: state.libraryFeed.revision,
+				trackCount: built.items.length,
+				columns: built.columns,
+				spine: built.spine,
+			});
+		},
+
+		finishLibraryBuild,
+
+		countPlay,
+
+		libraryChanges,
+
 		libraryItemsPayload({
 			offset,
 			count,
@@ -764,11 +952,10 @@ export function createState({
 		}) {
 			const items = libraryItemsOf(libraryTracks);
 
-			const key =
-				sort && sort !== "%path%"
-					? (entry: LibraryEntry) => evaluate(entry.track, sort)
-					: (entry: LibraryEntry) => entry.path;
-			items.sort((a, b) => pathKey(key(a)).localeCompare(pathKey(key(b))));
+			if (sort && sort !== "%path%") {
+				const key = (entry: LibraryEntry) => evaluate(entry.track, sort);
+				items.sort((a, b) => pathKey(key(a)).localeCompare(pathKey(key(b))));
+			} else items.sort(byLibraryPath);
 			if (desc) items.reverse();
 
 			const page =

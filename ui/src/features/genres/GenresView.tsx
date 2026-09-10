@@ -5,6 +5,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { genreRoute } from "@/domain/library/genreRoute";
 import type { Library } from "@/domain/library/useLibrary";
 import { genresOf } from "@/domain/track/genres";
+import { trackRows } from "@/domain/track/project";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -46,7 +47,8 @@ export function GenresView({
 	const gridRef = useRef<HTMLDivElement | null>(null);
 
 	const { snapshot } = library;
-	const genres = useMemo(() => genresOf(snapshot.rows), [snapshot.rows]);
+	const rows = useMemo(() => trackRows(snapshot.columns), [snapshot.columns]);
+	const genres = useMemo(() => genresOf(rows), [rows]);
 
 	const shown = useMemo(() => {
 		const wanted = squash(query);

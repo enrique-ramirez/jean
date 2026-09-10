@@ -1,5 +1,6 @@
 import type { TrackColumns } from "@/shared/api/types";
-import { FIELD, numberOf, readNumber, sampleRows } from "./fields";
+import { FIELD, numberOf, readNumber } from "./fields";
+import { byValue, type LibraryColumns } from "./libraryColumns";
 
 export const MAX_STARS = 5;
 
@@ -35,8 +36,7 @@ export const isWritableScale = (raw: number | null) =>
 
 export const toStars = (rating: number) => Math.round(rating * 2) / 2;
 
-export const hasHalfStars = (rows: TrackColumns[], sampleSize = 400) =>
-	sampleRows(rows, sampleSize).some((row) => {
-		const rating = ratingOf(row);
-		return rating !== null && rating % 1 !== 0;
-	});
+export const hasHalfStars = (columns: LibraryColumns) =>
+	byValue(columns.fields[FIELD.rating], (raw) => starsOf(readNumber(raw))).some(
+		(rating) => rating !== null && rating % 1 !== 0,
+	);

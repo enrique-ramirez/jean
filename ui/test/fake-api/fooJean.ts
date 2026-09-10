@@ -28,6 +28,11 @@ export interface FooJeanOptions {
 
 	failWrites?: number | null;
 
+	canReadLibrary?: boolean;
+	libraryBuilds?: number;
+	libraryBusy?: number;
+	libraryRebuilds?: number;
+
 	maxAutoPlaylists?: number;
 	// beefweb ids the component reports as already being autoplaylists, whether it
 	// made them or not. An autoplaylist created in foobar2000 itself looks like
@@ -95,6 +100,10 @@ const DEFAULTS: FooJeanFake = {
 	pairingOpen: false,
 	failPairing: null,
 	pairingError: "",
+	canReadLibrary: true,
+	libraryBuilds: 0,
+	libraryBusy: 0,
+	libraryRebuilds: 0,
 	maxAutoPlaylists: 0,
 	autoPlaylists: [],
 	libraryEnabled: true,
@@ -125,9 +134,28 @@ export const discoveryRecord = (fake: FooJeanFake, listeningPort: number) => {
 const one = (value: string | string[] | undefined) =>
 	(Array.isArray(value) ? value[0] : value) ?? "";
 
+// RFC 9110's negotiation, as the component reads it: `gzip;q=0` is a refusal, and `*` offers
+// nothing rather than everything.
+const offersGzip = (headers: RequestHeaders) => {
+	const offered = /(?:^|,)\s*gzip\s*(?:;\s*q\s*=\s*([\d.]+))?/.exec(
+		one(headers["accept-encoding"]).toLowerCase(),
+	);
+	if (!offered) return false;
+	return offered[1] === undefined || Number(offered[1]) > 0;
+};
+
+const gzipped = async (bytes: Uint8Array<ArrayBuffer>) => {
+	const zip = new CompressionStream("gzip");
+	const writer = zip.writable.getWriter();
+	void writer.write(bytes);
+	void writer.close();
+	return new Uint8Array(await new Response(zip.readable).arrayBuffer());
+};
+
 const cors = (headers: RequestHeaders, response: Responder) => {
 	const origin = one(headers.origin);
 	response.setHeader("Vary", "Origin");
+	response.setHeader("Access-Control-Expose-Headers", "ETag, Retry-After");
 	if (!origin) return;
 	const addressed = one(headers.host).split(":")[0];
 	if (new URL(origin).hostname === addressed)
@@ -329,6 +357,171 @@ function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 	response.on("close", () => clearInterval(pump));
 }
 
+const NOT_BUILT = {
+	error: "the library snapshot has not been built yet",
+	detail: "",
+};
+
+const libraryStateOf = (state: FakeState) => {
+	const { structure, revision, columns } = state.libraryFeed;
+	const ready = columns.length > 0;
+	return {
+		ready,
+		structure,
+		revision,
+		trackCount: ready ? state.libraryTracks.length : 0,
+		columns,
+	};
+};
+
+const sameMembers = (held: string[], asked: string[]) =>
+	held.length === asked.length && asked.every((one) => held.includes(one));
+
+const MAX_COLUMNS = 64;
+
+const refuseColumns = (asked: string[]) => {
+	if (asked.length === 0)
+		return { error: "unacceptable column", detail: "'columns' is required" };
+	if (asked.length > MAX_COLUMNS)
+		return {
+			error: "too many columns",
+			detail: `${asked.length} columns were asked for`,
+		};
+	const empty = asked.findIndex((column) => column.length === 0);
+	if (empty >= 0)
+		return {
+			error: "unacceptable column",
+			detail: `column ${empty} is empty`,
+		};
+	return null;
+};
+
+const tagOf = (state: FakeState, coding: string, since?: string) =>
+	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}${
+		since === undefined ? "" : `-f${since}`
+	}-${coding}"`;
+
+const sendBlob = async (
+	response: Responder,
+	headers: RequestHeaders,
+	state: FakeState,
+	bytes: Uint8Array<ArrayBuffer>,
+	since?: string,
+) => {
+	const gzip = offersGzip(headers);
+	const body = gzip ? await gzipped(bytes) : bytes;
+
+	response.writeHead(200, {
+		"Content-Type": "application/octet-stream",
+		"Cache-Control": "no-cache",
+		Vary: "Origin, Accept-Encoding",
+		ETag: tagOf(state, gzip ? "gzip" : "identity", since),
+		...(gzip ? { "Content-Encoding": "gzip" } : null),
+	});
+	response.end(body);
+	return true;
+};
+
+async function handleLibrary({
+	state,
+	fake,
+	method,
+	path,
+	url,
+	headers,
+	response,
+}: {
+	state: FakeState;
+	fake: FooJeanFake;
+	method: string;
+	path: string;
+	url: URL;
+	headers: RequestHeaders;
+	response: Responder;
+}) {
+	if (!fake.canReadLibrary)
+		return json(response, { error: "the media library is not available" }, 503);
+	if (method !== "GET") return json(response, { error: "not found" }, 404);
+
+	if (path === "/api/library") {
+		if (fake.libraryRebuilds > 0 && state.libraryFeed.columns.length > 0) {
+			fake.libraryRebuilds -= 1;
+			state.libraryFeed.building = [...state.libraryFeed.columns];
+		}
+		if (state.libraryFeed.building) {
+			if (fake.libraryBuilds > 0) fake.libraryBuilds -= 1;
+			else state.finishLibraryBuild();
+		}
+		const tag = tagOf(state, "identity");
+		response.setHeader("Vary", "Origin, Accept-Encoding");
+		response.setHeader("ETag", tag);
+		if (one(headers["if-none-match"]) === tag) {
+			response.writeHead(304, {});
+			response.end();
+			return true;
+		}
+		return json(response, libraryStateOf(state));
+	}
+
+	if (path === "/api/library/export") {
+		const asked = [...new Set(url.searchParams.getAll("columns"))];
+		const refused = refuseColumns(asked);
+		if (refused) return json(response, refused, 400);
+
+		if (fake.libraryBusy > 0) {
+			fake.libraryBusy -= 1;
+			response.setHeader("Retry-After", "1");
+			return json(response, { error: "rebuilding too fast" }, 429);
+		}
+
+		if (!sameMembers(state.libraryFeed.columns, asked)) {
+			state.libraryFeed.building = asked;
+			if (fake.libraryBuilds > 0)
+				return json(response, libraryStateOf(state), 202);
+			state.finishLibraryBuild();
+		}
+
+		return sendBlob(response, headers, state, state.libraryExport());
+	}
+
+	if (path === "/api/library/changes") {
+		if (state.libraryFeed.columns.length === 0)
+			return json(response, NOT_BUILT, 503);
+		const since = url.searchParams.get("since");
+		if (since === null || !/^\d+$/.test(since))
+			return json(
+				response,
+				{ error: "unacceptable revision", detail: "'since' is required" },
+				400,
+			);
+
+		const changes = state.libraryChanges(Number(since));
+		if (changes.status === 409)
+			return json(
+				response,
+				{
+					error: "tracks were added or removed; export the library again",
+					detail: "",
+				},
+				409,
+			);
+		if (changes.status === 410)
+			return json(
+				response,
+				{
+					error:
+						"that revision is older than the retained window; export the library again",
+					detail: "",
+				},
+				410,
+			);
+
+		return sendBlob(response, headers, state, changes.bytes, since);
+	}
+
+	return json(response, { error: "not found" }, 404);
+}
+
 export async function handleAgent({
 	state,
 	method,
@@ -446,11 +639,15 @@ export async function handleAgent({
 			canWrite: fake.allowedFields.length > 0,
 			maxAutoPlaylists: fake.maxAutoPlaylists,
 			canCreateAutoPlaylists: fake.maxAutoPlaylists > 0,
+			canReadLibrary: fake.canReadLibrary,
 			canStream: fake.canStream && fake.streamFormats.length > 0,
 			canMuteWhileStreaming: fake.canMuteWhileStreaming,
 			...(fake.canStream ? { streamFormats: fake.streamFormats } : null),
 		});
 	}
+
+	if (path === "/api/library" || path.startsWith("/api/library/"))
+		return handleLibrary({ state, fake, method, path, url, headers, response });
 
 	if (path === "/api/playlists") {
 		return json(response, {

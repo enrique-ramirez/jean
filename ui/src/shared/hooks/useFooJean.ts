@@ -57,6 +57,7 @@ export function useFooJean() {
 
 	return {
 		discovery: query.data ?? ABSENT,
+		isDiscovered: query.data !== undefined,
 		isChecking: query.isFetching,
 		token,
 		setToken,

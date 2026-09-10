@@ -120,19 +120,22 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 	const deferredDraft = useDeferredValue(draft);
 
+	const columns = library.columns;
+	const { trackCount } = columns;
+
 	const index = useMemo(
 		() =>
-			library.key && library.rows.length > 0
-				? libraryIndex(library.key, library.rows)
+			library.key && columns.trackCount > 0
+				? libraryIndex(library.key, columns)
 				: null,
-		[library.key, library.rows],
+		[library.key, columns],
 	);
 
 	// The dropdown never projects: eight rows are read straight off the snapshot, where the page needs
 	// the heat and patina arrays a whole view carries.
 	const draftMatched = useMemo(
-		() => (index ? searchLibrary(index, deferredDraft) : null),
-		[index, deferredDraft],
+		() => (index ? searchLibrary(index, trackCount, deferredDraft) : null),
+		[index, trackCount, deferredDraft],
 	);
 
 	const preview = useMemo(
@@ -149,19 +152,18 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	// downstream memo keyed on three separately built arrays is keyed on nothing.
 	const named = useMemo(() => {
 		const key = library.key;
-		const rows = library.rows;
 		if (!index || !wanted || !key) return NOTHING_NAMED;
 
 		return {
-			artists: rankEntities(artistIndex(key, rows), wanted, SECTION_BAR),
-			albums: rankEntities(albumIndex(key, rows), wanted, SECTION_BAR),
-			genres: rankEntities(genreIndex(key, rows), wanted, SECTION_BAR),
+			artists: rankEntities(artistIndex(key, columns), wanted, SECTION_BAR),
+			albums: rankEntities(albumIndex(key, columns), wanted, SECTION_BAR),
+			genres: rankEntities(genreIndex(key, columns), wanted, SECTION_BAR),
 		};
-	}, [index, wanted, library.key, library.rows]);
+	}, [index, wanted, library.key, columns]);
 
 	const matched = useMemo(
-		() => (index ? searchLibrary(index, query) : null),
-		[index, query],
+		() => (index ? searchLibrary(index, trackCount, query) : null),
+		[index, trackCount, query],
 	);
 
 	const results = useMemo(
@@ -231,7 +233,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		if (exact.length !== 1) return -1;
 
 		const folded = fold(wanted);
-		if (draftMatched.some((ref) => index[ref].title === folded)) return -1;
+		if (draftMatched.some((ref) => index.title.text(ref) === folded)) return -1;
 
 		return suggestions.findIndex(
 			(suggestion) => entityOf(suggestion) === exact[0],
@@ -268,11 +270,11 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 						next === deferredDraft
 							? draftMatched
 							: index
-								? searchLibrary(index, next)
+								? searchLibrary(index, trackCount, next)
 								: null,
 				};
 			},
-			[draft, deferredDraft, draftMatched, index],
+			[draft, deferredDraft, draftMatched, index, trackCount],
 		),
 		clear,
 		inputRef,

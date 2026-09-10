@@ -49,6 +49,16 @@ export interface PathTable {
 	at: (index: number) => string;
 }
 
+export const joinedPathTable = (
+	length: number,
+	directory: (index: number) => string,
+	filename: (index: number) => string,
+): PathTable => ({
+	length,
+	at: (index) =>
+		index >= 0 && index < length ? directory(index) + filename(index) : "",
+});
+
 export interface PathCollector {
 	add: (path: string) => void;
 	// Later additions do not reach a view already handed out, so one published mid-load goes on

@@ -202,16 +202,17 @@ function Shell() {
 	const { snapshot } = library;
 	const allMusic = useMemo(() => wholeLibrary(snapshot), [snapshot]);
 	const shelfView = useMemo(() => {
-		if (!shelf || snapshot.rows.length === 0) return null;
-		const built = buildShelves(albumsOf(snapshot.rows)).find(
+		if (!shelf || snapshot.columns.trackCount === 0) return null;
+		const built = buildShelves(albumsOf(allMusic)).find(
 			(entry) => entry.id === shelf.id,
 		);
 		return built ? project(snapshot, refsOfShelf(built)) : null;
-	}, [shelf, snapshot]);
+	}, [shelf, snapshot, allMusic]);
 
 	const artistTracks = useMemo(
-		() => (artist ? refsOfArtist(snapshot.rows, artist) : EMPTY_ARTIST_TRACKS),
-		[artist, snapshot.rows],
+		() =>
+			artist ? refsOfArtist(snapshot.columns, artist) : EMPTY_ARTIST_TRACKS,
+		[artist, snapshot.columns],
 	);
 
 	const playArtist = useCallback(
@@ -231,15 +232,16 @@ function Shell() {
 	);
 
 	const genreView = useMemo(
-		() => (genre ? project(snapshot, refsOfGenre(snapshot.rows, genre)) : null),
+		() =>
+			genre ? project(snapshot, refsOfGenre(snapshot.columns, genre)) : null,
 		[genre, snapshot],
 	);
 
 	// The route carries the two halves normalised, so the record's own spelling comes back with its
 	// rows and is what the header draws.
 	const albumTracks = useMemo(
-		() => (album ? refsOfAlbum(snapshot.rows, albumArtist, album) : null),
-		[album, albumArtist, snapshot.rows],
+		() => (album ? refsOfAlbum(snapshot.columns, albumArtist, album) : null),
+		[album, albumArtist, snapshot.columns],
 	);
 
 	const albumView = useMemo(

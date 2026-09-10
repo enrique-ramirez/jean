@@ -6,7 +6,7 @@ namespace jean {
 // DECLARE_COMPONENT_VERSION, which foobar2000's update finder reads, and the discovery
 // record a client finds this component by. The third is GET /api/status.
 constexpr char kComponentName[] = "foo_jean";
-constexpr char kVersion[] = "0.2.0";
+constexpr char kVersion[] = "0.3.0";
 
 // Moves only when the HTTP surface changes shape, independently of kVersion. A client reads
 // it to decide whether it understands this component, so a patch release MUST NOT move it

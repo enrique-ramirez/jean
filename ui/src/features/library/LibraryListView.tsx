@@ -64,7 +64,7 @@ export function LibraryListView({
 }) {
 	const t = useTranslate();
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
-	const { rows, indices, heat, patina, playedCount } = view;
+	const { indices, heat, patina, playedCount } = view;
 
 	// Asked from somewhere with no list of its own -- an album on the artist's overview, which opens
 	// the tracks tab and expects to land on that record.
@@ -86,14 +86,14 @@ export function LibraryListView({
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
-	const { hasPlayCounts } = useAvailableFields(rows);
+	const { hasPlayCounts } = useAvailableFields(view.columns);
 	const stats = useMemo(
-		() => summarise(rows, playedCount, isGenre ? { genres: 0 } : undefined),
-		[rows, playedCount, isGenre],
+		() => summarise(view, playedCount, isGenre ? { genres: 0 } : undefined),
+		[view, playedCount, isGenre],
 	);
 
 	const finder = useFinder({
-		rows,
+		rows: view,
 		browserRef,
 		label: t(FINDER_LABEL[kind] ?? "finder.inList"),
 	});
@@ -117,8 +117,7 @@ export function LibraryListView({
 	return (
 		<TrackBrowser
 			ref={browserRef}
-			rows={rows}
-			indices={indices}
+			rows={view}
 			source={library.source}
 			viewKey={`${kind}:${label}`}
 			heat={heat}
@@ -148,8 +147,7 @@ export function LibraryListView({
 					aside={
 						<Mosaic
 							source={library.source}
-							rows={rows}
-							indices={indices}
+							rows={view}
 							seed={`${kind}:${label}`}
 						/>
 					}
@@ -157,7 +155,7 @@ export function LibraryListView({
 						<>
 							<PlayActions
 								browserRef={browserRef}
-								trackCount={rows.length}
+								trackCount={view.length}
 								canShuffle={canWrite}
 							/>
 							{isGenre && label && onOpenPlaylist ? (

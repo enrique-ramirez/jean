@@ -10,13 +10,12 @@ import {
 	usePermissions,
 	usePlaylists,
 } from "@/domain/player/usePlayer";
-import type { TrackColumns } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { artistOf, FIELD, titleOf, value } from "./fields";
 import type { LibrarySource } from "./librarySource";
-import { type Refs, refAt } from "./project";
+import type { TrackRows } from "./project";
 import { isWritableScale, rawRatingWith, starsOf } from "./rating";
 import { useWrittenRating } from "./ratingStore";
 import { ratingItems, trackActions } from "./trackActions";
@@ -32,13 +31,11 @@ const sameList = (a: number[], b: number[]) =>
 // pointer, and a handler per row is a handler per row.
 export function useTrackContextMenu({
 	rows,
-	indices,
 	source,
 	selection,
 	onSelectOnly,
 }: {
-	rows: TrackColumns[];
-	indices: Refs | null;
+	rows: TrackRows;
 	source: LibrarySource;
 	selection: Set<number>;
 	onSelectOnly: (index: number) => void;
@@ -53,16 +50,17 @@ export function useTrackContextMenu({
 
 	const [positions, setPositions] = useState<number[]>([]);
 
-	const rated = positions.length === 1 ? rows[positions[0]] : undefined;
-	const written = useWrittenRating(rated);
-	const rawRating = rated === undefined ? null : rawRatingWith(rated, written);
+	const rated = positions.length === 1 ? rows.ref(positions[0]) : undefined;
+	const written = useWrittenRating(rows.columns, rated);
+	const rawRating =
+		rated === undefined ? null : rawRatingWith(rows.at(positions[0]), written);
 
 	const canEdit = canChangePlaylists(permissions);
 
 	// `adopt` is off for the hold: claiming the selection on pointer-down would undo the shift-click
 	// in the same event.
 	const aim = (event: ReactMouseEvent, { adopt }: { adopt: boolean }) => {
-		const aimed = targetsFrom(event, rows, selection);
+		const aimed = targetsFrom(event, rows.length, selection);
 		if (!aimed) return false;
 
 		const chosen = adopt ? aimed.positions : [aimed.index];
@@ -90,7 +88,7 @@ export function useTrackContextMenu({
 	const actions = useMemo(() => {
 		if (count === 0) return [];
 
-		const itemIndices = positions.map((position) => refAt(indices, position));
+		const itemIndices = positions.map((position) => rows.ref(position));
 		const rateable =
 			canRate && rated !== undefined && isWritableScale(rawRating);
 
@@ -103,7 +101,7 @@ export function useTrackContextMenu({
 			canQueue,
 			queueTracks,
 			addTracks,
-			credit: count === 1 ? value(rows[positions[0]], FIELD.artist) : null,
+			credit: count === 1 ? value(rows.at(positions[0]), FIELD.artist) : null,
 			t,
 			rating: rateable
 				? {
@@ -114,7 +112,7 @@ export function useTrackContextMenu({
 							starsOf(rawRating),
 							(stars) =>
 								rate(
-									{ source, ref: itemIndices[0], row: rated as TrackColumns },
+									{ source, ref: itemIndices[0], columns: rows.columns },
 									stars,
 								),
 							t,
@@ -126,7 +124,6 @@ export function useTrackContextMenu({
 		count,
 		positions,
 		rows,
-		indices,
 		playlists,
 		source,
 		canEdit,
@@ -150,7 +147,7 @@ export function useTrackContextMenu({
 			};
 		}
 
-		const row = rows[positions[0]];
+		const row = rows.at(positions[0]);
 		return {
 			icon: Music,
 			title: titleOf(row, t),

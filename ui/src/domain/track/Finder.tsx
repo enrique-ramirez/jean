@@ -6,7 +6,6 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { TrackColumns } from "@/shared/api/types";
 import { useDebounced } from "@/shared/hooks/useDebounced";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -15,6 +14,7 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Input } from "@/shared/ui/Input";
 import styles from "./Finder.module.css";
 import { artistOf, titleOf } from "./fields";
+import type { TrackRows } from "./project";
 
 export function Finder({
 	inputRef,
@@ -29,7 +29,7 @@ export function Finder({
 	onClose,
 }: {
 	inputRef: RefObject<HTMLInputElement | null>;
-	rows: TrackColumns[];
+	rows: TrackRows;
 	label: string;
 	results: number[];
 	matches: Set<number> | null;
@@ -157,10 +157,10 @@ export function Finder({
 							>
 								<span className={styles.names}>
 									<span className={styles.resultTitle}>
-										{titleOf(rows[index], t)}
+										{titleOf(rows.at(index), t)}
 									</span>
 									<span className={styles.resultArtist}>
-										{artistOf(rows[index], t)}
+										{artistOf(rows.at(index), t)}
 									</span>
 								</span>
 								<span className={styles.position}>#{index + 1}</span>

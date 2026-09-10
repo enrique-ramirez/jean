@@ -2,12 +2,13 @@ import {
 	collapseRepeatedTag,
 	creditedArtists,
 	FIELD,
+	readValue,
 	tagKey,
-	value,
 } from "@/domain/track/fields";
-import type { TrackColumns } from "@/shared/api/types";
 import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
 import { growingIndex } from "./growingIndex";
+import { byValue, type LibraryColumns } from "./libraryColumns";
+import type { TrackRows } from "./project";
 
 // Not an artist, and a page for it would be every compilation track in the library. Asked wherever a
 // name is about to become somewhere you can go -- the index, a credit drawn as links, the track menu
@@ -38,9 +39,31 @@ interface Draft {
 	albums: Map<string, number>;
 }
 
-const albumKeyOf = (row: TrackColumns) => {
-	const album = value(row, FIELD.album);
-	return album ? tagKey(album) : null;
+interface Named {
+	key: string;
+	name: string;
+}
+
+const named = (name: string): Named => ({ key: tagKey(name), name });
+
+interface Credited {
+	leads: Named[];
+	guests: Named[];
+}
+
+const creditOf = (raw: string): Credited => {
+	const { lead, guests } = creditedArtists(readValue(raw));
+	return {
+		leads: lead && namesAnArtist(lead) ? [named(lead)] : [],
+		guests: guests.filter(namesAnArtist).map(named),
+	};
+};
+
+const albumArtistOf = (raw: string): Credited => {
+	const tag = readValue(raw);
+	if (!tag) return { leads: [], guests: [] };
+	const name = collapseRepeatedTag(tag);
+	return { leads: namesAnArtist(name) ? [named(name)] : [], guests: [] };
 };
 
 /**
@@ -51,12 +74,23 @@ const albumKeyOf = (row: TrackColumns) => {
  * A name is counted once per track however many ways it was credited there, so the counts add up to
  * the track list the page draws.
  */
-function absorb(byKey: Map<string, Draft>, rows: TrackColumns[], from: number) {
+function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
+	const { columns } = rows;
+	const artist = columns.fields[FIELD.artist];
+	const albumArtist = columns.fields[FIELD.albumArtist];
+	const album = columns.fields[FIELD.album];
+
+	const credits = byValue(artist, creditOf);
+	const acts = byValue(albumArtist, albumArtistOf);
+	const albumKeys = byValue(album, (raw) => {
+		const name = readValue(raw);
+		return name ? tagKey(name) : null;
+	});
+
 	const credit = (
-		key: string,
-		name: string,
+		{ key, name }: Named,
 		ref: number,
-		row: TrackColumns,
+		albumKey: string | null,
 		isGuest: boolean,
 	) => {
 		let draft = byKey.get(key);
@@ -75,35 +109,31 @@ function absorb(byKey: Map<string, Draft>, rows: TrackColumns[], from: number) {
 		if (isGuest) draft.guestCount += 1;
 		else draft.trackCount += 1;
 
-		const album = albumKeyOf(row);
-		if (album && !draft.albums.has(album)) draft.albums.set(album, ref);
+		if (albumKey && !draft.albums.has(albumKey))
+			draft.albums.set(albumKey, ref);
 	};
 
-	for (let ref = from; ref < rows.length; ref += 1) {
-		const row = rows[ref];
-		const { lead, guests } = creditedArtists(value(row, FIELD.artist));
-		const albumArtist = value(row, FIELD.albumArtist);
+	for (let position = from; position < rows.length; position += 1) {
+		const ref = rows.ref(position);
+		const credited = credits[artist.ids[ref]];
+		const act = acts[albumArtist.ids[ref]];
+		const albumKey = albumKeys[album.ids[ref]];
 
 		// Keyed rather than deduplicated by spelling: one track credits the same name in both tags, and
 		// the two spellings differ often enough -- `TV On The Radio` beside `TV on the Radio` -- that a
 		// set of strings would count that track twice.
 		const leads = new Map<string, string>();
-		for (const name of [
-			lead,
-			albumArtist && collapseRepeatedTag(albumArtist),
-		]) {
-			const key = tagKey(name);
-			if (name && namesAnArtist(name) && !leads.has(key)) leads.set(key, name);
-		}
+		for (const lead of [...credited.leads, ...act.leads])
+			if (!leads.has(lead.key)) leads.set(lead.key, lead.name);
 
-		for (const [key, name] of leads) credit(key, name, ref, row, false);
+		for (const [key, name] of leads)
+			credit({ key, name }, position, albumKey, false);
 
-		const credited = new Set(leads.keys());
-		for (const guest of guests) {
-			const key = tagKey(guest);
-			if (!namesAnArtist(guest) || credited.has(key)) continue;
-			credited.add(key);
-			credit(key, guest, ref, row, true);
+		const seen = new Set(leads.keys());
+		for (const guest of credited.guests) {
+			if (seen.has(guest.key)) continue;
+			seen.add(guest.key);
+			credit(guest, position, albumKey, true);
 		}
 	}
 }
@@ -121,13 +151,15 @@ const derive = (byKey: Map<string, Draft>): Artist[] =>
 		}))
 		.sort((a, b) => b.trackCount - a.trackCount);
 
-export function artistsOf(rows: TrackColumns[]): Artist[] {
+export function artistsOf(rows: TrackRows): Artist[] {
 	const byKey = new Map<string, Draft>();
 	absorb(byKey, rows, 0);
 	return derive(byKey);
 }
 
-export const artistIndex = growingIndex(absorb, derive);
+const CREDITED = [FIELD.artist, FIELD.albumArtist, FIELD.album];
+
+export const artistIndex = growingIndex(CREDITED, absorb, derive);
 
 export interface ArtistTracks {
 	own: Int32Array;
@@ -143,7 +175,7 @@ export interface ArtistTracks {
  * a `feat.` is a guest.
  */
 export function refsOfArtist(
-	rows: TrackColumns[],
+	columns: LibraryColumns,
 	artist: string,
 ): ArtistTracks {
 	const wanted = tagKey(artist);
@@ -154,21 +186,32 @@ export function refsOfArtist(
 			all: new Int32Array(0),
 		};
 
+	const artistColumn = columns.fields[FIELD.artist];
+	const albumArtistColumn = columns.fields[FIELD.albumArtist];
+
+	// Not `namesAnArtist`: a name somebody navigated to is a name they mean, including one the index
+	// refuses to list.
+	const credits = byValue(artistColumn, (raw) =>
+		creditedArtists(readValue(raw)),
+	);
+	const leads = credits.map((credit) => tagKey(credit.lead) === wanted);
+	const guests = credits.map((credit) =>
+		credit.guests.some((name) => tagKey(name) === wanted),
+	);
+	const acts = byValue(albumArtistColumn, (raw) => {
+		const tag = readValue(raw);
+		return tag !== null && tagKey(collapseRepeatedTag(tag)) === wanted;
+	});
+
 	const own: number[] = [];
 	const guest: number[] = [];
 	const all: number[] = [];
 
-	for (let ref = 0; ref < rows.length; ref += 1) {
-		const row = rows[ref];
-		const { lead, guests } = creditedArtists(value(row, FIELD.artist));
-		const albumArtist = value(row, FIELD.albumArtist);
+	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		const credited = artistColumn.ids[ref];
 
-		if (
-			tagKey(lead) === wanted ||
-			(albumArtist && tagKey(collapseRepeatedTag(albumArtist)) === wanted)
-		)
-			own.push(ref);
-		else if (guests.some((name) => tagKey(name) === wanted)) guest.push(ref);
+		if (leads[credited] || acts[albumArtistColumn.ids[ref]]) own.push(ref);
+		else if (guests[credited]) guest.push(ref);
 		else continue;
 
 		all.push(ref);

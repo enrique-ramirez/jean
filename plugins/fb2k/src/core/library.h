@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -28,9 +29,12 @@ constexpr char kUnresolved[] = "?";
 constexpr size_t kMaxColumns = 64;
 constexpr size_t kMaxColumnLength = 1024;
 
+constexpr size_t kRevisionsPerListeningHour = 40;
+constexpr size_t kRetainedListeningHours = 48;
+
 // How far behind a client may fall and still be sent a delta. Below it the answer is 410 and
 // the client exports again.
-constexpr size_t kRetainedRevisions = 256;
+constexpr size_t kRetainedRevisions = kRevisionsPerListeningHour * kRetainedListeningHours;
 
 enum class IdWidth : uint8_t { one = 1, two = 2, four = 4 };
 
@@ -82,19 +86,22 @@ struct RelativePathParts {
 
 RelativePathParts splitRelativePath(const std::string& path);
 
-// One track's place in the order ordinals are handed out in. `canonicalPath` breaks the tie
-// two subsongs of one file and two library roots sharing a relative path would otherwise
-// leave open: an order that is not total shuffles between rebuilds, and a client's refs are
-// ordinals.
+// What is left of a track's place in the order once the player has compared the paths:
+// `subsong` and `canonicalPath` break the tie two subsongs of one file and two library roots
+// sharing a relative path would otherwise leave open. An order that is not total shuffles
+// between rebuilds, and a client's refs are ordinals.
 struct TrackOrder {
-    std::string relativePath;
     uint32_t subsong = 0;
     std::string canonicalPath;
 };
 
+// Compares the library-relative paths of the tracks at two indices into `ordinalOrder`'s list.
+using PathComparison = std::function<int(size_t left, size_t right)>;
+
 // The permutation putting tracks in ordinal order: entry i is the index of the track that
 // takes ordinal i.
-std::vector<size_t> ordinalOrder(const std::vector<TrackOrder>& tracks);
+std::vector<size_t> ordinalOrder(const std::vector<TrackOrder>& tracks,
+                                 const PathComparison& comparePaths);
 
 // Ingests rows from many threads at once. fb2k/ drives it from metadb_v2::queryMultiParallel,
 // which calls back with (index, record) from a thread pool, in arbitrary order, against a row

@@ -1,12 +1,29 @@
-import type { TrackColumns } from "@/shared/api/types";
 import { clamp } from "@/shared/lib/math";
-import { lastPlayedOf, playCountOf } from "./fields";
+import {
+	columnReader,
+	FIELD,
+	readNumber,
+	readTimestamp,
+	withAlternatives,
+} from "./fields";
+import type { LibraryColumns } from "./libraryColumns";
+
+export const INTENSITY_FIELDS = withAlternatives([
+	FIELD.playCount,
+	FIELD.lastPlayed,
+]);
 
 const PATINA_YEARS = 6;
 const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 
-export function deriveIntensity(rows: TrackColumns[]) {
-	const playCounts = Int32Array.from(rows, (row) => playCountOf(row) ?? 0);
+export function deriveIntensity(columns: LibraryColumns) {
+	const { trackCount } = columns;
+	const playsOf = columnReader(columns, FIELD.playCount, readNumber);
+	const playedAt = columnReader(columns, FIELD.lastPlayed, readTimestamp);
+
+	const playCounts = new Int32Array(trackCount);
+	for (let ref = 0; ref < trackCount; ref += 1)
+		playCounts[ref] = playsOf(ref) ?? 0;
 
 	const maxPlayCount = playCounts.reduce(
 		(most, plays) => Math.max(most, plays),
@@ -19,13 +36,13 @@ export function deriveIntensity(rows: TrackColumns[]) {
 		plays > 0 && ceiling > 0 ? Math.log1p(plays) / ceiling : 0,
 	);
 
-	const patina = Float32Array.from(rows, (row, index) => {
-		if (playCounts[index] <= 0) return 0;
-		const lastPlayed = lastPlayedOf(row);
-		return lastPlayed === null
-			? 0
-			: clamp((now - lastPlayed) / YEAR_MS / PATINA_YEARS, 0, 1);
-	});
+	const patina = new Float32Array(trackCount);
+	for (let ref = 0; ref < trackCount; ref += 1) {
+		if (playCounts[ref] <= 0) continue;
+		const lastPlayed = playedAt(ref);
+		if (lastPlayed === null) continue;
+		patina[ref] = clamp((now - lastPlayed) / YEAR_MS / PATINA_YEARS, 0, 1);
+	}
 
 	return {
 		heat,

@@ -1,4 +1,5 @@
-import type { TrackColumns } from "@/shared/api/types";
+import { type LibraryColumns, someFieldMoved } from "./libraryColumns";
+import { type TrackRows, trackRows } from "./project";
 
 /**
  * An index over the whole library, extended in place as it arrives and never cached on its key alone:
@@ -10,31 +11,30 @@ import type { TrackColumns } from "@/shared/api/types";
  * One library at a time, and nothing is built until something asks, so a session that never searches
  * never builds one.
  */
-export function growingIndex<Draft, T>(
-	absorb: (
-		byKey: Map<string, Draft>,
-		rows: TrackColumns[],
-		from: number,
-	) => void,
-	derive: (byKey: Map<string, Draft>) => T[],
+export function growingIndex<Key, Draft, T>(
+	fields: readonly number[],
+	absorb: (byKey: Map<Key, Draft>, rows: TrackRows, from: number) => void,
+	derive: (byKey: Map<Key, Draft>) => T[],
 ) {
 	let held: {
 		key: string;
+		columns: LibraryColumns;
 		counted: number;
-		drafts: Map<string, Draft>;
+		drafts: Map<Key, Draft>;
 		entries: T[];
 	} | null = null;
 
-	return (key: string, rows: TrackColumns[]): T[] => {
-		if (held?.key !== key)
-			held = { key, counted: 0, drafts: new Map(), entries: [] };
+	return (key: string, columns: LibraryColumns): T[] => {
+		if (held?.key !== key || someFieldMoved(fields, held.columns, columns))
+			held = { key, columns, counted: 0, drafts: new Map(), entries: [] };
 
-		if (held.counted !== rows.length) {
-			absorb(held.drafts, rows, held.counted);
-			held.counted = rows.length;
+		if (held.counted !== columns.trackCount) {
+			absorb(held.drafts, trackRows(columns), held.counted);
+			held.counted = columns.trackCount;
 			held.entries = derive(held.drafts);
 		}
 
+		held.columns = columns;
 		return held.entries;
 	};
 }

@@ -64,6 +64,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);
     player.previewQuery = makeQueryPreviewer(mainThread);
     player.refreshLibrary = libraryFeed.refresher();
+    player.readArtwork = libraryFeed.artworkReader();
 
     if (streamer != nullptr) {
         player.openStream = streamer->opener();

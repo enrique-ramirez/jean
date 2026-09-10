@@ -26,6 +26,8 @@ public:
     // rebuild and every re-query evaluates, and returns before the build finishes.
     LibraryRefresher refresher();
 
+    ArtworkReader artworkReader();
+
     LibraryFeed(const LibraryFeed&) = delete;
     LibraryFeed& operator=(const LibraryFeed&) = delete;
 

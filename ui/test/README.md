@@ -31,7 +31,7 @@ JEAN_NO_LIBRARY_API=1 pnpm test    # the autoplaylist fallback
 
 Both are green at the same count. If a change makes one pass and the other fail, something outside `librarySource.ts` has learned which source it is talking to. Nothing in `src/` reads that variable; it only moves the default of the `library` fixture option.
 
-Three specs are source-aware. `fake-library.spec.ts` **pins the API on** at file scope, since it is the spec about it. `library-fallback.spec.ts` **pins it off**, since that is the DeaDBeeF steady state and must be covered on a default run. `navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and* `library: { supported: false }`, since the setup screen exists only when there is no API **and** no autoplaylist.
+Four specs are source-aware. `fake-library.spec.ts` **pins the API on** at file scope, since it is the spec about it. `library-fallback.spec.ts` **pins it off**, since that is the DeaDBeeF steady state and must be covered on a default run. `navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and* `library: { supported: false }`, since the setup screen exists only when there is no API **and** no autoplaylist. `component-library.spec.ts` **pins it on** as well, because the component supplies the rows and beefweb's own library routes are still what act on one.
 
 ## Touch gestures
 
@@ -92,12 +92,53 @@ Two things the fake **refuses** rather than approximating, since a filter that s
 
 **The captured tracks are all `subsong: 0`**, since every captured file is one track and a subsong needs a cue sheet or a disc image. `libraryOfShape({ subsongsPerFile })` synthesises them where a spec needs several tracks sharing one `%path%`.
 
+### The library as `foo_jean` serves it
+
+`fake-api/jlib.ts` encodes the binary snapshot and `../src/shared/api/jlib.ts` reads it back, so the two are pinned against each other by `unit/jlib.test.ts` and by the bytes in `unit/fixtures/library.jlib`. An encoder and a decoder written together agree with each other and can still disagree with the component, so `unit/fixtures/delta.jlib` is a delta a real player produced and the patch path is tested against it as well. Regenerate the snapshot fixture with the fake's own encoder when the format changes, and never by hand:
+
+```sh
+node --import ./test/alias.ts --input-type=module -e '
+import { writeFileSync } from "node:fs";
+import { createState } from "./test/fake-api/state.ts";
+import { TRACK_EXPRESSIONS } from "./src/domain/track/fields.ts";
+const state = createState();
+state.libraryFeed.columns = [...TRACK_EXPRESSIONS];
+writeFileSync("test/unit/fixtures/library.jlib", state.libraryExport());
+'
+```
+
+An export taken off a real player is far too large to commit, so the test that reads one skips unless it is pointed at a file:
+
+```sh
+JEAN_LIBRARY_EXPORT=/path/to/export.jlib pnpm test:unit
+```
+
+The routes model the declaration the contract describes rather than answering from nothing. Nothing is built until an export names a column set, so a fresh fake reports `ready: false` and both generations at zero. Three options drive the paths a client has to survive:
+
+| | |
+|---|---|
+| `canReadLibrary: false` | the component loaded without the feature, and every `/api/library` route is a `503` |
+| `libraryBuilds: n` | polls of `GET /library` answered before a declared set finishes building, so the export is a `202` first |
+| `libraryBusy: n` | exports answered `429` before the rate limiter lets one through |
+| `libraryRebuilds: n` | structure rebuilds, one performed at the next poll of `GET /library` each. This is the `409` and the re-export behind it |
+
+`countsPlays` is the other half and sits beside the player's own options rather than the component's, because a play count is foobar2000's business: with it on, leaving a track advances that track's `%lastfm_play_count%` and moves the library's `revision` with it, which is what a delta is made of. It is off by default, so the captured counts every other spec asserts stay where they are.
+
+**The fake keeps a bounded revision history, so `GET /library/changes` answers a real delta.** A `since` from before the last rebuild is a `409` and one that fell out of the window is a `410`, both as the contract describes. Dictionaries are held per column and per structure generation, so a delta carries `dict.base` and only the entries appended after it, exactly as the component does.
+
+**Ordinals in the snapshot and pages of `/library/items` come from one comparator**, since Jean resolves a library row's absolute path through beefweb while reading its rows from the component. Two orders that disagreed would make every such lookup refuse.
+
+**gzip is real here.** The route compresses through `CompressionStream` when the request offers it, sets `Content-Encoding`, `Vary` and an `ETag` that names the coding. A browser decodes it before anything in the app sees it, so what this actually covers is the negotiation and the headers.
+
+**`Access-Control-Expose-Headers` names `ETag` and `Retry-After` on every answer**, as the contract says the component does. Without it a browser hands script neither, and the conditional poll behind `GET /library` and the documented `429` backoff both fail silently against a cross-origin reader.
+
 ### What the fake gets wrong on purpose
 
 A fake kinder than the player it stands in for makes the suite agree with itself and disagree with reality.
 
 - **A request body over 1 MiB is refused by hanging up**, not answered with a status. The fake destroys the socket at the same threshold, in both hosts. That cap is beefweb's alone; `agentServer.ts` has none.
 - **A set added from the library comes back in the media library's browse order**, meaning album artist, album and track, not the order it was given, nor the file-path order `/library/items` pages in. The captured fixture cannot show this on its own, since its folders match its tags; `mediaLibrarySize` synthesises a library where they disagree.
+- **`POST /api/library/refresh` has no route.** A rate limiter is one of the things a kinder fake would get wrong, and nothing in Jean asks for a refresh yet.
 - **`foo_jean` is a second listener on its own port, not another route.** Every call to it is cross-origin, is preceded by a CORS preflight for the `Authorization` header, and can fail by not answering at all. So `fake-api/fooJean.ts` gets its own `http.Server`, started and stopped by the worker fixture that owns the beefweb one. **The unreachable state destroys the connection rather than answering 500.** A refused socket and an error response are different events in the browser, and "installed, advertised, healthy, unreachable" must never render as "not installed". **Preflights land in `player.requests`**, so counting writes means filtering to `POST`. **`Access-Control-Allow-Origin` reflects the request's `Origin`, checked against its own `Host`, rather than a wildcard.** That is the component's own choice, reproduced here rather than approximated with `*`.
 - **Pairing is single-grant, as in the component**: the first success closes the window. The fake also answers **415** to a body that is not `application/json`, since a client that stopped sending that header would pass every other assertion and fail against a real install. Tickets are **not** single-use, for the same reason the component's are not.
 - **A stream fails every way a second listener can.** `streamBehaviour` is `short` (ends after what it has sent, for reconnect) and `quiet` (opens, sends the container header, then nothing: the case with **no error to catch**, which is what a stopped player looks like and what the stall watchdog is the only answer to). `playableFormats` names which of `streamFormats` get bytes of the declared type. `failTickets` with `ticketError` separates a 503 meaning "busy" from one meaning "not supported". `expireTickets` answers 401 at `GET /stream`.

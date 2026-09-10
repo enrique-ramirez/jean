@@ -25,7 +25,9 @@ import {
 	value,
 } from "./fields";
 import { discNumber } from "./grouping";
+import type { LibraryColumns } from "./libraryColumns";
 import type { LibrarySource } from "./librarySource";
+import type { TrackRows } from "./project";
 import {
 	isWritableScale,
 	MAX_STARS,
@@ -38,17 +40,19 @@ import styles from "./TrackRow.module.css";
 import { useTagWriting } from "./useTagWriter";
 
 function Rating({
+	columns,
 	row,
 	source,
 	itemIndex,
 }: {
+	columns: LibraryColumns;
 	row: TrackColumns;
 	source: LibrarySource;
 	itemIndex: number;
 }) {
 	const t = useTranslate();
 	const { canRateInline, rate } = useTagWriting();
-	const written = useWrittenRating(row);
+	const written = useWrittenRating(columns, itemIndex);
 
 	const raw = rawRatingWith(row, written);
 	const rating = starsOf(raw);
@@ -65,7 +69,7 @@ function Rating({
 		<StarsInput
 			value={stars}
 			label={label}
-			onRate={(next) => rate({ source, ref: itemIndex, row }, next)}
+			onRate={(next) => rate({ source, ref: itemIndex, columns }, next)}
 		/>
 	);
 }
@@ -78,11 +82,13 @@ function shortDate(row: TrackColumns, format: Formats) {
 
 function Cell({
 	column,
+	columns,
 	row,
 	source,
 	itemIndex,
 }: {
 	column: Column;
+	columns: LibraryColumns;
 	row: TrackColumns;
 	source: LibrarySource;
 	itemIndex: number;
@@ -98,7 +104,12 @@ function Cell({
 	if (column.kind === "rating") {
 		return (
 			<span className={className}>
-				<Rating row={row} source={source} itemIndex={itemIndex} />
+				<Rating
+					columns={columns}
+					row={row}
+					source={source}
+					itemIndex={itemIndex}
+				/>
 			</span>
 		);
 	}
@@ -142,7 +153,7 @@ function Cell({
 }
 
 function TrackRowComponent({
-	row,
+	rows,
 	index,
 	itemIndex,
 	coverIndex = itemIndex,
@@ -162,7 +173,7 @@ function TrackRowComponent({
 	showDisc = false,
 	onSelect,
 }: {
-	row: TrackColumns;
+	rows: TrackRows;
 	index: number;
 	itemIndex: number;
 	coverIndex?: number;
@@ -183,11 +194,13 @@ function TrackRowComponent({
 	onSelect: (index: number, event: ReactPointerEvent) => void;
 }) {
 	const t = useTranslate();
+	const row = rows.at(index);
 	const title = titleOf(row, t);
 	const artist = artistOf(row, t);
 	const trackNumber = value(row, FIELD.trackNumber);
 
-	const disc = showDisc && trackNumber !== null ? discNumber(row) : null;
+	const disc =
+		showDisc && trackNumber !== null ? discNumber(row[FIELD.discNumber]) : null;
 
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: rows are absolutely positioned by the virtualiser, which table layout cannot express
@@ -242,6 +255,7 @@ function TrackRowComponent({
 				<Cell
 					key={column.id}
 					column={column}
+					columns={rows.columns}
 					row={row}
 					source={source}
 					itemIndex={itemIndex}

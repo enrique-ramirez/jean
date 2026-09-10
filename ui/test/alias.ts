@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "../src");
 
-const HAS_EXTENSION = /\.[cm]?[jt]sx?$/;
+const HAS_EXTENSION = /\.(?:[cm]?[jt]sx?|json)$/;
 
 // The values `vite.config.ts` injects. No translation is fetched under `node`,
 // so the shipped list is empty and English is the whole catalogue.

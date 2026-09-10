@@ -3,6 +3,7 @@ import type {
 	AddFromLibraryBody,
 	LibraryInfo,
 	LibraryItemsResponse,
+	LibraryNodesResponse,
 	NowPlayingTrack,
 	PlayerState,
 	PlaylistInfo,
@@ -144,6 +145,21 @@ export async function fetchLibraryItems({
 		libraryItems: LibraryItemsResponse;
 	};
 	return libraryItems;
+}
+
+// One folder of the library tree, which is how a client reaches one track by a path it holds. See
+// README.md: an ordinal is not an offset into `/library/items`.
+export async function fetchLibraryNodes(
+	directory: string,
+	columns: string[],
+): Promise<LibraryNodesResponse> {
+	const response = await request(
+		`/api/library/items/by-path?path=${encodeURIComponent(directory)}&columns=${encode(columns)}`,
+	);
+	const { libraryNodes } = (await response.json()) as {
+		libraryNodes: LibraryNodesResponse;
+	};
+	return libraryNodes;
 }
 
 export const libraryArtworkUrl = (path: string, subsong?: number) =>

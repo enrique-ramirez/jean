@@ -6,7 +6,12 @@ import {
 	albumsOf,
 	refsOfAlbum,
 } from "../../src/domain/track/albums.ts";
-import { FIELD } from "../../src/domain/track/fields.ts";
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import {
+	columnCollector,
+	libraryColumnsOf,
+} from "../../src/domain/track/libraryColumns.ts";
+import { trackRows } from "../../src/domain/track/project.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
@@ -28,8 +33,9 @@ const rowOf = ([artist, albumArtist, album]: (typeof LIBRARY)[number]) => {
 };
 
 const rows = LIBRARY.map(rowOf);
+const columns = libraryColumnsOf(rows, TRACK_EXPRESSIONS.length);
 
-const albums = albumsOf(rows);
+const albums = albumsOf(trackRows(columns));
 const find = (artist: string, album: string) =>
 	albums.find(
 		(entry) =>
@@ -66,20 +72,20 @@ test("a record with neither artist tag is still a record", () => {
 
 test("the rows a record's page draws are the ones its count promised", () => {
 	for (const album of albums) {
-		const found = refsOfAlbum(rows, album.artistTag, album.album);
+		const found = refsOfAlbum(columns, album.artistTag, album.album);
 		assert.equal(found.refs.length, album.trackCount, album.album);
 	}
 });
 
 test("the record's own spelling comes back with its rows, not the route's", () => {
-	const found = refsOfAlbum(rows, "daft punk", "discovery");
+	const found = refsOfAlbum(columns, "daft punk", "discovery");
 	assert.equal(found.album, "Discovery");
 	assert.equal(found.artist, "Daft Punk");
 	assert.deepEqual([...found.refs], [2, 3]);
 });
 
 test("an empty title matches nothing rather than everything untagged", () => {
-	assert.equal(refsOfAlbum(rows, "Daft Punk", "  ").refs.length, 0);
+	assert.equal(refsOfAlbum(columns, "Daft Punk", "  ").refs.length, 0);
 });
 
 test("a record survives the trip through its own address", () => {
@@ -88,7 +94,7 @@ test("a record survives the trip through its own address", () => {
 		const back = albumOfRoute(route);
 		assert.ok(back, route);
 		assert.equal(
-			refsOfAlbum(rows, back.artist, back.album).refs.length,
+			refsOfAlbum(columns, back.artist, back.album).refs.length,
 			album.trackCount,
 			route,
 		);
@@ -113,9 +119,12 @@ test("a title carrying a slash is not read as two segments", () => {
 test("the index takes in rows that arrive after it was first asked for", () => {
 	const key = "library:6";
 
-	assert.equal(albumIndex(key, rows.slice(0, 1)).length, 1);
+	const collector = columnCollector(TRACK_EXPRESSIONS.length);
+	collector.add(rows.slice(0, 1));
+	assert.equal(albumIndex(key, collector.table()).length, 1);
 
-	const grown = albumIndex(key, rows);
+	collector.add(rows.slice(1));
+	const grown = albumIndex(key, collector.table());
 	assert.equal(grown.length, albums.length);
 	assert.equal(
 		grown.find((entry) => entry.album === "Discovery")?.trackCount,

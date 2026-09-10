@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FIELD } from "../../src/domain/track/fields.ts";
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { genreIndex, genresOf } from "../../src/domain/track/genres.ts";
+import {
+	columnCollector,
+	libraryColumnsOf,
+} from "../../src/domain/track/libraryColumns.ts";
+import { trackRows } from "../../src/domain/track/project.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
@@ -22,7 +27,9 @@ const rows = LIBRARY.map(([genre, artist, album]) => {
 	return row;
 });
 
-const genres = genresOf(rows);
+const columns = libraryColumnsOf(rows, TRACK_EXPRESSIONS.length);
+
+const genres = genresOf(trackRows(columns));
 const find = (name: string) => genres.find((entry) => entry.name === name);
 
 test("a joined tag is one genre, not the genres inside it", () => {
@@ -47,9 +54,12 @@ test("albums are counted per genre, and a record's tracks only once", () => {
 test("the index takes in rows that arrive after it was first asked for", () => {
 	const key = "library:6";
 
-	assert.equal(genreIndex(key, rows.slice(0, 1)).length, 1);
+	const collector = columnCollector(TRACK_EXPRESSIONS.length);
+	collector.add(rows.slice(0, 1));
+	assert.equal(genreIndex(key, collector.table()).length, 1);
 
-	const grown = genreIndex(key, rows);
+	collector.add(rows.slice(1));
+	const grown = genreIndex(key, collector.table());
 	assert.equal(grown.length, 3);
 	assert.equal(grown.find((entry) => entry.name === "Rock")?.trackCount, 2);
 	assert.ok(grown.some((entry) => entry.name === "Electronic"));

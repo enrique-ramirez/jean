@@ -1,5 +1,5 @@
-import { FIELD, playCountOf, value } from "@/domain/track/fields";
-import type { TrackColumns } from "@/shared/api/types";
+import { columnReader, FIELD, readNumber, value } from "@/domain/track/fields";
+import type { TrackRows } from "@/domain/track/project";
 import type { Translate } from "@/shared/i18n/locale";
 
 export interface TopTrack {
@@ -11,29 +11,30 @@ export interface TopTrack {
 }
 
 export function topTracksOf(
-	rows: TrackColumns[],
+	rows: TrackRows,
 	limit: number,
 	artworkUrl: (ref: number) => string,
 	t: Translate,
 ): TopTrack[] {
-	const played = rows.reduce<{ ref: number; plays: number }[]>(
-		(into, row, ref) => {
-			const plays = playCountOf(row) ?? 0;
-			if (plays > 0) into.push({ ref, plays });
-			return into;
-		},
-		[],
-	);
+	const playsOf = columnReader(rows.columns, FIELD.playCount, readNumber);
+
+	const played: { position: number; plays: number }[] = [];
+	for (let position = 0; position < rows.length; position += 1) {
+		const plays = playsOf(rows.ref(position)) ?? 0;
+		if (plays > 0) played.push({ position, plays });
+	}
 
 	return played
 		.sort((a, b) => b.plays - a.plays)
 		.slice(0, limit)
-		.map(({ ref, plays }) => ({
-			ref,
-			title: value(rows[ref], FIELD.title) ?? t("track.unknownTitle"),
-			artist:
-				value(rows[ref], FIELD.artist) ?? value(rows[ref], FIELD.albumArtist),
-			plays,
-			artworkUrl: artworkUrl(ref),
-		}));
+		.map(({ position, plays }) => {
+			const row = rows.at(position);
+			return {
+				ref: rows.ref(position),
+				title: value(row, FIELD.title) ?? t("track.unknownTitle"),
+				artist: value(row, FIELD.artist) ?? value(row, FIELD.albumArtist),
+				plays,
+				artworkUrl: artworkUrl(rows.ref(position)),
+			};
+		});
 }

@@ -1,20 +1,19 @@
 import { useCallback, useMemo } from "react";
 
-import type { TrackColumns } from "@/shared/api/types";
+import { FIELD, resolvesAnywhere } from "./fields";
+import type { LibraryColumns } from "./libraryColumns";
 
-import { FIELD, fieldIsAvailable } from "./fields";
-
-export function useAvailableFields(rows: TrackColumns[]) {
+export function useAvailableFields(columns: LibraryColumns) {
 	const available = useMemo(() => {
 		const fields = new Set(
-			Object.values(FIELD).filter((field) => fieldIsAvailable(rows, field)),
+			Object.values(FIELD).filter((field) => resolvesAnywhere(columns, field)),
 		);
 
 		// Never hidden: a library with no ratings yet still needs the column to rate through.
 		fields.add(FIELD.rating);
 
 		return fields;
-	}, [rows]);
+	}, [columns]);
 
 	const isAvailable = useCallback(
 		(field: number) => available.has(field),

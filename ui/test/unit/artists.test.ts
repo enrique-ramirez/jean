@@ -6,7 +6,12 @@ import {
 	namesAnArtist,
 	refsOfArtist,
 } from "../../src/domain/track/artists.ts";
-import { FIELD } from "../../src/domain/track/fields.ts";
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import {
+	columnCollector,
+	libraryColumnsOf,
+} from "../../src/domain/track/libraryColumns.ts";
+import { trackRows } from "../../src/domain/track/project.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
@@ -35,7 +40,12 @@ const rows = LIBRARY.map(([artist, albumArtist, album]) => {
 	return row;
 });
 
-const artists = artistsOf(rows);
+const columnsOf = (of: string[][]) =>
+	libraryColumnsOf(of, TRACK_EXPRESSIONS.length);
+
+const columns = columnsOf(rows);
+
+const artists = artistsOf(trackRows(columns));
 const find = (name: string) =>
 	artists.find((entry) => entry.key === name.toLowerCase());
 
@@ -78,24 +88,24 @@ test("Various Artists is not an artist", () => {
 });
 
 test("a track is theirs when either tag names them, and a guest spot is not", () => {
-	const daft = refsOfArtist(rows, "Daft Punk");
+	const daft = refsOfArtist(columns, "Daft Punk");
 	assert.deepEqual([...daft.own], [4]);
 	assert.deepEqual([...daft.guest], []);
 
-	const harnett = refsOfArtist(rows, "Sinead Harnett");
+	const harnett = refsOfArtist(columns, "Sinead Harnett");
 	assert.deepEqual([...harnett.own], []);
 	assert.deepEqual([...harnett.guest], [5]);
 });
 
 test("an empty name matches nothing rather than everything untagged", () => {
-	const nothing = refsOfArtist(rows, "   ");
+	const nothing = refsOfArtist(columns, "   ");
 	assert.equal(nothing.own.length, 0);
 	assert.equal(nothing.guest.length, 0);
 });
 
 test("the counts a page shows are the rows it draws", () => {
 	for (const artist of artists) {
-		const refs = refsOfArtist(rows, artist.name);
+		const refs = refsOfArtist(columns, artist.name);
 		assert.equal(
 			refs.own.length,
 			artist.trackCount,
@@ -110,10 +120,13 @@ test("the counts a page shows are the rows it draws", () => {
 test("the index takes in rows that arrive after it was first asked for", () => {
 	const key = "library:10";
 
-	assert.equal(artistIndex(key, rows.slice(0, 2)).length, 1);
-	assert.equal(artistIndex(key, rows.slice(0, 2))[0].name, "Foo Fighters");
+	const collector = columnCollector(TRACK_EXPRESSIONS.length);
+	collector.add(rows.slice(0, 2));
+	assert.equal(artistIndex(key, collector.table()).length, 1);
+	assert.equal(artistIndex(key, collector.table())[0].name, "Foo Fighters");
 
-	const grown = artistIndex(key, rows);
+	collector.add(rows.slice(2));
+	const grown = artistIndex(key, collector.table());
 	assert.ok(grown.length > 1, "the rest of the library reached the index");
 	assert.ok(grown.some((entry) => entry.key === "sinead harnett"));
 
@@ -124,8 +137,8 @@ test("the index takes in rows that arrive after it was first asked for", () => {
 });
 
 test("a different library is built afresh rather than added to", () => {
-	artistIndex("library:10", rows);
-	const other = artistIndex("library:1", rows.slice(2, 3));
+	artistIndex("library:10", columns);
+	const other = artistIndex("library:1", columnsOf(rows.slice(2, 3)));
 	assert.equal(other.length, 1);
 	assert.equal(other[0].key, "blood, sweat & tears");
 });
@@ -145,17 +158,21 @@ test("an exact name beats one that merely starts with the query", () => {
 
 test("at the same rung, the artist you hold more of comes first", () => {
 	const tied = artistsOf(
-		[
-			["Blue Cat", "Blue Cat", "One"],
-			["Blue Dog", "Blue Dog", "Two"],
-			["Blue Dog", "Blue Dog", "Two"],
-		].map(([artist, albumArtist, album]) => {
-			const row: string[] = [];
-			row[FIELD.artist] = artist;
-			row[FIELD.albumArtist] = albumArtist;
-			row[FIELD.album] = album;
-			return row;
-		}),
+		trackRows(
+			columnsOf(
+				[
+					["Blue Cat", "Blue Cat", "One"],
+					["Blue Dog", "Blue Dog", "Two"],
+					["Blue Dog", "Blue Dog", "Two"],
+				].map(([artist, albumArtist, album]) => {
+					const row: string[] = [];
+					row[FIELD.artist] = artist;
+					row[FIELD.albumArtist] = albumArtist;
+					row[FIELD.album] = album;
+					return row;
+				}),
+			),
+		),
 	);
 
 	assert.deepEqual(

@@ -39,7 +39,13 @@ constexpr auto kPairRefill = std::chrono::seconds(6);
 constexpr int kRefreshBurst = 3;
 constexpr auto kRefreshRefill = std::chrono::seconds(30);
 
+// A screenful of covers arrives at once and that is the feature, so the burst is deep and
+// what it bounds is a client stuck in a loop turning into a queue of disk reads.
+constexpr int kArtworkBurst = 300;
+constexpr auto kArtworkRefill = std::chrono::milliseconds(50);
+
 constexpr char kPairPath[] = "/api/pair";
+constexpr char kArtworkPath[] = "/api/artwork";
 constexpr char kLibraryPath[] = "/api/library";
 constexpr char kLibraryExportPath[] = "/api/library/export";
 constexpr char kLibraryChangesPath[] = "/api/library/changes";
@@ -52,6 +58,16 @@ constexpr char kNoLibrary[] = "the media library is not available";
 constexpr char kLibraryTooLarge[] = "the library snapshot is larger than this component sends";
 
 constexpr char kRefreshingTooFast[] = "too many library refreshes";
+
+constexpr char kNoArtwork[] = "artwork is not available";
+
+constexpr char kNoArtworkForTrack[] = "no artwork for that track";
+
+constexpr char kUnpublishableArtwork[] = "that artwork is not in a format this component sends";
+
+constexpr char kArtworkTooLarge[] = "that artwork is larger than this component sends";
+
+constexpr char kFetchingArtworkTooFast[] = "too many artwork requests";
 
 // The snapshot and the deltas. Opaque bytes with a magic number of their own, so nothing on
 // the way to the client sniffs, transcodes or reformats them; contract/openapi.yaml is the
@@ -156,9 +172,13 @@ LibraryRequest missing(LibraryRefusal refusal, std::string detail) {
     return request;
 }
 
-void mustRevalidate(httplib::Response& res, const std::string& tag) {
+void revalidateAlways(httplib::Response& res, const std::string& tag) {
     res.set_header("Cache-Control", "no-cache");
     res.set_header("ETag", tag);
+}
+
+void mustRevalidate(httplib::Response& res, const std::string& tag) {
+    revalidateAlways(res, tag);
     res.set_header("Vary", "Accept-Encoding");
 }
 
@@ -305,6 +325,8 @@ struct HttpServer::Impl {
 
     RateLimiter libraryRebuilds{kRefreshBurst, kRefreshRefill};
 
+    RateLimiter artworkReads{kArtworkBurst, kArtworkRefill};
+
     // An export names the columns it wants and this is what it named, so a later rebuild,
     // whether from the player noticing a change or from POST /library/refresh, reproduces the
     // same set rather than whatever the component last happened to build.
@@ -345,8 +367,14 @@ struct HttpServer::Impl {
 
         res.set_header("Access-Control-Allow-Origin", origin);
         res.set_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers", "Authorization, Content-Type");
+        res.set_header("Access-Control-Allow-Headers",
+                       "Authorization, Content-Type, If-None-Match");
         res.set_header("Access-Control-Max-Age", "600");
+
+        // See CLAUDE.md, *Facts about the player*, for why If-None-Match, ETag and
+        // Retry-After each need naming on one side of a CORS request or the other, and
+        // Authorization, Content-Type and Cache-Control do not.
+        res.set_header("Access-Control-Expose-Headers", "ETag, Retry-After");
     }
 
     bool authorized(const httplib::Request& req) const {
@@ -724,6 +752,72 @@ struct HttpServer::Impl {
         });
     }
 
+    bool fetchingArtworkTooFast(httplib::Response& res) {
+        if (artworkReads.allow(std::chrono::steady_clock::now()))
+            return false;
+
+        res.set_header("Retry-After", "1");
+        respond(res, 429, errorDocument(kFetchingArtworkTooFast));
+        return true;
+    }
+
+    static void sendArtwork(const httplib::Request& req, httplib::Response& res,
+                            const ArtworkSource& source) {
+        if (alreadyHolds(req, source.tag)) {
+            revalidateAlways(res, source.tag);
+            res.status = 304;
+            return;
+        }
+
+        const std::string picture = source.read();
+        if (picture.empty()) {
+            respond(res, 404, errorDocument(kNoArtworkForTrack));
+            return;
+        }
+
+        if (picture.size() > kMaxArtworkBytes) {
+            respond(res, 413, errorDocument(kArtworkTooLarge));
+            return;
+        }
+
+        const auto type = imageTypeOf(picture);
+        if (type.empty()) {
+            respond(res, 404, errorDocument(kUnpublishableArtwork));
+            return;
+        }
+
+        revalidateAlways(res, source.tag);
+        res.status = 200;
+        res.set_content(picture, type);
+    }
+
+    void addArtworkRoute() {
+        server.Get(kArtworkPath, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto track = req.get_param_value("track");
+
+            if (const auto refusal = trackAddressRefusal(track); !refusal.empty()) {
+                respond(res, 400, errorDocument(refusal));
+                return;
+            }
+
+            if (!player.readArtwork) {
+                respond(res, 503, errorDocument(kNoArtwork));
+                return;
+            }
+
+            if (fetchingArtworkTooFast(res))
+                return;
+
+            const auto source = player.readArtwork(track);
+            if (!source.read) {
+                respond(res, 404, errorDocument(kNoArtworkForTrack));
+                return;
+            }
+
+            sendArtwork(req, res, source);
+        });
+    }
+
     void addTagRoutes() {
         server.Post("/api/tags", [this](const httplib::Request& req, httplib::Response& res) {
             const auto request = parseTagWrite(req.body, settings);
@@ -908,6 +1002,7 @@ ListenerStatus HttpServer::start() {
     impl.addPlaylistRoutes();
     impl.addStreamRoutes();
     impl.addLibraryRoutes();
+    impl.addArtworkRoute();
     impl.addPairingRoute();
 
     if (impl.settings.authToken.empty())

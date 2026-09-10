@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import { libraryColumnsOf } from "../../src/domain/track/libraryColumns.ts";
 import { bestMatches } from "../../src/domain/track/rankTracks.ts";
-import { type RowText, rowMatches } from "../../src/domain/track/searchText.ts";
-import { fold, tokenize } from "../../src/shared/lib/text.ts";
+import { rowMatches, searchIndex } from "../../src/domain/track/searchText.ts";
+import { tokenize } from "../../src/shared/lib/text.ts";
 
 const LIBRARY: [title: string, artist: string, album: string][] = [
 	["Life Is Bloody", "2 Mello", "Nastlevania"],
@@ -19,16 +21,26 @@ const LIBRARY: [title: string, artist: string, album: string][] = [
 	["Sabbath Bloody Sabbath", "Black Sabbath", "Sabbath Bloody Sabbath"],
 ];
 
-const index: RowText[] = LIBRARY.map(([title, artist, album]) => ({
-	title: fold(title),
-	artist: fold(artist),
-	album: fold(album),
-}));
+const indexOf = (library: (typeof LIBRARY)[number][]) =>
+	searchIndex(
+		libraryColumnsOf(
+			library.map(([title, artist, album]) => {
+				const row: string[] = [];
+				row[FIELD.title] = title;
+				row[FIELD.artist] = artist;
+				row[FIELD.album] = album;
+				return row;
+			}),
+			TRACK_EXPRESSIONS.length,
+		),
+	);
+
+const index = indexOf(LIBRARY);
 
 const preview = (query: string, limit = 5) => {
 	const tokens = tokenize(query);
-	const matched = index.flatMap((text, at) =>
-		rowMatches(text, tokens) ? at : [],
+	const matched = LIBRARY.flatMap((_, at) =>
+		rowMatches(index, at, tokens) ? at : [],
 	);
 
 	return bestMatches(index, matched, query, limit).map(
@@ -83,10 +95,10 @@ test("the limit is a limit, and asking for none returns none", () => {
 });
 
 test("ties keep the order the results page is in", () => {
-	const twice: RowText[] = [
-		{ title: fold("Blood"), artist: fold("A"), album: fold("One") },
-		{ title: fold("Blood"), artist: fold("B"), album: fold("Two") },
-	];
+	const twice = indexOf([
+		["Blood", "A", "One"],
+		["Blood", "B", "Two"],
+	]);
 
 	assert.deepEqual(bestMatches(twice, [0, 1], "blood", 2), [0, 1]);
 	assert.deepEqual(bestMatches(twice, [1, 0], "blood", 2), [0, 1]);

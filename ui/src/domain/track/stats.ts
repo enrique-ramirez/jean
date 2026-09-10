@@ -1,6 +1,7 @@
-import type { TrackColumns } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
-import { FIELD, numberOf, tagKey, value } from "./fields";
+import { FIELD, readNumber, tagGroups } from "./fields";
+import { byValue } from "./libraryColumns";
+import type { TrackRows } from "./project";
 
 const TOP_GENRES = 4;
 const MINUTE = 60;
@@ -10,53 +11,58 @@ const DAY = 24 * HOUR;
 // A genre is the tag taken whole, since foobar joins multiple values with '; '. `refsOfGenre`
 // matches by the same rule and the two have to stay in step.
 export function summarise(
-	rows: TrackColumns[],
+	rows: TrackRows,
 	playedCount = 0,
 	{ genres = TOP_GENRES } = {},
 ) {
-	const totals = rows.reduce(
-		(into, row) => {
-			into.seconds += numberOf(row, FIELD.duration) ?? 0;
+	const { columns } = rows;
+	const duration = columns.fields[FIELD.duration];
+	const year = columns.fields[FIELD.year];
+	const genre = columns.fields[FIELD.genre];
 
-			const year = numberOf(row, FIELD.year);
-			if (year !== null && year > 1000) {
-				into.earliest =
-					into.earliest === null ? year : Math.min(into.earliest, year);
-				into.latest = into.latest === null ? year : Math.max(into.latest, year);
-			}
+	const lengths = byValue(duration, readNumber);
+	const years = byValue(year, readNumber);
+	const tags = tagGroups(genre);
+	const counts = new Int32Array(tags.keys.length);
 
-			const genre = value(row, FIELD.genre);
-			if (genre) {
-				const key = tagKey(genre);
-				const seen = into.genres.get(key);
-				if (seen) seen.count += 1;
-				else into.genres.set(key, { name: genre, count: 1 });
-			}
+	let seconds = 0;
+	let earliest: number | null = null;
+	let latest: number | null = null;
+	let tagged = 0;
 
-			return into;
-		},
-		{
-			seconds: 0,
-			earliest: null as number | null,
-			latest: null as number | null,
-			genres: new Map<string, { name: string; count: number }>(),
-		},
-	);
+	for (let position = 0; position < rows.length; position += 1) {
+		const ref = rows.ref(position);
+
+		seconds += lengths[duration.ids[ref]] ?? 0;
+
+		const released = years[year.ids[ref]];
+		if (released !== null && released > 1000) {
+			earliest = earliest === null ? released : Math.min(earliest, released);
+			latest = latest === null ? released : Math.max(latest, released);
+		}
+
+		const group = tags.of[genre.ids[ref]];
+		if (group < 0) continue;
+		if (counts[group] === 0) tagged += 1;
+		counts[group] += 1;
+	}
+
+	const named = tags.keys
+		.map((_, group) => ({ name: tags.names[group], count: counts[group] }))
+		.filter((entry) => entry.count > 0)
+		.sort((a, b) => b.count - a.count);
 
 	return {
 		trackCount: rows.length,
-		seconds: totals.seconds,
-		earliest: totals.earliest,
-		latest: totals.latest,
-		genreCount: totals.genres.size,
-		topGenres: [...totals.genres.values()]
-			.sort((a, b) => b.count - a.count)
-			.slice(0, genres)
-			.map(({ name, count }) => ({
-				name,
-				count,
-				share: Math.round((count / rows.length) * 100),
-			})),
+		seconds,
+		earliest,
+		latest,
+		genreCount: tagged,
+		topGenres: named.slice(0, genres).map(({ name, count }) => ({
+			name,
+			count,
+			share: Math.round((count / rows.length) * 100),
+		})),
 		playedShare: rows.length > 0 ? playedCount / rows.length : 0,
 	};
 }

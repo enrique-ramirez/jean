@@ -95,6 +95,22 @@ TEST_CASE("a configured origin matches case-insensitively, because config.json i
     CHECK(response->get_header_value("Access-Control-Allow-Origin") == "https://jean.example");
 }
 
+// Neither header is browser-safelisted (CLAUDE.md, *Facts about the player*). Without ETag
+// exposed, a cross-origin page never sees a validator to hold, so the `GET /library` revision
+// poll stops working from a page while still working from a command line.
+TEST_CASE("the headers a client is told to act on are readable from another origin") {
+    const TestServer server;
+
+    const auto response = server.client().Get("/api/status", from("https://jean.example"));
+
+    REQUIRE(response);
+    const auto exposed = response->get_header_value("Access-Control-Expose-Headers");
+
+    INFO("exposed: ", exposed);
+    CHECK(exposed.find("ETag") != std::string::npos);
+    CHECK(exposed.find("Retry-After") != std::string::npos);
+}
+
 // A browser sends no credentials on a preflight, so it must be answered before the token check
 // or the real request never follows.
 TEST_CASE("preflight is answered without a credential") {
@@ -108,6 +124,19 @@ TEST_CASE("preflight is answered without a credential") {
     CHECK(response->get_header_value("Access-Control-Allow-Headers").find("Authorization") !=
           std::string::npos);
     CHECK(response->get_header_value("Access-Control-Allow-Methods").find("POST") !=
+          std::string::npos);
+}
+
+// The other half of a conditional request (CLAUDE.md, *Facts about the player*): without
+// this, a page could read a validator and never send one back, and every ETagged route
+// would be a full download from a browser.
+TEST_CASE("the preflight lets a page send back the validator it was allowed to read") {
+    const TestServer server;
+
+    const auto response = server.client().Options("/api/library", from("http://localhost:5173"));
+
+    REQUIRE(response);
+    CHECK(response->get_header_value("Access-Control-Allow-Headers").find("If-None-Match") !=
           std::string::npos);
 }
 

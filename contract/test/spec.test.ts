@@ -13,6 +13,7 @@ const settled: Context = {
 	playlistId: "45837d74-fa4f-415c-bba9-bf2db8f0dc04",
 	managed: { key: "", query: "%genre% IS Rock", sort: "", forceSort: false },
 	ticket: "a-ticket",
+	revision: 903,
 };
 
 const drive = (id: string) => {
@@ -47,9 +48,19 @@ test("every probe can build a request", () => {
 });
 
 test("a probe with no answer to build on asks for nothing", () => {
-	const fresh: Context = { ...settled, playlistId: null, ticket: null };
+	const fresh: Context = {
+		...settled,
+		playlistId: null,
+		ticket: null,
+		revision: null,
+	};
 
-	for (const id of ["updateAutoPlaylist", "removeAutoPlaylist", "openStream"])
+	for (const id of [
+		"updateAutoPlaylist",
+		"removeAutoPlaylist",
+		"openStream",
+		"getLibraryChanges",
+	])
 		assert.equal(drive(id).probe(operation(id), fresh), null);
 });
 

@@ -5,14 +5,21 @@ import type { Library } from "@/domain/library/useLibrary";
 import { albumsOf } from "@/domain/track/albums";
 import type { ArtistTracks } from "@/domain/track/artists";
 import {
+	columnReader,
+	EMPTY_COLUMNS,
 	FIELD,
-	lastPlayedOf,
-	playCountOf,
+	readNumber,
+	readTimestamp,
 	titleOf,
 	value,
 } from "@/domain/track/fields";
 import { Mosaic } from "@/domain/track/Mosaic";
-import { project, type Refs, type TrackView } from "@/domain/track/project";
+import {
+	EMPTY_VIEW,
+	project,
+	type Refs,
+	type TrackView,
+} from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
 import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { ViewHeader } from "@/domain/track/ViewHeader";
@@ -31,19 +38,23 @@ const inLibrarySpace = (refs: Refs, view: TrackView) =>
 	Int32Array.from(refs, (at) => view.indices[at]);
 
 function historyOf(view: TrackView, t: Translate) {
+	const playsOf = columnReader(view.columns, FIELD.playCount, readNumber);
+	const playedAt = columnReader(view.columns, FIELD.lastPlayed, readTimestamp);
+
 	let plays = 0;
 	let unplayed = 0;
 	let lastPlayed = 0;
 	let best: { title: string; plays: number } | null = null;
 
-	for (const row of view.rows) {
-		const count = playCountOf(row) ?? 0;
+	for (let position = 0; position < view.length; position += 1) {
+		const ref = view.ref(position);
+		const count = playsOf(ref) ?? 0;
 		plays += count;
 		if (count === 0) unplayed += 1;
 		else if (best === null || count > best.plays)
-			best = { title: titleOf(row, t), plays: count };
+			best = { title: titleOf(view.at(position), t), plays: count };
 
-		const at = lastPlayedOf(row);
+		const at = playedAt(ref);
 		if (at !== null && at > lastPlayed) lastPlayed = at;
 	}
 
@@ -85,21 +96,21 @@ export function ArtistView({
 	);
 
 	const stats = useMemo(
-		() => summarise(own?.rows ?? [], own?.playedCount ?? 0),
+		() => summarise(own ?? EMPTY_VIEW, own?.playedCount ?? 0),
 		[own],
 	);
 
 	const discography = useMemo(() => {
 		if (!own) return [];
-		return albumsOf(own.rows)
+		return albumsOf(own)
 			.map((album) => ({ ...album, refs: inLibrarySpace(album.refs, own) }))
 			.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
 	}, [own]);
 
 	const history = useMemo(() => (own ? historyOf(own, t) : null), [own, t]);
-	const { hasPlayCounts } = useAvailableFields(own?.rows ?? []);
+	const { hasPlayCounts } = useAvailableFields(own?.columns ?? EMPTY_COLUMNS);
 
-	const held = (own?.rows.length ?? 0) + (guest?.rows.length ?? 0);
+	const held = (own?.length ?? 0) + (guest?.length ?? 0);
 	const allRefs = tracks.all;
 
 	return (
@@ -120,13 +131,7 @@ export function ArtistView({
 				// No artist image to fall back to -- see this feature's CLAUDE.md.
 				aside={
 					own && discography.length > 0 ? (
-						<Mosaic
-							source={library.source}
-							rows={own.rows}
-							indices={own.indices}
-							seed={name}
-							size={176}
-						/>
+						<Mosaic source={library.source} rows={own} seed={name} size={176} />
 					) : undefined
 				}
 				actions={
@@ -169,7 +174,7 @@ export function ArtistView({
 							<dd className="tabular">
 								{t("artist.someOf", {
 									some: history.unplayed,
-									all: own.rows.length,
+									all: own.length,
 								})}
 							</dd>
 						</div>
@@ -243,30 +248,35 @@ export function ArtistView({
 				</section>
 			) : null}
 
-			{guest && guest.rows.length > 0 ? (
+			{guest && guest.length > 0 ? (
 				<section className={styles.section}>
 					<h2 className={styles.heading}>{t("artist.appearsOn")}</h2>
 					<ul className={styles.guests}>
-						{guest.rows.map((row, position) => (
-							<li key={`${tracks.guest[position]}`}>
-								<button
-									type="button"
-									className={styles.guestRow}
-									onClick={() => onPlay(tracks.guest, position)}
-								>
-									<Artwork
-										src={library.source.artworkUrl(tracks.guest[position])}
-										size={36}
-									/>
-									<span className={styles.guestText}>
-										<span className={styles.guestTitle}>{titleOf(row, t)}</span>
-										<span className={styles.guestUnder}>
-											{value(row, FIELD.artist)}
+						{Array.from({ length: guest.length }, (_, position) => {
+							const row = guest.at(position);
+							return (
+								<li key={`${tracks.guest[position]}`}>
+									<button
+										type="button"
+										className={styles.guestRow}
+										onClick={() => onPlay(tracks.guest, position)}
+									>
+										<Artwork
+											src={library.source.artworkUrl(tracks.guest[position])}
+											size={36}
+										/>
+										<span className={styles.guestText}>
+											<span className={styles.guestTitle}>
+												{titleOf(row, t)}
+											</span>
+											<span className={styles.guestUnder}>
+												{value(row, FIELD.artist)}
+											</span>
 										</span>
-									</span>
-								</button>
-							</li>
-						))}
+									</button>
+								</li>
+							);
+						})}
 					</ul>
 				</section>
 			) : null}

@@ -8,13 +8,15 @@ import {
 	useState,
 } from "react";
 
-import type { TrackColumns, TrackIdentity } from "@/shared/api/types";
+import type { TrackIdentity } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { translate } from "@/shared/i18n/locale";
 import type { Translate } from "@/shared/i18n/useTranslate";
 import { pushToast } from "@/shared/ui/toastStore";
+import type { LibraryColumns } from "./libraryColumns";
+import { rowAt } from "./libraryColumns";
 import type { LibrarySource } from "./librarySource";
 import { clearWrittenRating, setWrittenRating } from "./ratingStore";
 import {
@@ -41,7 +43,7 @@ export function labelOfField(field: string, t: Translate): string {
 export interface RateTarget {
 	source: LibrarySource;
 	ref: number;
-	row: TrackColumns;
+	columns: LibraryColumns;
 }
 
 interface TagWriting {
@@ -132,20 +134,17 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 
 	// Coalesced per row rather than through `useCoalescedWrite`, which holds one pending value and
 	// would lose an edit whenever two rows are rated in turn.
-	const pending = useRef(new Map<TrackColumns, RateTarget & { raw: string }>());
+	const pending = useRef<(RateTarget & { raw: string })[]>([]);
 	const isWriting = useRef(false);
 	const writerRef = useRef(writer);
 	writerRef.current = writer;
 
 	const drain = useCallback(async () => {
 		if (isWriting.current) return;
-		const next = pending.current.entries().next();
-		if (next.done) return;
+		const target = pending.current.shift();
+		if (!target) return;
 
-		const [row, target] = next.value;
-		pending.current.delete(row);
 		isWriting.current = true;
-
 		try {
 			await sendRating(target, writerRef.current, setRefused);
 		} finally {
@@ -157,8 +156,17 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 	const rate = useCallback(
 		(target: RateTarget, stars: number | null) => {
 			const raw = tagValueOf(stars);
-			setWrittenRating(target.row, raw);
-			pending.current.set(target.row, { ...target, raw });
+			setWrittenRating(target.columns, target.ref, raw);
+
+			const queued = { ...target, raw };
+			const at = pending.current.findIndex(
+				(entry) =>
+					entry.columns.load === target.columns.load &&
+					entry.ref === target.ref,
+			);
+			if (at < 0) pending.current.push(queued);
+			else pending.current[at] = queued;
+
 			drain();
 		},
 		[drain],
@@ -239,13 +247,14 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 }
 
 async function sendRating(
-	{ source, ref, row, raw }: RateTarget & { raw: string },
+	{ source, ref, columns, raw }: RateTarget & { raw: string },
 	writer: TagWriter,
 	refuse: (update: (current: string[]) => string[]) => void,
 ) {
+	const row = rowAt(columns, ref);
 	const resolved = await source.identify(ref, row).catch(() => null);
 	if (!resolved?.identity.path) {
-		clearWrittenRating(row);
+		clearWrittenRating(columns, ref);
 		pushToast({
 			message: translate("rate.moved"),
 			tone: "error",
@@ -258,7 +267,7 @@ async function sendRating(
 	});
 
 	if (result.ok) {
-		setWrittenRating(row, result.written.fields[RATING_FIELD] ?? raw);
+		setWrittenRating(columns, ref, result.written.fields[RATING_FIELD] ?? raw);
 		return;
 	}
 
@@ -267,7 +276,7 @@ async function sendRating(
 		const after = await source
 			.identify(ref, row, ["%rating%"])
 			.catch(() => null);
-		if (after) setWrittenRating(row, after.columns[0] ?? "");
+		if (after) setWrittenRating(columns, ref, after.columns[0] ?? "");
 		pushToast({
 			message: translate(after ? "rate.slowOk" : "rate.noAnswer"),
 			tone: after ? "default" : "error",
@@ -275,7 +284,7 @@ async function sendRating(
 		return;
 	}
 
-	clearWrittenRating(row);
+	clearWrittenRating(columns, ref);
 
 	if (result.reason === "not-allowed") {
 		console.error(

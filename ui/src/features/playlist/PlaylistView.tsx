@@ -4,6 +4,7 @@ import { librarySourceOf } from "@/domain/track/librarySource";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import { Mosaic } from "@/domain/track/Mosaic";
 import { PlayActions } from "@/domain/track/PlayActions";
+import { trackRows } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
 import { TrackBrowser } from "@/domain/track/TrackBrowser";
 import { useAvailableFields } from "@/domain/track/useAvailableFields";
@@ -25,8 +26,18 @@ export function PlaylistView({
 	isCompactViewport: boolean;
 }) {
 	const t = useTranslate();
-	const { rows, loaded, total, isLoading, error, heat, patina, playedCount } =
-		usePlaylistItems(playlist?.id, playlist?.itemCount);
+	const {
+		columns,
+		loaded,
+		total,
+		isLoading,
+		error,
+		heat,
+		patina,
+		playedCount,
+	} = usePlaylistItems(playlist?.id, playlist?.itemCount);
+
+	const rows = useMemo(() => trackRows(columns), [columns]);
 
 	const source = useMemo(
 		() =>
@@ -37,7 +48,7 @@ export function PlaylistView({
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const isPlaying = useIsPlaying();
 	const activeItem = useActiveItem(playlist?.id);
-	const { hasPlayCounts } = useAvailableFields(rows);
+	const { hasPlayCounts } = useAvailableFields(columns);
 
 	const finder = useFinder({
 		rows,

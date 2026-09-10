@@ -37,6 +37,8 @@
 		"src/shared/i18n/locale.ts",
 		"src/shared/i18n/message.ts",
 		"src/domain/track/fields.ts",
+		"src/domain/track/libraryColumns.ts",
+		"src/shared/api/jlib.ts",
 		"playwright.config.ts"
 	]
 }

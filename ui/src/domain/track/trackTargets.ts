@@ -1,8 +1,6 @@
-import type { TrackColumns } from "@/shared/api/types";
-
 export function targetsFrom(
 	event: { target: EventTarget | null },
-	rows: TrackColumns[],
+	length: number,
 	selection: Set<number>,
 ): { index: number; positions: number[] } | null {
 	const element = (event.target as HTMLElement | null)?.closest?.<HTMLElement>(
@@ -11,7 +9,7 @@ export function targetsFrom(
 	if (!element) return null;
 
 	const index = Number(element.dataset.row);
-	if (!Number.isInteger(index) || !rows[index]) return null;
+	if (!Number.isInteger(index) || index < 0 || index >= length) return null;
 
 	const positions =
 		selection.has(index) && selection.size > 1

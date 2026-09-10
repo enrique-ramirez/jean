@@ -1,34 +1,34 @@
-import type { TrackColumns } from "@/shared/api/types";
 import { tokenize } from "@/shared/lib/text";
+import type { LibraryColumns } from "./libraryColumns";
 import type { Refs } from "./project";
-import { type RowText, rowMatches, rowText } from "./searchText";
+import {
+	type FoldCache,
+	foldCache,
+	rowMatches,
+	type SearchIndex,
+} from "./searchText";
 
-let held: { key: string; text: RowText[] } | null = null;
+let held: { key: string; cache: FoldCache } | null = null;
 
-// Rows only ever grow, a chunk at a time, so the index extends in place. The key carries the item
-// count, so an edited library indexes afresh rather than inheriting rows that have moved.
-export function libraryIndex(key: string, rows: TrackColumns[]): RowText[] {
-	if (held?.key === key) {
-		for (const row of rows.slice(held.text.length))
-			held.text.push(rowText(row));
-		return held.text;
-	}
-
-	held = { key, text: rows.map(rowText) };
-	return held.text;
+export function libraryIndex(
+	key: string,
+	columns: LibraryColumns,
+): SearchIndex {
+	if (held?.key !== key) held = { key, cache: foldCache() };
+	return held.cache.over(columns);
 }
 
 export function searchLibrary(
-	index: RowText[],
+	index: SearchIndex,
+	trackCount: number,
 	query: string,
 ): Int32Array | null {
 	const tokens = tokenize(query);
 	if (tokens.length === 0) return null;
 
-	const matched = index.reduce<number[]>((found, text, index) => {
-		if (rowMatches(text, tokens)) found.push(index);
-		return found;
-	}, []);
+	const matched: number[] = [];
+	for (let ref = 0; ref < trackCount; ref += 1)
+		if (rowMatches(index, ref, tokens)) matched.push(ref);
 
 	return Int32Array.from(matched);
 }

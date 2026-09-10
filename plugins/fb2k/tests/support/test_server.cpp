@@ -24,6 +24,12 @@ Player TestServer::writing(TagWriter writeTags) {
     return player;
 }
 
+Player TestServer::showing(ArtworkReader readArtwork) {
+    Player player;
+    player.readArtwork = std::move(readArtwork);
+    return player;
+}
+
 Player TestServer::listing(PlaylistLister listPlaylists) {
     Player player;
     player.listPlaylists = std::move(listPlaylists);

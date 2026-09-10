@@ -1,29 +1,40 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { TrackColumns } from "@/shared/api/types";
 import { subscribers } from "@/shared/lib/store";
+import type { LibraryColumns } from "./libraryColumns";
 
-const written = new WeakMap<TrackColumns, string>();
+const written = new WeakMap<object, Map<number, string>>();
 
 const listeners = subscribers();
 
-export function setWrittenRating(row: TrackColumns, raw: string) {
-	written.set(row, raw);
+export function setWrittenRating(
+	columns: LibraryColumns,
+	ref: number,
+	raw: string,
+) {
+	const overlay = written.get(columns.load) ?? new Map<number, string>();
+	written.set(columns.load, overlay);
+	overlay.set(ref, raw);
 	listeners.notify();
 }
 
-export function clearWrittenRating(row: TrackColumns) {
-	if (!written.delete(row)) return;
+export function clearWrittenRating(columns: LibraryColumns, ref: number) {
+	if (!written.get(columns.load)?.delete(ref)) return;
 	listeners.notify();
 }
 
-export const writtenRatingOf = (row: TrackColumns) => written.get(row);
+export const writtenRatingOf = (columns: LibraryColumns, ref: number) =>
+	written.get(columns.load)?.get(ref);
 
 export function useWrittenRating(
-	row: TrackColumns | undefined,
+	columns: LibraryColumns,
+	ref: number | undefined,
 ): string | undefined {
 	return useSyncExternalStore(
 		listeners.subscribe,
-		useCallback(() => (row ? written.get(row) : undefined), [row]),
+		useCallback(
+			() => (ref === undefined ? undefined : writtenRatingOf(columns, ref)),
+			[columns, ref],
+		),
 	);
 }

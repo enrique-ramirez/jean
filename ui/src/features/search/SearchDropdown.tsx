@@ -20,6 +20,7 @@ import {
 	titleOf,
 	value,
 } from "@/domain/track/fields";
+import { rowAt } from "@/domain/track/libraryColumns";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import {
@@ -69,7 +70,7 @@ function faceOf(
 	const cover = (ref: number, className: string) => (
 		<Artwork
 			src={library.source.artworkUrl(ref)}
-			identity={coverIdentity(library.rows[ref])}
+			identity={coverIdentity(rowAt(library.columns, ref))}
 			size={ART}
 			className={className}
 		/>
@@ -135,7 +136,7 @@ function faceOf(
 		}
 
 		default: {
-			const row = library.rows[suggestion.ref];
+			const row = rowAt(library.columns, suggestion.ref);
 			return {
 				key: `track:${suggestion.ref}`,
 				leading: cover(suggestion.ref, styles.cover),

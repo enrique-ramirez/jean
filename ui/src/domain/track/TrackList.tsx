@@ -19,7 +19,6 @@ import type {
 	TrackListHandle,
 	TrackRenderProps,
 } from "./listTypes";
-import { refAt } from "./project";
 import styles from "./TrackList.module.css";
 import { TrackRow } from "./TrackRow";
 
@@ -56,7 +55,6 @@ export const TrackList = forwardRef(function TrackList(
 	{
 		rows,
 		groups,
-		indices,
 		source,
 		scrollRef,
 		layout,
@@ -101,12 +99,10 @@ export const TrackList = forwardRef(function TrackList(
 		[isAlbumLayout, showArtwork, groups, rows.length],
 	);
 
-	// To the album run's opening row first, then through `indices`: the other order looks up a
+	// To the album run's opening row first, then through the refs: the other order looks up a
 	// playlist index in a table of row positions.
-	const coverIndexOf = (position: number) => {
-		const row = coverRows ? coverRows[position] : position;
-		return refAt(indices, row);
-	};
+	const coverIndexOf = (position: number) =>
+		rows.ref(coverRows ? coverRows[position] : position);
 
 	// Row 0 is not at scroll offset 0: the view header and toolbar sit above it, and without telling
 	// the virtualiser every scrollToIndex lands short by exactly this much. Rendering looks right
@@ -301,7 +297,6 @@ export const TrackList = forwardRef(function TrackList(
 						<AlbumGroup
 							group={groups[virtualRow.index]}
 							rows={rows}
-							indices={indices}
 							source={source}
 							columns={columns}
 							template={albumTemplate}
@@ -317,9 +312,9 @@ export const TrackList = forwardRef(function TrackList(
 						/>
 					) : (
 						<TrackRow
-							row={rows[virtualRow.index]}
+							rows={rows}
 							index={virtualRow.index}
-							itemIndex={refAt(indices, virtualRow.index)}
+							itemIndex={rows.ref(virtualRow.index)}
 							coverIndex={coverIndexOf(virtualRow.index)}
 							source={source}
 							columns={columns}

@@ -34,16 +34,20 @@ const WRITE_TIMEOUT_MS = 35_000;
 export const originOfPort = (port: number) =>
 	`${window.location.protocol}//${__PLAYER_HOST__ ?? window.location.hostname}:${port}`;
 
-const withTimeout = async <T>(
+export const withTimeout = async <T>(
 	ms: number,
 	run: (signal: AbortSignal) => Promise<T>,
+	outer?: AbortSignal,
 ): Promise<T> => {
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), ms);
+	const relay = () => controller.abort();
+	outer?.addEventListener("abort", relay);
 	try {
 		return await run(controller.signal);
 	} finally {
 		clearTimeout(timer);
+		outer?.removeEventListener("abort", relay);
 	}
 };
 
@@ -95,7 +99,7 @@ export async function probeStatus(origin: string): Promise<ProbeResult> {
 	return { ok: true, status };
 }
 
-const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 const JSON_BODY = { "Content-Type": "application/json" };
 
@@ -260,6 +264,12 @@ export interface FooJeanDiscovery {
 	token: string | null;
 	retryable: boolean;
 }
+
+export const libraryOrigin = (discovery: FooJeanDiscovery) =>
+	discovery.state.kind === "ready" &&
+	discovery.state.capabilities.canReadLibrary
+		? discovery.origin
+		: null;
 
 export async function discoverFooJean(
 	token: string | null,

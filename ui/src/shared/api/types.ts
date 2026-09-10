@@ -106,6 +106,23 @@ export interface LibraryItemsResponse {
 	items: LibraryItem[];
 }
 
+export interface LibraryNode {
+	type: "D" | "F";
+	name: string;
+	path: string;
+	itemCount?: number;
+	subsong?: number;
+	columns?: TrackColumns;
+}
+
+export interface LibraryNodesResponse {
+	offset: number;
+	totalCount: number;
+	path: string;
+	parentPath?: string;
+	items: LibraryNode[];
+}
+
 // Omitting both `items` and `query` means the whole library, and is the only way to send a large one:
 // naming every track exceeds the 1 MiB body beefweb accepts.
 export interface AddFromLibraryBody {

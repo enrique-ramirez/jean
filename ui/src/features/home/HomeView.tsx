@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { LibrarySetup } from "@/domain/library/LibrarySetup";
 import type { Library } from "@/domain/library/useLibrary";
 import { albumsOf, type CoveredAlbum } from "@/domain/track/albums";
+import { trackRows } from "@/domain/track/project";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { GenreBars } from "./GenreBars";
@@ -40,27 +41,26 @@ export function HomeView({
 	canShuffle: boolean;
 }) {
 	const t = useTranslate();
+	const rows = useMemo(() => trackRows(library.columns), [library.columns]);
+
 	const albums = useMemo(
 		() =>
-			library.rows.length === 0
+			rows.length === 0
 				? []
-				: albumsOf(library.rows).map((album) => ({
+				: albumsOf(rows).map((album) => ({
 						...album,
 						artworkUrl: library.source.artworkUrl(album.refs[0]),
 					})),
-		[library.rows, library.source],
+		[rows, library.source],
 	);
 
 	const shelves = useMemo(() => buildShelves(albums), [albums]);
 
-	const stats = useMemo(
-		() => libraryStats({ rows: library.rows, albums }),
-		[library.rows, albums],
-	);
+	const stats = useMemo(() => libraryStats({ rows, albums }), [rows, albums]);
 
 	const tracks = useMemo(
-		() => topTracksOf(library.rows, TOP_TRACKS, library.source.artworkUrl, t),
-		[library.rows, library.source, t],
+		() => topTracksOf(rows, TOP_TRACKS, library.source.artworkUrl, t),
+		[rows, library.source, t],
 	);
 
 	if (library.needsSetup) {
@@ -88,8 +88,8 @@ export function HomeView({
 				onPlayEverything={onPlayEverything}
 				onShuffleEverything={onShuffleEverything}
 				onSearch={onSearch}
-				canPlay={canPlay && library.rows.length > 0}
-				canShuffle={canShuffle && library.rows.length > 0}
+				canPlay={canPlay && rows.length > 0}
+				canShuffle={canShuffle && rows.length > 0}
 			/>
 
 			{shelves.length === 0 ? (

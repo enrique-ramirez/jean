@@ -411,28 +411,37 @@ TEST_CASE("the oldest answerable client gets every append it missed") {
     CHECK(patch.ids == std::vector<uint32_t>{5});
 }
 
-TEST_CASE("ordinals follow the library-relative path") {
-    const std::vector<TrackOrder> tracks{{"b/1.mp3", 0, "file://b/1.mp3"},
-                                         {"a/2.mp3", 0, "file://a/2.mp3"},
-                                         {"a/1.mp3", 0, "file://a/1.mp3"}};
+// The comparison here stands in for foobar2000's own (CLAUDE.md, *Facts about the player*,
+// has the real one measured); what this pins is that ordinalOrder follows whichever one
+// arrives from fb2k/, ahead of the tiebreaks.
+TEST_CASE("ordinals follow the path comparison the player supplies") {
+    const std::vector<TrackOrder> tracks{
+        {0, "file://10cc/1.mp3"}, {1, "file://5 Seconds/1.mp3"}, {2, "file://2 Mello/1.mp3"}};
 
-    CHECK(ordinalOrder(tracks) == std::vector<size_t>{2, 1, 0});
+    const std::vector<int> asThePlayerWould{2, 1, 0};
+    const auto comparePaths = [&asThePlayerWould](size_t left, size_t right) {
+        return asThePlayerWould[left] - asThePlayerWould[right];
+    };
+
+    CHECK(ordinalOrder(tracks, comparePaths) == std::vector<size_t>{2, 1, 0});
 }
 
 // Two library roots can hand back the same relative path, and one file can hold many subsongs.
 // Without a total order the two swap places on a rebuild that changed nothing, and every
 // client's refs quietly point at the other track.
 TEST_CASE("tracks sharing a relative path still order the same way every time") {
-    const std::vector<TrackOrder> tracks{{"a/1.flac", 2, "file://second/a/1.flac"},
-                                         {"a/1.flac", 0, "file://second/a/1.flac"},
-                                         {"a/1.flac", 0, "file://first/a/1.flac"},
-                                         {"a/1.flac", 2, "file://first/a/1.flac"}};
+    const std::vector<TrackOrder> tracks{{2, "file://second/a/1.flac"},
+                                         {0, "file://second/a/1.flac"},
+                                         {0, "file://first/a/1.flac"},
+                                         {2, "file://first/a/1.flac"}};
 
-    const auto order = ordinalOrder(tracks);
+    const auto onePath = [](size_t, size_t) { return 0; };
+
+    const auto order = ordinalOrder(tracks, onePath);
     CHECK(order == std::vector<size_t>{2, 1, 3, 0});
 
     const std::vector<TrackOrder> shuffled{tracks[3], tracks[0], tracks[2], tracks[1]};
-    const auto again = ordinalOrder(shuffled);
+    const auto again = ordinalOrder(shuffled, onePath);
 
     const auto identities = [](const std::vector<TrackOrder>& of,
                                const std::vector<size_t>& order) {

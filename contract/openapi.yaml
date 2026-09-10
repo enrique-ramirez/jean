@@ -12,7 +12,7 @@ openapi: 3.1.0
 
 info:
   title: foo_jean
-  version: 0.2.0
+  version: 0.3.0
   summary: Tag writing, autoplaylists and the media library for foobar2000, over HTTP, for clients that beefweb cannot serve.
   description: |
     A foobar2000 component exposing what [beefweb](https://github.com/hyperblast/beefweb) does not: writing metadata tags, managing autoplaylists, reading the whole media library in one piece, and streaming the player's own output.
@@ -49,6 +49,10 @@ info:
 
     Any origin is reflected by default, so a client works wherever it is served from: beefweb on the next port, a dev server, a phone. `Vary: Origin` is set on every response, and the origin is echoed rather than answered with a literal `*`, which would forbid credentialed mode. `POST /pair` is the exception — with no `allowedOrigins` configured it admits only an origin on the host the request was addressed to, since it is the route that hands out the token.
 
+    **A browser hands script only the CORS-safelisted response headers**, so every answer carries `Access-Control-Expose-Headers: ETag, Retry-After`. Those are the two a client is told to act on and neither is safelisted: without the first no cross-origin page can read a validator at all, and without the second a `429` cannot be backed off from as documented. `Cache-Control` and `Content-Type` are safelisted and are not named.
+
+    `If-None-Match` is the other half of the same problem and is a *request* header, which no safelist covers either, so the preflight answers `Access-Control-Allow-Headers: Authorization, Content-Type, If-None-Match`. Without it a page could hold a validator and never send one, and the revision poll, the snapshot, the delta and a cover would each be a full download from a browser and a `304` from a command line.
+
     CORS decides which page may read a response. The bearer token decides who is served. The token travels in a header rather than a cookie, so every request carrying it is preflighted, and a page without it gets a `401` whatever the CORS headers say.
 
     Set `allowedOrigins` in `<profile>/foo_jean/config.json` to narrow to a list, matched on the whole origin string and case-insensitively.
@@ -61,7 +65,7 @@ info:
 
     Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client throws its arrays away and exports again. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
 
-    An **ordinal** is a track's position in the snapshot, counted from zero, and it is the only handle these routes use. Ordinals are in library-relative path order, ties broken by subsong and then by the player's own canonical path, so the order is total and does not shuffle between rebuilds. An ordinal means nothing across a `structure` change.
+    An **ordinal** is a track's position in the snapshot, counted from zero, and it is the only handle these routes use. Ordinals are in library-relative path order, compared the way the player compares paths itself rather than byte by byte: a run of digits counts as a number and case does not count at all, so `2 Mello` comes before `10cc`. Ties are broken by subsong and then by the player's own canonical path, so the order is total and does not shuffle between rebuilds. An ordinal means nothing across a `structure` change.
 
     ### Who declares the columns
 
@@ -120,10 +124,28 @@ info:
 
     A delta carries only the columns that moved, and each of them carries only the rows that moved. A client patches those typed arrays and leaves every other column's array identity alone, which is what stops a play count moving from invalidating everything derived from titles.
 
-    - `ordinals` is `ordinals.count` ascending ordinals, and `ids` is one new id for each of them, in the same order. `ids.count` equals `ordinals.count`.
+    - `ordinals` is `ordinals.count` ascending ordinals, and `ids` is one new id for each of them, in the same order. `ids.count` equals `ordinals.count`. `ordinals.width` is the narrowest that holds every ordinal from `0` to `trackCount - 1`, which is a different number from the one `ids.width` comes from.
     - Dictionaries are append-only within a `structure` generation, so a delta never restates one. `dict.base` is the number of entries the client already holds, and `dict.text` and `dict.ends` carry only what was appended after it: `dict.ends.count` is `distinct - dict.base`, not `distinct`. Append them and the client's dictionary is current again.
 
     A value that stops being used leaves an entry behind. The next `structure` rebuild compacts it, and nothing before then does.
+
+    ## Artwork
+
+    `GET /artwork` is one front cover, addressed by the library-relative path of a track that has it: the snapshot's `directory` and `filename` concatenated, exactly as it published them. There is no ordinal here. An ordinal means nothing across a `structure` change, so a URL built from one would have to name the generation as well and would then change every time a track was added anywhere in the library, emptying a browser's cache of every cover at once. A relative path survives a rebuild, a restart and a change of column set.
+
+    **Point every row of an album at one URL.** A client picks one track to stand for a record and addresses that one from the sleeve, the row, the shelf and the now-playing pane alike. One URL in every view is what lets the browser store, deduplicate and revalidate a cover once instead of once per screen. That is also why this route takes a track rather than an album: the player resolves art per track, from the file's own tags or from an image beside it, and which of the two it is varies inside one library.
+
+    The address is a lookup key and never a path. It is matched against what the player reported for the tracks in the snapshot and is joined to nothing, so there is no file outside the media library to name and nothing to traverse out of. An address the snapshot does not carry is a `404`, and never another record's sleeve.
+
+    The body is `image/jpeg`, `image/png`, `image/gif`, `image/webp` or `image/bmp`, read from the bytes rather than from a filename. A picture in anything else is a `404`: a type nothing recognised is not one a client should be told to draw.
+
+    ### Revalidating a cover
+
+    `Cache-Control: no-cache`, which is "ask every time, and use the copy you have when it has not changed" rather than "do not keep it". A client SHOULD keep the bytes and send the `ETag` back as `If-None-Match`.
+
+    The validator is strong, quoted and opaque, and it comes from a `stat` of whichever file the picture actually came from, its size and its modification time, rather than from the picture. Nothing is read and nothing is decoded to produce one, which is what makes a `304` cheap. It also catches the change nothing else can see: an image file sitting beside the music, replaced in place, alters no tag and no track, so its own timestamp is the only evidence it moved.
+
+    A cover is never compressed. These are already compressed formats, so there is no `Vary: Accept-Encoding` here and no coding suffix on the validator.
 
     ## Errors
 
@@ -162,6 +184,9 @@ tags:
   - name: library
     description: |
       The player's media library, as one columnar snapshot and a stream of patches to it.
+  - name: artwork
+    description: |
+      Cover art for a track the media library holds.
   - name: stream
     description: |
       Listening to the player's own output. foobar2000 decodes and sequences; this carries the result to a browser.
@@ -190,7 +215,7 @@ paths:
                 default:
                   value:
                     name: foo_jean
-                    version: 0.2.0
+                    version: 0.3.0
                     apiVersion: 1
                     authRequired: true
 
@@ -738,7 +763,7 @@ paths:
 
         There is no `columns` here, because `since` already names the generation. A rebuild with a different set moves `structure`, so a client whose declaration is stale reaches the `409` and exports, which is where it declares again.
 
-        The component keeps the last 256 revisions. Falling behind that is a `410`, and the answer is the same one: export again. A client that polls at any sane interval will not see it.
+        The component keeps a bounded window of past revisions, and falling behind it is a `410`, whose description is where that window's reach is written down. The answer is the same one: export again. A client that polls at any sane interval will not see it.
 
         There is no promise of freshness the player cannot keep. A component storing its data privately and publishing it through a title-formatting hook, which is how several play-count components work, changes a value with no notification to anybody; foobar2000's own playlist columns show the same stale value. The snapshot catches up when that track next plays or when somebody calls `POST /library/refresh`.
       parameters:
@@ -796,6 +821,50 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/LibraryRefreshedTooFast" }
         "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
+  /artwork:
+    get:
+      tags: [artwork]
+      operationId: getArtwork
+      summary: The front cover of a track the media library holds.
+      description: |
+        One picture, addressed by a track's library-relative path, revalidated rather than re-fetched. *Artwork* at the top of this document is the whole of it: how to address a cover, why every row of an album should point at one URL, and what the validator is computed from.
+
+        Cheap by construction. The address is resolved against the snapshot already in memory, with no scan of the library and no walk of the filesystem, and a conditional request costs one `stat` and never a read or a decode.
+      parameters:
+        - name: track
+          in: query
+          required: true
+          description: |
+            The track's path relative to the media library root, forward-slashed on every platform: the snapshot's `directory` and `filename` for that row, concatenated. Percent-encode it.
+
+            At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it simply matches nothing.
+          schema: { type: string, minLength: 1, maxLength: 4096 }
+          example: Artist/Album/01 A Title.flac
+      responses:
+        "200":
+          description: |
+            The cover, in the format the player stored it in.
+          headers:
+            ETag:
+              schema: { type: string }
+              description: Strong, quoted and opaque. Send it back as `If-None-Match`.
+            Cache-Control:
+              schema: { type: string }
+              description: "`no-cache`: keep the bytes, and ask before drawing them again."
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/bmp: { schema: { type: string, format: binary } }
+        "304": { $ref: "#/components/responses/ArtworkNotModified" }
+        "400": { $ref: "#/components/responses/ArtworkRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoArtwork" }
+        "413": { $ref: "#/components/responses/ArtworkTooLarge" }
+        "429": { $ref: "#/components/responses/ArtworkRequestedTooFast" }
+        "503": { $ref: "#/components/responses/ArtworkUnavailable" }
 
   /stream/ticket:
     post:
@@ -1154,7 +1223,9 @@ components:
 
     LibraryRevisionGone:
       description: |
-        The revision asked to catch up from is outside the retained window of 256, or it is ahead of the current one, which is what a client that kept a snapshot across a component restart sees. Both mean the same thing: export again.
+        The revision asked to catch up from is outside the retained window of 1920, or it is ahead of the current one, which is what a client that kept a snapshot across a component restart sees. Both mean the same thing: export again.
+
+        That window is spent by listening rather than by the clock. Every track that stops playing is re-read and moves `revision`, and nothing moves it while nobody is listening, so a client asleep overnight comes back inside it. One away across days of playback does not, and exports again.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/LibraryFailed" }
@@ -1194,6 +1265,73 @@ components:
               value: { error: the media library is not available }
             nothingYet:
               value: { error: the library snapshot has not been built yet, detail: "" }
+
+    ArtworkNotModified:
+      description: |
+        The file the cover comes from has the size and the modification time it had when the client was last sent it. No body, and no picture was read to establish it: one `stat` answered the whole request.
+
+        `ETag` is repeated so a client can keep validating against it, and `Cache-Control` is repeated so a stored copy that has just been confirmed keeps its instruction.
+      headers:
+        ETag:
+          schema: { type: string }
+          description: The same tag the `200` carried.
+        Cache-Control:
+          schema: { type: string }
+          description: "`no-cache`."
+
+    ArtworkRefused:
+      description: |
+        The address was declined before the snapshot was consulted: no `track` at all, one longer than 4096 characters, or one carrying a control character.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            noTrack:
+              value: { error: "'track' is required" }
+
+    NoArtwork:
+      description: |
+        There is no picture to send. Either the snapshot holds no track at that address, which is what a client sees after tracks moved on disk, or the player has no front cover for the one it holds, or the cover is in a format this component does not publish.
+
+        The `error` string tells them apart. All three are ordinary: an album without a sleeve is not a fault, and a client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            nothing:
+              value: { error: no artwork for that track }
+            unreadable:
+              value: { error: that artwork is not in a format this component sends }
+
+    ArtworkTooLarge:
+      description: |
+        The picture is larger than 16 MiB and this component will not send it. A ceiling on the *response*; `413` on a request body is a different limit and a different number.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    ArtworkRequestedTooFast:
+      description: |
+        Covers are arriving faster than this component will read them: a burst of 300, refilling one every 50 milliseconds. A screenful of covers at once is the case this exists to allow, so a client drawing a grid never meets it; a client looping does.
+
+        A client that meets this SHOULD back off rather than retry, and MUST NOT treat it as "no artwork". `Retry-After` is sent in seconds.
+      headers:
+        Retry-After:
+          schema: { type: string }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    ArtworkUnavailable:
+      description: |
+        This install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`. Artwork is addressed through the snapshot, so there is nothing to address without one.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: artwork is not available }
 
     Unauthorized:
       description: |
@@ -1754,6 +1892,8 @@ components:
     LibraryColumn:
       description: |
         One column: a dictionary of distinct strings, and one dictionary id per row. Every `offset` is a byte offset from the start of the blob and is a multiple of four.
+
+        Both routes answer with this shape. A delta's columns carry `ordinals` and `dict.base` on top of it; a snapshot's carry neither, and a client reads `kind` on the header to know which it is holding rather than testing for a key.
       type: object
       additionalProperties: false
       required: [ids, dict, distinct, hasUnresolved, allUnresolved]
@@ -1767,6 +1907,10 @@ components:
           allOf: [{ $ref: "#/components/schemas/LibrarySection" }]
           description: |
             One dictionary id per row. In a snapshot `count` is `trackCount` and entry *i* belongs to ordinal *i*. In a delta `count` is `ordinals.count` and entry *i* belongs to ordinal `ordinals[i]`.
+        ordinals:
+          allOf: [{ $ref: "#/components/schemas/LibrarySection" }]
+          description: |
+            Deltas only, and absent from a snapshot. The ordinals this column changed at, ascending and without repeats, one for each entry in `ids`. Its `width` is the narrowest of 1, 2 and 4 that holds every ordinal from `0` to `trackCount - 1`: these index rows rather than dictionary entries, so it is chosen from a different number than `ids.width` and is often a different width.
         dict:
           type: object
           additionalProperties: false

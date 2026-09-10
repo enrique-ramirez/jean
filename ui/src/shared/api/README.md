@@ -328,6 +328,8 @@ Folder nodes carry `itemCount` and no columns; track nodes carry `subsong` and `
 
 **Ordering is a byte-wise case-sensitive compare**, so `Zappa` sorts before `abba`. Re-sort client-side.
 
+> **This is the only way to reach one track by the path a client already holds.** `/library/items` pages an enumeration ordered by absolute `%path%`, while `foo_jean`'s ordinals are library-relative path order, and on a library with more than one root those two orders disagree. An ordinal is therefore not an offset into `/library/items`, and a folder is what both sides can name.
+
 ### Paths
 
 > **Library paths are `/`-separated on every platform** and relative to the media library folders, even on Windows where `pathSeparator` from `/browser/roots` is `\`. Do not build them with `pathSeparator`.
@@ -457,6 +459,10 @@ The component is installed and working in five of them, and none of them is sile
 | `POST /api/pair` | none | read the token, during a window opened at the player |
 | `GET /api/capabilities` | bearer | the write allowlist and the streaming and autoplaylist limits |
 | `POST /api/tags` | bearer | write metadata to one track |
+| `GET /api/library` | bearer | both generations, the track count and the column set that is built |
+| `GET /api/library/export` | bearer | the whole library, as one binary snapshot |
+| `GET /api/library/changes` | bearer | a per-column patch since a revision |
+| `POST /api/library/refresh` | bearer | force a rebuild, rate limited |
 | `GET /api/playlists` | bearer | which playlists are autoplaylists, and which this component created |
 | `POST /api/autoplaylists` | bearer | create one |
 | `POST /api/autoplaylists/preview` | bearer | try a query without creating anything |
@@ -498,7 +504,7 @@ Needs no credential, and that is the point: it tells "`foo_jean` is here" from "
 
 ```jsonc
 { "apiVersion": 1, "allowedFields": ["rating"], "canWrite": true,
-  "maxAutoPlaylists": 8, "canCreateAutoPlaylists": true,
+  "maxAutoPlaylists": 8, "canCreateAutoPlaylists": true, "canReadLibrary": true,
   "canStream": true, "streamFormats": ["opus", "aac"], "canMuteWhileStreaming": true }
 ```
 
@@ -506,6 +512,7 @@ Needs no credential, and that is the point: it tells "`foo_jean` is here" from "
 - `canWrite`, `canCreateAutoPlaylists` and `canStream` are exactly `allowedFields.length > 0`, `maxAutoPlaylists > 0` and `streamFormats.length > 0`. Conveniences, not second sources of truth.
 - `streamFormats` is best-first. `opus` is Ogg Opus; `aac` is AAC-LC in ADTS, for older Safari. The list varies by install: one whose Windows has no AAC encoder reports `opus` alone. **`?format=` outside this list is a 400.**
 - `canMuteWhileStreaming` is `muteWhileStreaming` in the owner's config. There is no route that changes it.
+- `canReadLibrary` says whether the routes under `/api/library` are there at all. False on a component that loaded without the feature and on any version predating it, and every one of them then answers `503`.
 
 ### `POST /api/tags`
 
@@ -526,6 +533,35 @@ The player performs the write through `metadb_io_v2`, so foobar2000's own databa
 | `404` | foobar2000 does not know that track, which is neither in the Media Library nor in an open playlist. **The SDK will build a handle for any path at all, so a well-formed path says nothing about the player knowing it** | |
 | `504` | the player did not answer in time. **The write may still land, so a client must not roll back** | |
 | `503` | tag writing is not available | |
+
+### The library, as one snapshot
+
+`GET /api/library/export?columns=…` answers the whole library in one binary body, dictionary-encoded per column. `shared/api/jlib.ts` decodes it and `shared/api/fooJeanLibrary.ts` is the loop that asks for it. `contract/openapi.yaml` is the format itself, under *The media library*; what matters on this side:
+
+- **The client declares the columns, and the export request is the declaration.** Jean sends `TRACK_EXPRESSIONS`, one `columns` parameter per expression, never comma-separated: a title-formatting expression may contain a comma.
+- **A `202` means no snapshot of that set exists and one is being built.** Poll `GET /api/library` until `ready` is true and its `columns` have the same members, in any order, then ask again. The first export after the component starts, and the first after the set changes, is the slow one.
+- **A `429` is the rebuild rate limiter**, shared with `POST /api/library/refresh`. It carries `Retry-After` in seconds.
+- **`?`, `''` and `N/A` arrive exactly as the player produced them.** Nothing in the component parses, normalises or types a value, which is what keeps Jean's capability detection working. **Never coerce one to `null`**: `Number(null)` is `0` and every field would then read as available.
+- **The header answers capability detection exactly.** Every column carries `distinct`, `hasUnresolved` and `allUnresolved`, so a field that resolves on one track in ten thousand is detected rather than missed by a sample. Detection is still a guess a Settings switch overrules.
+- **Ordinals are refs.** Row order is library-relative path order, ties broken by subsong, so a ref keeps meaning what it means everywhere else in Jean. An ordinal means nothing across a `structure` change.
+- **The spine is `directory`, `filename` and `subsong`**, always built and never named in `columns`. `directory` keeps its trailing slash, so `directory + filename` is the whole relative path. The library root never appears.
+- **Every offset in the blob is a multiple of four**, which is what lets a client take `new Uint32Array(buffer, at, count)` over the bytes where they lie. A typed array over an unaligned byte offset throws.
+- **Every integer in the blob is little-endian.** So is every platform a browser runs on, so a typed array taken directly over the bytes needs no byte-swap.
+- **gzip is transparent here.** The component compresses when the request offers it, and a browser both offers and decodes without being asked, so nothing in Jean sees the coding. The `ETag` names it, and the two codings are two representations that never share a validator, so a conditional request has to go back with the same `Accept-Encoding` it was made with.
+
+**`ETag` and `Retry-After` are readable cross-origin because the component names them in `Access-Control-Expose-Headers`.** A browser exposes only a short safelist to script otherwise, so a header not named there reads as `null` rather than as an error: a conditional request would quietly refetch, and the documented `429` backoff would quietly fall through to its default.
+
+### Keeping that snapshot current
+
+`GET /api/library` carries both generations and is small, so it is what says whether there is anything to do at all.
+
+- **A different `structure` means every ordinal Jean holds is meaningless.** Tracks were added or removed. Export again.
+- **A higher `revision` at the same `structure` is a delta.** `GET /api/library/changes?since=` answers the same binary format carrying only the columns that moved and, within each, only the rows that moved.
+- **`409` and `410` are ordinary rather than errors.** The first says ordinals shifted under the request, the second that `since` fell out of the retained window. Both mean the same thing: export again, and say nothing to the user.
+- **A dictionary only ever gains entries within a `structure` generation.** A delta restates none of it: `dict.base` is how much the client already holds, `dict.ends.count` is `distinct - base`, and every id below `base` still means what it meant. A rebuild is what compacts a value that fell out of use.
+- **A delta's `ids` are parallel to its `ordinals`, not to the rows.** `ordinals.width` comes from the track count and `ids.width` from the dictionary size, so they are routinely different widths and both MUST be read rather than assumed.
+- **The spine effectively never moves**, because a path changing is a removal and an addition and that moves `structure`.
+- **A poll that finds nothing is a `304` with no body**, which is what makes re-checking cheap enough to ride a track change instead of a timer.
 
 ### Autoplaylists
 

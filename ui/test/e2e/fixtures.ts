@@ -32,6 +32,7 @@ interface JeanFixtures {
 	library: Partial<LibraryInfo>;
 	hasLibraryApi: boolean;
 	retagged: Record<string, Track>;
+	countsPlays: boolean;
 	fooJean: FooJeanOptions | null;
 	fooJeanToken: string | null;
 	playerState: Partial<PlayerState> | null;
@@ -99,6 +100,8 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 
 	retagged: [{}, { option: true }],
 
+	countsPlays: [false, { option: true }],
+
 	// The optional tag-writing component and the states it can present; absent by
 	// default. See `fake-api/fooJean.ts` and `test/README.md`.
 	fooJean: [null, { option: true }],
@@ -120,6 +123,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 			withoutPlaylists,
 			withoutFields,
 			retagged,
+			countsPlays,
 			withoutLibraryPlaylist,
 			library,
 			playerState,
@@ -144,6 +148,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 					mediaLibrary: libraryShape ? libraryOfShape(libraryShape) : null,
 					withoutFields,
 					retagged,
+					countsPlays,
 					library,
 					player: playerState,
 					fooJean,

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-
 import {
+	componentLibraryKey,
 	EMPTY_PLAYLIST,
 	libraryKey,
+	loadComponentLibrary,
 	loadLibrary,
 	loadPlaylist,
 	type PlaylistSnapshot,
@@ -10,6 +11,7 @@ import {
 	playlistSnapshot,
 	subscribePlaylist,
 } from "./playlistStore";
+import { useLibraryFeed } from "./useLibraryFeed";
 
 const stayUnsubscribed = () => () => {};
 
@@ -50,5 +52,22 @@ export function useLibraryItems(itemCount: number | null | undefined) {
 	return useLoadedRows(
 		itemCount == null ? null : libraryKey(itemCount),
 		useCallback(() => loadLibrary(itemCount as number), [itemCount]),
+	);
+}
+
+export function useComponentLibraryItems(
+	origin: string | null,
+	token: string | null,
+) {
+	const isReady = Boolean(origin) && Boolean(token);
+
+	useLibraryFeed(isReady ? origin : null, token);
+
+	return useLoadedRows(
+		isReady ? componentLibraryKey(origin as string) : null,
+		useCallback(
+			() => loadComponentLibrary(origin as string, token as string),
+			[origin, token],
+		),
 	);
 }

@@ -1,13 +1,11 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 
-import type { TrackColumns } from "@/shared/api/types";
 import type { Column } from "./columns";
 import type { LibrarySource } from "./librarySource";
-import type { Refs } from "./project";
+import type { TrackRows } from "./project";
 
 export interface TrackRenderProps {
-	rows: TrackColumns[];
-	indices: Refs | null;
+	rows: TrackRows;
 	source: LibrarySource;
 	columns: Column[];
 	template: string;

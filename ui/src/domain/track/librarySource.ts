@@ -3,7 +3,7 @@ import {
 	addFromLibrary,
 	artworkUrl,
 	copyPlaylistItems,
-	fetchLibraryItems,
+	fetchLibraryNodes,
 	fetchPlaylistItems,
 	LIBRARY_SORT,
 	libraryArtworkUrl,
@@ -62,7 +62,7 @@ export interface LibrarySource {
 }
 
 export type LibrarySourceOptions =
-	| { kind: "library"; paths: PathTable; subsongs: number[] }
+	| { kind: "library"; paths: PathTable; subsongs: Int32Array }
 	| { kind: "playlist"; playlistId: string };
 
 interface ItemChunk {
@@ -72,9 +72,14 @@ interface ItemChunk {
 
 // Array.from, never refs.map: refs can be an Int32Array, and mapping one gives back a typed array
 // whose objects coerce to NaN.
-const itemsFor = (paths: PathTable, subsongs: number[], refs: Refs) =>
+const itemsFor = (paths: PathTable, subsongs: Int32Array, refs: Refs) =>
 	Array.from(refs, (ref) => ({ path: paths.at(ref), subsong: subsongs[ref] }));
 
+// TODO: fold into the endpoint migration rather than patch here. foobar2000 sorts by the path it is
+// given, and this asks it for `%path%`, which is absolute, while an ordinal is ordered by the
+// library-relative path. One root makes the two agree; more than one does not, and then a position
+// computed from a row addresses a different track. Deciding what an ordinal is ordered by is the same
+// question as which component fills the playlist, so it is settled when filling moves off beefweb.
 const sortToLibraryOrder = (targetId: string) =>
 	sortPlaylistItems(targetId, LIBRARY_SORT);
 
@@ -96,7 +101,7 @@ const chunkedItems = (items: { path: string; subsong: number }[]) =>
 	}, []);
 
 const fillByLibrary =
-	(paths: PathTable, subsongs: number[]) =>
+	(paths: PathTable, subsongs: Int32Array) =>
 	async (targetId: string, refs: Refs) => {
 		// Omitting `items` means the whole library, in one request with no body.
 		if (refs.length === paths.length) {
@@ -128,7 +133,7 @@ const fillByCopy =
 	};
 
 const queueViaHolding =
-	(paths: PathTable, subsongs: number[]) =>
+	(paths: PathTable, subsongs: Int32Array) =>
 	async (refs: Refs, holding: () => Promise<HoldingPlaylist | null>) => {
 		const held = await holding();
 		if (!held || refs.length === 0) return [];
@@ -167,7 +172,7 @@ const fromMediaLibrary = ({
 	subsongs,
 }: {
 	paths: PathTable;
-	subsongs: number[];
+	subsongs: Int32Array;
 }): LibrarySource => ({
 	kind: "library",
 	playlistId: null,
@@ -179,17 +184,24 @@ const fromMediaLibrary = ({
 		const held = paths.at(ref);
 		if (!held) return null;
 
-		const { items } = await fetchLibraryItems({
-			columns: ["%path%", ...columns],
-			offset: ref,
-			count: 1,
-		});
-		const item = items[0];
-		if (!item || item.path !== held) return null;
+		const cut = held.lastIndexOf("/");
+		const { items } = await fetchLibraryNodes(
+			cut < 0 ? "" : held.slice(0, cut),
+			["%path%", ...columns],
+		);
+
+		const subsong = subsongs[ref] ?? 0;
+		const found = items.find(
+			(node) =>
+				node.type === "F" &&
+				node.path === held &&
+				(node.subsong ?? 0) === subsong,
+		);
+		if (!found?.columns) return null;
 
 		return {
-			identity: { path: item.columns[0] || null, subsong: subsongs[ref] ?? 0 },
-			columns: item.columns.slice(1),
+			identity: { path: found.columns[0] || null, subsong },
+			columns: found.columns.slice(1),
 		};
 	},
 

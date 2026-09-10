@@ -13,7 +13,6 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { TrackColumns } from "@/shared/api/types";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -40,7 +39,7 @@ import type {
 	TrackBrowserHandle,
 	TrackListHandle,
 } from "./listTypes";
-import { type Refs, refAt } from "./project";
+import type { TrackRows } from "./project";
 import { setRatingTarget } from "./ratingTarget";
 import styles from "./TrackBrowser.module.css";
 import { TrackList } from "./TrackList";
@@ -68,7 +67,6 @@ const isRepeatClick = (event: ReactMouseEvent) => event.detail > 1;
 export const TrackBrowser = forwardRef(function TrackBrowser(
 	{
 		rows,
-		indices = null,
 		source,
 		viewKey,
 		heat,
@@ -89,8 +87,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		onPlay,
 		onOpenFinder,
 	}: {
-		rows: TrackColumns[];
-		indices?: Refs | null;
+		rows: TrackRows;
 		source: LibrarySource;
 		viewKey: string;
 		heat: Float32Array;
@@ -140,7 +137,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 	const lastDirection = useRef<"up" | "down">("down");
 
 	const selection = useTrackSelection(rows.length, viewKey);
-	const { isAvailable, hasPlayCounts } = useAvailableFields(rows);
+	const { isAvailable, hasPlayCounts } = useAvailableFields(rows.columns);
 
 	const dismissHeatInfo = useCallback(() => {
 		setIsHeatInfoOpen(false);
@@ -200,7 +197,6 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 
 	const trackMenu = useTrackContextMenu({
 		rows,
-		indices,
 		source,
 		selection: selection.selection,
 		onSelectOnly: moveCursorTo,
@@ -208,7 +204,6 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 
 	const trackDrag = useTrackDragSource({
 		rows,
-		indices,
 		source,
 		selection: selection.selection,
 	});
@@ -245,10 +240,10 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 
 	const playFromPointer = useCallback(
 		(event: ReactMouseEvent) => {
-			const aimed = targetsFrom(event, rows, selection.selection);
+			const aimed = targetsFrom(event, rows.length, selection.selection);
 			if (aimed) play(aimed.index);
 		},
-		[rows, selection.selection, play],
+		[rows.length, selection.selection, play],
 	);
 
 	// `click` rather than `pointerup`: the browser withholds it when the gesture turns out to be a scroll.
@@ -304,13 +299,16 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		scrollToTrack(selection.cursor, { align: "auto" });
 	}, [selection.cursor, scrollToTrack]);
 
-	const cursorRow = rows[selection.cursor];
 	useEffect(() => {
-		if (!cursorRow) return undefined;
-		const ref = refAt(indices, selection.cursor);
-		setRatingTarget({ source, ref, row: cursorRow });
+		if (selection.cursor < 0 || selection.cursor >= rows.length)
+			return undefined;
+		setRatingTarget({
+			source,
+			ref: rows.ref(selection.cursor),
+			columns: rows.columns,
+		});
 		return () => setRatingTarget(null);
-	}, [source, indices, selection.cursor, cursorRow]);
+	}, [source, rows, selection.cursor]);
 
 	const jumpAsked = useJumpAsked();
 	useEffect(() => {
@@ -504,7 +502,6 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 						ref={listRef}
 						rows={rows}
 						groups={groups}
-						indices={indices}
 						source={source}
 						scrollRef={scrollRef}
 						layout={layout}

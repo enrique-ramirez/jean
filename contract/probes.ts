@@ -12,6 +12,7 @@ export interface Context {
 	playlistId: string | null;
 	managed: unknown;
 	ticket: string | null;
+	revision: number | null;
 }
 
 export type Probe = (operation: Operation, context: Context) => Attempt | null;
@@ -37,6 +38,36 @@ export const drives: Drive[] = [
 	{ id: "getStatus", probe: () => ({}) },
 	{ id: "getCapabilities", probe: () => ({}) },
 	{ id: "getPlaylists", probe: () => ({}) },
+	{
+		id: "getLibrary",
+		probe: () => ({}),
+		learns: (body, context) => {
+			const state = body as { revision?: number };
+			context.revision = state.revision ?? null;
+		},
+	},
+	{
+		id: "exportLibrary",
+		probe: () => ({ query: { columns: "%title%" } }),
+	},
+	{
+		id: "getLibraryChanges",
+		probe: (_, context) =>
+			context.revision === null
+				? null
+				: { query: { since: String(context.revision) } },
+	},
+	{ id: "refreshLibrary", probe: () => ({}) },
+	{
+		// The snapshot is binary and the suite holds no library-relative path out of it, so
+		// this drives the refusal instead. That is the answer worth pinning anyway: an
+		// address the snapshot does not carry MUST be a 404 in the published shape and never
+		// somebody else's sleeve.
+		id: "getArtwork",
+		probe: (_, context) => ({
+			query: { track: `contract check ${context.run}/no such track.flac` },
+		}),
+	},
 	{
 		id: "writeTags",
 		probe: (operation) => ({ body: example(operation, "setRating") }),

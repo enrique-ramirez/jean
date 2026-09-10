@@ -4,24 +4,21 @@ import {
 	usePermissions,
 	usePlaylists,
 } from "@/domain/player/usePlayer";
-import type { TrackColumns } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useDragSource } from "@/shared/ui/dnd";
 import { titleOf } from "./fields";
 import type { LibrarySource } from "./librarySource";
-import { type Refs, refAt } from "./project";
+import type { TrackRows } from "./project";
 import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
 
 export function useTrackDragSource({
 	rows,
-	indices,
 	source,
 	selection,
 }: {
-	rows: TrackColumns[];
-	indices: Refs | null;
+	rows: TrackRows;
 	source: LibrarySource;
 	selection: Set<number>;
 }) {
@@ -35,11 +32,11 @@ export function useTrackDragSource({
 		disabled: !canChangePlaylists(permissions),
 
 		getPayload: (event) => {
-			const aimed = targetsFrom(event, rows, selection);
+			const aimed = targetsFrom(event, rows.length, selection);
 			if (!aimed) return null;
 			const { index, positions } = aimed;
 
-			const grabbed = titleOf(rows[index], t);
+			const grabbed = titleOf(rows.at(index), t);
 
 			return {
 				count: positions.length,
@@ -50,7 +47,7 @@ export function useTrackDragSource({
 								track: grabbed,
 								count: positions.length - 1,
 							}),
-				items: positions.map((position) => refAt(indices, position)),
+				items: positions.map((position) => rows.ref(position)),
 			};
 		},
 

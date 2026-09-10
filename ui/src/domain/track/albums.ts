@@ -1,16 +1,20 @@
-import type { TrackColumns } from "@/shared/api/types";
 import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
 import {
+	artistGroups,
+	columnReader,
 	coverKey,
 	FIELD,
-	lastPlayedOf,
-	numberOf,
-	playCountOf,
+	readNumber,
+	readTimestamp,
+	readValue,
+	tagGroups,
 	tagKey,
-	value,
+	withAlternatives,
 } from "./fields";
 import { growingIndex } from "./growingIndex";
-import { ratingOf } from "./rating";
+import { byValue, type LibraryColumns } from "./libraryColumns";
+import type { TrackRows } from "./project";
+import { starsOf } from "./rating";
 
 const LOSSLESS = new Set(["FLAC", "ALAC", "WAV", "APE", "WAVPACK", "TAK"]);
 
@@ -18,11 +22,6 @@ const LOSSLESS = new Set(["FLAC", "ALAC", "WAV", "APE", "WAVPACK", "TAK"]);
 // standing in `Unknown artist` here would give the same record two identities.
 const keyOf = (artist: string | null | undefined, album: string) =>
 	coverKey(artist, album);
-
-// Whoever the record is by, as the files have it. Both tags, since `%album artist%` is missing far
-// more often than `%artist%` is.
-const artistTagOf = (row: TrackColumns) =>
-	value(row, FIELD.albumArtist) ?? value(row, FIELD.artist);
 
 const blankAlbum = (
 	key: string,
@@ -48,38 +47,6 @@ const blankAlbum = (
 
 type AlbumDraft = ReturnType<typeof blankAlbum>;
 
-const absorb = (album: AlbumDraft, ref: number, row: TrackColumns) => {
-	album.refs.push(ref);
-
-	album.plays += playCountOf(row) ?? 0;
-
-	const played = lastPlayedOf(row);
-	if (played !== null && played > album.lastPlayed) album.lastPlayed = played;
-
-	// The earliest of them: a reissue often tags its own release year onto one or two tracks.
-	const year = numberOf(row, FIELD.year);
-	if (
-		year !== null &&
-		year > 1000 &&
-		(album.year === null || year < album.year)
-	)
-		album.year = year;
-
-	const bitrate = numberOf(row, FIELD.bitrate);
-	if (bitrate) {
-		album.bitrateTotal += bitrate;
-		album.bitrateCount += 1;
-	}
-
-	const codec = value(row, FIELD.codec);
-	if (codec && !LOSSLESS.has(codec.toUpperCase())) album.lossless = false;
-
-	const rating = ratingOf(row);
-	if (rating !== null) album.ratings.push(rating);
-
-	return album;
-};
-
 const summed = (album: AlbumDraft) => ({
 	...album,
 	refs: Int32Array.from(album.refs),
@@ -103,38 +70,99 @@ export interface CoveredAlbum extends Album {
 
 function collect(
 	byKey: Map<string, AlbumDraft>,
-	rows: TrackColumns[],
+	rows: TrackRows,
 	from: number,
 ) {
-	for (let ref = from; ref < rows.length; ref += 1) {
-		const row = rows[ref];
-		const album = value(row, FIELD.album);
-		if (!album) continue;
+	const { columns } = rows;
+	const album = columns.fields[FIELD.album];
+	const albums = tagGroups(album);
+	const artists = artistGroups(columns);
 
-		const artist = artistTagOf(row);
-		const key = keyOf(artist, album);
+	const plays = columnReader(columns, FIELD.playCount, readNumber);
+	const playedAt = columnReader(columns, FIELD.lastPlayed, readTimestamp);
+	const years = byValue(columns.fields[FIELD.year], readNumber);
+	const bitrates = byValue(columns.fields[FIELD.bitrate], readNumber);
+	const lossy = byValue(columns.fields[FIELD.codec], (raw) => {
+		const codec = readValue(raw);
+		return codec !== null && !LOSSLESS.has(codec.toUpperCase());
+	});
+	const ratings = byValue(columns.fields[FIELD.rating], (raw) =>
+		starsOf(readNumber(raw)),
+	);
 
-		byKey.set(
-			key,
-			absorb(
-				byKey.get(key) ?? blankAlbum(key, album, artist, fuzzyKey(album)),
-				ref,
-				row,
-			),
-		);
+	const year = columns.fields[FIELD.year].ids;
+	const bitrate = columns.fields[FIELD.bitrate].ids;
+	const codec = columns.fields[FIELD.codec].ids;
+	const rating = columns.fields[FIELD.rating].ids;
+
+	const drafts = new Map<number, AlbumDraft>();
+
+	for (let position = from; position < rows.length; position += 1) {
+		const ref = rows.ref(position);
+		const albumGroup = albums.of[album.ids[ref]];
+		if (albumGroup < 0) continue;
+
+		const artistGroup = artists.at(ref);
+		let draft = drafts.get(artists.pairedWith(ref, albumGroup));
+		if (!draft) {
+			const name = albums.names[albumGroup];
+			const artist = artistGroup < 0 ? null : artists.names[artistGroup];
+			const key = keyOf(artist, name);
+			draft = byKey.get(key) ?? blankAlbum(key, name, artist, fuzzyKey(name));
+			byKey.set(key, draft);
+			drafts.set(artists.pairedWith(ref, albumGroup), draft);
+		}
+
+		draft.refs.push(position);
+		draft.plays += plays(ref) ?? 0;
+
+		const played = playedAt(ref);
+		if (played !== null && played > draft.lastPlayed) draft.lastPlayed = played;
+
+		// The earliest of them: a reissue often tags its own release year onto one or two tracks.
+		const released = years[year[ref]];
+		if (
+			released !== null &&
+			released > 1000 &&
+			(draft.year === null || released < draft.year)
+		)
+			draft.year = released;
+
+		const rate = bitrates[bitrate[ref]];
+		if (rate) {
+			draft.bitrateTotal += rate;
+			draft.bitrateCount += 1;
+		}
+
+		if (lossy[codec[ref]]) draft.lossless = false;
+
+		const stars = ratings[rating[ref]];
+		if (stars !== null) draft.ratings.push(stars);
 	}
 }
 
 const derive = (byKey: Map<string, AlbumDraft>): Album[] =>
 	[...byKey.values()].map(summed);
 
-export function albumsOf(rows: TrackColumns[]): Album[] {
+export function albumsOf(rows: TrackRows): Album[] {
 	const byKey = new Map<string, AlbumDraft>();
 	collect(byKey, rows, 0);
 	return derive(byKey);
 }
 
-export const albumIndex = growingIndex(collect, derive);
+const COLLECTED = withAlternatives([
+	FIELD.album,
+	FIELD.albumArtist,
+	FIELD.artist,
+	FIELD.playCount,
+	FIELD.lastPlayed,
+	FIELD.year,
+	FIELD.bitrate,
+	FIELD.codec,
+	FIELD.rating,
+]);
+
+export const albumIndex = growingIndex(COLLECTED, collect, derive);
 
 export interface AlbumTracks {
 	refs: Int32Array;
@@ -149,31 +177,34 @@ export interface AlbumTracks {
  * groups by, so a count beside a title and the page behind it can never be different sets.
  */
 export function refsOfAlbum(
-	rows: TrackColumns[],
+	columns: LibraryColumns,
 	artist: string | null | undefined,
 	album: string,
 ): AlbumTracks {
-	const wanted = keyOf(artist, album);
-	if (!tagKey(album)) return { refs: new Int32Array(0), album, artist: null };
+	const nothing = { refs: new Int32Array(0), album, artist: null };
+	if (!tagKey(album)) return nothing;
+
+	const column = columns.fields[FIELD.album];
+	const albums = tagGroups(column);
+	const albumGroup = albums.group(tagKey(album));
+	if (albumGroup < 0) return nothing;
+
+	const artists = artistGroups(columns);
+	const artistGroup = artists.group(tagKey(artist));
 
 	const refs: number[] = [];
-	let spelling: { album: string; artist: string | null } | null = null;
-
-	for (let ref = 0; ref < rows.length; ref += 1) {
-		const row = rows[ref];
-		const title = value(row, FIELD.album);
-		if (!title) continue;
-
-		const artistTag = artistTagOf(row);
-		if (keyOf(artistTag, title) !== wanted) continue;
-
-		spelling ??= { album: title, artist: artistTag };
+	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if (albums.of[column.ids[ref]] !== albumGroup) continue;
+		if (artists.at(ref) !== artistGroup) continue;
 		refs.push(ref);
 	}
 
+	if (refs.length === 0) return nothing;
+
 	return {
 		refs: Int32Array.from(refs),
-		...(spelling ?? { album, artist: null }),
+		album: albums.names[albumGroup],
+		artist: artistGroup < 0 ? null : artists.names[artistGroup],
 	};
 }
 

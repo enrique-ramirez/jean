@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 
+import { rowAt } from "./libraryColumns";
 import { isWritableScale, rawRatingWith } from "./rating";
 import { writtenRatingOf } from "./ratingStore";
 import { ratingLayer, ratingTarget } from "./ratingTarget";
@@ -21,7 +22,10 @@ export function useRateShortcut(ratePlaying: (stars: number | null) => void) {
 
 			const target = ratingTarget();
 			if (target) {
-				const raw = rawRatingWith(target.row, writtenRatingOf(target.row));
+				const raw = rawRatingWith(
+					rowAt(target.columns, target.ref),
+					writtenRatingOf(target.columns, target.ref),
+				);
 				if (isWritableScale(raw)) rate(target, value);
 				return;
 			}

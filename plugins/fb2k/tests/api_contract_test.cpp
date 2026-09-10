@@ -11,6 +11,7 @@
 #include "support/fixtures.h"
 #include "support/spec.h"
 #include "support/test_server.h"
+#include "support/wire.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
@@ -303,6 +304,37 @@ TEST_CASE("the snapshot is framed the way contract/openapi.yaml describes") {
     CHECK(keysOf(header["spine"].dump()) == Keys{"directory", "filename", "subsong"});
 }
 
+// A delta is framed like a snapshot and carries three keys a snapshot does not: `since` on the
+// header, `ordinals` on a column, and `base` on its dictionary. A client generating types from
+// the spec cannot decode one the spec does not declare all three of.
+TEST_CASE("a delta is the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    LibraryBuilder builder({"%title%", "%play_count%"}, 1);
+    builder.sink().row(0, {"Music/", "a.flac", "0", "A title", "1"});
+
+    Library library;
+    library.replace(builder.finish());
+
+    const uint64_t before = library.state().revision;
+    REQUIRE(library.apply({{0, {"Music/", "a.flac", "0", "A title", "2"}}}) > before);
+
+    const auto changes = library.changes(before);
+    REQUIRE(changes.outcome == DeltaOutcome::ok);
+
+    const auto header = decode(serialiseDelta(changes.delta)).header;
+
+    CHECK(keysOf(header.dump()) ==
+          Keys{"kind", "structure", "revision", "since", "trackCount", "columns", "spine"});
+    CHECK(header["kind"] == "delta");
+
+    const auto& moved = header["columns"][0];
+    CHECK(keysOf(moved.dump()) ==
+          Keys{"name", "ids", "ordinals", "dict", "distinct", "hasUnresolved", "allUnresolved"});
+    CHECK(keysOf(moved["ordinals"].dump()) == Keys{"offset", "count", "width"});
+    CHECK(keysOf(moved["dict"].dump()) == Keys{"text", "ends", "base"});
+}
+
 TEST_CASE("the library statuses contract/openapi.yaml documents are the ones we answer with") {
     INFO(kUpdateSpec);
 
@@ -381,7 +413,7 @@ TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer w
 
 TEST_CASE("the versions contract/openapi.yaml states are the versions we report") {
     INFO(kUpdateSpec);
-    CHECK(std::string(kVersion) == "0.2.0");
+    CHECK(std::string(kVersion) == "0.3.0");
     CHECK(kApiVersion == 1);
 }
 

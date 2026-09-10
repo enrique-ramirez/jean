@@ -3,8 +3,11 @@
 #include "fb2k/library.h"
 
 #include "core/log.h"
+#include "fb2k/artwork.h"
 #include "fb2k/ask_player.h"
 #include "fb2k/strings.h"
+
+#include <foobar2000/SDK/foosortstring.h>
 
 #include <algorithm>
 #include <atomic>
@@ -15,6 +18,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -43,6 +47,18 @@ struct Walk {
 };
 
 using WalkPtr = std::shared_ptr<Walk>;
+
+// Ordinal order, and the two ways back into it. Built whole and never altered afterwards,
+// so a connection thread reads one through a shared pointer while the worker builds the next.
+// `byRelativePath` keys into `relativePaths`, which is why nothing here may be appended to.
+struct Ordered {
+    metadb_handle_list items;
+    std::vector<std::string> relativePaths;
+    std::unordered_map<const metadb_handle*, uint32_t> ordinals;
+    std::unordered_map<std::string_view, uint32_t> byRelativePath;
+};
+
+using OrderedPtr = std::shared_ptr<const Ordered>;
 
 void formatRow(const metadb_v2::ptr& metadb, const metadb_handle_ptr& item,
                const metadb_v2::rec_t& rec, const std::string& relativePath,
@@ -128,6 +144,19 @@ struct LibraryFeed::State {
         metadb_handle_list one;
         one.add_item(item);
         markDirty(one, false);
+    }
+
+    // On a connection thread, so it touches nothing the worker is still writing.
+    ArtworkSource artwork(const std::string& relativePath) const {
+        const OrderedPtr ordered = order();
+        if (!ordered)
+            return {};
+
+        const auto found = ordered->byRelativePath.find(relativePath);
+        if (found == ordered->byRelativePath.end())
+            return {};
+
+        return art_.of(ordered->items[found->second]);
     }
 
     void stop() {
@@ -234,13 +263,18 @@ private:
         const size_t count = walk->items.get_count();
 
         std::vector<TrackOrder> tracks(count);
+        std::vector<std::string> paths(count);
+        std::vector<fb2k::sortString_t> sortKeys(count);
         pfc::string8 relative;
         for (size_t n = 0; n < count && !stopping_; ++n) {
             const metadb_handle_ptr& item = walk->items[n];
             if (!libraryManager_->get_relative_path(item, relative))
                 relative = "";
 
-            tracks[n].relativePath = forwardSlashed(toStd(relative));
+            // Keyed off the unnormalised path on purpose: the separator weighs in
+            // foobar2000's comparison. See CLAUDE.md, *Facts about the player*.
+            sortKeys[n] = fb2k::makeSortString(relative.c_str());
+            paths[n] = forwardSlashed(toStd(relative));
             tracks[n].subsong = item->get_subsong_index();
             tracks[n].canonicalPath = item->get_path();
         }
@@ -248,27 +282,38 @@ private:
         if (stopping_)
             return;
 
-        const std::vector<size_t> order = ordinalOrder(tracks);
+        const std::vector<size_t> order = ordinalOrder(tracks, [&sortKeys](size_t a, size_t b) {
+            return fb2k::sortStringCompare(sortKeys[a], sortKeys[b]);
+        });
 
-        ordered_.set_size(count);
-        relativePaths_.assign(count, std::string());
-        ordinals_.clear();
-        ordinals_.reserve(count);
+        const auto ordered = std::make_shared<Ordered>();
+        ordered->items.set_size(count);
+        ordered->relativePaths.assign(count, std::string());
+        ordered->ordinals.reserve(count);
+        ordered->byRelativePath.reserve(count);
 
         for (size_t ordinal = 0; ordinal < count; ++ordinal) {
             const size_t track = order[ordinal];
-            ordered_[ordinal] = walk->items[track];
-            relativePaths_[ordinal] = std::move(tracks[track].relativePath);
-            ordinals_.emplace(ordered_[ordinal].get_ptr(), static_cast<uint32_t>(ordinal));
+            ordered->items[ordinal] = walk->items[track];
+            ordered->relativePaths[ordinal] = std::move(paths[track]);
+            ordered->ordinals.emplace(ordered->items[ordinal].get_ptr(),
+                                      static_cast<uint32_t>(ordinal));
         }
+
+        // After every path is in place, because the keys are views into that vector. Two
+        // subsongs of one file share a path, and the lower ordinal is the one kept.
+        for (size_t ordinal = 0; ordinal < count; ++ordinal)
+            ordered->byRelativePath.emplace(ordered->relativePaths[ordinal],
+                                            static_cast<uint32_t>(ordinal));
 
         scripts_ = walk->scripts;
 
         LibraryBuilder builder(columns_, count);
-        evaluate(builder);
+        evaluate(*ordered, builder);
         if (stopping_)
             return;
 
+        publish(ordered);
         library_.replace(builder.finish());
         built_ = true;
 
@@ -276,7 +321,7 @@ private:
                 std::to_string(columns_.size()) + " client column(s)");
     }
 
-    void evaluate(LibraryBuilder& builder) {
+    void evaluate(const Ordered& ordered, LibraryBuilder& builder) {
         // One compiled titleformat_object runs on many threads at once; the hook and the
         // output string are what the SDK's own parallel sorts keep per thread.
         struct Worker {
@@ -288,20 +333,20 @@ private:
         // metadb_v2::queryMultiParallel has no abort_callback, so one call over the whole
         // library would make a quit wait out the rest of it. The SDK documents the call as
         // "faster if used with thousands of items", which a slice still is.
-        const size_t count = ordered_.get_count();
+        const size_t count = ordered.items.get_count();
         for (size_t base = 0; base < count && !stopping_; base += kQuerySlice) {
             const pfc::list_partial_ref_t<metadb_handle_ptr> slice(
-                ordered_, base, std::min<size_t>(kQuerySlice, count - base));
+                ordered.items, base, std::min<size_t>(kQuerySlice, count - base));
 
             metadb_->queryMultiParallelEx_<Worker>(
-                slice,
-                [this, &builder, base](size_t index, const metadb_v2::rec_t& rec, Worker& worker) {
+                slice, [this, &ordered, &builder, base](size_t index, const metadb_v2::rec_t& rec,
+                                                        Worker& worker) {
                     if (worker.sink == nullptr)
                         worker.sink = &builder.sink();
 
                     const size_t ordinal = base + index;
-                    formatRow(metadb_, ordered_[ordinal], rec, relativePaths_[ordinal], scripts_,
-                              worker.text, worker.values);
+                    formatRow(metadb_, ordered.items[ordinal], rec, ordered.relativePaths[ordinal],
+                              scripts_, worker.text, worker.values);
 
                     worker.sink->row(ordinal, worker.values);
                 });
@@ -309,6 +354,10 @@ private:
     }
 
     void requery(const std::vector<metadb_handle_ptr>& marks, size_t marksFromHook) {
+        const OrderedPtr ordered = order();
+        if (!ordered)
+            return;
+
         metadb_handle_list items;
         std::vector<uint32_t> touched;
         std::unordered_set<uint32_t> seen;
@@ -316,8 +365,8 @@ private:
         size_t unmatched = 0;
 
         for (const metadb_handle_ptr& mark : marks) {
-            const auto found = ordinals_.find(mark.get_ptr());
-            if (found == ordinals_.end()) {
+            const auto found = ordered->ordinals.find(mark.get_ptr());
+            if (found == ordered->ordinals.end()) {
                 if (libraryManager_->is_item_in_library(mark))
                     ++unmatched;
 
@@ -344,8 +393,8 @@ private:
 
         metadb_->queryMulti_(items, [&](size_t index, const metadb_v2::rec_t& rec) {
             changes[index].ordinal = touched[index];
-            formatRow(metadb_, items[index], rec, relativePaths_[touched[index]], scripts_, text,
-                      changes[index].values);
+            formatRow(metadb_, items[index], rec, ordered->relativePaths[touched[index]], scripts_,
+                      text, changes[index].values);
         });
 
         const uint64_t revision = library_.apply(changes);
@@ -353,6 +402,16 @@ private:
         logInfo("re-queried " + std::to_string(changes.size()) + " track(s) at revision " +
                 std::to_string(revision) + ", " + std::to_string(marksFromHook) +
                 " of them announced by a display hook");
+    }
+
+    void publish(OrderedPtr ordered) {
+        const std::lock_guard<std::mutex> lock(orderLock_);
+        ordered_ = std::move(ordered);
+    }
+
+    OrderedPtr order() const {
+        const std::lock_guard<std::mutex> lock(orderLock_);
+        return ordered_;
     }
 
     MainThreadQueue& mainThread_;
@@ -376,15 +435,17 @@ private:
     std::vector<metadb_handle_ptr> dirty_;
     size_t hookMarks_ = 0;
 
+    const AlbumArt art_;
+
     std::vector<std::string> columns_;
     std::vector<titleformat_object::ptr> scripts_;
-    metadb_handle_list ordered_;
-    std::vector<std::string> relativePaths_;
 
-    // Keyed by pointer because foobar2000 interns one metadb_handle per location, which is
-    // why it hands a library callback a list "sorted by pointer value for convenient
-    // matching by binary search". `ordered_` holds the references that keep them alive.
-    std::unordered_map<const metadb_handle*, uint32_t> ordinals_;
+    // Read by the worker and by every connection thread answering GET /api/artwork.
+    // `Ordered::ordinals` is keyed by pointer because foobar2000 interns one metadb_handle
+    // per location, which is why it hands a library callback a list "sorted by pointer value
+    // for convenient matching by binary search".
+    mutable std::mutex orderLock_;
+    OrderedPtr ordered_;
 
     std::thread worker_;
 };
@@ -475,6 +536,13 @@ LibraryRefresher LibraryFeed::refresher() {
 
     return
         [state = state_](std::vector<std::string> columns) { state->rebuild(std::move(columns)); };
+}
+
+ArtworkReader LibraryFeed::artworkReader() {
+    if (!state_)
+        return {};
+
+    return [state = state_](const std::string& track) { return state->artwork(track); };
 }
 
 }  // namespace jean

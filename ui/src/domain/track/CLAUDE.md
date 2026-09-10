@@ -1,6 +1,6 @@
 # Tracks: rows, refs and the list
 
-What a row is made of, the source seam that says where it came from, the virtualised list that draws it, and ratings. `ARCHITECTURE.md` has why the library is one flat array of positional columns, what a ref is, and how it is chunked.
+What a row is made of, the source seam that says where it came from, the virtualised list that draws it, and ratings. `ARCHITECTURE.md` has why the library is one flat set of columns, what a ref is, and how it arrives.
 
 ## Ratings
 
@@ -12,7 +12,7 @@ Two boundaries are genuinely ambiguous and both go to the lower, more common sca
 
 **Halves are displayed, never invented.** A file that says `3.5` gets three and a half stars; rounding it up would be Jean disagreeing with the player about what the library contains. The rating control's increment is **whole stars**, full stop: introducing halves into a library that has none is a change to somebody's tags they did not ask for. `hasHalfStars()` is the hook for offering halves where they already exist; nothing reads it yet.
 
-**The rating column is never hidden.** Ratings are sparse enough on a real library that a sample misses them entirely often enough to matter. **Five stars are always drawn and only the fill varies.** A row whose stars end somewhere different each time cannot be scanned down.
+**The rating column is never hidden.** A library with nothing rated yet still needs the column to rate through, so it is the one field detection does not get to remove. **Five stars are always drawn and only the fill varies.** A row whose stars end somewhere different each time cannot be scanned down.
 
 ### Writing one
 
@@ -20,7 +20,7 @@ Two boundaries are genuinely ambiguous and both go to the lower, more common sca
 
 **The empty string removes the tag.** `"0"` would be a rating of zero, which some taggers write and others read as unrated; `""` is the component's own spelling of "there is no rating here".
 
-**Nothing pushes a tag change, so the optimistic value is the only value.** beefweb's stream says nothing whatever when a track's tags change, so there is no update to reconcile against and no re-reading the library to learn one number. `ratingStore.ts` is that overlay, **keyed by the row array itself**. Rows are the arrays the playlist store published, so the entry disappears exactly when a fresher load replaces them. The overlay cannot outlive the data it patches and no invalidation has to be written. The cost is that one track present in two loads is two arrays, so rating it in one view leaves the other on the player's older value until that load is replaced.
+**Nothing pushes a tag change, so the optimistic value is the only value.** beefweb's stream says nothing whatever when a track's tags change, so there is no update to reconcile against and no re-reading the library to learn one number. `ratingStore.ts` is that overlay, **keyed by `columns.load` and the ordinal**. That object is minted once per load and shared by every table the load publishes, so the entry survives the next chunk arriving and a delta being patched in, and disappears exactly when a fresher load replaces the rows it patches. The overlay cannot outlive the data it patches and no invalidation has to be written. The cost is that one track present in two loads is two entries, so rating it in one view leaves the other on the player's older value until that load is replaced.
 
 **A ref is not a file, and `foo_jean` needs a file.** The component takes a plain absolute local path; the media library reports relative forward-slashed paths and a playlist row carries none. So the source resolves a ref by asking the player for `%path%`: one round trip, on a deliberate action against a single track, which is exactly the budget `%path%` was left out of `TRACK_EXPRESSIONS` to protect. It **verifies rather than trusting the index**, comparing something it already holds and answering null on a mismatch. Indices move, and the failure mode is writing a tag to somebody else's file.
 
@@ -74,10 +74,21 @@ Read the cursor through a ref; as a dependency the effect would re-run on every 
 
 The rules that are not obvious from the code, on top of the chunking in `ARCHITECTURE.md`:
 
+- **Nothing per row is held at all.** A column is a dictionary and one id per track, both read straight out of the bytes the snapshot arrived in, and a row is built on the way out for the few dozen a screen draws. `TrackRows` is that binding of columns to a set of refs, and `rowAt()` is the only thing that materialises one.
+- **Sweep the dictionary, never the rows.** Anything asking a question of the whole library reads each distinct value once and then works in integers: `byValue()` for a per-value table, `tagGrouper()` for values that fold together, `columnReader()` where one fact is spelt two ways. That is what makes the album, artist and genre indices integer grouping, and it is why `tagKey()` runs once per name rather than once per track.
 - **Never hold per-track-unique strings you do not need.** Fetch `%path%` on demand for the one track that needs it, and the same for lyrics.
 - **The one path Jean does have to hold is interned**, since the media library addresses a row by its path and it cannot be fetched on demand the way a rating can. `pathTable.ts` keeps a directory once and a remainder per row. Two facts about strings decide the shape: **slicing a string keeps the whole original alive**, so remainders sliced straight out of the responses cost *more* than the paths they replace and a run has to be joined into one string before the originals can go; and **a string is one byte per character only if every character in it is**, so remainders are joined in blocks rather than into one, or a single accented filename doubles the library. A read is then a concatenation rather than an array index, which is nothing outside a whole-library sweep.
 - **Integers, not strings**, for dates, durations and counts. Sorting a typed array is trivial.
 - **`noUncheckedIndexedAccess` is off**, so every read of a dictionary-encoded column is indexed by construction and unguarded on purpose.
+
+### Patching one
+
+`ARCHITECTURE.md` has where the generations live and why a cache is keyed on one. The rest is local:
+
+- **A patched column owns its ids and stops being a view over the bytes it arrived in**, widened where the dictionary outgrew the width it was sent at. That copy is the whole cost of a patch, and it is one array per column a delta named.
+- **Its dictionary is the one it already holds plus what the delta appended**, and `shared/api/CLAUDE.md` has why that is a flat array rather than a chain.
+- **Anything cached across the rows declares the fields it reads.** `growingIndex` takes that list and `foldCache` has its own; both compare by column identity, so a delta naming a column nothing reads costs nothing. The list has to match what the collector actually touches: an album's play total is summed from the play count, so `albumIndex` names it and a play does rebuild that index.
+- **A delta that does not fit is exported again rather than half-applied.** A moved spine leaves the path table describing the rows it was published with, a `dict.base` that is not what is held would misalign every appended id, and a column Jean did not declare means the two sides disagree about the library. `patchedColumns` answers null for all three.
 
 ## Rendering
 

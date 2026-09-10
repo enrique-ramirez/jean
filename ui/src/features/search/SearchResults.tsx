@@ -48,11 +48,12 @@ export function SearchResults({
 	const isPlaying = useIsPlaying();
 	const canSavePlaylists = canChangePlaylists(usePermissions());
 
-	const { rows, indices, heat, patina, playedCount } = search.results;
-	const { hasPlayCounts } = useAvailableFields(rows);
+	const results = search.results;
+	const { indices, heat, patina, playedCount } = results;
+	const { hasPlayCounts } = useAvailableFields(results.columns);
 	const stats = useMemo(
-		() => summarise(rows, playedCount),
-		[rows, playedCount],
+		() => summarise(results, playedCount),
+		[results, playedCount],
 	);
 
 	const { playAt, activeIndex, scratch, holdsThisView } = useViewPlayback({
@@ -66,7 +67,7 @@ export function SearchResults({
 	useKeymap(
 		SCOPE.search,
 		{ saveSearch: () => setIsSaving(true) },
-		{ enabled: canSavePlaylists && rows.length > 0 && !library.isLoading },
+		{ enabled: canSavePlaylists && results.length > 0 && !library.isLoading },
 	);
 
 	if (library.needsSetup) return <LibrarySetup playlists={playlists} />;
@@ -97,8 +98,7 @@ export function SearchResults({
 	return (
 		<TrackBrowser
 			ref={browserRef}
-			rows={rows}
-			indices={indices}
+			rows={results}
 			source={library.source}
 			viewKey={search.viewKey}
 			heat={heat}
@@ -123,15 +123,14 @@ export function SearchResults({
 					aside={
 						<Mosaic
 							source={library.source}
-							rows={rows}
-							indices={indices}
+							rows={results}
 							seed={search.viewKey}
 						/>
 					}
 					actions={
 						<PlayActions
 							browserRef={browserRef}
-							trackCount={rows.length}
+							trackCount={results.length}
 							canShuffle={canSavePlaylists}
 						>
 							{canSavePlaylists ? (

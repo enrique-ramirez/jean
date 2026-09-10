@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/api.h"
+#include "core/artwork.h"
 #include "core/audience.h"
 #include "core/library.h"
 #include "core/pairing.h"
@@ -60,6 +61,8 @@ struct Player {
     // Walks the player's media library and replaces the snapshot with one built from
     // exactly these columns. Slow, and rate limited.
     LibraryRefresher refreshLibrary;
+
+    ArtworkReader readArtwork;
 };
 
 class HttpServer {

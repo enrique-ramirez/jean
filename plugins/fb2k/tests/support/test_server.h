@@ -30,6 +30,7 @@ public:
     static Player recordingWriter(WriterLog* log);
 
     static Player writing(TagWriter writeTags);
+    static Player showing(ArtworkReader readArtwork);
     static Player listing(PlaylistLister listPlaylists);
     static Player streaming(StreamOpener openStream,
                             std::vector<std::string> formats = {"opus", "aac"});

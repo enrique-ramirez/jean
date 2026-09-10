@@ -1,6 +1,13 @@
 import { fieldTable } from "@/shared/api/fieldTable";
+import type { JlibColumn } from "@/shared/api/jlib";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
+import {
+	byValue,
+	type LibraryColumns,
+	libraryColumnsOf,
+	UNRESOLVED,
+} from "./libraryColumns";
 
 const FIELDS = [
 	["trackNumber", "%tracknumber%"],
@@ -24,9 +31,8 @@ const FIELDS = [
 export const { expressions: TRACK_EXPRESSIONS, index: FIELD } =
 	fieldTable(FIELDS);
 
-// A field the player cannot resolve returns '?'; one that resolves but is empty returns '' or 'N/A'.
-// That difference is the whole of the capability detection.
-const UNRESOLVED = "?";
+export const EMPTY_COLUMNS = libraryColumnsOf([], TRACK_EXPRESSIONS.length);
+
 const ABSENT = new Set([UNRESOLVED, "", "N/A"]);
 
 export const readValue = (raw: string | undefined): string | null =>
@@ -44,6 +50,12 @@ const TRACK_ALTERNATIVE: Partial<Record<number, number>> = {
 	[FIELD.lastPlayed]: FIELD.lastPlayedLocal,
 };
 
+export const withAlternatives = (fields: readonly number[]): number[] =>
+	fields.flatMap((field) => {
+		const alternative = TRACK_ALTERNATIVE[field];
+		return alternative === undefined ? [field] : [field, alternative];
+	});
+
 export const alternativeReader =
 	(alternatives: Partial<Record<number, number>>) =>
 	(row: TrackColumns, field: number): string | undefined => {
@@ -60,6 +72,30 @@ export const playCountOf = (row: TrackColumns): number | null =>
 
 export const lastPlayedOf = (row: TrackColumns): number | null =>
 	readTimestamp(eitherSpelling(row, FIELD.lastPlayed));
+
+export function columnReader<T>(
+	columns: LibraryColumns,
+	field: number,
+	read: (raw: string) => T | null,
+): (ref: number) => T | null {
+	const primary = columns.fields[field];
+	const preferred = byValue(primary, read);
+
+	const alternative = TRACK_ALTERNATIVE[field];
+	if (alternative === undefined) return (ref) => preferred[primary.ids[ref]];
+
+	const other = columns.fields[alternative];
+	const spare = byValue(other, read);
+	return (ref) => preferred[primary.ids[ref]] ?? spare[other.ids[ref]];
+}
+
+export const resolvesAnywhere = (columns: LibraryColumns, field: number) => {
+	const alternative = TRACK_ALTERNATIVE[field];
+	return (
+		!columns.fields[field].allUnresolved ||
+		(alternative !== undefined && !columns.fields[alternative].allUnresolved)
+	);
+};
 
 export function value(row: TrackColumns, field: number): string | null {
 	return readValue(row[field]);
@@ -96,30 +132,6 @@ export function readTimestamp(raw: string | undefined): number | null {
 export const timestamp = (row: TrackColumns, field: number): number | null =>
 	readTimestamp(row[field]);
 
-export function sampleRows(
-	rows: TrackColumns[],
-	sampleSize: number,
-): TrackColumns[] {
-	const step = Math.max(1, Math.floor(rows.length / sampleSize));
-	return Array.from(
-		{ length: Math.ceil(rows.length / step) },
-		(_, at) => rows[at * step],
-	);
-}
-
-export const fieldIsAvailable = (
-	rows: TrackColumns[],
-	field: number,
-	sampleSize = 200,
-) => {
-	const alternative = TRACK_ALTERNATIVE[field];
-	return sampleRows(rows, sampleSize).some(
-		(row) =>
-			row[field] !== UNRESOLVED ||
-			(alternative !== undefined && row[alternative] !== UNRESOLVED),
-	);
-};
-
 export const tagKey = (text: string | null | undefined) =>
 	(text ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -127,6 +139,88 @@ export const sameTagValue = (
 	a: string | null | undefined,
 	b: string | null | undefined,
 ) => tagKey(a) === tagKey(b);
+
+export interface TagGrouper {
+	readonly keys: string[];
+	readonly names: string[];
+	over: (column: JlibColumn) => Int32Array;
+	group: (key: string) => number;
+}
+
+export function tagGrouper(): TagGrouper {
+	const byKey = new Map<string, number>();
+	const keys: string[] = [];
+	const names: string[] = [];
+
+	return {
+		keys,
+		names,
+		over: (column) => {
+			const groups = new Int32Array(column.distinct);
+
+			for (let id = 0; id < column.distinct; id += 1) {
+				const raw = readValue(column.value(id));
+				if (raw === null) {
+					groups[id] = -1;
+					continue;
+				}
+
+				const key = tagKey(raw);
+				let group = byKey.get(key);
+				if (group === undefined) {
+					group = keys.length;
+					keys.push(key);
+					names.push(raw);
+					byKey.set(key, group);
+				}
+				groups[id] = group;
+			}
+
+			return groups;
+		},
+		group: (key) => byKey.get(key) ?? -1,
+	};
+}
+
+export interface TagGroups extends TagGrouper {
+	readonly of: Int32Array;
+}
+
+export function tagGroups(column: JlibColumn): TagGroups {
+	const grouper = tagGrouper();
+	return { ...grouper, of: grouper.over(column) };
+}
+
+// Album artist first: it is missing far more often than artist is, so a record credited to it groups
+// correctly and one without it still falls back to whoever the tracks are by.
+export interface ArtistGroups {
+	readonly names: string[];
+	readonly at: (ref: number) => number;
+	readonly pairedWith: (ref: number, group: number) => number;
+	readonly group: (key: string) => number;
+}
+
+export function artistGroups(columns: LibraryColumns): ArtistGroups {
+	const grouper = tagGrouper();
+	const albumArtist = columns.fields[FIELD.albumArtist];
+	const artist = columns.fields[FIELD.artist];
+	const byAlbumArtist = grouper.over(albumArtist);
+	const byArtist = grouper.over(artist);
+
+	const width = grouper.keys.length + 1;
+
+	const at = (ref: number) => {
+		const credited = byAlbumArtist[albumArtist.ids[ref]];
+		return credited >= 0 ? credited : byArtist[artist.ids[ref]];
+	};
+
+	return {
+		names: grouper.names,
+		at,
+		pairedWith: (ref, group) => group * width + at(ref) + 1,
+		group: grouper.group,
+	};
+}
 
 /**
  * foobar joins a multi-valued tag with `", "`, and a single value may hold commas of its own -- so a

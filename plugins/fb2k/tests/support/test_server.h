@@ -17,8 +17,9 @@ public:
     // Where a client dials, which is not where the server binds: bindAddress defaults to 0.0.0.0.
     static constexpr char kClientHost[] = "127.0.0.1";
 
+    // `library` must outlive the server.
     explicit TestServer(Settings settings = servingSettings(), const Player& player = {},
-                        const TicketMint& mint = countingMint());
+                        Library* library = nullptr, const TicketMint& mint = countingMint());
 
     struct WriterLog {
         std::vector<TagWrite> calls;
@@ -58,7 +59,16 @@ private:
 
 int freePort();
 
-// An authenticated JSON POST, which is what every write in this API is.
+httplib::Result get(const TestServer& server, const std::string& path);
 httplib::Result post(const TestServer& server, const std::string& path, const std::string& body);
+
+// cpp-httplib's client unwraps a gzip body before a caller ever sees it, so a test about the
+// wire has to turn that off.
+httplib::Client undecoding(const TestServer& server);
+
+// Bearer plus the Accept-Encoding that decides whether an answer is compressed at all.
+httplib::Headers accepting(const char* encoding);
+
+bool isGzip(const std::string& body);
 
 }  // namespace jean::testing

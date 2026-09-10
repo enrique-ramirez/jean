@@ -36,7 +36,7 @@ There is one of these files beside each part of the tree, for what is local to i
 - **Fully responsive**, one codebase, no separate mobile build. Desktop is keyboard-first; mobile is aggressively optimised for touch targets, safe-area insets and payload.
 - **Light and dark themes, both designed.** Neither is `#000` / `#fff`.
 - **Everything a person can read is a phrase in the catalogue**, and English is the only language shipped in the bundle. A translation is a JSON file in `locales/` beside `index.html`, added by hand and never by Jean. `ui/src/shared/i18n/CLAUDE.md` is the whole of it; the rule that gets broken first is a string literal written straight into JSX.
-- **Minimum required components: beefweb alone.** Everything beyond is optional, auto-detected and individually toggleable in Settings. A bare install MUST get a complete, coherent app, never a dead panel or an empty shelf. Keep the component table in `README.md` current.
+- **Minimum required components: `foo_jean` alone.** Everything beyond is optional, auto-detected and individually toggleable in Settings. A bare install MUST get a complete, coherent app, never a dead panel or an empty shelf. Keep the component table in `README.md` current.
 - **Run the suite before claiming a change works.** `pnpm lint`, `pnpm typecheck` and `pnpm test` MUST pass. See `ui/CONTRIBUTING.md` for which parts of the suite are cheap enough to run freely.
 - **Write a comment only for a fact from outside this repository**, and name the system it is about: beefweb, foobar2000, `foo_jean`, a browser, a library. Why a value was chosen is a named constant; what the code does is the code; how the parts fit is `ui/ARCHITECTURE.md`; what the player answers is `ui/src/shared/api/README.md`. An external fact lives in one place and it is usually not a source file. `ui/src/` is near zero and an exception should be a surprise; specs carry more, because why a case exists is worth saying.
 
@@ -73,7 +73,7 @@ Writing a custom foobar component to feed Jean is a last resort. Do not design t
 
 ## `foo_jean`
 
-Optional, and always will be. Jean MUST work with it absent and light up tag writing and listening when it is there. Its source is `plugins/fb2k/`, and `plugins/fb2k/CLAUDE.md` is the way into it: the rules for writing that component are its own, and this file governs only what Jean does about it. The two seams, the discovery that feeds them, and the security model that says when a token may be sent are in `ui/ARCHITECTURE.md`; the endpoints and their failure modes are in `ui/src/shared/api/README.md`. What must not be undone:
+Required. The media library, tag writing and listening all arrive through it, and Jean is served same-origin with it, so a token rides a same-origin fetch and no request takes a CORS preflight. Its source is `plugins/fb2k/`, and `plugins/fb2k/CLAUDE.md` is the way into it: the rules for writing that component are its own, and this file governs only what Jean does about it. The two seams, the discovery that feeds them, and the security model that says when a token may be sent are in `ui/ARCHITECTURE.md`; the endpoints and their failure modes are in `ui/src/shared/api/README.md`. What must not be undone:
 
 - **The unauthenticated probe before the token is never optional.** The discovery record is writable by anyone who can reach beefweb, so it is a hint and never a credential target.
 - **Nothing outside `domain/track/tagWriter.ts` and `domain/player/listener.ts` may ask which implementation it holds.** If something has to branch on `kind`, the seam is in the wrong place.
@@ -86,7 +86,7 @@ Things that vary between installs and MUST never be assumed:
 
 | | |
 |---|---|
-| Which playlist is "the library" | An autoplaylist the user creates and names `#Jean Library`. Match the name exactly, never a title they chose. Never assume `p1`, which is scratch space |
+| Which playlist is which | The library is not one of them: `foo_jean` answers it. Never read a role out of a title somebody chose, and never assume `p1`, which is scratch space |
 | Whether `#Jean Queue` exists | Jean's holding playlist for queueing library rows, created on demand. Nothing may assume it is there, and nothing may delete it while the play queue points into it, which crashes the player |
 | `permissions` | `changePlaylists`, `changeOutput`, `changeClientConfig` come from the player. Gate the UI on them: a read-only instance gets a read-only Jean, not buttons that 403 |
 | `authRequired` | May be on. Support Basic auth and a credentials prompt |

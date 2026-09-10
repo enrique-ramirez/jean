@@ -1,12 +1,14 @@
 # foo_jean
 
-A foobar2000 component that exposes over HTTP the things [beefweb](https://github.com/hyperblast/beefweb) does not: writing metadata tags, creating autoplaylists, and streaming what the player is playing. It runs *alongside* beefweb rather than replacing it, on its own port. Its first client is [Jean](https://github.com/enrique-ramirez/jean), though nothing here assumes it.
+A foobar2000 component that exposes over HTTP the things [beefweb](https://github.com/hyperblast/beefweb) does not: writing metadata tags, creating autoplaylists, reading the whole media library in one piece, and streaming what the player is playing. It runs *alongside* beefweb rather than replacing it, on its own port. Its first client is [Jean](https://github.com/enrique-ramirez/jean), though nothing here assumes it.
 
 ## What it does
 
 **Writes metadata tags.** Your request arrives over HTTP and *foobar2000* performs the write, through `metadb_io_v2::update_info_async`, so the player's own database is current the instant the write returns. Anything writing tags from outside the player leaves that database stale until a rescan, so the rating your client just set does not come back when it asks. Ratings are the first caller, but nothing here is rating-shaped: it writes fields.
 
 **Creates autoplaylists.** foobar2000 has a Media Library and beefweb cannot see it; an autoplaylist is a live library query that then shows up in beefweb's `/api/playlists` like any other playlist. This creates, updates, previews and deletes them, and annotates the playlist list with the one thing beefweb cannot say: which playlists are autoplaylists, and which of those are this component's.
+
+**Serves the media library.** The whole of it, in one binary response, in whichever title-formatting columns the request asks for. The component keeps a snapshot of the library it walked, watches foobar2000's own change notifications to keep it current, and hands a client a small patch for what moved rather than the library again. A client that holds everything answers its own searches, counts and shelves without asking anybody. There is no paged route on purpose: paging needs a stable sorted order, producing one needs a full pass over every track, and this is where the database already sits in memory.
 
 **Streams the player's output.** A live mirror of what foobar2000 is playing, in Ogg Opus or in AAC-LC for Safari. The capture is post-DSP and pre-volume, so silencing the player leaves the stream at full level: choosing a device moves the sound to it rather than doubling it. `GET /api/stream/listeners` says who else has it, and anybody can ask for the speakers back alongside them. It lives here because beefweb's static file server answers a `Range` request with the whole file and a `200`, so nothing built on top of beefweb can seek or stream.
 
@@ -18,7 +20,7 @@ The component is Windows-only, because beefweb is: the released `foo_beefweb.fb2
 - **The foobar2000 SDK**, fetched by `scripts/fetch-sdk.ps1` into `sdk/`. It is not vendored: its licence does not permit redistribution.
 - **WTL**, fetched by `scripts/fetch-wtl.ps1`. It is not ATL and does not ship with Visual Studio; `libPPUI` and the SDK helpers include `atlapp.h`, which is WTL's.
 - **libopus and libogg**, fetched by `scripts/fetch-opus.ps1` here and by `scripts/fetch-opus.sh` on whatever machine runs the tests. Both are BSD; they are fetched rather than committed because together they are four megabytes of C. The fetch pins a version and checks a SHA-256.
-- **Nothing else.** cpp-httplib, nlohmann/json and doctest are single MIT headers committed under `third_party/`.
+- **Nothing else to fetch.** cpp-httplib, nlohmann/json and doctest are single MIT headers committed under `third_party/`, and zlib is committed beside them as a directory of C under the zlib licence. It is there because the foobar2000 SDK ships no deflate anywhere and cpp-httplib needs one to gzip a response.
 
 ```powershell
 scripts\fetch-sdk.ps1
@@ -117,6 +119,10 @@ npx openapi-typescript contract/openapi.yaml -o fooJean.d.ts
 | `POST /api/autoplaylists/preview` | Try a query without creating anything. |
 | `POST /api/autoplaylists/{id}` | Replace the specification of one this component created. |
 | `DELETE /api/autoplaylists/{id}` | Delete one this component created. |
+| `GET /api/library` | Both generations and how big the library is. Small, ETagged, and the thing to poll. |
+| `GET /api/library/export` | The whole library, in the columns the request declares, as one binary snapshot. |
+| `GET /api/library/changes` | What moved since a revision, per column. |
+| `POST /api/library/refresh` | Walk the library again and replace the snapshot. Rate limited. |
 | `POST /api/stream/ticket` | A short-lived credential for one stream connection, and where a device says who it is. |
 | `GET /api/stream` | Listen. Takes a ticket in the query string, and `?format=opus\|aac`. |
 | `GET /api/stream/timeline` | What is audible, in the stream's own clock. |
@@ -124,7 +130,7 @@ npx openapi-typescript contract/openapi.yaml -o fooJean.d.ts
 | `DELETE /api/stream/hold` | Ask for the player to be audible alongside the listeners. |
 | `POST /api/stream/leave` | Say that a device stopped listening on purpose. |
 
-Every route but `/api/status`, `/api/pair` and `/api/stream` requires `Authorization: Bearer <token>`, compared in constant time. `/api/stream` takes a ticket instead, because an `<audio>` element cannot send a header; a bearer token is not accepted in its place. Any answer of 400 or above carries a JSON `error` string. Bodies are capped at 256 KB.
+Every route but `/api/status`, `/api/pair` and `/api/stream` requires `Authorization: Bearer <token>`, compared in constant time. `/api/stream` takes a ticket instead, because an `<audio>` element cannot send a header; a bearer token is not accepted in its place. Any answer of 400 or above carries a JSON `error` string. Bodies are capped at 256 KB. A response is gzipped whenever the client offers `Accept-Encoding: gzip`. cpp-httplib does that itself for the JSON routes; the library routes drive the same compressor by hand, because `application/octet-stream` is not a type it will compress on its own. `GET /api/stream` stays out by that same gate, which is what keeps a live encode from being fed through a compressor.
 
 ### Writing tags
 
@@ -157,6 +163,22 @@ Two things to know before building on this:
 **There is deliberately no event stream.** beefweb already raises its `playlists` event for playlists this component creates, so a client subscribed there re-reads `GET /api/playlists` and has the annotation.
 
 **Creating, updating and deleting share a token bucket**: a burst of thirty, refilling at one a second, then `429` with `Retry-After`, and one log line per burst rather than per refusal. Whoever holds the token can already rewrite tags, so this is not a security control; it bounds how fast a client bug turns into hundreds of playlist tabs. Reading and previewing are not limited.
+
+### The media library
+
+`GET /api/library/export?columns=…` is the whole library in one response. The columns are title-formatting expressions, the component evaluates exactly those and interprets none of them, and **the request is the declaration**: the set it names becomes the set every later rebuild evaluates.
+
+Asking takes two steps, because the first build is the slow one. Ask, and take either the blob or a `202` saying a snapshot of that set is being built. On a `202`, poll `GET /api/library` until `ready` is true and its `columns` have the same members as the set asked for, then ask again. Order does not matter for that comparison; it decides only where a column lands in the header. Asking a second time for a set already building starts no second build.
+
+The body is a four-character tag, a length, a JSON header and a blob: one dictionary of strings and one array of ids per column, every offset four-byte aligned so that a typed-array view over the buffer is legal. `contract/openapi.yaml` carries the whole of it. Read it as an `ArrayBuffer` rather than as text. A snapshot past the component's ceiling answers `413` rather than a truncated body.
+
+**An ordinal is a track's position in the snapshot, and it is the only handle these routes use.** Ordinals are in library-relative path order, ties broken by subsong and then by the player's own canonical path, so the order is total and does not shuffle between rebuilds. An ordinal means nothing across a `structure` change.
+
+Both generations sit in `GET /api/library`. `structure` moves when tracks are added or removed, and a client seeing it move exports again, because ordinals have shifted under it. `revision` moves when rows change in place, and a client seeing only that asks `GET /api/library/changes?since=…` for a patch. A delta names the columns that moved and carries their changed ids and the dictionary entries added since, so a play count going up says nothing about titles. A different `structure` is a `409`, and a `since` older than the retained window is a `410`.
+
+**Two mechanisms keep the snapshot current, and neither is a promise.** foobar2000's own change notifications cover a real tag change, wherever it came from, and every track is re-read as it stops playing, which is what catches a play count that no component announced. A component keeping its data privately and publishing it through a title-formatting hook can leave a value stale until that track next plays, and foobar2000's own playlist columns show the same stale value. `POST /api/library/refresh` is the hand on the wheel, and it is rate limited.
+
+None of these routes is reachable without the bearer token. A library says where somebody keeps their files and what they listen to.
 
 ### Streaming
 
@@ -230,6 +252,7 @@ src/core/     the portable half. Knows nothing about foobar2000
 src/fb2k/     everything that touches the SDK, or Windows
 tests/        the suite, which runs against src/core/ on any machine
 third_party/  cpp-httplib, nlohmann/json, doctest -- single MIT headers, committed.
+              zlib -- a directory of C rather than a header, committed, zlib licence.
               libopus and libogg land here too, fetched rather than committed
 sdk/          foobar2000 SDK, fetched not vendored (gitignored)
 scripts/      fetch, build, test, lint, format, package, install, fixtures, verify

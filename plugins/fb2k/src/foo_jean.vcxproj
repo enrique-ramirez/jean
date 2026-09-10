@@ -82,7 +82,13 @@
         <foobar2000/SDK/foobar2000.h>, which is how the SDK's own headers
         cross-include each other.
       -->
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);$(MSBuildThisFileDirectory)..;$(MSBuildThisFileDirectory)..\sdk;$(MSBuildThisFileDirectory)..\third_party\opus\include;$(MSBuildThisFileDirectory)..\third_party\ogg\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);$(MSBuildThisFileDirectory)..;$(MSBuildThisFileDirectory)..\sdk;$(MSBuildThisFileDirectory)..\third_party\opus\include;$(MSBuildThisFileDirectory)..\third_party\ogg\include;$(MSBuildThisFileDirectory)..\third_party\zlib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!--
+        Defined once for the whole project, never per file: third_party/README.md has why.
+        It makes cpp-httplib include <zlib.h>, which is what third_party\zlib is doing on
+        the include path above.
+      -->
+      <PreprocessorDefinitions>CPPHTTPLIB_ZLIB_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <!-- 4715: not all control paths return a value. The SDK treats it as an error and so do we. -->
       <TreatSpecificWarningsAsErrors>4715</TreatSpecificWarningsAsErrors>
       <!--
@@ -173,6 +179,16 @@
       <ObjectFileName>$(IntDir)codec\</ObjectFileName>
       <PreprocessorDefinitions>OPUS_BUILD;USE_ALLOCA;HAVE_LRINTF;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\third_party\opus;$(MSBuildThisFileDirectory)..\third_party\opus\include;$(MSBuildThisFileDirectory)..\third_party\opus\celt;$(MSBuildThisFileDirectory)..\third_party\opus\silk;$(MSBuildThisFileDirectory)..\third_party\opus\silk\float;$(MSBuildThisFileDirectory)..\third_party\ogg\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClCompile Include="..\third_party\zlib\*.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAs>CompileAsC</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <ObjectFileName>$(IntDir)zlib\</ObjectFileName>
     </ClCompile>
   </ItemGroup>
 

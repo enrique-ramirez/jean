@@ -100,6 +100,7 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 6. **Never set `SO_REUSEADDR`.** On Windows it lets a socket bind a port another socket is actively listening on, so two servers silently split the traffic on one port. cpp-httplib's `default_socket_options` sets it, and the override to `SO_EXCLUSIVEADDRUSE` must stay.
 7. A partial or failed bind MUST be loud, to the log and to the discovery record, because a headless install has nobody reading a console.
 8. Refuse before doing. Validate, then act: the tests assert the order, not just the status.
+9. **No response may compress request-controlled text beside a secret.** That is the BREACH shape: whoever can get a chosen string into a response and watch what it does to the compressed length reads the secret beside it a byte at a time. Compression is on wherever a client offers it, cpp-httplib's own for the JSON routes and this component's for the library blobs, so the rule sits on what a body may hold rather than on the compressor.
 
 ## 8. PowerShell scripts
 

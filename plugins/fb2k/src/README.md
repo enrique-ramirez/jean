@@ -18,6 +18,7 @@ Why that boundary exists and what enforces it is [`../ARCHITECTURE.md`](../ARCHI
 | `http_server.{h,cpp}` | The listener, the routes, CORS, the bearer check, the body cap |
 | `tag_write.{h,cpp}` | Whether a write is permitted: allowlist, path shape, field values. Pure |
 | `playlists.{h,cpp}` | What an autoplaylist request may say, what a playlist id looks like, and the record kept about the ones this component made. Pure |
+| `library.{h,cpp}` | The media library snapshot: the columns and their dictionaries, the two generations, what a request may ask for, and the binary format a client reads. The one thing this component keeps a copy of |
 | `preferences.{h,cpp}` | The preferences page's controls as plain text, and everything the page decides: what a configuration looks like on screen, and what a screenful of text means |
 | `pairing.{h,cpp}` | The pairing window: one grant, private source addresses only, and the history the pane shows |
 | `rate_limit.{h,cpp}` | A token bucket, in front of the routes that change playlists. Takes the time as an argument, so the tests need no clock |
@@ -46,6 +47,7 @@ Why that boundary exists and what enforces it is [`../ARCHITECTURE.md`](../ARCHI
 | `advertise.{h,cpp}` | Writes the discovery record into beefweb's `clientconfig` directory |
 | `tag_writer.{h,cpp}` | The other half of writing: resolve the path, refuse tracks the player does not manage, then `metadb_io_v2` on the main thread |
 | `playlists.{h,cpp}` | The other half of autoplaylists: `autoplaylist_manager`, the playlist property holding this component's record, and the one holding beefweb's id. Also `playlistIndices()`, which turns the SDK's count-and-getter into a range to fold over |
+| `library.{h,cpp}` | The other half of the library: the change callbacks, the walk of the player, and the worker that queries the info and formats every row so that `core/` is handed a finished snapshot |
 | `player_mute.{h,cpp}` | The volume calls `output_hold` needs, marshalled onto the main thread |
 | `streamer.{h,cpp}` | The live pipeline: the capture callback, the player's resampler chain, and the encoder thread. `audio_sample` is float or double depending on the SDK build, so this file converts at both ends |
 | `aac_encoder.{h,cpp}` | AAC-LC in ADTS through the encoder Windows ships, for Safari |

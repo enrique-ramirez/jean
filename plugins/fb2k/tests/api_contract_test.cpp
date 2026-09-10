@@ -92,9 +92,10 @@ TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
 
 TEST_CASE("GET /capabilities is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
-    CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true)) ==
+    CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true, true)) ==
           Keys{"apiVersion", "allowedFields", "canWrite", "maxAutoPlaylists",
-               "canCreateAutoPlaylists", "canStream", "streamFormats", "canMuteWhileStreaming"});
+               "canCreateAutoPlaylists", "canStream", "streamFormats", "canMuteWhileStreaming",
+               "canReadLibrary"});
 }
 
 TEST_CASE("a listener roster is the shape contract/openapi.yaml publishes") {
@@ -245,6 +246,78 @@ TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we
     CHECK(httpStatusFor(PlaylistOutcome::unavailable) == 503);
 }
 
+TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    Library::State state;
+    state.ready = true;
+    state.structure = 41;
+    state.revision = 903;
+    state.trackCount = 30441;
+    state.columns = {"%title%"};
+
+    CHECK(keysOf(libraryDocument(state)) ==
+          Keys{"ready", "structure", "revision", "trackCount", "columns"});
+
+    const auto refused = parseLibraryRequest({"%title%", "%title%"}, std::string());
+    REQUIRE_FALSE(refused.ok());
+    CHECK(keysOf(libraryRefusedDocument(refused)) == Keys{"error", "detail"});
+
+    CHECK(keysOf(libraryFailedDocument(DeltaOutcome::structureChanged)) == Keys{"error", "detail"});
+}
+
+// The one document a client reads without JSON.parse. Everything a TypeScript client needs to
+// find the header at all is here: any of these three moving is a client reading garbage.
+TEST_CASE("the snapshot is framed the way contract/openapi.yaml describes") {
+    INFO(kUpdateSpec);
+
+    LibraryBuilder builder({"%title%"}, 1);
+    builder.sink().row(0, {"Music/", "a.flac", "0", "A title"});
+
+    Library library;
+    library.replace(builder.finish());
+
+    const auto snapshot = library.exported();
+    REQUIRE(snapshot.size() > 8);
+
+    CHECK(snapshot.substr(0, 4) == "JLIB");
+
+    const auto byteAt = [&snapshot](size_t at) {
+        return static_cast<uint32_t>(static_cast<unsigned char>(snapshot[at]));
+    };
+
+    const auto headerLength = static_cast<size_t>(byteAt(4) | (byteAt(5) << 8U) |
+                                                  (byteAt(6) << 16U) | (byteAt(7) << 24U));
+
+    CHECK((8 + headerLength) % 4 == 0);
+
+    const auto header = json::parse(snapshot.substr(8, headerLength));
+    CHECK(keysOf(header.dump()) ==
+          Keys{"kind", "structure", "revision", "trackCount", "columns", "spine"});
+    CHECK(header["kind"] == "snapshot");
+
+    CHECK(keysOf(header["columns"][0].dump()) ==
+          Keys{"name", "ids", "dict", "distinct", "hasUnresolved", "allUnresolved"});
+    CHECK(keysOf(header["columns"][0]["ids"].dump()) == Keys{"offset", "count", "width"});
+    CHECK(keysOf(header["columns"][0]["dict"].dump()) == Keys{"text", "ends"});
+    CHECK(keysOf(header["spine"].dump()) == Keys{"directory", "filename", "subsong"});
+}
+
+TEST_CASE("the library statuses contract/openapi.yaml documents are the ones we answer with") {
+    INFO(kUpdateSpec);
+
+    CHECK(httpStatusFor(LibraryRefusal::tooManyColumns) == 400);
+    CHECK(httpStatusFor(LibraryRefusal::badColumn) == 400);
+    CHECK(httpStatusFor(LibraryRefusal::duplicateColumn) == 400);
+    CHECK(httpStatusFor(LibraryRefusal::badSince) == 400);
+
+    CHECK(httpStatusFor(DeltaOutcome::ok) == 200);
+    CHECK(httpStatusFor(DeltaOutcome::structureChanged) == 409);
+    CHECK(httpStatusFor(DeltaOutcome::revisionTooOld) == 410);
+    CHECK(httpStatusFor(DeltaOutcome::revisionUnknown) == 410);
+    CHECK(httpStatusFor(DeltaOutcome::notBuilt) == 503);
+}
+
 // The spec enumerates these, so a client may switch on them: renaming one moves kApiVersion.
 TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we send") {
     INFO(kUpdateSpec);
@@ -276,6 +349,18 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(PlaylistOutcome::playerRefused) == "the player could not do that");
     CHECK(describe(PlaylistOutcome::timedOut) == "the player did not answer in time");
     CHECK(describe(PlaylistOutcome::unavailable) == "autoplaylists are not available");
+
+    CHECK(describe(LibraryRefusal::tooManyColumns) == "too many columns");
+    CHECK(describe(LibraryRefusal::badColumn) == "unacceptable column");
+    CHECK(describe(LibraryRefusal::duplicateColumn) == "duplicate column");
+    CHECK(describe(LibraryRefusal::badSince) == "unacceptable revision");
+
+    CHECK(describe(DeltaOutcome::notBuilt) == "the library snapshot has not been built yet");
+    CHECK(describe(DeltaOutcome::structureChanged) ==
+          "tracks were added or removed; export the library again");
+    CHECK(describe(DeltaOutcome::revisionTooOld) ==
+          "that revision is older than the retained window; export the library again");
+    CHECK(describe(DeltaOutcome::revisionUnknown) == "no such revision");
 }
 
 TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer with") {
@@ -296,7 +381,7 @@ TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer w
 
 TEST_CASE("the versions contract/openapi.yaml states are the versions we report") {
     INFO(kUpdateSpec);
-    CHECK(std::string(kVersion) == "0.1.0");
+    CHECK(std::string(kVersion) == "0.2.0");
     CHECK(kApiVersion == 1);
 }
 

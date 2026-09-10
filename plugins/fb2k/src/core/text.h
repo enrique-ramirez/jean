@@ -1,10 +1,15 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace jean {
 
 std::string toLower(std::string value);
+
+// The non-empty elements of a delimited header field, each trimmed of the optional whitespace
+// RFC 9110 allows around it.
+std::vector<std::string> splitOn(const std::string& text, char delimiter);
 
 // An allowlist of "rating" that let "RATING" through would not be an allowlist.
 bool equalsIgnoringCase(const std::string& a, const std::string& b);

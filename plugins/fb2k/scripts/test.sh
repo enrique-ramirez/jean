@@ -20,6 +20,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo="$(cd "$root/../.." && pwd)"
 opus="$root/third_party/opus"
 ogg="$root/third_party/ogg"
+zlib="$root/third_party/zlib"
 
 : "${CXX:=c++}"
 
@@ -50,6 +51,7 @@ fi
 
 out="$root/bin/tests$suffix"
 codec="$root/bin/codec$suffix"
+deflate="$root/bin/zlib$suffix"
 
 assert_openapi_version_matches_code() {
   local spec_version code_version
@@ -97,14 +99,31 @@ build_codec_archive_if_missing() {
   ar rcs "$codec/libcodec.a" "$codec"/*.o
 }
 
+build_zlib_archive_if_missing() {
+  if [ -f "$deflate/libz.a" ]; then
+    return
+  fi
+
+  : "${CC:=cc}"
+  mkdir -p "$deflate"
+
+  # shellcheck disable=SC2086
+  (cd "$deflate" && $CC -c -O2 -w $instrument "$zlib"/*.c)
+
+  ar rcs "$deflate/libz.a" "$deflate"/*.o
+}
+
 build_tests() {
   # -Wno-unused-function because doctest's SUBCASE machinery generates some.
+  # CPPHTTPLIB_ZLIB_SUPPORT is defined once for the whole build, never per file:
+  # third_party/README.md has why.
   # shellcheck disable=SC2086
   "$CXX" -std=c++17 -g -O0 -Wall -Wextra -Wno-unused-function $instrument \
+    -DCPPHTTPLIB_ZLIB_SUPPORT \
     -I"$root" -I"$root/src" -I"$root/tests" \
-    -I"$opus/include" -I"$ogg/include" \
+    -I"$opus/include" -I"$ogg/include" -I"$zlib" \
     "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp \
-    "$codec/libcodec.a" \
+    "$codec/libcodec.a" "$deflate/libz.a" \
     -o "$out/foo_jean_tests"
 }
 
@@ -125,6 +144,7 @@ if [ "$sanitize" = leaks ]; then
   require_leaks_tool
 fi
 build_codec_archive_if_missing
+build_zlib_archive_if_missing
 build_tests
 
 if [ "$sanitize" = leaks ]; then

@@ -12,6 +12,8 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <iterator>
+#include <mutex>
 #include <optional>
 #include <thread>
 
@@ -32,9 +34,32 @@ constexpr size_t kMaxOutstandingTickets = 16;
 constexpr int kPairBurst = 10;
 constexpr auto kPairRefill = std::chrono::seconds(6);
 
+// A refresh walks every track in the player's library, so this is a rate a person at a
+// button can keep up with and a looping client cannot.
+constexpr int kRefreshBurst = 3;
+constexpr auto kRefreshRefill = std::chrono::seconds(30);
+
 constexpr char kPairPath[] = "/api/pair";
+constexpr char kLibraryPath[] = "/api/library";
+constexpr char kLibraryExportPath[] = "/api/library/export";
+constexpr char kLibraryChangesPath[] = "/api/library/changes";
+constexpr char kLibraryRefreshPath[] = "/api/library/refresh";
 
 constexpr char kNoStreaming[] = "streaming is not available";
+
+constexpr char kNoLibrary[] = "the media library is not available";
+
+constexpr char kLibraryTooLarge[] = "the library snapshot is larger than this component sends";
+
+constexpr char kRefreshingTooFast[] = "too many library refreshes";
+
+// The snapshot and the deltas. Opaque bytes with a magic number of their own, so nothing on
+// the way to the client sniffs, transcodes or reformats them; contract/openapi.yaml is the
+// only description of what is inside.
+constexpr char kLibraryBytes[] = "application/octet-stream";
+
+constexpr char kGzipSuffix[] = "-gzip";
+constexpr char kIdentitySuffix[] = "-identity";
 
 constexpr char kSendJson[] = "send application/json";
 
@@ -45,6 +70,129 @@ bool isJsonRequest(const httplib::Request& req) {
 void denyCachingAndRanges(httplib::Response& res) {
     res.set_header("Cache-Control", "no-store");
     res.set_header("Accept-Ranges", "none");
+}
+
+std::string quoted(const std::string& tag) {
+    return "\"" + tag + "\"";
+}
+
+std::string generationsOf(const Library::State& state) {
+    return "s" + std::to_string(state.structure) + "-r" + std::to_string(state.revision);
+}
+
+// cpp-httplib evaluates If-None-Match for its own file handler alone, so a route serving
+// anything else answers the conditional request itself.
+bool alreadyHolds(const httplib::Request& req, const std::string& tag) {
+    const auto candidates = splitOn(req.get_header_value("If-None-Match"), ',');
+
+    return std::any_of(candidates.begin(), candidates.end(), [&tag](const std::string& candidate) {
+        return candidate == "*" || candidate == tag;
+    });
+}
+
+bool isRefusal(const std::string& weight) {
+    return !weight.empty() && weight.front() == '0' &&
+           weight.find_first_of("123456789") == std::string::npos;
+}
+
+// cpp-httplib runs this negotiation itself for the content types it is willing to compress. A
+// route compressing its own body runs it here instead, and answers identity when nothing offered.
+bool acceptsGzip(const httplib::Request& req) {
+    for (const auto& offer : splitOn(req.get_header_value("Accept-Encoding"), ',')) {
+        const auto parts = splitOn(offer, ';');
+        if (parts.empty() || !equalsIgnoringCase(parts.front(), "gzip"))
+            continue;
+
+        return std::none_of(std::next(parts.begin()), parts.end(),
+                            [](const std::string& parameter) {
+                                const auto named = splitOn(parameter, '=');
+                                return named.size() == 2 && equalsIgnoringCase(named[0], "q") &&
+                                       isRefusal(named[1]);
+                            });
+    }
+
+    return false;
+}
+
+// The same zlib compressor cpp-httplib would have used, driven by hand because
+// can_compress_content_type admits neither of the two types these routes answer with. Setting
+// Content-Encoding is also what stops cpp-httplib compressing the result a second time.
+std::optional<std::string> gzipped(const std::string& body) {
+    std::string packed;
+    httplib::detail::gzip_compressor compressor;
+
+    const bool done = compressor.compress(body.data(), body.size(), true,
+                                          [&packed](const char* data, size_t length) {
+                                              packed.append(data, length);
+                                              return true;
+                                          });
+
+    if (!done)
+        return std::nullopt;
+
+    return packed;
+}
+
+// cpp-httplib drops a query pair whose raw text exactly repeats an earlier one, so a column
+// sent twice arrives once. Two spellings of one column still arrive twice, and that is what
+// the duplicate refusal is for.
+std::vector<std::string> columnsAsked(const httplib::Request& req) {
+    return req.get_param_values("columns");
+}
+
+// Order is the client's to choose and does not make two declarations different: it decides
+// only where a column lands in the snapshot's own array.
+bool sameColumns(std::vector<std::string> a, std::vector<std::string> b) {
+    std::sort(a.begin(), a.end());
+    std::sort(b.begin(), b.end());
+
+    return a == b;
+}
+
+LibraryRequest missing(LibraryRefusal refusal, std::string detail) {
+    LibraryRequest request;
+    request.refusal = refusal;
+    request.detail = std::move(detail);
+    return request;
+}
+
+void mustRevalidate(httplib::Response& res, const std::string& tag) {
+    res.set_header("Cache-Control", "no-cache");
+    res.set_header("ETag", tag);
+    res.set_header("Vary", "Accept-Encoding");
+}
+
+// The body is produced only once the client is known not to hold it already, because
+// serialising a library is the expensive half of any of these requests.
+void sendIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
+                   const char* contentType, const std::function<std::string()>& produce) {
+    const bool offered = acceptsGzip(req);
+    const auto tag = quoted(name + (offered ? kGzipSuffix : kIdentitySuffix));
+
+    if (alreadyHolds(req, tag)) {
+        mustRevalidate(res, tag);
+        res.status = 304;
+        return;
+    }
+
+    const std::string body = produce();
+    if (body.size() > kMaxLibraryBytes) {
+        respond(res, 413, errorDocument(kLibraryTooLarge));
+        return;
+    }
+
+    auto packed = offered ? gzipped(body) : std::optional<std::string>();
+
+    mustRevalidate(res, packed ? tag : quoted(name + kIdentitySuffix));
+    res.status = 200;
+
+    if (!packed) {
+        res.set_content(body, contentType);
+        return;
+    }
+
+    res.set_header("Content-Encoding", "gzip");
+    res.set_content(std::move(*packed), contentType);
 }
 
 ListenerStatus listening() {
@@ -134,16 +282,18 @@ void reportFailuresWithoutLeaking(httplib::Server& server) {
 }  // namespace
 
 struct HttpServer::Impl {
-    Impl(Settings s, Audience& a, Player p, TicketMint mint)
+    Impl(Settings s, Audience& a, Player p, TicketMint mint, Library* lib)
         : settings(std::move(s)),
           audience(a),
           player(std::move(p)),
+          library(lib),
           tickets(std::move(mint), std::chrono::seconds(settings.streamTicketTtlSeconds),
                   kMaxOutstandingTickets) {}
 
     const Settings settings;
     Audience& audience;
     const Player player;
+    Library* const library;
     httplib::Server server;
     std::thread thread;
     std::atomic<bool> stopping{false};
@@ -152,6 +302,14 @@ struct HttpServer::Impl {
     TicketStore tickets;
 
     RateLimiter playlistChanges{kPlaylistBurst, kPlaylistRefill};
+
+    RateLimiter libraryRebuilds{kRefreshBurst, kRefreshRefill};
+
+    // An export names the columns it wants and this is what it named, so a later rebuild,
+    // whether from the player noticing a change or from POST /library/refresh, reproduces the
+    // same set rather than whatever the component last happened to build.
+    mutable std::mutex declarationLock;
+    std::vector<std::string> declared;
 
     RateLimiter pairAttempts{kPairBurst, kPairRefill};
     PairingWindow pairing{std::chrono::seconds(kPairingWindowSeconds)};
@@ -420,6 +578,9 @@ struct HttpServer::Impl {
             denyCachingAndRanges(res);
 
             const std::shared_ptr<StreamSession> session(std::move(opened.session));
+
+            // Kept out of the compressor by cpp-httplib's content-type gate, which
+            // third_party/README.md has, and not by anything here.
             res.set_chunked_content_provider(
                 opened.contentType,
                 [session, held = std::move(membership)](size_t, httplib::DataSink& sink) {
@@ -437,6 +598,131 @@ struct HttpServer::Impl {
                     sink.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
                     return true;
                 });
+        });
+    }
+
+    void declare(std::vector<std::string> columns) {
+        const std::lock_guard<std::mutex> lock(declarationLock);
+        declared = std::move(columns);
+    }
+
+    std::vector<std::string> declaration() const {
+        const std::lock_guard<std::mutex> lock(declarationLock);
+        return declared;
+    }
+
+    // Shared with POST /library/refresh, because a build is a build however it was asked for.
+    bool rebuildingTooFast(httplib::Response& res) {
+        if (libraryRebuilds.allow(std::chrono::steady_clock::now()))
+            return false;
+
+        res.set_header("Retry-After", std::to_string(kRefreshRefill.count()));
+        respond(res, 429, errorDocument(kRefreshingTooFast));
+        return true;
+    }
+
+    // The set asked for is not the one that is ready. Say what is ready, start building what
+    // was asked for, and let the client poll GET /library. A set already declared is already
+    // being built, so it is answered without asking the player a second time.
+    void startBuilding(httplib::Response& res, const std::vector<std::string>& columns,
+                       const Library::State& state) {
+        if (!player.refreshLibrary) {
+            respond(res, 503, errorDocument(kNoLibrary));
+            return;
+        }
+
+        if (!sameColumns(declaration(), columns)) {
+            if (rebuildingTooFast(res))
+                return;
+
+            declare(columns);
+            player.refreshLibrary(columns);
+        }
+
+        respond(res, 202, libraryDocument(state));
+    }
+
+    void addLibraryRoutes() {
+        server.Get(kLibraryPath, [this](const httplib::Request& req, httplib::Response& res) {
+            if (!library) {
+                respond(res, 503, errorDocument(kNoLibrary));
+                return;
+            }
+
+            const auto state = library->state();
+            sendIfChanged(req, res, generationsOf(state), "application/json",
+                          [&state] { return libraryDocument(state); });
+        });
+
+        server.Get(kLibraryExportPath, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto asked = columnsAsked(req);
+            const auto request = asked.empty()
+                                     ? missing(LibraryRefusal::badColumn, "'columns' is required")
+                                     : parseLibraryRequest(asked, std::string());
+
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal), libraryRefusedDocument(request));
+                return;
+            }
+
+            if (!library) {
+                respond(res, 503, errorDocument(kNoLibrary));
+                return;
+            }
+
+            const auto state = library->state();
+            if (!state.ready || !sameColumns(state.columns, request.columns)) {
+                startBuilding(res, request.columns, state);
+                return;
+            }
+
+            sendIfChanged(req, res, generationsOf(state), kLibraryBytes,
+                          [this] { return library->exported(); });
+        });
+
+        server.Get(
+            kLibraryChangesPath, [this](const httplib::Request& req, httplib::Response& res) {
+                const auto request = req.has_param("since")
+                                         ? parseLibraryRequest({}, req.get_param_value("since"))
+                                         : missing(LibraryRefusal::badSince, "'since' is required");
+
+                if (!request.ok()) {
+                    respond(res, httpStatusFor(request.refusal), libraryRefusedDocument(request));
+                    return;
+                }
+
+                if (!library) {
+                    respond(res, 503, errorDocument(kNoLibrary));
+                    return;
+                }
+
+                const auto state = library->state();
+                const auto changes = library->changes(request.since);
+                if (changes.outcome != DeltaOutcome::ok) {
+                    respond(res, httpStatusFor(changes.outcome),
+                            libraryFailedDocument(changes.outcome));
+                    return;
+                }
+
+                const auto name = generationsOf(state) + "-f" + std::to_string(request.since);
+                sendIfChanged(req, res, name, kLibraryBytes,
+                              [&changes] { return serialiseDelta(changes.delta); });
+            });
+
+        server.Post(kLibraryRefreshPath, [this](const httplib::Request&, httplib::Response& res) {
+            if (!library || !player.refreshLibrary) {
+                respond(res, 503, errorDocument(kNoLibrary));
+                return;
+            }
+
+            if (rebuildingTooFast(res))
+                return;
+
+            const auto state = library->state();
+            const auto columns = declaration();
+
+            player.refreshLibrary(columns.empty() ? state.columns : columns);
+            respond(res, 202, libraryDocument(state));
         });
     }
 
@@ -581,9 +867,10 @@ struct HttpServer::Impl {
     }
 };
 
-HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint)
+HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint,
+                       Library* library)
     : impl_(std::make_unique<Impl>(std::move(settings), audience, std::move(player),
-                                   std::move(mint))) {}
+                                   std::move(mint), library)) {}
 
 HttpServer::~HttpServer() {
     stop();
@@ -613,14 +900,16 @@ ListenerStatus HttpServer::start() {
     });
 
     server.Get("/api/capabilities", [&impl](const httplib::Request&, httplib::Response& res) {
-        respond(res, 200,
-                capabilitiesDocument(impl.settings, impl.player.streamFormats,
-                                     impl.player.releaseOutput != nullptr));
+        respond(
+            res, 200,
+            capabilitiesDocument(impl.settings, impl.player.streamFormats,
+                                 impl.player.releaseOutput != nullptr, impl.library != nullptr));
     });
 
     impl.addTagRoutes();
     impl.addPlaylistRoutes();
     impl.addStreamRoutes();
+    impl.addLibraryRoutes();
     impl.addPairingRoute();
 
     if (impl.settings.authToken.empty())

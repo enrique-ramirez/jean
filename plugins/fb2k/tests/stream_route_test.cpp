@@ -321,7 +321,7 @@ TEST_CASE("a source that refuses to open answers 503 and spends the ticket") {
 }
 
 TEST_CASE("a mint that fails refuses to issue rather than serving an empty ticket") {
-    const TestServer server(servingSettings(), TestServer::streaming(opensWith({"a"})),
+    const TestServer server(servingSettings(), TestServer::streaming(opensWith({"a"})), nullptr,
                             [] { return std::string(); });
 
     const auto response =

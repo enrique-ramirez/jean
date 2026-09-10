@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/audience.h"
+#include "core/library.h"
 #include "core/playlists.h"
 #include "core/settings.h"
 #include "core/tag_write.h"
@@ -28,7 +29,7 @@ std::string statusDocument();
 // there is nothing to hold and DELETE /stream/hold answers 503.
 std::string capabilitiesDocument(const Settings& settings,
                                  const std::vector<std::string>& streamFormats,
-                                 bool mutesWhileStreaming);
+                                 bool mutesWhileStreaming, bool servesLibrary);
 
 std::string streamListenersDocument(const std::vector<AudienceMember>& members, int connections,
                                     int maxConnections, bool playerMuted);
@@ -63,5 +64,15 @@ std::string queryPreviewDocument(const PreviewResult& preview);
 
 int httpStatusFor(PlaylistRefusal refusal);
 int httpStatusFor(PlaylistOutcome outcome);
+
+// The small document a client polls for both generations. The snapshot itself is not JSON:
+// core/library.h serialises it, and contract/openapi.yaml describes the bytes.
+std::string libraryDocument(const Library::State& state);
+
+std::string libraryRefusedDocument(const LibraryRequest& request);
+std::string libraryFailedDocument(DeltaOutcome outcome);
+
+int httpStatusFor(LibraryRefusal refusal);
+int httpStatusFor(DeltaOutcome outcome);
 
 }  // namespace jean

@@ -2,7 +2,7 @@
 
 For someone about to build on Jean. Structure, boundaries and contracts: the things a file listing does not tell you. [CONTRIBUTING.md](./CONTRIBUTING.md) is how to write the code; [src/shared/api/README.md](src/shared/api/README.md) is what the player answers.
 
-Jean is a Vite single-page app with no backend of its own. React 19, TypeScript, TanStack Query, TanStack Virtual, TanStack Hotkeys, CSS Modules. Every request it makes is a root-relative `/api/…` path, so the browser resolves it against whatever origin served the page: beefweb in a build, the Vite proxy in development. The one exception is `foo_jean`, which listens on a port of its own.
+Jean is a Vite single-page app with no backend of its own. React 19, TypeScript, TanStack Query, TanStack Virtual, TanStack Hotkeys, CSS Modules. Every request it makes is a root-relative `/api/…` path, so the browser resolves it against whatever origin served the page: `foo_jean` in a build, the Vite proxy in development. **Jean is served same-origin with the API it talks to**, which is what keeps a token on a same-origin fetch and keeps every request out of a CORS preflight.
 
 ## The shape of it
 
@@ -10,8 +10,8 @@ Jean is a Vite single-page app with no backend of its own. React 19, TypeScript,
 flowchart TB
   subgraph machine["The player's machine"]
     fb["foobar2000 / DeaDBeeF"]
-    bw["foo_beefweb :8880<br/>required"]
-    fj["foo_jean :8881<br/>optional"]
+    bw["foo_beefweb :8880"]
+    fj["foo_jean :8881<br/>required"]
     stats["playback statistics<br/>component, optional"]
     fb --- bw
     fb --- fj
@@ -28,8 +28,8 @@ flowchart TB
     domain --> shared
   end
 
-  bw -->|"REST + SSE, same origin"| shared
-  fj -->|"REST + audio, cross-origin"| shared
+  bw -->|"REST + SSE"| shared
+  fj -->|"the library, REST and audio, same origin"| shared
 ```
 
 Arrows inside the browser are import direction, and they point one way only.
@@ -83,7 +83,7 @@ Jean's settings live in `localStorage` today and belong in beefweb's `/api/clien
 
 It is a flat array rather than a tree for three reasons. beefweb answers ranges, not nodes. A ref into a flat array is an integer, so a filtered view is a typed array and a selection is a set of integers. And every screen in Jean is a filter over the same list, whether a shelf, a genre or a search, so a tree would be rebuilt per view and thrown away.
 
-Chunking differs by source, since the two cost different things: a playlist read is almost all round trip, so the first chunk is small enough to paint from and the rest are large and concurrent. The media library endpoint re-enumerates on every call and beefweb serialises requests on one work queue, so concurrency there buys nothing and one large request wins.
+Chunking is a playlist read's problem: it is almost all round trip, so the first chunk is small enough to paint from and the rest are large and concurrent. The library does not arrive that way. `foo_jean` answers it as one columnar snapshot, dictionary-encoded per column, with a per-column delta behind it, so the schedule is one request and then patches rather than a queue of reads.
 
 **Search folds when the haystack is built, never per keystroke.** `libraryIndex()` keeps one folded haystack per row, keyed by item count so an edited library re-indexes rather than inheriting rows that have moved; a search is then one `includes()`. `fold()` in `src/shared/lib/text.ts` lowercases and strips diacritics, so `babasonicos` finds `Babasónicos`. Fold the query too, or an accented query stops matching the folded index.
 
@@ -105,14 +105,14 @@ One fact the player may spell two ways gets an *alternative* rather than a branc
 
 ## The two seams
 
-`foo_jean` is optional and always will be. Jean works with it absent and lights up tag writing and listening when it is there. Two interfaces make that true, and **nothing outside them may ask which implementation it is holding.**
+`foo_jean` is required, and the library, the tag writes and the stream all come from it. What is still optional is whether an install permits a write or an encode at all: an empty allowlist switches writing off, and `streamingEnabled` switches listening off. Two interfaces absorb that, and **nothing outside them may ask which implementation it is holding.**
 
 | Seam | Interface | Implementations |
 |---|---|---|
 | `src/domain/track/tagWriter.ts` | `{ kind, canWrite, allowedFields, allows, write }` | `NO_WRITER`, `agentWriter` |
 | `src/domain/player/listener.ts` | `{ kind, canListen, formats, target }` | `NO_LISTENER`, the agent listener |
 
-Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether the component is missing or the write was declined. If anything outside these files has to branch on `kind`, the seam is in the wrong place.
+Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether writing is switched off at the player, the device is unpaired, or the write was declined. If anything outside these files has to branch on `kind`, the seam is in the wrong place.
 
 Both are fed by one discovery, in `src/shared/api/fooJean.ts`, deduped through `src/shared/hooks/useFooJean.ts`. Every caller names one query key, so the second component to mount reads the first one's result rather than probing again.
 

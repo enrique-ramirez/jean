@@ -34,9 +34,11 @@ fi
 # Vendored headers must be -isystem or their diagnostics bury ours: --warnings-as-errors promotes anything HeaderFilterRegex filtered back into view.
 compile_flags=(
   -std=c++17
+  -DCPPHTTPLIB_ZLIB_SUPPORT
   -isystem "$root"
   -isystem "$root/third_party/opus/include"
   -isystem "$root/third_party/ogg/include"
+  -isystem "$root/third_party/zlib"
   -I"$root/src"
   -I"$root/tests"
 )

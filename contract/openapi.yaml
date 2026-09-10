@@ -12,10 +12,10 @@ openapi: 3.1.0
 
 info:
   title: foo_jean
-  version: 0.1.0
-  summary: Tag writing and autoplaylists for foobar2000, over HTTP, for clients that beefweb cannot serve.
+  version: 0.2.0
+  summary: Tag writing, autoplaylists and the media library for foobar2000, over HTTP, for clients that beefweb cannot serve.
   description: |
-    A foobar2000 component exposing what [beefweb](https://github.com/hyperblast/beefweb) does not: writing metadata tags, managing autoplaylists, and streaming the player's own output.
+    A foobar2000 component exposing what [beefweb](https://github.com/hyperblast/beefweb) does not: writing metadata tags, managing autoplaylists, reading the whole media library in one piece, and streaming the player's own output.
 
     ## Relationship to beefweb
 
@@ -55,6 +55,76 @@ info:
 
     `OPTIONS` preflight is answered `204` without a credential, identically for every path, so it reveals nothing about which routes exist.
 
+    ## The media library
+
+    `GET /library` is a small JSON document a client polls. The library itself is a binary snapshot from `GET /library/export`, patched afterwards by `GET /library/changes`. There is no paged route and no per-entity route: a client holds the whole library and asks the questions locally.
+
+    Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client throws its arrays away and exports again. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
+
+    An **ordinal** is a track's position in the snapshot, counted from zero, and it is the only handle these routes use. Ordinals are in library-relative path order, ties broken by subsong and then by the player's own canonical path, so the order is total and does not shuffle between rebuilds. An ordinal means nothing across a `structure` change.
+
+    ### Who declares the columns
+
+    The client, and the export request is the declaration. `GET /library/export?columns=…` names the title-formatting expressions the client wants, and the component evaluates exactly those. Nothing here parses or interprets one: that keeps the component general and it keeps a client's own capability detection working.
+
+    The loop is: ask, and get either the blob or a `202`; on a `202` poll `GET /library` until its `columns` match what was asked for and `ready` is true; then ask again. **The first export after the component starts, and the first after a declaration changes, is the slow one.** It walks and formats every track in the library. Every export after that is served from what is already built.
+
+    Order does not matter when comparing: `columns` from `GET /library` and the set a client declared are the same declaration when they have the same members. Order decides only where a column lands in the header's `columns` array.
+
+    Every later rebuild reuses the last declared set, whether the player raised a change notification or somebody called `POST /library/refresh`. Two clients wanting different sets will therefore take the snapshot from each other; at most two builds are kept, so a third evicts rather than accumulating.
+
+    ### The snapshot format
+
+    Both `GET /library/export` and `GET /library/changes` answer in one format, `application/octet-stream`:
+
+    ```
+    offset 0   4 bytes    the ASCII letters JLIB
+    offset 4   4 bytes    headerLength, unsigned little-endian
+    offset 8   headerLength bytes    the header, UTF-8 JSON, right-padded with ASCII spaces
+    offset 8 + headerLength           the blob, to the end of the body
+    ```
+
+    Every integer in the body is unsigned and little-endian. The header's padding is what makes `8 + headerLength` a multiple of four, and `headerLength` counts it, so the blob begins on a four-byte boundary. Every `offset` in the header is measured from the first byte of the blob and is itself a multiple of four. That is what lets a client take `new Uint32Array(buffer, blobStart + offset, count)` over the bytes in place: a typed array over a byte offset that is not a multiple of its element size throws in every browser.
+
+    The header parses with `JSON.parse` and is small. Its shape is `LibraryHeader`.
+
+    ### Compression
+
+    `GET /library/export` and `GET /library/changes` are gzipped when the request offers gzip, and sent as they stand when it does not. This is the largest thing the component produces and it is several times smaller compressed, so a client SHOULD offer gzip; every browser does by default.
+
+    Negotiation is RFC 9110's: `Accept-Encoding: gzip` gets `Content-Encoding: gzip`, `Accept-Encoding: gzip;q=0` is a refusal and gets the bytes as they stand, and no `Accept-Encoding` at all is also a refusal. Only `gzip` is offered; `br`, `zstd` and `deflate` are not, and `*` is read as offering nothing rather than as offering everything.
+
+    Every answer from these routes carries `Vary: Accept-Encoding`, and **the `ETag` names the coding**: `"s41-r903-gzip"` and `"s41-r903-identity"` are two representations of one snapshot and never share a validator. A client passes back whichever tag it holds and keeps asking with the same `Accept-Encoding` it asked with before. `GET /library` is `ETag`ged on the same terms, coding and all, because it is compressed on the same terms.
+
+    The size ceiling is on the snapshot **as serialised**, before any compression: a library over it is a `413` however small it would have gzipped to, because the number that matters is what the client has to hold once it has decoded.
+
+    ### Reading one column
+
+    A column is a dictionary of distinct values plus one dictionary id per row. Nothing else: there is no type system here, no numbers and no nulls, because the component never parses, normalises or types what the player produced. A field the player could not resolve arrives as the single character `?`, an empty tag arrives as `""`, and a tag whose value is literally `N/A` arrives as `N/A`. Telling those three apart is the whole of a client's capability detection, so a client MUST NOT coerce them.
+
+    - `ids` is one id per ordinal: `ids.count` entries of `ids.width` bytes each, where the width is 1, 2 or 4. In a snapshot `ids.count` equals `trackCount`.
+    - `dict.text` is `dict.text.length` bytes of UTF-8, every distinct value concatenated with nothing between them. Decode it with one `TextDecoder` call and slice lazily: materialising a quarter of a million strings up front costs more than drawing them does.
+    - `dict.ends` is `dict.ends.count` entries of `dict.ends.width` bytes, entry *i* being the offset within `dict.text` at which value *i* ends. Value *i* therefore spans `[ends[i - 1], ends[i])`, with `ends[-1]` read as `0`.
+
+    Widths are chosen from the measured cardinality, so a client MUST read them rather than assume: `ids.width` is the narrowest of 1, 2 and 4 that holds every id from `0` to `distinct - 1`, and `dict.ends.width` the narrowest that holds `dict.text.length`.
+
+    Each column also carries what a client would otherwise learn by sampling rows and guessing. `distinct` is the number of values in the whole dictionary, `hasUnresolved` says whether `?` is one of them, and `allUnresolved` says whether it is the only one. A field that resolves on one track in ten thousand is therefore detected exactly rather than missed, which sampling cannot promise.
+
+    ### The spine
+
+    Three columns the component always builds, under `spine` rather than in `columns`, and they read exactly like any other column.
+
+    `directory` and `filename` are the track's path relative to the library root, forward-slashed on every platform, split in two because directories repeat heavily. `directory` keeps its trailing slash, so the whole relative path is the two concatenated. The library root itself never appears: an absolute path is the player's business and this API does not publish one here. `subsong` is the index within the file, as decimal text, and it is `0` for an ordinary file.
+
+    ### Reading a delta
+
+    A delta carries only the columns that moved, and each of them carries only the rows that moved. A client patches those typed arrays and leaves every other column's array identity alone, which is what stops a play count moving from invalidating everything derived from titles.
+
+    - `ordinals` is `ordinals.count` ascending ordinals, and `ids` is one new id for each of them, in the same order. `ids.count` equals `ordinals.count`.
+    - Dictionaries are append-only within a `structure` generation, so a delta never restates one. `dict.base` is the number of entries the client already holds, and `dict.text` and `dict.ends` carry only what was appended after it: `dict.ends.count` is `distinct - dict.base`, not `distinct`. Append them and the client's dictionary is current again.
+
+    A value that stops being used leaves an entry behind. The next `structure` rebuild compacts it, and nothing before then does.
+
     ## Errors
 
     Every response with a status of 400 or above is `application/json` carrying at least an `error` string, including the unrouted `404` and the oversized `413` that cpp-httplib generates itself.
@@ -89,6 +159,9 @@ tags:
   - name: playlists
     description: |
       Autoplaylists, and which playlists are autoplaylists.
+  - name: library
+    description: |
+      The player's media library, as one columnar snapshot and a stream of patches to it.
   - name: stream
     description: |
       Listening to the player's own output. foobar2000 decodes and sequences; this carries the result to a browser.
@@ -117,7 +190,7 @@ paths:
                 default:
                   value:
                     name: foo_jean
-                    version: 0.1.0
+                    version: 0.2.0
                     apiVersion: 1
                     authRequired: true
 
@@ -553,6 +626,177 @@ paths:
         "503": { $ref: "#/components/responses/PlaylistUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
+  /library:
+    get:
+      tags: [library]
+      operationId: getLibrary
+      summary: Both generations, and how big the library is.
+      description: |
+        The document a client polls. It is small, it is `ETag`ged, and a poll that finds nothing new is a `304` with no body.
+
+        Read `structure` and `revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means export again. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do.
+
+        `ready` is `false` between the component starting and its first snapshot being built. This is also what a client polls after a `202` from `GET /library/export`: wait until `ready` is true and `columns` has the same members as the set declared, then ask for the export again.
+
+        Once player state moves into this component the generations will ride that poll, and this route will cost nothing extra. Do not build a second poller for it.
+
+        Its `ETag` names the content coding, exactly as the two binary routes do. See *Compression*.
+      responses:
+        "200":
+          description: The current state of the snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Library" }
+              examples:
+                built:
+                  value:
+                    ready: true
+                    structure: 41
+                    revision: 903
+                    trackCount: 30441
+                    columns: ["%title%", "%album artist%", "%play_count%"]
+                building:
+                  summary: The component is up and the first walk has not finished.
+                  value: { ready: false, structure: 0, revision: 0, trackCount: 0, columns: [] }
+        "304": { $ref: "#/components/responses/NotModified" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
+  /library/export:
+    get:
+      tags: [library]
+      operationId: exportLibrary
+      summary: Declare a column set, and take the whole library in one binary snapshot.
+      description: |
+        Every track, every declared column, in one response. The format is in the description at the top of this document, under *The media library*; the header's shape is `LibraryHeader`.
+
+        `columns` is the declaration, and it is required. A `200` means a snapshot of exactly that set is built and this is it. A `202` means one is not, that the component has started building it, and that the client should poll `GET /library` until `columns` match and `ready` is true, then ask again. **The first export after the component starts, and the first after the declared set changes, is the slow one**: it walks and formats every track. Nothing else on this API is affected while it runs.
+
+        There is no paged variant and none is planned. Paging a library needs a stable sorted order, producing one needs a full pass, and the component is where the whole database already sits in memory. A client that holds everything answers its own searches, counts and shelves without another request.
+
+        The response is `ETag`ged on the two generations, so a client that polls `GET /library` and finds nothing new never gets here, and one that arrives anyway is answered `304`.
+
+        Large. Expect single-digit megabytes for a library of thirty thousand tracks, growing roughly linearly. A client MUST read it as an `ArrayBuffer` rather than as text.
+      parameters:
+        - name: columns
+          in: query
+          required: true
+          description: |
+            The columns to build, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. Required: an export with none is a `400` rather than a rebuild from nothing.
+
+            Passed to foobar2000's title-formatting compiler untouched. The three spine columns are always built and MUST NOT be named here.
+
+            At most 64, each 1 to 1024 printable characters, and no repeats. Two spellings of one column, such as `a` and `%61`, are a repeat and are refused. An identical pair sent twice is not: the server collapses it before the component sees it, so it is accepted.
+          schema:
+            type: array
+            items: { type: string, minLength: 1, maxLength: 1024 }
+            minItems: 1
+            maxItems: 64
+          style: form
+          explode: true
+      responses:
+        "200":
+          description: |
+            The snapshot. `Cache-Control` is `no-cache`, so a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
+          headers:
+            Content-Encoding:
+              schema: { type: string, enum: [gzip] }
+              description: Present only when the request offered gzip. Absent means the bytes as they stand.
+            Vary:
+              schema: { type: string }
+              description: "`Accept-Encoding`."
+            ETag:
+              schema: { type: string }
+              description: The generations and the coding, quoted.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "202":
+          description: |
+            No snapshot of that set exists and one is being built. The body is what `GET /library` answers now, so a client can see what it is waiting to change.
+
+            Asking again for a set already being built is another `202` and does not start a second build. A client SHOULD poll `GET /library` rather than re-asking here.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Library" }
+        "304": { $ref: "#/components/responses/NotModified" }
+        "400": { $ref: "#/components/responses/LibraryRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/LibraryTooLarge" }
+        "429": { $ref: "#/components/responses/LibraryRefreshedTooFast" }
+        "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
+  /library/changes:
+    get:
+      tags: [library]
+      operationId: getLibraryChanges
+      summary: What has changed since a revision, per column.
+      description: |
+        The patch between the revision a client holds and the current one, in the same binary format as the snapshot. It carries only the columns that moved and, within each, only the rows that moved, so the common case of a play count and a last-played date advancing touches two columns and leaves the rest of a client's arrays untouched by identity as well as by value.
+
+        Call this when `GET /library` reports the same `structure` and a higher `revision`. A different `structure` is a `409`: ordinals have shifted and the patch would be meaningless, so export again.
+
+        There is no `columns` here, because `since` already names the generation. A rebuild with a different set moves `structure`, so a client whose declaration is stale reaches the `409` and exports, which is where it declares again.
+
+        The component keeps the last 256 revisions. Falling behind that is a `410`, and the answer is the same one: export again. A client that polls at any sane interval will not see it.
+
+        There is no promise of freshness the player cannot keep. A component storing its data privately and publishing it through a title-formatting hook, which is how several play-count components work, changes a value with no notification to anybody; foobar2000's own playlist columns show the same stale value. The snapshot catches up when that track next plays or when somebody calls `POST /library/refresh`.
+      parameters:
+        - name: since
+          in: query
+          required: true
+          description: |
+            The `revision` the client currently holds. A whole number. `revision` values are contiguous, so this is exactly what the last snapshot or delta header reported.
+          schema: { type: integer, minimum: 0 }
+          example: 900
+      responses:
+        "200":
+          description: |
+            The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. Gzipped on the same terms as the snapshot; see *Compression*.
+          headers:
+            Content-Encoding:
+              schema: { type: string, enum: [gzip] }
+              description: Present only when the request offered gzip. Absent means the bytes as they stand.
+            Vary:
+              schema: { type: string }
+              description: "`Accept-Encoding`."
+            ETag:
+              schema: { type: string }
+              description: The generations, the revision patched from, and the coding, quoted.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "304": { $ref: "#/components/responses/NotModified" }
+        "400": { $ref: "#/components/responses/LibraryRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/LibraryConflict" }
+        "410": { $ref: "#/components/responses/LibraryRevisionGone" }
+        "413": { $ref: "#/components/responses/LibraryTooLarge" }
+        "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
+  /library/refresh:
+    post:
+      tags: [library]
+      operationId: refreshLibrary
+      summary: Rebuild the snapshot from the player.
+      description: |
+        Asks foobar2000 to walk its media library again and replaces the snapshot with the result. This is the hand on the wheel behind the two automatic mechanisms, the player's own change notifications and the re-read of every track as it stops playing, and it is what recovers a value neither of those can see.
+
+        It rebuilds the column set last declared by an export, so it takes no body. On a component nothing has declared to since it started, it rebuilds the set already built, which is why a refresh cannot cost a client the snapshot it is using.
+
+        Expensive: it re-queries and re-formats every track. Rate limited to a burst of three, refilling one every thirty seconds, which is what a person pressing a button needs and a looping client does not get.
+
+        The answer is `202` rather than `200`. The rebuild may still be running, and the body carries the generations as they stand at the moment of the request, so a client watches `GET /library` for `structure` to move past them. It MUST NOT treat the answer as the finished rebuild.
+      responses:
+        "202":
+          description: The rebuild was asked for. The body is what `GET /library` would answer now.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Library" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/LibraryRefreshedTooFast" }
+        "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
   /stream/ticket:
     post:
       tags: [stream]
@@ -869,6 +1113,88 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
 
+    NotModified:
+      description: |
+        The client already holds this representation. No body. `ETag` is repeated so a client can keep validating against it.
+
+        cpp-httplib evaluates `If-None-Match` for static files alone, so these routes answer it themselves. The tag is strong, it is quoted, and `*` is accepted. It is not a hash of the bytes: it is the generations the representation was built from, plus the content coding it was sent in, and both of those move whenever the bytes do. A validator held from an identity answer therefore does not revalidate a gzipped one, which is deliberate.
+      headers:
+        ETag:
+          schema: { type: string }
+          description: The same tag the `200` carried, coding suffix and all.
+        Vary:
+          schema: { type: string }
+          description: "`Accept-Encoding`."
+
+    LibraryRefused:
+      description: |
+        The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, or a `since` that is missing or not a whole number.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/LibraryRefusal" }
+          examples:
+            noColumns:
+              value: { error: unacceptable column, detail: "'columns' is required" }
+            noSince:
+              value: { error: unacceptable revision, detail: "'since' is required" }
+            repeated:
+              value: { error: duplicate column, detail: "column 3 repeats an earlier one" }
+
+    LibraryConflict:
+      description: |
+        `structure` has moved since the revision named in `since`, so ordinals have shifted and a patch would be meaningless. Export again, which is also where a client declares its columns afresh.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/LibraryFailed" }
+          examples:
+            restructured:
+              value:
+                error: "tracks were added or removed; export the library again"
+                detail: ""
+
+    LibraryRevisionGone:
+      description: |
+        The revision asked to catch up from is outside the retained window of 256, or it is ahead of the current one, which is what a client that kept a snapshot across a component restart sees. Both mean the same thing: export again.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/LibraryFailed" }
+
+    LibraryTooLarge:
+      description: |
+        The snapshot serialises to more than 64 MiB and this component will not send it. The ceiling is on the serialised bytes rather than on what crosses the wire, so gzip does not buy room underneath it. That is a ceiling on the *response*; `413` on a request body is a different limit and a different number.
+
+        Nothing a client can do about it. It means a library far larger than this format was measured against, and it is worth reporting.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    LibraryRefreshedTooFast:
+      description: |
+        Rebuilds are arriving faster than this component will make them: a burst of three, refilling one every thirty seconds, shared between `POST /library/refresh` and the builds an export declares. A rebuild re-queries and re-formats every track in the library, so this bounds what a looping client, or one varying the set it asks for, can do to the player.
+
+        Asking again for a set already being built costs nothing here, so an ordinary client never meets this.
+      headers:
+        Retry-After:
+          schema: { type: string }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    LibraryUnavailable:
+      description: |
+        Either this install does not serve the media library at all, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or `GET /library/changes` was asked for a patch on a component with no snapshot yet.
+
+        The `error` string tells them apart: `the media library is not available` is the first, `the library snapshot has not been built yet` the second. `GET /library/export` answers the second case with a `202` instead, because there the client has just said what to build.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: the media library is not available }
+            nothingYet:
+              value: { error: the library snapshot has not been built yet, detail: "" }
+
     Unauthorized:
       description: |
         No token, the wrong token, or the wrong scheme.
@@ -895,7 +1221,7 @@ components:
         version:
           type: string
           description: The component's own version. Informational; branch on apiVersion instead.
-          examples: ["0.1.0"]
+          examples: ["0.2.0"]
         apiVersion:
           type: integer
           description: The shape of this API. A client MUST refuse a number it does not understand.
@@ -910,7 +1236,7 @@ components:
       additionalProperties: false
       required:
         [apiVersion, allowedFields, canWrite, maxAutoPlaylists, canCreateAutoPlaylists,
-         canStream, streamFormats, canMuteWhileStreaming]
+         canStream, streamFormats, canMuteWhileStreaming, canReadLibrary]
       properties:
         apiVersion:
           type: integer
@@ -954,6 +1280,12 @@ components:
             Whether this install silences the player while somebody is listening to the stream. `muteWhileStreaming` in `config.json`, and the player owner's decision rather than a client's: there is no route that changes it.
 
             The capture is taken before the player's volume, so muting leaves the stream at full level. False makes the player one more speaker alongside every listener, which is fine a room apart from them and an echo in the same one — the stream runs a second or two behind.
+        canReadLibrary:
+          type: boolean
+          description: |
+            Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`. A client MUST hide the library rather than offer it and fail.
+
+            True says the routes are there, not that a snapshot is built yet. `GET /library` reports `ready` for that.
 
     StreamTimeline:
       type: object
@@ -1337,6 +1669,195 @@ components:
           description: |
             Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show.
 
+    Library:
+      description: |
+        What `GET /library` answers, and what `POST /library/refresh` hands back. Small on purpose: it is polled.
+      type: object
+      additionalProperties: false
+      required: [ready, structure, revision, trackCount, columns]
+      properties:
+        ready:
+          type: boolean
+          description: |
+            Whether a snapshot has been built. False only between the component starting and its first walk finishing. Every other library route answers `503` while it is false.
+        structure:
+          type: integer
+          description: |
+            Moves when tracks are added to or removed from the library. A different value from the one a client's snapshot header carries means every ordinal it holds is meaningless: export again. `0` before the first build.
+          examples: [41]
+        revision:
+          type: integer
+          description: |
+            Moves when a row changes in place, which is what a play, a rating or a tag edit does. A higher value with an unchanged `structure` means fetch a delta. Contiguous, so it is exactly the `since` to ask with.
+          examples: [903]
+        trackCount:
+          type: integer
+          description: Rows in the snapshot, which is the length of every `ids` array in it.
+          examples: [30441]
+        columns:
+          type: array
+          items: { type: string }
+          description: |
+            The title-formatting expressions the ready snapshot was built with, in the order they appear in the header's `columns` array. Empty while `ready` is false. The spine is not among them: `directory`, `filename` and `subsong` are always built and are reported under `spine` instead.
+
+            This is what a client compares against between a `202` from `GET /library/export` and its next attempt. The comparison is by membership: same members, in any order, is the same declaration.
+          examples: [["%title%", "%album artist%", "%play_count%"]]
+
+    LibraryHeader:
+      description: |
+        The JSON header inside a snapshot or a delta, between the four-byte magic number and the blob. It is not served on its own by any route; it is documented here so a client can be generated for it. *The media library*, at the top of this document, has the framing and how to read a column.
+      type: object
+      additionalProperties: false
+      required: [kind, structure, revision, trackCount, columns, spine]
+      properties:
+        kind:
+          type: string
+          enum: [snapshot, delta]
+          description: Which of the two routes produced this. A client MUST check it rather than infer it from the URL it asked for.
+        structure:
+          type: integer
+          description: The generation the ordinals in this body belong to.
+        revision:
+          type: integer
+          description: The generation this body brings a client up to.
+        since:
+          type: integer
+          description: |
+            Deltas only, and absent from a snapshot. The revision this body patches from, echoing the request so a client can confirm what it is applying.
+        trackCount:
+          type: integer
+          description: |
+            Rows in the whole snapshot, in a delta as well as in a snapshot. In a snapshot it is the length of every `ids` array; in a delta it is what `ordinals` are bounded by, and it is what their width was chosen from.
+        columns:
+          type: array
+          description: |
+            The columns the client declared, each carrying its own `name`, in the order it named them. In a delta, only the ones that moved.
+          items: { $ref: "#/components/schemas/LibraryColumn" }
+        spine:
+          type: object
+          additionalProperties: false
+          description: |
+            The three columns the component always builds, keyed by name rather than carrying one. A snapshot has all three. A delta has only the ones that moved, which for the spine is rare: a track whose path changed is a removal and an addition, and that moves `structure`.
+          properties:
+            directory:
+              allOf: [{ $ref: "#/components/schemas/LibraryColumn" }]
+              description: |
+                The track's directory relative to the library root, forward-slashed on every platform and keeping its trailing slash, so `directory + filename` is the whole relative path. Empty for a track at the root. The library root itself is never published.
+            filename:
+              allOf: [{ $ref: "#/components/schemas/LibraryColumn" }]
+              description: The last segment of the path, extension included.
+            subsong:
+              allOf: [{ $ref: "#/components/schemas/LibraryColumn" }]
+              description: |
+                The index within the file, as decimal text, for cue sheets and disc images. `0` for an ordinary file. Text like every other column, because nothing here types a value.
+
+    LibraryColumn:
+      description: |
+        One column: a dictionary of distinct strings, and one dictionary id per row. Every `offset` is a byte offset from the start of the blob and is a multiple of four.
+      type: object
+      additionalProperties: false
+      required: [ids, dict, distinct, hasUnresolved, allUnresolved]
+      properties:
+        name:
+          type: string
+          description: |
+            The title-formatting expression this column was built from, exactly as configured. Present on an entry in `columns`, absent under `spine`, where the key is the name.
+          examples: ["%title%"]
+        ids:
+          allOf: [{ $ref: "#/components/schemas/LibrarySection" }]
+          description: |
+            One dictionary id per row. In a snapshot `count` is `trackCount` and entry *i* belongs to ordinal *i*. In a delta `count` is `ordinals.count` and entry *i* belongs to ordinal `ordinals[i]`.
+        dict:
+          type: object
+          additionalProperties: false
+          required: [text, ends]
+          properties:
+            text:
+              type: object
+              additionalProperties: false
+              required: [offset, length]
+              description: |
+                Every value in the dictionary, concatenated with nothing between them, `length` bytes of UTF-8 as the player produced it. One `TextDecoder` call reads the lot; slice it lazily rather than building every string up front.
+              properties:
+                offset: { type: integer }
+                length: { type: integer }
+            ends:
+              allOf: [{ $ref: "#/components/schemas/LibrarySection" }]
+              description: |
+                Where each value ends within `text`, exclusive. Value *i* spans `[ends[i - 1], ends[i])`, reading `ends[-1]` as `0`. In a snapshot `count` is `distinct`; in a delta it is `distinct - base`, because a delta carries only what was appended.
+            base:
+              type: integer
+              description: |
+                Deltas only, and absent from a snapshot. How many entries the client's dictionary already holds. Dictionaries are append-only within a `structure` generation, so the values in `text` are appended at this index and nothing already held is restated.
+        distinct:
+          type: integer
+          description: |
+            Values in the whole dictionary, in a delta as well as in a snapshot. This is what `ids.width` was chosen from.
+        hasUnresolved:
+          type: boolean
+          description: |
+            Whether `?`, the single question mark, is one of the values. That is what a field the player could not resolve formats to, so this is capability detection answered exactly rather than sampled: a field that resolves on one track in ten thousand is detected here and missed by sampling.
+
+            It replaces the guess, not the switch. A user overriding detection in a client's own settings still wins.
+        allUnresolved:
+          type: boolean
+          description: |
+            Whether `?` is the only value the column ever takes, which means the player resolves this field for nothing in this library. A client SHOULD treat the column as absent.
+
+    LibrarySection:
+      description: A run of fixed-width unsigned little-endian integers in the blob.
+      type: object
+      additionalProperties: false
+      required: [offset, count, width]
+      properties:
+        offset:
+          type: integer
+          description: Bytes from the start of the blob. Always a multiple of four, so a typed array can be taken over it in place.
+        count:
+          type: integer
+          description: How many integers.
+        width:
+          type: integer
+          enum: [1, 2, 4]
+          description: |
+            Bytes per integer, chosen from the measured cardinality. A client MUST read it rather than assume: the same column is one byte wide in a small library and four in a large one.
+
+    LibraryRefusal:
+      description: |
+        A refusal the client can act on. The request was understood and declined before the snapshot was touched.
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          enum:
+            - too many columns
+            - unacceptable column
+            - duplicate column
+            - unacceptable revision
+        detail:
+          type: string
+          description: |
+            What specifically was wrong, naming the position of the offending column where there is one. Safe to show a person: it describes the request the client sent and nothing on the player's disk.
+
+    LibraryFailed:
+      description: The request was acceptable and the snapshot could not answer it.
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          enum:
+            - the library snapshot has not been built yet
+            - "tracks were added or removed; export the library again"
+            - "that revision is older than the retained window; export the library again"
+            - no such revision
+        detail:
+          type: string
+          description: Always empty. It is present so that every library failure reads as one shape.
+
     Error:
       description: |
         The minimum shape every failing response carries. It says nothing about what broke inside the component, because error text leaks filesystem paths.
@@ -1360,7 +1881,7 @@ components:
       required: [name, version, apiVersion, port, authRequired, listening]
       properties:
         name: { type: string, const: foo_jean }
-        version: { type: string, examples: ["0.1.0"] }
+        version: { type: string, examples: ["0.2.0"] }
         apiVersion: { type: integer, examples: [1] }
         port:
           type: integer

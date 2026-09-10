@@ -7,10 +7,38 @@
 
 namespace jean {
 
+namespace {
+
+std::string trimmed(const std::string& text) {
+    const size_t first = text.find_first_not_of(" \t");
+    if (first == std::string::npos)
+        return {};
+
+    return text.substr(first, text.find_last_not_of(" \t") - first + 1);
+}
+
+}  // namespace
+
 std::string toLower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return value;
+}
+
+std::vector<std::string> splitOn(const std::string& text, char delimiter) {
+    std::vector<std::string> elements;
+
+    for (size_t at = 0; at <= text.size();) {
+        const size_t next = std::min(text.find(delimiter, at), text.size());
+
+        auto element = trimmed(text.substr(at, next - at));
+        if (!element.empty())
+            elements.push_back(std::move(element));
+
+        at = next + 1;
+    }
+
+    return elements;
 }
 
 bool equalsIgnoringCase(const std::string& a, const std::string& b) {

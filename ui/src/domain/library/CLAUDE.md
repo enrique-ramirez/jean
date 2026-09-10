@@ -16,23 +16,14 @@ Where "the library" comes from, what plays a set of tracks, and why search resul
 
 **A ref is an integer.** The playlist source's is a playlist index; the library source's is a position in its own paths table. That is what keeps the seam from leaking: selection, the search index and the whole virtualised list stay integer-keyed, and only the things that *act* on a row resolve the ref through the source. `Refs` is a typed array or a number array, so reaching for a playlist id to do anything but identify a playlist is a type error.
 
-**The source is chosen by what can actually play, not just by what exists.** Playing a set of results always needs a playlist to play it *in*, so on a player refusing playlist writes the media library API can browse but never play, while the autoplaylist can still be played in place. That is one expression in `useLibrary` and it must stay one.
+### Where the library comes from
 
-### Without a library API
-
-beefweb 0.10 sees playlists and the filesystem, and that is the whole surface. The way through is an **autoplaylist** the user creates inside foobar with the query `ALL`, which appears in the playlist list like any other and stays in sync. Jean's first run guides them through it, and that path MUST keep working: beefweb alone remains the minimum.
+`foo_jean` answers the whole library, and there is no second way to get it. **No playlist stands in for the library and none ever will.** A playlist route never reads through the library API, and library routes never read a playlist: Jean shows a playlist under its real name and reads it as one, and it cannot tell that somebody built one to mirror their collection.
 
 - **Never read or write `Default Playlist`.** It is foobar's scratch buffer, and selecting an album in the library view replaces its entire contents.
-- **The name is the contract: `#Jean Library`, matched exactly.** Playlist ids are neither contiguous nor guaranteed stable beyond the run, so the title is the identity and there is no id to pin. A looser match would adopt somebody's small unrelated playlist as their whole collection and report its size as theirs.
-- **It is Jean's, so it is not furniture.** Anything titled `#Jean…` is filtered out of the sidebar, the command palette and the routing fallback. `domain/track/jeanPlaylists.ts` owns that namespace.
+- **Anything titled `#Jean…` is Jean's, so it is not furniture.** It is filtered out of the sidebar, the command palette and the routing fallback. `domain/track/jeanPlaylists.ts` owns that namespace.
 
-A fallback for users who will not create an autoplaylist is to build a playlist from the filesystem browser. That mirrors the *disk* rather than the library and needs manual refresh, so it is a second choice.
-
-### With the library API
-
-**A playlist route never reads through the library API, and library routes never read a playlist.** Jean shows a playlist under its real name and reads it as one; it cannot tell that a user made it to stand in for the library, and the two are not even the same set once the autoplaylist's query drifts from `ALL`.
-
-The consequence is that **the autoplaylist is not the browse view.** Where there is a library API it is not read at all, except when playlist writes are refused and playing in place is the only way to play anything; and on every player it is hidden from the sidebar. The all-music view is a *view over the library array*, projected through the source seam like a shelf or a set of results, so both sources produce it identically and neither pretends to be a playlist.
+The all-music view is a *view over the library array*, projected through the source seam like a shelf or a set of results. It never pretends to be a playlist.
 
 Shapes and costs for every route are in [../../shared/api/README.md](../../shared/api/README.md).
 
@@ -40,16 +31,14 @@ Shapes and costs for every route are in [../../shared/api/README.md](../../share
 
 - **`Array.from(refs, …)`, never `refs.map(…)`.** Refs arrive as a typed array from the search index, and mapping a typed array returns a typed array: objects coerce to `NaN` and the request body serialises as an object rather than a list.
 - **Search filters client-side, always.** The player's `query` syntax does not agree with `fold()`-based token matching, so filtering client-side and adding server-side by `query` adds tracks that are not the ones on screen. Address adds by explicit path and subsong.
-- **The library is read with an explicit sort, and it is the endpoint's own default.** Stating it makes the expression a filled playlist is sorted by demonstrably the same one the rows are in. Change one and you change the other.
-- **Row order is the API's default, file path.** A server-side tag sort is exact-string lexicographic, so it splits an album whose artist is spelled two ways, the drift `sameTagValue()` exists to absorb but cannot fix once the order is wrong. A badly-foldered library gets more, smaller album groups; that is a degradation, not a requirement.
+- **Row order is the snapshot's own, and it is library-relative path order**, ties broken by subsong and then by the player's canonical path so that the order is total and does not shuffle between rebuilds. A ref is an ordinal in it, and `positionOf` bisects on a set of refs ascending. A tag sort would be exact-string lexicographic, which splits an album whose artist is spelled two ways: the drift `sameTagValue()` exists to absorb but cannot fix once the order is wrong. A badly-foldered library gets more, smaller album groups; that is a degradation, not a requirement.
 - **`%path%` and `%subsong%` are in the update stream's `TRACK_COLUMNS` for identity, not display**: one string per player update, not per row. The player reports an **absolute** path and the library a **relative, forward-slashed** one, and Jean is never told where the library folders are, so they are matched by suffix.
 
 ### Filling a playlist from the library
 
 Playing a set means writing it to the scratch playlist and playing a position in it, and both halves have a trap.
 
-- **Do not name the whole library.** A full library as explicit path-and-subsong pairs is far past the body size **beefweb hangs up over**, which arrives as a network error rather than a status, so the fill throws and the play waiting on it never happens. **Omitting the item list means the whole library**, in one request with no body. Anything smaller is named, in chunks well under the cap.
-- **Then sort the playlist, since the fill order is the player's, not Jean's.** A set comes back in the media library's browse order while the view is in path order, so every position computed from a row addresses a different track. The browse order is not predictable, and reading the filled playlist back is a whole-library read with **no library-change event** to invalidate it against. So overwrite it: one sort by the same expression the library was read with, and no client state.
+- **Sort the playlist once it is filled, because the fill order is the player's rather than Jean's.** A set comes back in the player's own browse order while the view is in library-relative path order, so every position computed from a row addresses a different track. That browse order is not predictable, and reading the filled playlist back is a whole-library read with **no library-change event** to invalidate it against. So overwrite it: one sort into the order the snapshot is already in, and no client state.
 - **Adding to a user's playlist does not sort.** That playlist is theirs and its order is theirs. Undo is unaffected either way: it removes the range that was appended, not particular rows.
 
 ## Playing a view, and marking it
@@ -74,7 +63,7 @@ This is about side effects, not capability. **Explicit user intent is different*
 
 A regular playlist is editable and only the user changes it. A smart playlist or autoplaylist accepts edits and does nothing with them, and the library drives its contents. `Default Playlist` is editable and foobar's own UI clobbers it.
 
-**The API cannot express any of that. There is no autoplaylist flag. Do not go looking for one again.** Every detection route is worse than not detecting: probing with a mutation is destructive, `itemCount` drift cannot separate a smart playlist from `Default Playlist` churn, and name heuristics only catch foobar's own `#Quicksearch` prefix. `foo_jean` is the only thing that can answer it, and Jean uses that answer only to *remove* affordances, so absent or unpaired every playlist looks exactly as it did before.
+**The API cannot express any of that. There is no autoplaylist flag. Do not go looking for one again.** Every detection route is worse than not detecting: probing with a mutation is destructive, `itemCount` drift cannot separate a smart playlist from `Default Playlist` churn, and name heuristics only catch foobar's own `#Quicksearch` prefix. `foo_jean` is the only thing that can answer it, and Jean uses that answer only to *remove* affordances, so on an unpaired device every playlist looks exactly as it did before.
 
 So handle the split by design:
 

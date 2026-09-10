@@ -2,11 +2,13 @@
 
 #include "core/audience.h"
 #include "core/http_server.h"
+#include "core/library.h"
 #include "core/log.h"
 #include "core/output_hold.h"
 #include "core/version.h"
 #include "fb2k/advertise.h"
 #include "fb2k/config_file.h"
+#include "fb2k/library.h"
 #include "fb2k/main_thread.h"
 #include "fb2k/paths.h"
 #include "fb2k/player_mute.h"
@@ -53,7 +55,7 @@ void explainPortCollision() {
 }
 
 Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const Streamer* streamer,
-                   OutputHold& outputHold) {
+                   OutputHold& outputHold, LibraryFeed& libraryFeed) {
     Player player;
     player.writeTags = makeTagWriter(mainThread);
     player.listPlaylists = makePlaylistLister(mainThread);
@@ -61,6 +63,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread);
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);
     player.previewQuery = makeQueryPreviewer(mainThread);
+    player.refreshLibrary = libraryFeed.refresher();
 
     if (streamer != nullptr) {
         player.openStream = streamer->opener();
@@ -89,8 +92,10 @@ public:
           holdsOutput_(shouldHoldOutput(settings_, streamer_.get())),
           outputHold_(audience_, playerMuteVia(mainThread_), holdsOutput_),
           volumeWatch_(holdsOutput_ ? std::make_unique<PlayerVolumeWatch>(outputHold_) : nullptr),
+          libraryFeed_(mainThread_, library_),
           server_(settings_, audience_,
-                  playerUsing(mainThread_, settings_, streamer_.get(), outputHold_), generateToken),
+                  playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_),
+                  generateToken, libraryFeed_.enabled() ? &library_ : nullptr),
           status_(server_.start()) {
         if (status_.listening) {
             logInfo("listening on " + settings_.bindAddress + ":" + std::to_string(settings_.port));
@@ -131,6 +136,8 @@ private:
     const bool holdsOutput_;
     OutputHold outputHold_;
     std::unique_ptr<PlayerVolumeWatch> volumeWatch_;
+    Library library_;
+    LibraryFeed libraryFeed_;
     HttpServer server_;
     const ListenerStatus status_;
 };

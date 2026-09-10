@@ -56,7 +56,7 @@ std::string statusDocument() {
 
 std::string capabilitiesDocument(const Settings& settings,
                                  const std::vector<std::string>& streamFormats,
-                                 bool mutesWhileStreaming) {
+                                 bool mutesWhileStreaming, bool servesLibrary) {
     const json body{{"apiVersion", kApiVersion},
                     {"allowedFields", settings.allowedFields},
                     {"canWrite", !settings.allowedFields.empty()},
@@ -64,7 +64,8 @@ std::string capabilitiesDocument(const Settings& settings,
                     {"canCreateAutoPlaylists", settings.maxAutoPlaylists > 0},
                     {"canStream", !streamFormats.empty()},
                     {"streamFormats", streamFormats},
-                    {"canMuteWhileStreaming", mutesWhileStreaming}};
+                    {"canMuteWhileStreaming", mutesWhileStreaming},
+                    {"canReadLibrary", servesLibrary}};
     return body.dump();
 }
 
@@ -220,6 +221,51 @@ int httpStatusFor(PlaylistOutcome outcome) {
         case PlaylistOutcome::timedOut:
             return 504;
         case PlaylistOutcome::unavailable:
+            return 503;
+    }
+    return 500;
+}
+
+std::string libraryDocument(const Library::State& state) {
+    return json{{"ready", state.ready},
+                {"structure", state.structure},
+                {"revision", state.revision},
+                {"trackCount", state.trackCount},
+                {"columns", state.columns}}
+        .dump();
+}
+
+std::string libraryRefusedDocument(const LibraryRequest& request) {
+    return json{{"error", describe(request.refusal)}, {"detail", request.detail}}.dump();
+}
+
+std::string libraryFailedDocument(DeltaOutcome outcome) {
+    return json{{"error", describe(outcome)}, {"detail", ""}}.dump();
+}
+
+int httpStatusFor(LibraryRefusal refusal) {
+    switch (refusal) {
+        case LibraryRefusal::none:
+            return 200;
+        case LibraryRefusal::tooManyColumns:
+        case LibraryRefusal::badColumn:
+        case LibraryRefusal::duplicateColumn:
+        case LibraryRefusal::badSince:
+            return 400;
+    }
+    return 400;
+}
+
+int httpStatusFor(DeltaOutcome outcome) {
+    switch (outcome) {
+        case DeltaOutcome::ok:
+            return 200;
+        case DeltaOutcome::structureChanged:
+            return 409;
+        case DeltaOutcome::revisionTooOld:
+        case DeltaOutcome::revisionUnknown:
+            return 410;
+        case DeltaOutcome::notBuilt:
             return 503;
     }
     return 500;

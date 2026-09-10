@@ -2,7 +2,7 @@
 
 For somebody about to build on this: how the pieces fit, which thread owns what, and why the boundaries sit where they do. [plugins/fb2k/README.md](README.md) is what the component is and how to run it, [plugins/fb2k/CONTRIBUTING.md](CONTRIBUTING.md) is how to write its code, and [src/README.md](src/README.md) is the source tree file by file.
 
-foo_jean is a DLL foobar2000 loads, an HTTP listener on a port of its own, and one live encode of the player's output. It runs alongside beefweb rather than replacing it: beefweb owns playback, playlists, artwork and the filesystem, and a client talks to both.
+foo_jean is a DLL foobar2000 loads, an HTTP listener on a port of its own, a snapshot of the media library, and one live encode of the player's output. It runs alongside beefweb rather than replacing it: beefweb owns playback, playlists, artwork and the filesystem, and a client talks to both.
 
 ## The shape of it
 
@@ -20,6 +20,7 @@ flowchart TB
     subgraph fb2k["src/fb2k/ — knows the SDK"]
       queue["MainThreadQueue<br/>coalescing, over fb2k::inMainThread"]
       work["tag_writer · playlists · player_mute"]
+      feed["LibraryFeed<br/>change callbacks, and a worker of its own"]
       str["Streamer"]
       prefs["preferences page<br/>Tools → Jean"]
       adv["advertise"]
@@ -28,6 +29,7 @@ flowchart TB
     subgraph core["src/core/ — knows nothing of foobar2000"]
       http["HttpServer :8881<br/>cpp-httplib, one thread per connection"]
       pure["settings · tag_write · playlists · pairing<br/>rate_limit · stream_ticket · api"]
+      lib["Library<br/>one snapshot · two generations"]
       aud["Audience"]
       hold["OutputHold<br/>a thread of its own"]
     end
@@ -43,10 +45,13 @@ flowchart TB
   queue -->|marshalled work| main
   prefs --> queue
   adv -->|writes clientconfig/foo_jean.json| bw
+  main -->|added · removed · modified| feed
 
   work -.->|Player callbacks| http
   str -.->|StreamOpener · formats · timeline| http
+  feed -->|a built snapshot| lib
   http --> pure
+  http --> lib
   http --> aud
   aud -->|anybody listening?| hold
   hold -->|mute · restore| queue
@@ -76,7 +81,9 @@ Three, all the same shape: `core/` declares what it needs, `fb2k/` supplies it i
 | `StreamOpener` and `StreamSession` | `core/stream.h` | `fb2k/streamer.cpp` | no streaming, and `canStream` is false |
 | `logInfo` and `logError` | `core/log.h` | `fb2k/log.cpp`, or `tests/support/log_capture.cpp` | a link error |
 
-Every `Player` callback blocks until foobar2000 has finished or given up, so each belongs on an HTTP worker and never on the main thread. `fb2k/ask_player.h` is how all of them get there. A null callback is not a fault. It is how an install that switched something off says so, and the route answers `503` rather than pretending.
+Every `Player` callback blocks until foobar2000 has finished or given up, so each belongs on an HTTP worker and never on the main thread. `fb2k/ask_player.h` is how all of them get there. A null callback is not a fault. It is how an install that switched something off says so, and the route answers `503` rather than pretending. `refreshLibrary` is the one that returns early: it hands a column set to the snapshot worker and comes straight back, because the client is answered `202` and polls.
+
+`HttpServer` takes a `Library*` as well, and that is not a fourth seam. `Library` lives in `core/`, carries its own mutex and is read from a connection thread directly, so wrapping it in callbacks would buy an abstraction with one implementation. Null is how an install with the library switched off says so, and every library route then answers `503` like any other absent capability.
 
 ## The audio path
 
@@ -139,6 +146,7 @@ The thing least visible from any one file.
 |---|---|---|---|
 | the main thread | foobar2000 | nothing | wait for anything this component does |
 | one encoder thread | `Streamer` | `PcmRing::read` | let an exception escape, because it is a thread entry point |
+| the snapshot worker | `LibraryFeed` | one main-thread hop for `library_manager::get_all_items`, then `metadb_v2::queryMultiParallel`, a slice at a time | hold the main thread for anything past that hop, or let an exception escape |
 | the hold's watcher | `OutputHold` | `Audience::awaitChangeFrom` | run where the player's volume callback holds a lock |
 | the listener | `HttpServer` | `accept` | outlive `stop()` |
 | one per connection | cpp-httplib's pool, `max(8, cores - 1)` | `BroadcastRing::read`, or a `Player` callback | outlive `HttpServer::stop()` |
@@ -149,6 +157,8 @@ The thing least visible from any one file.
 
 All of that runs from `on_quit`, on the main thread. That is why `askPlayer` runs its work inline when it is already on the main thread: `fb2k::inMainThread` always defers, so queuing from there would wait out the whole timeout for a callback only this thread can dispatch, and the caller that does it is the hold, asking the player to unmute.
 
+**A rebuild in flight makes a quit wait for it.** `~LibraryFeed` joins the snapshot worker, and it runs after the server that reads the snapshot and before the `Library` that holds it. `metadb_v2::queryMultiParallel` takes no abort callback, so the info query goes out in slices rather than as one call over the whole library, and a quit waits out a slice instead of the lot. The rest needs no such handling: sorting is in-memory work with nothing to abort partway, so it runs to completion inside whatever a quit already costs.
+
 **The destructor's first act is `MainThreadQueue::close()`, and it is first for the mirror-image reason.** A request already on a connection thread has marshalled work onto a main thread that is now inside the destructor and will never dispatch it, and `HttpServer::stop()` at the end of the body waits for exactly those requests to finish. So `close()` refuses further work and runs each pending item's `abandon`, settling the answer the caller is blocked on, rather than leaving it to time out. Dropping the work alone would not do: the caller waits on the answer, not on the queue.
 
 ## Track identity, and two spellings of a path
@@ -158,6 +168,40 @@ Track identity is `%path%` plus `%subsong%`. Playlist items have no id, and any 
 There are two spellings of that path and they are not interchangeable. `metadb_handle::get_path()` answers the canonical form, which on a portable install is `file-relative://..\Music\x.mp3` where beefweb answers an absolute path for the same file, so a client joining the two on equality would never match. **Everything published to a client goes through `filesystem::g_get_display_path`**, and `POST /api/tags` accepts the display form, so anything answering in the other dialect makes the API disagree with itself.
 
 `metadb::handle_create` will build a handle for any path at all, so being on the write allowlist is not being a track the player manages. The check that the player already knows the track, through the Media Library or an open playlist since plenty of installs have no library configured, is what stands between an allowlisted field and a file foobar2000 has never seen.
+
+## The media library
+
+Paging a library needs a stable sorted order, and producing one needs a full pass over every track. So either a client holds the whole library or this component does, and it is held here: this is the machine where foobar2000 already keeps the database in memory, and where `library_callback_v2_dynamic` says when it changed. The client is a browser on a phone.
+
+`core/library.h` owns the snapshot, the two generations, what a request may ask for, and the bytes that go on the wire. `fb2k/library.h` owns the walk of the player: the change callbacks, the info query and the title formatting. Nothing in `core/` knows how the rows got there.
+
+**The client declares the columns, and the export request is the declaration.** `GET /api/library/export?columns=…` carries the title-formatting expressions a client wants, and the component evaluates exactly those and interprets none of them, which is what keeps it general and what keeps a client's own `?` detection working. Every later rebuild reuses the last declared set, so `LibraryRefresher` takes columns rather than nothing. At most two built sets are kept and a third evicts one, because varying the column set is the cheap way to ask for repeated full rebuilds. Title formatting reads tags and does arithmetic, with no file access and no way to write, so an expression is a compute cost and never an escape: bound the compute and there is nothing left.
+
+Beside the declared columns the snapshot carries a spine it owns, because it needs that to do its own job: `directory` and `filename`, library-relative and forward-slashed, and `subsong`. foobar2000's library root never reaches a client. Directories repeat heavily, so splitting the path in two halves the largest column. **Ordinals are handed out in library-relative path order**, ties broken by subsong and then by the player's own canonical path, because a client's refs are ordinals and an order that is not total shuffles them between rebuilds for nothing.
+
+### Staleness
+
+Three mechanisms, in descending order of trust, and one promise none of them makes.
+
+**The player says so.** `library_callback_v2_dynamic` delivers added, removed and modified on the main thread, and every tag write arrives as `on_items_modified_v2`: a rating, a lyric written during playback, an edit in foobar2000's own dialog, one this component made itself. `library_callback::is_modified_from_hook()` separates a real tag change from a display-hook refresh, which is how a play-count component announces itself. Both are taken. The distinction is worth a log line and nothing else, and nothing may filter on it. On the main thread the callback does the cheap half, mapping a handle to an ordinal and marking it dirty; the re-query and the formatting happen on the worker. A library import fires thousands of these, so dirty marks accumulate and a rebuild waits for a quiet period.
+
+**Playback is always suspect.** The commonest change of all is a play count going up, and it is the one a component may keep to itself: `plugins/fb2k/CLAUDE.md`, *Facts about the player*, has what `foo_enhanced_playcount` does about that. So a track that stops being the active one is marked dirty whether or not anything said to. One row re-queried per track played buys the play count, the last-played date and a lyric written mid-play, out of a component that never notifies.
+
+**A hand on the wheel.** `POST /api/library/refresh` rebuilds from scratch, rate limited.
+
+**What none of it promises.** A component keeping its data in a private database, publishing it through a title-formatting hook and never touching the metadb, leaves a value stale until that track next plays or somebody refreshes. foobar2000's own playlist columns show the same stale value. `contract/openapi.yaml` says so on the route rather than implying a freshness this cannot deliver.
+
+### Two generations
+
+`structure` moves when tracks are added or removed. Ordinals shift, a client's arrays mean nothing, and it exports again. `revision` moves when a row changes in place. Ordinals hold, so a client asks for a delta and patches what it already has.
+
+They are two because the two kinds of churn are nothing alike. A modification lands once per play, all day. An add or a remove is rare and is something the user just did, so paying for one with a re-download charges it at the moment somebody expects to wait.
+
+**Dictionaries are append-only within a structure generation.** That is what makes a delta small: it carries the entries added since, plus the changed ids, and a client never rebuilds a dictionary it already holds. A value that falls out of use leaves a dead entry behind, and the next structure rebuild compacts it.
+
+**A delta is per column, and it names the columns that moved.** A client keys its derived structures on the identity of a column's array, so one bumped `revision` meaning "something, somewhere" would rebuild the folded search text and the album, artist and genre indices on every track played. Nothing about a play changes a title.
+
+Both generations sit in `GET /api/library`, which is small, ETagged and polled. There is no event stream behind them, for the reason *Absences* gives for there being none anywhere here.
 
 ## The HTTP contract
 
@@ -184,7 +228,7 @@ Pairing hands out the token the install already has rather than minting one per 
 The code says what is there. These are the gaps to design back into rather than fill.
 
 - **No event stream.** cpp-httplib is thread-per-connection, so a subscription would cost a thread for as long as a client held it. beefweb already raises its `playlists` event for playlists this component creates, so a client subscribed there re-reads `GET /api/playlists` and has the annotation. Streaming is the one thing worth a held thread, which is exactly what `maxConcurrentStreams` bounds.
-- **No cache and no index.** For tags and playlists this component is a messenger: accept a request, hand the work to foobar2000, answer. The player already holds the database, and a second copy here would be wrong the moment somebody edited a file outside it.
+- **No second copy of anything the player answers cheaply.** For tags and playlists this component is a messenger: accept a request, hand the work to foobar2000, answer, and hold nothing between one request and the next. A copy of a playlist would be wrong the moment somebody edited it in the player, and there is nothing to win by keeping one. The media library is the exception, and it is a snapshot rather than a cache: what makes it safe to hold is that `library_callback_v2_dynamic` says when the library changed, so nothing here has to guess whether what it holds is still true. *The media library* is what that costs.
 - **No library scan.** Nothing here walks a directory. Paths arrive from a client and are resolved against what the player reports, and `preview` counts a query through the core's own library index rather than reading anything off disk.
 - **No second abstraction behind the boundary.** One architectural seam is enough. `core/` has no plugin registry, no strategy interface with a single implementation, and no layer between a route and the pure function it calls.
 - **No per-request bitrate, and no seeking.** One encoder per format feeds every listener of it; a second bitrate would mean a second encoder and a second buffer for as long as anybody held it. Seeking means asking foobar2000 to seek, which moves every listener at once.

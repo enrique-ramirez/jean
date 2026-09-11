@@ -1,5 +1,6 @@
 #include "core/api.h"
 
+#include "core/json.h"
 #include "core/version.h"
 #include "third_party/json.hpp"
 
@@ -44,6 +45,76 @@ json annotation(const PlaylistAnnotation& playlist) {
                                               {"forceSort", playlist.managed->forceSort}}
                                        : json(nullptr);
     return body;
+}
+
+FillRequest refuseFill() {
+    FillRequest request;
+    request.refusal = PlaylistRefusal::malformedBody;
+    return request;
+}
+
+int base64Value(char c) {
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '+')
+        return 62;
+    if (c == '/')
+        return 63;
+    return -1;
+}
+
+struct Base64Bytes {
+    std::vector<uint8_t> bytes;
+    bool ok = false;
+};
+
+// The inverse of ui/src/shared/api/fooJean.ts's base64Of: the same alphabet, decoded four
+// characters at a time back to up to three bytes, with '=' only where that encoder ever
+// writes it, at the end of the last group.
+Base64Bytes decodeBase64(const std::string& text) {
+    if (text.empty() || text.size() % 4 != 0)
+        return {};
+
+    Base64Bytes result;
+    for (size_t at = 0; at < text.size(); at += 4) {
+        int values[4] = {0, 0, 0, 0};
+        int padding = 0;
+
+        for (int part = 0; part < 4; ++part) {
+            const char c = text[at + static_cast<size_t>(part)];
+            if (c == '=') {
+                ++padding;
+                continue;
+            }
+
+            if (padding > 0)
+                return {};
+
+            values[part] = base64Value(c);
+            if (values[part] < 0)
+                return {};
+        }
+
+        if (padding > 2 || (padding > 0 && at + 4 != text.size()))
+            return {};
+
+        const auto group =
+            (static_cast<uint32_t>(values[0]) << 18) | (static_cast<uint32_t>(values[1]) << 12) |
+            (static_cast<uint32_t>(values[2]) << 6) | static_cast<uint32_t>(values[3]);
+
+        result.bytes.push_back(static_cast<uint8_t>(group >> 16));
+        if (padding < 2)
+            result.bytes.push_back(static_cast<uint8_t>(group >> 8));
+        if (padding < 1)
+            result.bytes.push_back(static_cast<uint8_t>(group));
+    }
+
+    result.ok = true;
+    return result;
 }
 
 }  // namespace
@@ -226,6 +297,99 @@ int httpStatusFor(PlaylistOutcome outcome) {
             return 503;
     }
     return 500;
+}
+
+FillRequest parseFill(const std::string& body, size_t trackCount) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseFill();
+
+    const auto& root = document.value;
+
+    const auto structure = root.find("structure");
+    if (structure == root.end() || !structure->is_number_unsigned())
+        return refuseFill();
+
+    const auto runs = root.find("runs");
+    const auto bitset = root.find("bitset");
+    const auto ordinals = root.find("ordinals");
+
+    const bool hasRuns = runs != root.end();
+    const bool hasBitset = bitset != root.end();
+    const bool hasOrdinals = ordinals != root.end();
+
+    if (hasRuns + hasBitset + hasOrdinals != 1)
+        return refuseFill();
+
+    FillRequest request;
+    request.structure = structure->get<uint64_t>();
+
+    const auto inRange = [trackCount](uint64_t ordinal) { return ordinal < trackCount; };
+
+    if (hasOrdinals) {
+        if (!ordinals->is_array())
+            return refuseFill();
+
+        for (const auto& entry : *ordinals) {
+            if (!entry.is_number_unsigned())
+                return refuseFill();
+
+            const auto value = entry.get<uint64_t>();
+            if (!inRange(value))
+                return refuseFill();
+
+            request.ordinals.push_back(static_cast<uint32_t>(value));
+        }
+
+        return request;
+    }
+
+    if (hasRuns) {
+        if (!runs->is_array())
+            return refuseFill();
+
+        for (const auto& run : *runs) {
+            if (!run.is_array() || run.size() != 2 || !run[0].is_number_unsigned() ||
+                !run[1].is_number_unsigned())
+                return refuseFill();
+
+            const auto start = run[0].get<uint64_t>();
+            const auto count = run[1].get<uint64_t>();
+
+            for (uint64_t at = 0; at < count; ++at) {
+                const uint64_t ordinal = start + at;
+                if (!inRange(ordinal))
+                    return refuseFill();
+
+                request.ordinals.push_back(static_cast<uint32_t>(ordinal));
+            }
+        }
+
+        std::sort(request.ordinals.begin(), request.ordinals.end());
+        return request;
+    }
+
+    if (!bitset->is_string())
+        return refuseFill();
+
+    const auto decoded = decodeBase64(bitset->get<std::string>());
+    if (!decoded.ok)
+        return refuseFill();
+
+    for (size_t byteIndex = 0; byteIndex < decoded.bytes.size(); ++byteIndex) {
+        for (int bit = 0; bit < 8; ++bit) {
+            if (!(decoded.bytes[byteIndex] & (1u << bit)))
+                continue;
+
+            const uint64_t ordinal = byteIndex * 8 + static_cast<uint64_t>(bit);
+            if (!inRange(ordinal))
+                return refuseFill();
+
+            request.ordinals.push_back(static_cast<uint32_t>(ordinal));
+        }
+    }
+
+    return request;
 }
 
 std::string libraryDocument(const Library::State& state) {

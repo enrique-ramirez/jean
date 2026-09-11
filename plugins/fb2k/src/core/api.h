@@ -7,7 +7,10 @@
 #include "core/tag_write.h"
 #include "core/timeline.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 // Every JSON document this component publishes, in one place; see ARCHITECTURE.md, *The
 // HTTP contract*.
@@ -64,6 +67,22 @@ std::string queryPreviewDocument(const PreviewResult& preview);
 
 int httpStatusFor(PlaylistRefusal refusal);
 int httpStatusFor(PlaylistOutcome outcome);
+
+// The library ordinals a fill inserts, decoded from whichever one of the three wire forms
+// the request body carried; see contract/openapi.yaml, `FillPlaylistRequest`. `ordinals`
+// is already in the order the fill must insert at: as given for the `ordinals` form,
+// ascending for `runs` and `bitset`, because neither of those can carry any other order.
+struct FillRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// `trackCount` bounds what an ordinal may name; one at or past it is refused rather than
+// dropped, because narrowing the set silently is not what the caller asked for.
+FillRequest parseFill(const std::string& body, size_t trackCount);
 
 // The small document a client polls for both generations. The snapshot itself is not JSON:
 // core/library.h serialises it, and contract/openapi.yaml describes the bytes.

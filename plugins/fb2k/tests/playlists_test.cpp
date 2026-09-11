@@ -3,9 +3,11 @@
 
 #include "third_party/doctest.h"
 
+#include "core/api.h"
 #include "core/playlists.h"
 #include "third_party/json.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -39,6 +41,57 @@ PlaylistAnnotation theirs(std::string id) {
     PlaylistAnnotation playlist;
     playlist.id = std::move(id);
     return playlist;
+}
+
+using Ordinals = std::vector<uint32_t>;
+
+// The library contract/openapi.yaml writes its worked example against, and the generation
+// that example resolves the set to.
+constexpr size_t kTracks = 16;
+constexpr uint64_t kStructure = 41;
+
+// Not a multiple of eight, so the last four bits of the second bitset byte sit past the end
+// of the library. That is where a client's encoder writes padding and where a set bit names
+// a track that is not there.
+constexpr size_t kShortLibrary = 12;
+
+std::string base64(const std::vector<uint8_t>& bytes) {
+    constexpr char kAlphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    std::string text;
+    for (size_t at = 0; at < bytes.size(); at += 3) {
+        const size_t have = bytes.size() - at < 3 ? bytes.size() - at : 3;
+
+        uint32_t group = 0;
+        for (size_t part = 0; part < have; ++part)
+            group |= uint32_t{bytes[at + part]} << (16 - 8 * part);
+
+        for (size_t part = 0; part < have + 1; ++part)
+            text += kAlphabet[(group >> (18 - 6 * part)) & 0x3F];
+
+        text.append(3 - have, '=');
+    }
+
+    return text;
+}
+
+// One bit per library ordinal, least significant bit first, over exactly the bytes a library
+// that size takes: what ui/test/unit/encodeFill.test.ts encodes and what this decodes.
+std::string bitsetOf(const Ordinals& ordinals, size_t trackCount) {
+    std::vector<uint8_t> bytes((trackCount + 7) / 8, 0);
+
+    for (const uint32_t ordinal : ordinals) {
+        REQUIRE(ordinal / 8 < bytes.size());
+        bytes[ordinal / 8] |= static_cast<uint8_t>(1u << (ordinal % 8));
+    }
+
+    return base64(bytes);
+}
+
+FillRequest filling(const std::string& form, size_t trackCount = kTracks) {
+    return parseFill(R"({"structure": )" + std::to_string(kStructure) + ", " + form + "}",
+                     trackCount);
 }
 
 }  // namespace
@@ -134,6 +187,74 @@ TEST_CASE("previewing takes a query and nothing else") {
     CHECK_FALSE(parseQueryPreview(R"({"query": ""})").ok());
     CHECK_FALSE(parseQueryPreview("{}").ok());
     CHECK_FALSE(parseQueryPreview("not json").ok());
+}
+
+TEST_CASE("one set sent as runs, as a bitset and as a plain list names the same rows") {
+    // contract/openapi.yaml's worked example: ordinals 0, 1 and 9 of a 16-track library.
+    CHECK(bitsetOf({0, 1, 9}, kTracks) == "AwI=");
+
+    for (const std::string& form : {R"("runs": [[0, 2], [9, 1]])", R"("bitset": "AwI=")",
+                                    R"("ordinals": [0, 1, 9])"}) {
+        INFO("form: ", form);
+        const auto request = filling(form);
+
+        REQUIRE(request.ok());
+        CHECK(request.ordinals == Ordinals{0, 1, 9});
+        CHECK(request.structure == kStructure);
+    }
+}
+
+TEST_CASE("only a plain list carries an order, and the other two forms come back ascending") {
+    // A queue is click-ordered, and a caller that chose runs or a bitset for one would have
+    // it reordered with nothing to say so.
+    CHECK(filling(R"("ordinals": [9, 0, 1])").ordinals == Ordinals{9, 0, 1});
+
+    CHECK(filling(R"("runs": [[9, 1], [0, 2]])").ordinals == Ordinals{0, 1, 9});
+    CHECK(filling(R"("bitset": "AwI=")").ordinals == Ordinals{0, 1, 9});
+
+    // Queueing one track twice is something a person does on purpose, and a plain list is
+    // the only form that can say it.
+    CHECK(filling(R"("ordinals": [4, 4])").ordinals == Ordinals{4, 4});
+}
+
+TEST_CASE("a body names exactly one of the three forms, so two is refused and so is none") {
+    for (const std::string& forms :
+         {R"("runs": [[0, 2]], "bitset": "AwI=")", R"("runs": [[0, 2]], "ordinals": [0, 1])",
+          R"("bitset": "AwI=", "ordinals": [0, 1])",
+          R"("runs": [[0, 2]], "bitset": "AwI=", "ordinals": [0, 1])"}) {
+        INFO("forms: ", forms);
+        const auto request = filling(forms);
+
+        CHECK_FALSE(request.ok());
+        CHECK(httpStatusFor(request.refusal) == 400);
+        CHECK(request.ordinals.empty());
+    }
+
+    // A body naming no set at all is the same refusal: a fill that would insert nothing is a
+    // caller's mistake rather than a request to honour.
+    const auto silent = parseFill(R"({"structure": 41})", kTracks);
+    CHECK_FALSE(silent.ok());
+    CHECK(httpStatusFor(silent.refusal) == 400);
+}
+
+TEST_CASE("an ordinal past the end of the library is refused rather than dropped") {
+    // The last track a library of twelve has is ordinal 11, and 12 is the first that is not
+    // there at all.
+    CHECK(filling(R"("ordinals": [11])", kShortLibrary).ordinals == Ordinals{11});
+    CHECK(filling(R"("runs": [[10, 2]])", kShortLibrary).ordinals == Ordinals{10, 11});
+    CHECK(filling(R"("bitset": ")" + bitsetOf({11}, kShortLibrary) + R"(")", kShortLibrary)
+              .ordinals == Ordinals{11});
+
+    for (const std::string& form :
+         {std::string(R"("ordinals": [12])"), std::string(R"("runs": [[10, 3]])"),
+          R"("bitset": ")" + bitsetOf({12}, kShortLibrary) + R"(")"}) {
+        INFO("form: ", form);
+        const auto request = filling(form, kShortLibrary);
+
+        CHECK_FALSE(request.ok());
+        CHECK(httpStatusFor(request.refusal) == 400);
+        CHECK(request.ordinals.empty());
+    }
 }
 
 TEST_CASE("a playlist id is the lower-case dashed form and nothing else") {

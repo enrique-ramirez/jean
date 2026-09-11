@@ -314,6 +314,12 @@ void beginFill(const std::string& playlistId, uint64_t structure,
     }
 
     auto manager = playlist_manager_v5::get();
+
+    // foobar2000 crashes if a playlist the play queue points into is deleted. Removing its
+    // items rather than the playlist itself keeps the id, and the queue, intact.
+    if (replace)
+        manager->playlist_remove_items(index, bit_array_true());
+
     const auto base = manager->playlist_get_item_count(index);
     manager->playlist_insert_items(index, base, resolved.items, bit_array_false());
 

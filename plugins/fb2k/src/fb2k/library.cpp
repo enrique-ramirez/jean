@@ -153,6 +153,29 @@ struct LibraryFeed::State {
         return art_.of(ordered->items[found->second]);
     }
 
+    // One lock, one read of the current snapshot, so the structure comparison and the
+    // resolution it guards can never straddle a rebuild.
+    OrdinalResolution resolveOrdinals(uint64_t structure,
+                                      const std::vector<uint32_t>& ordinals) const {
+        const OrderedPtr ordered = order();
+        if (!ordered || ordered->structure != structure)
+            return {};
+
+        const size_t count = ordered->items.get_count();
+
+        OrdinalResolution resolved;
+        resolved.items.set_size(ordinals.size());
+        for (size_t n = 0; n < ordinals.size(); ++n) {
+            if (ordinals[n] >= count)
+                return {};
+
+            resolved.items[n] = ordered->items[ordinals[n]];
+        }
+
+        resolved.structureMatched = true;
+        return resolved;
+    }
+
     void stop() {
         {
             const std::lock_guard<std::mutex> lock(mutex_);
@@ -533,6 +556,15 @@ ArtworkReader LibraryFeed::artworkReader() {
         return {};
 
     return [state = state_](const std::string& track) { return state->artwork(track); };
+}
+
+OrdinalResolver LibraryFeed::ordinalResolver() {
+    if (!state_)
+        return {};
+
+    return [state = state_](uint64_t structure, const std::vector<uint32_t>& ordinals) {
+        return state->resolveOrdinals(structure, ordinals);
+    };
 }
 
 }  // namespace jean

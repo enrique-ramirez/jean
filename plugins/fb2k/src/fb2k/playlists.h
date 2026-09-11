@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/http_server.h"
+#include "fb2k/library.h"
 #include "fb2k/main_thread.h"
 
 #include <cstddef>
@@ -16,6 +17,7 @@ AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread, int max
 AutoPlaylistUpdater makeAutoPlaylistUpdater(MainThreadQueue& mainThread);
 AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread);
 OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread);
+PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals);
 QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread);
 
 // Main thread only. The SDK offers a count and a getter rather than a range; this turns

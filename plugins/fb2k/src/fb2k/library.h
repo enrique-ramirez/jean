@@ -13,6 +13,19 @@ namespace jean {
 
 class MainThreadQueue;
 
+// One handle per ordinal, in the order given. Empty and `structureMatched` false when
+// `structure` no longer names the snapshot this was resolved against, since a rebuild since
+// then has moved every ordinal in it and none can be trusted.
+struct OrdinalResolution {
+    bool structureMatched = false;
+    metadb_handle_list items;
+};
+
+// Resolves `ordinals` and checks `structure` against the current snapshot in the one lock,
+// so a rebuild landing between the two cannot be read as a match.
+using OrdinalResolver =
+    std::function<OrdinalResolution(uint64_t structure, const std::vector<uint32_t>& ordinals)>;
+
 class LibraryFeed {
 public:
     // Main thread only; registering the change callbacks requires it.
@@ -27,6 +40,8 @@ public:
     LibraryRefresher refresher();
 
     ArtworkReader artworkReader();
+
+    OrdinalResolver ordinalResolver();
 
     LibraryFeed(const LibraryFeed&) = delete;
     LibraryFeed& operator=(const LibraryFeed&) = delete;

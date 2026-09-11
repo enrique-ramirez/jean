@@ -295,6 +295,34 @@ void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
     answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index)});
 }
 
+// Main thread, in the one pass that also resolves `ordinals`: a rebuild racing between the
+// two would let a stale snapshot's handles land in the playlist. A missing playlist or a
+// moved structure inserts nothing.
+void beginFill(const std::string& playlistId, uint64_t structure,
+               const std::vector<uint32_t>& ordinals, bool replace,
+               const OrdinalResolver& resolveOrdinals, const AnswerPtr<FillResult>& answer) {
+    const auto index = findPlaylist(playlistId);
+    if (index == pfc::infinite_size) {
+        answer->set(FillResult{PlaylistOutcome::noSuchPlaylist, {}});
+        return;
+    }
+
+    const auto resolved = resolveOrdinals(structure, ordinals);
+    if (!resolved.structureMatched) {
+        answer->set(FillResult{PlaylistOutcome::structureMoved, {}});
+        return;
+    }
+
+    auto manager = playlist_manager_v5::get();
+    const auto base = manager->playlist_get_item_count(index);
+    manager->playlist_insert_items(index, base, resolved.items, bit_array_false());
+
+    std::vector<size_t> positions(resolved.items.get_count());
+    std::iota(positions.begin(), positions.end(), base);
+
+    answer->set(FillResult{PlaylistOutcome::done, std::move(positions)});
+}
+
 void beginPreview(const std::string& query, const AnswerPtr<PreviewResult>& answer) {
     PreviewResult preview;
 
@@ -382,6 +410,20 @@ OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread) {
             },
             playlistFailure(PlaylistOutcome::timedOut),
             playlistFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals) {
+    return [&mainThread, resolveOrdinals](const std::string& playlistId, uint64_t structure,
+                                          const std::vector<uint32_t>& ordinals, bool replace) {
+        return askPlayer<FillResult>(
+            mainThread, "filling a playlist",
+            [playlistId, structure, ordinals, replace, resolveOrdinals](
+                const AnswerPtr<FillResult>& answer) {
+                beginFill(playlistId, structure, ordinals, replace, resolveOrdinals, answer);
+            },
+            FillResult{PlaylistOutcome::timedOut, {}},
+            FillResult{PlaylistOutcome::playerRefused, {}});
     };
 }
 

@@ -62,6 +62,8 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.createAutoPlaylist = makeAutoPlaylistCreator(mainThread, settings.maxAutoPlaylists);
     player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread);
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);
+    player.ownPlaylist = makeOwnPlaylistResolver(mainThread);
+    player.fill = makePlaylistFiller(mainThread, libraryFeed.ordinalResolver());
     player.previewQuery = makeQueryPreviewer(mainThread);
     player.refreshLibrary = libraryFeed.refresher();
     player.readArtwork = libraryFeed.artworkReader();

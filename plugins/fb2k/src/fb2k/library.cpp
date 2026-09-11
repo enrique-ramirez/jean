@@ -153,8 +153,6 @@ struct LibraryFeed::State {
         return art_.of(ordered->items[found->second]);
     }
 
-    // One lock, one read of the current snapshot, so the structure comparison and the
-    // resolution it guards can never straddle a rebuild.
     OrdinalResolution resolveOrdinals(uint64_t structure,
                                       const std::vector<uint32_t>& ordinals) const {
         const OrderedPtr ordered = order();

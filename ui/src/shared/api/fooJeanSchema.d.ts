@@ -207,14 +207,14 @@ export interface paths {
          *
          *     The playlist itself is kept, and with it its id, its position and beefweb's id for it. Deleting and recreating changes all three.
          *
-         *     Only playlists this component created can be updated. Anything else is a `403`.
+         *     Only playlists this component created can be updated, and that is a `403` whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first.
          */
         post: operations["updateAutoPlaylist"];
         /**
          * Delete an autoplaylist this component created.
          * @description Removes the playlist and the autoplaylist client with it.
          *
-         *     Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself. A client that needs to delete an arbitrary playlist MUST ask beefweb, which will delete any playlist for any caller that can reach it.
+         *     Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself, whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first. A client that needs to delete an arbitrary playlist MUST ask beefweb, which will delete any playlist for any caller that can reach it.
          */
         delete: operations["removeAutoPlaylist"];
         options?: never;
@@ -273,7 +273,7 @@ export interface paths {
          *
          *     The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select, MUST use to keep that order.
          *
-         *     Refused with `403` under the read-only-playlists setting, exactly as every other write to a playlist this component did not create.
+         *     Refused with `403` under the read-only-playlists setting.
          */
         post: operations["fillPlaylist"];
         delete?: never;
@@ -956,7 +956,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available";
+            error: "foobar2000 could not read that query" | "no such playlist" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
@@ -1131,8 +1131,21 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistRefusal"];
             };
         };
-        /** @description This install has `writePlaylists` set to `false`, and the playlist is not one of foo_jean's own. Setting `writePlaylists` back to `true` in `config.json` is what grants it. */
+        /**
+         * @description The target was not created by this component: `POST /autoplaylists` is the only route that makes a playlist these two can touch, so anything else, including an autoplaylist made in foobar2000 itself, is refused here whatever `writePlaylists` says. There is no remedy: a client asking either route to convert a hand-built playlist would have `beginUpdate` replace the user's own rows with a query's results.
+         *
+         *     The same status also answers when `writePlaylists` is `false` in `config.json`, checked before the target is looked at. A client tells the two apart by `error`, which the examples below give both of.
+         */
         NotOurs: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description This install has `writePlaylists` set to `false` in `config.json`. That is a player owner's own choice, made to keep every playlist but this component's own two read-only; setting it back to `true` is what grants the write. */
+        WritesDisabled: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1665,7 +1678,7 @@ export interface operations {
             };
             400: components["responses"]["PlaylistRefused"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["NotOurs"];
+            403: components["responses"]["WritesDisabled"];
             409: components["responses"]["PlaylistConflict"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
@@ -1857,7 +1870,7 @@ export interface operations {
             };
             400: components["responses"]["PlaylistRefused"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["NotOurs"];
+            403: components["responses"]["WritesDisabled"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["StructureMoved"];
             413: components["responses"]["BodyTooLarge"];

@@ -26,10 +26,6 @@ struct SpecRoute {
 // it, where a reviewer will see it.
 std::vector<SpecRoute> publishedRoutes();
 
-// The values of a closed enum the spec publishes, named by its schema and the property that
-// carries it: `publishedEnum("PlaylistRefusal", "error")`. A client may switch on one of these,
-// so a value in the spec that this component cannot produce is a branch nobody ever reaches,
-// and the spec is the only side that says which values exist.
 std::vector<std::string> publishedEnum(const std::string& schema, const std::string& property);
 
 }  // namespace jean::testing

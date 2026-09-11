@@ -37,10 +37,6 @@ using QueryPreviewer = std::function<PreviewResult(const std::string& query)>;
 using TimelineReader = std::function<std::string()>;
 using LibraryRefresher = std::function<void(std::vector<std::string> columns, RebuildReason why)>;
 
-// One of the component's own playlists. Closed to these two so a request can never address
-// a third of its own invention, and so nothing resolves one by matching a title.
-enum class OwnPlaylistRole { scratch, queue };
-
 // Resolves `role` to the id of the component's own playlist for it, through the marker the
 // playlist carries rather than its title, so a rename at the player still finds it and a
 // playlist a user titled to look like it is not adopted. Creates one titled `title` if the

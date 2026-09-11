@@ -12,7 +12,6 @@ namespace jean {
 
 namespace {
 
-constexpr size_t kMaxTitle = 256;
 constexpr size_t kMaxKey = 256;
 constexpr size_t kMaxQuery = 4096;
 
@@ -27,12 +26,7 @@ bool isLowerHex(char c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
 }
 
-struct TextField {
-    std::string why;
-    std::string value;
-
-    bool ok() const { return why.empty(); }
-};
+}  // namespace
 
 TextField readText(const json& root, const char* key, size_t limit, Need need) {
     const std::string named = std::string("'") + key + "'";
@@ -52,8 +46,6 @@ TextField readText(const json& root, const char* key, size_t limit, Need need) {
 
     return {{}, field.value};
 }
-
-}  // namespace
 
 PlaylistResult playlistFailure(PlaylistOutcome outcome, std::string detail) {
     PlaylistResult result;
@@ -224,8 +216,7 @@ std::string describe(PlaylistOutcome outcome) {
         case PlaylistOutcome::noSuchPlaylist:
             return "no such playlist";
         case PlaylistOutcome::notOurs:
-            return "this install has playlist writes turned off; turn on writePlaylists in "
-                   "config.json to allow them";
+            return "that playlist was not created by foo_jean";
         case PlaylistOutcome::keyInUse:
             return "another playlist already has that key";
         case PlaylistOutcome::tooMany:
@@ -238,6 +229,9 @@ std::string describe(PlaylistOutcome outcome) {
             return "the player did not answer in time";
         case PlaylistOutcome::unavailable:
             return "autoplaylists are not available";
+        case PlaylistOutcome::writesDisabled:
+            return "this install has playlist writes turned off; turn on writePlaylists in "
+                   "config.json to allow them";
     }
     return "unknown";
 }

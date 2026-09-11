@@ -312,6 +312,7 @@ int httpStatusFor(PlaylistOutcome outcome) {
         case PlaylistOutcome::queryInvalid:
             return 400;
         case PlaylistOutcome::notOurs:
+        case PlaylistOutcome::writesDisabled:
             return 403;
         case PlaylistOutcome::noSuchPlaylist:
             return 404;

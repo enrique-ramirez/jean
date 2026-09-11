@@ -37,7 +37,6 @@ bool keyAt(const std::string& line, size_t indent, const std::string& key) {
     return line == std::string(indent, ' ') + key;
 }
 
-// How deep a line is indented, and npos for a line holding nothing but spaces.
 size_t indentOf(const std::string& line) {
     return line.find_first_not_of(' ');
 }

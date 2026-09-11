@@ -92,9 +92,6 @@ std::string listed(const std::vector<std::string>& values) {
     return text;
 }
 
-// Every string one of these enums can reach a client as. The enumerators run contiguously from
-// zero and describe() answers "unknown" past the last, so this reads the enum itself rather
-// than naming its values: a list written out in a test file is the thing that drifted.
 template <typename Enum>
 std::set<std::string> everyDescribed() {
     std::set<std::string> described;
@@ -117,8 +114,6 @@ std::string unsendable(const std::string& schema, const std::set<std::string>& d
     return listed(missing);
 }
 
-// The status a client gets for a given error string, and zero where no enumerator sends that
-// string at all. Which value carries a meaning is the component's to name, so this names none.
 int statusAnswered(const std::string& error) {
     for (int raw = 0;; ++raw) {
         const auto outcome = static_cast<PlaylistOutcome>(raw);
@@ -294,6 +289,7 @@ TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we
     CHECK(httpStatusFor(PlaylistOutcome::playerRefused) == 500);
     CHECK(httpStatusFor(PlaylistOutcome::timedOut) == 504);
     CHECK(httpStatusFor(PlaylistOutcome::unavailable) == 503);
+    CHECK(httpStatusFor(PlaylistOutcome::writesDisabled) == 403);
 }
 
 TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") {
@@ -425,9 +421,7 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
 
     CHECK(describe(PlaylistOutcome::queryInvalid) == "foobar2000 could not read that query");
     CHECK(describe(PlaylistOutcome::noSuchPlaylist) == "no such playlist");
-    CHECK(describe(PlaylistOutcome::notOurs) ==
-          "this install has playlist writes turned off; turn on writePlaylists in config.json to "
-          "allow them");
+    CHECK(describe(PlaylistOutcome::notOurs) == "that playlist was not created by foo_jean");
     CHECK(describe(PlaylistOutcome::keyInUse) == "another playlist already has that key");
     CHECK(describe(PlaylistOutcome::tooMany) == "this install's autoplaylist limit is reached");
     CHECK(describe(PlaylistOutcome::structureMoved) ==
@@ -435,6 +429,9 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(PlaylistOutcome::playerRefused) == "the player could not do that");
     CHECK(describe(PlaylistOutcome::timedOut) == "the player did not answer in time");
     CHECK(describe(PlaylistOutcome::unavailable) == "autoplaylists are not available");
+    CHECK(describe(PlaylistOutcome::writesDisabled) ==
+          "this install has playlist writes turned off; turn on writePlaylists in config.json to "
+          "allow them");
 
     CHECK(describe(LibraryRefusal::tooManyColumns) == "too many columns");
     CHECK(describe(LibraryRefusal::badColumn) == "unacceptable column");
@@ -449,11 +446,6 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(DeltaOutcome::revisionUnknown) == "no such revision");
 }
 
-// The case above walks this component's values and pins the string each one sends. Nothing walked
-// the other way, so a value the spec published and no enumerator could produce went unnoticed: a
-// client switching on it waits for a string that never arrives, and reads the wrong branch in the
-// meantime. This is that direction, over whatever the spec publishes today, for both of the
-// schemas a playlist error arrives in. Rewording an enumerator drifts the same way as adding one.
 TEST_CASE("every playlist error contract/openapi.yaml publishes is one this component can send") {
     SUBCASE("PlaylistRefusal") {
         INFO("add the value to PlaylistRefusal in core/playlists.h, or take it out of the spec");
@@ -467,9 +459,6 @@ TEST_CASE("every playlist error contract/openapi.yaml publishes is one this comp
     }
 }
 
-// A fill resolved against a snapshot that has moved means what GET /api/library/changes already
-// means by 409, so the wording is read from that outcome rather than written out a second time.
-// The error strings case above pins that literal.
 TEST_CASE("a moved generation is refused with the 409 GET /library/changes already sends") {
     const auto moved = describe(DeltaOutcome::structureChanged);
 

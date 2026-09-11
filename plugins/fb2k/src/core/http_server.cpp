@@ -190,17 +190,25 @@ std::optional<OwnPlaylistRole> ownPlaylistRoleFor(const std::string& role) {
 }
 
 // parseFill decodes the ordinal set only: the title is the own-playlist route's own field,
-// carried verbatim rather than through the decoder the id route has no use for.
-std::optional<std::string> ownFillTitle(const std::string& body) {
+// read through the same check parseAutoPlaylist's title takes, since a value the contract
+// calls unusable here is unusable there for the same reason.
+struct OwnFillTitle {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    std::string value;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+OwnFillTitle ownFillTitle(const std::string& body) {
     const auto document = parseJsonObject(body);
     if (!document.ok())
-        return std::nullopt;
+        return {PlaylistRefusal::malformedBody, {}};
 
-    const auto title = readString(document.value, "title");
-    if (!title.present || title.wrongType || title.value.empty())
-        return std::nullopt;
+    const auto title = readText(document.value, "title", kMaxTitle, Need::required);
+    if (!title.ok())
+        return {PlaylistRefusal::badTitle, {}};
 
-    return title.value;
+    return {PlaylistRefusal::none, title.value};
 }
 
 constexpr char kKeepAndRevalidate[] = "no-cache, must-revalidate";
@@ -899,8 +907,6 @@ struct HttpServer::Impl {
         return request;
     }
 
-    // A fill shares the same budget: it is a playlist change like any other, and one request
-    // that either fits or is refused is what keeps a scattered set from spending it many times.
     FillRequest refuseFillChange(FillRequest request) {
         if (request.ok() && changingTooFast())
             request.refusal = PlaylistRefusal::tooFast;
@@ -915,8 +921,8 @@ struct HttpServer::Impl {
         if (settings.writePlaylists)
             return false;
 
-        respond(res, httpStatusFor(PlaylistOutcome::notOurs),
-                playlistFailedDocument(playlistFailure(PlaylistOutcome::notOurs)));
+        respond(res, httpStatusFor(PlaylistOutcome::writesDisabled),
+                playlistFailedDocument(playlistFailure(PlaylistOutcome::writesDisabled)));
         return true;
     }
 
@@ -1007,8 +1013,6 @@ struct HttpServer::Impl {
                 respond(res, 200, playlistRemovedDocument(id));
         });
 
-        // Wider than the OwnPlaylistRole enum, so a role outside it reaches this handler and
-        // is answered 400 rather than falling through to a 404 no route matched.
         constexpr char kOwnItems[] = R"(/api/playlists/own/([^/]+)/items)";
 
         server.Post(kOwnItems, [this](const httplib::Request& req, httplib::Response& res) {
@@ -1033,14 +1037,12 @@ struct HttpServer::Impl {
             }
 
             const auto title = ownFillTitle(req.body);
-            if (!title) {
-                respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
+            if (!title.ok()) {
+                respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
                 return;
             }
 
-            // Never anything derived from the request: a title lets a client mint a playlist,
-            // never choose which one is refusable. See CLAUDE.md.
-            const auto resolved = player.ownPlaylist(*role, *title);
+            const auto resolved = player.ownPlaylist(*role, title.value);
             if (resolved.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(resolved.outcome),
                         playlistFailedDocument(playlistFailure(resolved.outcome)));
@@ -1088,8 +1090,6 @@ struct HttpServer::Impl {
                 return;
             }
 
-            // Always appends: the target alone decides replace, and a user's own playlist is
-            // never the one that is emptied first.
             const auto filled = player.fill(id, request.structure, request.ordinals, false);
             if (filled.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(filled.outcome),

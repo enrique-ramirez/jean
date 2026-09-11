@@ -26,10 +26,6 @@ constexpr GUID kBeefwebId = {
     0xe937900e, 0xef79, 0x4574, {0x81, 0xb1, 0x2a, 0x84, 0x0c, 0x17, 0x41, 0xcc}};
 
 // {651E1108-C122-49F5-94E1-89C184CAEDFA}
-//
-// Marks a playlist as the component's own plumbing, the scratch or the queue's holding
-// playlist, rather than a user's. Deliberately not kJeanRecord: annotate() parses that
-// property straight into an autoplaylist spec, and neither of these is one.
 constexpr GUID kOwnPlaylist = {
     0x651e1108, 0xc122, 0x49f5, {0x94, 0xe1, 0x89, 0xc1, 0x84, 0xca, 0xed, 0xfa}};
 
@@ -256,9 +252,6 @@ std::string roleId(OwnPlaylistRole role) {
     return {};
 }
 
-// pfc::infinite_size when this role has no playlist yet. Reads kOwnPlaylist rather than a
-// title, so a playlist renamed at the player is still found and one somebody hand-titled to
-// look like it is not adopted.
 size_t findOwnPlaylist(OwnPlaylistRole role) {
     const auto want = roleId(role);
     const auto indices = playlistIndices();
@@ -269,10 +262,6 @@ size_t findOwnPlaylist(OwnPlaylistRole role) {
     return found == indices.end() ? pfc::infinite_size : *found;
 }
 
-// Main thread. Finds this role's playlist by its marker, or makes one carrying `title` from
-// creation, since a client polling beefweb's playlist list in between a create and a rename
-// would see it under the wrong name. `title` is applied on every call, so retitling it from
-// one fill to the next needs no call beyond this one.
 void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
                       const AnswerPtr<PlaylistResult>& answer) {
     auto index = findOwnPlaylist(role);
@@ -295,9 +284,6 @@ void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
     answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index)});
 }
 
-// Main thread, in the one pass that also resolves `ordinals`: a rebuild racing between the
-// two would let a stale snapshot's handles land in the playlist. A missing playlist or a
-// moved structure inserts nothing.
 void beginFill(const std::string& playlistId, uint64_t structure,
                const std::vector<uint32_t>& ordinals, bool replace,
                const OrdinalResolver& resolveOrdinals, const AnswerPtr<FillResult>& answer) {

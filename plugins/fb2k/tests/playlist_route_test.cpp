@@ -103,7 +103,6 @@ json capabilitiesOf(const Settings& settings) {
     return json::parse(response->body);
 }
 
-// One id per role, so a test can say which of the component's own playlists a fill landed in.
 constexpr char kScratchPlaylistId[] = "11111111-1111-1111-1111-111111111111";
 constexpr char kQueuePlaylistId[] = "22222222-2222-2222-2222-222222222222";
 
@@ -117,13 +116,11 @@ std::string userFill() {
     return std::string("/api/playlists/") + kPlaylistId + "/items";
 }
 
-// Named rather than kept as the enum, so a failure names the playlist that was asked for.
 std::string nameOf(OwnPlaylistRole role) {
     return role == OwnPlaylistRole::scratch ? "scratch" : "queue";
 }
 
 struct FillLog {
-    // The roles the routes resolved, in order, and the title they handed over for the last one.
     std::vector<std::string> roles;
     std::string title;
 
@@ -131,20 +128,10 @@ struct FillLog {
     std::string filled;
     bool replace = false;
 
-    // The rows that landed, which stays empty when the filler refused the set.
     std::vector<uint32_t> inserted;
-
-    // The generation of the snapshot the filler resolves ordinals against.
     uint64_t structure = 1;
-
-    // How many rows each playlist holds before a fill reaches it. Seed it, and a position
-    // answered for an append is a number no part of the request carries.
     std::map<std::string, size_t> held;
-
-    // beefweb's id for a playlist a role resolved to, empty while beefweb has yet to see it.
     std::string beefwebId = "p4";
-
-    // What GET /api/playlists reports a user's playlist is called.
     std::string listedTitle;
 };
 
@@ -178,9 +165,6 @@ Player fillingPlayer(FillLog* log) {
 
         log->inserted.insert(log->inserted.end(), ordinals.begin(), ordinals.end());
 
-        // A replace empties the playlist and an append leaves it alone, so a row lands after
-        // whatever the playlist still holds. That is the shape of insert_items, and it is why
-        // the positions a fill answers are not derivable from the request.
         auto& held = log->held[playlistId];
         if (replace)
             held = 0;
@@ -195,8 +179,6 @@ Player fillingPlayer(FillLog* log) {
     return player;
 }
 
-// Rows every target already holds before a fill reaches it. No request carries this number, so
-// an append that answers a position past it answered something it learned from the player.
 constexpr size_t kHeldRows = 5;
 
 FillLog holding(uint64_t structure) {
@@ -211,8 +193,6 @@ FillLog holding(uint64_t structure) {
 
 constexpr size_t kLibraryTracks = 8;
 
-// What the ordinals in a fill are resolved against. The rows do not matter here: the size is
-// what bounds an ordinal, and the generation is what a fill is checked against.
 void buildLibrary(Library& library) {
     LibraryBuilder builder({"%title%"}, kLibraryTracks);
     auto& sink = builder.sink();
@@ -234,10 +214,6 @@ std::string userBody(uint64_t structure) {
     return R"({"structure": )" + std::to_string(structure) + R"(, "ordinals": [3, 1]})";
 }
 
-// The three things a fill can be aimed at: both of the component's own, and a user's own.
-// `replaces` is what the target alone decides, since no request form can carry it, and `id` is
-// the playlist each one lands in: resolved from the role for the first two, taken from the path
-// for the third.
 struct Target {
     std::string name;
     std::string path;
@@ -260,10 +236,6 @@ Settings readOnlyPlaylists() {
     return settings;
 }
 
-// The four playlist writes this component has today, driven the way a client sends them. `addTo`
-// is not a fifth: the client's name for adding rows to a playlist a user owns is this same
-// POST /api/playlists/{id}/items. Reorder and rename are named by the setting and are routes
-// nothing here has yet.
 struct Write {
     std::string name;
     std::function<httplib::Result(const TestServer&)> send;
@@ -293,8 +265,6 @@ std::vector<Write> playlistWrites(uint64_t structure) {
          }}};
 }
 
-// One component behind all four writes, so a test can say a refusal covered every one of them
-// rather than the one its fake happened to answer.
 Player writingPlayer(PlayerLog* log, FillLog* fills) {
     Player player = recordingPlayer(log);
     const Player filling = fillingPlayer(fills);
@@ -304,9 +274,6 @@ Player writingPlayer(PlayerLog* log, FillLog* fills) {
     return player;
 }
 
-// The same filler, reporting the playlist a `{id}` fill is aimed at under `listedTitle`. A title
-// is the one property of a playlist a client chooses, which is why nothing may decide from one
-// who owns a playlist.
 Player fillingPlayerListing(FillLog* log) {
     auto player = fillingPlayer(log);
 
@@ -327,8 +294,6 @@ std::string withField(const std::string& body, const std::string& field, const j
     return document.dump();
 }
 
-// Swaps the set a body names for another. A request carries exactly one of `runs`, `bitset` and
-// `ordinals`, so the one already there goes before the new one arrives.
 std::string naming(const std::string& body, const json& set) {
     auto document = json::parse(body);
     document.erase("ordinals");
@@ -336,8 +301,6 @@ std::string naming(const std::string& body, const json& set) {
     return document.dump();
 }
 
-// The two targets a fill appends to, which are the ones whose positions start where the playlist
-// already ended rather than at zero.
 std::vector<Target> appendTargets(uint64_t structure, const json& set) {
     auto all = targets(structure);
 
@@ -643,16 +606,11 @@ TEST_CASE("GET /api/capabilities says whether this install permits playlist writ
     }
 }
 
-// An ordinal is a position, so a rebuild moves every one of them: a set resolved against a
-// generation the library has left names different tracks rather than stale ones, and inserting
-// it would play music nobody asked for. Both fill operations, because the check being written
-// into one of them and not the other is how this breaks.
 TEST_CASE("a fill resolved against a generation the library has moved past inserts nothing") {
     Library library;
     buildLibrary(library);
     const uint64_t exported = library.state().structure;
 
-    // Tracks added or removed, which is the rebuild every ordinal shifts under.
     buildLibrary(library);
 
     FillLog log;
@@ -667,17 +625,12 @@ TEST_CASE("a fill resolved against a generation the library has moved past inser
         REQUIRE(response);
         CHECK(response->status == 409);
 
-        // The same words GET /api/library/changes answers with, because the remedy is the same
-        // one: export the library again, then ask again.
         CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
     }
 
     CHECK(log.inserted.empty());
 }
 
-// Two operations split by who owns the playlist. The component's own are addressed by a role it
-// resolves through its own marker; a user's is addressed by the GUID in the path and resolves
-// nothing, which is what keeps a title out of the decision about who owns what.
 TEST_CASE("each fill operation addresses its own kind of playlist") {
     Library library;
     buildLibrary(library);
@@ -717,8 +670,6 @@ TEST_CASE("each fill operation addresses its own kind of playlist") {
     }
 }
 
-// The role is a closed enum, so a client cannot name a third playlist of its own invention. This
-// is the case that fails if a role is ever resolved from a free string.
 TEST_CASE("a role the contract does not name is refused rather than made") {
     Library library;
     buildLibrary(library);
@@ -742,9 +693,6 @@ TEST_CASE("a role the contract does not name is refused rather than made") {
     CHECK(log.fills == 0);
 }
 
-// Whether a fill empties the playlist first follows from the target, so there is no field in any
-// of the three request forms that could say otherwise, and no default to get wrong. What the
-// playlist then holds is the player's, and fb2k/playlists.cpp is where it is decided.
 TEST_CASE("the scratch playlist is emptied before a fill and every other target is appended to") {
     Library library;
     buildLibrary(library);
@@ -803,10 +751,6 @@ TEST_CASE("a field neither fill schema declares is refused, and nothing is inser
     CHECK(log.fills == 0);
 }
 
-// `title` is a field of FillOwnPlaylistRequest and of no other body. A client says what to call a
-// playlist the component makes for a role; a playlist a user already has keeps the name the user
-// gave it, so the same field on that route is a client meaning something this component will not
-// do.
 TEST_CASE("a title is declared on the component's own playlists and undeclared on a user's") {
     Library library;
     buildLibrary(library);
@@ -834,6 +778,41 @@ TEST_CASE("a title is declared on the component's own playlists and undeclared o
         REQUIRE(response);
         CHECK(response->status == 400);
         CHECK(json::parse(response->body)["error"] == "malformed request");
+        CHECK(log.fills == 0);
+    }
+}
+
+// FillOwnPlaylistRequest.title carries the same limit as an autoplaylist's: a line break in
+// it would be a line break in a foobar2000 playlist tab, and 256 characters is the same cap
+// parseAutoPlaylist holds a title to. Both routes take a title from the same check for
+// exactly that reason.
+TEST_CASE("a title on the component's own playlist is held to the limit an autoplaylist's is") {
+    Library library;
+    buildLibrary(library);
+
+    FillLog log;
+    log.structure = library.state().structure;
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    SUBCASE("a control character is refused rather than reaching the player") {
+        const auto response = post(
+            server, kScratchFill, withField(ownBody(kScratchTitle, log.structure), "title", "a\nb"));
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"] == "unacceptable title");
+        CHECK(log.roles.empty());
+        CHECK(log.fills == 0);
+    }
+
+    SUBCASE("longer than 256 characters is refused rather than truncated") {
+        const auto response = post(server, kScratchFill,
+                                   withField(ownBody(kScratchTitle, log.structure), "title",
+                                             std::string(257, 'a')));
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"] == "unacceptable title");
         CHECK(log.fills == 0);
     }
 }
@@ -874,8 +853,6 @@ TEST_CASE("a fill answers the positions the rows landed at rather than the ordin
         CHECK(json::parse(response->body)["positions"] == json::array({0, 1}));
     }
 
-    // `runs` names no row one at a time, so neither the positions nor how many there are can be
-    // read off the request at all.
     SUBCASE("a set given as runs answers one position per row the runs expand to") {
         auto log = holding(structure);
         const TestServer server(servingSettings(), fillingPlayer(&log), &library);
@@ -915,9 +892,6 @@ TEST_CASE("a fill answers the id of the playlist the rows landed in") {
     }
 }
 
-// A client joins this answer to beefweb's playlist list, and beefweb rebuilds its map on its own
-// schedule, so there is not always an id to give. Absent and null read differently: the field is
-// answered every time, and null says ask beefweb again rather than that anything went wrong.
 TEST_CASE("a fill answers beefweb's id for that playlist, or null where beefweb has none yet") {
     Library library;
     buildLibrary(library);
@@ -950,9 +924,6 @@ TEST_CASE("a fill answers beefweb's id for that playlist, or null where beefweb 
         CHECK(body["beefwebId"].is_null());
     }
 
-    // The fill this fake answers carries no beefweb id, so the field comes back null here.
-    // Either answer is legal on a real install: whether beefweb has named a playlist yet
-    // depends on when it last rebuilt its map.
     SUBCASE("a user's playlist answers the field as well") {
         auto log = holding(structure);
         const TestServer server(servingSettings(), fillingPlayer(&log), &library);
@@ -968,10 +939,6 @@ TEST_CASE("a fill answers beefweb's id for that playlist, or null where beefweb 
     }
 }
 
-// The setting a cautious player owner turns on, and the whole of what it buys: nothing writes a
-// playlist that holds their music. Every write this component has is driven, because the one
-// left out of the gate is the hole, and each is asserted twice: the status a client sees, and
-// that the player was never asked.
 TEST_CASE("with writePlaylists off, every write but the component's own is refused and never "
           "reaches the player") {
     Library library;
@@ -990,9 +957,7 @@ TEST_CASE("with writePlaylists off, every write but the component's own is refus
         REQUIRE(response);
         CHECK(response->status == 403);
 
-        // The value the contract publishes for this refusal, which is what a client switches on
-        // to tell the setting apart from a playlist that has gone.
-        CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::notOurs));
+        CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::writesDisabled));
     }
 
     CHECK(log.creates == 0);
@@ -1000,6 +965,55 @@ TEST_CASE("with writePlaylists off, every write but the component's own is refus
     CHECK(log.removals == 0);
     CHECK(fills.fills == 0);
     CHECK(fills.inserted.empty());
+}
+
+// One status, two causes, and a message that has to be true of the cause it was sent for. The
+// setting is decided here before the player is asked; a playlist this component did not create
+// is something only the player can report, and it is refused whatever the setting says. Naming
+// the setting on both sends a player owner to config.json to turn on something already on.
+TEST_CASE("a write refused by the setting and one refused for a playlist this component did not "
+          "create say different things") {
+    const auto update = [](const TestServer& server) {
+        return post(server, std::string("/api/autoplaylists/") + kPlaylistId,
+                    R"({"query": "%genre% IS Jazz"})");
+    };
+
+    PlayerLog gated;
+    const TestServer refusing(readOnlyPlaylists(), recordingPlayer(&gated));
+
+    const auto bySetting = update(refusing);
+    REQUIRE(bySetting);
+    REQUIRE(bySetting->status == 403);
+    CHECK(gated.updates == 0);
+
+    PlayerLog asked;
+    asked.answer = PlaylistOutcome::notOurs;
+    const TestServer writing(servingSettings(), recordingPlayer(&asked));
+
+    const auto byOwnership = update(writing);
+    REQUIRE(byOwnership);
+    REQUIRE(byOwnership->status == 403);
+    CHECK(asked.updates == 1);
+
+    const std::string setting = json::parse(bySetting->body)["error"];
+    const std::string ownership = json::parse(byOwnership->body)["error"];
+
+    const auto names = [](const std::string& message, const std::string& what) {
+        return message.find(what) != std::string::npos;
+    };
+
+    CHECK(names(setting, "writePlaylists"));
+    CHECK(names(setting, "config.json"));
+
+    CHECK_FALSE(names(ownership, "writePlaylists"));
+    CHECK_FALSE(names(ownership, "config.json"));
+    CHECK(ownership != setting);
+
+    const auto published = publishedEnum("PlaylistFailed", "error");
+    for (const auto& error : {setting, ownership}) {
+        INFO("error: ", error);
+        CHECK(std::find(published.begin(), published.end(), error) != published.end());
+    }
 }
 
 // The setting protects the user's music, and neither of these holds any: they are how Jean
@@ -1038,10 +1052,6 @@ TEST_CASE("the component's own two playlists fill whether writePlaylists is on o
     }
 }
 
-// An absent key reads as writable, so servingSettings() is what a config.json that never mentions
-// the setting gives; settings_test.cpp pins that the two are the same reading. This is the half
-// most likely to go untested, and it is the one that locks a player owner out of their own
-// playlists when it is wrong.
 TEST_CASE("an install that never set writePlaylists permits every write the setting would "
           "refuse") {
     Library library;
@@ -1068,10 +1078,6 @@ TEST_CASE("an install that never set writePlaylists permits every write the sett
     CHECK(fills.inserted == std::vector<uint32_t>{3, 1});
 }
 
-// A client says what a playlist is called, so a component that read refusability off a title
-// would hand any client an unrefusable playlist for the price of a prefix. Both titles get the
-// same answer in both states, which is the assertion that fails whichever way somebody wires a
-// title into the decision.
 TEST_CASE("what refuses a fill is the setting and never the playlist's title") {
     Library library;
     buildLibrary(library);
@@ -1095,10 +1101,6 @@ TEST_CASE("what refuses a fill is the setting and never the playlist's title") {
     }
 }
 
-// A client gates on the contract rather than learning the refusal by being refused, so a write
-// the setting can refuse publishes that 403 and the operation it never reaches publishes none.
-// POST /autoplaylists is the one with no refusal of its own today, and so the one whose 403 is
-// new to the contract as well as to the component.
 TEST_CASE("the contract publishes a 403 on exactly the writes the setting can refuse") {
     const auto published = publishedRoutes();
 

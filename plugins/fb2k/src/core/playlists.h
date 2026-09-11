@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/json.h"
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -42,6 +44,10 @@ struct PlaylistAnnotation {
     std::optional<AutoPlaylistSpec> managed;
 };
 
+// One of the component's own playlists. Closed to these two so a request can never address
+// a third of its own invention, and so nothing resolves one by matching a title.
+enum class OwnPlaylistRole { scratch, queue };
+
 enum class PlaylistRefusal {
     none,
     malformedBody,
@@ -75,6 +81,10 @@ enum class PlaylistOutcome {
     playerRefused,
     timedOut,
     unavailable,
+    // The read-only-playlists setting, checked at the route before the player is asked
+    // anything. Distinct from notOurs, the structural refusal ourPlaylist() answers whatever
+    // the setting says.
+    writesDisabled,
 };
 
 struct PlaylistResult {
@@ -114,6 +124,24 @@ PreviewResult previewFailure(PlaylistOutcome outcome);
 // Creating requires a title; updating leaves the name alone when none is given, so changing
 // a query cannot silently rename a playlist back to a stale title.
 enum class Need { required, optional };
+
+// A limit every title on a playlist this component names shares: the autoplaylist's own and
+// the title a fill hands to one of the component's own two. One number, so the two routes
+// that both accept a title cannot drift apart on how long one may be.
+constexpr size_t kMaxTitle = 256;
+
+// Whether `key`'s text field is present, printable and within `limit`, folding the presence
+// check `need` asks for into the one result. Shared by every route that reads a title, a key
+// or a query, so what makes one of those acceptable is answered once rather than once per
+// caller.
+struct TextField {
+    std::string why;
+    std::string value;
+
+    bool ok() const { return why.empty(); }
+};
+
+TextField readText(const nlohmann::json& root, const char* key, size_t limit, Need need);
 
 // Never throws: a malformed body is routine for the HTTP handler that calls these.
 AutoPlaylistRequest parseAutoPlaylist(const std::string& body, Need title);

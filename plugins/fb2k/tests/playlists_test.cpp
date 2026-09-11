@@ -50,9 +50,6 @@ using Ordinals = std::vector<uint32_t>;
 constexpr size_t kTracks = 16;
 constexpr uint64_t kStructure = 41;
 
-// Not a multiple of eight, so the last four bits of the second bitset byte sit past the end
-// of the library. That is where a client's encoder writes padding and where a set bit names
-// a track that is not there.
 constexpr size_t kShortLibrary = 12;
 
 std::string base64(const std::vector<uint8_t>& bytes) {
@@ -253,8 +250,6 @@ TEST_CASE("a body that is not JSON is a malformed body rather than a bad ordinal
 }
 
 TEST_CASE("an ordinal past the end of the library is refused rather than dropped") {
-    // The last track a library of twelve has is ordinal 11, and 12 is the first that is not
-    // there at all.
     CHECK(filling(R"("ordinals": [11])", kShortLibrary).ordinals == Ordinals{11});
     CHECK(filling(R"("runs": [[10, 2]])", kShortLibrary).ordinals == Ordinals{10, 11});
     CHECK(filling(R"("bitset": ")" + bitsetOf({11}, kShortLibrary) + R"(")", kShortLibrary)

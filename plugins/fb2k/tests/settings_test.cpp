@@ -264,9 +264,6 @@ TEST_CASE("an absent writePlaylists permits playlist writes, and an explicit fal
     CHECK_FALSE(parseFresh(R"({"writePlaylists": false})").writePlaylists);
 }
 
-// The permissive fallback is the safe one: a player owner who never touched the key still owns
-// their playlists. The log is checked for "ignoring" rather than for the key alone, because an
-// unknown key names itself too and would answer a weaker assertion.
 TEST_CASE("a malformed writePlaylists keeps writes permitted and names itself") {
     for (const auto* text : {R"({"writePlaylists": "false"})", R"({"writePlaylists": 0})",
                              R"({"writePlaylists": null})"}) {

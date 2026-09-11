@@ -60,7 +60,7 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 
 ## Endpoints
 
-38 routes in total. `docs/player-api.yml` in the beefweb repository is the authority on bodies and schemas.
+`docs/player-api.yml` in the beefweb repository is the authority on the route list, the bodies and the schemas.
 
 ### Player
 
@@ -398,7 +398,7 @@ npx @redocly/cli preview-docs \
 
 # `foo_jean`
 
-An optional foobar2000 component listening on a port of its own, typically 8881. `https://github.com/enrique-ramirez/foo_jean`. Everything here is absent on a bare install, and Jean must work without it.
+A foobar2000 component listening on a port of its own, typically 8881. Its source is `plugins/fb2k/`. The media library, tag writing and listening all arrive through it, and Jean reaches none of the three without it.
 
 | | |
 |---|---|
@@ -413,7 +413,7 @@ An optional foobar2000 component listening on a port of its own, typically 8881.
 The component writes `<profile>/beefweb/clientconfig/foo_jean.json` on every start, which beefweb serves at `GET /api/clientconfig/foo_jean`, same origin as Jean, so discovery is one request folded into connect, with no CORS and no port scanning.
 
 ```jsonc
-{ "name": "foo_jean", "version": "0.1.0", "apiVersion": 1,
+{ "name": "foo_jean", "version": "0.3.0", "apiVersion": 1,
   "port": 8881, "authRequired": true, "listening": true }
 ```
 
@@ -479,7 +479,7 @@ The component is installed and working in five of them, and none of them is sile
 ### `GET /api/status`
 
 ```jsonc
-{ "name": "foo_jean", "version": "0.1.0", "apiVersion": 1, "authRequired": true }
+{ "name": "foo_jean", "version": "0.3.0", "apiVersion": 1, "authRequired": true }
 ```
 
 Needs no credential, and that is the point: it tells "`foo_jean` is here" from "something else is listening" before a token is spent. The field allowlist is deliberately **not** in it.

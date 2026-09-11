@@ -42,7 +42,7 @@ Anything your library cannot support is not drawn. No ratings, no starred shelf.
 ## The extra
 
 <!-- site:extra -->
-[`foo_jean`](https://github.com/enrique-ramirez/foo_jean) is a component of Jean's own, and it is what answers your library. Two more things come with it.
+[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k) is a component of Jean's own, and it is what answers your library. Two more things come with it.
 
 **Rate a track from the browser.** The stars stop being read-only, and a rating you set here is written into the file's own tags, where every other program that reads your library will find it.
 
@@ -58,7 +58,7 @@ Jean is not a music player, and on its own it does nothing at all. It draws a pl
 
 **[beefweb](https://github.com/hyperblast/beefweb), installed and enabled in it.** This is the piece that answers a browser at all. Playback, playlists and the queue arrive through it, and Jean is a face drawn on top.
 
-**[`foo_jean`](https://github.com/enrique-ramirez/foo_jean), installed beside it.** Your library, its covers, ratings written back to your tags, and the sound sent to this device all come from here. It pairs with Jean once, on your own network.
+**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed beside it.** Your library, its covers, ratings written back to your tags, and the sound sent to this device all come from here. It pairs with Jean once, on your own network.
 
 One more is optional:
 

@@ -20,7 +20,7 @@ Where "the library" comes from, what plays a set of tracks, and why search resul
 
 `foo_jean` answers the whole library, and there is no second way to get it. **No playlist stands in for the library and none ever will.** A playlist's rows come from the playlist and a library view's from the library, never the other way about: Jean shows a playlist under its real name and reads it as one, and it cannot tell that somebody built one to mirror their collection.
 
-- **Never read or write `Default Playlist`.** It is foobar's scratch buffer, and selecting an album in the library view replaces its entire contents.
+- **Never make `Default Playlist` hold anything of Jean's.** Selecting an album in foobar's library view replaces its entire contents, so a set parked there is gone the next time somebody clicks an album at the player. That is the player's own behaviour rather than a role read off the title: the playlist is shown, read and edited like any other, and Jean's own sets live under `#Jean…`.
 - **Anything titled `#Jean…` is Jean's, so it is not furniture.** It is filtered out of the sidebar, the command palette and the routing fallback. `domain/track/jeanPlaylists.ts` owns that namespace.
 
 The all-music view is a *view over the library array*, projected through the source seam like a shelf or a set of results. It never pretends to be a playlist.

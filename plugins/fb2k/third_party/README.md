@@ -22,8 +22,8 @@ upgrade would therefore *revert* that commit while every version string still ag
 which is the quietest kind of regression. **Check the SHA, not the macro.**
 
 That commit is not idle for us either: it rewrites the chosen content coding onto chunked
-content providers and into `apply_ranges()`, which is exactly the machinery goal 3 —
-streaming — will be built on.
+content providers and into `apply_ranges()`, which is exactly the machinery the stream
+is built on.
 
 `scripts/format.sh` and `.editorconfig` both skip this directory: reformatting
 48,000 lines we do not own would turn every version bump into a merge.

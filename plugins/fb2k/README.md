@@ -37,8 +37,7 @@ scripts\package.ps1                                # -> dist\foo_jean.fb2k-compo
 - **Never set `/p:UseEnv=true`.** It compiles, and then `rc.exe` fails on `winres.h`, because `UseEnv` swaps MSBuild's computed search paths for the environment wholesale and the resource compiler loses the Windows SDK's `um` directory. Include directories go through `Directory.Build.targets`.
 - **`/d2notypeopt` is mandatory** on any project that touches SDK classes, or whole-program optimisation miscompiles them in release builds. The SDK's own projects set it; `src/foo_jean.vcxproj` sets it too.
 - **x64 payloads go in an `x64\` subfolder** of the `.fb2k-component` zip; the top level is where legacy x86 is looked for. Put an x64 DLL there and foobar2000 loads nothing at all, silently. `scripts/package.ps1` writes that entry name explicitly and reads the archive back.
-- **`pfc` is not fully reachable from the master header.** `pfc::format_filetimestamp` lives in `pfc/filetimetools.h`, which neither `foobar2000.h` nor `pfc.h` includes. The error is `C2039`, not a missing header.
-- **`scripts\generate-sln.ps1`** builds an x64 solution over the SDK's own projects. It is needed only to build the SDK's `foo_sample`, which is how you prove a new machine's toolchain before there is any of this code to blame. `foo_jean.sln` at the repo root is for opening the tree in Visual Studio and is not used by the build.
+- **`scripts\generate-sln.ps1`** builds an x64 solution over the SDK's own projects. It is needed only to build the SDK's `foo_sample`, which is how you prove a new machine's toolchain before there is any of this code to blame. `foo_jean.sln` in this directory is for opening the tree in Visual Studio and is not used by the build.
 
 ## Installing
 

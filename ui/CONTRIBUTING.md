@@ -56,13 +56,13 @@ pnpm sync-kit       # refresh .claude/ from the ai-engineering kit
 
 Every other request is a root-relative `/api` path the dev proxy forwards. The optional tag-writing and streaming component listens on a port of its own, so its address is a *host* and a port rather than a path, and on the dev server that host is your machine rather than the player's. `vite.config.ts` takes it from `BEEFWEB_URL` and injects it as `__PLAYER_HOST__`.
 
-The request is then genuinely cross-origin in a way it never is in a build, and the component must be told to accept it. Add the dev server to `<profile>/foo_jean/config.json` and restart the player:
+Every call to it is cross-origin, in a build as much as here, because the port differs. What development changes is the *host*, and that is what `POST /api/pair` checks: with no `allowedOrigins` configured it admits only an origin whose host matches the one the request was addressed to. Add the dev server to `<profile>/foo_jean/config.json` and restart the player:
 
 ```jsonc
 "allowedOrigins": ["http://localhost:8123"]
 ```
 
-Add the LAN name too if you test on a phone against the dev server. None of this applies to a build, where beefweb serves Jean and the hosts match.
+Add the LAN name too if you test on a phone against the dev server. A build needs none of it: beefweb serves Jean from the player's own host, so the hosts already match.
 
 ## 4. Where things live
 

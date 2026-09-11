@@ -73,7 +73,7 @@ Writing a custom foobar component to feed Jean is a last resort. Do not design t
 
 ## `foo_jean`
 
-Required. The media library, tag writing and listening all arrive through it, and Jean is served same-origin with it, so a token rides a same-origin fetch and no request takes a CORS preflight. Its source is `plugins/fb2k/`, and `plugins/fb2k/CLAUDE.md` is the way into it: the rules for writing that component are its own, and this file governs only what Jean does about it. The two seams, the discovery that feeds them, and the security model that says when a token may be sent are in `ui/ARCHITECTURE.md`; the endpoints and their failure modes are in `ui/src/shared/api/README.md`. What must not be undone:
+Required. The media library, tag writing and listening all arrive through it. It listens on a port of its own while beefweb serves Jean on another, so every call to it is cross-origin and a token rides a request the component has answered a preflight for. Its source is `plugins/fb2k/`, and `plugins/fb2k/CLAUDE.md` is the way into it: the rules for writing that component are its own, and this file governs only what Jean does about it. The two seams, the discovery that feeds them, and the security model that says when a token may be sent are in `ui/ARCHITECTURE.md`; the endpoints and their failure modes are in `ui/src/shared/api/README.md`. What must not be undone:
 
 - **The unauthenticated probe before the token is never optional.** The discovery record is writable by anyone who can reach beefweb, so it is a hint and never a credential target.
 - **Nothing outside `domain/track/tagWriter.ts` and `domain/player/listener.ts` may ask which implementation it holds.** If something has to branch on `kind`, the seam is in the wrong place.

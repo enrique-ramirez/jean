@@ -490,6 +490,8 @@ paths:
         The playlist is real and visible in foobar2000's own playlist tabs, so `title` is what somebody looking at the player will read. Nothing in this API parses it, no prefix is required or implied, and the user may rename it freely. What a title means -- whether a playlist is a client's own plumbing or the user's music -- is the client's to decide and the client's to encode.
 
         Existing playlists are never converted. There is no route that turns an existing playlist into an autoplaylist, because the core replaces the contents of a playlist when it takes one over.
+
+        Refused with `403` under the read-only-playlists setting: every playlist this creates would hold the user's music, and the setting refuses every write but the component's own two.
       requestBody:
         required: true
         content:
@@ -517,6 +519,7 @@ paths:
               schema: { $ref: "#/components/schemas/PlaylistAnnotation" }
         "400": { $ref: "#/components/responses/PlaylistRefused" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotOurs" }
         "409": { $ref: "#/components/responses/PlaylistConflict" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }

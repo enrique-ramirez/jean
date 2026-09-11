@@ -150,6 +150,8 @@ export interface paths {
          *     The playlist is real and visible in foobar2000's own playlist tabs, so `title` is what somebody looking at the player will read. Nothing in this API parses it, no prefix is required or implied, and the user may rename it freely. What a title means -- whether a playlist is a client's own plumbing or the user's music -- is the client's to decide and the client's to encode.
          *
          *     Existing playlists are never converted. There is no route that turns an existing playlist into an autoplaylist, because the core replaces the contents of a playlist when it takes one over.
+         *
+         *     Refused with `403` under the read-only-playlists setting: every playlist this creates would hold the user's music, and the setting refuses every write but the component's own two.
          */
         post: operations["createAutoPlaylist"];
         delete?: never;
@@ -1663,6 +1665,7 @@ export interface operations {
             };
             400: components["responses"]["PlaylistRefused"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["NotOurs"];
             409: components["responses"]["PlaylistConflict"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];

@@ -907,6 +907,19 @@ struct HttpServer::Impl {
         return request;
     }
 
+    // The read-only-playlists setting, checked ahead of everything else a write route does: a
+    // client learns nothing about a request the setting was always going to refuse. Never called
+    // from a route addressing one of the component's own two playlists -- those stay writable in
+    // both states.
+    bool writesRefused(httplib::Response& res) {
+        if (settings.writePlaylists)
+            return false;
+
+        respond(res, httpStatusFor(PlaylistOutcome::notOurs),
+                playlistFailedDocument(playlistFailure(PlaylistOutcome::notOurs)));
+        return true;
+    }
+
     void addPlaylistRoutes() {
         server.Get("/api/playlists", [this](const httplib::Request&, httplib::Response& res) {
             const auto result = askIfAvailable(player.listPlaylists,
@@ -944,6 +957,9 @@ struct HttpServer::Impl {
 
         server.Post("/api/autoplaylists", [this](const httplib::Request& req,
                                                  httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
             const auto request = refuseChange(parseAutoPlaylist(req.body, Need::required));
 
             const auto created = attempt(res, request, [this, &request] {
@@ -958,6 +974,9 @@ struct HttpServer::Impl {
         constexpr char kById[] = R"(/api/autoplaylists/([0-9a-f-]{36}))";
 
         server.Post(kById, [this](const httplib::Request& req, httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
             const auto id = req.matches[1].str();
             const auto request =
                 refuseChange(withId(parseAutoPlaylist(req.body, Need::optional), id));
@@ -973,6 +992,9 @@ struct HttpServer::Impl {
         });
 
         server.Delete(kById, [this](const httplib::Request& req, httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
             const auto id = req.matches[1].str();
             const auto request = refuseChange(withId(AutoPlaylistRequest(), id));
 
@@ -1044,6 +1066,9 @@ struct HttpServer::Impl {
         constexpr char kPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items)";
 
         server.Post(kPlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
             if (!library) {
                 respond(res, 503, errorDocument(kNoLibrary));
                 return;

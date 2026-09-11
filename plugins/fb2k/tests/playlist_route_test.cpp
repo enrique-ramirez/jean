@@ -6,11 +6,13 @@
 
 #include "core/library.h"
 #include "support/log_capture.h"
+#include "support/spec.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <numeric>
@@ -141,6 +143,9 @@ struct FillLog {
 
     // beefweb's id for a playlist a role resolved to, empty while beefweb has yet to see it.
     std::string beefwebId = "p4";
+
+    // What GET /api/playlists reports a user's playlist is called.
+    std::string listedTitle;
 };
 
 // Stands in for fb2k/playlists.cpp: a role resolves to the playlist carrying its marker, and a
@@ -247,6 +252,73 @@ std::vector<Target> targets(uint64_t structure) {
          kScratchPlaylistId},
         {"the queue role", kQueueFill, ownBody(kQueueTitle, structure), false, kQueuePlaylistId},
         {"a user's playlist", userFill(), userBody(structure), false, kPlaylistId}};
+}
+
+Settings readOnlyPlaylists() {
+    auto settings = servingSettings();
+    settings.writePlaylists = false;
+    return settings;
+}
+
+// The four playlist writes this component has today, driven the way a client sends them. `addTo`
+// is not a fifth: the client's name for adding rows to a playlist a user owns is this same
+// POST /api/playlists/{id}/items. Reorder and rename are named by the setting and are routes
+// nothing here has yet.
+struct Write {
+    std::string name;
+    std::function<httplib::Result(const TestServer&)> send;
+};
+
+// kPlaylistId is reported as an autoplaylist this component made, so the update and the delete
+// here are aimed at one of its own records rather than at a stranger's playlist. The setting
+// still refuses them: what it exempts is the scratch and the queue's holding playlist, which
+// hold no music of the user's, and an autoplaylist holds theirs.
+std::vector<Write> playlistWrites(uint64_t structure) {
+    return {
+        {"creating an autoplaylist",
+         [](const TestServer& server) { return post(server, "/api/autoplaylists", kCreate); }},
+        {"updating an autoplaylist",
+         [](const TestServer& server) {
+             return post(server, std::string("/api/autoplaylists/") + kPlaylistId,
+                         R"({"query": "%genre% IS Jazz"})");
+         }},
+        {"deleting an autoplaylist",
+         [](const TestServer& server) {
+             return server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId,
+                                           TestServer::bearer());
+         }},
+        {"filling a playlist a user owns, which is what addTo does",
+         [structure](const TestServer& server) {
+             return post(server, userFill(), userBody(structure));
+         }}};
+}
+
+// One component behind all four writes, so a test can say a refusal covered every one of them
+// rather than the one its fake happened to answer.
+Player writingPlayer(PlayerLog* log, FillLog* fills) {
+    Player player = recordingPlayer(log);
+    const Player filling = fillingPlayer(fills);
+
+    player.ownPlaylist = filling.ownPlaylist;
+    player.fill = filling.fill;
+    return player;
+}
+
+// The same filler, reporting the playlist a `{id}` fill is aimed at under `listedTitle`. A title
+// is the one property of a playlist a client chooses, which is why nothing may decide from one
+// who owns a playlist.
+Player fillingPlayerListing(FillLog* log) {
+    auto player = fillingPlayer(log);
+
+    player.listPlaylists = [log] {
+        PlaylistAnnotation playlist;
+        playlist.id = kPlaylistId;
+        playlist.beefwebId = "p3";
+        playlist.title = log->listedTitle;
+        return PlaylistsResult{PlaylistOutcome::done, {playlist}};
+    };
+
+    return player;
 }
 
 std::string withField(const std::string& body, const std::string& field, const json& value) {
@@ -894,4 +966,158 @@ TEST_CASE("a fill answers beefweb's id for that playlist, or null where beefweb 
         CHECK(body.contains("beefwebId"));
         CHECK((body["beefwebId"].is_null() || body["beefwebId"].is_string()));
     }
+}
+
+// The setting a cautious player owner turns on, and the whole of what it buys: nothing writes a
+// playlist that holds their music. Every write this component has is driven, because the one
+// left out of the gate is the hole, and each is asserted twice: the status a client sees, and
+// that the player was never asked.
+TEST_CASE("with writePlaylists off, every write but the component's own is refused and never "
+          "reaches the player") {
+    Library library;
+    buildLibrary(library);
+
+    PlayerLog log;
+    FillLog fills;
+    fills.structure = library.state().structure;
+    const TestServer server(readOnlyPlaylists(), writingPlayer(&log, &fills), &library);
+
+    for (const auto& write : playlistWrites(fills.structure)) {
+        INFO("write: ", write.name);
+
+        const auto response = write.send(server);
+
+        REQUIRE(response);
+        CHECK(response->status == 403);
+
+        // The value the contract publishes for this refusal, which is what a client switches on
+        // to tell the setting apart from a playlist that has gone.
+        CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::notOurs));
+    }
+
+    CHECK(log.creates == 0);
+    CHECK(log.updates == 0);
+    CHECK(log.removals == 0);
+    CHECK(fills.fills == 0);
+    CHECK(fills.inserted.empty());
+}
+
+// The setting protects the user's music, and neither of these holds any: they are how Jean
+// plays a set and how it queues a track. A setting that stopped either is the setting doing the
+// wrong thing, so both roles are driven in both states rather than only in the one that shipped.
+TEST_CASE("the component's own two playlists fill whether writePlaylists is on or off") {
+    Library library;
+    buildLibrary(library);
+
+    struct Role {
+        std::string name;
+        std::string path;
+        std::string title;
+        std::string id;
+    };
+
+    const std::vector<Role> roles{{"scratch", kScratchFill, kScratchTitle, kScratchPlaylistId},
+                                  {"queue", kQueueFill, kQueueTitle, kQueuePlaylistId}};
+
+    for (const bool writePlaylists : {true, false}) {
+        for (const auto& role : roles) {
+            INFO("writePlaylists: ", writePlaylists, ", role: ", role.name);
+
+            FillLog fills;
+            fills.structure = library.state().structure;
+            const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
+                                    fillingPlayer(&fills), &library);
+
+            const auto response = post(server, role.path, ownBody(role.title, fills.structure));
+
+            REQUIRE(response);
+            CHECK(response->status == 200);
+            CHECK(fills.filled == role.id);
+            CHECK(fills.inserted == std::vector<uint32_t>{3, 1});
+        }
+    }
+}
+
+// An absent key reads as writable, so servingSettings() is what a config.json that never mentions
+// the setting gives; settings_test.cpp pins that the two are the same reading. This is the half
+// most likely to go untested, and it is the one that locks a player owner out of their own
+// playlists when it is wrong.
+TEST_CASE("an install that never set writePlaylists permits every write the setting would "
+          "refuse") {
+    Library library;
+    buildLibrary(library);
+
+    PlayerLog log;
+    FillLog fills;
+    fills.structure = library.state().structure;
+    const TestServer server(servingSettings(), writingPlayer(&log, &fills), &library);
+
+    for (const auto& write : playlistWrites(fills.structure)) {
+        INFO("write: ", write.name);
+
+        const auto response = write.send(server);
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+    }
+
+    CHECK(log.creates == 1);
+    CHECK(log.updates == 1);
+    CHECK(log.removals == 1);
+    CHECK(fills.fills == 1);
+    CHECK(fills.inserted == std::vector<uint32_t>{3, 1});
+}
+
+// A client says what a playlist is called, so a component that read refusability off a title
+// would hand any client an unrefusable playlist for the price of a prefix. Both titles get the
+// same answer in both states, which is the assertion that fails whichever way somebody wires a
+// title into the decision.
+TEST_CASE("what refuses a fill is the setting and never the playlist's title") {
+    Library library;
+    buildLibrary(library);
+
+    for (const std::string& title : {std::string("#Jean Queue"), std::string("Road trip")}) {
+        for (const bool writePlaylists : {true, false}) {
+            INFO("title: ", title, ", writePlaylists: ", writePlaylists);
+
+            FillLog fills;
+            fills.structure = library.state().structure;
+            fills.listedTitle = title;
+            const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
+                                    fillingPlayerListing(&fills), &library);
+
+            const auto response = post(server, userFill(), userBody(fills.structure));
+
+            REQUIRE(response);
+            CHECK(response->status == (writePlaylists ? 200 : 403));
+            CHECK(fills.fills == (writePlaylists ? 1 : 0));
+        }
+    }
+}
+
+// A client gates on the contract rather than learning the refusal by being refused, so a write
+// the setting can refuse publishes that 403 and the operation it never reaches publishes none.
+// POST /autoplaylists is the one with no refusal of its own today, and so the one whose 403 is
+// new to the contract as well as to the component.
+TEST_CASE("the contract publishes a 403 on exactly the writes the setting can refuse") {
+    const auto published = publishedRoutes();
+
+    const auto answers403 = [&published](const std::string& name) {
+        const auto found =
+            std::find_if(published.begin(), published.end(), [&name](const SpecRoute& route) {
+                return route.method + " " + route.path == name;
+            });
+
+        REQUIRE_MESSAGE(found != published.end(), "contract/openapi.yaml publishes no ", name);
+        return found->statuses.count(403) == 1;
+    };
+
+    for (const std::string& name :
+         {std::string("POST /autoplaylists"), std::string("POST /autoplaylists/{id}"),
+          std::string("DELETE /autoplaylists/{id}"), std::string("POST /playlists/{id}/items")}) {
+        INFO("route: ", name);
+        CHECK(answers403(name));
+    }
+
+    CHECK_FALSE(answers403("POST /playlists/own/{role}/items"));
 }

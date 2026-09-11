@@ -68,6 +68,9 @@ std::string queryPreviewDocument(const PreviewResult& preview);
 int httpStatusFor(PlaylistRefusal refusal);
 int httpStatusFor(PlaylistOutcome outcome);
 
+std::string fillResultDocument(const std::string& playlistId, const std::string& beefwebId,
+                               const std::vector<size_t>& positions);
+
 // The library ordinals a fill inserts, decoded from whichever one of the three wire forms
 // the request body carried; see contract/openapi.yaml, `FillPlaylistRequest`. `ordinals`
 // is already in the order the fill must insert at: as given for the `ordinals` form,

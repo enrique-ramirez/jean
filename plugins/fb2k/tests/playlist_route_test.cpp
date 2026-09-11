@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <map>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -133,6 +134,13 @@ struct FillLog {
 
     // The generation of the snapshot the filler resolves ordinals against.
     uint64_t structure = 1;
+
+    // How many rows each playlist holds before a fill reaches it. Seed it, and a position
+    // answered for an append is a number no part of the request carries.
+    std::map<std::string, size_t> held;
+
+    // beefweb's id for a playlist a role resolved to, empty while beefweb has yet to see it.
+    std::string beefwebId = "p4";
 };
 
 // Stands in for fb2k/playlists.cpp: a role resolves to the playlist carrying its marker, and a
@@ -146,7 +154,7 @@ Player fillingPlayer(FillLog* log) {
 
         PlaylistAnnotation playlist;
         playlist.id = role == OwnPlaylistRole::scratch ? kScratchPlaylistId : kQueuePlaylistId;
-        playlist.beefwebId = "p4";
+        playlist.beefwebId = log->beefwebId;
         playlist.title = title;
 
         PlaylistResult result;
@@ -161,16 +169,39 @@ Player fillingPlayer(FillLog* log) {
         log->replace = replace;
 
         if (structure != log->structure)
-            return FillResult{PlaylistOutcome::structureMoved, {}};
+            return FillResult{PlaylistOutcome::structureMoved, {}, ""};
 
         log->inserted.insert(log->inserted.end(), ordinals.begin(), ordinals.end());
 
+        // A replace empties the playlist and an append leaves it alone, so a row lands after
+        // whatever the playlist still holds. That is the shape of insert_items, and it is why
+        // the positions a fill answers are not derivable from the request.
+        auto& held = log->held[playlistId];
+        if (replace)
+            held = 0;
+
         std::vector<size_t> positions(ordinals.size());
-        std::iota(positions.begin(), positions.end(), 0);
-        return FillResult{PlaylistOutcome::done, std::move(positions)};
+        std::iota(positions.begin(), positions.end(), held);
+        held += ordinals.size();
+
+        return FillResult{PlaylistOutcome::done, std::move(positions), ""};
     };
 
     return player;
+}
+
+// Rows every target already holds before a fill reaches it. No request carries this number, so
+// an append that answers a position past it answered something it learned from the player.
+constexpr size_t kHeldRows = 5;
+
+FillLog holding(uint64_t structure) {
+    FillLog log;
+    log.structure = structure;
+
+    for (const char* id : {kScratchPlaylistId, kQueuePlaylistId, kPlaylistId})
+        log.held[id] = kHeldRows;
+
+    return log;
 }
 
 constexpr size_t kLibraryTracks = 8;
@@ -199,24 +230,53 @@ std::string userBody(uint64_t structure) {
 }
 
 // The three things a fill can be aimed at: both of the component's own, and a user's own.
-// `replaces` is what the target alone decides, since no request form can carry it.
+// `replaces` is what the target alone decides, since no request form can carry it, and `id` is
+// the playlist each one lands in: resolved from the role for the first two, taken from the path
+// for the third.
 struct Target {
     std::string name;
     std::string path;
     std::string body;
     bool replaces;
+    std::string id;
 };
 
 std::vector<Target> targets(uint64_t structure) {
-    return {{"the scratch role", kScratchFill, ownBody(kScratchTitle, structure), true},
-            {"the queue role", kQueueFill, ownBody(kQueueTitle, structure), false},
-            {"a user's playlist", userFill(), userBody(structure), false}};
+    return {
+        {"the scratch role", kScratchFill, ownBody(kScratchTitle, structure), true,
+         kScratchPlaylistId},
+        {"the queue role", kQueueFill, ownBody(kQueueTitle, structure), false, kQueuePlaylistId},
+        {"a user's playlist", userFill(), userBody(structure), false, kPlaylistId}};
 }
 
 std::string withField(const std::string& body, const std::string& field, const json& value) {
     auto document = json::parse(body);
     document[field] = value;
     return document.dump();
+}
+
+// Swaps the set a body names for another. A request carries exactly one of `runs`, `bitset` and
+// `ordinals`, so the one already there goes before the new one arrives.
+std::string naming(const std::string& body, const json& set) {
+    auto document = json::parse(body);
+    document.erase("ordinals");
+    document.update(set);
+    return document.dump();
+}
+
+// The two targets a fill appends to, which are the ones whose positions start where the playlist
+// already ended rather than at zero.
+std::vector<Target> appendTargets(uint64_t structure, const json& set) {
+    auto all = targets(structure);
+
+    all.erase(std::remove_if(all.begin(), all.end(),
+                             [](const Target& target) { return target.replaces; }),
+              all.end());
+
+    for (auto& target : all)
+        target.body = naming(target.body, set);
+
+    return all;
 }
 
 }  // namespace
@@ -703,5 +763,135 @@ TEST_CASE("a title is declared on the component's own playlists and undeclared o
         CHECK(response->status == 400);
         CHECK(json::parse(response->body)["error"] == "malformed request");
         CHECK(log.fills == 0);
+    }
+}
+
+// What the answer is for: a client that has queued a set learns where its rows went instead of
+// reading the playlist back and matching rows to refs, which is the linear re-match Jean does
+// today. Filling a playlist that already holds rows is what tells a real position apart from the
+// ordinals handed back, or from a count that always starts at zero.
+TEST_CASE("a fill answers the positions the rows landed at rather than the ordinals it was given") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    SUBCASE("an append lands after the rows the playlist already held") {
+        for (const auto& target :
+             appendTargets(structure, json{{"ordinals", json::array({3, 1, 6})}})) {
+            INFO("target: ", target.name);
+
+            auto log = holding(structure);
+            const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+            const auto response = post(server, target.path, target.body);
+
+            REQUIRE(response);
+            REQUIRE(response->status == 200);
+            CHECK(json::parse(response->body)["positions"] == json::array({5, 6, 7}));
+        }
+    }
+
+    SUBCASE("a replace lands at zero, because the scratch is emptied before it is filled") {
+        auto log = holding(structure);
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto response = post(server, kScratchFill, ownBody(kScratchTitle, structure));
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        CHECK(json::parse(response->body)["positions"] == json::array({0, 1}));
+    }
+
+    // `runs` names no row one at a time, so neither the positions nor how many there are can be
+    // read off the request at all.
+    SUBCASE("a set given as runs answers one position per row the runs expand to") {
+        auto log = holding(structure);
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto body =
+            naming(ownBody(kQueueTitle, structure),
+                   json{{"runs", json::array({json::array({0, 2}), json::array({5, 1})})}});
+
+        const auto response = post(server, kQueueFill, body);
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        CHECK(json::parse(response->body)["positions"] == json::array({5, 6, 7}));
+    }
+}
+
+// One field, two sources. The `own` route answers the id the role resolved to, which the client
+// never named and has no other way to learn, and the `{id}` route answers the id the request
+// carried. A client addresses a queue entry as a playlist and an index, so the positions are
+// worth nothing beside the wrong playlist.
+TEST_CASE("a fill answers the id of the playlist the rows landed in") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    for (const auto& target : targets(structure)) {
+        INFO("target: ", target.name);
+
+        auto log = holding(structure);
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto response = post(server, target.path, target.body);
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        CHECK(json::parse(response->body)["playlistId"] == target.id);
+    }
+}
+
+// A client joins this answer to beefweb's playlist list, and beefweb rebuilds its map on its own
+// schedule, so there is not always an id to give. Absent and null read differently: the field is
+// answered every time, and null says ask beefweb again rather than that anything went wrong.
+TEST_CASE("a fill answers beefweb's id for that playlist, or null where beefweb has none yet") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    SUBCASE("a playlist beefweb has already mapped is answered by the id it reported") {
+        auto log = holding(structure);
+        log.beefwebId = "p7";
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto response = post(server, kQueueFill, ownBody(kQueueTitle, structure));
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        CHECK(json::parse(response->body)["beefwebId"] == "p7");
+    }
+
+    SUBCASE("one beefweb has not seen yet is null rather than blank or missing") {
+        auto log = holding(structure);
+        log.beefwebId = "";
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto response = post(server, kScratchFill, ownBody(kScratchTitle, structure));
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+
+        auto body = json::parse(response->body);
+        CHECK(body.contains("beefwebId"));
+        CHECK(body["beefwebId"].is_null());
+    }
+
+    // The fill this fake answers carries no beefweb id, so the field comes back null here.
+    // Either answer is legal on a real install: whether beefweb has named a playlist yet
+    // depends on when it last rebuilt its map.
+    SUBCASE("a user's playlist answers the field as well") {
+        auto log = holding(structure);
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto response = post(server, userFill(), userBody(structure));
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+
+        auto body = json::parse(response->body);
+        CHECK(body.contains("beefwebId"));
+        CHECK((body["beefwebId"].is_null() || body["beefwebId"].is_string()));
     }
 }

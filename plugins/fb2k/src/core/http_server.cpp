@@ -1034,7 +1034,11 @@ struct HttpServer::Impl {
                 return;
             }
 
-            respond(res, 200, "{}");
+            // The annotation the role already resolved, rather than filled.beefwebId: this
+            // route holds its own answer and has no reason to prefer a second one.
+            respond(res, 200,
+                    fillResultDocument(resolved.playlist.id, resolved.playlist.beefwebId,
+                                       filled.positions));
         });
 
         constexpr char kPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items)";
@@ -1068,7 +1072,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            respond(res, 200, "{}");
+            respond(res, 200, fillResultDocument(id, filled.beefwebId, filled.positions));
         });
     }
 

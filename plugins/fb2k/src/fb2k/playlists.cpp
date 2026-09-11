@@ -326,7 +326,7 @@ void beginFill(const std::string& playlistId, uint64_t structure,
     std::vector<size_t> positions(resolved.items.get_count());
     std::iota(positions.begin(), positions.end(), base);
 
-    answer->set(FillResult{PlaylistOutcome::done, std::move(positions)});
+    answer->set(FillResult{PlaylistOutcome::done, std::move(positions), annotate(index).beefwebId});
 }
 
 void beginPreview(const std::string& query, const AnswerPtr<PreviewResult>& answer) {

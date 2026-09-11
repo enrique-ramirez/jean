@@ -271,6 +271,14 @@ std::string playlistFailedDocument(const PlaylistResult& result) {
     return json{{"error", describe(result.outcome)}, {"detail", result.detail}}.dump();
 }
 
+std::string fillResultDocument(const std::string& playlistId, const std::string& beefwebId,
+                               const std::vector<size_t>& positions) {
+    return json{{"playlistId", playlistId},
+                {"beefwebId", beefwebId.empty() ? json(nullptr) : json(beefwebId)},
+                {"positions", positions}}
+        .dump();
+}
+
 std::string queryPreviewDocument(const PreviewResult& preview) {
     return json{{"valid", preview.valid},
                 {"error", preview.error},

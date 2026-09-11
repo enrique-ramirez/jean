@@ -92,19 +92,29 @@ std::string listed(const std::vector<std::string>& values) {
     return text;
 }
 
-// Every string a PlaylistRefusal can reach a client as. The enumerators run contiguously from
+// Every string one of these enums can reach a client as. The enumerators run contiguously from
 // zero and describe() answers "unknown" past the last, so this reads the enum itself rather
 // than naming its values: a list written out in a test file is the thing that drifted.
-std::set<std::string> everyPlaylistRefusal() {
+template <typename Enum>
+std::set<std::string> everyDescribed() {
     std::set<std::string> described;
 
     for (int raw = 0;; ++raw) {
-        auto text = describe(static_cast<PlaylistRefusal>(raw));
+        auto text = describe(static_cast<Enum>(raw));
         if (text == "unknown")
             return described;
 
         described.insert(std::move(text));
     }
+}
+
+std::string unsendable(const std::string& schema, const std::set<std::string>& described) {
+    std::vector<std::string> missing;
+    for (const auto& published : publishedEnum(schema, "error"))
+        if (described.count(published) == 0)
+            missing.push_back(published);
+
+    return listed(missing);
 }
 
 }  // namespace
@@ -425,18 +435,19 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
 // The case above walks this component's values and pins the string each one sends. Nothing walked
 // the other way, so a value the spec published and no enumerator could produce went unnoticed: a
 // client switching on it waits for a string that never arrives, and reads the wrong branch in the
-// meantime. This is that direction, over whatever the spec publishes today.
-TEST_CASE("every refusal contract/openapi.yaml publishes is one this component can send") {
-    INFO("add the value to PlaylistRefusal in core/playlists.h, or take it out of the spec");
+// meantime. This is that direction, over whatever the spec publishes today, for both of the
+// schemas a playlist error arrives in. Rewording an enumerator drifts the same way as adding one.
+TEST_CASE("every playlist error contract/openapi.yaml publishes is one this component can send") {
+    SUBCASE("PlaylistRefusal") {
+        INFO("add the value to PlaylistRefusal in core/playlists.h, or take it out of the spec");
+        CHECK(unsendable("PlaylistRefusal", everyDescribed<PlaylistRefusal>()) == std::string());
+    }
 
-    const auto described = everyPlaylistRefusal();
-
-    std::vector<std::string> unsendable;
-    for (const auto& published : publishedEnum("PlaylistRefusal", "error"))
-        if (described.count(published) == 0)
-            unsendable.push_back(published);
-
-    CHECK(listed(unsendable) == std::string());
+    SUBCASE("PlaylistFailed") {
+        INFO("the spec follows the component's wording: correct the value in "
+             "contract/openapi.yaml, or add the enumerator to PlaylistOutcome in core/playlists.h");
+        CHECK(unsendable("PlaylistFailed", everyDescribed<PlaylistOutcome>()) == std::string());
+    }
 }
 
 TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer with") {

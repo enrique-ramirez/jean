@@ -2056,7 +2056,7 @@ components:
           enum:
             - foobar2000 could not read that query
             - no such playlist
-            - that playlist was not created by foo_jean
+            - this install has playlist writes turned off; turn on writePlaylists in config.json to allow them
             - another playlist already has that key
             - this install's autoplaylist limit is reached
             - the player could not do that

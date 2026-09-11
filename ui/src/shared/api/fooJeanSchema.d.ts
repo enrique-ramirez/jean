@@ -611,13 +611,19 @@ export interface components {
             /** @description Exactly `allowedFields.length > 0`. A convenience, not a second source of truth. */
             canWrite: boolean;
             /**
+             * @description Whether this install permits a write to a playlist or autoplaylist it did not create itself: create, add, edit, delete or reorder. `writePlaylists` in `config.json`, defaulting to `true`. A component predating this field reports nothing, and a client MUST read absence as writable.
+             *
+             *     The component's own two playlists, its scratch space and the play queue's holding playlist, stay writable regardless: this governs the user's playlists, not the component's own plumbing.
+             */
+            canWritePlaylists: boolean;
+            /**
              * @description How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
              *
              *     The cap bounds a client bug rather than an attacker; whoever holds the token can already write tags.
              * @example 100
              */
             maxAutoPlaylists: number;
-            /** @description Exactly `maxAutoPlaylists > 0`. The same kind of convenience as `canWrite`. */
+            /** @description True only when `canWritePlaylists` is true and `maxAutoPlaylists` is above zero. False under either alone, so a client gates a single control on this field rather than checking both itself. */
             canCreateAutoPlaylists: boolean;
             /** @description Exactly `streamFormats.length > 0`. False on an install where the component loaded but no encoder started, where `streamingEnabled` is false, and on any component version that predates streaming. A client MUST hide the listen control when it is false rather than offer it and fail. */
             canStream: boolean;
@@ -948,7 +954,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available";
+            error: "foobar2000 could not read that query" | "no such playlist" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
@@ -1123,7 +1129,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistRefusal"];
             };
         };
-        /** @description The playlist exists and this component did not create it. Retrying will never work, and no configuration grants it. */
+        /** @description This install has `writePlaylists` set to `false`, and the playlist is not one of foo_jean's own. Setting `writePlaylists` back to `true` in `config.json` is what grants it. */
         NotOurs: {
             headers: {
                 [name: string]: unknown;

@@ -262,7 +262,7 @@ private:
                 relative = "";
 
             // Keyed off the unnormalised path on purpose: the separator weighs in
-            // foobar2000's comparison. See CLAUDE.md, *Facts about the player*.
+            // foobar2000's comparison. See ARCHITECTURE.md, *Facts about the player*.
             sortKeys[n] = fb2k::makeSortString(relative.c_str());
             paths[n] = forwardSlashed(toStd(relative));
             tracks[n].subsong = item->get_subsong_index();

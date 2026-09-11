@@ -13,7 +13,7 @@ namespace jean {
 
 using TicketMint = std::function<std::string()>;
 
-// Grants stream connections for a short window; see CLAUDE.md, *Facts about the player*,
+// Grants stream connections for a short window; see ARCHITECTURE.md, *Facts about the player*,
 // for why the credential has to travel in the URL rather than a header. It MUST be
 // short-lived and never logged, and maxConcurrentStreams rather than this bounds how many
 // streams one device opens.

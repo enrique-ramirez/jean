@@ -411,7 +411,7 @@ TEST_CASE("the oldest answerable client gets every append it missed") {
     CHECK(patch.ids == std::vector<uint32_t>{5});
 }
 
-// The comparison here stands in for foobar2000's own (CLAUDE.md, *Facts about the player*,
+// The comparison here stands in for foobar2000's own (ARCHITECTURE.md, *Facts about the player*,
 // has the real one measured); what this pins is that ordinalOrder follows whichever one
 // arrives from fb2k/, ahead of the tiebreaks.
 TEST_CASE("ordinals follow the path comparison the player supplies") {

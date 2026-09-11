@@ -100,7 +100,7 @@ The focus ring is **on the field, never on the input**: the input is chromeless 
 
 **The playing surfaces identify a cover by track, not by album.** The update stream's `trcolumns` is `%artist%`, `%title%`, `%path%` and `%subsong%`, never `%album%`, so `StatusBar`, `NowPlaying` and the cover wheel all build their identity through `coverKey(artist, title, "track")`.
 
-**Keeping the bytes across a reload is the component's job and not Jean's.** `GET /api/artwork` answers a strong `ETag` under a `Cache-Control` that means "ask every time, and use the copy you have when it has not changed"; `shared/api/README.md`, *Covers*, is what the route answers and what it costs. **Nothing in Jean stores a cover.** A cache of its own would need an eviction policy, a budget and a Clear button, and would answer a question the player already answers better.
+**Keeping the bytes across a reload is the component's job and not Jean's.** `GET /api/artwork` answers a strong `ETag` under a `Cache-Control` that means "ask every time, and use the copy you have when it has not changed"; `contract/openapi.yaml` is what the route answers and what a conditional request costs. **Nothing in Jean stores a cover.** A cache of its own would need an eviction policy, a budget and a Clear button, and would answer a question the player already answers better.
 
 **One album is one URL, and that is what makes any of it work.** An HTTP cache is keyed by the URL, so a record whose rows are addressed one by one is one request per row however identical the bytes. `albumCoverRows` in `domain/track/grouping.ts` points every row of a record at the row it first appeared on, by album identity rather than by adjacency, because search results and a genre page interleave albums.
 

@@ -8,21 +8,23 @@ The **mode** is global player state, one of it rather than one per view. The **a
 
 ## The queue
 
+What the queue is, and everything the player does with it, is `../../shared/api/README.md`. Three consequences shape what Jean draws.
+
 **The player will not say what it would otherwise play next**, so an empty queue means *nothing has been asked for*, not *nothing will play*.
 
-**The queue is finite, ordered and exhaustive**, since foobar2000 takes all of it before returning to the playlist, so the time until any entry plays is exact arithmetic rather than an estimate.
+**The queue being exhaustive is what makes the timetable exact** rather than an estimate.
 
-**The queue is consumed, so what is playing is never in it.** An entry leaves the moment its track starts. There is no "now playing" row to draw and no risk of the panel disagreeing with the status bar.
+**The queue being consumed is why there is no "now playing" row to draw**, and no risk of the panel disagreeing with the status bar.
 
 **Queueing opens the panel and raises no toast on success.** The row the track lands on is the undo; an undo carried on a toast would be a range built from the queue length before its own write, so with several on screen only the newest could still be applied. Errors do toast.
 
-**A reorder is a rebuild, because there is no insert.** `queueIndex` is accepted and *silently ignored* on add, so moving an entry means removing everything from the earlier of the two positions and adding it back in the new order. **Queueing a track into a position is the same rebuild with the track ahead of the tail; queueing onto the end is not one at all.** An append lands at the end whatever moved above it, so it neither re-reads nor refuses. Three things follow:
+**A reorder is a rebuild, because there is no insert**, so moving an entry means removing everything from the earlier of the two positions and adding it back in the new order. **Queueing a track into a position is the same rebuild with the track ahead of the tail; queueing onto the end is not one at all.** An append lands at the end whatever moved above it, so it neither re-reads nor refuses. Three things follow:
 
 - **Only the tail is rebuilt.** Everything above the earlier position is untouched, so a drag near the bottom is cheap and a drag from the top is not.
 - **The queue is re-read before the plan is built.** This is the one operation whose arithmetic cannot survive being stale, because a track ending mid-drag consumes the head and shifts every index under it, so a queue that moved is refused rather than half-applied.
 - **The stream is held for the length of a mutation.** The player passes through every intermediate state and pushes each one; drawn, the panel sheds its rows and grows them back. The hold lives in `queue.ts` with no React and no import of the player hook, since the hook that drops the pushes and the hook that takes the hold both need it.
 
-**Deleting a playlist the queue points into crashes the player**, so the queue entries are cleared first and the delete abandoned if they will not clear. That guard belongs to the *operation*, not to the sidebar, since the failure mode is the whole of foobar2000.
+**The queue entries are cleared before a playlist is deleted, and the delete abandoned if they will not clear**, for the reason `../../shared/api/README.md` gives under its crash warning. That guard belongs to the *operation*, not to the sidebar, since the failure mode is the whole of foobar2000.
 
 ## The volume fader
 
@@ -36,11 +38,11 @@ The **mode** is global player state, one of it rather than one per view. The **a
 
 **Silencing the player is the component's job and Jean never does it itself.** The mute is reference counted over the whole audience rather than over one connection, because the component is the only place that can see the listeners to count. **Jean sends no mute and must not grow one**; it *reads* one. The component's rule is the one to design against: **a hold it sees undone is not taken again until everybody stops.**
 
-**foobar2000 has no mute flag**, so this is not a hidden state Jean has to be told about: mute is the volume at its floor, and beefweb reports it like any other volume. That is why the player's row can be drawn from the volume alone.
+**foobar2000 has no mute flag**, so this is not a hidden state Jean has to be told about: mute is the volume at its floor, and beefweb reports it like any other volume. That is why the player's row can be drawn from the volume alone, and why a client still needs telling whether a listener is what silenced the player.
 
 **A reconnect is not a departure, and only the client can tell them apart.** Both close the socket, so the component waits out a linger before unmuting; posting a leave collapses it, which is what makes pressing the player's row give the sound back at once rather than seconds later. Best effort: a closed tab says nothing and is noticed a moment later anyway.
 
-**Count devices, never connections.** Safari holds two connections for one playback start and a reconnect is a third. The identity rides the ticket request, since an `<audio>` element sends no body and no header of its own, which also means a rename lands on the next connection rather than at once.
+**Count devices, never connections**, for the reason `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, gives. The identity rides the ticket request, since an `<audio>` element sends no body and no header of its own, which also means a rename lands on the next connection rather than at once.
 
 **A device names itself, and a browser cannot learn the name of its machine.** `device.ts` guesses at the *kind* from the UA client hints, falling back to `navigator.platform` and `maxTouchPoints`, and Settings is where anyone who cares writes something better. **That is not the user-agent detection this codebase bans**: nothing branches on it, and a label is wrong in a way its owner can see and fix in one field. **`crypto.randomUUID` is secure-context only** and Jean is routinely served over plain HTTP on a LAN, so the device id comes from `getRandomValues`, which is not restricted that way.
 
@@ -145,7 +147,7 @@ Three facts this rests on, all properties of the component rather than of one ne
 
 ## The gap a skip leaves
 
-**A skip empties `activeItem` until the player has opened the next file, and says `playing` the whole time**, so a client that draws each field as it arrives shows every empty state it has at once, for as long as the skip takes. `holdThroughGap` holds the last item until a real one lands. `../../shared/api/README.md` has the shape and why `columns` rather than `index` is what says "empty".
+**A skip empties `activeItem` until the player has opened the next file**, so a client that draws each field as it arrives shows every empty state it has at once, for as long as the skip takes. `holdThroughGap` holds the last item until a real one lands, and `../../shared/api/README.md` has the shape, the three things that make it a trap, and why `columns` rather than `index` is what says "empty".
 
 **It sits at the stream bridge rather than on the screen**, which is what makes it one hold instead of four, and what stops a mark being laid against a gap. The held timestamp travels with the item it anchors, for the same reason it does in `audible.ts`: paired with a fresh one, the seek bar rewinds by the width of the gap.
 

@@ -95,7 +95,7 @@ TEST_CASE("a configured origin matches case-insensitively, because config.json i
     CHECK(response->get_header_value("Access-Control-Allow-Origin") == "https://jean.example");
 }
 
-// Neither header is browser-safelisted (CLAUDE.md, *Facts about the player*). Without ETag
+// Neither header is browser-safelisted (ARCHITECTURE.md, *Facts about the player*). Without ETag
 // exposed, a cross-origin page never sees a validator to hold, so the `GET /library` revision
 // poll stops working from a page while still working from a command line.
 TEST_CASE("the headers a client is told to act on are readable from another origin") {
@@ -127,7 +127,7 @@ TEST_CASE("preflight is answered without a credential") {
           std::string::npos);
 }
 
-// The other half of a conditional request (CLAUDE.md, *Facts about the player*): without
+// The other half of a conditional request (ARCHITECTURE.md, *Facts about the player*): without
 // this, a page could read a validator and never send one back, and every ETagged route
 // would be a full download from a browser.
 TEST_CASE("the preflight lets a page send back the validator it was allowed to read") {

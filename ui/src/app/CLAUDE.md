@@ -18,7 +18,7 @@ The grid every feature is drawn inside, hash routing, the themes, the browser ta
 
 ## Routing
 
-**Hash routing, because beefweb's static server has no SPA fallback.** A real path is a 404.
+**Hash routing, because beefweb's static server has no SPA fallback**, for the reason `shared/api/README.md` gives.
 
 **Where each view was left is remembered per view, and keyed on the route *underneath* the layer.** Keyed on the raw route instead, opening a layer would scroll the list behind it to the top and closing it would restore an offset over whatever had just been asked for. `useScrollMemory` also has to stand aside for a view being opened to be taken somewhere in particular, since the two would otherwise fight for as long as rows keep arriving.
 

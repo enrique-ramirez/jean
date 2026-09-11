@@ -9,7 +9,7 @@ namespace jean {
 class AlbumArt {
 public:
     // Main thread only, resolved once here and used from anywhere afterwards, for the reason
-    // CLAUDE.md, *Facts about the player*, gives.
+    // ARCHITECTURE.md, *Facts about the player*, gives.
     AlbumArt();
 
     // Any thread, and never the main one, for the same reason.

@@ -59,16 +59,16 @@ Prefer the player's own metadata over anything Jean invents, in this order:
 
 Writing a custom foobar component to feed Jean is a last resort. Do not design toward it.
 
-**Jean's own settings live in `localStorage` today and belong in `/api/clientconfig/{id}`**, with four keys permanently excluded from that move. `ui/ARCHITECTURE.md` has the split and the reason; the exclusion list itself is named next to `TOKEN_KEY` in `ui/src/shared/api/fooJean.ts`.
+**Jean's own settings live in `localStorage` today and belong in `/api/clientconfig/{id}`**, with four keys permanently excluded from that move. `ui/ARCHITECTURE.md` has the split, the four keys and the reason for each.
 
 **The `foo_jean` clientconfig id is spoken for.** The component publishes its discovery record there and Jean writing to it would clobber the record. Ids take lowercase letters, digits and `_`; `foo-jean` is a 400.
 
 ## Capability detection
 
-`ui/ARCHITECTURE.md` has the mechanism: the `?` sentinel, `fieldTable()`, what `$meta()` cannot do, and why detection cannot work on DeaDBeeF at all. Three rules on top of it:
+`ui/src/shared/api/README.md` has what the player answers: the `?` sentinel, what `$meta()` cannot do, and why detection cannot work on DeaDBeeF at all. `ui/ARCHITECTURE.md` has where Jean puts the answer. Three rules on top of both:
 
 - **Detection is a guess and Settings overrides it.** A feature enabled by a probe MUST have a switch.
-- **Detect per track wherever a field is sparse.** What one install resolves is not a rule; `ui/src/shared/api/README.md` records which fields are worth expecting and which are not.
+- **Detect per track wherever a field is sparse.** What one install resolves is not a rule.
 - **`player.info.name` distinguishes foobar2000 from DeaDBeeF.** Support DeaDBeeF best-effort. Do not invest in a second title-format dialect without a real report.
 
 ## `foo_jean`
@@ -87,7 +87,7 @@ Things that vary between installs and MUST never be assumed:
 | | |
 |---|---|
 | Which playlist is which | The library is not one of them: `foo_jean` answers it. Never read a role out of a title somebody chose, and never assume `p1`, which is scratch space |
-| Whether `#Jean Queue` exists | Jean's holding playlist for queueing library rows, created on demand. Nothing may assume it is there, and nothing may delete it while the play queue points into it, which crashes the player |
+| Whether `#Jean Queue` exists | Jean's holding playlist for queueing library rows, created on demand. Nothing may assume it is there, and nothing may delete it while the play queue points into it |
 | `permissions` | `changePlaylists`, `changeOutput`, `changeClientConfig` come from the player. Gate the UI on them: a read-only instance gets a read-only Jean, not buttons that 403 |
 | `authRequired` | May be on. Support Basic auth and a credentials prompt |
 | `pathSeparator` | From `/api/browser/roots`. `\` on Windows, `/` elsewhere, but library paths are `/`-separated everywhere, so do not build one with it |
@@ -110,6 +110,6 @@ The corollary is a signature rule: **a caller's dependency array can only be as 
 
 **Never gate behaviour on a `mounted` ref set only in an effect cleanup.** StrictMode mounts, unmounts and remounts in development, so the cleanup sets the flag false and nothing sets it back: the guard is permanently on, in dev only. If a guard is genuinely needed, set it true in the effect body as well. Usually it is not: work touching only refs and network calls is safe to finish after unmount.
 
-**Anything the user types at a list is matched through `fold()` in `ui/src/shared/lib/text.ts`**, which lowercases and strips diacritics. Fold when the haystack is built, never per keystroke, and fold the query too, or an accented query stops matching a folded index.
+**Anything the user types at a list is matched through `fold()` in `ui/src/shared/lib/text.ts`.** Fold when the haystack is built, never per keystroke, and fold the query too, or an accented query stops matching a folded index.
 
-**A stale `itemCount` is nobody's to fix but the caller's.** beefweb pushes nothing when a playlist's *items* change, so any arithmetic that cannot survive being wrong MUST re-read the count from the player first.
+**A stale `itemCount` is nobody's to fix but the caller's.** Any arithmetic on it that cannot survive being wrong MUST re-read the count from the player first, for the reason `ui/src/shared/api/README.md` gives.

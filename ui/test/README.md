@@ -146,7 +146,7 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 
 **One place the fake is deliberately kinder.** The stream serves WAV rather than Ogg Opus, since there is no encoder in a Node fake, and in Chromium a non-seekable WAV does not fire `loadedmetadata` until a substantial amount of *content* has arrived. Not bytes: the same byte rate with a longer primed burst starts playing far sooner. That is a property of PCM in a container never meant to be streamed. So the healthy stream hands over a burst up front and then feeds at 1x, which starts sooner than a real one would; what that could hide, a long gap between asking and hearing, is covered by `quiet` instead.
 
-**One place it is kinder by accident.** `POST /api/autoplaylists` answers with `beefwebId` already filled in, because the fake made the playlist itself a line earlier. Real beefweb assigns its playlist ids lazily and answers `null` there until its own playlists are next read; `../src/shared/api/README.md` has the join and the fallback to `index`. A spec that takes the id straight off the create response passes here and fails against a real install.
+**One place it is kinder by accident.** `POST /api/autoplaylists` answers with `beefwebId` already filled in, because the fake made the playlist itself a line earlier. Real beefweb assigns its playlist ids lazily and answers `null` there until its own playlists are next read; `contract/openapi.yaml` has the join and the fallback to `index`. A spec that takes the id straight off the create response passes here and fails against a real install.
 
 ### Three gaps against the contract
 

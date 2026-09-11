@@ -11,7 +11,7 @@ The rationale, the enforcement and what the seam buys are in ARCHITECTURE.md, *T
 3. **Put the decision in `core/` and the mechanism in `fb2k/`.** A decision compiles and is tested on any machine; a mechanism is not.
 4. `src/fb2k/` compiles for the first time on the build machine. A change there is *reviewed*, not *tested*, until `scripts/build.ps1` has run. State which of the two you did.
 5. Headers live beside their sources. This is a DLL with no exported headers; do not restructure towards `include/` + `src/`.
-6. The two directories deliberately share filenames (`preferences.cpp`, `playlists.cpp`, `log`). `src/foo_jean.vcxproj` sets `<ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>` so the object files do not overwrite each other; keep it. Without it the symptom is `LNK2001` naming a function you can watch being compiled.
+6. The two directories deliberately share filenames, since each pair is one feature split at the boundary. `src/foo_jean.vcxproj` keeps their object files apart and says how beside the setting that does it. Keep it.
 
 ## 2. Design
 
@@ -41,7 +41,7 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 
 1. **Why a value was chosen is a named constant.** A bitrate, a timeout, a buffer size. `kBroadcastSeconds` says what `8` cannot, and says it at every use rather than once above one of them.
 2. **What the code does is the code.** If following it needs prose, the prose is a bug report against the structure. Fix the structure.
-3. **How the pieces fit is `plugins/fb2k/ARCHITECTURE.md`; what the player does is `plugins/fb2k/CLAUDE.md`, *Facts about the player*.** An external fact that bites in several files is written there once, and the files depending on it say nothing, or point there in a clause.
+3. **`plugins/fb2k/ARCHITECTURE.md` is where an external fact goes: how the pieces fit, and *Facts about the player* for what the SDK, Windows, Media Foundation or a browser actually does.** A fact that bites in several files is written there once, and the files depending on it say nothing, or point there in a clause.
 4. **Tests carry more.** A test's name states the behaviour; a comment may state why the case exists at all and what breaks without it. That is documentation and it earns its place. Narrating the assertions is not.
 
 **The test, before you write one.** Strip the comment and hand the code to somebody competent who has not seen it:
@@ -57,7 +57,7 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 ## 5. Tests
 
 1. Every change under `src/core/` needs a test. Writing it first is welcome.
-2. **Run the tests that cover what you changed, not the whole suite.** One file is `scripts/test.sh '-sf=*cors_test.cpp'`; one case is `scripts/test.sh '-tc=*bearer*'`. Run those as often as you like.
+2. **Run the tests that cover what you changed, not the whole suite.** `scripts/test.sh` has its own invocations in its header. Run the narrow ones as often as you like.
 3. **A full run is a final verification step, not a habit.** It loads the machine and floods an agent's context. Run it once, at the end, when the change is substantial enough that something outside the tests you already ran could plausibly have broken. Changes to documentation, comments, `.gitattributes` or editor configuration need no run at all.
 4. Tests are feature-level. `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client. **Assert what a client would see, not how the answer was arrived at.** A test that names a private function, or that would still pass if the component answered the wrong status, is testing the implementation.
 5. **Assert that the refusal never reached the player.** Every route test carries a recording player and checks its call count: "answered 403" and "answered 403 *and did not touch the disk*" are different promises, and only the second is the feature.
@@ -65,9 +65,9 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 7. **Nothing sleeps.** `RateLimiter::allow` and the ticket store take the time as an argument for this reason. A test that waits to observe a limit fails on a loaded machine, which teaches everybody to ignore it.
 8. When a full run *is* warranted, run it more than once: `tests/support/test_server.cpp` retries a port race. The assertion count is deterministic, so two runs of one tree that disagree are a real difference rather than weather. Nothing in the suite may make it depend on scheduling.
 9. **Anything threaded runs under `scripts/test.sh --sanitize=thread` before it is called ready.** That is `core/pcm_ring`, `core/broadcast_ring`, `core/audience`, `core/output_hold`, `core/stream_ticket` and `core/timeline`. It is clean today, so a report is a regression rather than known noise.
-10. `--sanitize=` takes `address`, `thread` or `leaks`, and goes first, before doctest's own arguments. Each instrumented build keeps its own object directory under `bin/`, so a plain run and an instrumented one cannot contaminate each other. `leaks` is macOS's own tool rather than LeakSanitizer, because LSan has no implementation on this platform and an ASan binary given `detect_leaks=1` aborts before `main`. It runs the ordinary uninstrumented build, is a conservative scanner rather than a proof, and fails outright anywhere but macOS.
+10. `leaks` is macOS's own tool rather than LeakSanitizer, because LSan has no implementation on this platform and an ASan binary given `detect_leaks=1` aborts before `main`. It is a conservative scanner rather than a proof, so a clean run promises less than a green LeakSanitizer run would, and it fails outright anywhere but macOS.
 11. **The suite reads `contract/openapi.yaml` at run time, and that file sits outside this tree.** Two tests drive every route the contract publishes, and a stale copy answers for a build that has different routes. `plugins/fb2k/` does not test on its own, though `scripts/build.ps1` and `scripts/package.ps1` read nothing outside it: whatever syncs the tree to a build machine syncs `contract/` with it, at the same position relative to it, because `tests/support/spec.cpp` and `scripts/test.sh` both reach the spec by climbing out of the plugin directory.
-12. `-sf` is source-file and needs the glob. `-ts` is test *suite*, no file here declares one, and a filter matching nothing exits 0, so a typo there reports success.
+12. A doctest filter matching nothing exits 0, so a typo in one reports success.
 
 ### What a green suite does not cover
 
@@ -77,18 +77,16 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 |---|---|
 | Everything in `src/fb2k/` | compiled on the build machine. `scripts/verify-tag-write.ps1`, `verify-stream.ps1` and `verify-listeners.ps1` drive three of its paths against a real player |
 | A `setsockopt` failure, and the refusal to listen that follows | neither can be induced from a test. The code path is compiled on both platforms and has never run |
-| `MainThreadQueue::close()`, and abandoning work at shutdown | measured on the player: quitting with requests in flight went from **32.26 s** to **0.62 s**, and the log says how many calls it gave up |
+| `MainThreadQueue::close()`, and abandoning work at shutdown | measured on the player: quitting with requests in flight, which without it waits out a timeout per call. The log says how many it gave up |
 | The AAC encoder | Windows-only and unreachable from the suite at all. `verify-stream.ps1` drives it |
 | The preferences page's `GWLP_USERDATA` teardown | opening and closing **Preferences → Tools → Jean** is the whole test |
 | `notOurs`, the guard refusing to touch a playlist this component did not create | no live coverage. `plugins/fb2k/CLAUDE.md` says to exercise it against a playlist created for the purpose, never a real one |
 
 ## 6. The HTTP contract
 
-1. **`contract/openapi.yaml`, at the repository root, is the contract and it is hand-written.** Any change to a response shape, a status code or an error string changes it in the same commit. Clients generate their types from it, so a stale spec is a client that compiles and is wrong.
-2. `tests/api_contract_test.cpp` pins the exact key set of every document the component produces, and drives the stream routes against the statuses the spec publishes. `scripts/test.sh` separately compares the spec's version with `src/core/version.h`.
-3. **Adding an unauthenticated route means revisiting the CORS default in the same commit.** The permissive `allowedOrigins` default is safe only while the unauthenticated routes say less than a port scan would, and while the one that hands out a credential, `POST /api/pair`, keeps the stricter same-host rule. `tests/listener_test.cpp` and `tests/pairing_test.cpp` pin both halves.
-4. **Anything that publishes a track path MUST publish the display form**, through `filesystem::g_get_display_path`. ARCHITECTURE.md, *Track identity*, is why.
-5. Track identity is `%path%` plus `%subsong%`. Routes address tracks by path; playlist items have no id.
+1. **Any change to a response shape, a status code or an error string changes `contract/openapi.yaml` in the same commit.** ARCHITECTURE.md, *The HTTP contract*, is why the spec is hand-written and which two checks hold it to the code; neither of them can read prose.
+2. **Adding an unauthenticated route means revisiting the CORS default in the same commit.** `tests/listener_test.cpp` and `tests/pairing_test.cpp` pin both halves of what makes the permissive default safe.
+3. **Anything that publishes a track path MUST publish the display form**, through `filesystem::g_get_display_path`. ARCHITECTURE.md, *Track identity*, is why.
 
 ## 7. Security rules
 
@@ -97,7 +95,7 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 3. Never trust a path from a client. Resolve against what the player reports; never concatenate.
 4. Write only allowlisted fields, compared case-insensitively, and say in the response which field was refused.
 5. Never log a token or a stream ticket, and never put either in the discovery record.
-6. **Never set `SO_REUSEADDR`.** On Windows it lets a socket bind a port another socket is actively listening on, so two servers silently split the traffic on one port. cpp-httplib's `default_socket_options` sets it, and the override to `SO_EXCLUSIVEADDRUSE` must stay.
+6. **Never set `SO_REUSEADDR`.** On Windows it lets a socket bind a port another socket is actively listening on, so two servers silently split the traffic on one port. The override to `SO_EXCLUSIVEADDRUSE` must stay; `third_party/README.md` is what it overrides and why that default is there.
 7. A partial or failed bind MUST be loud, to the log and to the discovery record, because a headless install has nobody reading a console.
 8. Refuse before doing. Validate, then act: the tests assert the order, not just the status.
 9. **No response may compress request-controlled text beside a secret.** That is the BREACH shape: whoever can get a chosen string into a response and watch what it does to the compressed length reads the secret beside it a byte at a time. Compression is on wherever a client offers it, cpp-httplib's own for the JSON routes and this component's for the library blobs, so the rule sits on what a body may hold rather than on the compressor.

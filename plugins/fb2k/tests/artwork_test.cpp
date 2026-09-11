@@ -85,12 +85,12 @@ TEST_CASE("only pictures a browser draws are given a type") {
     CHECK(imageTypeOf("not a picture at all").empty());
 
     // Refusing to name SVG keeps two problems away from this route at once
-    // (CLAUDE.md, *Facts about the player*).
+    // (ARCHITECTURE.md, *Facts about the player*).
     CHECK(imageTypeOf(R"(<svg xmlns="http://www.w3.org/2000/svg"></svg>)").empty());
 }
 
 // The validator is the picture rather than a stat of the file the picture came from because
-// the player names that file only once it has loaded the picture anyway (CLAUDE.md, *Facts
+// the player names that file only once it has loaded the picture anyway (ARCHITECTURE.md, *Facts
 // about the player*).
 TEST_CASE("a validator is the picture, so it moves when and only when the picture does") {
     const auto tag = artworkTag(kJpeg);
@@ -129,7 +129,7 @@ TEST_CASE("a cover is sent with the type it actually is, and a validator to ask 
 
 // no-cache rather than no-store: the client is meant to keep the bytes and ask before it
 // trusts them. must-revalidate is not decoration either; the route is authenticated, and
-// CLAUDE.md, *Facts about the player*, is what that directive is for and what a browser
+// ARCHITECTURE.md, *Facts about the player*, is what that directive is for and what a browser
 // does with the same response, which is not the same question.
 TEST_CASE("the client is told to keep the bytes and revalidate them") {
     ArtLog log{kJpeg};
@@ -287,8 +287,8 @@ TEST_CASE("a client looping on artwork stops reaching the player") {
     CHECK(static_cast<int>(log.asked.size()) == kAttempts - refused);
 }
 
-// cpp-httplib's own compression list is somebody else's (CLAUDE.md, *Facts about the
-// player*), so it is pinned here rather than restated as a second mechanism.
+// cpp-httplib's own compression list is somebody else's (third_party/README.md), so it is
+// pinned here rather than restated as a second mechanism.
 TEST_CASE("a cover is never compressed, however the client asks") {
     ArtLog log{kJpeg};
     const TestServer server(servingSettings(), showing(&log));
@@ -302,7 +302,7 @@ TEST_CASE("a cover is never compressed, however the client asks") {
     CHECK(response->body == kJpeg);
 }
 
-// Neither half of a conditional request is free cross-origin (CLAUDE.md, *Facts about the
+// Neither half of a conditional request is free cross-origin (ARCHITECTURE.md, *Facts about the
 // player*): without both, the browser cache does the revalidation and an explicit one from
 // a page cannot.
 TEST_CASE("a page on another origin can read the validator and send it back") {

@@ -2,7 +2,7 @@
 
 For someone about to build on Jean. Structure, boundaries and contracts: the things a file listing does not tell you. [CONTRIBUTING.md](./CONTRIBUTING.md) is how to write the code; [src/shared/api/README.md](src/shared/api/README.md) is what the player answers.
 
-Jean is a Vite single-page app with no backend of its own. React 19, TypeScript, TanStack Query, TanStack Virtual, TanStack Hotkeys, CSS Modules. **Jean is served same-origin with beefweb**, whose requests are all root-relative `/api/…` paths the browser resolves against whatever origin served the page: beefweb in a build, the Vite proxy in development. `foo_jean` listens on a port of its own, so the library, its covers and every tag write are cross-origin and carry a bearer token through a preflight the component answers with a 600 second `Access-Control-Max-Age`.
+Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./CONTRIBUTING.md), *Stack*, is what it is built out of. **Jean is served same-origin with beefweb**, whose requests are all root-relative `/api/…` paths the browser resolves against whatever origin served the page: beefweb in a build, the Vite proxy in development. `foo_jean` listens on a port of its own, so the library, its covers and every tag write are cross-origin and carry a bearer token through a preflight the component answers with a 600 second `Access-Control-Max-Age`.
 
 ## The shape of it
 
@@ -98,25 +98,19 @@ Chunking is a playlist read's problem: it is almost all round trip, so the first
 
 **Anything derived per row is keyed on `columns.load`.** That object lives exactly as long as one load's data and survives both the next chunk arriving and a delta being patched in, so an overlay keyed on it dies with the rows it patches and needs no invalidation.
 
-**Search folds once per distinct value, never per keystroke and never per row.** `libraryIndex()` keeps the folded text of each dictionary entry, keyed by whatever makes an id mean one thing: the item count on a playlist, the structure generation on the component's snapshot. A search is then one `includes()` per searchable column. `fold()` in `src/shared/lib/text.ts` lowercases and strips diacritics, so `babasonicos` finds `Babasónicos`. Fold the query too, or an accented query stops matching the folded index.
+**Search folds once per distinct value, never per keystroke and never per row.** `libraryIndex()` keeps the folded text of each dictionary entry, keyed by whatever makes an id mean one thing: the item count on a playlist, the structure generation on the component's snapshot. A search is then one `includes()` per searchable column, against text `fold()` has already been through.
 
-**`useLibrary` returns an object literal, so its identity changes every render.** Depend on `library.snapshot`, the store's own object, replaced only when a load publishes. An exhaustive dependency array can be exhaustive and useless, and the linter only checks the first half.
+**`useLibrary` returns an object literal, so its identity changes every render.** Depend on `library.snapshot`, the store's own object, replaced only when a load publishes.
 
 ## Capability detection
 
 The player evaluates title-formatting expressions and answers them positionally, which makes the reachable surface far wider than beefweb's own schema. Jean declares a column set once, as name-and-expression pairs, and `fieldTable()` in `src/shared/api/fieldTable.ts` derives both the list sent to the player and the index each name landed at. Written out separately, the day somebody inserts an expression in the middle is the day a row reports its genre as its artist.
 
-**A field that does not exist answers `?`. A field that exists but is empty answers `''`, `0` or `N/A`.** That difference is the whole mechanism: `readValue` maps both to `null` so rows draw correctly either way, while `resolvesAnywhere` asks the column whether any of its values is something other than `?`. Whatever resolves gets its feature; Settings overrides the guess where detection is wrong.
+The sentinel the player answers with, what `$meta()` cannot do, and why none of this can work on DeaDBeeF are in [src/shared/api/README.md](src/shared/api/README.md), *Capability detection*. What the architecture adds is where the answer lives: `readValue` maps both an absent and an empty field to `null` so rows draw correctly either way, while `resolvesAnywhere` asks a column whether any of its values resolved.
 
 **The answer is one per install and it comes from the library, so every route loads the library.** `domain/track/fieldAvailability.ts` holds it and the library snapshot is the only thing that writes to it, so no view can compute a different one from the rows it happens to be showing. Landing on a playlist draws the same columns as landing on a shelf. Nothing is ruled out until the library has answered, so no view opens with a column missing, and a column is hidden only where the player cannot produce that field at all.
 
-Three limits worth knowing before relying on it:
-
-- **`$meta(x)` cannot be feature-detected.** It answers `''` for a field that does not exist, where `%x%` answers `?`. Probe with `%x%`.
-- **DeaDBeeF has no sentinel.** An unknown field answers `''` there, exactly as an empty one does, so every optional field reads as supported and its column arrives empty rather than staying hidden. Detection is the thing that cannot work on DeaDBeeF, and it errs on the side of showing too much.
-- **Sparse fields defeat sampling.** Where a field is carried by only part of a library, detect per track, as the Details panel does.
-
-One fact the player may spell two ways gets an *alternative* rather than a branch: `%lastfm_play_count%` is `foo_enhanced_playcount`'s and counts scrobbles across every device, `%play_count%` is `foo_playcount`'s and counts plays on this machine. `alternativeReader` falls through from one to the other, and an index means nothing outside its own table, so the map is applied by the named readers rather than inside `value()`.
+A fact the player may spell two ways gets an *alternative* rather than a branch, and `alternativeReader` falls through from one spelling to the other. The play count is the one that has two, and `src/shared/api/README.md`'s table of expressions is which component supplies each. An index means nothing outside its own table, so the map is applied by the named readers rather than inside `value()`.
 
 ## The two seams
 
@@ -157,7 +151,7 @@ Read the record, prove the port with an unauthenticated call, and only then atta
 
 **Pairing is a write, so it obeys the same order.** `discovery.origin` is non-null exactly when the probe succeeded, which makes it the proof a port is safe to post to, so the Pair button renders on `origin` rather than on the state kind, and an unreachable or impostor port never gets one.
 
-**Discovery resolves to eight states and none of them is silence.** The record alone gives *absent* and *not-listening*. The probe adds *unreachable*; *impostor*, meaning something on that port that is not `foo_jean`, which is what a forged record looks like from here and where Jean must say it did not send the token; and *unsupported*, an `apiVersion` this build does not understand. The token gives *no-token*, *unauthorized* and *ready*. The component is installed and working in five of them, and `src/features/settings/TagWriting.tsx` holds one message and one remedy per state.
+**Discovery resolves to a state, and none of the states is silence.** They are the union declared beside `discoverFooJean()`, and the component is installed and working in five of them. `src/features/settings/TagWriting.tsx` holds one message and one remedy per state, *impostor* included, where Jean must say it did not send the token.
 
 **Which project owns which setting.** The component's `config.json` holds what the *player owner* decides: port, bind address, the write allowlist. Jean never edits it and there is no route to it. Jean owns the token and, per field, whether to offer the control at all. **Those switches narrow and never widen.** Settings lists exactly the permitted fields and turns them off, never on.
 
@@ -181,31 +175,11 @@ src/shared/i18n/
   Trans.tsx        a sentence with elements inside it
 ```
 
-**English is the bundle's, and every other language is the install's.** `en.ts` is compiled in as the fallback layer, so a stock install fetches nothing and a bad file on disk can never break the language Jean falls back to. The build emits it to `dist/locales/en.json` **as the file to copy**, and nothing reads that back.
+Which languages exist, how one reaches the app, how a phrase is written and what `t()` demands of a key chosen at runtime are all in [src/shared/i18n/CLAUDE.md](src/shared/i18n/CLAUDE.md), which is the whole of it.
 
-**Three things decide which languages exist, and they are not the same thing.**
+## The `z-index` scale
 
-| | Where | Written by |
-|---|---|---|
-| English | the bundle | `en.ts` |
-| Shipped translations | `public/locales/*.json`, copied verbatim into the build; their codes are compiled in through `__SHIPPED_LOCALES__` | the repository |
-| Everything else | `locales/<code>.json` beside `index.html`, listed by hand in `locales/custom.json` | whoever installed Jean |
-
-The split is what makes an upgrade safe: copying a new build over an old one replaces the files the build owns and never touches `custom.json`. **Jean writes none of them.** It cannot even enumerate them: beefweb's static server serves no directory index, and `/api/browser/entries` is a 403 for anything outside the player's music directories, so the list has to be stated somewhere.
-
-**A key the loaded file does not carry falls back to English, and a key Jean no longer has is dropped.** A translation degrades phrase by phrase rather than all at once, which is what lets a half-finished one ship and an out-of-date one keep working.
-
-`t()` derives its argument list from the key it is given, so a *runtime* key has to be typed narrower than `Phrase` or every call demands the union of every phrase's fields. `src/shared/i18n/CLAUDE.md` has that and the rest of the local rules.
-
-## Styling and the token layer
-
-CSS Modules, colocated with the component. The only global stylesheets are `src/shared/styles/tokens.css` (the palette and scale, as custom properties) and `base.css`, both pulled in by `global.css`. Re-theming Jean should mean editing custom properties and nothing else.
-
-**A rule in one module that overrides another's must outrank it on specificity, never merely follow it.** Module order in the bundle follows import order, and import sorting can flip two rules of equal specificity.
-
-Anything spatial belongs to a media query rather than a JS breakpoint flag. Animate compositor properties only.
-
-### The `z-index` scale
+How to write a stylesheet at all is [CONTRIBUTING.md](./CONTRIBUTING.md), *Styling*. This is the one part of it that is shared rather than local, and therefore the one part that belongs here.
 
 App-level layers, lowest first. These share the root stacking context, so a new layer has to be placed against this list rather than picked.
 
@@ -251,4 +225,4 @@ The code says what exists. These are load-bearing gaps anything built on Jean ha
 - **No folder tree.** The library browses as one flat list. `/library/items/by-path` is documented in `src/shared/api/README.md` for when that changes.
 - **Nothing Jean holds survives a reload**, artwork included. Covers persist in the browser's own HTTP cache, which is the component's to control through `Cache-Control` and `ETag`; Jean stores none of it.
 - **Reconciling a stale `itemCount` is only partly built.** `usePlaylists` refetches on window focus, and the live `playlistItems` tripwire documented in `src/shared/api/README.md` is not wired, so arithmetic that cannot survive being wrong re-reads the count itself.
-- **Playing a library set is wrong on a library with more than one root.** `sortToLibraryOrder` in `domain/track/librarySource.ts` asks beefweb to sort the scratch playlist by `%path%`, which is absolute, while a ref is an ordinal in library-relative path order. One root makes the two agree and several do not, and then a position computed from a row plays a different track, silently. It is not patched where it sits because what an ordinal is ordered by and which component fills the playlist are one question, and filling still goes through beefweb.
+- **Playing a library set is wrong on a library with more than one root.** `sortToLibraryOrder` in `domain/track/librarySource.ts` asks beefweb to sort the scratch playlist by `%path%`, while a ref is an ordinal in library-relative path order, and `src/shared/api/README.md`, *Paths*, is why those two are not the same order. One root makes them agree and several do not, and then a position computed from a row plays a different track, silently. It is not patched where it sits because what an ordinal is ordered by and which component fills the playlist are one question, and filling still goes through beefweb.

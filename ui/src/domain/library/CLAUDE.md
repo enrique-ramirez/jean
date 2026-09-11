@@ -29,16 +29,15 @@ Shapes and costs for every route are in [../../shared/api/README.md](../../share
 
 ### Rules that are not obvious
 
-- **`Array.from(refs, …)`, never `refs.map(…)`.** Refs arrive as a typed array from the search index, and mapping a typed array returns a typed array: objects coerce to `NaN` and the request body serialises as an object rather than a list.
-- **Search filters client-side, always.** The player's `query` syntax does not agree with `fold()`-based token matching, so filtering client-side and adding server-side by `query` adds tracks that are not the ones on screen. Address adds by explicit path and subsong.
-- **Row order is the snapshot's own, and it is library-relative path order**, ties broken by subsong and then by the player's canonical path so that the order is total and does not shuffle between rebuilds. A ref is an ordinal in it, and `positionOf` bisects on a set of refs ascending. A tag sort would be exact-string lexicographic, which splits an album whose artist is spelled two ways: the drift `sameTagValue()` exists to absorb but cannot fix once the order is wrong. A badly-foldered library gets more, smaller album groups; that is a degradation, not a requirement.
-- **`%path%` and `%subsong%` are in the update stream's `TRACK_COLUMNS` for identity, not display**: one string per player update, not per row. The player reports an **absolute** path and the library a **relative, forward-slashed** one, and Jean is never told where the library folders are, so they are matched by suffix.
+- **Search filters client-side, always**, and an add is then addressed by explicit path and subsong. Mixing the two filters is the trap `../../shared/api/README.md` names.
+- **Row order is the snapshot's own**, which `contract/openapi.yaml` defines and bounds. A ref is an ordinal in it, and `positionOf` bisects on a set of refs ascending. **Never re-sort by a tag instead:** that is exact-string lexicographic, which splits an album whose artist is spelled two ways, the drift `sameTagValue()` exists to absorb but cannot fix once the order is wrong. A badly-foldered library gets more, smaller album groups; that is a degradation, not a requirement.
+- **`%path%` and `%subsong%` are in the update stream's `TRACK_COLUMNS` for identity, not display**: one string per player update, not per row. They are matched against a library row by suffix, for the reason `../../shared/api/README.md`, *Paths*, gives.
 
 ### Filling a playlist from the library
 
 Playing a set means writing it to the scratch playlist and playing a position in it, and both halves have a trap.
 
-- **Sort the playlist once it is filled, because the fill order is the player's rather than Jean's.** A set comes back in the player's own browse order while the view is in library-relative path order, so every position computed from a row addresses a different track. That browse order is not predictable, and reading the filled playlist back is a whole-library read with **no library-change event** to invalidate it against. So overwrite it: one sort into the order the snapshot is already in, and no client state.
+- **Sort the playlist once it is filled, because the fill order is the player's rather than Jean's.** Unsorted, every position computed from a row addresses a different track; `../../shared/api/README.md` is why that order cannot be predicted or read back. So overwrite it: one sort into the order the snapshot is already in, and no client state.
 - **Adding to a user's playlist does not sort.** That playlist is theirs and its order is theirs. Undo is unaffected either way: it removes the range that was appended, not particular rows.
 
 ## Playing a view, and marking it
@@ -50,7 +49,7 @@ Filling the scratch, deciding whether the scratch currently *is* a given set, an
 **Browsing and playing MUST never create, clear, reorder or overwrite a user's playlist.**
 
 - **Play a track** in place. Nothing is written.
-- **Play a *set***: a playlist is the only mechanism the API has. The play queue takes one item per request with no bulk form, and the player has no other way to say "these tracks, in this order".
+- **Play a *set***: a playlist is the only mechanism the API has, since the play queue has no bulk form and the player has no other way to say "these tracks, in this order".
 - **Never sort a playlist to browse.** It mutates. It is for building derived playlists on explicit request only.
 
 This is about side effects, not capability. **Explicit user intent is different**: asked to add an album, reorder a playlist or delete tracks, do exactly that. What Jean legitimately changes is playback state, the play queue, and `/api/clientconfig/{id}`. Note that even playing a track has downstream effects on the user's data. It scrobbles, increments play counts, and on some setups rewrites the file's mtime.

@@ -400,17 +400,17 @@ npx @redocly/cli preview-docs \
 
 A foobar2000 component listening on a port of its own, typically 8881. Its source is `plugins/fb2k/`. The media library, tag writing and listening all arrive through it, and Jean reaches none of the three without it.
 
+**`contract/openapi.yaml` is that component's contract, and it is the reference for every route below the discovery record.** Jean's types are generated from it, its descriptions carry the reasoning a client needs, and nothing restated here could do anything but drift from it. `plugins/fb2k/ARCHITECTURE.md` is the design behind it. What follows is only the part that is Jean's.
+
 | | |
 |---|---|
 | Base URL | `http://<player-host>:8881`, the **same host as beefweb**, a different port |
-| Auth | `Authorization: Bearer <token>` on everything but `GET /status` and `POST /pair` |
-| `apiVersion` | `1`. A client MUST refuse a number it does not understand |
 | CORS | genuinely cross-origin, so every authenticated call is preflighted |
-| Owner's config | `<profile>/foo_jean/config.json` holds `port`, the bind address, `allowedFields`, `maxAutoPlaylists`, `maxConcurrentStreams`, `streamingEnabled`, `muteWhileStreaming` and `allowedOrigins`. Jean never edits it and there is no route to it |
+| Owner's config | `<profile>/foo_jean/config.json`, which Jean never edits and has no route to. `plugins/fb2k/README.md` has the keys |
 
 ## Discovery, and why its answer cannot be trusted
 
-The component writes `<profile>/beefweb/clientconfig/foo_jean.json` on every start, which beefweb serves at `GET /api/clientconfig/foo_jean`, same origin as Jean, so discovery is one request folded into connect, with no CORS and no port scanning.
+This is the one part of the component's surface the spec does not describe, because beefweb serves it. The component writes `<profile>/beefweb/clientconfig/foo_jean.json` on every start, which beefweb answers at `GET /api/clientconfig/foo_jean`, same origin as Jean, so discovery is one request folded into connect, with no CORS and no port scanning.
 
 ```jsonc
 { "name": "foo_jean", "version": "0.3.0", "apiVersion": 1,
@@ -426,238 +426,20 @@ The component writes `<profile>/beefweb/clientconfig/foo_jean.json` on every sta
 
 **A `null` body is the not-installed signal**, and is the common case. beefweb answers 200 with `null` for an id nobody has written.
 
-> **The record is writable by anyone who can reach beefweb, so it is a hint and never a credential target.** `POST /api/clientconfig/{id}` is a documented beefweb route, `changeClientConfig` defaults to on, and beefweb ships with no authentication. A forged record can name any port, and the forgery lasts until the component next starts. A client that believed it would POST the user's bearer token to an attacker's listener.
->
-> **The order is the security model:**
->
-> 1. Read the record. `null` → not installed, done.
-> 2. `GET http://<same-host>:<port>/api/status`, **unauthenticated on purpose**, and require `name` of `foo_jean` and an `apiVersion` this build understands.
-> 3. Only then attach `Authorization: Bearer <token>` to anything.
->
-> Step 2 is cheap and is not optional. `discoverFooJean()` in `src/shared/api/fooJean.ts` is the one implementation.
+> **The record is writable by anyone who can reach beefweb, so it is a hint and never a credential target.** A forged record can name any port, and a client that believed it would POST the user's bearer token to an attacker's listener. **The order in which a token may be attached is the security model**, and `ui/ARCHITECTURE.md` holds it; `discoverFooJean()` in `fooJean.ts` is the one implementation, and the states it resolves to are the union declared beside it.
 
-### The states discovery resolves to
+## What Jean does about the library
 
-| Kind | Means |
-|---|---|
-| `absent` | no record, or beefweb hiccupped. The common case |
-| `not-listening` | installed, could not bind. Carries `error` and `portInUse` |
-| `unreachable` | advertised and did not answer. Transient; retried with backoff |
-| `impostor` | something answered on that port and it is not `foo_jean`. **This is what a forged record looks like from here, and a client must say it did not send the token** |
-| `unsupported` | `foo_jean` answering an `apiVersion` this build does not know |
-| `no-token` | healthy, not yet paired |
-| `unauthorized` | the token was refused |
-| `ready` | paired, with capabilities in hand |
+`GET /api/library/export?columns=…` answers the whole library in one binary body. `jlib.ts` decodes it and `fooJeanLibrary.ts` is the loop that asks for it. `contract/openapi.yaml`, *The media library*, is the format, the two generations and every status. Three things on this side:
 
-The component is installed and working in five of them, and none of them is silence. `src/features/settings/TagWriting.tsx` holds one message and one remedy per state.
-
-## Endpoints
-
-| Route | Auth | |
-|---|---|---|
-| `GET /api/status` | none | identify the component. Reports nothing a port scan would not |
-| `POST /api/pair` | none | read the token, during a window opened at the player |
-| `GET /api/capabilities` | bearer | the write allowlist and the streaming and autoplaylist limits |
-| `POST /api/tags` | bearer | write metadata to one track |
-| `GET /api/library` | bearer | both generations, the track count and the column set that is built |
-| `GET /api/library/export` | bearer | the whole library, as one binary snapshot |
-| `GET /api/library/changes` | bearer | a per-column patch since a revision |
-| `POST /api/library/refresh` | bearer | force a rebuild, rate limited |
-| `GET /api/artwork?track=` | bearer | one front cover, by library-relative path |
-| `GET /api/playlists` | bearer | which playlists are autoplaylists, and which this component created |
-| `POST /api/autoplaylists` | bearer | create one |
-| `POST /api/autoplaylists/preview` | bearer | try a query without creating anything |
-| `POST /api/autoplaylists/{id}` | bearer | repoint an existing one |
-| `DELETE /api/autoplaylists/{id}` | bearer | delete one it created |
-| `POST /api/stream/ticket` | bearer | a short-lived credential for one stream connection |
-| `GET /api/stream` | **ticket** | the audio |
-| `GET /api/stream/timeline` | bearer | what is audible, in the stream's own clock |
-| `GET /api/stream/listeners` | bearer | who is listening |
-| `POST /api/stream/leave` | bearer | this device stopped on purpose |
-| `DELETE /api/stream/hold` | bearer | ask for the player to be audible alongside the listeners |
-
-### `GET /api/status`
-
-```jsonc
-{ "name": "foo_jean", "version": "0.3.0", "apiVersion": 1, "authRequired": true }
-```
-
-Needs no credential, and that is the point: it tells "`foo_jean` is here" from "something else is listening" before a token is spent. The field allowlist is deliberately **not** in it.
-
-### `POST /api/pair`
-
-`{ name? }` → `{ token, apiVersion }`. Three bounds, none optional:
-
-- **Single grant.** The first success closes the window, which the owner opens at the player for 120 seconds. Pairing a second device takes a second press.
-- **Private source addresses only**: RFC1918, loopback, link-local and their IPv6 equivalents. A forwarded port or a tunnel cannot be paired through. The address is checked *before* the window is consulted, so a caller from outside learns nothing about whether a window is open and cannot spend a grant.
-- **`Content-Type: application/json` is required.** A simple POST needs no CORS preflight, so without this a page on any origin could fire one blind and spend the grant. Requiring JSON forces every cross-origin caller to be preflighted.
-
-| Status | Meaning |
-|---|---|
-| `403` + "local network" in the message | source address is not private |
-| `403` otherwise | no window is open; a button for the owner to press |
-| `429` | busy |
-| `404` / `415` | not this API |
-
-**Pairing is a write, so it obeys the discovery order.** `discovery.origin` is non-null exactly when the probe succeeded, which makes it the proof a port is safe to post to, so the Pair button renders on `origin` rather than on the state kind, and an unreachable or impostor port never gets one.
-
-### `GET /api/capabilities`
-
-```jsonc
-{ "apiVersion": 1, "allowedFields": ["rating"], "canWrite": true,
-  "maxAutoPlaylists": 8, "canCreateAutoPlaylists": true, "canReadLibrary": true,
-  "canStream": true, "streamFormats": ["opus", "aac"], "canMuteWhileStreaming": true }
-```
-
-- `allowedFields` is the **write allowlist**, a blast-radius bound the *player owner* sets. A client renders controls for the fields named here and nothing else, rather than carrying its own copy of the list. **A client's own switches narrow and never widen**: Settings lists exactly the permitted fields and turns them off, never on.
-- `canWrite`, `canCreateAutoPlaylists` and `canStream` are exactly `allowedFields.length > 0`, `maxAutoPlaylists > 0` and `streamFormats.length > 0`. Conveniences, not second sources of truth.
-- `streamFormats` is best-first. `opus` is Ogg Opus; `aac` is AAC-LC in ADTS, for older Safari. The list varies by install: one whose Windows has no AAC encoder reports `opus` alone. **`?format=` outside this list is a 400.**
-- `canMuteWhileStreaming` is `muteWhileStreaming` in the owner's config. There is no route that changes it.
-- `canReadLibrary` says whether the routes under `/api/library` are there at all. False on a component that loaded without the feature and on any version predating it, and every one of them then answers `503`.
-
-### `POST /api/tags`
-
-`{ path, subsong?, fields: { name: value } }` → `{ written: true, path, subsong, fields }`.
-
-The player performs the write through `metadb_io_v2`, so foobar2000's own database is current when this returns and a client re-reading through beefweb sees the new value.
-
-- **`path` is exactly beefweb's `%path%`**: a plain absolute local path. No URL scheme, not even `file://`, no UNC share, no `..`, no relative path.
-- **Omit `subsong` for an ordinary file**; a missing value reads as 0.
-- **Only the named fields are touched.** An empty string *removes* a field rather than setting it to empty, which is how a rating is cleared rather than set to `"0"`.
-- **One track per request.** Writes are not batched.
-- Two names differing only in case are refused rather than guessed at: foobar2000 tag names are case-insensitive, and that is two instructions for one tag.
-
-| Status | Meaning | Decided |
-|---|---|---|
-| `400` | malformed request, missing or unacceptable path, no fields | before the player is involved |
-| `403` | field not on the allowlist. Carries `field` | before the player is involved |
-| `404` | foobar2000 does not know that track, which is neither in the Media Library nor in an open playlist. **The SDK will build a handle for any path at all, so a well-formed path says nothing about the player knowing it** | |
-| `504` | the player did not answer in time. **The write may still land, so a client must not roll back** | |
-| `503` | tag writing is not available | |
-
-### The library, as one snapshot
-
-`GET /api/library/export?columns=…` answers the whole library in one binary body, dictionary-encoded per column. `shared/api/jlib.ts` decodes it and `shared/api/fooJeanLibrary.ts` is the loop that asks for it. `contract/openapi.yaml` is the format itself, under *The media library*; what matters on this side:
-
-- **The client declares the columns, and the export request is the declaration.** Jean sends `TRACK_EXPRESSIONS`, one `columns` parameter per expression, never comma-separated: a title-formatting expression may contain a comma.
-- **A `202` means no snapshot of that set exists and one is being built.** Poll `GET /api/library` until `ready` is true and its `columns` have the same members, in any order, then ask again. The first export after the component starts, and the first after the set changes, is the slow one.
-- **A `429` is the rebuild rate limiter**, shared with `POST /api/library/refresh`. It carries `Retry-After` in seconds.
+- **Jean sends `TRACK_EXPRESSIONS`, one `columns` parameter per expression, never comma-separated**: a title-formatting expression may contain a comma.
 - **`?`, `''` and `N/A` arrive exactly as the player produced them.** Nothing in the component parses, normalises or types a value, which is what keeps Jean's capability detection working. **Never coerce one to `null`**: `Number(null)` is `0` and every field would then read as available.
-- **The header answers capability detection exactly.** Every column carries `distinct`, `hasUnresolved` and `allUnresolved`, so a field that resolves on one track in ten thousand is detected rather than missed by a sample. Detection is still a guess a Settings switch overrules.
-- **Ordinals are refs.** Row order is library-relative path order, ties broken by subsong, so a ref keeps meaning what it means everywhere else in Jean. An ordinal means nothing across a `structure` change.
-- **The spine is `directory`, `filename` and `subsong`**, always built and never named in `columns`. `directory` keeps its trailing slash, so `directory + filename` is the whole relative path. The library root never appears.
-- **Every offset in the blob is a multiple of four**, which is what lets a client take `new Uint32Array(buffer, at, count)` over the bytes where they lie. A typed array over an unaligned byte offset throws.
-- **Every integer in the blob is little-endian.** So is every platform a browser runs on, so a typed array taken directly over the bytes needs no byte-swap.
-- **gzip is transparent here.** The component compresses when the request offers it, and a browser both offers and decodes without being asked, so nothing in Jean sees the coding. The `ETag` names it, and the two codings are two representations that never share a validator, so a conditional request has to go back with the same `Accept-Encoding` it was made with.
+- **The header answers capability detection exactly**, so a field that resolves on one track in ten thousand is detected rather than missed by a sample. Detection is still a guess a Settings switch overrules.
 
-**`ETag` and `Retry-After` are readable cross-origin because the component names them in `Access-Control-Expose-Headers`.** A browser exposes only a short safelist to script otherwise, so a header not named there reads as `null` rather than as an error: a conditional request would quietly refetch, and the documented `429` backoff would quietly fall through to its default.
+## What Jean does about the stream
 
-### Keeping that snapshot current
-
-`GET /api/library` carries both generations and is small, so it is what says whether there is anything to do at all.
-
-- **A different `structure` means every ordinal Jean holds is meaningless.** Tracks were added or removed. Export again.
-- **A higher `revision` at the same `structure` is a delta.** `GET /api/library/changes?since=` answers the same binary format carrying only the columns that moved and, within each, only the rows that moved.
-- **`409` and `410` are ordinary rather than errors.** The first says ordinals shifted under the request, the second that `since` fell out of the retained window. Both mean the same thing: export again, and say nothing to the user.
-- **A dictionary only ever gains entries within a `structure` generation.** A delta restates none of it: `dict.base` is how much the client already holds, `dict.ends.count` is `distinct - base`, and every id below `base` still means what it meant. A rebuild is what compacts a value that fell out of use.
-- **A delta's `ids` are parallel to its `ordinals`, not to the rows.** `ordinals.width` comes from the track count and `ids.width` from the dictionary size, so they are routinely different widths and both MUST be read rather than assumed.
-- **The spine effectively never moves**, because a path changing is a removal and an addition and that moves `structure`.
-- **A poll that finds nothing is a `304` with no body**, which is what makes re-checking cheap enough to ride a track change instead of a timer.
-
-### Covers
-
-`GET /api/artwork?track=` takes the snapshot's `directory` and `filename` for a row, concatenated and percent-encoded. There is no ordinal here: an ordinal means nothing across a `structure` change, so a URL built from one would change every time a track was added anywhere. The address is matched against the snapshot and joined to nothing, so an address the snapshot does not carry is a `404` and never another record's sleeve.
-
-- **Point every row of a record at one URL.** An HTTP cache is keyed by the URL, so a record addressed row by row is one request per row however identical the bytes. The route takes a track rather than an album because the player resolves art per track, from the file's own tags or from an image beside it, and which of the two it is varies inside one library.
-- **`Cache-Control: no-cache, must-revalidate` against a strong `ETag`** folded from the picture itself. Nothing foobar2000 offers names the file a cover came from until that cover has been loaded, so the validator moves when and only when the sleeve does, including a `folder.jpg` replaced in place, which the player announces to nobody. The cost is that a `304` loads the picture too and saves the transfer rather than the work.
-
-> **A browser does keep it, and revalidates.** RFC 9111 withholds storage of a response to a request carrying `Authorization` unless it also says `public`, `must-revalidate` or `s-maxage`, and that restriction binds a shared cache rather than a private one. Chrome, Chromium, Firefox and WebKit were each measured storing the response and sending `If-None-Match` back, in one page, across a browser restart, and cross-origin through the preflight, with and without `must-revalidate`. So a repeat view of a cover costs a conditional request and no transfer.
-
-### Autoplaylists
-
-`POST /api/autoplaylists` takes `{ title, key?, query, sort?, forceSort? }` and hands the playlist to foobar2000's own autoplaylist client, so the core keeps it filled and keeps it after the component is uninstalled.
-
-- **`query` is foobar2000's own syntax, passed through untouched.** The component never composes or interprets it, so **quoting is the client's responsibility**. A value pasted in unquoted can produce a valid query that is not the intended one, and no validation can catch that.
-- **`key` is opaque**: stored, handed back, compared for equality, never interpreted. It is how a client recognises its own playlists rather than encoding a convention in a title the user can edit. It MUST be unique; a duplicate is a **409**, so the same create request is safe to send twice.
-- **An autoplaylist filters the Media Library and nothing else.** On an install with none configured every autoplaylist is empty and nothing in the player says why. Read `libraryEnabled` from the preview first.
-- **Existing playlists are never converted.** The core replaces the contents of a playlist when it takes one over, so there is no route for it.
-- `POST /api/autoplaylists/{id}` **replaces** the specification: `query`, `sort`, `key` and `forceSort` end up exactly as sent, so send the whole record. `title` is the exception: omit it to leave the name alone rather than undoing a rename made at the player. `id` is foobar2000's playlist GUID, not beefweb's id.
-- Only playlists this component created can be updated or deleted. Anything else is a **403**, including an autoplaylist made in foobar2000 itself.
-- Playlist writes are rate limited: a burst of thirty, refilling at one a second, shared across create, update and delete. Reading and previewing are not limited. **429** carries `Retry-After` in seconds.
-
-> **`POST /api/autoplaylists/preview` answers 200 with `valid: false` for a query that does not parse, never a 400.** This is the route called while somebody is typing, so an unreadable query is data rather than an error. Creating with the same query *is* a 400. **Debounce it.** It runs on foobar2000's main thread, so one request per keystroke is one main-thread callback per keystroke.
-
-### `GET /api/playlists`
-
-Not a playlist listing. One annotation per playlist, in playlist order, carrying only what beefweb cannot answer:
-
-```jsonc
-{ "playlists": [ {
-  "id": "45837d74-…",        // foobar2000's playlist GUID: stable across renames, never reused
-  "beefwebId": "p7",         // the join key
-  "index": 0,
-  "title": "…",              // for checking a join, not for display
-  "isAutoPlaylist": true,
-  "managed": { "key": "folder:genre:Rock", "query": "…", "sort": "…", "forceSort": false }
-} ] }
-```
-
-- **`managed` is null for every playlist this component did not create**, including autoplaylists made in the player. That is how a client tells a folder it manages from an autoplaylist that was already there.
-- **Ask beefweb first.** beefweb assigns its playlist ids lazily, so a playlist just created here reports `beefwebId: null` until beefweb next rebuilds its map, and requesting beefweb's playlists is what makes it do so. Fall back to `index` for the join.
-- **`managed.query` goes stale silently** if the query is edited in foobar2000's own dialog. The SDK offers no way to read an autoplaylist's current query back.
-
-### Streaming
-
-A single unbounded chunked response carrying the player's own output, post-DSP and post-ReplayGain. **No length, no `Range`, no seeking**, because seeking means asking foobar2000 to seek, which moves every listener at once.
-
-**`POST /api/stream/ticket`** takes `{ deviceId?, name? }` and returns `{ ticket, expiresIn }`.
+The component's clock, not beefweb's, is what a listener hears; the spec carries the arithmetic that turns one into the other, and `src/domain/player/CLAUDE.md` is what Jean builds on it.
 
 > **The ticket travels in the query string and the bearer token never does.** An `<audio>` element sends no headers, so `GET /stream?ticket=…&format=…` is a capability URL bounded by a short lifetime. It grants nothing but the audio already playing. Clients MUST NOT store, log, or otherwise place a ticket where a bearer token would not go.
 
-- **A ticket is not single-use.** Safari probes a source with `Range: bytes=0-1` before fetching it for real, so one playback start is two requests. `maxConcurrentStreams` is what bounds concurrency.
-- **Request a fresh ticket when reconnecting**, and call this immediately before opening the stream rather than at page load.
-- The ticket is also where a device says who it is, the only part of opening a stream a client controls. A request with no body is an anonymous listener rather than a refusal.
 - `deviceId` is untrusted: it labels a row in somebody else's picker and nothing branches on it. Generate it at random, keep it, and never derive it from anything about the person.
-
-**A client MUST reconnect rather than treat the end of the response as a stop.** A dropped connection is ordinary on a wireless network and an `<audio>` element does not retry by itself. The response also ends when the listener falls too far behind to be sent contiguous audio.
-
-**`GET /api/stream/timeline`** → `{ streamTime, marks: [{ at, path, subsong, position }] }`.
-
-The player's reported position is not what a listener is hearing, because the stream runs behind it, so a progress bar driven from beefweb runs ahead of the audio. `streamTime` counts seconds of audio encoded since the component started; `marks[].at` is in that same clock, and a mark is written when a track starts *or* when somebody seeks within one.
-
-```js
-// once, when the element starts playing
-const connectedAt = performance.now()
-const { streamTime } = await (await fetch(`${origin}/api/stream/timeline`, auth)).json()
-const anchor = streamTime - (performance.now() - connectedAt) / 1000
-
-// any time after
-const audible = anchor + player.currentTime
-const mark = marks.findLast((m) => m.at <= audible)
-const position = mark ? mark.position + (audible - mark.at) : null
-```
-
-**Re-anchor after every reconnect**, since `currentTime` restarts. Browsers differ over whether `currentTime` starts at zero or at the stream's own granule position; deriving `anchor` this way works either way.
-
-`marks[].path` is a plain absolute local path, the same form beefweb reports for `%path%` and the same form `POST /api/tags` accepts, so the three join on equality. It is **not** the form the player stores: on a portable install foobar2000's canonical path is `file-relative://…`, and this route resolves it.
-
-**`GET /api/stream/listeners`** → `{ devices: [{ deviceId, name, format, connections, listeningFor }], connections, maxConnections, playerMuted }`.
-
-- **Count devices, never connections, anywhere a person is told how many people are listening.** One device is routinely two connections, or three across a reconnect. `connections` is what `maxConnections` bounds.
-- `name` is null when the device did not name itself, so a client can tell that from a name it chose. An anonymous connection is its own device: merging them would report two strangers as one person.
-- **`playerMuted` says a listener is what silenced the player, as opposed to a mute made by hand.** foobar2000 has no mute flag, since mute is the volume at its floor, so a client reading beefweb sees a fader at the bottom either way, and this is what says which sentence to put beside it.
-- **This is a roster and not a set of targets.** Audio cannot be sent to a device that is not already asking for it: starting playback in a browser needs a gesture on that browser, so there is nothing here to press.
-
-**`DELETE /api/stream/hold`** asks for the player to be audible alongside the listeners. There is no route that *takes* the hold. The component decides when they should be one, and decides again the moment everybody stops listening, so a reconnect does not undo the choice and the next session does not inherit it. Idempotent, and it says nothing about whether there was a hold to release.
-
-**`POST /api/stream/leave`** `{ deviceId }` says a device stopped on purpose. A closed socket does not say why it closed, and a handoff back to the player and a wireless dropout look identical from here while wanting opposite answers. Best effort and never required: a crash, a closed tab and a failed request all end the same way after the linger. It can only ever end its own device's linger.
-
-## Error shapes
-
-Every failing response carries at least `{ error }`. Refusals decided before the player is involved add `detail`, and a field-level refusal adds `field`. Error text never names anything on the player's disk: `detail` describes the request the client sent, so it is safe to show a person.
-
-| Family | Statuses |
-|---|---|
-| Tag writes | `400` malformed / missing path / unacceptable path / no fields · `403` field not allowed · `404` unknown track · `500` write failed · `504` player too slow · `503` unavailable |
-| Playlists | `400` refusal · `403` not ours · `404` no such playlist · `409` duplicate key or at the cap · `429` rate limited · `500` player refused · `504` player too slow · `503` unavailable |
-| Streaming | `401` no or expired ticket · `503` busy **or** not supported, and the `error` string is all that separates them, and a client should present the first as retryable |

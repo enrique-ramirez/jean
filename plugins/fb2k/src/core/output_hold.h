@@ -10,7 +10,7 @@
 
 namespace jean {
 
-// See CLAUDE.md, *Facts about the player*, for why muting here is safe and what foobar2000's
+// See ARCHITECTURE.md, *Facts about the player*, for why muting here is safe and what foobar2000's
 // mute button actually does.
 class OutputHold {
 public:

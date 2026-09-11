@@ -27,7 +27,7 @@ These are what stop the screen lying about a library it has never seen.
 
 ## The genre bars
 
-**A genre bar opens a genre route. It MUST NOT run a search.** The search index covers title, artist and album and **not genre**, so a genre name would look for tracks with those words in their titles and find almost none. The genre route is a filter over rows Jean already holds: no request and no playlist.
+**A genre bar opens a genre route. It MUST NOT run a search.** `src/features/genres/CLAUDE.md` has why a genre can never be a search; run one from here and a genre name looks for tracks with those words in their titles and finds almost none.
 
 **The bar's figure and the view behind it have to be the same set**, so the matcher and the counter are the same one. The e2e spec asserts the count against the grid's row count.
 

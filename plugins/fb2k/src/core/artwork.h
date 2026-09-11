@@ -23,12 +23,12 @@ constexpr size_t kMaxTrackAddressLength = 4096;
 std::string trackAddressRefusal(const std::string& track);
 
 // Strong, quoted, and a fold of the picture itself: nothing the player can be asked names
-// the file a cover came from until the cover has been loaded, for the reason CLAUDE.md,
+// the file a cover came from until the cover has been loaded, for the reason ARCHITECTURE.md,
 // *Facts about the player*, gives.
 std::string artworkTag(const std::string& picture);
 
 // The Content-Type these bytes may be published as, and empty for anything else. Never
-// image/svg+xml, for the reason CLAUDE.md, *Facts about the player*, gives.
+// image/svg+xml, for the reason ARCHITECTURE.md, *Facts about the player*, gives.
 std::string imageTypeOf(const std::string& bytes);
 
 struct ArtworkSource {

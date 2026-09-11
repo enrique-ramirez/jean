@@ -48,6 +48,6 @@ The phrase catalogue, how a translation reaches it, and the `Intl` formatters th
 
 **A leaf drawn once per row reads the module-level `translate()` instead.** `Stars` and `ActionMenu` are on the virtualised path, where a `useSyncExternalStore` per cell costs more than a label that updates on the next render is worth.
 
-**A keyboard shortcut is not translated and its mnemonic hint is computed.** `mnemonicOf` reads the underline off the label it is given, so hand it the *translated* one: a language whose word does not begin with the key then underlines nothing rather than advertising a key that does something else.
+**A keyboard shortcut is not translated, and `shared/keyboard/CLAUDE.md` has what follows from that for the label beside it.**
 
-**`fold()` already strips diacritics**, so a translated label stays findable in the command palette without anything extra. Fold the query too.
+**`fold()` already strips diacritics**, so a translated label stays findable in the command palette without anything extra.

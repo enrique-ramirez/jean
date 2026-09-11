@@ -25,7 +25,7 @@ struct AudienceMember {
 
 // Counted two ways: connections, which is what maxConcurrentStreams bounds, and devices,
 // which is what a client is shown (one device is routinely more than one connection; see
-// CLAUDE.md, *Facts about the player*, for why).
+// ARCHITECTURE.md, *Facts about the player*, for why).
 class Audience {
 public:
     using Clock = std::chrono::steady_clock;

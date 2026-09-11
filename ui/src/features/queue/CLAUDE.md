@@ -2,7 +2,7 @@
 
 What the user has explicitly queued, drawn as the stretch of time it occupies. The state, the mutations and the player behaviour behind them are in `src/domain/player/CLAUDE.md`.
 
-**The panel is a timetable, not a list of songs.** A rail runs from *now* down through everything that will play; the gap under a row grows with how long that track runs. **The arithmetic is exact rather than an estimate only while the queue stays exhaustive**, since foobar2000 takes the whole queue, in order, before returning to the playlist.
+**The panel is a timetable, not a list of songs.** A rail runs from *now* down through everything that will play; the gap under a row grows with how long that track runs. **The arithmetic is exact rather than an estimate only while the queue stays exhaustive**, which `../../shared/api/README.md` is the guarantee for.
 
 **Nothing in here is what is playing.** By the time a track is playing it has left the queue, so the head of the rail is the *current track's remaining time* instead, which is also what the first countdown is measured from.
 
@@ -38,6 +38,6 @@ The button is a drop target, and the only one outside the sidebar and the panel.
 
 **The rail segment is set inline and the sortable hook owns `transform` on the same element.** Compose the row's `style` *after* the spread; passing it before silently loses the segment.
 
-**An orphaned entry is drawn, not hidden.** When a queued track is removed from its playlist the entry stays, reporting `itemIndex: -1`, and its columns hold garbage rather than nothing. Hiding it would leave a gap in a numbering the player still honours, so it is drawn as the fault it is with a button to be rid of it. **Branch on the index, never on the columns.**
+**An orphaned entry is drawn, not hidden.** Hiding it would leave a gap in a numbering the player still honours, so it is drawn as the fault it is with a button to be rid of it. **Branch on the index, never on the columns**, for the reason `../../shared/api/README.md` gives.
 
 **The grip is for coarse pointers only.** A mouse drags the row itself, as the sortable hook does everywhere else. On touch the vertical axis already belongs to the scroller and the hold-then-drag gesture is spent on the context menu, so nothing but an explicit handle can claim it, and the remove button becomes permanent alongside it, since there is no hover to reveal either.

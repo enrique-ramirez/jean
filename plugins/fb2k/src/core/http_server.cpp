@@ -373,7 +373,7 @@ struct HttpServer::Impl {
                        "Authorization, Content-Type, If-None-Match");
         res.set_header("Access-Control-Max-Age", "600");
 
-        // See CLAUDE.md, *Facts about the player*, for why If-None-Match, ETag and
+        // See ARCHITECTURE.md, *Facts about the player*, for why If-None-Match, ETag and
         // Retry-After each need naming on one side of a CORS request or the other, and
         // Authorization, Content-Type and Cache-Control do not.
         res.set_header("Access-Control-Expose-Headers", "ETag, Retry-After");

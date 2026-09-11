@@ -19,7 +19,7 @@ Four things, each of which spells the path out for itself, so a move breaks all 
 CONTRACT_URL=http://<player-host>:8881/api CONTRACT_TOKEN=<token> pnpm test:contract
 ```
 
-`CONTRACT_URL` is the base url the spec's `servers` block describes, including the `/api` prefix. With no `CONTRACT_URL` the suite skips rather than fails, so it costs nothing in a run with no player in reach. With no `CONTRACT_TOKEN` only `getStatus` and `pair` run. The contract names a third credential-free route, `openStream`, but it still waits on a ticket only an authenticated call can mint, so it skips too without a token.
+`CONTRACT_URL` is the base url the spec's `servers` block describes, including the `/api` prefix. Neither variable is required: `test/conformance.test.ts` skips rather than fails without the first, so a run with no player in reach costs nothing, and skips each operation that needs a credential without the second.
 
 What one run does to the player, which is little but not nothing:
 
@@ -32,26 +32,19 @@ What one run does to the player, which is little but not nothing:
 
 ## What it checks
 
-One request per operation the spec publishes, in an order that lets a playlist be created before it is repointed and deleted, and a ticket be minted before the stream it opens. For each answer:
+One request per operation the spec publishes, in an order that lets a playlist be created before it is repointed and deleted, and a ticket be minted before the stream it opens. `test/conformance.test.ts` is what each answer is held to, and `shape.ts` with `test/spec.test.ts` beside it is what checking a document against a schema means.
 
-1. The implementation answered at all.
-2. The status is one the spec publishes for that operation.
-3. The document carries every key the schema declares as required, no key it does not declare, and no value of a type it does not publish.
-
-A response the spec declares no JSON body for, meaning `204` and the audio stream itself, is checked for its status alone.
+Two decisions behind those assertions are worth stating, because neither is readable from them.
 
 **A `503` is how an implementation says it cannot do a thing at all.** The contract already publishes that status for tag writing, for autoplaylists and for streaming, so a host that genuinely cannot do one of them answers `503` in the published shape, passes, and is reported as declining it. Everything else fails: an unpublished status, a document with the wrong keys, no answer. That is the whole of the difference between not implemented and implemented wrongly, and it is the contract's own vocabulary rather than a convention invented here.
 
-Request bodies come from the spec's own examples wherever it offers one. That is why the query an autoplaylist is created with is the player's language and not a dialect written into this suite: the contract says the player owns that language, so the suite has to take it from the contract.
+**Request bodies come from the spec's own examples wherever it offers one.** That is why the query an autoplaylist is created with is the player's language and not a dialect written into this suite: the contract says the player owns that language, so the suite has to take it from the contract.
 
 ## Claiming conformance
 
-An implementation conforms when this suite is green against it with a token set. In practice:
+An implementation conforms when this suite is green against it with a token set: every operation under `paths:` is routed, only the statuses that operation's `responses:` lists come back, and every document carries exactly the keys its schema declares.
 
-- Route every operation under `paths:`. One this host cannot do answers `503` with the error document the spec publishes for it, never a `404` and never silence.
-- Answer only statuses that operation's `responses:` lists.
-- Carry exactly the keys each schema declares, including in nested objects and array items.
-- Add an operation to the spec in the same change that implements it. `contract/test/spec.test.ts` fails when the spec publishes something the suite does not drive, so a new route has to be driven before it can be shipped.
+**Add an operation to the spec in the same change that implements it.** `test/spec.test.ts` fails when the spec publishes something the suite does not drive, so a new route has to be driven before it can be shipped.
 
 ## The generated client
 

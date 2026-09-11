@@ -86,12 +86,7 @@ test/
 demo/         the live demo -- the same fake, in a service worker
 ```
 
-1. **Imports run one way: `app → features → domain → shared`.** Biome's `noRestrictedImports` enforces it per tier, so a violation fails `pnpm lint`.
-2. Within `domain` the slices form a DAG (`library → track → player`). Sideways is allowed; a cycle is not.
-3. Import anything outside its own folder through the `@/` alias (`@/domain/track/fields`). Same-folder imports stay relative.
-4. A file whose home is unclear is usually in the wrong tier. Shared infrastructure is not a feature; a domain concept is not one view of it.
-
-[ARCHITECTURE.md](./ARCHITECTURE.md) is why those boundaries sit there, where state lives, and what the two optional-component seams are.
+**Imports run one way: `app → features → domain → shared`, and Biome fails the build on a violation.** [ARCHITECTURE.md](./ARCHITECTURE.md), *Tiers*, is what each tier may know about, the rest of the direction rules, and why the boundaries sit where they do; it also has where state lives and what the two optional-component seams are.
 
 That tree is `ui/`, and this file governs it. Three siblings share the repository: `site/` is the landing page, its own package, built by `pnpm site` and published to Pages with the demo underneath it; `contract/` is the API specification every plugin implements and the conformance suite that measures one; `plugins/fb2k/` is the foobar2000 component, which is C++ and has a `plugins/fb2k/CONTRIBUTING.md` of its own. Commands run from the repository root and the root `package.json` delegates them, so nothing here needs running from inside `ui/`.
 
@@ -144,7 +139,7 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 
 `src/` should be near zero. An exception is allowed, and should be rare enough that meeting one is a surprise. `.claude/agents/comment-reaper.md` runs that test with an agent that has not seen the file.
 
-**A lint suppression is code, not a comment, and carries its reason.** The `useExhaustiveDependencies` suppressions here are all one shape: a dependency that exists to *fire* an effect rather than to be read inside it. The rule cannot model that, so `lint:fix` would remove every one and break the feature silently. Read them before running it.
+**A lint suppression is code, not a comment, and carries its reason.** Read the `useExhaustiveDependencies` suppressions before running `lint:fix`, which would remove every one and break the feature silently; the root `CLAUDE.md` has the one shape they all take.
 
 ## 9. Documentation
 
@@ -184,6 +179,6 @@ React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual · Ta
 
 TypeScript is strict, in three scopes: `tsconfig.app.json` (the browser), `tsconfig.node.json` (the fake player, run by node stripping types, so imports name `.ts` explicitly and `erasableSyntaxOnly` makes an enum a compile error), and `tsconfig.test.json` (the specs). `pnpm build` typechecks before it bundles; Vite never does.
 
-`noUncheckedIndexedAccess` is off: every read of a dictionary-encoded column or a typed array of refs is indexed by construction, so it would demand a guard on each one and teach nothing.
+`noUncheckedIndexedAccess` is off, for the reason `src/domain/track/CLAUDE.md` gives.
 
-The unit tests run under node's own type stripping, with `test/alias.ts` loaded through `--import` as a module resolve hook. It teaches node three things the app relies on and node does not know: `@/` is Vite's alias for `src/`, imports there carry no extension, and the values Vite substitutes through `define` are globals rather than constants folded into a bundle. That is what lets a spec in `test/unit/` import a module out of `src/` directly, and it is why there is no bundler and no jsdom in the unit path.
+The unit tests run under node's own type stripping rather than a bundler, which is what `test/alias.ts` is for; `test/README.md` has what it teaches node and why there is no jsdom anywhere.

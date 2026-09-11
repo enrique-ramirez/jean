@@ -1,5 +1,6 @@
 import { type RefObject, useMemo, useRef } from "react";
 import { useActiveItem, useIsPlaying } from "@/domain/player/usePlayer";
+import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { librarySourceOf } from "@/domain/track/librarySource";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import { Mosaic } from "@/domain/track/Mosaic";
@@ -7,7 +8,6 @@ import { PlayActions } from "@/domain/track/PlayActions";
 import { trackRows } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
 import { TrackBrowser } from "@/domain/track/TrackBrowser";
-import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { useFinder } from "@/domain/track/useFinder";
 import { usePlaylistItems } from "@/domain/track/usePlaylistItems";
 import { ViewHeader } from "@/domain/track/ViewHeader";
@@ -48,7 +48,7 @@ export function PlaylistView({
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const isPlaying = useIsPlaying();
 	const activeItem = useActiveItem(playlist?.id);
-	const { hasPlayCounts } = useAvailableFields(columns);
+	const { hasPlayCounts } = useAvailableFields();
 
 	const finder = useFinder({
 		rows,

@@ -2,6 +2,8 @@
 
 #include "core/text.h"
 
+#include <cstdint>
+
 namespace jean {
 
 namespace {
@@ -12,21 +14,10 @@ constexpr uint64_t kFoldPrime = 1099511628211ULL;
 
 constexpr size_t kHexDigitsPerByte = 2;
 
-uint64_t foldBytes(uint64_t digest, const char* bytes, size_t length) {
-    for (size_t at = 0; at < length; ++at) {
-        digest ^= static_cast<unsigned char>(bytes[at]);
-        digest *= kFoldPrime;
-    }
-    return digest;
-}
-
-uint64_t foldText(uint64_t digest, const std::string& text) {
-    return foldBytes(digest, text.data(), text.size());
-}
-
-uint64_t foldNumber(uint64_t digest, uint64_t value) {
-    for (size_t byte = 0; byte < sizeof(value); ++byte) {
-        digest ^= (value >> (byte * 8U)) & 0xFFU;
+uint64_t fold(const std::string& bytes) {
+    uint64_t digest = kFoldBasis;
+    for (const char byte : bytes) {
+        digest ^= static_cast<unsigned char>(byte);
         digest *= kFoldPrime;
     }
     return digest;
@@ -85,20 +76,8 @@ std::string trackAddressRefusal(const std::string& track) {
     return {};
 }
 
-std::string artworkTag(const std::vector<ArtworkFile>& files) {
-    uint64_t digest = kFoldBasis;
-
-    for (const ArtworkFile& file : files) {
-        digest = foldText(digest, file.path);
-        digest = foldNumber(digest, file.size);
-        digest = foldNumber(digest, file.modified);
-    }
-
-    return quotedHex(digest);
-}
-
-std::string artworkTagOfBytes(const std::string& bytes) {
-    return quotedHex(foldText(kFoldBasis, bytes));
+std::string artworkTag(const std::string& picture) {
+    return quotedHex(fold(picture));
 }
 
 std::string imageTypeOf(const std::string& bytes) {

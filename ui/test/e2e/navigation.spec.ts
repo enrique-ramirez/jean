@@ -2,14 +2,11 @@ import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
-	expectSettlesAt,
 	nowPlayingScreen,
 	openLibrary,
 	openSidebar,
-	requestsTo,
 	scrollTo,
 	scrollTop,
-	searchFor,
 	sidebar,
 	test,
 	trackRow,
@@ -190,86 +187,7 @@ test.describe("the shelf that is playing", () => {
 	});
 });
 
-test.describe("the first run, with no library playlist", () => {
-	test.use({ withoutLibraryPlaylist: true, library: { supported: false } });
-
-	test("it names the exact strings to type", async ({ page }) => {
-		await page.goto("/#/search");
-
-		await expect(
-			page.getByRole("heading", {
-				level: 1,
-				name: /Point Jean at your library/,
-			}),
-		).toBeVisible();
-
-		// `getByText` is a case-insensitive substring match, so plain 'ALL' also
-		// finds the word "called" in the prose below.
-		await expect(
-			page.locator("code").filter({ hasText: /^ALL$/ }),
-		).toBeVisible();
-		await expect(
-			page.locator("code").filter({ hasText: /^#Jean Library$/ }),
-		).toBeVisible();
-
-		await expect(
-			page.getByText("Nothing here creates, clears or reorders a playlist."),
-		).toBeVisible();
-	});
-
-	test("a playlist merely called Library is not adopted as one", async ({
-		page,
-		player,
-	}) => {
-		expect(player.playlists.some((entry) => entry.title === "Library")).toBe(
-			true,
-		);
-
-		await page.goto("/#/search");
-		await expect(
-			page.getByRole("heading", {
-				level: 1,
-				name: /Point Jean at your library/,
-			}),
-		).toBeVisible();
-
-		await expect(page.getByRole("listitem")).toHaveCount(0);
-	});
-
-	test("it offers to rename the one you probably meant, and then search works", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/#/search");
-
-		await page
-			.getByRole("button", { name: /Rename it to #Jean Library/ })
-			.click();
-
-		await searchFor(page, "babasonicos");
-		await expect(trackRow(page, 0)).toBeAttached();
-
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "/playlists/add").length,
-			0,
-		);
-		expect(
-			player.playlists.some((entry) => entry.title === "#Jean Library"),
-		).toBe(true);
-		expect(player.playlists.some((entry) => entry.title === "Library")).toBe(
-			false,
-		);
-
-		await page.reload();
-		await searchFor(page, "babasonicos");
-		await expect(
-			page.getByRole("heading", { name: /Point Jean at your library/ }),
-		).toHaveCount(0);
-	});
-});
-
-test.describe("the library playlist is Jean's, not furniture", () => {
+test.describe("a #Jean playlist is Jean's, not furniture", () => {
 	test("it is not in the sidebar, not in the palette, and not somewhere a route lands", async ({
 		page,
 		player,

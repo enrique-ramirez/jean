@@ -4,9 +4,9 @@ import { useMemo } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import { albumsOf } from "@/domain/track/albums";
 import type { ArtistTracks } from "@/domain/track/artists";
+import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import {
 	columnReader,
-	EMPTY_COLUMNS,
 	FIELD,
 	readNumber,
 	readTimestamp,
@@ -21,7 +21,6 @@ import {
 	type TrackView,
 } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
-import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { Artist } from "@/features/now-playing/Artist";
 import { Trans } from "@/shared/i18n/Trans";
@@ -108,7 +107,7 @@ export function ArtistView({
 	}, [own]);
 
 	const history = useMemo(() => (own ? historyOf(own, t) : null), [own, t]);
-	const { hasPlayCounts } = useAvailableFields(own?.columns ?? EMPTY_COLUMNS);
+	const { hasPlayCounts } = useAvailableFields();
 
 	const held = (own?.length ?? 0) + (guest?.length ?? 0);
 	const allRefs = tracks.all;

@@ -133,20 +133,6 @@ test.describe("the settings dialog", () => {
 			).toBeVisible();
 			await expect(settingsDialog(page)).toBeHidden();
 		});
-
-		test.describe("with the library still to set up", () => {
-			test.use({ withoutLibraryPlaylist: true, library: { supported: false } });
-
-			test("it waits, because that is the one thing to do first", async ({
-				page,
-			}) => {
-				await page.goto("/");
-				await expect(
-					page.getByRole("heading", { level: 1, name: /Point Jean at your/ }),
-				).toBeVisible();
-				await expect(settingsDialog(page)).toBeHidden();
-			});
-		});
 	});
 
 	test("foo_jean comes first", async ({ page }) => {

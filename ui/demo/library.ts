@@ -65,10 +65,6 @@ export interface DemoLibrary {
 	artworkOf: (track: Track) => string | null;
 }
 
-// One playlist is called `Library` and is an ordinary playlist, sitting beside
-// the `#Jean Library` autoplaylist that is the real thing. The test fixture has
-// the same pair.
-//
 // The ids are not contiguous and not in index order, as on a real install.
 const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 	const of = (...slugs: string[]) =>
@@ -108,9 +104,6 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 			isCurrent: false,
 			items: of("metallica-metallica", "korn-issues"),
 		},
-		// Jean's own, hidden from the sidebar, and what the library resolves to on a
-		// player with no media library API. `mediaLibrary` fills it.
-		{ id: "p8", title: "#Jean Library", isCurrent: false, items: [] },
 		// An autoplaylist looks ordinary from the API, except that writes to it are
 		// accepted and ignored.
 		{

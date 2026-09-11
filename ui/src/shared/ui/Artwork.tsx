@@ -1,12 +1,7 @@
 import { DiscAlbum } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { classNames } from "@/shared/lib/classNames";
-import {
-	canCacheArtwork,
-	dropArtwork,
-	heldArtwork,
-	holdArtwork,
-} from "./artworkCache";
+import { dropArtwork, heldArtwork, holdArtwork } from "./artworkHandles";
 import {
 	type ArtworkOutcome,
 	outcomeFor,
@@ -17,6 +12,15 @@ import { whenNearViewport } from "./nearViewport";
 type ArtworkState = "waiting" | "granted" | ArtworkOutcome;
 
 import styles from "./Artwork.module.css";
+
+export interface ArtworkAccess {
+	origin: string;
+	headers: Record<string, string>;
+}
+
+const AccessContext = createContext<ArtworkAccess | null>(null);
+
+export const ArtworkAccessProvider = AccessContext.Provider;
 
 const knownState = (key: string | null): ArtworkState | null =>
 	key ? (outcomeFor(key) ?? null) : null;
@@ -29,14 +33,7 @@ export function Artwork({
 	className,
 	onSettled,
 }: {
-	// `undefined` is not known yet and holds the shimmer; `null` is there is no cover here and settles.
 	src: string | null | undefined;
-	// Which picture is meant, as against where to ask for it. beefweb addresses a cover by its position
-	// in a playlist, so the address stops meaning the same picture as soon as anything edits that
-	// playlist, and the same sleeve has a different address in every view. Everything that remembers a
-	// cover -- the store, the shared blob, whether it 404ed -- keys on this. Left out, the address is
-	// used, which is only safe where it cannot move: a path names a file, a playlist position does not.
-	// `null` says this picture cannot be identified *and* its address may move, so nothing is kept.
 	identity?: string | null;
 	size?: number | string;
 	alt?: string;
@@ -44,6 +41,7 @@ export function Artwork({
 	onSettled?: (outcome: ArtworkOutcome) => void;
 }) {
 	const key = identity === null ? null : (identity ?? src ?? null);
+	const access = useContext(AccessContext);
 	const [state, setState] = useState<ArtworkState>(
 		() => knownState(key) ?? "waiting",
 	);
@@ -69,7 +67,7 @@ export function Artwork({
 		setState(known ?? "waiting");
 		setHref(null);
 
-		if (!canCacheArtwork() || !key) {
+		if (!key) {
 			setHref(src);
 			if (!known) setState("granted");
 			return;
@@ -88,9 +86,26 @@ export function Artwork({
 			dropArtwork(key);
 		};
 
+		// A 404 is the only refusal that says anything about the cover rather than about the
+		// moment: `foo_jean` rate-limits covers and answers 503 while the library is rebuilding,
+		// and either of those remembered would leave a sleeve blank until the tab is reloaded.
+		let settled: ArtworkOutcome | undefined;
+
+		const read = async () => {
+			const response = await fetch(src, {
+				signal: abort.signal,
+				headers: access && src.startsWith(access.origin) ? access.headers : {},
+			});
+			if (!response.ok) {
+				if (response.status === 404) settled = "failed";
+				throw new Error(`no artwork: ${response.status}`);
+			}
+			return response.blob();
+		};
+
 		const resolve = async () => {
 			try {
-				const url = await holdArtwork(key, src, abort.signal);
+				const url = await holdArtwork(key, read);
 				claimed = true;
 
 				if (!live) {
@@ -102,21 +117,16 @@ export function Artwork({
 				setState((current) => (current === "ok" ? current : "granted"));
 			} catch {
 				if (!live) return;
-				release.current?.("failed");
+				release.current?.(settled);
 				release.current = null;
 				setState("failed");
 			}
 		};
 
-		let cancel = whenNearViewport(element, async () => {
-			const held = await heldArtwork(key);
-			if (held) claimed = true;
-			if (!live) {
-				dropClaim();
-				return;
-			}
-
+		let cancel = whenNearViewport(element, () => {
+			const held = heldArtwork(key);
 			if (held) {
+				claimed = true;
 				setHref(held);
 				setState((current) => (current === "ok" ? current : "granted"));
 				return;
@@ -134,7 +144,7 @@ export function Artwork({
 			release.current?.();
 			release.current = null;
 		};
-	}, [src, key]);
+	}, [src, key, access]);
 
 	const settle = (outcome: ArtworkOutcome) => {
 		release.current?.(outcome);

@@ -65,7 +65,7 @@ const summed = (album: AlbumDraft) => ({
 export type Album = ReturnType<typeof summed>;
 
 export interface CoveredAlbum extends Album {
-	artworkUrl: string;
+	artworkUrl: string | null;
 }
 
 function collect(

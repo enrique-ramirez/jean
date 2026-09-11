@@ -2,6 +2,7 @@ import type { IncomingMessage, Server } from "node:http";
 import { createServer as createHttpServer } from "node:http";
 
 import { handleAgent } from "./fooJean.ts";
+import type { ArtworkServer } from "./routes.ts";
 import type { createState } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
@@ -21,7 +22,10 @@ const readBody = (request: IncomingMessage): Promise<unknown> =>
 		});
 	});
 
-export function createFooJeanServer(current: () => FakeState): Server {
+export function createFooJeanServer(
+	current: () => FakeState,
+	artwork: ArtworkServer,
+): Server {
 	const server = createHttpServer(async (request, response) => {
 		const state = current();
 		const method = request.method ?? "GET";
@@ -35,6 +39,7 @@ export function createFooJeanServer(current: () => FakeState): Server {
 			headers: request.headers,
 			body,
 			response,
+			artwork,
 		});
 	});
 

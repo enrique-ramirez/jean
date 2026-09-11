@@ -541,24 +541,25 @@ test.describe("a player that will not let Jean make playlists", () => {
 		},
 	});
 
-	test("results still play, in place, and say nothing about shuffle", async ({
+	// A library row has no playlist to be played from until Jean makes one, so a
+	// player that refuses playlist changes gets no playback from a result and no
+	// button offering it either.
+	test("results say nothing about playing, and nothing 403s", async ({
 		page,
 		player,
 	}) => {
 		await search(page, QUERY.text);
 
-		await expect(
-			viewHeader(page).getByRole("button", { name: "Shuffle" }),
-		).toHaveCount(0);
+		const header = viewHeader(page);
+		await expect(header.getByRole("button", { name: "Shuffle" })).toHaveCount(
+			0,
+		);
+		await expect(header.getByRole("button", { name: "Play" })).toHaveCount(0);
 
 		await trackRow(page, 2).dblclick();
 
-		const libraryId = player.playlists.find(
-			(entry) => entry.title === "#Jean Library",
-		)!.id;
-		await expect.poll(() => playedFrom(player)?.plref).toBe(libraryId);
-		expect(playedFrom(player)!.index).toBe(2);
 		await expectSettlesAt(player, () => scratchOf(player), undefined);
+		expect(playedFrom(player)).toBe(null);
 	});
 });
 
@@ -585,12 +586,10 @@ test.describe("a player that reports no permissions at all", () => {
 test.describe("marking the row that is playing", () => {
 	// The library source identifies a row by `(path, subsong)`, which playlist
 	// items do not have -- so only it can mark a track playing from a playlist
-	// Jean is not looking at. Index is identity in the autoplaylist fallback, and
-	// an index only means anything inside its own playlist.
+	// Jean is not looking at.
 	test("a track playing from another playlist is still marked in the results", async ({
 		page,
 		player,
-		hasLibraryApi,
 	}) => {
 		// Rock en Español holds Los Calientes too, and is neither the library nor
 		// the scratch.
@@ -607,11 +606,6 @@ test.describe("marking the row that is playing", () => {
 		await expectSettlesAt(player, () => scratchOf(player), undefined);
 
 		const marked = page.locator('[role="row"][data-active="true"]');
-		if (!hasLibraryApi) {
-			// Without paths there is nothing to match on, so the row stays unmarked.
-			await expect(marked).toHaveCount(0);
-			return;
-		}
 		await expect(marked).toHaveCount(1);
 		await expect(marked).toContainText("Los Calientes");
 	});

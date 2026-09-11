@@ -40,7 +40,7 @@ const elapsedSeconds = async (page: Page) => {
 };
 
 const streamRequests = (player: FakePlayer) =>
-	player.requests.filter((entry) => entry.path === "/api/stream");
+	player.requests.filter((entry) => entry.path.split("?")[0] === "/api/stream");
 
 const ticketRequests = (player: FakePlayer) =>
 	requestsTo(player, "/api/stream/ticket").filter(
@@ -174,8 +174,7 @@ test.describe("listening on this device", () => {
 		await startListening(page);
 
 		// The server's order is the quality order and the client only excludes, so
-		// Chromium, which plays both, asks for the first. Read off the fake's own
-		// log: `requests` records paths without their query.
+		// Chromium, which plays both, asks for the first.
 		await expect.poll(() => player.streamFormats).toEqual(["opus"]);
 	});
 
@@ -383,6 +382,8 @@ test.describe("the picker on the now-playing screen", () => {
 });
 
 test.describe("with no component at all", () => {
+	test.use({ fooJean: null, fooJeanToken: null });
+
 	test("is exactly the app it was before", async ({ page }) => {
 		await page.goto("/");
 		await expect(statusBar(page)).toBeVisible();

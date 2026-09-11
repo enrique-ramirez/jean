@@ -37,17 +37,12 @@ export function usePlaySet({
 				refs,
 				source: library.source,
 			});
-			if (id) return playItem(id, position);
-
-			if (library.playlist)
-				return playItem(library.playlist.id, refs[position]);
-			return null;
+			return id ? playItem(id, position) : null;
 		},
-		[scratch, library.source, library.playlist],
+		[scratch, library.source],
 	);
 
-	const canPlaySets =
-		canChangePlaylists(permissions) || Boolean(library.playlist);
+	const canPlaySets = canChangePlaylists(permissions);
 
 	return { play, scratch, canPlaySets };
 }

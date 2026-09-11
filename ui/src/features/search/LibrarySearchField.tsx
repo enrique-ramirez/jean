@@ -48,7 +48,7 @@ export function LibrarySearchField({
 	} = search;
 	const [active, setActive] = useState(-1);
 
-	const isShowing = isOpen && hasDraft && !library.needsSetup;
+	const isShowing = isOpen && hasDraft;
 	const hasOptions = isShowing && suggestions.length > 0;
 	const anchor = useDismissable<HTMLDivElement>(
 		isShowing,
@@ -136,9 +136,7 @@ export function LibrarySearchField({
 					onLeave();
 				}}
 				onKeyDown={onKeyDown}
-				placeholder={t(
-					library.needsSetup ? "search.setUp" : "search.yourLibrary",
-				)}
+				placeholder={t("search.yourLibrary")}
 				aria-label={t("search.yourLibrary")}
 				role="combobox"
 				aria-expanded={isShowing}

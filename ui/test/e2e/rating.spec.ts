@@ -4,11 +4,15 @@ import { expect, inSequence, openLibrary, test, trackRow } from "./fixtures.ts";
 // Every convention a rating tag turns up in: the field declares no scale, and
 // taggers disagree about what its numbers mean.
 //
-// Dropping the play-count field is what puts Rating on screen on a phone: the
-// compact layout shows two optional columns, and Rating is third behind Time
-// and Plays.
+// The compact layout draws two optional columns and Rating is last of the three,
+// so the column set is pinned rather than left to whatever the player resolves.
+const SHOWING_RATINGS = { "jean.columns": ["duration", "rating"] };
+
 const RATED = {
-	withoutFields: ["%lastfm_play_count%"],
+	settings: SHOWING_RATINGS,
+	// Writing off, so the stars stay the read-only control these read through.
+	// `rating-writes.spec.ts` covers the writable one.
+	fooJean: { allowedFields: [] },
 	retagged: {
 		"Los Calientes": { "%rating%": "5" },
 		Deléctrico: { "%rating%": "3.5" },
@@ -59,7 +63,7 @@ test.describe("reading a rating", () => {
 });
 
 test.describe("a library with no ratings at all", () => {
-	test.use({ withoutFields: ["%lastfm_play_count%"] });
+	test.use({ settings: SHOWING_RATINGS, fooJean: { allowedFields: [] } });
 
 	test("still gets the column, drawn quietly", async ({ page }) => {
 		await openLibrary(page);

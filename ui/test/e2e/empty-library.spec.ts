@@ -127,11 +127,8 @@ test.describe("a library read that fails", () => {
 		// The player answering an error is not the same as the player having
 		// nothing: "Nothing to show" over a failed read is Jean telling the user
 		// their library is empty when it is not.
-		await page.route("**/api/library/items**", (route) =>
-			route.fulfill({ status: 500, body: "no" }),
-		);
-		await page.route("**/api/playlists/*/items/**", (route) =>
-			route.fulfill({ status: 500, body: "no" }),
+		await page.route("**/api/library/export**", (route) =>
+			route.fulfill({ status: 500, body: '{"error":"no"}' }),
 		);
 
 		await page.goto("/");

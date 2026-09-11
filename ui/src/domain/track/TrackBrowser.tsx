@@ -25,6 +25,7 @@ import { Menu } from "@/shared/ui/Menu";
 import { Segmented } from "@/shared/ui/Segmented";
 import { ColumnsMenu } from "./ColumnsMenu";
 import { DEFAULT_COLUMN_IDS, resolveColumns } from "./columns";
+import { useAvailableFields } from "./fieldAvailability";
 import {
 	useCursorFollowsPlayback,
 	usePlaybackFollowsCursor,
@@ -44,7 +45,6 @@ import { setRatingTarget } from "./ratingTarget";
 import styles from "./TrackBrowser.module.css";
 import { TrackList } from "./TrackList";
 import { targetsFrom } from "./trackTargets";
-import { useAvailableFields } from "./useAvailableFields";
 import { useTrackContextMenu } from "./useTrackContextMenu";
 import { useTrackDragSource } from "./useTrackDragSource";
 import { useTrackSelection } from "./useTrackSelection";
@@ -137,7 +137,7 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 	const lastDirection = useRef<"up" | "down">("down");
 
 	const selection = useTrackSelection(rows.length, viewKey);
-	const { isAvailable, hasPlayCounts } = useAvailableFields(rows.columns);
+	const { isAvailable, hasPlayCounts } = useAvailableFields();
 
 	const dismissHeatInfo = useCallback(() => {
 		setIsHeatInfoOpen(false);

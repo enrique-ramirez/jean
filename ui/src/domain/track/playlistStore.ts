@@ -1,4 +1,4 @@
-import { fetchLibraryItems, fetchPlaylistItems } from "@/shared/api/beefweb";
+import { fetchPlaylistItems } from "@/shared/api/beefweb";
 import {
 	fetchLibrary,
 	fetchLibraryChanges,
@@ -11,6 +11,7 @@ import type { TrackColumns } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 import { type Subscribers, subscribers } from "@/shared/lib/store";
+import { recordFieldAvailability } from "./fieldAvailability";
 import { EMPTY_COLUMNS, TRACK_EXPRESSIONS } from "./fields";
 import { deriveIntensity, INTENSITY_FIELDS } from "./intensity";
 import {
@@ -19,10 +20,9 @@ import {
 	someFieldMoved,
 } from "./libraryColumns";
 import { librarySnapshotOf, patchedColumns } from "./librarySnapshot";
-import { type PathCollector, type PathTable, pathCollector } from "./pathTable";
+import type { PathTable } from "./pathTable";
 
-// `paths` and `subsongs` are parallel to the columns and present only on the media library. Null
-// rather than empty on a playlist, so reaching for them on the wrong source fails loudly.
+// Null rather than empty on a playlist, so reaching for them on the wrong source fails loudly.
 export interface PlaylistSnapshot {
 	columns: LibraryColumns;
 	structure: number;
@@ -37,15 +37,9 @@ export interface PlaylistSnapshot {
 	playedCount: number;
 }
 
-type LoadSource =
-	| { kind: "playlist"; playlistId: string }
-	| { kind: "library" };
-
 interface Chunk {
 	rows: TrackColumns[];
 	totalCount: number;
-	paths: string[] | null;
-	subsongs: number[] | null;
 }
 
 interface Feed {
@@ -64,10 +58,9 @@ interface Entry {
 	feed: Feed | null;
 }
 
-const STRATEGY = {
-	playlist: { firstChunk: 2500, chunkSize: 7500, concurrency: 4 },
-	library: { firstChunk: 500, chunkSize: Infinity, concurrency: 1 },
-};
+const FIRST_CHUNK = 2500;
+const CHUNK_SIZE = 7500;
+const CONCURRENCY = 4;
 
 const COALESCE_MS = 250;
 
@@ -92,49 +85,25 @@ export const EMPTY_PLAYLIST: PlaylistSnapshot = Object.freeze({
 export const playlistKey = (playlistId: string, itemCount: number) =>
 	`${playlistId}:${itemCount}`;
 
-export const libraryKey = (itemCount: number) => `library:${itemCount}`;
-
 export const componentLibraryKey = (origin: string) => `component:${origin}`;
 
 export const generationKey = (key: string, structure: number) =>
 	`${key}:s${structure}`;
 
 const fetchChunk = async (
-	source: LoadSource,
+	playlistId: string,
 	offset: number,
 	count: number,
 	signal: AbortSignal,
 ): Promise<Chunk> => {
-	if (source.kind === "playlist") {
-		const chunk = await fetchPlaylistItems(
-			source.playlistId,
-			offset,
-			count,
-			TRACK_EXPRESSIONS,
-			{
-				signal,
-			},
-		);
-		return {
-			rows: chunk.rows,
-			totalCount: chunk.totalCount,
-			paths: null,
-			subsongs: null,
-		};
-	}
-
-	const chunk = await fetchLibraryItems({
-		columns: TRACK_EXPRESSIONS,
+	const chunk = await fetchPlaylistItems(
+		playlistId,
 		offset,
 		count,
-		signal,
-	});
-	return {
-		rows: chunk.items.map((item) => item.columns),
-		totalCount: chunk.totalCount,
-		paths: chunk.items.map((item) => item.path),
-		subsongs: chunk.items.map((item) => item.subsong ?? 0),
-	};
+		TRACK_EXPRESSIONS,
+		{ signal },
+	);
+	return { rows: chunk.rows, totalCount: chunk.totalCount };
 };
 
 function entryFor(key: string): Entry {
@@ -185,20 +154,13 @@ function evictIdle(currentKey: string) {
 		});
 }
 
-async function load(entry: Entry, source: LoadSource) {
-	const { firstChunk, chunkSize, concurrency } = STRATEGY[source.kind];
-	const isLibrary = source.kind === "library";
-
+async function load(entry: Entry, playlistId: string) {
 	const collector = columnCollector(TRACK_EXPRESSIONS.length);
-	const paths: PathCollector | null = isLibrary ? pathCollector() : null;
-	const subsongs: number[] | null = isLibrary ? [] : null;
 
 	const publish = (totalCount: number, isLoading: boolean) => {
 		const columns = collector.table();
 		emit(entry, {
 			columns,
-			paths: paths?.table() ?? null,
-			subsongs: subsongs ? Int32Array.from(subsongs) : null,
 			loaded: columns.trackCount,
 			total: totalCount,
 			isLoading,
@@ -227,26 +189,19 @@ async function load(entry: Entry, source: LoadSource) {
 		deferred = null;
 	};
 
-	const absorb = (chunk: Chunk) => {
-		collector.add(chunk.rows);
-		if (paths && chunk.paths) for (const path of chunk.paths) paths.add(path);
-		if (subsongs && chunk.subsongs) subsongs.push(...chunk.subsongs);
-	};
-
 	try {
 		const signal = (entry.controller as AbortController).signal;
-		const first = await fetchChunk(source, 0, firstChunk, signal);
-		absorb(first);
+		const first = await fetchChunk(playlistId, 0, FIRST_CHUNK, signal);
+		collector.add(first.rows);
 
 		const total = first.totalCount;
 		publish(total, collector.count() < total);
 		if (collector.count() >= total) return;
 
 		const held = collector.count();
-		const step = Number.isFinite(chunkSize) ? chunkSize : total - held;
 		const offsets = Array.from(
-			{ length: Math.ceil((total - held) / step) },
-			(_, at) => held + at * step,
+			{ length: Math.ceil((total - held) / CHUNK_SIZE) },
+			(_, at) => held + at * CHUNK_SIZE,
 		);
 
 		const pending = new Map<number, Chunk>();
@@ -255,7 +210,7 @@ async function load(entry: Entry, source: LoadSource) {
 
 		const drainInOrder = () => {
 			while (appended < offsets.length && pending.has(offsets[appended])) {
-				absorb(pending.get(offsets[appended]) as Chunk);
+				collector.add((pending.get(offsets[appended]) as Chunk).rows);
 				pending.delete(offsets[appended]);
 				appended += 1;
 			}
@@ -264,14 +219,17 @@ async function load(entry: Entry, source: LoadSource) {
 		const worker = async () => {
 			while (queue.length > 0) {
 				const offset = queue.shift() as number;
-				pending.set(offset, await fetchChunk(source, offset, step, signal));
+				pending.set(
+					offset,
+					await fetchChunk(playlistId, offset, CHUNK_SIZE, signal),
+				);
 				drainInOrder();
 				publishSoon(total, collector.count() < total);
 			}
 		};
 
 		await Promise.all(
-			Array.from({ length: Math.min(concurrency, queue.length) }, worker),
+			Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker),
 		);
 
 		// The list can be shorter than it claimed if it was edited mid-load, so loading ends here rather
@@ -335,6 +293,7 @@ async function loadSnapshot(entry: Entry, origin: string, token: string) {
 			isChecking: false,
 		};
 
+		recordFieldAvailability(columns);
 		emit(entry, {
 			columns,
 			structure: library.structure,
@@ -374,6 +333,7 @@ function applyDelta(entry: Entry, feed: Feed, delta: JlibDelta) {
 	if (!columns) return false;
 
 	feed.revision = delta.revision;
+	recordFieldAvailability(columns);
 	emit(entry, {
 		columns,
 		...(someFieldMoved(INTENSITY_FIELDS, held, columns)
@@ -412,12 +372,7 @@ export async function recheckComponentLibrary(origin: string, token: string) {
 
 export const loadPlaylist = (playlistId: string, itemCount: number) =>
 	begin(playlistKey(playlistId, itemCount), itemCount, itemCount > 0, (entry) =>
-		load(entry, { kind: "playlist", playlistId }),
-	);
-
-export const loadLibrary = (itemCount: number) =>
-	begin(libraryKey(itemCount), itemCount, itemCount > 0, (entry) =>
-		load(entry, { kind: "library" }),
+		load(entry, playlistId),
 	);
 
 export const loadComponentLibrary = (origin: string, token: string) =>

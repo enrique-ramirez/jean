@@ -1,9 +1,7 @@
 import { useMemo } from "react";
-import { LibrarySetup } from "@/domain/library/LibrarySetup";
 import type { Library } from "@/domain/library/useLibrary";
 import { albumsOf, type CoveredAlbum } from "@/domain/track/albums";
 import { trackRows } from "@/domain/track/project";
-import type { PlaylistInfo } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { GenreBars } from "./GenreBars";
 import { HomeHeader } from "./HomeHeader";
@@ -21,7 +19,6 @@ const TOP_TRACKS = 10;
 
 export function HomeView({
 	library,
-	playlists,
 	onPlayAlbum,
 	onPlayTrack,
 	onPlayEverything,
@@ -31,7 +28,6 @@ export function HomeView({
 	canShuffle,
 }: {
 	library: Library;
-	playlists: PlaylistInfo[];
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 	onPlayTrack: (ref: number) => void;
 	onPlayEverything: () => void;
@@ -62,10 +58,6 @@ export function HomeView({
 		() => topTracksOf(rows, TOP_TRACKS, library.source.artworkUrl, t),
 		[rows, library.source, t],
 	);
-
-	if (library.needsSetup) {
-		return <LibrarySetup playlists={playlists} />;
-	}
 
 	if (library.error) {
 		return (

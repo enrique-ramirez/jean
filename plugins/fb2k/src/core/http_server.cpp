@@ -172,12 +172,14 @@ LibraryRequest missing(LibraryRefusal refusal, std::string detail) {
     return request;
 }
 
+constexpr char kKeepAndRevalidate[] = "no-cache, must-revalidate";
+
 void revalidateAlways(httplib::Response& res, const std::string& tag) {
-    res.set_header("Cache-Control", "no-cache");
+    res.set_header("Cache-Control", kKeepAndRevalidate);
     res.set_header("ETag", tag);
 }
 
-void mustRevalidate(httplib::Response& res, const std::string& tag) {
+void revalidatePerEncoding(httplib::Response& res, const std::string& tag) {
     revalidateAlways(res, tag);
     res.set_header("Vary", "Accept-Encoding");
 }
@@ -190,7 +192,7 @@ void sendIfChanged(const httplib::Request& req, httplib::Response& res, const st
     const auto tag = quoted(name + (offered ? kGzipSuffix : kIdentitySuffix));
 
     if (alreadyHolds(req, tag)) {
-        mustRevalidate(res, tag);
+        revalidatePerEncoding(res, tag);
         res.status = 304;
         return;
     }
@@ -203,7 +205,7 @@ void sendIfChanged(const httplib::Request& req, httplib::Response& res, const st
 
     auto packed = offered ? gzipped(body) : std::optional<std::string>();
 
-    mustRevalidate(res, packed ? tag : quoted(name + kIdentitySuffix));
+    revalidatePerEncoding(res, packed ? tag : quoted(name + kIdentitySuffix));
     res.status = 200;
 
     if (!packed) {
@@ -662,7 +664,7 @@ struct HttpServer::Impl {
                 return;
 
             declare(columns);
-            player.refreshLibrary(columns);
+            player.refreshLibrary(columns, RebuildReason::columnsDeclared);
         }
 
         respond(res, 202, libraryDocument(state));
@@ -747,7 +749,8 @@ struct HttpServer::Impl {
             const auto state = library->state();
             const auto columns = declaration();
 
-            player.refreshLibrary(columns.empty() ? state.columns : columns);
+            player.refreshLibrary(columns.empty() ? state.columns : columns,
+                                  RebuildReason::dataChanged);
             respond(res, 202, libraryDocument(state));
         });
     }
@@ -769,18 +772,12 @@ struct HttpServer::Impl {
             return;
         }
 
-        const std::string picture = source.read();
-        if (picture.empty()) {
-            respond(res, 404, errorDocument(kNoArtworkForTrack));
-            return;
-        }
-
-        if (picture.size() > kMaxArtworkBytes) {
+        if (source.picture.size() > kMaxArtworkBytes) {
             respond(res, 413, errorDocument(kArtworkTooLarge));
             return;
         }
 
-        const auto type = imageTypeOf(picture);
+        const auto type = imageTypeOf(source.picture);
         if (type.empty()) {
             respond(res, 404, errorDocument(kUnpublishableArtwork));
             return;
@@ -788,7 +785,7 @@ struct HttpServer::Impl {
 
         revalidateAlways(res, source.tag);
         res.status = 200;
-        res.set_content(picture, type);
+        res.set_content(source.picture, type);
     }
 
     void addArtworkRoute() {
@@ -809,7 +806,7 @@ struct HttpServer::Impl {
                 return;
 
             const auto source = player.readArtwork(track);
-            if (!source.read) {
+            if (source.picture.empty()) {
                 respond(res, 404, errorDocument(kNoArtworkForTrack));
                 return;
             }

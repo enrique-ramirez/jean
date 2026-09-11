@@ -16,6 +16,10 @@ const pairButton = (page: Page) =>
 const pairRequests = (player: FakePlayer) =>
 	requestsTo(player, "/api/pair").filter((entry) => entry.method === "POST");
 
+// Pairing is what a device does before it holds a token, so none of this is
+// reachable from the suite's paired default.
+test.use({ fooJeanToken: null });
+
 test.describe("pairing a device", () => {
 	test.use({ fooJean: { pairingOpen: true } });
 
@@ -165,6 +169,8 @@ test.describe("too many attempts", () => {
 });
 
 test.describe("with no component at all", () => {
+	test.use({ fooJean: null });
+
 	test("there is nothing to pair with and nothing is offered", async ({
 		page,
 	}) => {

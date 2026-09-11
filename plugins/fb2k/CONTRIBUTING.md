@@ -78,7 +78,7 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 | Everything in `src/fb2k/` | compiled on the build machine. `scripts/verify-tag-write.ps1`, `verify-stream.ps1` and `verify-listeners.ps1` drive three of its paths against a real player |
 | A `setsockopt` failure, and the refusal to listen that follows | neither can be induced from a test. The code path is compiled on both platforms and has never run |
 | `MainThreadQueue::close()`, and abandoning work at shutdown | measured on the player: quitting with requests in flight went from **32.26 s** to **0.62 s**, and the log says how many calls it gave up |
-| The AAC encoder | Windows-only and unreachable from the suite at all. `verify-stream.ps1` drives it; `_todo/sta-mta-spike.md` is the one open question about it |
+| The AAC encoder | Windows-only and unreachable from the suite at all. `verify-stream.ps1` drives it |
 | The preferences page's `GWLP_USERDATA` teardown | opening and closing **Preferences → Tools → Jean** is the whole test |
 | `notOurs`, the guard refusing to touch a playlist this component did not create | no live coverage. `plugins/fb2k/CLAUDE.md` says to exercise it against a playlist created for the purpose, never a real one |
 

@@ -6,11 +6,11 @@ import {
 	fetchLibraryNodes,
 	fetchPlaylistItems,
 	LIBRARY_SORT,
-	libraryArtworkUrl,
 	libraryPathMatcher,
 	removePlaylistItems,
 	sortPlaylistItems,
 } from "@/shared/api/beefweb";
+import { libraryArtworkUrl } from "@/shared/api/fooJean";
 import type {
 	PlaybackPosition,
 	TrackColumns,
@@ -39,7 +39,7 @@ export interface LibrarySource {
 	// remove-by-range, and a cached count is stale from the first write on.
 	needsHeldCount: boolean;
 
-	artworkUrl: (ref: number) => string;
+	artworkUrl: (ref: number) => string | null;
 	// Null when the ref no longer names the row it was read from: indices move, and the failure mode
 	// is writing a tag to somebody else's file.
 	identify: (
@@ -62,7 +62,12 @@ export interface LibrarySource {
 }
 
 export type LibrarySourceOptions =
-	| { kind: "library"; paths: PathTable; subsongs: Int32Array }
+	| {
+			kind: "library";
+			paths: PathTable;
+			subsongs: Int32Array;
+			artworkOrigin: string | null;
+	  }
 	| { kind: "playlist"; playlistId: string };
 
 interface ItemChunk {
@@ -75,11 +80,9 @@ interface ItemChunk {
 const itemsFor = (paths: PathTable, subsongs: Int32Array, refs: Refs) =>
 	Array.from(refs, (ref) => ({ path: paths.at(ref), subsong: subsongs[ref] }));
 
-// TODO: fold into the endpoint migration rather than patch here. foobar2000 sorts by the path it is
-// given, and this asks it for `%path%`, which is absolute, while an ordinal is ordered by the
-// library-relative path. One root makes the two agree; more than one does not, and then a position
-// computed from a row addresses a different track. Deciding what an ordinal is ordered by is the same
-// question as which component fills the playlist, so it is settled when filling moves off beefweb.
+// foobar2000 sorts by the path it is given, and this asks it for `%path%`, which is absolute, while
+// an ordinal is ordered by the library-relative path. `ARCHITECTURE.md`, *Absences that shape the
+// code*, is what that costs on a library with more than one root.
 const sortToLibraryOrder = (targetId: string) =>
 	sortPlaylistItems(targetId, LIBRARY_SORT);
 
@@ -170,15 +173,17 @@ const queueViaHolding =
 const fromMediaLibrary = ({
 	paths,
 	subsongs,
+	artworkOrigin,
 }: {
 	paths: PathTable;
 	subsongs: Int32Array;
+	artworkOrigin: string | null;
 }): LibrarySource => ({
 	kind: "library",
 	playlistId: null,
 	needsHeldCount: false,
 
-	artworkUrl: (ref: number) => libraryArtworkUrl(paths.at(ref), subsongs[ref]),
+	artworkUrl: (ref: number) => libraryArtworkUrl(artworkOrigin, paths.at(ref)),
 
 	identify: async (ref: number, _row: TrackColumns, columns: string[] = []) => {
 		const held = paths.at(ref);

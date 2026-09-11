@@ -1,8 +1,6 @@
 import { translate } from "@/shared/i18n/locale";
 import type {
 	AddFromLibraryBody,
-	LibraryInfo,
-	LibraryItemsResponse,
 	LibraryNodesResponse,
 	NowPlayingTrack,
 	PlayerState,
@@ -112,40 +110,7 @@ export async function fetchPlaylistItems(
 export const artworkUrl = (playlistId: string, index: number) =>
 	`/api/artwork/${id(playlistId)}/${index}`;
 
-export async function fetchLibraryInfo(): Promise<LibraryInfo> {
-	const response = await fetch("/api/library/info");
-	if (response.status === 404 || response.status === 501) {
-		return { supported: false, enabled: false, itemCount: 0 };
-	}
-	if (!response.ok)
-		throw new Error(`GET /api/library/info failed: ${response.status}`);
-	const { library } = (await response.json()) as { library: LibraryInfo };
-	return library;
-}
-
 export const LIBRARY_SORT = "%path%";
-
-export async function fetchLibraryItems({
-	columns,
-	offset,
-	count,
-	signal,
-}: {
-	columns: string[];
-	offset?: number;
-	count?: number | null;
-	signal?: AbortSignal;
-}): Promise<LibraryItemsResponse> {
-	const range = count == null ? "" : `&range=${offset}:${count}`;
-	const response = await request(
-		`/api/library/items?columns=${encode(columns)}&sort=${encodeURIComponent(LIBRARY_SORT)}${range}`,
-		{ signal },
-	);
-	const { libraryItems } = (await response.json()) as {
-		libraryItems: LibraryItemsResponse;
-	};
-	return libraryItems;
-}
 
 // One folder of the library tree, which is how a client reaches one track by a path it holds. See
 // README.md: an ordinal is not an offset into `/library/items`.
@@ -161,10 +126,6 @@ export async function fetchLibraryNodes(
 	};
 	return libraryNodes;
 }
-
-export const libraryArtworkUrl = (path: string, subsong?: number) =>
-	`/api/artwork/library?path=${encodeURIComponent(path)}` +
-	(subsong ? `&subsong=${subsong}` : "");
 
 export const addFromLibrary = (playlistId: string, body: AddFromLibraryBody) =>
 	post(`/api/playlists/${id(playlistId)}/items/add-from-library`, body);

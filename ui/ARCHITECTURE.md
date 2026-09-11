@@ -2,7 +2,7 @@
 
 For someone about to build on Jean. Structure, boundaries and contracts: the things a file listing does not tell you. [CONTRIBUTING.md](./CONTRIBUTING.md) is how to write the code; [src/shared/api/README.md](src/shared/api/README.md) is what the player answers.
 
-Jean is a Vite single-page app with no backend of its own. React 19, TypeScript, TanStack Query, TanStack Virtual, TanStack Hotkeys, CSS Modules. Every request it makes is a root-relative `/api/…` path, so the browser resolves it against whatever origin served the page: `foo_jean` in a build, the Vite proxy in development. **Jean is served same-origin with the API it talks to**, which is what keeps a token on a same-origin fetch and keeps every request out of a CORS preflight.
+Jean is a Vite single-page app with no backend of its own. React 19, TypeScript, TanStack Query, TanStack Virtual, TanStack Hotkeys, CSS Modules. **Jean is served same-origin with beefweb**, whose requests are all root-relative `/api/…` paths the browser resolves against whatever origin served the page: beefweb in a build, the Vite proxy in development. `foo_jean` listens on a port of its own, so the library, its covers and every tag write are cross-origin and carry a bearer token through a preflight the component answers with a 600 second `Access-Control-Max-Age`.
 
 ## The shape of it
 
@@ -62,7 +62,6 @@ Two mechanisms, and the split is not arbitrary.
 | `["player"]` | player state and `activeItem` | SSE |
 | `["playlists"]` | the playlist list | SSE |
 | `["playQueue"]` | the whole queue | SSE |
-| `["library","info"]` | `supported` / `enabled` / `itemCount` | window focus. **There is no library event on the stream** |
 | `["fooJean", token]` | the discovery result | backoff while retryable, focus otherwise |
 | `["fooJeanPlaylists", …]` | which playlists the player fills itself | when beefweb's playlist list changes |
 | `["artistInfo", artist]` | MusicBrainz and Wikipedia | never; off unless switched on in Settings |
@@ -85,6 +84,10 @@ It is a flat array rather than a tree for three reasons. beefweb answers ranges,
 
 Chunking is a playlist read's problem: it is almost all round trip, so the first chunk is small enough to paint from and the rest are large and concurrent. The library does not arrive that way. `foo_jean` answers it as one columnar snapshot, dictionary-encoded per column, with a per-column delta behind it, so the schedule is one request and then patches rather than a queue of reads.
 
+**The export request is Jean's column declaration, so the first ask may be a `202`.** `shared/api/fooJeanLibrary.ts` names the whole set on every request, and a `202` means the component holds no snapshot of that set and has started one, so the loader polls `GET /api/library` with a backoff until that set is ready and asks again, giving up at a build deadline. Every failure comes back as a named reason rather than a throw, so a view draws a state for an unreachable component, an unauthorised one, a refusal, a library over the component's ceiling and a build that never finished, and a `429` waits out the component's own `Retry-After`.
+
+**`shared/api/jlib.ts` decodes without copying.** The ids are typed-array views over the bytes as they arrived, which is what the format's four-byte alignment is for, and a dictionary's text stays one `Uint8Array` that a value is sliced out of on demand, because a screen draws a few dozen rows and materialising every value of a large library eagerly costs object overhead nothing reads. Each section is checked against the blob's length before a view is taken over it, since a bad offset is otherwise a throw from a typed-array constructor with nothing in it naming the column.
+
 **The two generations live on the store entry, beside the poller, and never on the data.** `structure` and `revision` say what a client has to do next rather than what a row holds, and the thing that acts on them is the store. `recheckComponentLibrary` asks `GET /api/library`, patches where the ordinals still hold and exports again where they do not; `domain/track/useLibraryFeed.ts` is what calls it, off a track change and off a slow interval while the tab is visible, because almost every revision comes from a track finishing and Jean already learns about those.
 
 **A patch replaces the columns it names and leaves the rest alone, identity and all.** That is the whole point of a per-column delta: every derived structure in Jean is built from named columns, so a play count moving must invalidate the heat and patina arrays and touch neither the folded search text nor the artist and genre groupings. Anything caching across the rows declares which fields it reads and compares them by identity; `someFieldMoved` is that comparison and `growingIndex` and `foldCache` are the two that use it. An index whose fields a delta did move is rebuilt rather than extended, since a draft already summed cannot be un-summed.
@@ -104,6 +107,8 @@ Chunking is a playlist read's problem: it is almost all round trip, so the first
 The player evaluates title-formatting expressions and answers them positionally, which makes the reachable surface far wider than beefweb's own schema. Jean declares a column set once, as name-and-expression pairs, and `fieldTable()` in `src/shared/api/fieldTable.ts` derives both the list sent to the player and the index each name landed at. Written out separately, the day somebody inserts an expression in the middle is the day a row reports its genre as its artist.
 
 **A field that does not exist answers `?`. A field that exists but is empty answers `''`, `0` or `N/A`.** That difference is the whole mechanism: `readValue` maps both to `null` so rows draw correctly either way, while `resolvesAnywhere` asks the column whether any of its values is something other than `?`. Whatever resolves gets its feature; Settings overrides the guess where detection is wrong.
+
+**The answer is one per install and it comes from the library, so every route loads the library.** `domain/track/fieldAvailability.ts` holds it and the library snapshot is the only thing that writes to it, so no view can compute a different one from the rows it happens to be showing. Landing on a playlist draws the same columns as landing on a shelf. Nothing is ruled out until the library has answered, so no view opens with a column missing, and a column is hidden only where the player cannot produce that field at all.
 
 Three limits worth knowing before relying on it:
 
@@ -244,5 +249,6 @@ The code says what exists. These are load-bearing gaps anything built on Jean ha
 
 - **No Web Worker and no IndexedDB persistence**, so a cold start re-fetches and re-indexes. Both are requirements for a very large library, not things already done.
 - **No folder tree.** The library browses as one flat list. `/library/items/by-path` is documented in `src/shared/api/README.md` for when that changes.
-- **Artwork is the whole of the persistence.** `src/shared/ui/artworkCache.ts` keeps a fixed budget of covers in Cache Storage, oldest out first, deliberately not LRU, so everything rotates and a re-tagged cover refreshes on its own eventually. Nothing else Jean holds survives a reload.
-- **Reconciling a stale `itemCount` is only partly built.** `usePlaylists` and `useLibraryInfo` refetch on window focus, and the live `playlistItems` tripwire documented in `src/shared/api/README.md` is not wired, so arithmetic that cannot survive being wrong re-reads the count itself.
+- **Nothing Jean holds survives a reload**, artwork included. Covers persist in the browser's own HTTP cache, which is the component's to control through `Cache-Control` and `ETag`; Jean stores none of it.
+- **Reconciling a stale `itemCount` is only partly built.** `usePlaylists` refetches on window focus, and the live `playlistItems` tripwire documented in `src/shared/api/README.md` is not wired, so arithmetic that cannot survive being wrong re-reads the count itself.
+- **Playing a library set is wrong on a library with more than one root.** `sortToLibraryOrder` in `domain/track/librarySource.ts` asks beefweb to sort the scratch playlist by `%path%`, which is absolute, while a ref is an ordinal in library-relative path order. One root makes the two agree and several do not, and then a position computed from a row plays a different track, silently. It is not patched where it sits because what an ordinal is ordered by and which component fills the playlist are one question, and filling still goes through beefweb.

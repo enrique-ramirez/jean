@@ -1,9 +1,6 @@
 import type { Page } from "./fixtures.ts";
 import { expect, test, viewHeader } from "./fixtures.ts";
 
-// The autoplaylist fallback reads the same synthesised library -- the fixture
-// replaces both sources -- so every one of these holds either way.
-
 const heading = (page: Page) =>
 	viewHeader(page).getByRole("heading", { level: 1 });
 
@@ -35,8 +32,12 @@ const genres = (page: Page) => page.getByRole("region", { name: "Genres" });
 const genreBars = (page: Page) =>
 	genres(page).getByRole("list").getByRole("link");
 
+// The first card, then the absence of the counting line. Waiting only for the
+// line would settle in the window before the library is even asked for, when the
+// header has drawn its heading and nothing else.
 const settled = async (page: Page) => {
 	await expect(heading(page)).toBeVisible();
+	await expect(viewHeader(page).locator("[data-door]").first()).toBeAttached();
 	await expect(viewHeader(page).getByText("still counting")).toHaveCount(0);
 };
 
@@ -245,10 +246,6 @@ test.describe("a fresh install with no playlists", () => {
 	});
 
 	test("the header counts music, never playlists", async ({ page }) => {
-		test.skip(
-			Boolean(process.env.JEAN_NO_LIBRARY_API),
-			"without playlists there is no autoplaylist either, so the fallback has no library to read",
-		);
 		await page.goto("/");
 		await settled(page);
 
@@ -275,9 +272,6 @@ test.describe("a library two people tagged", () => {
 
 test.describe("a library a tagger left whitespace in", () => {
 	test.use({
-		// The autoplaylist is the one source `retagged` reaches, and Home reads
-		// whichever of the two the player offers.
-		library: { supported: false },
 		// One of Jar Of Flies' seven tracks, with a space on the end of the album
 		// tag. The other six spell it exactly.
 		retagged: { Nutshell: { "%album%": "Jar Of Flies " } },

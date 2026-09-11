@@ -2,15 +2,15 @@
 
 namespace jean {
 
-// Two of the three consumers are contracts with things outside this repo:
-// DECLARE_COMPONENT_VERSION, which foobar2000's update finder reads, and the discovery
-// record a client finds this component by. The third is GET /api/status.
+// Renaming this orphans an installed component's profile directory, its log and its token:
+// `fb2k/paths.cpp` builds all three from it, and the discovery record it writes is also
+// beefweb's clientconfig id, which constrains the spelling. See `fb2k/paths.cpp`.
 constexpr char kComponentName[] = "foo_jean";
+
+// `scripts/test.sh` and `scripts/test.ps1` read the literal below with a regex and compare
+// it against `contract/openapi.yaml`. Reformatting this declaration breaks both.
 constexpr char kVersion[] = "0.3.0";
 
-// Moves only when the HTTP surface changes shape, independently of kVersion. A client reads
-// it to decide whether it understands this component, so a patch release MUST NOT move it
-// and a breaking change MUST.
 constexpr int kApiVersion = 1;
 
 }  // namespace jean

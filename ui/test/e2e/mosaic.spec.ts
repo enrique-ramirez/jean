@@ -1,8 +1,8 @@
 import type { Page } from "./fixtures.ts";
 import { expect, test } from "./fixtures.ts";
 
-// `#/all` for anything shaped: `libraryShape` replaces the media library and the `#Jean Library`
-// autoplaylist, and leaves the captured playlists alone -- so `p7` there is still the real five.
+// `#/all` for anything shaped: `libraryShape` replaces the media library and leaves the captured
+// playlists alone, so `p7` there is still the real five.
 //
 // The covers of a set, drawn as one picture. Everything here is counted in **albums**, never tracks.
 
@@ -132,7 +132,7 @@ test.describe("while the covers are arriving", () => {
 		const inFlight = new Promise<void>((settle) => {
 			release = settle;
 		});
-		await page.route("**/api/artwork/**", async (route) => {
+		await page.route("**/api/artwork**", async (route) => {
 			await inFlight;
 			await route.abort().catch(() => {});
 		});
@@ -165,7 +165,7 @@ test.describe("while the covers are arriving", () => {
 			await expect(mosaic(page)).not.toHaveAttribute("data-ready", "true");
 		} finally {
 			release();
-			await page.unroute("**/api/artwork/**");
+			await page.unroute("**/api/artwork**");
 		}
 	});
 });

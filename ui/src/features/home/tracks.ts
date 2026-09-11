@@ -7,13 +7,13 @@ export interface TopTrack {
 	title: string;
 	artist: string | null;
 	plays: number;
-	artworkUrl: string;
+	artworkUrl: string | null;
 }
 
 export function topTracksOf(
 	rows: TrackRows,
 	limit: number,
-	artworkUrl: (ref: number) => string,
+	artworkUrl: (ref: number) => string | null,
 	t: Translate,
 ): TopTrack[] {
 	const playsOf = columnReader(rows.columns, FIELD.playCount, readNumber);

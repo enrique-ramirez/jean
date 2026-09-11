@@ -100,12 +100,6 @@ export interface LibraryItem {
 	columns: TrackColumns;
 }
 
-export interface LibraryItemsResponse {
-	offset: number;
-	totalCount: number;
-	items: LibraryItem[];
-}
-
 export interface LibraryNode {
 	type: "D" | "F";
 	name: string;

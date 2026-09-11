@@ -22,16 +22,7 @@ pnpm test:e2e --project=desktop -g "double-clicking"   # one test
 
 Both projects, `desktop` and `mobile` (Pixel 7, touch on), run every spec. Skip explicitly when a gesture has no equivalent on the other surface, and say why.
 
-**The suite runs against both library sources**, since the app must behave identically whether the library comes from the media library API or from an autoplaylist:
-
-```sh
-pnpm test                          # the media library API (the default)
-JEAN_NO_LIBRARY_API=1 pnpm test    # the autoplaylist fallback
-```
-
-Both are green at the same count. If a change makes one pass and the other fail, something outside `librarySource.ts` has learned which source it is talking to. Nothing in `src/` reads that variable; it only moves the default of the `library` fixture option.
-
-Four specs are source-aware. `fake-library.spec.ts` **pins the API on** at file scope, since it is the spec about it. `library-fallback.spec.ts` **pins it off**, since that is the DeaDBeeF steady state and must be covered on a default run. `navigation.spec.ts`'s first-run block asks for `withoutLibraryPlaylist` *and* `library: { supported: false }`, since the setup screen exists only when there is no API **and** no autoplaylist. `component-library.spec.ts` **pins it on** as well, because the component supplies the rows and beefweb's own library routes are still what act on one.
+**The component is installed, listening and paired by default**, because it is what answers the library and a run without it has no music at all. A spec that wants a device that has never paired sets `fooJeanToken: null`; one that wants no component sets `fooJean: null`. Both are states the app has to draw, and neither is the state most of the suite is about.
 
 ## Touch gestures
 
@@ -56,7 +47,7 @@ pnpm build && node test/fake-api/main.ts --serve dist   # as beefweb serves it
 
 `routes.ts` and `fooJean.ts`'s `handleAgent` have no host in them, and neither does `state.ts`, and there is no `node:` import in any of the three. `server.ts` and `agentServer.ts` give them a node socket for the suite; `demo/sw.ts` gives the same tables a `fetch` event. The seam is `Responder` in `http.ts`: `writeHead`, `setHeader`, `write`, `end` and `on("close")`, plus an optional readonly `writableEnded`. `ServerResponse` satisfies all of it as it stands, and the last two are what SSE and the audio pump stop on when a client leaves.
 
-Two consequences before adding a route. **Anything reaching for a socket, a file or a `Buffer` belongs in the host files**, not the route tables; the artwork routes are the worked example and take a `(name, headers, response)` function instead of a path. And **fixtures are imported rather than read off disk**, since one of the two hosts has no filesystem.
+Two consequences before adding a route. **Anything reaching for a socket, a file or a `Buffer` belongs in the host files**, not the route tables; the artwork routes are the worked example and take a function instead of a path. And **fixtures are imported rather than read off disk**, since one of the two hosts has no filesystem.
 
 ### The fixture is captured, not invented
 
@@ -72,7 +63,7 @@ Two consequences before adding a route. **Anything reaching for a socket, a file
 
 Tracks are stored as objects keyed by title-formatting expression, not as the positional arrays the API returns: the fake has to answer whatever column set is asked of it, and **an expression the fixture does not carry resolves to `?`**, exactly as an unsupported field does on a real player. Dropping `%lastfm_play_count%` from a fixture is how you test an install with no playback-statistics component.
 
-**`DEFAULT_PLAYLISTS()` builds six**, and the shape is deliberate. `p1 p7 p2 p5` are ordinary playlists whose ids are neither contiguous nor in index order, which is what a real install looks like; `p7` is current, and is where `openLibrary` goes. `p8` is `#Jean Library`, the autoplaylist Jean resolves as the library and the one `withoutLibraryPlaylist` removes. `p9` is `Recently Added` with `isAuto` set: a visible autoplaylist with an ordinary name, so "the player fills this one itself" is covered.
+**`DEFAULT_PLAYLISTS()` builds six**, and the shape is deliberate. `p1 p7 p2 p5` are ordinary playlists whose ids are neither contiguous nor in index order, which is what a real install looks like; `p7` is current, and is where `openLibrary` goes. `p8` is `#Jean Library`, a playlist carrying Jean's own prefix, which nothing reads as the library and everything keeps out of the sidebar. `p9` is `Recently Added` with `isAuto` set: a visible autoplaylist with an ordinary name, so "the player fills this one itself" is covered.
 
 The cover art is real and downscaled by `capture.ts`, which shells out to macOS `sips` and says so when it cannot. Nothing but the fake reads `artwork/`.
 
@@ -80,17 +71,25 @@ The cover art is real and downscaled by `capture.ts`, which shells out to macOS 
 
 ### The media library
 
-The fake serves the beefweb 0.11+ library API: `/library/info`, `/library/items`, `/library/items/by-path`, `/artwork/library` and `/playlists/{id}/items/add-from-library`, against shapes measured on a live player. `fake-library.spec.ts` is that check; `../src/shared/api/README.md` records the shapes.
+The fake serves the beefweb 0.11+ library API: `/library/info`, `/library/items`, `/library/items/by-path`, `/artwork/library` and `/playlists/{id}/items/add-from-library`, against shapes measured on a live player. `fake-library.spec.ts` is that check; `../src/shared/api/README.md` records the shapes. **Jean reads none of it**: the library and its covers come from the component, and beefweb's own library routes are only what a fill or a queue acts through.
 
 The library is **derived from the captured tracks rather than invented**: the capture's absolute `%path%` values give a deepest shared directory, which is treated as the media library folder, and what is left is the library-relative, forward-slashed path the real API returns.
 
 - `test.use({ library: { supported: false } })` is **DeaDBeeF**: `/library/info` still answers, since that is how a client discovers it has no library, and everything else is **501**.
 - `{ enabled: false }` is foobar2000 with no media library configured: supported, empty, a different problem with a different fix.
-- Both send Jean back to the autoplaylist and **must not collapse into one state**.
+- The two **must not collapse into one state**.
 
 Two things the fake **refuses** rather than approximating, since a filter that silently disagreed with the real one is worse than no filter: the player's `query` syntax, and `sort` by anything but a bare `%field%`. Both answer **400**.
 
 **The captured tracks are all `subsong: 0`**, since every captured file is one track and a subsong needs a cue sheet or a disc image. `libraryOfShape({ subsongsPerFile })` synthesises them where a spec needs several tracks sharing one `%path%`.
+
+### Covers
+
+`GET /api/artwork?track=` is the route every library cover comes through, and the fake answers it on the component's own terms: `Cache-Control: no-cache, must-revalidate`, a strong quoted `ETag`, and a `304` for a conditional request that matches. beefweb's two artwork routes keep foobar2000's own terms instead, and the same file server answers all three.
+
+### Ordering
+
+**The fake's most load-bearing approximation.** foobar2000 orders paths with Windows' `StrCmpLogicalW`, so `compareText` in `state.ts` is an `Intl.Collator` with `numeric` on and `sensitivity: "base"`, and every sort in the fake goes through it. A spec asserting on order MUST use it too rather than writing a comparator of its own: a fake that is self-consistent and wrong in the same direction as its specs is a fake that ships an ordering bug.
 
 ### The library as `foo_jean` serves it
 
@@ -151,7 +150,7 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 
 ### Three gaps against the contract
 
-These are not on purpose and are not fixed. `contract/` found them and `../../_todo/TODO.md` carries them. `POST` and `DELETE /api/autoplaylists/{id}` have no route here at all, so they fall to the catch-all and answer `error` where the contract publishes a `detail` beside it; the `503` from `POST /api/autoplaylists` has the same gap; and `GET /api/capabilities` omits `streamFormats` when `canStream` is false, which the contract requires either way.
+These are not on purpose and are not fixed. `contract/` found them. `POST` and `DELETE /api/autoplaylists/{id}` have no route here at all, so they fall to the catch-all and answer `error` where the contract publishes a `detail` beside it; the `503` from `POST /api/autoplaylists` has the same gap; and `GET /api/capabilities` omits `streamFormats` when `canStream` is false, which the contract requires either way.
 
 Reproducing them takes more than pointing the suite at a default fake. Nothing serves this side on a port of its own: `main.ts` starts the beefweb server, and the agent gets a `listen` only inside the Playwright worker fixture, so no command puts `CONTRACT_URL` in front of it. The defaults then hide two of the three, since `maxAutoPlaylists` is `0`, so the create refuses and the update and the delete are skipped rather than driven, and `canStream` is `true`.
 
@@ -191,7 +190,7 @@ docker run -d --name jean-ddb --platform linux/amd64 -p 8890:8880 \
   -v /path/to/music:/music:ro -v "$PWD/dist:/jean:ro" jean-deadbeef
 ```
 
-The entrypoint writes beefweb's `config.json` with `musicDirs` and a `/jean` url mapping, which is what makes those two mounts work. Then create a playlist named `#Jean Library` and add `/music` to it over the api. **DeaDBeeF has no autoplaylists**, so Jean's usual library playlist cannot keep itself in sync there.
+The entrypoint writes beefweb's `config.json` with `musicDirs` and a `/jean` url mapping, which is what makes those two mounts work. **`foo_jean` is a foobar2000 component and there is no DeaDBeeF build of it**, so a container has no library for Jean to read; what it covers is the player state, the playlists and the transport.
 
 Three things about the container are load-bearing and none of them is obvious. It runs the bundled **`nullout`** output plugin, which needs no sound device and is what leaves a playback state to assert on. It needs **an X server anyway**, since DeaDBeeF exits 1 when its GTK ui cannot open a display, started directly rather than through `xvfb-run`, whose wait-for-display loop does not return under emulation and leaves the player unlaunched with nothing saying so. And it sets a **UTF-8 locale**, without which beefweb's artwork route fails `iconv` on any non-ascii path, which is most of a real library.
 
@@ -240,20 +239,18 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 
 | | |
 |---|---|
-| `library` | `Partial<LibraryInfo>`. Pins whether this run has the media library API and whether it is enabled. Its default follows `JEAN_NO_LIBRARY_API` |
-| `hasLibraryApi` | not settable; read it to ask what this run got. **Ask the fixture rather than `process.env`**: a spec that pins `library` gets the right answer either way |
+| `library` | `Partial<LibraryInfo>`. Pins whether the fake claims beefweb's own media library API and whether it is enabled. Jean never reads the library through it; `fake-library.spec.ts` is what that option is for |
 | `librarySize` | swaps the 54 captured tracks for that many generated ones, for scroll arithmetic that only breaks past a few thousand rows |
-| `mediaLibrarySize` | inflates the **media library** and the `#Jean Library` autoplaylist together, so both sources describe the same library |
+| `mediaLibrarySize` | swaps the media library, which is what the component publishes, for that many generated tracks |
 | `libraryShape` | states a library outright: counts, durations, years, tags to omit, whether an artist is spelled two ways, how many subsongs share a file. A description rather than built tracks, since an option's top level does not survive the trip to the worker as an array (nested arrays are fine) |
 | `withoutFields` | removes title-formatting expressions, so the player answers `?` as a real one does. `['%lastfm_play_count%']` is an install with no playback-statistics component, and everything built on play counts must disappear rather than break |
 | `withoutPlaylists` | empties everything but Jean's own: the player a fresh install would find |
-| `withoutLibraryPlaylist` | removes the playlist Jean resolves as the library, the only way to reach the first-run setup screen |
-| `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches **both** sources, so a retagged spec holds on a fallback run too |
+| `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches the media library as well as the playlists |
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |
 | `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
-| `fooJean` | installs the component in whichever state is needed: absent (the default), `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
-| `fooJeanToken` | seeds the credential |
+| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
+| `fooJeanToken` | seeds the credential. `FOO_JEAN_TOKEN` by default; `null` is a device that has never paired |
 | `motion` | reduced by default, since Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work. It is accepted and silently ignored, so the fixture calls `page.emulateMedia()` |
 
 ### Control routes

@@ -18,10 +18,10 @@ import {
 // real origin boundary.
 
 // Row numbers below are positions in the captured `Library` playlist: 0 Los
-// Calientes, 1 Fizz, 2 Deléctrico, 3 Soy Rock, 4 Pendejo. Dropping play counts
-// is what puts Rating on screen on a phone.
+// Calientes, 1 Fizz, 2 Deléctrico, 3 Soy Rock, 4 Pendejo. The column set is
+// pinned for the reason `rating.spec.ts` gives.
 const RATED = {
-	withoutFields: ["%lastfm_play_count%"],
+	settings: { "jean.columns": ["duration", "rating"] },
 	retagged: {
 		"Los Calientes": { "%rating%": "5" }, // native scale, writable
 		Deléctrico: { "%rating%": "3" }, // native scale, writable
@@ -48,7 +48,7 @@ const tagWrites = (player: { requests: { method: string }[] }) =>
 	);
 
 test.describe("with no foo_jean", () => {
-	test.use(RATED);
+	test.use({ ...RATED, fooJean: null, fooJeanToken: null });
 
 	test("ratings are read-only and nothing is probed", async ({
 		page,
@@ -227,7 +227,7 @@ test.describe("with foo_jean and a token", () => {
 	});
 
 	test.describe("a library with no ratings at all", () => {
-		test.use({ withoutFields: ["%lastfm_play_count%", "%rating%"] });
+		test.use({ withoutFields: ["%rating%"] });
 
 		test("can be given its first rating", async ({ page }) => {
 			await openLibrary(page);
@@ -236,9 +236,8 @@ test.describe("with foo_jean and a token", () => {
 	});
 });
 
-// The media library API reports relative, forward-slashed paths and the
-// component needs an absolute one. `#/all` is the autoplaylist on a fallback
-// player, so this runs on both sources.
+// The library reports relative, forward-slashed paths and the component needs an
+// absolute one, so `#/all` is where that resolution is exercised.
 test.describe("rating from All music", () => {
 	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 
@@ -302,8 +301,11 @@ test.describe("rating with the number keys", () => {
 
 	test.describe("with the now-playing screen up", () => {
 		// Off, so the cursor stays on a different track from the one playing --
-		// which is the arrangement the screen has to answer for.
-		test.use({ settings: { "jean.followPlayback": false } });
+		// which is the arrangement the screen has to answer for. `settings` replaces
+		// rather than merges, so the column set has to be restated.
+		test.use({
+			settings: { ...RATED.settings, "jean.followPlayback": false },
+		});
 
 		test("they rate the track the screen is showing, not the row behind it", async ({
 			page,
@@ -542,6 +544,8 @@ const settings = async (page: Page) => {
 
 test.describe("what the settings screen says", () => {
 	test.describe("not installed", () => {
+		test.use({ fooJean: null, fooJeanToken: null });
+
 		test("says what it is and does not nag", async ({ page }) => {
 			await settings(page);
 			await expect(page.getByText("Not installed")).toBeVisible();
@@ -585,7 +589,7 @@ test.describe("what the settings screen says", () => {
 	});
 
 	test.describe("listening, with no token stored", () => {
-		test.use({ fooJean: {} });
+		test.use({ fooJean: {}, fooJeanToken: null });
 
 		test("asks for the token, once", async ({ page }) => {
 			await settings(page);

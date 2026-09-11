@@ -28,12 +28,16 @@ interface ApiRequest {
 }
 
 // Answers with the named file under `artwork/`, or 404s. A file on disk for the
-// suite, a bundled asset for the demo.
+// suite, a bundled asset for the demo. The cache terms are the route's: beefweb
+// and the component do not agree about them.
 export type ArtworkServer = (
 	name: string,
 	headers: RequestHeaders,
 	response: Responder,
+	cacheControl: string,
 ) => boolean | Promise<boolean>;
+
+export const BEEFWEB_ARTWORK_CACHING = "max-age=3, must-revalidate";
 
 const parseColumns = (value: string | null) => (value ? value.split(",") : []);
 
@@ -296,13 +300,13 @@ export async function handleApi({
 		if (!state.library.supported) return empty(response, 501);
 		const file = state.libraryArtworkFor(url.searchParams.get("path") ?? "");
 		if (!file) return empty(response, 404);
-		return artwork(file, headers, response);
+		return artwork(file, headers, response, BEEFWEB_ARTWORK_CACHING);
 	}
 
 	if (method === "GET" && head === "artwork" && rest.length === 2) {
 		const file = state.artworkFor(rest[0], Number(rest[1]));
 		if (!file) return empty(response, 404);
-		return artwork(file, headers, response);
+		return artwork(file, headers, response, BEEFWEB_ARTWORK_CACHING);
 	}
 
 	return false;

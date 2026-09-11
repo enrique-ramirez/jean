@@ -7,6 +7,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -275,5 +276,31 @@ LibraryRequest parseLibraryRequest(const std::vector<std::string>& columns,
                                    const std::string& since);
 
 std::string describe(LibraryRefusal refusal);
+
+enum class RebuildReason { columnsDeclared, dataChanged };
+
+class RebuildQueue {
+public:
+    void ask(std::vector<std::string> columns, RebuildReason why);
+
+    void dataMoved();
+
+    bool wanted() const;
+
+    bool startIfWanted();
+
+    void finished();
+
+    const std::vector<std::string>& columns() const;
+
+private:
+    bool building(const std::vector<std::string>& columns) const;
+
+    bool forColumns_ = false;
+    bool forData_ = false;
+    std::optional<std::vector<std::string>> asked_;
+    std::optional<std::vector<std::string>> building_;
+    std::vector<std::string> columns_;
+};
 
 }  // namespace jean

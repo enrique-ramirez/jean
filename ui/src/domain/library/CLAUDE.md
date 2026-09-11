@@ -18,7 +18,7 @@ Where "the library" comes from, what plays a set of tracks, and why search resul
 
 ### Where the library comes from
 
-`foo_jean` answers the whole library, and there is no second way to get it. **No playlist stands in for the library and none ever will.** A playlist route never reads through the library API, and library routes never read a playlist: Jean shows a playlist under its real name and reads it as one, and it cannot tell that somebody built one to mirror their collection.
+`foo_jean` answers the whole library, and there is no second way to get it. **No playlist stands in for the library and none ever will.** A playlist's rows come from the playlist and a library view's from the library, never the other way about: Jean shows a playlist under its real name and reads it as one, and it cannot tell that somebody built one to mirror their collection.
 
 - **Never read or write `Default Playlist`.** It is foobar's scratch buffer, and selecting an album in the library view replaces its entire contents.
 - **Anything titled `#Jean…` is Jean's, so it is not furniture.** It is filtered out of the sidebar, the command palette and the routing fallback. `domain/track/jeanPlaylists.ts` owns that namespace.
@@ -84,7 +84,7 @@ Searching is a client-side filter over the in-memory index: **no request, no pla
 - **The playlist is how a search survives a reload and reaches another device.** The query is in the title and every client can see the player's playlists, so reading it costs nothing and does not touch the library.
 - **Saving results renames the scratch rather than copying it.** When the scratch already holds exactly these results it *is* what is being saved, so nothing is copied, no near-duplicate is left beside the original, and playback carries straight on through the rename. **The stored pin MUST be cleared afterwards**: the id now points at the *user's* playlist, and resolving the scratch by it would hand their playlist to the next search, which empties what it finds before refilling it.
 - **Dismissing the search deletes it, unless the player is on it.** Deleting the playing playlist does not end playback at the end of the track. The player falls back to another playlist and carries on, which is the wandering this arrangement exists to stop. **The check is the active item's `playlistId`, not `isCurrent`**, which stays pointing at the last playlist played from long after playback stopped and would keep the scratch alive forever.
-- **No `changePlaylists` means no scratch playlist**, so results fall back to playing in place and the Shuffle button goes.
+- **No `changePlaylists` means no scratch playlist**, and a library row then has nowhere to be played from at all. A playlist route is unaffected: its rows are already in a playlist.
 
 Emptying a playing playlist leaves the track playing but detached, which is harmless only because a play always follows immediately.
 

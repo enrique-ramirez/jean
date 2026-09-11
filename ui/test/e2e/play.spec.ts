@@ -135,7 +135,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 			await statusBar(page).getByRole("button", { name: "Pause" }).click();
 
 			await expect(
-				statusBar(page).getByRole("button", { name: "Play" }),
+				statusBar(page).getByRole("button", { name: "Play", exact: true }),
 			).toBeVisible();
 			await expect(statusBar(page)).toContainText("Los Calientes");
 			await expect.poll(() => player.player.playbackState).toBe("paused");

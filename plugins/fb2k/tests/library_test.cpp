@@ -545,3 +545,121 @@ TEST_CASE("every delta outcome says something of its own") {
                         describe(DeltaOutcome::revisionTooOld),
                         describe(DeltaOutcome::revisionUnknown)}));
 }
+
+namespace {
+
+std::vector<std::string> declaring(const char* column) {
+    return {"%artist%", column};
+}
+
+std::vector<std::string> runOne(RebuildQueue& queue) {
+    REQUIRE(queue.startIfWanted());
+    const std::vector<std::string> built = queue.columns();
+    queue.finished();
+    return built;
+}
+
+}  // namespace
+
+TEST_CASE("a declaration with nothing running queues a build of it") {
+    RebuildQueue queue;
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+
+    CHECK(queue.wanted());
+    CHECK(runOne(queue) == declaring("%album%"));
+    CHECK_FALSE(queue.wanted());
+}
+
+TEST_CASE("a declaration naming the set already building cancels the one queued behind it") {
+    RebuildQueue queue;
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    REQUIRE(queue.startIfWanted());
+
+    queue.ask(declaring("%comment%"), RebuildReason::columnsDeclared);
+    CHECK(queue.wanted());
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    CHECK_FALSE(queue.wanted());
+
+    queue.finished();
+    CHECK_FALSE(queue.wanted());
+}
+
+TEST_CASE("the last declaration of a set nobody is building is the one built") {
+    RebuildQueue queue;
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    REQUIRE(queue.startIfWanted());
+
+    queue.ask(declaring("%comment%"), RebuildReason::columnsDeclared);
+    queue.ask(declaring("%date%"), RebuildReason::columnsDeclared);
+    queue.finished();
+
+    CHECK(runOne(queue) == declaring("%date%"));
+}
+
+// A dropped data rebuild leaves every client on a stale library until something else moves,
+// so the cancellation is narrower than last-request-wins: it reaches a rebuild queued for a
+// column set and no further.
+TEST_CASE("a declaration naming the set already building does not cancel a data rebuild") {
+    RebuildQueue queue;
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    REQUIRE(queue.startIfWanted());
+
+    queue.dataMoved();
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    queue.finished();
+
+    CHECK(queue.wanted());
+    CHECK(runOne(queue) == declaring("%album%"));
+}
+
+TEST_CASE("a refresh of the set already building is a rebuild rather than a duplicate") {
+    RebuildQueue queue;
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    REQUIRE(queue.startIfWanted());
+
+    queue.ask(declaring("%album%"), RebuildReason::dataChanged);
+    queue.finished();
+
+    CHECK(queue.wanted());
+    CHECK(runOne(queue) == declaring("%album%"));
+}
+
+TEST_CASE("a data rebuild builds the set declared most recently") {
+    RebuildQueue queue;
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    REQUIRE(queue.startIfWanted());
+    queue.ask(declaring("%comment%"), RebuildReason::columnsDeclared);
+    queue.finished();
+
+    queue.dataMoved();
+
+    CHECK(runOne(queue) == declaring("%comment%"));
+}
+
+// The worker also wakes for dirty rows, and those rows are re-queried against the set the
+// snapshot already holds rather than triggering a build.
+TEST_CASE("a wake with nothing wanted starts no build") {
+    RebuildQueue queue;
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    CHECK(runOne(queue) == declaring("%album%"));
+
+    CHECK_FALSE(queue.startIfWanted());
+    CHECK(queue.columns() == declaring("%album%"));
+}
+
+TEST_CASE("a declaration made once nothing is building is built even if it is the same set") {
+    RebuildQueue queue;
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    CHECK(runOne(queue) == declaring("%album%"));
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    CHECK(queue.wanted());
+}

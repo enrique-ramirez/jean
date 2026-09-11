@@ -91,13 +91,15 @@ bool variesOnEncoding(const httplib::Response& response) {
 struct BuildLog {
     int calls = 0;
     std::vector<std::string> columns;
+    std::vector<RebuildReason> reasons;
 };
 
 Player building(BuildLog* log) {
     Player player;
-    player.refreshLibrary = [log](std::vector<std::string> columns) {
+    player.refreshLibrary = [log](std::vector<std::string> columns, RebuildReason why) {
         log->calls++;
         log->columns = std::move(columns);
+        log->reasons.push_back(why);
     };
     return player;
 }
@@ -199,7 +201,7 @@ TEST_CASE("the export is the snapshot, framed as contract/openapi.yaml describes
     REQUIRE(response);
     CHECK(response->status == 200);
     CHECK(response->get_header_value("Content-Type") == "application/octet-stream");
-    CHECK(response->get_header_value("Cache-Control") == "no-cache");
+    CHECK(response->get_header_value("Cache-Control") == "no-cache, must-revalidate");
 
     const auto header = decode(response->body).header;
     CHECK(header["kind"] == "snapshot");
@@ -555,7 +557,7 @@ TEST_CASE("a library that has not been built yet is a wait rather than an absenc
     CHECK(json::parse(patched->body)["error"] == "the library snapshot has not been built yet");
 }
 
-TEST_CASE("a refresh reproduces the set a client last declared") {
+TEST_CASE("a refresh reproduces the set a client last declared, as a change in the data") {
     BuildLog log;
     Library library;
     fill(library);
@@ -569,6 +571,8 @@ TEST_CASE("a refresh reproduces the set a client last declared") {
     CHECK(response->status == 202);
     CHECK(log.calls == 2);
     CHECK(log.columns == std::vector<std::string>{"%genre%"});
+    CHECK(log.reasons.front() == RebuildReason::columnsDeclared);
+    CHECK(log.reasons.back() == RebuildReason::dataChanged);
     CHECK(json::parse(response->body)["structure"] == 1);
 }
 

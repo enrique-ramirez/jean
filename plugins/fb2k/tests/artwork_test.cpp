@@ -1,8 +1,4 @@
-// One cover over a real socket, and the pure half behind it. The whole point of this route
-// is the caching: a client keeps the bytes and asks before it trusts them, so what these
-// pin is that a conditional request never reads a picture, that a validator moves when the
-// file behind it does, and that an address the snapshot does not know is a refusal rather
-// than somebody else's sleeve.
+// One cover over a real socket, and the pure half behind it.
 
 #include "third_party/doctest.h"
 
@@ -43,7 +39,6 @@ struct ArtLog {
     std::string picture;
     std::string tag = kTag;
     std::vector<std::string> asked;
-    int reads = 0;
 };
 
 Player showing(ArtLog* log) {
@@ -55,11 +50,7 @@ Player showing(ArtLog* log) {
             return source;
 
         source.tag = log->tag;
-        source.read = [log] {
-            log->reads++;
-            return log->picture;
-        };
-
+        source.picture = log->picture;
         return source;
     });
 }
@@ -98,37 +89,27 @@ TEST_CASE("only pictures a browser draws are given a type") {
     CHECK(imageTypeOf(R"(<svg xmlns="http://www.w3.org/2000/svg"></svg>)").empty());
 }
 
-TEST_CASE("a validator moves when the file behind it does, and never carries its path") {
-    const ArtworkFile folder{"/music/artist/album/folder.jpg", 148223, 1757000000};
+// The validator is the picture rather than a stat of the file the picture came from because
+// the player names that file only once it has loaded the picture anyway (CLAUDE.md, *Facts
+// about the player*).
+TEST_CASE("a validator is the picture, so it moves when and only when the picture does") {
+    const auto tag = artworkTag(kJpeg);
 
-    const auto tag = artworkTag({folder});
-    CHECK(tag == artworkTag({folder}));
     CHECK(tag.front() == '"');
     CHECK(tag.back() == '"');
-    CHECK(tag.find("folder.jpg") == std::string::npos);
-    CHECK(tag.find("music") == std::string::npos);
 
     SUBCASE("a folder image replaced in place moves it, which nothing in the player announces") {
-        ArtworkFile touched = folder;
-        touched.modified += 1;
-        CHECK(artworkTag({touched}) != tag);
+        CHECK(artworkTag(std::string(kJpeg) + " and a wider scan of the sleeve") != tag);
     }
 
-    SUBCASE("a rewrite that kept the timestamp still moves it") {
-        ArtworkFile regrown = folder;
-        regrown.size += 1;
-        CHECK(artworkTag({regrown}) != tag);
+    SUBCASE("a cover embedded in the track's own tags in place of a folder image moves it") {
+        CHECK(artworkTag(kPng) != tag);
     }
 
-    SUBCASE("art moving from a folder image to the track's own tags moves it") {
-        ArtworkFile embedded = folder;
-        embedded.path = "/music/artist/album/01.flac";
-        CHECK(artworkTag({embedded}) != tag);
-    }
-
-    SUBCASE("a source naming no file is validated by its bytes instead") {
-        CHECK(artworkTagOfBytes(kJpeg) != artworkTagOfBytes(kPng));
-        CHECK(artworkTagOfBytes(kJpeg) == artworkTagOfBytes(kJpeg));
+    // Nothing but the bytes reaches the fold: no salt, no install identity, nothing a restart
+    // would change.
+    SUBCASE("a cover nobody touched keeps it, whatever has happened to the component") {
+        CHECK(artworkTag(std::string(kJpeg)) == tag);
     }
 }
 
@@ -144,12 +125,12 @@ TEST_CASE("a cover is sent with the type it actually is, and a validator to ask 
     CHECK(response->get_header_value("Content-Type") == "image/jpeg");
     CHECK(response->get_header_value("ETag") == kTag);
     CHECK(log.asked == std::vector<std::string>{kTrack});
-    CHECK(log.reads == 1);
 }
 
 // no-cache rather than no-store: the client is meant to keep the bytes and ask before it
-// trusts them. This is what replaces the cache the client had to build for beefweb's
-// max-age=3, must-revalidate.
+// trusts them. must-revalidate is not decoration either; the route is authenticated, and
+// CLAUDE.md, *Facts about the player*, is what that directive is for and what a browser
+// does with the same response, which is not the same question.
 TEST_CASE("the client is told to keep the bytes and revalidate them") {
     ArtLog log{kJpeg};
     const TestServer server(servingSettings(), showing(&log));
@@ -157,18 +138,17 @@ TEST_CASE("the client is told to keep the bytes and revalidate them") {
     const auto response = get(server, kAddress);
 
     REQUIRE(response);
-    CHECK(response->get_header_value("Cache-Control") == "no-cache");
+    CHECK(response->get_header_value("Cache-Control") == "no-cache, must-revalidate");
     CHECK(response->get_header_value("Cache-Control").find("no-store") == std::string::npos);
 }
 
-TEST_CASE("a client that already holds the cover is answered without one being read") {
+TEST_CASE("a client that already holds the cover is answered without the picture") {
     ArtLog log{kJpeg};
     const TestServer server(servingSettings(), showing(&log));
 
     const auto first = get(server, kAddress);
     REQUIRE(first);
     REQUIRE(first->status == 200);
-    REQUIRE(log.reads == 1);
 
     const auto again = getHolding(server, kAddress, first->get_header_value("ETag"));
 
@@ -176,9 +156,8 @@ TEST_CASE("a client that already holds the cover is answered without one being r
     CHECK(again->status == 304);
     CHECK(again->body.empty());
     CHECK(again->get_header_value("ETag") == kTag);
-    CHECK(again->get_header_value("Cache-Control") == "no-cache");
+    CHECK(again->get_header_value("Cache-Control") == "no-cache, must-revalidate");
 
-    CHECK(log.reads == 1);
     CHECK(log.asked.size() == 2);
 }
 
@@ -203,7 +182,6 @@ TEST_CASE("an address the snapshot does not hold is a refusal rather than anothe
     CHECK(response->status == 404);
     CHECK(json::parse(response->body)["error"] == "no artwork for that track");
     CHECK(response->get_header_value("ETag").empty());
-    CHECK(log.reads == 0);
 }
 
 TEST_CASE("a picture in a format this component does not send is refused rather than guessed") {
@@ -251,7 +229,6 @@ TEST_CASE("an unusable address never reaches the player") {
     }
 
     CHECK(log.asked.empty());
-    CHECK(log.reads == 0);
 }
 
 TEST_CASE("an install that does not serve the library says so rather than answering 404") {

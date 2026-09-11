@@ -61,25 +61,6 @@ export const en = {
 		"Everything else on this screen comes from your player. This one asks MusicBrainz and Wikipedia, which means telling them what you are listening to — so it is off until you turn it on, in {setting}.",
 	"artistInfo.readMore": "Read more on {source}",
 	"artistInfo.settingPath": "Settings → Artist information",
-	"artwork.budget":
-		"Covers are kept until the {budget} here is full, and then the oldest go first. A track with {no} artwork is never kept, so adding one shows up straight away.",
-	"artwork.clear": "Clear cached artwork",
-	"artwork.clearWhen":
-		"Clear this if you have {replaced} artwork on a track and Jean is still showing the old picture.",
-	"artwork.clearing": "Clearing…",
-	"artwork.counting": "Counting…",
-	"artwork.covers": {
-		one: "{count} cover",
-		other: "{count} covers",
-	},
-	"artwork.held": "{covers}, {used} of {budget}.",
-	"artwork.help": "About cached artwork",
-	"artwork.no": "no",
-	"artwork.nothingKept": "Nothing kept yet.",
-	"artwork.replaced": "replaced",
-	"artwork.title": "Cached artwork",
-	"artwork.why":
-		"The player asks browsers not to keep artwork for more than a few seconds, so every visit re-downloads every cover. Jean keeps its own copy instead — the covers you have already seen cost nothing to see again.",
 	"column.album": "Album",
 	"column.bitrate": "Rate",
 	"column.codec": "Codec",
@@ -306,24 +287,6 @@ export const en = {
 	"library.readUnavailable": "foo_jean is not serving the media library.",
 	"library.readUnreachable": "Could not reach foo_jean.",
 	"library.reading": "Reading your library…",
-	"librarySetup.candidate":
-		"You already have a playlist called {playlist}. If that is your library, Jean can rename it.",
-	"librarySetup.candidateSized": {
-		one: "You already have a playlist called {playlist} ({count} track). If that is your library, Jean can rename it.",
-		other:
-			"You already have a playlist called {playlist} ({count} tracks). If that is your library, Jean can rename it.",
-	},
-	"librarySetup.how":
-		"beefweb can only see playlists, so foobar2000's Media Library has to become one. In foobar2000: {menu}, enter {query} as the query, then save it as an autoplaylist named exactly:",
-	"librarySetup.menu": "Library → Search",
-	"librarySetup.readOnly":
-		"Jean only ever reads it. Nothing here creates, clears or reorders a playlist.",
-	"librarySetup.rename": "Rename it to {name}",
-	"librarySetup.renameFailed": "Could not rename — {message}",
-	"librarySetup.renaming": "Renaming…",
-	"librarySetup.title": "Point Jean at your library",
-	"librarySetup.why":
-		"It holds every track you have and keeps itself in sync. The name is how Jean knows the playlist is meant for it rather than one of yours — so it has to match, and Jean keeps it out of your sidebar once it does.",
 	"listen.alsoListening": "Also listening",
 	"listen.andOthers": {
 		one: "{label}, {count} other device listening",
@@ -498,7 +461,6 @@ export const en = {
 	"search.section.artists": "Artists",
 	"search.section.genres": "Genre",
 	"search.section.tracks": "Tracks",
-	"search.setUp": "Set up your library",
 	"search.startTyping": "Start typing",
 	"search.stillReading": "Still reading your library",
 	"search.title": "Search",

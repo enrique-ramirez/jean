@@ -28,9 +28,7 @@ interface JeanFixtures {
 	libraryShape: LibraryShape | null;
 	withoutPlaylists: boolean;
 	withoutFields: string[];
-	withoutLibraryPlaylist: boolean;
 	library: Partial<LibraryInfo>;
-	hasLibraryApi: boolean;
 	retagged: Record<string, Track>;
 	countsPlays: boolean;
 	fooJean: FooJeanOptions | null;
@@ -43,6 +41,8 @@ interface JeanFixtures {
 }
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), "../../dist");
+
+export const FOO_JEAN_TOKEN = "0123456789abcdef0123456789abcdef";
 
 const SEEDED_SETTINGS = {
 	"jean.heatIntroSeen": true,
@@ -77,38 +77,25 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 	// What `#/all` and search read on a 0.11 player.
 	mediaLibrarySize: [null, { option: true }],
 
-	// Replaces the `#Jean Library` autoplaylist too, so both sources still
-	// describe the same library.
 	libraryShape: [null, { option: true }],
 
 	withoutPlaylists: [false, { option: true }],
 
 	withoutFields: [[], { option: true }],
 
-	// Removes the playlist Jean resolves as the library, which is the only way to
-	// reach the first-run path.
-	withoutLibraryPlaylist: [false, { option: true }],
-
-	library: [
-		process.env.JEAN_NO_LIBRARY_API ? { supported: false } : {},
-		{ option: true },
-	],
-
-	hasLibraryApi: async ({ library }, use) => {
-		await use(library.supported !== false && library.enabled !== false);
-	},
+	library: [{}, { option: true }],
 
 	retagged: [{}, { option: true }],
 
 	countsPlays: [false, { option: true }],
 
-	// The optional tag-writing component and the states it can present; absent by
-	// default. See `fake-api/fooJean.ts` and `test/README.md`.
-	fooJean: [null, { option: true }],
+	// Defaults and the states each option can present are in `test/README.md`.
+	fooJean: [{}, { option: true }],
 
 	// Seeded into localStorage separately from `settings`, because the token may
-	// never travel through beefweb's clientconfig.
-	fooJeanToken: [null, { option: true }],
+	// never travel through beefweb's clientconfig. `null` is a device that has
+	// never paired.
+	fooJeanToken: [FOO_JEAN_TOKEN, { option: true }],
 
 	playerState: [null, { option: true }],
 
@@ -124,19 +111,14 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 			withoutFields,
 			retagged,
 			countsPlays,
-			withoutLibraryPlaylist,
 			library,
 			playerState,
 			fooJean,
 		},
 		use,
 	) => {
-		// The ordinary playlist called 'Library' stays, and must not be mistaken
-		// for the `#Jean Library` autoplaylist.
 		const playlists = DEFAULT_PLAYLISTS().filter(
-			(playlist) =>
-				!(withoutLibraryPlaylist && playlist.title === "#Jean Library") &&
-				!(withoutPlaylists && !playlist.title.startsWith("#Jean")),
+			(playlist) => !withoutPlaylists || playlist.title.startsWith("#Jean"),
 		);
 
 		await use(
@@ -267,8 +249,6 @@ export async function globalControls(page: Page, isCompact: boolean) {
 	return nowPlayingScreen(page);
 }
 
-export const FOO_JEAN_TOKEN = "0123456789abcdef0123456789abcdef";
-
 // `listeningPosition` answers null until audio is rendering, so the element's
 // own clock is the only proof the stream arrived.
 export const listenHere = async (page: Page) => {
@@ -329,11 +309,19 @@ export const openSidebar = async (page: Page) => {
 };
 
 // The captured `Library` playlist, which most specs use as a list long enough to
-// scroll. Not `#Jean Library`, which is Jean's own.
+// scroll. Not `#Jean Library`, which carries Jean's own prefix and stays hidden.
 export const openLibrary = async (page: Page) => {
 	await page.goto("/#/p7");
 	await expect(
 		page.getByRole("heading", { level: 1, name: "Library" }),
+	).toBeVisible();
+	await expect(trackRow(page, 0)).toBeAttached();
+};
+
+export const openAllMusic = async (page: Page) => {
+	await page.goto("/#/all");
+	await expect(
+		page.getByRole("heading", { level: 1, name: "All music" }),
 	).toBeVisible();
 	await expect(trackRow(page, 0)).toBeAttached();
 };

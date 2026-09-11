@@ -237,19 +237,25 @@ const columnsFor = (track: Track, expressions: string[]) =>
 
 const pathKey = (value: unknown) => String(value).replace(/\\/g, "/");
 
+// foobar2000 orders paths with Windows' `StrCmpLogicalW`: a run of digits compares as a number, case
+// does not count, and an accent folds to its base letter. The fake being self-consistent is not
+// enough -- it has to agree with the player about which track sits at which position, or an ordinal
+// read here addresses a different track there.
+const likeThePlayer = new Intl.Collator("en", {
+	numeric: true,
+	sensitivity: "base",
+});
+
+export const compareText = (a: unknown, b: unknown) =>
+	likeThePlayer.compare(String(a), String(b));
+
 const byLibraryPath = (a: LibraryEntry, b: LibraryEntry) =>
-	pathKey(a.path).localeCompare(pathKey(b.path)) || a.subsong - b.subsong;
+	compareText(pathKey(a.path), pathKey(b.path)) || a.subsong - b.subsong;
 
 const browseOrder = (a: Track, b: Track) =>
-	String(evaluate(a, "%album artist%")).localeCompare(
-		String(evaluate(b, "%album artist%")),
-	) ||
-	String(evaluate(a, "%album%")).localeCompare(
-		String(evaluate(b, "%album%")),
-	) ||
-	String(evaluate(a, "%tracknumber%")).localeCompare(
-		String(evaluate(b, "%tracknumber%")),
-	);
+	compareText(evaluate(a, "%album artist%"), evaluate(b, "%album artist%")) ||
+	compareText(evaluate(a, "%album%"), evaluate(b, "%album%")) ||
+	compareText(evaluate(a, "%tracknumber%"), evaluate(b, "%tracknumber%"));
 
 export function createState({
 	playlists = DEFAULT_PLAYLISTS(),
@@ -279,10 +285,8 @@ export function createState({
 	countsPlays?: boolean | null;
 } = {}) {
 	const patches = new Map(Object.entries(retagged));
-	// Applied to the media library as well as to the playlists below: the two
-	// sources describe one library, and a fixture that only reached one of them
-	// made a spec pass on a default run and fail under JEAN_NO_LIBRARY_API, or
-	// the other way round.
+	// Applied to the media library as well as to the playlists below: a fixture
+	// that reached only one of them leaves the two describing different libraries.
 	const retag = (track: Track): Track => {
 		const patch = patches.get(track["%title%"]);
 		return patch ? { ...track, ...patch } : track;
@@ -315,13 +319,6 @@ export function createState({
 					? allTracks().map(strip)
 					: allTracks()
 	).map(retag);
-
-	if (mediaLibrary || mediaLibrarySize) {
-		const autoplaylist = playlists.find(
-			(entry) => entry.title === "#Jean Library",
-		);
-		if (autoplaylist) autoplaylist.items = libraryTracks;
-	}
 
 	if (librarySize) {
 		const library = playlists.find((entry) => entry.title === "Library");
@@ -954,7 +951,7 @@ export function createState({
 
 			if (sort && sort !== "%path%") {
 				const key = (entry: LibraryEntry) => evaluate(entry.track, sort);
-				items.sort((a, b) => pathKey(key(a)).localeCompare(pathKey(key(b))));
+				items.sort((a, b) => compareText(pathKey(key(a)), pathKey(key(b))));
 			} else items.sort(byLibraryPath);
 			if (desc) items.reverse();
 
@@ -1106,7 +1103,7 @@ export function createState({
 				playlist.items = [...playlist.items].sort(() => 0);
 			} else {
 				playlist.items = [...playlist.items].sort((a, b) =>
-					pathKey(evaluate(a, by)).localeCompare(pathKey(evaluate(b, by))),
+					compareText(pathKey(evaluate(a, by)), pathKey(evaluate(b, by))),
 				);
 				if (desc) playlist.items.reverse();
 			}

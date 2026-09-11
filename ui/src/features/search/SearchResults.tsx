@@ -1,7 +1,6 @@
 import { Search } from "lucide-react";
 import type { RefObject } from "react";
 import { useMemo, useRef, useState } from "react";
-import { LibrarySetup } from "@/domain/library/LibrarySetup";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
@@ -10,13 +9,13 @@ import {
 	useIsPlaying,
 	usePermissions,
 } from "@/domain/player/usePlayer";
+import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import { Mosaic } from "@/domain/track/Mosaic";
 import { PlayActions } from "@/domain/track/PlayActions";
 import { summarise } from "@/domain/track/stats";
 import { TrackBrowser } from "@/domain/track/TrackBrowser";
-import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -50,7 +49,7 @@ export function SearchResults({
 
 	const results = search.results;
 	const { indices, heat, patina, playedCount } = results;
-	const { hasPlayCounts } = useAvailableFields(results.columns);
+	const { hasPlayCounts } = useAvailableFields();
 	const stats = useMemo(
 		() => summarise(results, playedCount),
 		[results, playedCount],
@@ -70,8 +69,6 @@ export function SearchResults({
 		{ enabled: canSavePlaylists && results.length > 0 && !library.isLoading },
 	);
 
-	if (library.needsSetup) return <LibrarySetup playlists={playlists} />;
-
 	if (library.error) {
 		return (
 			<p className={styles.notice}>
@@ -86,7 +83,7 @@ export function SearchResults({
 				<Search size={26} strokeWidth={1.5} aria-hidden="true" />
 				<h1 className={styles.idleTitle}>{t("search.yourLibrary")}</h1>
 				<p className={styles.idleBody}>
-					{t("search.idle", { count: library.count })}
+					{t("search.idle", { count: library.total })}
 				</p>
 				<Button variant="primary" icon={Search} onClick={search.focus}>
 					{t("search.startTyping")}
@@ -131,7 +128,7 @@ export function SearchResults({
 						<PlayActions
 							browserRef={browserRef}
 							trackCount={results.length}
-							canShuffle={canSavePlaylists}
+							canPlaySets={canSavePlaylists}
 						>
 							{canSavePlaylists ? (
 								<SavePlaylistButton

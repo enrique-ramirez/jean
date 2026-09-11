@@ -5,7 +5,6 @@ import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import { Appearance } from "./Appearance";
 import { ArtistInformation } from "./ArtistInformation";
-import { CachedArtwork } from "./CachedArtwork";
 import { Language } from "./Language";
 import { Playback } from "./Playback";
 import styles from "./Settings.module.css";
@@ -105,7 +104,6 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 					<Playback />
 					<ThisDevice />
 					<ArtistInformation />
-					<CachedArtwork />
 				</div>
 			</div>
 		</div>

@@ -42,7 +42,7 @@ Anything your library cannot support is not drawn. No ratings, no starred shelf.
 ## The extra
 
 <!-- site:extra -->
-[`foo_jean`](https://github.com/enrique-ramirez/foo_jean) is a component of Jean's own, and everything above works without it. Install it and two more things switch on.
+[`foo_jean`](https://github.com/enrique-ramirez/foo_jean) is a component of Jean's own, and it is what answers your library. Two more things come with it.
 
 **Rate a track from the browser.** The stars stop being read-only, and a rating you set here is written into the file's own tags, where every other program that reads your library will find it.
 
@@ -52,18 +52,19 @@ Anything your library cannot support is not drawn. No ratings, no starred shelf.
 ## Requirements
 
 <!-- site:requirements -->
-Jean is not a music player, and on its own it does nothing at all. It draws a player that is already running somewhere else, so two things have to be in place before it has anything to talk to.
+Jean is not a music player, and on its own it does nothing at all. It draws a player that is already running somewhere else, so three things have to be in place before it has anything to talk to.
 
 **A player that beefweb runs in.** foobar2000 on Windows, or DeaDBeeF on Linux, macOS or BSD. There is no foobar2000 build of beefweb for macOS, so a Mac means DeaDBeeF.
 
-**[beefweb](https://github.com/hyperblast/beefweb), installed and enabled in it.** This is the piece that answers a browser at all. Playback, playlists, the queue, artwork and the library itself all arrive through it, and Jean is a face drawn on top.
+**[beefweb](https://github.com/hyperblast/beefweb), installed and enabled in it.** This is the piece that answers a browser at all. Playback, playlists and the queue arrive through it, and Jean is a face drawn on top.
 
-Two more are optional:
+**[`foo_jean`](https://github.com/enrique-ramirez/foo_jean), installed beside it.** Your library, its covers, ratings written back to your tags, and the sound sent to this device all come from here. It pairs with Jean once, on your own network.
+
+One more is optional:
 
 | | |
 |---|---|
 | `foo_playcount` or `foo_enhanced_playcount` | Jean is compatible with both. They are where the play counts and last-played dates come from, which is what the shelves and the row shading are made of. Without one, none of that is drawn |
-| [`foo_jean`](https://github.com/enrique-ramirez/foo_jean) | The extra above: ratings written back to your tags, and the sound sent to this device |
 <!-- /site:requirements -->
 
 ## Install
@@ -116,18 +117,6 @@ Jean now lives at `/jean`, and the interface beefweb came with is still at `/`. 
 
 The portable case catches people out. Copying to `%APPDATA%` there fails quietly: the files land, and beefweb goes on serving the interface it came with.
 <!-- /site:profiles -->
-
-### If Jean asks for a library playlist
-
-Newer beefweb releases hand Jean the media library directly, and there is nothing to do. Older ones cannot: beefweb sees playlists and the filesystem and nothing else. When yours is one of those, Jean says so on first run and asks for a playlist that mirrors the library. The right kind is an **autoplaylist**, a live Media Library query that keeps itself in sync.
-
-In foobar2000: **Library → Search**, enter `ALL` as the query, and save the result as an autoplaylist. Name it exactly this:
-
-```
-#Jean Library
-```
-
-The name is how Jean knows the playlist is meant for it, so it has to match. If you already have one called `Library`, Jean will spot it and offer to rename it for you. Once it matches, Jean keeps it out of its own sidebar. It stays visible in foobar2000, where you can ignore it. Every other playlist stays yours; Jean never quietly reinterprets one as something else.
 
 ### You do not have to tell Jean your port
 

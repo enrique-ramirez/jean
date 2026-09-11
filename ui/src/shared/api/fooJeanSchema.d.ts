@@ -330,6 +330,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/artwork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The front cover of a track the media library holds.
+         * @description One picture, addressed by a track's library-relative path, revalidated rather than re-fetched. *Artwork* at the top of this document is the whole of it: how to address a cover, why every row of an album should point at one URL, and what the validator is computed from.
+         *
+         *     The address is resolved against the snapshot already in memory, with no scan of the library and no walk of the filesystem. The cover itself is loaded on every request, a conditional one included, for the reason *Revalidating a cover* gives.
+         */
+        get: operations["getArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stream/ticket": {
         parameters: {
             query?: never;
@@ -1128,6 +1150,76 @@ export interface components {
             };
         };
         /**
+         * @description The cover is byte for byte the one the client was last sent, so there is no body.
+         *
+         *     `ETag` is repeated so a client can keep validating against it, and `Cache-Control` is repeated so a stored copy that has just been confirmed keeps its instruction.
+         */
+        ArtworkNotModified: {
+            headers: {
+                /** @description The same tag the `200` carried. */
+                ETag?: string;
+                /** @description `no-cache, must-revalidate`. */
+                "Cache-Control"?: string;
+                [name: string]: unknown;
+            };
+            content?: never;
+        };
+        /** @description The address was declined before the snapshot was consulted: no `track` at all, one longer than 4096 characters, or one carrying a control character. */
+        ArtworkRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description There is no picture to send. Either the snapshot holds no track at that address, which is what a client sees after tracks moved on disk, or the player has no front cover for the one it holds, or the cover is in a format this component does not publish.
+         *
+         *     The `error` string tells them apart. All three are ordinary: an album without a sleeve is not a fault, and a client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+         */
+        NoArtwork: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The picture is larger than 16 MiB and this component will not send it. A ceiling on the *response*; `413` on a request body is a different limit and a different number. */
+        ArtworkTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description Covers are arriving faster than this component will read them: a burst of 300, refilling one every 50 milliseconds. A screenful of covers at once is the case this exists to allow, so a client drawing a grid never meets it; a client looping does.
+         *
+         *     A client that meets this SHOULD back off rather than retry, and MUST NOT treat it as "no artwork". `Retry-After` is sent in seconds.
+         */
+        ArtworkRequestedTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description This install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`. Artwork is addressed through the snapshot, so there is nothing to address without one. */
+        ArtworkUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
          * @description No token, the wrong token, or the wrong scheme.
          *
          *     No `WWW-Authenticate` header is sent. It would raise a native browser credential dialog over the client's own UI, and no browser can satisfy this scheme.
@@ -1557,7 +1649,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The snapshot. `Cache-Control` is `no-cache`, so a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            /** @description The snapshot. `Cache-Control` is `no-cache, must-revalidate`, so a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
             200: {
                 headers: {
                     /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
@@ -1653,6 +1745,49 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["LibraryRefreshedTooFast"];
             503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    getArtwork: {
+        parameters: {
+            query: {
+                /**
+                 * @description The track's path relative to the media library root, forward-slashed on every platform: the snapshot's `directory` and `filename` for that row, concatenated. Percent-encode it.
+                 *
+                 *     At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it simply matches nothing.
+                 * @example Artist/Album/01 A Title.flac
+                 */
+                track: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cover, in the format the player stored it in. */
+            200: {
+                headers: {
+                    /** @description Strong, quoted and opaque. Send it back as `If-None-Match`. */
+                    ETag?: string;
+                    /** @description `no-cache, must-revalidate`: keep the bytes, and ask before drawing them again. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/gif": string;
+                    "image/webp": string;
+                    "image/bmp": string;
+                };
+            };
+            304: components["responses"]["ArtworkNotModified"];
+            400: components["responses"]["ArtworkRefused"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoArtwork"];
+            413: components["responses"]["ArtworkTooLarge"];
+            429: components["responses"]["ArtworkRequestedTooFast"];
+            503: components["responses"]["ArtworkUnavailable"];
         };
     };
     issueStreamTicket: {

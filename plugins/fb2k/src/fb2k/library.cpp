@@ -16,7 +16,6 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -89,16 +88,10 @@ struct LibraryFeed::State {
           compiler_(std::move(compiler)),
           worker_([this] { run(); }) {}
 
-    void rebuild(std::vector<std::string> columns) {
+    void rebuild(std::vector<std::string> columns, RebuildReason why) {
         {
             const std::lock_guard<std::mutex> lock(mutex_);
-
-            const bool alreadyBuildingThis = building_.has_value() && *building_ == columns;
-            if (alreadyBuildingThis && !rebuildWanted_)
-                return;
-
-            asked_ = std::move(columns);
-            rebuildWanted_ = true;
+            queue_.ask(std::move(columns), why);
         }
 
         wake_.notify_one();
@@ -107,7 +100,7 @@ struct LibraryFeed::State {
     void refresh() {
         {
             const std::lock_guard<std::mutex> lock(mutex_);
-            rebuildWanted_ = true;
+            queue_.dataMoved();
         }
 
         wake_.notify_one();
@@ -127,7 +120,7 @@ struct LibraryFeed::State {
             if (dirty_.size() + items.get_count() > kMaxPendingDirty) {
                 dirty_.clear();
                 hookMarks_ = 0;
-                rebuildWanted_ = true;
+                queue_.dataMoved();
             } else {
                 for (size_t n = 0, count = items.get_count(); n < count; ++n)
                     dirty_.push_back(items.get_item(n));
@@ -185,25 +178,22 @@ private:
     void serve() {
         for (;;) {
             bool rebuilding = false;
+            std::vector<std::string> columns;
             std::vector<metadb_handle_ptr> marks;
             size_t marksFromHook = 0;
 
             {
                 std::unique_lock<std::mutex> lock(mutex_);
-                wake_.wait(lock, [this] { return stopping_ || rebuildWanted_ || !dirty_.empty(); });
+                wake_.wait(lock,
+                           [this] { return stopping_ || queue_.wanted() || !dirty_.empty(); });
 
                 if (stopping_)
                     return;
 
-                rebuilding = std::exchange(rebuildWanted_, false);
-
-                if (asked_.has_value()) {
-                    columns_ = std::move(*asked_);
-                    asked_.reset();
-                }
+                rebuilding = queue_.startIfWanted();
 
                 if (rebuilding) {
-                    building_ = columns_;
+                    columns = queue_.columns();
                     dirty_.clear();
                     hookMarks_ = 0;
                 } else {
@@ -217,20 +207,20 @@ private:
                 continue;
             }
 
-            build();
+            build(columns);
 
             {
                 const std::lock_guard<std::mutex> lock(mutex_);
-                building_.reset();
+                queue_.finished();
             }
         }
     }
 
-    WalkPtr walkPlayer() {
+    WalkPtr walkPlayer(const std::vector<std::string>& columns) {
         return askPlayer<WalkPtr>(
             mainThread_, "a media library walk",
             [api = libraryManager_, compiler = compiler_,
-             expressions = columns_](const AnswerPtr<WalkPtr>& answer) {
+             expressions = columns](const AnswerPtr<WalkPtr>& answer) {
                 const auto started = std::chrono::steady_clock::now();
 
                 auto walk = std::make_shared<Walk>();
@@ -255,8 +245,8 @@ private:
             nullptr, nullptr);
     }
 
-    void build() {
-        const WalkPtr walk = walkPlayer();
+    void build(const std::vector<std::string>& columns) {
+        const WalkPtr walk = walkPlayer(columns);
         if (!walk || stopping_)
             return;
 
@@ -308,7 +298,7 @@ private:
 
         scripts_ = walk->scripts;
 
-        LibraryBuilder builder(columns_, count);
+        LibraryBuilder builder(columns, count);
         evaluate(*ordered, builder);
         if (stopping_)
             return;
@@ -318,7 +308,7 @@ private:
         built_ = true;
 
         logInfo("built a library snapshot of " + std::to_string(count) + " track(s) and " +
-                std::to_string(columns_.size()) + " client column(s)");
+                std::to_string(columns.size()) + " client column(s)");
     }
 
     void evaluate(const Ordered& ordered, LibraryBuilder& builder) {
@@ -429,15 +419,12 @@ private:
     std::condition_variable wake_;
     std::atomic<bool> stopping_{false};
     std::atomic<bool> built_{false};
-    bool rebuildWanted_ = false;
-    std::optional<std::vector<std::string>> asked_;
-    std::optional<std::vector<std::string>> building_;
+    RebuildQueue queue_;
     std::vector<metadb_handle_ptr> dirty_;
     size_t hookMarks_ = 0;
 
     const AlbumArt art_;
 
-    std::vector<std::string> columns_;
     std::vector<titleformat_object::ptr> scripts_;
 
     // Read by the worker and by every connection thread answering GET /api/artwork.
@@ -534,8 +521,9 @@ LibraryRefresher LibraryFeed::refresher() {
     if (!state_)
         return {};
 
-    return
-        [state = state_](std::vector<std::string> columns) { state->rebuild(std::move(columns)); };
+    return [state = state_](std::vector<std::string> columns, RebuildReason why) {
+        state->rebuild(std::move(columns), why);
+    };
 }
 
 ArtworkReader LibraryFeed::artworkReader() {

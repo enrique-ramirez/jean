@@ -16,6 +16,7 @@ export interface AlbumRun {
 	year: string | null;
 	start: number;
 	count: number;
+	cover: number;
 	discs: DiscRun[] | null;
 }
 
@@ -52,6 +53,7 @@ export function groupByAlbum(rows: TrackRows, t: Translate): AlbumRun[] {
 	const discs = byValue(disc, discNumber);
 
 	const built: OpenRun[] = [];
+	const coverOf = new Map<number, number>();
 
 	for (let index = 0; index < rows.length; index += 1) {
 		const ref = rows.ref(index);
@@ -78,6 +80,10 @@ export function groupByAlbum(rows: TrackRows, t: Translate): AlbumRun[] {
 		const credit =
 			artistGroup < 0 ? t("track.unknownArtist") : artists.names[artistGroup];
 
+		const record = albumGroup < 0 ? -1 : artists.pairedWith(ref, albumGroup);
+		const cover = albumGroup < 0 ? index : (coverOf.get(record) ?? index);
+		if (albumGroup >= 0) coverOf.set(record, cover);
+
 		built.push({
 			key: `${credit} ${name} ${index}`,
 			album: name,
@@ -87,6 +93,7 @@ export function groupByAlbum(rows: TrackRows, t: Translate): AlbumRun[] {
 			year: readValue(year.at(ref)),
 			start: index,
 			count: 1,
+			cover,
 			discs: [{ number, start: index, count: 1 }],
 		});
 	}
@@ -100,7 +107,7 @@ export function groupByAlbum(rows: TrackRows, t: Translate): AlbumRun[] {
 export function albumCoverRows(groups: AlbumRun[], length: number) {
 	const cover = new Int32Array(length);
 	groups.forEach((group) => {
-		cover.fill(group.start, group.start, group.start + group.count);
+		cover.fill(group.cover, group.start, group.start + group.count);
 	});
 	return cover;
 }

@@ -59,7 +59,7 @@ export function createServer({
 	serveDir?: string | null;
 } = {}): FakeServer {
 	const held = { state };
-	const agent = createFooJeanServer(() => held.state);
+	const agent = createFooJeanServer(() => held.state, serveArtwork);
 
 	const server = createHttpServer(async (request, response) => {
 		const { state } = held;
@@ -134,16 +134,15 @@ function serveFile(file: string, response: ServerResponse) {
 	return true;
 }
 
-// The caching terms are the player's: foobar2000 answers `Cache-Control:
-// max-age=3, must-revalidate` with a content-derived ETag, and a 304 for a
-// conditional request that matches.
-//
-// Content-derived is not the same as shared: two indices off one album carry the
-// same ETag, but an HTTP cache is keyed by URL, so it never matches across two
-// rows unless the URL is shared too. Hence `albumCoverRows`.
+// A content-derived ETag, which is what both servers answer with.
 const etags = new Map<string, string>();
 
-const serveArtwork: ArtworkServer = (name, requestHeaders, response) => {
+const serveArtwork: ArtworkServer = (
+	name,
+	requestHeaders,
+	response,
+	cacheControl,
+) => {
 	const file = join(HERE, "artwork", name);
 	if (!existsSync(file)) return empty(response, 404);
 
@@ -154,7 +153,7 @@ const serveArtwork: ArtworkServer = (name, requestHeaders, response) => {
 	}
 
 	const headers = {
-		"Cache-Control": "max-age=3, must-revalidate",
+		"Cache-Control": cacheControl,
 		ETag: etag,
 		"Content-Type": MIME[extname(file)] ?? "application/octet-stream",
 	};

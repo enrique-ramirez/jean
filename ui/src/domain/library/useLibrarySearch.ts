@@ -1,7 +1,6 @@
 import {
 	useCallback,
 	useDeferredValue,
-	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -111,12 +110,6 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		removePlaylist(scratch.id);
 		setPinnedScratch(null);
 	}, [playlists, canEdit, playerSnapshot, setPinnedScratch]);
-
-	const { request } = library;
-
-	useEffect(() => {
-		if (draft.length > 0) request();
-	}, [draft, request]);
 
 	const deferredDraft = useDeferredValue(draft);
 
@@ -241,11 +234,10 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	}, [named, suggestions, wanted, index, draftMatched]);
 
 	const focus = useCallback(() => {
-		request();
 		setIsOpen(true);
 		inputRef.current?.focus();
 		inputRef.current?.select();
-	}, [request]);
+	}, []);
 
 	const type = useCallback((next: string) => {
 		setDraft(next);
@@ -295,8 +287,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		onFocus: useCallback(() => {
 			setIsFocused(true);
 			setIsOpen(true);
-			request();
-		}, [request]),
+		}, []),
 		onBlur: useCallback(() => setIsFocused(false), []),
 		query,
 		hasQuery: query.trim().length > 0,

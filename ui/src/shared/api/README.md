@@ -1,6 +1,6 @@
 # API reference
 
-Two HTTP APIs sit under Jean. **beefweb** is required and does playback, playlists, the queue, artwork and, on 0.11+, the media library. **`foo_jean`** is optional, listens on a port of its own, and does the things beefweb has no route for: writing tags, creating autoplaylists, and streaming the player's output.
+Two HTTP APIs sit under Jean. **beefweb** does playback, playlists and the queue, and answers artwork for a row that is in a playlist. **`foo_jean`** listens on a port of its own and answers everything else: the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
 
 Verified against foobar2000 with the beefweb plugin. Where behaviour differs by plugin version it says so: **0.10** is the current release, **0.11** adds the media library API. DeaDBeeF differences are called out per endpoint.
 
@@ -195,9 +195,9 @@ Arbitrary JSON blob storage, keyed by id.
 
 ### Artwork
 
-> **Artwork responses carry `Vary: Origin`, and an `<img>` request sends no `Origin` header.** A Cache Storage `match()` therefore misses a cached cover unless it passes `{ ignoreVary: true }`. `src/shared/ui/artworkCache.ts`.
+Addressed by **playlist index**, so these answer for the playing surfaces and for a playlist Jean is showing, and for nothing else. A library row's cover comes from the component instead.
 
-Artwork is addressed by **playlist index** everywhere except `/artwork/library`, so a cover for a row that is not in a playlist needs the media library API.
+> **Every response carries a short `max-age` with `must-revalidate`**, from one filter that does not tell a sleeve from a status poll, so a browser refetches a cover it drew a moment ago. beefweb answers a conditional request correctly, so the header is the whole of the problem and it is the player's to change.
 
 ## Columns and title formatting
 
@@ -218,7 +218,7 @@ Artwork is addressed by **playlist index** everywhere except `/artwork/library`,
 - **`$meta(x)` cannot be feature-detected.** It answers `''` for a field that does not exist, where `%x%` answers `?`. Probe with `%x%`.
 - **DeaDBeeF has no such sentinel.** There an unknown field answers `''`, exactly as an empty one does, so **every optional field reads as supported** and its column arrives empty rather than staying hidden. Detection is the thing that cannot work there, and it errs on the side of showing too much.
 - **Sparse fields defeat sampling.** A field only some tracks carry can be missed entirely by a fixed sample. Detect per track where a field is sparse, as the Details panel does.
-- **The autoplaylist and the media library API resolve byte-identical values for every field**, so a column that works on one works on the other and detection never has to ask which is in play.
+- **Which fields resolve is a fact about the install, not about a set of rows.** A playlist of untagged rips answers `?` for `%year%` while the library resolves it, so sample the library and let every view read that one answer. `src/domain/track/fieldAvailability.ts`.
 
 ### Expressions Jean uses
 
@@ -276,7 +276,7 @@ Which of these resolve varies by install, by component and by how the library wa
 
 ## The media library API
 
-**foobar2000 only, and only on beefweb 0.11+.** On DeaDBeeF every endpoint here is **501**; on 0.10 they are **404**. Treat both the same way: no library API, fall back to the autoplaylist.
+**foobar2000 only, and only on beefweb 0.11+.** On DeaDBeeF every endpoint here is **501**; on 0.10 they are **404**. **Jean does not read the library through any of it.** `foo_jean` answers the library, and these routes are only what a fill, a queue or a tag write acts *through* once a row has been chosen.
 
 ### `GET /library/info`
 
@@ -284,7 +284,7 @@ Which of these resolve varies by install, by component and by how the library wa
 { "library": { "supported": true, "enabled": true, "itemCount": 30441 } }
 ```
 
-The only one of these that answers without the API, which is how a client discovers it has none. `itemCount` agrees with an `ALL` autoplaylist to the track.
+The only one of these that answers without the API, which is how a client discovers it has none.
 
 **`enabled: false` means foobar2000 has no Media Library configured**, a different problem from "this player has no library API", fixed in foobar's own preferences rather than in a client. The two MUST NOT collapse into one state.
 
@@ -463,6 +463,7 @@ The component is installed and working in five of them, and none of them is sile
 | `GET /api/library/export` | bearer | the whole library, as one binary snapshot |
 | `GET /api/library/changes` | bearer | a per-column patch since a revision |
 | `POST /api/library/refresh` | bearer | force a rebuild, rate limited |
+| `GET /api/artwork?track=` | bearer | one front cover, by library-relative path |
 | `GET /api/playlists` | bearer | which playlists are autoplaylists, and which this component created |
 | `POST /api/autoplaylists` | bearer | create one |
 | `POST /api/autoplaylists/preview` | bearer | try a query without creating anything |
@@ -562,6 +563,15 @@ The player performs the write through `metadb_io_v2`, so foobar2000's own databa
 - **A delta's `ids` are parallel to its `ordinals`, not to the rows.** `ordinals.width` comes from the track count and `ids.width` from the dictionary size, so they are routinely different widths and both MUST be read rather than assumed.
 - **The spine effectively never moves**, because a path changing is a removal and an addition and that moves `structure`.
 - **A poll that finds nothing is a `304` with no body**, which is what makes re-checking cheap enough to ride a track change instead of a timer.
+
+### Covers
+
+`GET /api/artwork?track=` takes the snapshot's `directory` and `filename` for a row, concatenated and percent-encoded. There is no ordinal here: an ordinal means nothing across a `structure` change, so a URL built from one would change every time a track was added anywhere. The address is matched against the snapshot and joined to nothing, so an address the snapshot does not carry is a `404` and never another record's sleeve.
+
+- **Point every row of a record at one URL.** An HTTP cache is keyed by the URL, so a record addressed row by row is one request per row however identical the bytes. The route takes a track rather than an album because the player resolves art per track, from the file's own tags or from an image beside it, and which of the two it is varies inside one library.
+- **`Cache-Control: no-cache, must-revalidate` against a strong `ETag`** folded from the picture itself. Nothing foobar2000 offers names the file a cover came from until that cover has been loaded, so the validator moves when and only when the sleeve does, including a `folder.jpg` replaced in place, which the player announces to nobody. The cost is that a `304` loads the picture too and saves the transfer rather than the work.
+
+> **A browser does keep it, and revalidates.** RFC 9111 withholds storage of a response to a request carrying `Authorization` unless it also says `public`, `must-revalidate` or `s-maxage`, and that restriction binds a shared cache rather than a private one. Chrome, Chromium, Firefox and WebKit were each measured storing the response and sending `If-None-Match` back, in one page, across a browser restart, and cross-origin through the preflight, with and without `must-revalidate`. So a repeat view of a cover costs a conditional request and no transfer.
 
 ### Autoplaylists
 

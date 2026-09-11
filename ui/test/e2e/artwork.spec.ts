@@ -1,5 +1,13 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
-import { expect, requestsTo, scrollTop, test, times } from "./fixtures.ts";
+import {
+	expect,
+	FOO_JEAN_TOKEN,
+	openAllMusic,
+	requestsTo,
+	scrollTop,
+	test,
+	times,
+} from "./fixtures.ts";
 
 // Far enough down that getting there crosses thousands of rows the view has
 // never been near.
@@ -177,7 +185,7 @@ test.describe("one cover per album, not per track", () => {
 			Object.defineProperty(window, "__mintedArtwork", { get: () => minted });
 		});
 
-		await page.route("**/api/artwork/**", async (route) => {
+		await page.route("**/api/artwork**", async (route) => {
 			await new Promise((done) => setTimeout(done, 600));
 			await route.continue();
 		});
@@ -229,7 +237,7 @@ test.describe("what a cover looks like before it arrives", () => {
 	const cover = (page: Page) => page.locator("main [data-artwork]");
 
 	const holdArtwork = (page: Page) =>
-		page.route("**/api/artwork/**", async (route) => {
+		page.route("**/api/artwork**", async (route) => {
 			await new Promise((done) => setTimeout(done, 3000));
 			await route.continue();
 		});
@@ -268,5 +276,90 @@ test.describe("what a cover looks like before it arrives", () => {
 
 		await expect(cover(page).first()).toHaveAttribute("data-artwork", "ok");
 		await expect(cover(page).first().locator("svg")).toHaveCount(0);
+	});
+});
+
+// A library cover comes from the component rather than from beefweb, addressed by the track's
+// library-relative path. The route authenticates, so nothing can point an `<img>` straight at it, and
+// keeping the bytes between visits is the browser's own cache answering `no-cache` against a strong
+// validator.
+test.describe("a cover from the library", () => {
+	const artworkAnswers = (page: Page) => {
+		const answered: { path: string; status: number }[] = [];
+		page.on("response", (response) => {
+			const url = new URL(response.url());
+			if (url.pathname === "/api/artwork")
+				answered.push({
+					path: url.searchParams.get("track") ?? "",
+					status: response.status(),
+				});
+		});
+		return answered;
+	};
+
+	const settled = (page: Page) =>
+		expect(page.locator("main [data-artwork='ok']").first()).toBeVisible();
+
+	test("is asked for by the track's path, on the component", async ({
+		page,
+		player,
+	}) => {
+		const answered = artworkAnswers(page);
+
+		await openAllMusic(page);
+		await settled(page);
+
+		expect(answered.length).toBeGreaterThan(0);
+		expect(answered.every((entry) => entry.path.length > 0)).toBe(true);
+		expect(requestsTo(player, "/api/artwork/library")).toEqual([]);
+	});
+
+	test("carries a strong validator and terms that keep it", async ({
+		page,
+	}) => {
+		const headers: Record<string, string>[] = [];
+		page.on("response", (response) => {
+			if (new URL(response.url()).pathname === "/api/artwork" && response.ok())
+				headers.push(response.headers());
+		});
+
+		await openAllMusic(page);
+		await settled(page);
+
+		expect(headers.length).toBeGreaterThan(0);
+		for (const head of headers) {
+			expect(head["cache-control"]).toBe("no-cache, must-revalidate");
+			expect(head.etag).toMatch(/^"[^"]+"$/);
+		}
+	});
+
+	// Asked of the component directly rather than through the page, because Playwright
+	// gives a spec no way to see whether a browser answered a request out of its own
+	// cache.
+	test("answers a conditional request with a 304 and no body", async ({
+		page,
+		request,
+	}) => {
+		await openAllMusic(page);
+		await settled(page);
+
+		const url = (await page.evaluate(() =>
+			(performance.getEntriesByType("resource") as PerformanceResourceTiming[])
+				.map((entry) => entry.name)
+				.find((name) => name.includes("/api/artwork?track=")),
+		)) as string;
+
+		const auth = { Authorization: `Bearer ${FOO_JEAN_TOKEN}` };
+		const first = await request.get(url, { headers: auth });
+		expect(first.status()).toBe(200);
+
+		const tag = first.headers().etag;
+		const again = await request.get(url, {
+			headers: { ...auth, "If-None-Match": tag },
+		});
+
+		expect(again.status()).toBe(304);
+		expect(again.headers().etag).toBe(tag);
+		expect(await again.body()).toHaveLength(0);
 	});
 });

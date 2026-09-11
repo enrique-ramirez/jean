@@ -8,6 +8,7 @@ import {
 	useIsPlaying,
 	usePermissions,
 } from "@/domain/player/usePlayer";
+import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import { Mosaic } from "@/domain/track/Mosaic";
@@ -16,7 +17,6 @@ import type { TrackView } from "@/domain/track/project";
 import { revealed, useRevealAsked } from "@/domain/track/revealTrack";
 import { summarise } from "@/domain/track/stats";
 import { TrackBrowser } from "@/domain/track/TrackBrowser";
-import { useAvailableFields } from "@/domain/track/useAvailableFields";
 import { useFinder } from "@/domain/track/useFinder";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { CreateAutoPlaylist } from "@/features/genres/CreateAutoPlaylist";
@@ -86,7 +86,7 @@ export function LibraryListView({
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
-	const { hasPlayCounts } = useAvailableFields(view.columns);
+	const { hasPlayCounts } = useAvailableFields();
 	const stats = useMemo(
 		() => summarise(view, playedCount, isGenre ? { genres: 0 } : undefined),
 		[view, playedCount, isGenre],
@@ -156,7 +156,7 @@ export function LibraryListView({
 							<PlayActions
 								browserRef={browserRef}
 								trackCount={view.length}
-								canShuffle={canWrite}
+								canPlaySets={canWrite}
 							/>
 							{isGenre && label && onOpenPlaylist ? (
 								<CreateAutoPlaylist

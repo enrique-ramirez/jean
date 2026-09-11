@@ -10,8 +10,8 @@ import {
 } from "./fixtures.ts";
 
 // `foo_jean` answers the whole library as one binary snapshot, on its own port and so across a real
-// origin boundary, preflight and all. beefweb's own library API is the fallback underneath it and
-// must go unread while the component is serving.
+// origin boundary, preflight and all. It is the only source there is: beefweb's own library API must
+// go unread whatever the component says.
 
 const exportsAsked = (player: FakePlayer) =>
 	requestsTo(player, "/api/library/export").filter(
@@ -107,14 +107,18 @@ test.describe("a component that does not serve the library", () => {
 		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
-	test("beefweb's own library API is read instead", async ({
+	test("nothing stands in for it and beefweb is not asked", async ({
 		page,
 		player,
 	}) => {
-		await openAllMusic(page);
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
 
+		await expect(page.getByText("Nothing in your library yet.")).toBeVisible();
 		expect(exportsAsked(player)).toHaveLength(0);
-		expect(pagesAsked(player).length).toBeGreaterThan(0);
+		await expectSettlesAt(player, () => pagesAsked(player), []);
 	});
 });
 

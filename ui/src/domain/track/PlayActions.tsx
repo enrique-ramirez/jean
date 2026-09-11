@@ -12,12 +12,12 @@ import type { TrackBrowserHandle } from "./listTypes";
 export function PlayActions({
 	browserRef,
 	trackCount,
-	canShuffle = true,
+	canPlaySets = true,
 	children,
 }: {
 	browserRef: RefObject<TrackBrowserHandle | null>;
 	trackCount: number;
-	canShuffle?: boolean;
+	canPlaySets?: boolean;
 	children?: ReactNode;
 }) {
 	const t = useTranslate();
@@ -31,22 +31,24 @@ export function PlayActions({
 		play(Math.floor(Math.random() * trackCount));
 	};
 
-	const canShuffleHere = canShuffle && !isEmpty && order.canShuffle;
+	const canShuffleHere = canPlaySets && !isEmpty && order.canShuffle;
 
 	useKeymap(SCOPE.playlist, { shufflePlay }, { enabled: canShuffleHere });
 
 	return (
 		<>
-			<Button
-				variant="primary"
-				icon={PlayIcon}
-				onClick={() => play(0)}
-				disabled={isEmpty}
-			>
-				{t("player.play")}
-			</Button>
+			{canPlaySets ? (
+				<Button
+					variant="primary"
+					icon={PlayIcon}
+					onClick={() => play(0)}
+					disabled={isEmpty}
+				>
+					{t("player.play")}
+				</Button>
+			) : null}
 
-			{canShuffle ? (
+			{canPlaySets ? (
 				<Button
 					icon={Shuffle}
 					disabled={isEmpty || !order.canShuffle}

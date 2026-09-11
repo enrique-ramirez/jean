@@ -1,3 +1,4 @@
+import { compareText } from "../fake-api/state.ts";
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
@@ -15,12 +16,6 @@ import {
 	viewHeader,
 } from "./fixtures.ts";
 
-const libraryApiOnly = (hasLibraryApi: boolean) =>
-	test.skip(
-		!hasLibraryApi,
-		"the autoplaylist fallback copies by index, so neither the size limit nor the sort applies",
-	);
-
 test.describe("playing from all music", () => {
 	// Big enough that the set cannot be named in one request: as explicit
 	// {path, subsong} it outgrows the 1 MiB body beefweb hangs up over. The
@@ -31,9 +26,7 @@ test.describe("playing from all music", () => {
 	test("the whole library is asked for, not named track by track", async ({
 		page,
 		player,
-		hasLibraryApi,
 	}) => {
-		libraryApiOnly(hasLibraryApi);
 		await page.goto("/#/all");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
@@ -97,9 +90,7 @@ test.describe("the order a set is played in", () => {
 	test("the playlist is left in the order the view shows, whatever the player did", async ({
 		page,
 		player,
-		hasLibraryApi,
 	}) => {
-		libraryApiOnly(hasLibraryApi);
 		await page.goto("/#/all");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
@@ -119,7 +110,7 @@ test.describe("the order a set is played in", () => {
 		const held = scratchOf(player)!.items.map((track) =>
 			track["%path%"].replace(/\\/g, "/"),
 		);
-		expect(held).toEqual([...held].sort((a, b) => a.localeCompare(b)));
+		expect(held).toEqual([...held].sort(compareText));
 	});
 });
 

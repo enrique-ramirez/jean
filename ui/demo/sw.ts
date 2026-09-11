@@ -39,8 +39,6 @@ const build = (library: CapturedLibrary) => {
 	const demo = demoLibrary(library);
 	return withClock(
 		createState({
-			// The same library behind both sources, the media library API and the
-			// `#Jean Library` autoplaylist, as a real 0.11 player reports it.
 			playlists: demo.playlists,
 			mediaLibrary: demo.tracks,
 			artworkOf: demo.artworkOf,
@@ -80,15 +78,14 @@ const readBody = async (request: Request) => {
 	}
 };
 
-// Answered with the player's own cache terms. Without them the browser refetches
-// a cover it drew a moment ago, and the rows of one album are one request each
-// whatever the app does.
-const artwork: ArtworkServer = async (name, headers, response) => {
+const artwork: ArtworkServer = async (
+	name,
+	headers,
+	response,
+	cacheControl,
+) => {
 	const etag = `"${name}"`;
-	const cached = {
-		"Cache-Control": "max-age=3, must-revalidate",
-		ETag: etag,
-	};
+	const cached = { "Cache-Control": cacheControl, ETag: etag };
 
 	if (headers["if-none-match"] === etag) {
 		response.writeHead(304, cached);
@@ -127,6 +124,7 @@ const dispatch = async (
 			headers: { host: self.location.host, origin: self.location.origin },
 			body: entry.body,
 			response,
+			artwork,
 		});
 	else
 		await handleApi({
@@ -183,6 +181,7 @@ async function serve(request: Request, url: URL): Promise<Response> {
 			headers: headersOf(request),
 			body,
 			response,
+			artwork,
 		});
 		return ready;
 	}

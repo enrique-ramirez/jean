@@ -1,4 +1,5 @@
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
+import type { ArtworkServer } from "./routes.ts";
 import type { createState, Track } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
@@ -165,6 +166,11 @@ const cors = (headers: RequestHeaders, response: Responder) => {
 // Matched case-insensitively, as the component does.
 const bearerOf = (headers: RequestHeaders) =>
 	/^bearer\s+(.+)$/i.exec(one(headers.authorization))?.[1] ?? null;
+
+const MAX_TRACK_ADDRESS = 4096;
+
+// Word for word what `kKeepAndRevalidate` in the component's `core/http_server.cpp` sends.
+const KEEP_AND_REVALIDATE = "no-cache, must-revalidate";
 
 const FAILURES: Record<number, unknown> = {
 	403: {
@@ -413,7 +419,7 @@ const sendBlob = async (
 
 	response.writeHead(200, {
 		"Content-Type": "application/octet-stream",
-		"Cache-Control": "no-cache",
+		"Cache-Control": KEEP_AND_REVALIDATE,
 		Vary: "Origin, Accept-Encoding",
 		ETag: tagOf(state, gzip ? "gzip" : "identity", since),
 		...(gzip ? { "Content-Encoding": "gzip" } : null),
@@ -454,9 +460,10 @@ async function handleLibrary({
 		}
 		const tag = tagOf(state, "identity");
 		response.setHeader("Vary", "Origin, Accept-Encoding");
+		response.setHeader("Cache-Control", KEEP_AND_REVALIDATE);
 		response.setHeader("ETag", tag);
 		if (one(headers["if-none-match"]) === tag) {
-			response.writeHead(304, {});
+			response.writeHead(304);
 			response.end();
 			return true;
 		}
@@ -529,6 +536,7 @@ export async function handleAgent({
 	headers,
 	body,
 	response,
+	artwork,
 }: {
 	state: FakeState;
 	method: string;
@@ -536,11 +544,12 @@ export async function handleAgent({
 	headers: RequestHeaders;
 	body: unknown;
 	response: Responder;
+	artwork: ArtworkServer;
 }) {
 	const fake = state.fooJean;
 	const path = url.pathname;
 
-	state.record(method, path, body as never);
+	state.record(method, path + url.search, body as never);
 
 	cors(headers, response);
 
@@ -648,6 +657,18 @@ export async function handleAgent({
 
 	if (path === "/api/library" || path.startsWith("/api/library/"))
 		return handleLibrary({ state, fake, method, path, url, headers, response });
+
+	if (path === "/api/artwork") {
+		const track = url.searchParams.get("track") ?? "";
+		if (!track || track.length > MAX_TRACK_ADDRESS)
+			return json(response, { error: "unacceptable track address" }, 400);
+
+		const file = state.libraryArtworkFor(track);
+		if (!file)
+			return json(response, { error: "no artwork for that track" }, 404);
+
+		return artwork(file, headers, response, KEEP_AND_REVALIDATE);
+	}
 
 	if (path === "/api/playlists") {
 		return json(response, {

@@ -378,8 +378,12 @@ test.describe("the identity on a phone", () => {
 		await expect(screen).toContainText("Los Calientes");
 		await expect(screen).toContainText("Babasónicos");
 		await expect(screen).toContainText("Jessico");
+		// Either control: which one is drawn is whether this install may write a
+		// rating, and `rating-writes.spec.ts` is where that is settled.
 		await expect(
-			screen.getByRole("img", { name: /stars|Unrated/ }),
+			screen
+				.getByRole("img", { name: /stars|Unrated/ })
+				.or(screen.getByRole("group", { name: /stars|Unrated/ })),
 		).toBeVisible();
 	});
 

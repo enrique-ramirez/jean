@@ -5,19 +5,6 @@ import type { Translate } from "@/shared/i18n/locale";
 // beginning `#Jean` is Jean's plumbing, anything else is the user's music.
 const PREFIX = "#Jean";
 
-export const LIBRARY_TITLE = `${PREFIX} Library`;
-
-const isLibraryPlaylist = (playlist: PlaylistInfo | null | undefined) =>
-	playlist?.title === LIBRARY_TITLE;
-
-export const findLibraryPlaylist = (playlists: PlaylistInfo[]) =>
-	playlists.find(isLibraryPlaylist) ?? null;
-
-export const looksLikeLibrary = (playlist: PlaylistInfo | null | undefined) => {
-	const title = playlist?.title?.trim().toLowerCase();
-	return title === "library" || title === LIBRARY_TITLE.toLowerCase();
-};
-
 const SCRATCH_PREFIX = `${PREFIX} [`;
 const SCRATCH_SUFFIX = "]";
 

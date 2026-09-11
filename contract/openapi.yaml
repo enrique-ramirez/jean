@@ -141,9 +141,11 @@ info:
 
     ### Revalidating a cover
 
-    `Cache-Control: no-cache`, which is "ask every time, and use the copy you have when it has not changed" rather than "do not keep it". A client SHOULD keep the bytes and send the `ETag` back as `If-None-Match`.
+    `Cache-Control: no-cache, must-revalidate`, which is "ask every time, and use the copy you have when it has not changed" rather than "do not keep it". A client SHOULD keep the bytes and send the `ETag` back as `If-None-Match`.
 
-    The validator is strong, quoted and opaque, and it comes from a `stat` of whichever file the picture actually came from, its size and its modification time, rather than from the picture. Nothing is read and nothing is decoded to produce one, which is what makes a `304` cheap. It also catches the change nothing else can see: an image file sitting beside the music, replaced in place, alters no tag and no track, so its own timestamp is the only evidence it moved.
+    `must-revalidate` addresses a cache that is not the client's own, and a client does nothing differently for it. Of the three directives that let a shared cache reuse a response to a request carrying `Authorization`, it is the only one that still makes that cache ask this component before it answers.
+
+    The validator is strong, quoted and opaque, and it is a fold of the picture itself, so it moves when and only when the cover does. That catches the change nothing else can see: an image file sitting beside the music, replaced in place, alters no tag and no track and is announced to nobody. The player loads the cover to answer at all, so a `304` saves the transfer and the redraw rather than the work at the player.
 
     A cover is never compressed. These are already compressed formats, so there is no `Vary: Accept-Encoding` here and no coding suffix on the validator.
 
@@ -668,7 +670,18 @@ paths:
         Its `ETag` names the content coding, exactly as the two binary routes do. See *Compression*.
       responses:
         "200":
-          description: The current state of the snapshot.
+          description: |
+            The current state of the snapshot. `Cache-Control` is `no-cache, must-revalidate`, as on every route here that sets a validator.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: "`no-cache, must-revalidate`."
+            Vary:
+              schema: { type: string }
+              description: "`Accept-Encoding`."
+            ETag:
+              schema: { type: string }
+              description: The generations and the coding, quoted.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Library" }
@@ -722,8 +735,11 @@ paths:
       responses:
         "200":
           description: |
-            The snapshot. `Cache-Control` is `no-cache`, so a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
+            The snapshot. `Cache-Control` is `no-cache, must-revalidate`, so a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
           headers:
+            Cache-Control:
+              schema: { type: string }
+              description: "`no-cache, must-revalidate`."
             Content-Encoding:
               schema: { type: string, enum: [gzip] }
               description: Present only when the request offered gzip. Absent means the bytes as they stand.
@@ -777,8 +793,11 @@ paths:
       responses:
         "200":
           description: |
-            The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. Gzipped on the same terms as the snapshot; see *Compression*.
+            The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `no-cache, must-revalidate`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*.
           headers:
+            Cache-Control:
+              schema: { type: string }
+              description: "`no-cache, must-revalidate`."
             Content-Encoding:
               schema: { type: string, enum: [gzip] }
               description: Present only when the request offered gzip. Absent means the bytes as they stand.
@@ -830,7 +849,7 @@ paths:
       description: |
         One picture, addressed by a track's library-relative path, revalidated rather than re-fetched. *Artwork* at the top of this document is the whole of it: how to address a cover, why every row of an album should point at one URL, and what the validator is computed from.
 
-        Cheap by construction. The address is resolved against the snapshot already in memory, with no scan of the library and no walk of the filesystem, and a conditional request costs one `stat` and never a read or a decode.
+        The address is resolved against the snapshot already in memory, with no scan of the library and no walk of the filesystem. The cover itself is loaded on every request, a conditional one included, for the reason *Revalidating a cover* gives.
       parameters:
         - name: track
           in: query
@@ -838,7 +857,7 @@ paths:
           description: |
             The track's path relative to the media library root, forward-slashed on every platform: the snapshot's `directory` and `filename` for that row, concatenated. Percent-encode it.
 
-            At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it simply matches nothing.
+            At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it matches nothing.
           schema: { type: string, minLength: 1, maxLength: 4096 }
           example: Artist/Album/01 A Title.flac
       responses:
@@ -851,7 +870,7 @@ paths:
               description: Strong, quoted and opaque. Send it back as `If-None-Match`.
             Cache-Control:
               schema: { type: string }
-              description: "`no-cache`: keep the bytes, and ask before drawing them again."
+              description: "`no-cache, must-revalidate`: keep the bytes, and ask before drawing them again."
           content:
             image/jpeg: { schema: { type: string, format: binary } }
             image/png: { schema: { type: string, format: binary } }
@@ -1188,6 +1207,9 @@ components:
 
         cpp-httplib evaluates `If-None-Match` for static files alone, so these routes answer it themselves. The tag is strong, it is quoted, and `*` is accepted. It is not a hash of the bytes: it is the generations the representation was built from, plus the content coding it was sent in, and both of those move whenever the bytes do. A validator held from an identity answer therefore does not revalidate a gzipped one, which is deliberate.
       headers:
+        Cache-Control:
+          schema: { type: string }
+          description: "`no-cache, must-revalidate`, as on the `200`."
         ETag:
           schema: { type: string }
           description: The same tag the `200` carried, coding suffix and all.
@@ -1268,7 +1290,7 @@ components:
 
     ArtworkNotModified:
       description: |
-        The file the cover comes from has the size and the modification time it had when the client was last sent it. No body, and no picture was read to establish it: one `stat` answered the whole request.
+        The cover is byte for byte the one the client was last sent, so there is no body.
 
         `ETag` is repeated so a client can keep validating against it, and `Cache-Control` is repeated so a stored copy that has just been confirmed keeps its instruction.
       headers:
@@ -1277,7 +1299,7 @@ components:
           description: The same tag the `200` carried.
         Cache-Control:
           schema: { type: string }
-          description: "`no-cache`."
+          description: "`no-cache, must-revalidate`."
 
     ArtworkRefused:
       description: |
@@ -1359,7 +1381,7 @@ components:
         version:
           type: string
           description: The component's own version. Informational; branch on apiVersion instead.
-          examples: ["0.2.0"]
+          examples: ["0.3.0"]
         apiVersion:
           type: integer
           description: The shape of this API. A client MUST refuse a number it does not understand.
@@ -1421,7 +1443,7 @@ components:
         canReadLibrary:
           type: boolean
           description: |
-            Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`. A client MUST hide the library rather than offer it and fail.
+            Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`, as does `GET /artwork`, which addresses a cover through the snapshot. A client MUST hide the library rather than offer it and fail.
 
             True says the routes are there, not that a snapshot is built yet. `GET /library` reports `ready` for that.
 
@@ -2025,7 +2047,7 @@ components:
       required: [name, version, apiVersion, port, authRequired, listening]
       properties:
         name: { type: string, const: foo_jean }
-        version: { type: string, examples: ["0.2.0"] }
+        version: { type: string, examples: ["0.3.0"] }
         apiVersion: { type: integer, examples: [1] }
         port:
           type: integer

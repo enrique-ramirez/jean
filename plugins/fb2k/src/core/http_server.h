@@ -34,7 +34,7 @@ using AutoPlaylistUpdater =
 using AutoPlaylistRemover = std::function<PlaylistResult(const std::string& id)>;
 using QueryPreviewer = std::function<PreviewResult(const std::string& query)>;
 using TimelineReader = std::function<std::string()>;
-using LibraryRefresher = std::function<void(std::vector<std::string> columns)>;
+using LibraryRefresher = std::function<void(std::vector<std::string> columns, RebuildReason why)>;
 
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.

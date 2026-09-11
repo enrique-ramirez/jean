@@ -801,13 +801,7 @@ test.describe("queueing a row that is in no playlist", () => {
 		page,
 		player,
 		isMobile,
-		hasLibraryApi,
 	}) => {
-		test.skip(
-			!hasLibraryApi,
-			"without the library API every row is already in the autoplaylist, so there is nothing to hold",
-		);
-
 		await page.goto("/#/all");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
@@ -838,10 +832,7 @@ test.describe("queueing a row that is in no playlist", () => {
 		page,
 		player,
 		isMobile,
-		hasLibraryApi,
 	}) => {
-		test.skip(!hasLibraryApi, "no holding playlist without the library API");
-
 		await page.goto("/#/all");
 		await expect(trackRow(page, 0)).toBeAttached();
 
@@ -872,12 +863,7 @@ test.describe("queueing several tracks that share one file", () => {
 		page,
 		player,
 		isMobile,
-		hasLibraryApi,
 	}) => {
-		test.skip(
-			!hasLibraryApi,
-			"without the library API the rows are playlist positions, which are already unique",
-		);
 		test.skip(
 			isMobile,
 			"selecting a range is mouse-only; touch queues one row",

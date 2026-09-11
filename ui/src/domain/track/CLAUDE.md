@@ -12,7 +12,7 @@ Two boundaries are genuinely ambiguous and both go to the lower, more common sca
 
 **Halves are displayed, never invented.** A file that says `3.5` gets three and a half stars; rounding it up would be Jean disagreeing with the player about what the library contains. The rating control's increment is **whole stars**, full stop: introducing halves into a library that has none is a change to somebody's tags they did not ask for. `hasHalfStars()` is the hook for offering halves where they already exist; nothing reads it yet.
 
-**The rating column is never hidden.** A library with nothing rated yet still needs the column to rate through, so it is the one field detection does not get to remove. **Five stars are always drawn and only the fill varies.** A row whose stars end somewhere different each time cannot be scanned down.
+**The rating column is never hidden.** A library with nothing rated yet still needs the column to rate through, so it is the one field detection does not get to remove. **Which fields resolve at all is one answer per install**, held in `fieldAvailability.ts` and refreshed from the library snapshot alone. A view never computes it from the rows in front of it: a playlist nobody has played would then hide the play count column that the shelf beside it shows. Until the library has answered nothing is ruled out, so no view opens with columns missing. **Five stars are always drawn and only the fill varies.** A row whose stars end somewhere different each time cannot be scanned down.
 
 ### Writing one
 
@@ -115,9 +115,9 @@ Prefer computed sizes where they are genuinely fixed and measurement where they 
 
 **`loading="lazy"` is not the mechanism.** It asks whether a row is visible, and a virtualised list moves rows through the viewport by the hundred: one jump across a long playlist starts an artwork request for every row it passed. What that costs is not frames, it is the rest of the app. Nothing blocks the main thread, but the browser gives an origin six HTTP/1.1 connections, the update stream holds one open forever, and everything Jean asks for afterwards queues behind covers for rows that are long gone. `shared/ui/artworkQueue.ts` is the answer; see `shared/ui/CLAUDE.md` for why the settle gate rather than the queue is the load-bearing half.
 
-**A cover belongs to an album, but it is addressed per row, so ask once.** A playlist addresses artwork by index and the media library by path, so a record's tracks are one URL each for one picture and the browser cannot know they are the same. `albumCoverRows` in `grouping.ts` points every row at its album run's first row, off the runs the album layout already groups for, so it costs nothing new. That an album has one cover was checked rather than asserted.
+**A cover belongs to an album, but it is addressed per row, so ask once.** Runs are contiguous and a record's rows need not be: search results and a genre page interleave albums, so the cover is chosen by album identity rather than by adjacency. Untagged rows are grouped by their artist alone, which is as much as there is to go on. That an album has one cover was checked rather than asserted.
 
-**There is no way to ask beefweb for a thumbnail**, since every query parameter is ignored, which is why the request count is the only thing there is to reduce. And **its ETag being content-derived is worth knowing and never worth relying on**: an HTTP cache is keyed by URL and so never matches across two rows unless the URL is shared.
+**There is no way to ask either server for a thumbnail**, so the request count is the only thing there is to reduce. And **an ETag being content-derived is worth knowing and never worth relying on**: an HTTP cache is keyed by URL and so never matches across two rows unless the URL is shared.
 
 ## Rows
 

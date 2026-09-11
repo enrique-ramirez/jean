@@ -67,8 +67,8 @@ export function AlbumGroup({
 		<section className={styles.group} data-compact={isCompactViewport}>
 			<div className={styles.aside}>
 				<Artwork
-					src={source.artworkUrl(rows.ref(group.start))}
-					identity={coverIdentity(rows.at(group.start))}
+					src={source.artworkUrl(rows.ref(group.cover))}
+					identity={coverIdentity(rows.at(group.cover))}
 					size={coverSize}
 					className={styles.art}
 					alt={t("album.coverAlt", { album: group.album })}

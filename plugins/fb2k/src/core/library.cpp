@@ -525,4 +525,50 @@ std::string describe(DeltaOutcome outcome) {
     return "unknown";
 }
 
+void RebuildQueue::ask(std::vector<std::string> columns, RebuildReason why) {
+    if (why == RebuildReason::dataChanged)
+        dataMoved();
+    else
+        forColumns_ = !building(columns);
+
+    asked_ = std::move(columns);
+}
+
+void RebuildQueue::dataMoved() {
+    forData_ = true;
+}
+
+bool RebuildQueue::wanted() const {
+    return forColumns_ || forData_;
+}
+
+bool RebuildQueue::startIfWanted() {
+    const bool rebuilding = wanted();
+    forColumns_ = false;
+    forData_ = false;
+
+    if (!rebuilding)
+        return false;
+
+    if (asked_.has_value()) {
+        columns_ = std::move(*asked_);
+        asked_.reset();
+    }
+
+    building_ = columns_;
+    return true;
+}
+
+void RebuildQueue::finished() {
+    building_.reset();
+}
+
+const std::vector<std::string>& RebuildQueue::columns() const {
+    return columns_;
+}
+
+bool RebuildQueue::building(const std::vector<std::string>& columns) const {
+    return building_.has_value() && *building_ == columns;
+}
+
 }  // namespace jean

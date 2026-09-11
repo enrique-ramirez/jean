@@ -381,6 +381,9 @@ export async function issueStreamTicket(
 	return { ok: false, reason: "unreachable", message };
 }
 
+export const libraryArtworkUrl = (origin: string | null, path: string) =>
+	origin && `${origin}/api/artwork?track=${encodeURIComponent(path)}`;
+
 // The ticket travels in the query string and the bearer token never does: an `<audio>` element sends
 // no headers, and a token here would reach every proxy log on the way.
 export const streamUrl = (origin: string, ticket: string, format: string) =>

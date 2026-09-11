@@ -187,7 +187,7 @@ None of these routes is reachable without the bearer token. A library says where
 
 **A relative path rather than an ordinal, so one album is one URL for as long as the file is there.** An ordinal means nothing across a `structure` change, so a URL built from one would have to name the generation and would then change every time a track was added anywhere in the library, emptying a browser's cache of every cover at once. A client points every row of a record at the one address and lets the browser store, deduplicate and revalidate it.
 
-`Cache-Control: no-cache` says to keep the bytes and ask before drawing them again. The `ETag` is a fold over the size and modification time of whichever file the picture came from, taken with a `stat`: a conditional request costs that stat and never a read or a decode. **It is also the only thing that sees a folder image change**, which foobar2000 announces to nobody.
+`Cache-Control: no-cache, must-revalidate` says to keep the bytes and ask before drawing them again, and says it to a shared cache as well as to the browser. The `ETag` is a fold of the picture itself, so it moves when and only when the cover does. **Loading the picture on every request is what sees a folder image change**, which foobar2000 announces to nobody. The player will not name the file a cover came from until it has loaded that cover, so there is no cheaper validator to fold: a conditional request saves the transfer and the redraw rather than the work at this end.
 
 The body is `image/jpeg`, `image/png`, `image/gif`, `image/webp` or `image/bmp`, decided from the bytes rather than from a filename, and anything else is a `404`. Covers are never compressed. A picture past 16 MiB is a `413`. Requests are bounded by a burst of 300 refilling one every 50 milliseconds, which a grid of covers never meets and a looping client does.
 
@@ -221,7 +221,7 @@ Pairing hands out the token this install already has rather than minting one per
 On every start the component writes `<profile>/beefweb/clientconfig/foo_jean.json`, which beefweb serves at `GET /api/clientconfig/foo_jean`, **same-origin** for anything beefweb is already serving, so one request replaces a port scan:
 
 ```json
-{ "name": "foo_jean", "version": "0.1.0", "apiVersion": 1,
+{ "name": "foo_jean", "version": "0.3.0", "apiVersion": 1,
   "port": 8881, "authRequired": true, "listening": true }
 ```
 

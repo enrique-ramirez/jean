@@ -4,8 +4,6 @@ import { fieldTable } from "../../src/shared/api/fieldTable.ts";
 
 //   LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='D:\SomeFolder' pnpm test:live
 
-const LIBRARY_PLAYLIST = "#Jean Library";
-
 // A comma inside an expression would split beefweb's own `columns` list, so these stay comma-free.
 const { expressions, index: FIELD } = fieldTable([
 	["path", "%path%"],
@@ -26,7 +24,6 @@ export interface LiveTrack {
 export interface Install {
 	origin: string;
 	info: { name: string; version: string; pluginVersion: string };
-	libraryId: string;
 	itemCount: number;
 	tracks: LiveTrack[];
 	hasFooJean: boolean;
@@ -66,23 +63,18 @@ const readInstall = async (origin: string): Promise<Install> => {
 		"/player",
 	);
 
-	const { playlists } = await api<{
-		playlists: { id: string; title: string; itemCount: number }[];
-	}>(origin, "/playlists");
-	const library = playlists.find((one) => one.title === LIBRARY_PLAYLIST);
-	if (!library)
-		throw new Error(
-			`${origin} has no ${LIBRARY_PLAYLIST} playlist, so there is nothing for Jean to read as the library on a player with no media library API.`,
-		);
-
+	// Read off beefweb rather than off the component, so the expected set is not the thing under
+	// test. Sorted by `%path%`, which is absolute, while the component orders by the
+	// library-relative one: the two agree on a single-root library, and this harness already
+	// insists on one through `LIVE_LIBRARY_ROOT`.
 	const columns = encodeURIComponent(expressions.join(","));
-	const { playlistItems } = await api<{
-		playlistItems: { items: { columns: string[] }[] };
+	const { libraryItems } = await api<{
+		libraryItems: { totalCount: number; items: { columns: string[] }[] };
 	}>(
 		origin,
-		`/playlists/${library.id}/items/0:${library.itemCount}?columns=${columns}`,
+		`/library/items?columns=${columns}&sort=${encodeURIComponent("%path%")}`,
 	);
-	const tracks = playlistItems.items.map(({ columns: values }) => ({
+	const tracks = libraryItems.items.map(({ columns: values }) => ({
 		path: values[FIELD.path],
 		title: values[FIELD.title],
 		artist: values[FIELD.artist],
@@ -101,8 +93,7 @@ const readInstall = async (origin: string): Promise<Install> => {
 	return {
 		origin,
 		info: player.info,
-		libraryId: library.id,
-		itemCount: library.itemCount,
+		itemCount: libraryItems.totalCount,
 		tracks,
 		hasFooJean: record !== null,
 	};

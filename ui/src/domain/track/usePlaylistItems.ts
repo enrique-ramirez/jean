@@ -2,9 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
 	componentLibraryKey,
 	EMPTY_PLAYLIST,
-	libraryKey,
 	loadComponentLibrary,
-	loadLibrary,
 	loadPlaylist,
 	type PlaylistSnapshot,
 	playlistKey,
@@ -45,13 +43,6 @@ export function usePlaylistItems(
 			() => loadPlaylist(playlistId as string, itemCount as number),
 			[playlistId, itemCount],
 		),
-	);
-}
-
-export function useLibraryItems(itemCount: number | null | undefined) {
-	return useLoadedRows(
-		itemCount == null ? null : libraryKey(itemCount),
-		useCallback(() => loadLibrary(itemCount as number), [itemCount]),
 	);
 }
 

@@ -8,6 +8,8 @@ argument-hint: [<path>|<ref>|<range>]
 
 Two agents, always in this order, and `humanize` after both if the prose still needs it. `style-reviewer` settles structure and naming; `comment-reaper` then decides which comments survive what is left. Running them the other way round writes comments for code that is about to move.
 
+Neither of them hunts for defects, and neither runs the suite. This pass asks whether the code is well built, not whether it works. Where the question is whether it works, whether it does what a spec said, and whether several agents' tasks hold together, that is `change-auditor`, and `/build` dispatches it before this runs.
+
 ## Work out the target
 
 The argument, if there is one, is the target. With no argument, use uncommitted changes.

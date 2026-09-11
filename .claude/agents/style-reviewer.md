@@ -55,7 +55,9 @@ Judge structure by whether it makes the code easier to read, never by whether it
 
 ## Documentation
 
-Each file has one job, and they do not overlap. The profile's documentation map says which. Flag anything written in the wrong file, and anything stated in two.
+`doctrine/documentation.md` holds the rule the rest of this section applies: the code and its tests are the primary documentation, and markdown is for what those two cannot express. Read it, then the profile's documentation map, which says which of those files exist here.
+
+Each file has one job, and they do not overlap. Flag anything written in the wrong file, and anything stated in two. Flag a paragraph that should have been a name or a test, which is the commonest way prose gets written at all.
 
 A `CLAUDE.md` or `AGENTS.md` is **not** feature documentation. Flag any description of what a screen shows, what a route returns, what a control does, what a function does step by step, or what files a directory contains. An agent can read the code and list a directory.
 

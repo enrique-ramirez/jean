@@ -8,7 +8,7 @@ Short sentences carrying one idea each. Plain words where a plain word means the
 
 Vary the length. A long sentence, then a short one. That alternation is most of what separates human prose from generated prose, and it survives any subject matter.
 
-Contractions are fine. Second person is fine when addressing a reader who will act: "run the suite before you claim it works".
+Contractions are fine. Documentation stays in the third person, per `doctrine/documentation.md`, and an instruction is carried by the imperative rather than by a subject: "run the suite before claiming it works".
 
 ## What to avoid
 

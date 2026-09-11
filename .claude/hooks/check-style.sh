@@ -121,18 +121,68 @@ else
 
   git_dir=$(git -C "$CLAUDE_PROJECT_DIR" rev-parse --git-dir 2>/dev/null) || exit 0
   case "$git_dir" in /*) ;; *) git_dir="$CLAUDE_PROJECT_DIR/$git_dir" ;; esac
-  snapshot="$git_dir/style-check-snapshot"
+  # Versioned: the entries are checksums, and a run under an older naming scheme leaves a
+  # snapshot every current entry disagrees with. A new name takes the record-only path
+  # below instead of reporting the whole window as changed.
+  snapshot="$git_dir/style-check-snapshot-v2"
 
   # Checksums rather than timestamps. A command that writes a file within the same
   # second as the last scan is the normal case, not the rare one, and mtime on this
   # platform cannot tell those apart.
-  current=$(
-    git -C "$CLAUDE_PROJECT_DIR" status --porcelain --untracked-files=all 2>/dev/null |
-      cut -c4- | head -200 |
-      while IFS= read -r path; do
-        [ -f "$CLAUDE_PROJECT_DIR/$path" ] || continue
-        printf '%s %s\n' "$(cksum < "$CLAUDE_PROJECT_DIR/$path" | cut -d' ' -f1)" "$path"
-      done
+  #
+  # The scan is capped, so whatever fills the cap decides what the hook can see. It
+  # takes the most recently written files, and counts only paths that still exist: a
+  # restructure with a thousand dirty paths, most of them deletions, cannot push the
+  # write that triggered this event out of the window.
+  current=$(python3 - "$CLAUDE_PROJECT_DIR" <<'PY' 2>/dev/null
+import os, stat, subprocess, sys, zlib
+
+BUDGET = 200
+root = sys.argv[1]
+
+try:
+    porcelain = subprocess.run(
+        ['git', '-C', root, 'status', '--porcelain', '--untracked-files=all', '-z'],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True).stdout
+except (OSError, subprocess.CalledProcessError):
+    sys.exit(0)
+
+# -z rather than the quoted default, so a path with a space or an accent in it arrives
+# intact. Records are NUL-separated; a rename or a copy is followed by a second record
+# holding its source path, which is not a status line and must not be read as one.
+records = porcelain.split(b'\0')
+paths, i = [], 0
+while i < len(records):
+    record, i = records[i], i + 1
+    if len(record) < 4:
+        continue
+    status, path = record[:2], record[3:]
+    if b'R' in status or b'C' in status:
+        i += 1
+    paths.append(os.fsdecode(path))
+
+entries = []
+for path in paths:
+    if '\n' in path:  # would corrupt the one-line-per-file snapshot below
+        continue
+    try:
+        info = os.stat(os.path.join(root, path))
+    except OSError:  # a deletion, or a symlink pointing at one
+        continue
+    if stat.S_ISREG(info.st_mode):
+        entries.append((info.st_mtime, path))
+entries.sort(key=lambda entry: (-entry[0], entry[1]))
+
+for _, path in entries[:BUDGET]:
+    checksum = 0
+    try:
+        with open(os.path.join(root, path), 'rb') as handle:
+            for chunk in iter(lambda: handle.read(65536), b''):
+                checksum = zlib.crc32(chunk, checksum)
+    except OSError:
+        continue
+    print(checksum, path)
+PY
   )
 
   # First run in a checkout only records the snapshot. Reporting every dirty file at

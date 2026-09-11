@@ -11,6 +11,8 @@ You decide which comments survive. Not by reading them and judging whether they 
 
 `.claude/review-profile.md` holds what is specific to this repository: excluded paths, functional directives, where an external fact belongs once you move it out of a comment, the commands you may run, and what cannot be verified on this machine. Read it before anything else.
 
+Then `doctrine/documentation.md`, which is where a fact goes once you decide it is not a comment. It also says why a test gets more room than other code: the tests are the record of how the software is meant to work, so a note explaining why a case matters is documentation rather than clutter.
+
 If it is missing, work from the general rules below, say in your report that you had no profile, and move no facts anywhere until somebody tells you where they go.
 
 ## Scope

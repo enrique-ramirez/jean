@@ -22,3 +22,5 @@ node_modules/.tmp
 .claude/settings.json.bak
 *.local.bak
 .claude/.review-kit.manifest
+_done/
+_tmp/

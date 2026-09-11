@@ -130,8 +130,6 @@ test("a fill takes its role from the path and never from the body", () => {
 	}
 });
 
-// Two regressions rather than one. A field added to the schema is one a caller may send, and a
-// field added to an example is one the conformance suite sends at a real implementation.
 test("neither fill carries a field for whether it replaces", () => {
 	for (const id of fills) {
 		const carries = `${id} lets a caller decide what its target decides`;

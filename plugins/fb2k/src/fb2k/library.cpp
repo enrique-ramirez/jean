@@ -50,8 +50,6 @@ using WalkPtr = std::shared_ptr<Walk>;
 // Ordinal order, and the two ways back into it. Built whole and never altered afterwards,
 // so a connection thread reads one through a shared pointer while the worker builds the next.
 // `byRelativePath` keys into `relativePaths`, which is why nothing here may be appended to.
-// `structure` is the Library generation these ordinals were resolved against, so a caller
-// holding one can tell it apart from the one order() would return after the next rebuild.
 struct Ordered {
     metadb_handle_list items;
     std::vector<std::string> relativePaths;
@@ -306,8 +304,6 @@ private:
         if (stopping_)
             return;
 
-        // Library::replace runs first so the generation it assigns is read back rather than
-        // guessed at, and ordered is stamped with it before anything can reach the pointer.
         library_.replace(builder.finish());
         ordered->structure = library_.state().structure;
         publish(ordered);

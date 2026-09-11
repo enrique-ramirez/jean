@@ -220,6 +220,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/playlists/own/{role}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Which of the component's own playlists to fill. `scratch` is emptied first, so the insert leaves it holding only this request's rows; `queue` is never emptied, and the insert appends after whatever it already holds. Neither is reached by the read-only-playlists setting: both are how this component works, not the user's music. A `role` outside these two is a `400`.
+                 * @example scratch
+                 */
+                role: "scratch" | "queue";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Insert library rows into one of the component's own playlists, making it first if it is not there.
+         * @description Resolves `role` to a playlist through the component's own marker rather than through a title, so a playlist renamed at the player is still found and one somebody hand-titled to look like it is not adopted. Makes the playlist, carrying `title`, if the role has none yet.
+         *
+         *     The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select or a queue, MUST use to keep that order.
+         *
+         *     The read-only-playlists setting never refuses this operation: it protects a user's own playlists, and neither of the component's own holds any.
+         */
+        post: operations["fillOwnPlaylist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Insert library rows into a user's own playlist.
+         * @description Always appends: nothing here empties the playlist first. A fill that replaces what it holds is `POST /playlists/own/scratch/items`, which only ever addresses the component's own.
+         *
+         *     The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select, MUST use to keep that order.
+         *
+         *     Refused with `403` under the read-only-playlists setting, exactly as every other write to a playlist this component did not create.
+         */
+        post: operations["fillPlaylist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library": {
         parameters: {
             query?: never;
@@ -524,7 +584,7 @@ export interface components {
             name: "foo_jean";
             /**
              * @description The component's own version. Informational; branch on apiVersion instead.
-             * @example 0.2.0
+             * @example 0.3.0
              */
             version: string;
             /**
@@ -578,7 +638,7 @@ export interface components {
              */
             canMuteWhileStreaming: boolean;
             /**
-             * @description Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`. A client MUST hide the library rather than offer it and fail.
+             * @description Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`, as does `GET /artwork`, which addresses a cover through the snapshot. A client MUST hide the library rather than offer it and fail.
              *
              *     True says the routes are there, not that a snapshot is built yet. `GET /library` reports `ready` for that.
              */
@@ -789,6 +849,85 @@ export interface components {
             /** @description Keep the playlist sorted, and stop the user reordering it by hand. Optional, and false when absent. */
             forceSort?: boolean;
         };
+        FillOwnPlaylistRequest: {
+            /**
+             * @description What to title the playlist, exactly as it will read in foobar2000's own tabs. Applied on every call, whether this one is what creates the playlist for `role` or finds one already there, so retitling it from one fill to the next is the same call that fills it, never a second one.
+             *
+             *     No control characters, which would be line breaks in a playlist tab.
+             */
+            title: string;
+            /**
+             * @description The `structure` generation the set was resolved against, read from `GET /library`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @example 41
+             */
+            structure: number;
+            runs?: components["schemas"]["Runs"];
+            bitset?: components["schemas"]["Bitset"];
+            ordinals?: components["schemas"]["Ordinals"];
+        };
+        FillPlaylistRequest: {
+            /**
+             * @description The `structure` generation the set was resolved against, read from `GET /library`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @example 41
+             */
+            structure: number;
+            runs?: components["schemas"]["Runs"];
+            bitset?: components["schemas"]["Bitset"];
+            ordinals?: components["schemas"]["Ordinals"];
+        };
+        /**
+         * @description The set as ranges: each entry is `[start, count]`, a run of `count` consecutive ordinals beginning at `start`. Collapses a whole album, a whole folder or the whole library to a handful of pairs.
+         *
+         *     Inserted in ascending ordinal order, never in the order the pairs are listed — a run cannot carry any other order. A client holding a click-ordered set MUST send `ordinals` instead.
+         * @example [
+         *       [
+         *         0,
+         *         2
+         *       ],
+         *       [
+         *         9,
+         *         1
+         *       ]
+         *     ]
+         */
+        Runs: number[][];
+        /**
+         * @description The set as a bitmap, one bit per ordinal of the `structure` sent alongside it, least-significant bit first within each byte: bit 0 of byte 0 is ordinal 0, bit 7 of byte 0 is ordinal 7, bit 0 of byte 1 is ordinal 8. Base64 of exactly `ceil(trackCount / 8)` bytes for that `structure`. Costs about one byte per eight ordinals in the library whatever the set, which is what makes it the form to reach for once a scattered set would cost more as `runs` than the library is wide.
+         *
+         *     Inserted in ascending ordinal order — a bitmap carries no other order to preserve.
+         * @example AwI=
+         */
+        Bitset: string;
+        /**
+         * @description The set as a plain list. The only one of the three forms inserted in the order it is given rather than ascending — the form a client holding a click-ordered set, such as a multi-select or a queue, MUST send. Sending the same set as `runs` or `bitset` inserts it in ascending order instead, silently.
+         * @example [
+         *       9,
+         *       0,
+         *       1
+         *     ]
+         */
+        Ordinals: number[];
+        FillResult: {
+            /**
+             * @description foobar2000's own playlist GUID, lower case and dashed. From `POST /playlists/own/{role}/items` this is the id `role` resolved to; from `POST /playlists/{id}/items` it is the `id` the request named.
+             * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+             */
+            playlistId: string;
+            /**
+             * @description beefweb's id for the same playlist, exactly as `PlaylistAnnotation.beefwebId` reports it. `null` until beefweb next rebuilds its map; a client that needs it MUST request beefweb's playlists again first.
+             * @example p3
+             */
+            beefwebId: string | null;
+            /**
+             * @description One position per row inserted, in the order the rows were inserted: request order for `ordinals`, ascending ordinal order for `runs` and `bitset`. `positions[i]` is where the *i*-th inserted row landed, 0-based.
+             * @example [
+             *       0,
+             *       1,
+             *       2
+             *     ]
+             */
+            positions: number[];
+        };
         QueryPreview: {
             /** @description Whether foobar2000 could read the query. Check this before `matches`. */
             valid: boolean;
@@ -802,7 +941,7 @@ export interface components {
         /** @description A refusal the client can act on. The request was understood and declined before the player was involved. */
         PlaylistRefusal: {
             /** @enum {string} */
-            error: "malformed request" | "unacceptable title" | "unacceptable key" | "unacceptable query" | "unacceptable sort" | "unacceptable playlist id" | "too many requests";
+            error: "malformed request" | "unacceptable title" | "unacceptable key" | "unacceptable query" | "unacceptable sort" | "unacceptable playlist id" | "unacceptable ordinal set" | "too many requests";
             /** @description What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text. */
             detail: string;
         };
@@ -952,7 +1091,7 @@ export interface components {
         DiscoveryRecord: {
             /** @constant */
             name: "foo_jean";
-            /** @example 0.2.0 */
+            /** @example 0.3.0 */
             version: string;
             /** @example 1 */
             apiVersion: number;
@@ -975,7 +1114,7 @@ export interface components {
         };
     };
     responses: {
-        /** @description The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, or an id this component did not issue. */
+        /** @description The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, an id this component did not issue, or an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals`, or that names an ordinal outside the `structure` it claims. */
         PlaylistRefused: {
             headers: {
                 [name: string]: unknown;
@@ -1011,6 +1150,15 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
+        /** @description The `structure` the request named is no longer the current one: tracks were added to or removed from the library, so every ordinal it carries has shifted and inserting them would land the wrong rows. This is the same `409` `GET /api/library/changes` answers for the same reason, and the remedy is the same: export the library again and resolve the set against the `structure` that export reports. */
+        StructureMoved: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["LibraryFailed"];
+            };
+        };
         /**
          * @description Playlist changes are arriving faster than this component will make them. The limit bounds how fast a client bug can fill the player with playlists; it is not a security control.
          *
@@ -1024,6 +1172,19 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["PlaylistRefusal"];
+            };
+        };
+        /**
+         * @description The body is larger than 256 KiB and was refused before it was parsed, the same ceiling and the same refusal `POST /tags` answers: one `set_payload_max_length` covers every route this component accepts a body on. No set a library view can produce needs to reach it — `bitset` costs about one byte per eight ordinals in the library whatever the set, which is the form to reach for once a scattered set would cost more as `runs`.
+         *
+         *     The component answers and closes while the rest of the body may still be in flight, so a client sending something very large may see a dropped connection instead of this response. Both mean refused.
+         */
+        BodyTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
             };
         };
         /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
@@ -1053,6 +1214,15 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
+        /** @description Either this install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or no snapshot has been built yet. Both mean there is nothing to resolve the set against. */
+        FillUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Either this install does not stream, because no encoder started or `streamingEnabled` is false, or it is already serving as many connections as `maxConcurrentStreams` allows. The `error` string distinguishes them, and a client SHOULD present the second as busy and retry rather than as unsupported. `GET /capabilities` reports the first in advance. */
         StreamUnavailable: {
             headers: {
@@ -1069,6 +1239,8 @@ export interface components {
          */
         NotModified: {
             headers: {
+                /** @description `no-cache, must-revalidate`, as on the `200`. */
+                "Cache-Control"?: string;
                 /** @description The same tag the `200` carried, coding suffix and all. */
                 ETag?: string;
                 /** @description `Accept-Encoding`. */
@@ -1608,6 +1780,84 @@ export interface operations {
             504: components["responses"]["PlayerTooSlow"];
         };
     };
+    fillOwnPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Which of the component's own playlists to fill. `scratch` is emptied first, so the insert leaves it holding only this request's rows; `queue` is never emptied, and the insert appends after whatever it already holds. Neither is reached by the read-only-playlists setting: both are how this component works, not the user's music. A `role` outside these two is a `400`.
+                 * @example scratch
+                 */
+                role: "scratch" | "queue";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FillOwnPlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Inserted. `positions` names where each row landed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FillResult"];
+                };
+            };
+            400: components["responses"]["PlaylistRefused"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["StructureMoved"];
+            413: components["responses"]["BodyTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["FillUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    fillPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FillPlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Inserted. `positions` names where each row landed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FillResult"];
+                };
+            };
+            400: components["responses"]["PlaylistRefused"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["NotOurs"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["StructureMoved"];
+            413: components["responses"]["BodyTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["FillUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
     getLibrary: {
         parameters: {
             query?: never;
@@ -1617,9 +1867,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The current state of the snapshot. */
+            /** @description The current state of the snapshot. `Cache-Control` is `no-cache, must-revalidate`, as on every route here that sets a validator. */
             200: {
                 headers: {
+                    /** @description `no-cache, must-revalidate`. */
+                    "Cache-Control"?: string;
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    /** @description The generations and the coding, quoted. */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1652,6 +1908,8 @@ export interface operations {
             /** @description The snapshot. `Cache-Control` is `no-cache, must-revalidate`, so a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
             200: {
                 headers: {
+                    /** @description `no-cache, must-revalidate`. */
+                    "Cache-Control"?: string;
                     /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
                     "Content-Encoding"?: "gzip";
                     /** @description `Accept-Encoding`. */
@@ -1700,9 +1958,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. Gzipped on the same terms as the snapshot; see *Compression*. */
+            /** @description The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `no-cache, must-revalidate`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*. */
             200: {
                 headers: {
+                    /** @description `no-cache, must-revalidate`. */
+                    "Cache-Control"?: string;
                     /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
                     "Content-Encoding"?: "gzip";
                     /** @description `Accept-Encoding`. */
@@ -1753,7 +2013,7 @@ export interface operations {
                 /**
                  * @description The track's path relative to the media library root, forward-slashed on every platform: the snapshot's `directory` and `filename` for that row, concatenated. Percent-encode it.
                  *
-                 *     At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it simply matches nothing.
+                 *     At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it matches nothing.
                  * @example Artist/Album/01 A Title.flac
                  */
                 track: string;

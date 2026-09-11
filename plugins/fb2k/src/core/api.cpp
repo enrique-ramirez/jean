@@ -49,6 +49,12 @@ json annotation(const PlaylistAnnotation& playlist) {
 
 FillRequest refuseFill() {
     FillRequest request;
+    request.refusal = PlaylistRefusal::badOrdinals;
+    return request;
+}
+
+FillRequest malformedFill() {
+    FillRequest request;
     request.refusal = PlaylistRefusal::malformedBody;
     return request;
 }
@@ -271,6 +277,7 @@ int httpStatusFor(PlaylistRefusal refusal) {
         case PlaylistRefusal::badQuery:
         case PlaylistRefusal::badSort:
         case PlaylistRefusal::badId:
+        case PlaylistRefusal::badOrdinals:
             return 400;
     }
     return 400;
@@ -302,13 +309,13 @@ int httpStatusFor(PlaylistOutcome outcome) {
 FillRequest parseFill(const std::string& body, size_t trackCount) {
     const auto document = parseJsonObject(body);
     if (!document.ok())
-        return refuseFill();
+        return malformedFill();
 
     const auto& root = document.value;
 
     const auto structure = root.find("structure");
     if (structure == root.end() || !structure->is_number_unsigned())
-        return refuseFill();
+        return malformedFill();
 
     const auto runs = root.find("runs");
     const auto bitset = root.find("bitset");

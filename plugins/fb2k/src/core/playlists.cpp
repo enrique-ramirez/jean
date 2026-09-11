@@ -206,6 +206,8 @@ std::string describe(PlaylistRefusal refusal) {
             return "unacceptable sort";
         case PlaylistRefusal::badId:
             return "unacceptable playlist id";
+        case PlaylistRefusal::badOrdinals:
+            return "unacceptable ordinal set";
         case PlaylistRefusal::tooFast:
             return "too many requests";
     }

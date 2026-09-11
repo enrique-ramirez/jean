@@ -50,6 +50,7 @@ enum class PlaylistRefusal {
     badQuery,
     badSort,
     badId,
+    badOrdinals,
     tooFast,
 };
 

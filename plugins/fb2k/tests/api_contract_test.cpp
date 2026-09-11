@@ -84,6 +84,29 @@ std::string listed(const std::set<int>& statuses) {
     return text;
 }
 
+std::string listed(const std::vector<std::string>& values) {
+    std::string text;
+    for (const auto& value : values)
+        text += (text.empty() ? "" : ", ") + value;
+
+    return text;
+}
+
+// Every string a PlaylistRefusal can reach a client as. The enumerators run contiguously from
+// zero and describe() answers "unknown" past the last, so this reads the enum itself rather
+// than naming its values: a list written out in a test file is the thing that drifted.
+std::set<std::string> everyPlaylistRefusal() {
+    std::set<std::string> described;
+
+    for (int raw = 0;; ++raw) {
+        auto text = describe(static_cast<PlaylistRefusal>(raw));
+        if (text == "unknown")
+            return described;
+
+        described.insert(std::move(text));
+    }
+}
+
 }  // namespace
 
 TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
@@ -234,6 +257,7 @@ TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we
     CHECK(httpStatusFor(PlaylistRefusal::badQuery) == 400);
     CHECK(httpStatusFor(PlaylistRefusal::badSort) == 400);
     CHECK(httpStatusFor(PlaylistRefusal::badId) == 400);
+    CHECK(httpStatusFor(PlaylistRefusal::badOrdinals) == 400);
     CHECK(httpStatusFor(PlaylistRefusal::tooFast) == 429);
 
     CHECK(httpStatusFor(PlaylistOutcome::done) == 200);
@@ -371,6 +395,7 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(PlaylistRefusal::badQuery) == "unacceptable query");
     CHECK(describe(PlaylistRefusal::badSort) == "unacceptable sort");
     CHECK(describe(PlaylistRefusal::badId) == "unacceptable playlist id");
+    CHECK(describe(PlaylistRefusal::badOrdinals) == "unacceptable ordinal set");
     CHECK(describe(PlaylistRefusal::tooFast) == "too many requests");
 
     CHECK(describe(PlaylistOutcome::queryInvalid) == "foobar2000 could not read that query");
@@ -395,6 +420,23 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(DeltaOutcome::revisionTooOld) ==
           "that revision is older than the retained window; export the library again");
     CHECK(describe(DeltaOutcome::revisionUnknown) == "no such revision");
+}
+
+// The case above walks this component's values and pins the string each one sends. Nothing walked
+// the other way, so a value the spec published and no enumerator could produce went unnoticed: a
+// client switching on it waits for a string that never arrives, and reads the wrong branch in the
+// meantime. This is that direction, over whatever the spec publishes today.
+TEST_CASE("every refusal contract/openapi.yaml publishes is one this component can send") {
+    INFO("add the value to PlaylistRefusal in core/playlists.h, or take it out of the spec");
+
+    const auto described = everyPlaylistRefusal();
+
+    std::vector<std::string> unsendable;
+    for (const auto& published : publishedEnum("PlaylistRefusal", "error"))
+        if (described.count(published) == 0)
+            unsendable.push_back(published);
+
+    CHECK(listed(unsendable) == std::string());
 }
 
 TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer with") {

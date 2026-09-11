@@ -37,6 +37,11 @@ bool keyAt(const std::string& line, size_t indent, const std::string& key) {
     return line == std::string(indent, ' ') + key;
 }
 
+// How deep a line is indented, and npos for a line holding nothing but spaces.
+size_t indentOf(const std::string& line) {
+    return line.find_first_not_of(' ');
+}
+
 // A quoted three-digit status key at this indentation, e.g. `"404":` at the depth
 // responses: are written at. Empty when the line does not match.
 std::string statusKeyAt(const std::string& line, size_t indent) {
@@ -109,6 +114,75 @@ std::vector<SpecRoute> publishedRoutes() {
     }
 
     return routes;
+}
+
+// Five levels of key rather than two, and hand-rolled for the same reason: `schemas:`, the
+// schema, its `properties:`, the property and its `enum:` each sit at one fixed indentation,
+// and that is the whole grammar this file uses.
+std::vector<std::string> publishedEnum(const std::string& schema, const std::string& property) {
+    std::ifstream file(specPath());
+    REQUIRE_MESSAGE(file.is_open(), "cannot read contract/openapi.yaml");
+
+    constexpr size_t kSchemasIndent = 2;
+    constexpr size_t kSchemaIndent = 4;
+    constexpr size_t kSchemaKeyIndent = 6;
+    constexpr size_t kPropertyIndent = 8;
+    constexpr size_t kEnumIndent = 10;
+    const std::string bullet = std::string(kEnumIndent + 2, ' ') + "- ";
+
+    std::vector<std::string> values;
+    bool inSchemas = false;
+    bool inSchema = false;
+    bool inProperties = false;
+    bool inProperty = false;
+    bool inEnum = false;
+
+    for (std::string line; std::getline(file, line);) {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+
+        const auto indent = indentOf(line);
+        if (indent == std::string::npos)
+            continue;
+
+        if (!inSchemas) {
+            inSchemas = keyAt(line, kSchemasIndent, "schemas:");
+            continue;
+        }
+
+        if (indent < kSchemaIndent)
+            break;
+
+        if (indent == kSchemaIndent) {
+            inSchema = keyAt(line, kSchemaIndent, schema + ":");
+            inProperties = inProperty = inEnum = false;
+            continue;
+        }
+
+        if (inSchema && indent == kSchemaKeyIndent) {
+            inProperties = keyAt(line, kSchemaKeyIndent, "properties:");
+            inProperty = inEnum = false;
+            continue;
+        }
+
+        if (inProperties && indent == kPropertyIndent) {
+            inProperty = keyAt(line, kPropertyIndent, property + ":");
+            inEnum = false;
+            continue;
+        }
+
+        if (inProperty && indent == kEnumIndent) {
+            inEnum = keyAt(line, kEnumIndent, "enum:");
+            continue;
+        }
+
+        if (inEnum && startsWith(line, bullet))
+            values.push_back(line.substr(bullet.size()));
+    }
+
+    REQUIRE_MESSAGE(!values.empty(), "contract/openapi.yaml publishes no enum at ", schema, ".",
+                    property);
+    return values;
 }
 
 }  // namespace jean::testing

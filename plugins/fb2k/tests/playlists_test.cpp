@@ -226,6 +226,7 @@ TEST_CASE("a body names exactly one of the three forms, so two is refused and so
         const auto request = filling(forms);
 
         CHECK_FALSE(request.ok());
+        CHECK(describe(request.refusal) == "unacceptable ordinal set");
         CHECK(httpStatusFor(request.refusal) == 400);
         CHECK(request.ordinals.empty());
     }
@@ -234,7 +235,21 @@ TEST_CASE("a body names exactly one of the three forms, so two is refused and so
     // caller's mistake rather than a request to honour.
     const auto silent = parseFill(R"({"structure": 41})", kTracks);
     CHECK_FALSE(silent.ok());
+    CHECK(describe(silent.refusal) == "unacceptable ordinal set");
     CHECK(httpStatusFor(silent.refusal) == 400);
+}
+
+TEST_CASE("a body that is not JSON is a malformed body rather than a bad ordinal set") {
+    // Two refusals a client switches on, and contract/openapi.yaml keeps them apart: a body the
+    // parser could not read, and a set it read and would not take. One string for both would
+    // send a caller looking at ordinals it never managed to send.
+    for (const std::string& body : {"not json", "[0, 1, 9]", R"("a string")"}) {
+        INFO("body: ", body);
+        const auto request = parseFill(body, kTracks);
+
+        CHECK_FALSE(request.ok());
+        CHECK(describe(request.refusal) == "malformed request");
+    }
 }
 
 TEST_CASE("an ordinal past the end of the library is refused rather than dropped") {
@@ -252,6 +267,7 @@ TEST_CASE("an ordinal past the end of the library is refused rather than dropped
         const auto request = filling(form, kShortLibrary);
 
         CHECK_FALSE(request.ok());
+        CHECK(describe(request.refusal) == "unacceptable ordinal set");
         CHECK(httpStatusFor(request.refusal) == 400);
         CHECK(request.ordinals.empty());
     }

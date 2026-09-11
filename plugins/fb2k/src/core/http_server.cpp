@@ -1001,7 +1001,8 @@ struct HttpServer::Impl {
                 return;
             }
 
-            auto request = refuseFillChange(parseFill(req.body, library->state().trackCount));
+            auto request =
+                refuseFillChange(parseFill(req.body, library->state().trackCount, true));
             if (!request.ok()) {
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");

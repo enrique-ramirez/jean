@@ -5,6 +5,7 @@
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <array>
 #include <iterator>
 
 using nlohmann::json;
@@ -57,6 +58,19 @@ FillRequest malformedFill() {
     FillRequest request;
     request.refusal = PlaylistRefusal::malformedBody;
     return request;
+}
+
+// The fields `FillPlaylistRequest` declares in contract/openapi.yaml; `declaredFillField`
+// adds `title` on top of these for `FillOwnPlaylistRequest`. See parseFill's `allowsTitle`.
+constexpr std::array<const char*, 4> kFillFields{"structure", "runs", "bitset", "ordinals"};
+constexpr char kTitleField[] = "title";
+
+bool declaredFillField(const std::string& key, bool allowsTitle) {
+    if (allowsTitle && key == kTitleField)
+        return true;
+
+    return std::any_of(kFillFields.begin(), kFillFields.end(),
+                       [&key](const char* field) { return key == field; });
 }
 
 int base64Value(char c) {
@@ -307,12 +321,17 @@ int httpStatusFor(PlaylistOutcome outcome) {
     return 500;
 }
 
-FillRequest parseFill(const std::string& body, size_t trackCount) {
+FillRequest parseFill(const std::string& body, size_t trackCount, bool allowsTitle) {
     const auto document = parseJsonObject(body);
     if (!document.ok())
         return malformedFill();
 
     const auto& root = document.value;
+
+    for (const auto& field : root.items()) {
+        if (!declaredFillField(field.key(), allowsTitle))
+            return malformedFill();
+    }
 
     const auto structure = root.find("structure");
     if (structure == root.end() || !structure->is_number_unsigned())

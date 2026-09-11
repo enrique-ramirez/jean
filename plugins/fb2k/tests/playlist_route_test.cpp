@@ -14,6 +14,7 @@
 #include <iterator>
 #include <numeric>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace jean;
@@ -210,6 +211,12 @@ std::vector<Target> targets(uint64_t structure) {
     return {{"the scratch role", kScratchFill, ownBody(kScratchTitle, structure), true},
             {"the queue role", kQueueFill, ownBody(kQueueTitle, structure), false},
             {"a user's playlist", userFill(), userBody(structure), false}};
+}
+
+std::string withField(const std::string& body, const std::string& field, const json& value) {
+    auto document = json::parse(body);
+    document[field] = value;
+    return document.dump();
 }
 
 }  // namespace
@@ -623,5 +630,78 @@ TEST_CASE("the scratch playlist is emptied before a fill and every other target 
         CHECK(response->status == 200);
         REQUIRE(log.fills == 1);
         CHECK(log.replace == target.replaces);
+    }
+}
+
+// Both fill schemas publish `additionalProperties: false`, and `replace` is the field that costs:
+// a fill empties the playlist or appends to it according to the target, so a client sending it
+// would be told nothing while the component appended. `items` is what beefweb's own
+// add-from-library names its rows, and it is here because the rule is every field the contract
+// does not declare rather than `replace` in particular.
+TEST_CASE("a field neither fill schema declares is refused, and nothing is inserted") {
+    Library library;
+    buildLibrary(library);
+
+    FillLog log;
+    log.structure = library.state().structure;
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    const std::vector<std::pair<std::string, json>> undeclared{
+        {"replace", true}, {"items", json::array({"Artist/Album/1.flac"})}};
+
+    for (const auto& target : targets(log.structure)) {
+        for (const auto& field : undeclared) {
+            INFO("target: ", target.name, ", field: ", field.first);
+
+            const auto response =
+                post(server, target.path, withField(target.body, field.first, field.second));
+
+            REQUIRE(response);
+            CHECK(response->status == 400);
+
+            // The envelope was wrong rather than the set, which is the other refusal a client
+            // switches on here: it would send a caller looking at ordinals it sent correctly.
+            CHECK(json::parse(response->body)["error"] == "malformed request");
+        }
+    }
+
+    // Resolving a role makes the playlist if it is not there, so a refusal that reaches the player
+    // leaves a `#Jean` playlist behind for a request that was never acceptable.
+    CHECK(log.roles.empty());
+    CHECK(log.fills == 0);
+}
+
+// `title` is a field of FillOwnPlaylistRequest and of no other body. A client says what to call a
+// playlist the component makes for a role; a playlist a user already has keeps the name the user
+// gave it, so the same field on that route is a client meaning something this component will not
+// do.
+TEST_CASE("a title is declared on the component's own playlists and undeclared on a user's") {
+    Library library;
+    buildLibrary(library);
+
+    FillLog log;
+    log.structure = library.state().structure;
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    SUBCASE("both of the component's own roles take one") {
+        const auto scratch = post(server, kScratchFill, ownBody(kScratchTitle, log.structure));
+        REQUIRE(scratch);
+        CHECK(scratch->status == 200);
+
+        const auto queue = post(server, kQueueFill, ownBody(kQueueTitle, log.structure));
+        REQUIRE(queue);
+        CHECK(queue->status == 200);
+
+        CHECK(log.fills == 2);
+    }
+
+    SUBCASE("a user's playlist is refused rather than retitled") {
+        const auto response =
+            post(server, userFill(), withField(userBody(log.structure), "title", "#Jean Scratch"));
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"] == "malformed request");
+        CHECK(log.fills == 0);
     }
 }

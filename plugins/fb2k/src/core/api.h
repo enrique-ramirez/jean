@@ -82,7 +82,11 @@ struct FillRequest {
 
 // `trackCount` bounds what an ordinal may name; one at or past it is refused rather than
 // dropped, because narrowing the set silently is not what the caller asked for.
-FillRequest parseFill(const std::string& body, size_t trackCount);
+//
+// `allowsTitle` is `FillOwnPlaylistRequest`'s alone: `title` is declared there and nowhere
+// else, so a body carrying it against `FillPlaylistRequest` is refused with any other field
+// neither schema declares.
+FillRequest parseFill(const std::string& body, size_t trackCount, bool allowsTitle = false);
 
 // The small document a client polls for both generations. The snapshot itself is not JSON:
 // core/library.h serialises it, and contract/openapi.yaml describes the bytes.

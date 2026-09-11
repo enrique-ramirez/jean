@@ -15,6 +15,7 @@ PlaylistLister makePlaylistLister(MainThreadQueue& mainThread);
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread, int maxAutoPlaylists);
 AutoPlaylistUpdater makeAutoPlaylistUpdater(MainThreadQueue& mainThread);
 AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread);
+OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread);
 QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread);
 
 // Main thread only. The SDK offers a count and a getter rather than a range; this turns

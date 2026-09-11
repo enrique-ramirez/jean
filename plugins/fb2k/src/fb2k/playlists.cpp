@@ -25,6 +25,14 @@ constexpr GUID kJeanRecord = {
 constexpr GUID kBeefwebId = {
     0xe937900e, 0xef79, 0x4574, {0x81, 0xb1, 0x2a, 0x84, 0x0c, 0x17, 0x41, 0xcc}};
 
+// {651E1108-C122-49F5-94E1-89C184CAEDFA}
+//
+// Marks a playlist as the component's own plumbing, the scratch or the queue's holding
+// playlist, rather than a user's. Deliberately not kJeanRecord: annotate() parses that
+// property straight into an autoplaylist spec, and neither of these is one.
+constexpr GUID kOwnPlaylist = {
+    0x651e1108, 0xc122, 0x49f5, {0x94, 0xe1, 0x89, 0xc1, 0x84, 0xca, 0xed, 0xfa}};
+
 std::string readProperty(size_t index, const GUID& property) {
     pfc::array_t<uint8_t> stored;
     if (!playlist_manager_v2::get()->playlist_get_property(index, property, stored))
@@ -237,6 +245,56 @@ void beginRemove(const std::string& id, const AnswerPtr<PlaylistResult>& answer)
     answer->set(PlaylistResult{});
 }
 
+std::string roleId(OwnPlaylistRole role) {
+    switch (role) {
+        case OwnPlaylistRole::scratch:
+            return "scratch";
+        case OwnPlaylistRole::queue:
+            return "queue";
+    }
+
+    return {};
+}
+
+// pfc::infinite_size when this role has no playlist yet. Reads kOwnPlaylist rather than a
+// title, so a playlist renamed at the player is still found and one somebody hand-titled to
+// look like it is not adopted.
+size_t findOwnPlaylist(OwnPlaylistRole role) {
+    const auto want = roleId(role);
+    const auto indices = playlistIndices();
+    const auto found = std::find_if(indices.begin(), indices.end(), [&want](size_t index) {
+        return readProperty(index, kOwnPlaylist) == want;
+    });
+
+    return found == indices.end() ? pfc::infinite_size : *found;
+}
+
+// Main thread. Finds this role's playlist by its marker, or makes one carrying `title` from
+// creation, since a client polling beefweb's playlist list in between a create and a rename
+// would see it under the wrong name. `title` is applied on every call, so retitling it from
+// one fill to the next needs no call beyond this one.
+void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
+                      const AnswerPtr<PlaylistResult>& answer) {
+    auto index = findOwnPlaylist(role);
+
+    if (index == pfc::infinite_size) {
+        auto manager = playlist_manager_v5::get();
+        index = manager->create_playlist(title.c_str(), title.size(), pfc::infinite_size);
+
+        if (index == pfc::infinite_size) {
+            answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+            return;
+        }
+
+        writeProperty(index, kOwnPlaylist, roleId(role));
+        logInfo("created own playlist '" + title + "'");
+    } else {
+        playlist_manager::get()->playlist_rename(index, title.c_str(), title.size());
+    }
+
+    answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index)});
+}
+
 void beginPreview(const std::string& query, const AnswerPtr<PreviewResult>& answer) {
     PreviewResult preview;
 
@@ -310,6 +368,18 @@ AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread) {
         return askPlayer<PlaylistResult>(
             mainThread, "removing an autoplaylist",
             [id](const AnswerPtr<PlaylistResult>& answer) { beginRemove(id, answer); },
+            playlistFailure(PlaylistOutcome::timedOut),
+            playlistFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread) {
+    return [&mainThread](OwnPlaylistRole role, const std::string& title) {
+        return askPlayer<PlaylistResult>(
+            mainThread, "resolving one of the component's own playlists",
+            [role, title](const AnswerPtr<PlaylistResult>& answer) {
+                beginOwnPlaylist(role, title, answer);
+            },
             playlistFailure(PlaylistOutcome::timedOut),
             playlistFailure(PlaylistOutcome::playerRefused));
     };

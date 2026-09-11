@@ -653,6 +653,110 @@ paths:
         "503": { $ref: "#/components/responses/PlaylistUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
+  /playlists/own/{role}/items:
+    parameters:
+      - name: role
+        in: path
+        required: true
+        description: |
+          Which of the component's own playlists to fill. `scratch` is emptied first, so the insert leaves it holding only this request's rows; `queue` is never emptied, and the insert appends after whatever it already holds. Neither is reached by the read-only-playlists setting: both are how this component works, not the user's music. A `role` outside these two is a `400`.
+        schema:
+          type: string
+          enum: [scratch, queue]
+        example: scratch
+    post:
+      tags: [playlists]
+      operationId: fillOwnPlaylist
+      summary: Insert library rows into one of the component's own playlists, making it first if it is not there.
+      description: |
+        Resolves `role` to a playlist through the component's own marker rather than through a title, so a playlist renamed at the player is still found and one somebody hand-titled to look like it is not adopted. Makes the playlist, carrying `title`, if the role has none yet.
+
+        The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select or a queue, MUST use to keep that order.
+
+        The read-only-playlists setting never refuses this operation: it protects a user's own playlists, and neither of the component's own holds any.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FillOwnPlaylistRequest" }
+            examples:
+              runs:
+                summary: Ordinals 0, 1 and 9 of a 16-track library, as two runs.
+                value: { title: "Scratch", structure: 41, runs: [[0, 2], [9, 1]] }
+              bitset:
+                summary: The same three ordinals as a bitmap.
+                value: { title: "Scratch", structure: 41, bitset: "AwI=" }
+              ordinals:
+                summary: The same three ordinals in click order, which only this form can carry.
+                value: { title: "Scratch", structure: 41, ordinals: [9, 0, 1] }
+      responses:
+        "200":
+          description: Inserted. `positions` names where each row landed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FillResult" }
+        "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/StructureMoved" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/FillUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /playlists/{id}/items:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+    post:
+      tags: [playlists]
+      operationId: fillPlaylist
+      summary: Insert library rows into a user's own playlist.
+      description: |
+        Always appends: nothing here empties the playlist first. A fill that replaces what it holds is `POST /playlists/own/scratch/items`, which only ever addresses the component's own.
+
+        The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select, MUST use to keep that order.
+
+        Refused with `403` under the read-only-playlists setting, exactly as every other write to a playlist this component did not create.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FillPlaylistRequest" }
+            examples:
+              runs:
+                summary: Ordinals 0, 1 and 9 of a 16-track library, as two runs.
+                value: { structure: 41, runs: [[0, 2], [9, 1]] }
+              bitset:
+                summary: The same three ordinals as a bitmap.
+                value: { structure: 41, bitset: "AwI=" }
+              ordinals:
+                summary: The same three ordinals in click order, which only this form can carry.
+                value: { structure: 41, ordinals: [9, 0, 1] }
+      responses:
+        "200":
+          description: Inserted. `positions` names where each row landed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FillResult" }
+        "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotOurs" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "409": { $ref: "#/components/responses/StructureMoved" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/FillUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
   /library:
     get:
       tags: [library]
@@ -1120,7 +1224,7 @@ components:
   responses:
     PlaylistRefused:
       description: |
-        The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, or an id this component did not issue.
+        The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, an id this component did not issue, or an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals`, or that names an ordinal outside the `structure` it claims.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistRefusal" }
@@ -1131,6 +1235,8 @@ components:
               value: { error: unacceptable query, detail: "'query' must be printable text of at most 4096 characters" }
             notJson:
               value: { error: malformed request, detail: "could not parse it as JSON: [json.exception.parse_error.101] parse error at line 1, column 1: syntax error while parsing value - invalid literal; last read: 'n'" }
+            twoForms:
+              value: { error: unacceptable ordinal set, detail: "'runs' and 'bitset' were both present; send exactly one" }
 
     NotOurs:
       description: |
@@ -1160,6 +1266,18 @@ components:
             tooMany:
               value: { error: this install's autoplaylist limit is reached, detail: "this install allows 100 and already has 100" }
 
+    StructureMoved:
+      description: |
+        The `structure` the request named is no longer the current one: tracks were added to or removed from the library, so every ordinal it carries has shifted and inserting them would land the wrong rows. This is the same `409` `GET /api/library/changes` answers for the same reason, and the remedy is the same: export the library again and resolve the set against the `structure` that export reports.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/LibraryFailed" }
+          examples:
+            restructured:
+              value:
+                error: "tracks were added or removed; export the library again"
+                detail: ""
+
     TooManyRequests:
       description: |
         Playlist changes are arriving faster than this component will make them. The limit bounds how fast a client bug can fill the player with playlists; it is not a security control.
@@ -1172,6 +1290,18 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistRefusal" }
+
+    BodyTooLarge:
+      description: |
+        The body is larger than 256 KiB and was refused before it was parsed, the same ceiling and the same refusal `POST /tags` answers: one `set_payload_max_length` covers every route this component accepts a body on. No set a library view can produce needs to reach it — `bitset` costs about one byte per eight ordinals in the library whatever the set, which is the form to reach for once a scattered set would cost more as `runs`.
+
+        The component answers and closes while the rest of the body may still be in flight, so a client sending something very large may see a dropped connection instead of this response. Both mean refused.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            default:
+              value: { error: request too large }
 
     PlayerRefused:
       description: |
@@ -1193,6 +1323,18 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
+    FillUnavailable:
+      description: |
+        Either this install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or no snapshot has been built yet. Both mean there is nothing to resolve the set against.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: the media library is not available }
+            nothingYet:
+              value: { error: the library snapshot has not been built yet, detail: "" }
 
     StreamUnavailable:
       description: |
@@ -1764,6 +1906,92 @@ components:
           description: |
             Keep the playlist sorted, and stop the user reordering it by hand. Optional, and false when absent.
 
+    FillOwnPlaylistRequest:
+      type: object
+      additionalProperties: false
+      required: [title, structure]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: |
+            What to title the playlist, exactly as it will read in foobar2000's own tabs. Applied on every call, whether this one is what creates the playlist for `role` or finds one already there, so retitling it from one fill to the next is the same call that fills it, never a second one.
+
+            No control characters, which would be line breaks in a playlist tab.
+        structure:
+          type: integer
+          description: |
+            The `structure` generation the set was resolved against, read from `GET /library`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+          examples: [41]
+        runs: { $ref: "#/components/schemas/Runs" }
+        bitset: { $ref: "#/components/schemas/Bitset" }
+        ordinals: { $ref: "#/components/schemas/Ordinals" }
+
+    FillPlaylistRequest:
+      type: object
+      additionalProperties: false
+      required: [structure]
+      properties:
+        structure:
+          type: integer
+          description: |
+            The `structure` generation the set was resolved against, read from `GET /library`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+          examples: [41]
+        runs: { $ref: "#/components/schemas/Runs" }
+        bitset: { $ref: "#/components/schemas/Bitset" }
+        ordinals: { $ref: "#/components/schemas/Ordinals" }
+
+    Runs:
+      type: array
+      description: |
+        The set as ranges: each entry is `[start, count]`, a run of `count` consecutive ordinals beginning at `start`. Collapses a whole album, a whole folder or the whole library to a handful of pairs.
+
+        Inserted in ascending ordinal order, never in the order the pairs are listed — a run cannot carry any other order. A client holding a click-ordered set MUST send `ordinals` instead.
+      items:
+        type: array
+        items: { type: integer, minimum: 0 }
+        minItems: 2
+        maxItems: 2
+      examples: [[[0, 2], [9, 1]]]
+
+    Bitset:
+      type: string
+      description: |
+        The set as a bitmap, one bit per ordinal of the `structure` sent alongside it, least-significant bit first within each byte: bit 0 of byte 0 is ordinal 0, bit 7 of byte 0 is ordinal 7, bit 0 of byte 1 is ordinal 8. Base64 of exactly `ceil(trackCount / 8)` bytes for that `structure`. Costs about one byte per eight ordinals in the library whatever the set, which is what makes it the form to reach for once a scattered set would cost more as `runs` than the library is wide.
+
+        Inserted in ascending ordinal order — a bitmap carries no other order to preserve.
+      examples: ["AwI="]
+
+    Ordinals:
+      type: array
+      items: { type: integer, minimum: 0 }
+      description: |
+        The set as a plain list. The only one of the three forms inserted in the order it is given rather than ascending — the form a client holding a click-ordered set, such as a multi-select or a queue, MUST send. Sending the same set as `runs` or `bitset` inserts it in ascending order instead, silently.
+      examples: [[9, 0, 1]]
+
+    FillResult:
+      type: object
+      additionalProperties: false
+      required: [playlistId, beefwebId, positions]
+      properties:
+        playlistId:
+          type: string
+          description: |
+            foobar2000's own playlist GUID, lower case and dashed. From `POST /playlists/own/{role}/items` this is the id `role` resolved to; from `POST /playlists/{id}/items` it is the `id` the request named.
+          examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
+        beefwebId:
+          type: [string, "null"]
+          description: |
+            beefweb's id for the same playlist, exactly as `PlaylistAnnotation.beefwebId` reports it. `null` until beefweb next rebuilds its map; a client that needs it MUST request beefweb's playlists again first.
+          examples: ["p3"]
+        positions:
+          type: array
+          items: { type: integer, minimum: 0 }
+          description: |
+            One position per row inserted, in the order the rows were inserted: request order for `ordinals`, ascending ordinal order for `runs` and `bitset`. `positions[i]` is where the *i*-th inserted row landed, 0-based.
+          examples: [[0, 1, 2]]
+
     QueryPreview:
       type: object
       additionalProperties: false
@@ -1801,6 +2029,7 @@ components:
             - unacceptable query
             - unacceptable sort
             - unacceptable playlist id
+            - unacceptable ordinal set
             - too many requests
         detail:
           type: string

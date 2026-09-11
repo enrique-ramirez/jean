@@ -108,6 +108,26 @@ export const drives: Drive[] = [
 				: { pathParams: { id: context.playlistId } },
 	},
 	{
+		// The spec's own example names a `structure` no real library will be sitting on, so a
+		// conformant implementation refuses it with `409` before touching the player: nothing is
+		// created and nothing is filled, the same low footprint `writeTags` gets from a track
+		// that does not exist.
+		id: "fillOwnPlaylist",
+		probe: (operation) => ({
+			pathParams: { role: "scratch" },
+			body: example(operation, "runs"),
+		}),
+	},
+	{
+		// Same refusal, and the id is one nobody issued, so a `404` is at least as likely as the
+		// `409` -- either way this inserts nothing, which is the point.
+		id: "fillPlaylist",
+		probe: (operation) => ({
+			pathParams: { id: "45837d74-fa4f-415c-bba9-bf2db8f0dc04" },
+			body: example(operation, "runs"),
+		}),
+	},
+	{
 		id: "issueStreamTicket",
 		probe: (_, context) => ({
 			body: { deviceId: context.deviceId, name: "contract check" },

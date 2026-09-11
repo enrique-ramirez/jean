@@ -64,6 +64,82 @@ test("a probe with no answer to build on asks for nothing", () => {
 		assert.equal(drive(id).probe(operation(id), fresh), null);
 });
 
+const fills = ["fillOwnPlaylist", "fillPlaylist"];
+
+const bodyKeys = (id: string) => {
+	const keys = new Set(
+		Object.values(operation(id).examples).flatMap((body) =>
+			Object.keys(body as Record<string, unknown>),
+		),
+	);
+
+	assert.ok(keys.size > 0, `${id} publishes no request example to read`);
+	return keys;
+};
+
+const declaredKeys = (id: string) => {
+	const declared = operation(id).body?.properties;
+	assert.ok(declared, `${id} publishes no request schema to read`);
+	return new Set(Object.keys(declared));
+};
+
+const parameter = (id: string, name: string) => {
+	const found = operation(id).parameters.find((one) => one.name === name);
+	assert.ok(found, `${id} no longer takes a ${name}`);
+	return found;
+};
+
+test("the contract carries a fill per owner, and refuses only the one addressing a user's playlist", () => {
+	const own = operation("fillOwnPlaylist");
+	const users = operation("fillPlaylist");
+
+	assert.equal(`${own.method} ${own.path}`, "POST /playlists/own/{role}/items");
+	assert.equal(`${users.method} ${users.path}`, "POST /playlists/{id}/items");
+
+	assert.ok(
+		!own.published.has(403),
+		"the read-only-playlists setting now reaches a playlist the component owns",
+	);
+	assert.ok(
+		users.published.has(403),
+		"the read-only-playlists setting no longer refuses a fill of a user's playlist",
+	);
+});
+
+test("the role a fill addresses is closed to scratch and queue", () => {
+	const role = parameter("fillOwnPlaylist", "role");
+
+	assert.equal(role.in, "path");
+	assert.deepEqual(
+		[...(role.schema?.enum ?? [])].sort(),
+		["queue", "scratch"],
+		"a role the contract does not close is a role a client can invent",
+	);
+});
+
+test("a fill takes its role from the path and never from the body", () => {
+	assert.ok(
+		operation("fillOwnPlaylist").path.includes("{role}"),
+		"the role no longer addresses the playlist it fills",
+	);
+
+	for (const id of fills) {
+		const carries = `${id} takes a role in its body, where a client picks it as freely as a title`;
+		assert.ok(!declaredKeys(id).has("role"), carries);
+		assert.ok(!bodyKeys(id).has("role"), carries);
+	}
+});
+
+// Two regressions rather than one. A field added to the schema is one a caller may send, and a
+// field added to an example is one the conformance suite sends at a real implementation.
+test("neither fill carries a field for whether it replaces", () => {
+	for (const id of fills) {
+		const carries = `${id} lets a caller decide what its target decides`;
+		assert.ok(!declaredKeys(id).has("replace"), carries);
+		assert.ok(!bodyKeys(id).has("replace"), carries);
+	}
+});
+
 const annotation: Schema = {
 	type: "object",
 	additionalProperties: false,

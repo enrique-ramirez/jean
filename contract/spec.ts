@@ -11,6 +11,14 @@ export interface Schema {
 	additionalProperties?: boolean | Schema;
 	items?: Schema;
 	oneOf?: Schema[];
+	enum?: unknown[];
+}
+
+export interface Parameter {
+	name: string;
+	in: string;
+	required?: boolean;
+	schema?: Schema;
 }
 
 export interface Operation {
@@ -18,7 +26,9 @@ export interface Operation {
 	method: string;
 	path: string;
 	needsToken: boolean;
+	parameters: Parameter[];
 	published: Map<number, Schema | null>;
+	body: Schema | null;
 	examples: Record<string, unknown>;
 }
 
@@ -57,8 +67,8 @@ function inlined(document: Mapping): Mapping {
 	return walk(document) as Mapping;
 }
 
-const jsonSchemaOf = (response: Mapping): Schema | null =>
-	(((response.content as Mapping | undefined)?.["application/json"] as Mapping)
+const jsonSchemaOf = (node: Mapping): Schema | null =>
+	(((node.content as Mapping | undefined)?.["application/json"] as Mapping)
 		?.schema as Schema) ?? null;
 
 const publishedOf = (responses: Mapping) =>
@@ -84,6 +94,19 @@ const examplesOf = (requestBody: Mapping | undefined) => {
 	);
 };
 
+// A parameter an operation declares replaces the path item's of the same name and place, which
+// is OpenAPI's own rule rather than a convention of this spec.
+const parametersOf = (entry: Mapping, operation: Mapping): Parameter[] => {
+	const declared = [
+		...((entry.parameters as Parameter[] | undefined) ?? []),
+		...((operation.parameters as Parameter[] | undefined) ?? []),
+	];
+
+	return [
+		...new Map(declared.map((one) => [`${one.in} ${one.name}`, one])).values(),
+	];
+};
+
 const METHODS = ["get", "post", "put", "patch", "delete"];
 
 export function publishedOperations(): Operation[] {
@@ -93,6 +116,8 @@ export function publishedOperations(): Operation[] {
 	return Object.entries(paths).flatMap(([path, entry]) =>
 		METHODS.filter((method) => entry[method]).map((method) => {
 			const operation = entry[method] as Mapping;
+			const requestBody = operation.requestBody as Mapping | undefined;
+
 			return {
 				id: String(operation.operationId),
 				method: method.toUpperCase(),
@@ -100,8 +125,10 @@ export function publishedOperations(): Operation[] {
 				// An operation says it needs no credential by overriding the document's own
 				// security with an empty list, so anything that does not override needs one.
 				needsToken: operation.security === undefined,
+				parameters: parametersOf(entry, operation),
 				published: publishedOf(operation.responses as Mapping),
-				examples: examplesOf(operation.requestBody as Mapping | undefined),
+				body: requestBody ? jsonSchemaOf(requestBody) : null,
+				examples: examplesOf(requestBody),
 			};
 		}),
 	);

@@ -94,7 +94,7 @@ TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
 TEST_CASE("GET /capabilities is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
     CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true, true)) ==
-          Keys{"apiVersion", "allowedFields", "canWrite", "maxAutoPlaylists",
+          Keys{"apiVersion", "allowedFields", "canWrite", "canWritePlaylists", "maxAutoPlaylists",
                "canCreateAutoPlaylists", "canStream", "streamFormats", "canMuteWhileStreaming",
                "canReadLibrary"});
 }

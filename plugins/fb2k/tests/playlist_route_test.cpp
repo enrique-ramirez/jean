@@ -86,6 +86,14 @@ Player recordingPlayer(PlayerLog* log) {
     return player;
 }
 
+json capabilitiesOf(const Settings& settings) {
+    const TestServer server(settings);
+    const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+
+    REQUIRE(response);
+    return json::parse(response->body);
+}
+
 }  // namespace
 
 TEST_CASE("the playlist annotation is what beefweb cannot answer") {
@@ -347,5 +355,33 @@ TEST_CASE("an install that allows no autoplaylists says so before a client offer
 
         CHECK(body["canCreateAutoPlaylists"] == false);
         CHECK(body["maxAutoPlaylists"] == 0);
+    }
+}
+
+TEST_CASE("creating an autoplaylist needs both a cap to spend and writable playlists") {
+    const auto offered = [](bool writePlaylists, int maxAutoPlaylists) {
+        auto settings = servingSettings();
+        settings.writePlaylists = writePlaylists;
+        settings.maxAutoPlaylists = maxAutoPlaylists;
+
+        return capabilitiesOf(settings)["canCreateAutoPlaylists"];
+    };
+
+    CHECK(offered(true, 4) == true);
+    CHECK(offered(false, 4) == false);
+    CHECK(offered(true, 0) == false);
+    CHECK(offered(false, 0) == false);
+}
+
+TEST_CASE("GET /api/capabilities says whether this install permits playlist writes") {
+    SUBCASE("a config nobody narrowed permits them") {
+        CHECK(capabilitiesOf(servingSettings())["canWritePlaylists"] == true);
+    }
+
+    SUBCASE("read-only is published, rather than left for a client to learn from a refusal") {
+        auto settings = servingSettings();
+        settings.writePlaylists = false;
+
+        CHECK(capabilitiesOf(settings)["canWritePlaylists"] == false);
     }
 }

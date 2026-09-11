@@ -312,14 +312,16 @@ paths:
                     apiVersion: 1
                     allowedFields: ["rating"]
                     canWrite: true
+                    canWritePlaylists: true
                     maxAutoPlaylists: 100
                     canCreateAutoPlaylists: true
                 writesDisabled:
-                  summary: allowedFields emptied and maxAutoPlaylists zeroed in config.json.
+                  summary: allowedFields emptied, writePlaylists turned off, and maxAutoPlaylists zeroed in config.json.
                   value:
                     apiVersion: 1
                     allowedFields: []
                     canWrite: false
+                    canWritePlaylists: false
                     maxAutoPlaylists: 0
                     canCreateAutoPlaylists: false
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1537,8 +1539,8 @@ components:
       type: object
       additionalProperties: false
       required:
-        [apiVersion, allowedFields, canWrite, maxAutoPlaylists, canCreateAutoPlaylists,
-         canStream, streamFormats, canMuteWhileStreaming, canReadLibrary]
+        [apiVersion, allowedFields, canWrite, canWritePlaylists, maxAutoPlaylists,
+         canCreateAutoPlaylists, canStream, streamFormats, canMuteWhileStreaming, canReadLibrary]
       properties:
         apiVersion:
           type: integer
@@ -1553,6 +1555,12 @@ components:
           type: boolean
           description: |
             Exactly `allowedFields.length > 0`. A convenience, not a second source of truth.
+        canWritePlaylists:
+          type: boolean
+          description: |
+            Whether this install permits a write to a playlist or autoplaylist it did not create itself: create, add, edit, delete or reorder. `writePlaylists` in `config.json`, defaulting to `true`. A component predating this field reports nothing, and a client MUST read absence as writable.
+
+            The component's own two playlists, its scratch space and the play queue's holding playlist, stay writable regardless: this governs the user's playlists, not the component's own plumbing.
         maxAutoPlaylists:
           type: integer
           minimum: 0
@@ -1563,7 +1571,8 @@ components:
           examples: [100]
         canCreateAutoPlaylists:
           type: boolean
-          description: Exactly `maxAutoPlaylists > 0`. The same kind of convenience as `canWrite`.
+          description: |
+            True only when `canWritePlaylists` is true and `maxAutoPlaylists` is above zero. False under either alone, so a client gates a single control on this field rather than checking both itself.
         canStream:
           type: boolean
           description: |

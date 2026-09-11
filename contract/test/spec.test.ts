@@ -138,6 +138,20 @@ test("neither fill carries a field for whether it replaces", () => {
 	}
 });
 
+test("the capabilities document declares whether an install permits playlist writes", () => {
+	const capabilities = operation("getCapabilities").published.get(200);
+	assert.ok(capabilities, "the contract publishes no capabilities document");
+
+	assert.ok(
+		capabilities.properties?.canWritePlaylists,
+		"a client generating its types from the contract cannot read a field the contract leaves out",
+	);
+	assert.ok(
+		capabilities.required?.includes("canWritePlaylists"),
+		"a field the contract leaves optional is one a client has to guess the meaning of",
+	);
+});
+
 const annotation: Schema = {
 	type: "object",
 	additionalProperties: false,

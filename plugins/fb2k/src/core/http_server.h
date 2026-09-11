@@ -10,6 +10,7 @@
 #include "core/stream_ticket.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -36,6 +37,32 @@ using QueryPreviewer = std::function<PreviewResult(const std::string& query)>;
 using TimelineReader = std::function<std::string()>;
 using LibraryRefresher = std::function<void(std::vector<std::string> columns, RebuildReason why)>;
 
+// One of the component's own playlists. Closed to these two so a request can never address
+// a third of its own invention, and so nothing resolves one by matching a title.
+enum class OwnPlaylistRole { scratch, queue };
+
+// Resolves `role` to the id of the component's own playlist for it, through the marker the
+// playlist carries rather than its title, so a rename at the player still finds it and a
+// playlist a user titled to look like it is not adopted. Creates one titled `title` if the
+// role has none yet; `title` is applied on every call, so retitling it from one fill to the
+// next is the same call that fills it.
+using OwnPlaylistResolver =
+    std::function<PlaylistResult(OwnPlaylistRole role, const std::string& title)>;
+
+// Where the rows an insert asked for landed, in the order they were inserted.
+struct FillResult {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    std::vector<size_t> positions;
+};
+
+// Resolves `ordinals` against the snapshot built for `structure`, in the order given, and
+// inserts the tracks they name into `playlistId`, emptying it first when `replace` is set.
+// Whether the write is permitted is decided before this is called; this callback is never
+// asked to weigh in.
+using PlaylistFiller =
+    std::function<FillResult(const std::string& playlistId, uint64_t structure,
+                             const std::vector<uint32_t>& ordinals, bool replace)>;
+
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.
 struct Player {
@@ -44,6 +71,8 @@ struct Player {
     AutoPlaylistCreator createAutoPlaylist;
     AutoPlaylistUpdater updateAutoPlaylist;
     AutoPlaylistRemover removeAutoPlaylist;
+    OwnPlaylistResolver ownPlaylist;
+    PlaylistFiller fill;
     QueryPreviewer previewQuery;
     StreamOpener openStream;
 

@@ -70,6 +70,8 @@ enum class PlaylistOutcome {
     notOurs,
     keyInUse,
     tooMany,
+    // Means what GET /api/library/changes already means by 409: export again, then ask again.
+    structureMoved,
     playerRefused,
     timedOut,
     unavailable,

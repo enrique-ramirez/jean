@@ -2059,6 +2059,7 @@ components:
             - this install has playlist writes turned off; turn on writePlaylists in config.json to allow them
             - another playlist already has that key
             - this install's autoplaylist limit is reached
+            - tracks were added or removed; export the library again
             - the player could not do that
             - the player did not answer in time
             - autoplaylists are not available

@@ -295,6 +295,7 @@ int httpStatusFor(PlaylistOutcome outcome) {
             return 404;
         case PlaylistOutcome::keyInUse:
         case PlaylistOutcome::tooMany:
+        case PlaylistOutcome::structureMoved:
             return 409;
         case PlaylistOutcome::playerRefused:
             return 500;

@@ -954,7 +954,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available";
+            error: "foobar2000 could not read that query" | "no such playlist" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };

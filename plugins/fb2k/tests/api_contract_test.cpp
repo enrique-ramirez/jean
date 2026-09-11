@@ -117,6 +117,20 @@ std::string unsendable(const std::string& schema, const std::set<std::string>& d
     return listed(missing);
 }
 
+// The status a client gets for a given error string, and zero where no enumerator sends that
+// string at all. Which value carries a meaning is the component's to name, so this names none.
+int statusAnswered(const std::string& error) {
+    for (int raw = 0;; ++raw) {
+        const auto outcome = static_cast<PlaylistOutcome>(raw);
+        const auto described = describe(outcome);
+
+        if (described == "unknown")
+            return 0;
+        if (described == error)
+            return httpStatusFor(outcome);
+    }
+}
+
 }  // namespace
 
 TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
@@ -276,6 +290,7 @@ TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we
     CHECK(httpStatusFor(PlaylistOutcome::noSuchPlaylist) == 404);
     CHECK(httpStatusFor(PlaylistOutcome::keyInUse) == 409);
     CHECK(httpStatusFor(PlaylistOutcome::tooMany) == 409);
+    CHECK(httpStatusFor(PlaylistOutcome::structureMoved) == 409);
     CHECK(httpStatusFor(PlaylistOutcome::playerRefused) == 500);
     CHECK(httpStatusFor(PlaylistOutcome::timedOut) == 504);
     CHECK(httpStatusFor(PlaylistOutcome::unavailable) == 503);
@@ -415,6 +430,8 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
           "allow them");
     CHECK(describe(PlaylistOutcome::keyInUse) == "another playlist already has that key");
     CHECK(describe(PlaylistOutcome::tooMany) == "this install's autoplaylist limit is reached");
+    CHECK(describe(PlaylistOutcome::structureMoved) ==
+          "tracks were added or removed; export the library again");
     CHECK(describe(PlaylistOutcome::playerRefused) == "the player could not do that");
     CHECK(describe(PlaylistOutcome::timedOut) == "the player did not answer in time");
     CHECK(describe(PlaylistOutcome::unavailable) == "autoplaylists are not available");
@@ -448,6 +465,20 @@ TEST_CASE("every playlist error contract/openapi.yaml publishes is one this comp
              "contract/openapi.yaml, or add the enumerator to PlaylistOutcome in core/playlists.h");
         CHECK(unsendable("PlaylistFailed", everyDescribed<PlaylistOutcome>()) == std::string());
     }
+}
+
+// A fill resolved against a snapshot that has moved means what GET /api/library/changes already
+// means by 409, so the wording is read from that outcome rather than written out a second time.
+// The error strings case above pins that literal.
+TEST_CASE("a moved generation is refused with the 409 GET /library/changes already sends") {
+    const auto moved = describe(DeltaOutcome::structureChanged);
+
+    INFO("add an enumerator to PlaylistOutcome in core/playlists.h whose describe() is ", moved);
+    CHECK(statusAnswered(moved) == 409);
+
+    INFO("and publish that string as a PlaylistFailed.error in contract/openapi.yaml");
+    const auto published = publishedEnum("PlaylistFailed", "error");
+    CHECK(std::count(published.begin(), published.end(), moved) == 1);
 }
 
 TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer with") {

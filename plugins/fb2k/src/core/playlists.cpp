@@ -1,6 +1,7 @@
 #include "core/playlists.h"
 
 #include "core/json.h"
+#include "core/library.h"
 #include "core/text.h"
 
 #include <algorithm>
@@ -229,6 +230,8 @@ std::string describe(PlaylistOutcome outcome) {
             return "another playlist already has that key";
         case PlaylistOutcome::tooMany:
             return "this install's autoplaylist limit is reached";
+        case PlaylistOutcome::structureMoved:
+            return describe(DeltaOutcome::structureChanged);
         case PlaylistOutcome::playerRefused:
             return "the player could not do that";
         case PlaylistOutcome::timedOut:

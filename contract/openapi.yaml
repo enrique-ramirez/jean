@@ -1242,13 +1242,13 @@ components:
 
     NotOurs:
       description: |
-        The playlist exists and this component did not create it. Retrying will never work, and no configuration grants it.
+        This install has `writePlaylists` set to `false`, and the playlist is not one of foo_jean's own. Setting `writePlaylists` back to `true` in `config.json` is what grants it.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
           examples:
             default:
-              value: { error: that playlist was not created by foo_jean, detail: "" }
+              value: { error: this install has playlist writes turned off; turn on writePlaylists in config.json to allow them, detail: "" }
 
     NoSuchPlaylist:
       description: No playlist has that id. It may have been deleted in the player.

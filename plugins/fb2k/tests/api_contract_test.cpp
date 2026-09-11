@@ -375,7 +375,9 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
 
     CHECK(describe(PlaylistOutcome::queryInvalid) == "foobar2000 could not read that query");
     CHECK(describe(PlaylistOutcome::noSuchPlaylist) == "no such playlist");
-    CHECK(describe(PlaylistOutcome::notOurs) == "that playlist was not created by foo_jean");
+    CHECK(describe(PlaylistOutcome::notOurs) ==
+          "this install has playlist writes turned off; turn on writePlaylists in config.json to "
+          "allow them");
     CHECK(describe(PlaylistOutcome::keyInUse) == "another playlist already has that key");
     CHECK(describe(PlaylistOutcome::tooMany) == "this install's autoplaylist limit is reached");
     CHECK(describe(PlaylistOutcome::playerRefused) == "the player could not do that");

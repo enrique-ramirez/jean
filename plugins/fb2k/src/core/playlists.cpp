@@ -221,7 +221,8 @@ std::string describe(PlaylistOutcome outcome) {
         case PlaylistOutcome::noSuchPlaylist:
             return "no such playlist";
         case PlaylistOutcome::notOurs:
-            return "that playlist was not created by foo_jean";
+            return "this install has playlist writes turned off; turn on writePlaylists in "
+                   "config.json to allow them";
         case PlaylistOutcome::keyInUse:
             return "another playlist already has that key";
         case PlaylistOutcome::tooMany:

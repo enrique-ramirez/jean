@@ -2,6 +2,7 @@
 
 #include "core/device.h"
 #include "core/http_server.h"
+#include "core/json.h"
 #include "core/log.h"
 #include "core/pairing.h"
 #include "core/rate_limit.h"
@@ -170,6 +171,36 @@ LibraryRequest missing(LibraryRefusal refusal, std::string detail) {
     request.refusal = refusal;
     request.detail = std::move(detail);
     return request;
+}
+
+// FillRequest carries no detail: parseFill has nothing more specific to say than the refusal
+// itself, so this is what stands in for AutoPlaylistRequest's on a fill route's own refusals.
+std::string fillRefusedDocument(PlaylistRefusal refusal) {
+    AutoPlaylistRequest request;
+    request.refusal = refusal;
+    return playlistRefusedDocument(request);
+}
+
+std::optional<OwnPlaylistRole> ownPlaylistRoleFor(const std::string& role) {
+    if (role == "scratch")
+        return OwnPlaylistRole::scratch;
+    if (role == "queue")
+        return OwnPlaylistRole::queue;
+    return std::nullopt;
+}
+
+// parseFill decodes the ordinal set only: the title is the own-playlist route's own field,
+// carried verbatim rather than through the decoder the id route has no use for.
+std::optional<std::string> ownFillTitle(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return std::nullopt;
+
+    const auto title = readString(document.value, "title");
+    if (!title.present || title.wrongType || title.value.empty())
+        return std::nullopt;
+
+    return title.value;
 }
 
 constexpr char kKeepAndRevalidate[] = "no-cache, must-revalidate";
@@ -868,6 +899,14 @@ struct HttpServer::Impl {
         return request;
     }
 
+    // A fill shares the same budget: it is a playlist change like any other, and one request
+    // that either fits or is refused is what keeps a scattered set from spending it many times.
+    FillRequest refuseFillChange(FillRequest request) {
+        if (request.ok() && changingTooFast())
+            request.refusal = PlaylistRefusal::tooFast;
+        return request;
+    }
+
     void addPlaylistRoutes() {
         server.Get("/api/playlists", [this](const httplib::Request&, httplib::Response& res) {
             const auto result = askIfAvailable(player.listPlaylists,
@@ -944,6 +983,91 @@ struct HttpServer::Impl {
 
             if (removed)
                 respond(res, 200, playlistRemovedDocument(id));
+        });
+
+        // Wider than the OwnPlaylistRole enum, so a role outside it reaches this handler and
+        // is answered 400 rather than falling through to a 404 no route matched.
+        constexpr char kOwnItems[] = R"(/api/playlists/own/([^/]+)/items)";
+
+        server.Post(kOwnItems, [this](const httplib::Request& req, httplib::Response& res) {
+            if (!library) {
+                respond(res, 503, errorDocument(kNoLibrary));
+                return;
+            }
+
+            const auto role = ownPlaylistRoleFor(req.matches[1].str());
+            if (!role) {
+                respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
+                return;
+            }
+
+            auto request = refuseFillChange(parseFill(req.body, library->state().trackCount));
+            if (!request.ok()) {
+                if (request.refusal == PlaylistRefusal::tooFast)
+                    res.set_header("Retry-After", "1");
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            const auto title = ownFillTitle(req.body);
+            if (!title) {
+                respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
+                return;
+            }
+
+            // Never anything derived from the request: a title lets a client mint a playlist,
+            // never choose which one is refusable. See CLAUDE.md.
+            const auto resolved = player.ownPlaylist(*role, *title);
+            if (resolved.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(resolved.outcome),
+                        playlistFailedDocument(playlistFailure(resolved.outcome)));
+                return;
+            }
+
+            const auto filled =
+                player.fill(resolved.playlist.id, request.structure, request.ordinals,
+                            *role == OwnPlaylistRole::scratch);
+            if (filled.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(filled.outcome),
+                        playlistFailedDocument(playlistFailure(filled.outcome)));
+                return;
+            }
+
+            respond(res, 200, "{}");
+        });
+
+        constexpr char kPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items)";
+
+        server.Post(kPlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {
+            if (!library) {
+                respond(res, 503, errorDocument(kNoLibrary));
+                return;
+            }
+
+            const auto id = req.matches[1].str();
+            if (!isPlaylistId(id)) {
+                respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+                return;
+            }
+
+            auto request = refuseFillChange(parseFill(req.body, library->state().trackCount));
+            if (!request.ok()) {
+                if (request.refusal == PlaylistRefusal::tooFast)
+                    res.set_header("Retry-After", "1");
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            // Always appends: the target alone decides replace, and a user's own playlist is
+            // never the one that is emptied first.
+            const auto filled = player.fill(id, request.structure, request.ordinals, false);
+            if (filled.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(filled.outcome),
+                        playlistFailedDocument(playlistFailure(filled.outcome)));
+                return;
+            }
+
+            respond(res, 200, "{}");
         });
     }
 

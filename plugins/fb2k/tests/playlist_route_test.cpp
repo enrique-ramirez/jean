@@ -1,14 +1,19 @@
-// The autoplaylist routes over a real socket. playlists_test.cpp covers the decisions behind
-// them; what these add is that a refused request never reaches the player at all.
+// The playlist routes over a real socket, the autoplaylists and the two fills. playlists_test.cpp
+// covers the decisions behind them; what these add is that a refused request never reaches the
+// player at all, and what a route asked of the player when it did.
 
 #include "third_party/doctest.h"
 
+#include "core/library.h"
 #include "support/log_capture.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
+#include <numeric>
+#include <string>
 #include <vector>
 
 using namespace jean;
@@ -92,6 +97,119 @@ json capabilitiesOf(const Settings& settings) {
 
     REQUIRE(response);
     return json::parse(response->body);
+}
+
+// One id per role, so a test can say which of the component's own playlists a fill landed in.
+constexpr char kScratchPlaylistId[] = "11111111-1111-1111-1111-111111111111";
+constexpr char kQueuePlaylistId[] = "22222222-2222-2222-2222-222222222222";
+
+constexpr char kScratchTitle[] = "#Jean Scratch";
+constexpr char kQueueTitle[] = "#Jean Queue";
+
+constexpr char kScratchFill[] = "/api/playlists/own/scratch/items";
+constexpr char kQueueFill[] = "/api/playlists/own/queue/items";
+
+std::string userFill() {
+    return std::string("/api/playlists/") + kPlaylistId + "/items";
+}
+
+// Named rather than kept as the enum, so a failure names the playlist that was asked for.
+std::string nameOf(OwnPlaylistRole role) {
+    return role == OwnPlaylistRole::scratch ? "scratch" : "queue";
+}
+
+struct FillLog {
+    // The roles the routes resolved, in order, and the title they handed over for the last one.
+    std::vector<std::string> roles;
+    std::string title;
+
+    int fills = 0;
+    std::string filled;
+    bool replace = false;
+
+    // The rows that landed, which stays empty when the filler refused the set.
+    std::vector<uint32_t> inserted;
+
+    // The generation of the snapshot the filler resolves ordinals against.
+    uint64_t structure = 1;
+};
+
+// Stands in for fb2k/playlists.cpp: a role resolves to the playlist carrying its marker, and a
+// set resolved against a generation the player has moved past is refused rather than inserted.
+Player fillingPlayer(FillLog* log) {
+    Player player;
+
+    player.ownPlaylist = [log](OwnPlaylistRole role, const std::string& title) {
+        log->roles.push_back(nameOf(role));
+        log->title = title;
+
+        PlaylistAnnotation playlist;
+        playlist.id = role == OwnPlaylistRole::scratch ? kScratchPlaylistId : kQueuePlaylistId;
+        playlist.beefwebId = "p4";
+        playlist.title = title;
+
+        PlaylistResult result;
+        result.playlist = playlist;
+        return result;
+    };
+
+    player.fill = [log](const std::string& playlistId, uint64_t structure,
+                        const std::vector<uint32_t>& ordinals, bool replace) {
+        log->fills++;
+        log->filled = playlistId;
+        log->replace = replace;
+
+        if (structure != log->structure)
+            return FillResult{PlaylistOutcome::structureMoved, {}};
+
+        log->inserted.insert(log->inserted.end(), ordinals.begin(), ordinals.end());
+
+        std::vector<size_t> positions(ordinals.size());
+        std::iota(positions.begin(), positions.end(), 0);
+        return FillResult{PlaylistOutcome::done, std::move(positions)};
+    };
+
+    return player;
+}
+
+constexpr size_t kLibraryTracks = 8;
+
+// What the ordinals in a fill are resolved against. The rows do not matter here: the size is
+// what bounds an ordinal, and the generation is what a fill is checked against.
+void buildLibrary(Library& library) {
+    LibraryBuilder builder({"%title%"}, kLibraryTracks);
+    auto& sink = builder.sink();
+
+    for (size_t index = 0; index < kLibraryTracks; ++index) {
+        const auto ordinal = std::to_string(index);
+        sink.row(index, {"Artist/Album/", ordinal + ".flac", "0", "Track " + ordinal});
+    }
+
+    library.replace(builder.finish());
+}
+
+std::string ownBody(const std::string& title, uint64_t structure) {
+    return R"({"title": ")" + title + R"(", "structure": )" + std::to_string(structure) +
+           R"(, "ordinals": [3, 1]})";
+}
+
+std::string userBody(uint64_t structure) {
+    return R"({"structure": )" + std::to_string(structure) + R"(, "ordinals": [3, 1]})";
+}
+
+// The three things a fill can be aimed at: both of the component's own, and a user's own.
+// `replaces` is what the target alone decides, since no request form can carry it.
+struct Target {
+    std::string name;
+    std::string path;
+    std::string body;
+    bool replaces;
+};
+
+std::vector<Target> targets(uint64_t structure) {
+    return {{"the scratch role", kScratchFill, ownBody(kScratchTitle, structure), true},
+            {"the queue role", kQueueFill, ownBody(kQueueTitle, structure), false},
+            {"a user's playlist", userFill(), userBody(structure), false}};
 }
 
 }  // namespace
@@ -383,5 +501,127 @@ TEST_CASE("GET /api/capabilities says whether this install permits playlist writ
         settings.writePlaylists = false;
 
         CHECK(capabilitiesOf(settings)["canWritePlaylists"] == false);
+    }
+}
+
+// An ordinal is a position, so a rebuild moves every one of them: a set resolved against a
+// generation the library has left names different tracks rather than stale ones, and inserting
+// it would play music nobody asked for. Both fill operations, because the check being written
+// into one of them and not the other is how this breaks.
+TEST_CASE("a fill resolved against a generation the library has moved past inserts nothing") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t exported = library.state().structure;
+
+    // Tracks added or removed, which is the rebuild every ordinal shifts under.
+    buildLibrary(library);
+
+    FillLog log;
+    log.structure = library.state().structure;
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    for (const auto& target : targets(exported)) {
+        INFO("target: ", target.name);
+
+        const auto response = post(server, target.path, target.body);
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+
+        // The same words GET /api/library/changes answers with, because the remedy is the same
+        // one: export the library again, then ask again.
+        CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
+    }
+
+    CHECK(log.inserted.empty());
+}
+
+// Two operations split by who owns the playlist. The component's own are addressed by a role it
+// resolves through its own marker; a user's is addressed by the GUID in the path and resolves
+// nothing, which is what keeps a title out of the decision about who owns what.
+TEST_CASE("each fill operation addresses its own kind of playlist") {
+    Library library;
+    buildLibrary(library);
+
+    FillLog log;
+    log.structure = library.state().structure;
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    SUBCASE("the scratch role fills the playlist that role resolved to") {
+        const auto response = post(server, kScratchFill, ownBody(kScratchTitle, log.structure));
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(log.roles == std::vector<std::string>{"scratch"});
+        CHECK(log.title == kScratchTitle);
+        CHECK(log.filled == kScratchPlaylistId);
+        CHECK(log.inserted == std::vector<uint32_t>{3, 1});
+    }
+
+    SUBCASE("the queue role fills the other one") {
+        const auto response = post(server, kQueueFill, ownBody(kQueueTitle, log.structure));
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(log.roles == std::vector<std::string>{"queue"});
+        CHECK(log.title == kQueueTitle);
+        CHECK(log.filled == kQueuePlaylistId);
+    }
+
+    SUBCASE("a user's playlist is filled by the GUID it was asked for, resolving no role") {
+        const auto response = post(server, userFill(), userBody(log.structure));
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(log.roles.empty());
+        CHECK(log.filled == kPlaylistId);
+    }
+}
+
+// The role is a closed enum, so a client cannot name a third playlist of its own invention. This
+// is the case that fails if a role is ever resolved from a free string.
+TEST_CASE("a role the contract does not name is refused rather than made") {
+    Library library;
+    buildLibrary(library);
+
+    FillLog log;
+    log.structure = library.state().structure;
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    for (const std::string& role : {std::string("library"), std::string("Scratch"),
+                                    std::string("queue2"), std::string(kPlaylistId)}) {
+        INFO("role: ", role);
+
+        const auto response = post(server, "/api/playlists/own/" + role + "/items",
+                                   ownBody(kScratchTitle, log.structure));
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+    }
+
+    CHECK(log.roles.empty());
+    CHECK(log.fills == 0);
+}
+
+// Whether a fill empties the playlist first follows from the target, so there is no field in any
+// of the three request forms that could say otherwise, and no default to get wrong. What the
+// playlist then holds is the player's, and fb2k/playlists.cpp is where it is decided.
+TEST_CASE("the scratch playlist is emptied before a fill and every other target is appended to") {
+    Library library;
+    buildLibrary(library);
+
+    for (const auto& target : targets(library.state().structure)) {
+        INFO("target: ", target.name);
+
+        FillLog log;
+        log.structure = library.state().structure;
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto response = post(server, target.path, target.body);
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        REQUIRE(log.fills == 1);
+        CHECK(log.replace == target.replaces);
     }
 }

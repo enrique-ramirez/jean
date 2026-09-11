@@ -62,6 +62,7 @@ Everything is a file. `<profile>/foo_jean/config.json` is written on first start
   "allowedOrigins": [],
   "allowedFields": ["rating"],
   "maxAutoPlaylists": 100,
+  "writePlaylists": true,
   "streamingEnabled": true,
   "opusBitrate": 256000,
   "aacBitrate": 192000,
@@ -81,6 +82,7 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 | `allowedOrigins` | Empty reflects any origin, so a client works wherever it is served from. List origins to narrow it to exactly those, matched whole and case-insensitively. `POST /api/pair` is the exception, and `plugins/fb2k/ARCHITECTURE.md` has why. |
 | `allowedFields` | The write allowlist. Nothing outside it is ever written, and clients read it from `/api/capabilities` rather than being configured twice. Empty switches writing off. |
 | `maxAutoPlaylists` | How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off. |
+| `writePlaylists` | `true` by default, so leaving it alone permits every playlist write this component can make: create, add, edit, delete, reorder, rename. Set it to `false` to make every playlist and autoplaylist read-only except the component's own two, which stay writable because they are how Jean works rather than the user's music. |
 | `streamingEnabled` | `false`, or a `maxConcurrentStreams` of `0`, and the capture callback is never registered at all. `/api/capabilities` then reports `canStream: false`. |
 | `opusBitrate` | Bits per second for the Opus stream, between 32000 and 510000. One bitrate rather than a per-request choice: each distinct value would need its own encoder and buffer for as long as anybody listened to it. Opus is hard to tell from the source above 192000, and libopus can barely spend more than 256000. |
 | `aacBitrate` | Bits per second for the AAC stream, and **only one of four values**, which `src/core/settings.h` names beside the reason. A refusal would cost the ADTS format altogether, which is the only one older Safari can play, so a value off the list is reported and replaced rather than passed on. |

@@ -21,6 +21,9 @@ struct Settings {
     // Zero turns creation off, the same shape as an empty allowedFields turning writes off.
     int maxAutoPlaylists = 100;
 
+    // Off is the protection a cautious player owner turns on; absent or malformed stays permissive.
+    bool writePlaylists = true;
+
     int opusBitrate = 256000;
     int aacBitrate = 192000;
 

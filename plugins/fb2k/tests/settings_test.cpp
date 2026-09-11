@@ -255,3 +255,32 @@ TEST_CASE("the autoplaylist cap is read, and a negative one is not") {
     CHECK(negative.maxAutoPlaylists == Settings().maxAutoPlaylists);
     CHECK(logged("'maxAutoPlaylists'"));
 }
+
+TEST_CASE("an absent writePlaylists permits playlist writes, and an explicit false refuses them") {
+    CHECK(Settings().writePlaylists);
+    CHECK(parseFresh("{}").writePlaylists);
+    CHECK(parseFresh(R"({"writePlaylists": true})").writePlaylists);
+
+    CHECK_FALSE(parseFresh(R"({"writePlaylists": false})").writePlaylists);
+}
+
+// The permissive fallback is the safe one: a player owner who never touched the key still owns
+// their playlists. The log is checked for "ignoring" rather than for the key alone, because an
+// unknown key names itself too and would answer a weaker assertion.
+TEST_CASE("a malformed writePlaylists keeps writes permitted and names itself") {
+    for (const auto* text : {R"({"writePlaylists": "false"})", R"({"writePlaylists": 0})",
+                             R"({"writePlaylists": null})"}) {
+        const auto settings = parseFresh(text);
+
+        CHECK(settings.writePlaylists);
+        CHECK(logged("ignoring 'writePlaylists'"));
+    }
+}
+
+TEST_CASE("writePlaylists survives a round trip through the file format") {
+    Settings original;
+    original.writePlaylists = false;
+
+    CHECK_FALSE(parseFresh(serialiseSettings(original)).writePlaylists);
+    CHECK(parseFresh(serialiseSettings(Settings())).writePlaylists);
+}

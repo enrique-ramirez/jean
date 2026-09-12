@@ -384,11 +384,22 @@ FillRequest parseFill(const std::string& body, size_t trackCount, bool allowsTit
         if (!runs->is_array())
             return refuseFill();
 
+        // Overlapping runs each pass the per-ordinal check, so the total across all of them,
+        // not any single run, is what has to stay inside the library's own size. Checked
+        // before a single ordinal is expanded: no honest request names more rows than the
+        // library holds, so a total past trackCount is refused rather than resolved.
+        uint64_t total = 0;
         for (const auto& run : *runs) {
             if (!run.is_array() || run.size() != 2 || !run[0].is_number_unsigned() ||
                 !run[1].is_number_unsigned())
                 return refuseFill();
 
+            total += run[1].get<uint64_t>();
+            if (total > trackCount)
+                return refuseFill();
+        }
+
+        for (const auto& run : *runs) {
             const auto start = run[0].get<uint64_t>();
             const auto count = run[1].get<uint64_t>();
 

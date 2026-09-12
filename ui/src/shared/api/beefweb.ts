@@ -199,9 +199,6 @@ export const copyPlaylistItems = (
 		items: Array.from(items),
 	});
 
-export const clearPlaylist = (playlistId: string) =>
-	post(`/api/playlists/${id(playlistId)}/clear`);
-
 export const removePlaylistItems = (
 	playlistId: string,
 	items: ArrayLike<number>,

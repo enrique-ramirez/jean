@@ -268,6 +268,45 @@ TEST_CASE("an ordinal past the end of the library is refused rather than dropped
     }
 }
 
+TEST_CASE("runs resolving to more rows than the library holds are refused") {
+    // Every ordinal here is in range, so nothing but the total says no. Runs are the one form
+    // whose wire cost and resolved cost come apart: overlapping pairs cost eight bytes each
+    // and resolve to a whole library each, and about 20,000 of them fit inside kMaxBodyBytes.
+    for (const std::string& form : {R"("runs": [[0, 12], [0, 1]])",
+                                    R"("runs": [[0, 12], [0, 12], [0, 12]])"}) {
+        INFO("form: ", form);
+        const auto request = filling(form, kShortLibrary);
+
+        CHECK_FALSE(request.ok());
+        CHECK(describe(request.refusal) == "unacceptable ordinal set");
+        CHECK(httpStatusFor(request.refusal) == 400);
+        CHECK(request.ordinals.empty());
+    }
+}
+
+TEST_CASE("runs covering exactly the whole library are taken, as one run or as several") {
+    // Playing everything is the commonest fill there is, and a total that reaches the
+    // library's size has not passed it.
+    const auto whole = filling(R"("runs": [[0, 12]])", kShortLibrary);
+    REQUIRE(whole.ok());
+    CHECK(whole.ordinals == Ordinals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+
+    const auto halves = filling(R"("runs": [[6, 6], [0, 6]])", kShortLibrary);
+    REQUIRE(halves.ok());
+    CHECK(halves.ordinals == whole.ordinals);
+}
+
+TEST_CASE("a plain list may name more rows than the library holds, since a repeat is meant") {
+    // The bound is on runs alone. A repeated ordinal costs an entry on the wire as well as one
+    // in the answer, and a queue of one track played over and over is a set a person asks for
+    // on a library of any size.
+    const auto queued =
+        filling(R"("ordinals": [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4])", kShortLibrary);
+
+    REQUIRE(queued.ok());
+    CHECK(queued.ordinals == Ordinals(13, 4));
+}
+
 TEST_CASE("a playlist id is the lower-case dashed form and nothing else") {
     CHECK(isPlaylistId("45837d74-fa4f-415c-bba9-bf2db8f0dc04"));
 

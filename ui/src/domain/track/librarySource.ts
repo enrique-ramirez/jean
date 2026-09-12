@@ -148,9 +148,13 @@ const addToPlaylist =
 			headers: { ...bearer(token), "Content-Type": "application/json" },
 			body: JSON.stringify(request),
 		});
+		// A 403 here is always `writePlaylists` off: this route addresses a playlist by the GUID its
+		// own annotation carries, so the other 403 this contract has, a target foo_jean did not
+		// create, cannot apply to it.
 		if (!response.ok)
 			throw new Error(
 				`POST /playlists/${guid}/items failed: ${response.status}`,
+				{ cause: response.status },
 			);
 
 		return (await response.json()) as FillResult;

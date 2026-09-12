@@ -31,6 +31,8 @@ export const en = {
 		"Nothing was added to {playlist}. Smart playlists are built by the player and cannot be added to.",
 	"add.undoFailed": "Could not undo that.",
 	"add.undoStale": "{playlist} has changed since then, so nothing was removed.",
+	"add.writePlaylistsOff":
+		"Nothing was added to {playlist}. foo_jean has playlist writes turned off.",
 	"album.coverAlt": "{album} cover",
 	"album.crumb": "Album",
 	"album.disc": "Disc {number}",

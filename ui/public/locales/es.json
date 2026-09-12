@@ -21,6 +21,7 @@
 	"add.smartPlaylist": "No se añadió nada a {playlist}. Las listas inteligentes las construye el reproductor y no admiten añadidos.",
 	"add.undoFailed": "No se pudo deshacer.",
 	"add.undoStale": "{playlist} ha cambiado desde entonces, así que no se quitó nada.",
+	"add.writePlaylistsOff": "No se añadió nada a {playlist}. foo_jean tiene desactivada la escritura de listas.",
 	"album.coverAlt": "Carátula de {album}",
 	"album.crumb": "Álbum",
 	"album.disc": "Disco {number}",

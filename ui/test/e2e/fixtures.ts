@@ -365,6 +365,20 @@ export const expectDisabledWithItsReason = async (control: Locator) => {
 	await expect(control).not.toHaveAccessibleName(READS_AS_A_LOGIN);
 };
 
+const BLAMES_A_SMART_PLAYLIST = /smart playlist|built by the player/i;
+
+// Where a control could not carry its reason ahead of time, the refusal arrives as
+// a toast, so it is read by its text rather than by an accessible name. It owes the
+// same two things that label does, and one more: an autoplaylist that took the
+// write and ignored it is a different cause with a message of its own, and a
+// refusal describing both has told the reader nothing about either.
+export const expectRefusalNamesTheSetting = async (message: Locator) => {
+	await expect(message).toBeVisible();
+	await expect(message).toHaveText(NAMES_THE_COMPONENT);
+	await expect(message).not.toHaveText(READS_AS_A_LOGIN);
+	await expect(message).not.toHaveText(BLAMES_A_SMART_PLAYLIST);
+};
+
 // ---- reading the player -----------------------------------------------------
 
 export const requestsTo = (player: FakePlayer, pattern: string) =>

@@ -35,19 +35,22 @@ export function useAddTracks() {
 				);
 			};
 
-			const refuse = () =>
+			const refuse = (writePlaylistsOff = false) =>
 				pushToast({
 					tone: "error",
-					message: translate("add.smartPlaylist", { playlist: target.title }),
+					message: translate(
+						writePlaylistsOff ? "add.writePlaylistsOff" : "add.smartPlaylist",
+						{ playlist: target.title },
+					),
 				});
 
 			const before = await countOf().catch(() => null);
 
 			try {
 				await source.addTo(target.id, itemIndices);
-			} catch {
+			} catch (error) {
 				await countOf().catch(() => null);
-				refuse();
+				refuse(error instanceof Error && error.cause === 403);
 				return;
 			}
 

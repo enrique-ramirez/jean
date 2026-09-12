@@ -88,6 +88,20 @@ test.describe("a playlist that takes the write and ignores it", () => {
 		);
 	});
 
+	// The other cause a refusal can have is foo_jean's `writePlaylists`, which is
+	// on here and permits the write. One message covering both would read as a
+	// setting to go and change, and there is nothing to change: this playlist would
+	// ignore the write whatever the player owner does.
+	test("says nothing about a setting that is not what stopped it", async ({
+		page,
+		isMobile,
+	}) => {
+		await addTo(page, 0, isMobile, AUTO.title);
+
+		await expect(toast(page)).toContainText("Nothing was added to");
+		await expect(toast(page)).not.toHaveText(/foo_jean/i);
+	});
+
 	test("the playlist that does take them still says the true thing", async ({
 		page,
 		player,

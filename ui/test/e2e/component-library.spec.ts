@@ -2,6 +2,7 @@ import {
 	dragFrom,
 	expect,
 	expectDisabledWithItsReason,
+	expectRefusalNamesTheSetting,
 	expectSettlesAt,
 	type FakePlayer,
 	FOO_JEAN_TOKEN,
@@ -426,6 +427,29 @@ test.describe("filing a library row into a playlist of your own", () => {
 			await expect
 				.poll(() => player.playQueue.length, { timeout: 10_000 })
 				.toBe(1);
+		});
+
+		// The drag is the one surface that asks and is told no, so it is the one
+		// place a sentence has to explain a refusal after the fact. Three causes
+		// reach it: a target that took the write and ignored it, this setting, and
+		// anything else going wrong. The first has a message of its own that names
+		// what a smart playlist does, and it is the wrong thing to tell somebody
+		// whose player owner turned writes off.
+		test("the drag that is refused names the setting, rather than blaming a smart playlist", async ({
+			page,
+			isMobile,
+		}) => {
+			test.skip(isMobile, "dragging a row onto a playlist is mouse-only");
+
+			await openAllMusic(page);
+			await openSidebar(page);
+
+			const target = sidebarRow(page, FAVORITES);
+			await dragFrom(page, trackRow(page, 2), target);
+			await expect(target).toHaveAttribute("data-drop-over", "true");
+			await page.mouse.up();
+
+			await expectRefusalNamesTheSetting(page.getByRole("status"));
 		});
 
 		// The reason goes in the label because that is the only place both surfaces

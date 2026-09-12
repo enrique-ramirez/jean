@@ -3,11 +3,8 @@ import { useCallback } from "react";
 
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { useQueueActions } from "@/domain/player/useQueue";
-import {
-	clearPlaylist,
-	fetchPlaylists,
-	fetchPlayQueue,
-} from "@/shared/api/beefweb";
+import { fetchPlaylists, fetchPlayQueue } from "@/shared/api/beefweb";
+import { bearer } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
@@ -22,11 +19,13 @@ export const QUEUE_LIMIT = 100;
 export function useQueueTracks() {
 	const queryClient = useQueryClient();
 	const { queue, canQueue } = useQueueActions();
-	const { token } = useFooJean();
+	const { token, discovery } = useFooJean();
+	const origin = discovery.origin;
 
 	// The component's fill route makes the playlist for the `queue` role itself, so there is nothing
 	// left to create through beefweb here: only the one job of clearing what an already-empty play
-	// queue no longer points into, which stays beefweb's until the clear itself moves too.
+	// queue no longer points into, which now goes through the component's own role rather than
+	// beefweb's `clear`, so it works whatever beefweb's `changePlaylists` says.
 	const holding = useCallback(async (): Promise<HoldingPlaylist | null> => {
 		const cached =
 			queryClient.getQueryData<PlaylistInfo[]>(PLAYLISTS_KEY) ?? [];
@@ -39,15 +38,22 @@ export function useQueueTracks() {
 		const itemCount =
 			playlists.find((entry) => entry.id === held.id)?.itemCount ?? 0;
 
-		if (queued?.length === 0 && itemCount > 0) {
-			await clearPlaylist(held.id);
+		if (queued?.length === 0 && itemCount > 0 && origin && token) {
+			const response = await fetch(`${origin}/api/playlists/own/queue/items`, {
+				method: "DELETE",
+				headers: bearer(token),
+			});
+			if (!response.ok)
+				throw new Error(
+					`DELETE /playlists/own/queue/items failed: ${response.status}`,
+				);
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			return { id: held.id, itemCount: 0 };
 		}
 
 		queryClient.setQueryData(PLAYLISTS_KEY, playlists);
 		return { id: held.id, itemCount };
-	}, [queryClient]);
+	}, [queryClient, origin, token]);
 
 	const queueTracks = useCallback(
 		async ({

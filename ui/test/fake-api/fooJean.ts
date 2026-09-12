@@ -982,6 +982,30 @@ export async function handleAgent({
 		});
 	}
 
+	if (method === "DELETE" && ownFillMatch) {
+		const role = ownFillMatch[1];
+		if (role !== "scratch" && role !== "queue")
+			return json(
+				response,
+				{
+					error: "malformed request",
+					detail: `'${role}' is not a role this component knows`,
+				},
+				400,
+			);
+
+		// The rows go and the playlist stays, because deleting one the play queue
+		// points into kills foobar2000. A role with no playlist yet is not given one
+		// to empty, and answers the same 204 as a role that had rows to lose.
+		const held = fake.ownPlaylists[role];
+		const playlist = held ? state.playlistById(held) : undefined;
+		if (playlist && playlist.items.length > 0) {
+			state.removeItems(playlist.id, [...playlist.items.keys()]);
+			state.notifyPlaylists();
+		}
+		return empty(response);
+	}
+
 	const idFillMatch = /^\/api\/playlists\/([^/]+)\/items$/.exec(path);
 	if (method === "POST" && idFillMatch) {
 		const guid = idFillMatch[1];

@@ -58,6 +58,29 @@ const queuedTitles = (player: FakePlayer) =>
 		return playlist?.items[entry.itemIndex]?.["%title%"] ?? "";
 	});
 
+// The component owns this playlist and answers to the `queue` role, so its title
+// is all a test outside has to find it by.
+const holdingOf = (player: FakePlayer) =>
+	player.playlists.find((entry) => entry.title === "#Jean Queue");
+
+// Every way beefweb has of emptying or dropping a playlist names it in the path:
+// `/playlists/{id}/clear`, `/playlists/{id}/items/remove` and
+// `/playlists/remove/{id}`. A player with `changePlaylists` off refuses all three.
+const beefwebWritesNaming = (player: FakePlayer, playlistId: string) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "POST" &&
+			entry.path.startsWith("/api/playlists/") &&
+			entry.path.split("/").includes(playlistId),
+	);
+
+const componentEmptiedTheQueueRole = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "DELETE" &&
+			entry.path === "/api/playlists/own/queue/items",
+	);
+
 test.describe("putting things in the queue", () => {
 	test("a track queued from the list reaches the player", async ({
 		page,
@@ -798,6 +821,26 @@ test.describe("deleting a playlist the queue points into", () => {
 	});
 });
 
+// The one state the holding playlist may be emptied in: it is holding a row and
+// the play queue no longer points into it. Leaves the panel open on an empty
+// queue, with that row still on the player.
+const drainThePlayQueue = async (
+	page: Page,
+	player: FakePlayer,
+	isMobile: boolean,
+	row: number,
+) => {
+	await openAllMusic(page);
+	await queueTracks(page, isMobile, row);
+	await expect(queueRows(page)).toHaveCount(1);
+	expect(holdingOf(player)?.items).toHaveLength(1);
+
+	await queuePanel(page).getByRole("button", { name: "Clear" }).click();
+	await expect(queueRows(page)).toHaveCount(0);
+	await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(0);
+	expect(holdingOf(player)?.items).toHaveLength(1);
+};
+
 test.describe("queueing a row that is in no playlist", () => {
 	test.use({ mediaLibrarySize: 400 });
 
@@ -858,6 +901,27 @@ test.describe("queueing a row that is in no playlist", () => {
 			0,
 		);
 	});
+
+	test("queues again once the play queue has drained, from a holding playlist emptied first", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await drainThePlayQueue(page, player, isMobile, 1);
+
+		await queueTracks(page, isMobile, 4);
+		await expect
+			.poll(() => player.playQueue.length, { timeout: 10000 })
+			.toBe(1);
+
+		// A play queue entry holds a handle rather than a position, so an entry whose
+		// row was taken out from under it reports no track at all. A title here is
+		// the entry pointing at a row the playlist still holds.
+		const [queued] = queuedTitles(player);
+		expect(queued).toBeTruthy();
+		await expect(trackRow(page, 4)).toContainText(queued);
+		expect(holdingOf(player)?.items).toHaveLength(1);
+	});
 });
 
 // A library row has no playlist to be queued from until one is made, and the one
@@ -905,6 +969,31 @@ test.describe("a player that will not let Jean make playlists", () => {
 		isMobile,
 	}) => {
 		await expectQueueTakesALibraryRow(page, player, isMobile);
+	});
+
+	test("empties the holding playlist at the component, and asks beefweb for nothing", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await drainThePlayQueue(page, player, isMobile, 1);
+		const held = holdingOf(player)?.id as string;
+
+		await queueTracks(page, isMobile, 4);
+		await expect
+			.poll(() => player.playQueue.length, { timeout: 10000 })
+			.toBe(1);
+
+		expect(componentEmptiedTheQueueRole(player)).toHaveLength(1);
+		expect(holdingOf(player)?.id).toBe(held);
+
+		// The fake honours no beefweb permission, so a queue that filled is not on
+		// its own proof that beefweb was never asked to empty or drop the playlist.
+		await expectSettlesAt(
+			player,
+			() => beefwebWritesNaming(player, held).length,
+			0,
+		);
 	});
 
 	test.describe("with the component's own playlist writes turned off too", () => {

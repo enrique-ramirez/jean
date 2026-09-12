@@ -3,6 +3,7 @@ import {
 	expect,
 	expectSettlesAt,
 	nowPlayingScreen,
+	openAllMusic,
 	openLibrary,
 	openNowPlaying,
 	openSidebar,
@@ -42,6 +43,9 @@ const queueTracks = async (page: Page, isMobile: boolean, index = 0) => {
 	if (isMobile) await pressAndHold(page, row);
 	else await row.click({ button: "right" });
 	const item = page.getByRole("menuitem", { name: "Add to queue" });
+	// Named rather than left to the click's own actionability wait, which reports
+	// a timeout where the real answer is that the player was refused the queue.
+	await expect(item).toBeEnabled();
 	await item.click();
 	await expect(item).toHaveCount(0);
 };
@@ -853,6 +857,69 @@ test.describe("queueing a row that is in no playlist", () => {
 			() => requestsTo(player, "/playlists/remove/").length,
 			0,
 		);
+	});
+});
+
+// A library row has no playlist to be queued from until one is made, and the one
+// it lands in belongs to the component rather than to the user's music. So
+// neither a beefweb that refuses Jean a playlist nor a player owner who has
+// turned the component's own playlist writes off is a reason the queue cannot
+// take a library row.
+const expectQueueTakesALibraryRow = async (
+	page: Page,
+	player: FakePlayer,
+	isMobile: boolean,
+) => {
+	await openAllMusic(page);
+	await queueTracks(page, isMobile, 2);
+
+	await expect.poll(() => player.playQueue.length, { timeout: 10_000 }).toBe(1);
+	const [queued] = queuedTitles(player);
+	expect(queued).toBeTruthy();
+	await expect(trackRow(page, 2)).toContainText(queued);
+	await expect(queueRows(page)).toHaveCount(1);
+
+	// The fake honours no beefweb permission, so a queued track is not on its own
+	// proof that Jean stopped asking beefweb for the playlist to queue it through.
+	await expectSettlesAt(
+		player,
+		() => requestsTo(player, "/playlists/add").length,
+		0,
+	);
+};
+
+test.describe("a player that will not let Jean make playlists", () => {
+	test.use({
+		playerState: {
+			permissions: {
+				changePlaylists: false,
+				changeOutput: true,
+				changeClientConfig: true,
+			},
+		},
+	});
+
+	test("queues a library row all the same", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await expectQueueTakesALibraryRow(page, player, isMobile);
+	});
+
+	test.describe("with the component's own playlist writes turned off too", () => {
+		test.use({ fooJean: { canWritePlaylists: false } });
+
+		// The setting protects the user's music, and the holding playlist holds
+		// none of it. A fill addressed by playlist id rather than by role would be
+		// refused here, which is what makes the exemption structural.
+		test("queues a library row all the same", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await expectQueueTakesALibraryRow(page, player, isMobile);
+		});
 	});
 });
 

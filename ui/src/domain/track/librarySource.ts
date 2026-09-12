@@ -5,6 +5,7 @@ import {
 	copyPlaylistItems,
 	fetchLibraryNodes,
 	fetchPlaylistItems,
+	fetchPlaylists,
 	libraryPathMatcher,
 	removePlaylistItems,
 } from "@/shared/api/beefweb";
@@ -16,6 +17,7 @@ import type {
 	TrackIdentity,
 } from "@/shared/api/types";
 import { FIELD, sameTagValue, value } from "./fields";
+import { QUEUE_TITLE } from "./jeanPlaylists";
 import { positionOf } from "./libraryIndex";
 import type { PathTable } from "./pathTable";
 import { componentLibraryKey, playlistSnapshot } from "./playlistStore";
@@ -63,6 +65,7 @@ export interface LibrarySource {
 	queueTargets: (
 		refs: Refs,
 		holding: () => Promise<HoldingPlaylist | null>,
+		options?: { token?: string },
 	) => Promise<QueueTarget[]>;
 	playingPosition: (
 		refs: Refs,
@@ -129,39 +132,50 @@ const fillByCopy =
 		return targetId;
 	};
 
+// The component resolves `own/queue` to its own playlist the same way it resolves the scratch, and
+// answers where each row landed, so there is nothing here to read back or match by path: `positions`
+// names where `refs` landed, in the order `refs` was given. `holding` still runs first, for its one
+// remaining job of clearing the playlist when the play queue that pointed into it is already empty.
 const queueViaHolding =
-	(paths: PathTable, subsongs: Int32Array) =>
-	async (refs: Refs, holding: () => Promise<HoldingPlaylist | null>) => {
-		const held = await holding();
-		if (!held || refs.length === 0) return [];
+	(paths: PathTable, origin: string | null, structure: number) =>
+	async (
+		refs: Refs,
+		holding: () => Promise<HoldingPlaylist | null>,
+		{ token }: { token?: string } = {},
+	): Promise<QueueTarget[]> => {
+		if (!origin || !token || refs.length === 0) return [];
 
-		await addFromLibrary(held.id, { items: itemsFor(paths, subsongs, refs) });
+		await holding();
 
-		const landed = await fetchPlaylistItems(
-			held.id,
-			held.itemCount,
-			refs.length,
-			["%path%", "%subsong%"],
-		);
-		const landedRows = landed.rows.map((row) => ({
-			matches: libraryPathMatcher(row[0]),
-			subsong: Number(row[1]) || 0,
-		}));
-		const claimed = new Set<number>();
+		const request: FillOwnPlaylistRequest = {
+			title: QUEUE_TITLE,
+			...encodeFill(refs, { structure, trackCount: paths.length }),
+		};
 
-		return Array.from(refs, (ref) => {
-			const path = paths.at(ref);
-			const subsong = subsongs[ref] ?? 0;
-			const at = landedRows.findIndex(
-				(row, position) =>
-					!claimed.has(position) &&
-					row.subsong === subsong &&
-					row.matches(path),
+		const response = await fetch(`${origin}/api/playlists/own/queue/items`, {
+			method: "POST",
+			headers: { ...bearer(token), "Content-Type": "application/json" },
+			body: JSON.stringify(request),
+		});
+		if (!response.ok)
+			throw new Error(
+				`POST /playlists/own/queue/items failed: ${response.status}`,
 			);
-			if (at < 0) return null;
-			claimed.add(at);
-			return { playlistId: held.id, itemIndex: held.itemCount + at };
-		}).filter((target): target is QueueTarget => target !== null);
+
+		const result = (await response.json()) as FillResult;
+		// `beefwebId` is null only where this call made the playlist and beefweb has not looked again
+		// yet, exactly as `fillScratch` above: the fresh list this falls back to is what makes it.
+		const beefwebId =
+			result.beefwebId ??
+			(await fetchPlaylists()).find((entry) => entry.title === QUEUE_TITLE)
+				?.id ??
+			null;
+		if (!beefwebId) return [];
+
+		return Array.from(result.positions, (itemIndex) => ({
+			playlistId: beefwebId,
+			itemIndex,
+		}));
 	};
 
 const fromMediaLibrary = ({
@@ -217,7 +231,7 @@ const fromMediaLibrary = ({
 		},
 
 		fill: fillScratch(paths, artworkOrigin, structure),
-		queueTargets: queueViaHolding(paths, subsongs),
+		queueTargets: queueViaHolding(paths, artworkOrigin, structure),
 
 		addTo: (targetId: string, refs: Refs) =>
 			addFromLibrary(targetId, { items: itemsFor(paths, subsongs, refs) }),

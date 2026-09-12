@@ -8,6 +8,7 @@ import {
 	removeFromPlayQueue,
 } from "@/shared/api/beefweb";
 import type { PlayQueueItem } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { inSequence } from "@/shared/lib/sequence";
 import { pushToast } from "@/shared/ui/toastStore";
@@ -21,7 +22,6 @@ import {
 	sameQueue,
 } from "./queue";
 import { askToShowQueue } from "./showQueue";
-import { usePermissions } from "./usePlayer";
 
 export function useQueue() {
 	const { data } = useQuery({
@@ -41,11 +41,12 @@ export function useQueue() {
 
 export function useQueueActions() {
 	const queryClient = useQueryClient();
-	const permissions = usePermissions();
+	const { discovery } = useFooJean();
 
-	// beefweb publishes no permission for the queue itself, and an instance refusing playlist writes
-	// cannot hold a queue either.
-	const canQueue = permissions.changePlaylists !== false;
+	// The holding playlist a library row queues through is the component's own plumbing, filled
+	// through its own route rather than beefweb's, so it is `foo_jean` being reachable that queueing
+	// asks for rather than beefweb's `changePlaylists`.
+	const canQueue = discovery.state.kind === "ready";
 
 	const underQueueHold = useCallback(
 		async (run: () => Promise<unknown>) => {

@@ -5,14 +5,14 @@ import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { useQueueActions } from "@/domain/player/useQueue";
 import {
 	clearPlaylist,
-	createPlaylist,
 	fetchPlaylists,
 	fetchPlayQueue,
 } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
-import { findQueuePlaylist, QUEUE_TITLE } from "./jeanPlaylists";
+import { findQueuePlaylist } from "./jeanPlaylists";
 import type { HoldingPlaylist, LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
@@ -22,29 +22,31 @@ export const QUEUE_LIMIT = 100;
 export function useQueueTracks() {
 	const queryClient = useQueryClient();
 	const { queue, canQueue } = useQueueActions();
+	const { token } = useFooJean();
 
+	// The component's fill route makes the playlist for the `queue` role itself, so there is nothing
+	// left to create through beefweb here: only the one job of clearing what an already-empty play
+	// queue no longer points into, which stays beefweb's until the clear itself moves too.
 	const holding = useCallback(async (): Promise<HoldingPlaylist | null> => {
 		const cached =
 			queryClient.getQueryData<PlaylistInfo[]>(PLAYLISTS_KEY) ?? [];
 		const held = findQueuePlaylist(cached);
+		if (!held) return null;
 
-		const target = held ?? (await createPlaylist(QUEUE_TITLE));
-		if (!target) return null;
-
-		const queued = held ? await fetchPlayQueue().catch(() => null) : null;
+		const queued = await fetchPlayQueue().catch(() => null);
 
 		const playlists = await fetchPlaylists();
 		const itemCount =
-			playlists.find((entry) => entry.id === target.id)?.itemCount ?? 0;
+			playlists.find((entry) => entry.id === held.id)?.itemCount ?? 0;
 
 		if (queued?.length === 0 && itemCount > 0) {
-			await clearPlaylist(target.id);
+			await clearPlaylist(held.id);
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
-			return { id: target.id, itemCount: 0 };
+			return { id: held.id, itemCount: 0 };
 		}
 
 		queryClient.setQueryData(PLAYLISTS_KEY, playlists);
-		return { id: target.id, itemCount };
+		return { id: held.id, itemCount };
 	}, [queryClient]);
 
 	const queueTracks = useCallback(
@@ -69,7 +71,7 @@ export function useQueueTracks() {
 
 			let targets: Awaited<ReturnType<LibrarySource["queueTargets"]>>;
 			try {
-				targets = await source.queueTargets(itemIndices, holding);
+				targets = await source.queueTargets(itemIndices, holding, { token });
 			} catch {
 				pushToast({
 					tone: "error",
@@ -87,7 +89,7 @@ export function useQueueTracks() {
 
 			await queue(targets, at);
 		},
-		[canQueue, holding, queue],
+		[canQueue, holding, queue, token],
 	);
 
 	return { queueTracks, canQueue };

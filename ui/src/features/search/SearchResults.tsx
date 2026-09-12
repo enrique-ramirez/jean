@@ -55,13 +55,14 @@ export function SearchResults({
 		[results, playedCount],
 	);
 
-	const { playAt, activeIndex, scratch, holdsThisView } = useViewPlayback({
-		library,
-		playlists,
-		kind: SCRATCH_KIND.search,
-		label: search.query,
-		indices,
-	});
+	const { playAt, activeIndex, scratch, holdsThisView, canPlaySets } =
+		useViewPlayback({
+			library,
+			playlists,
+			kind: SCRATCH_KIND.search,
+			label: search.query,
+			indices,
+		});
 
 	useKeymap(
 		SCOPE.search,
@@ -128,7 +129,7 @@ export function SearchResults({
 						<PlayActions
 							browserRef={browserRef}
 							trackCount={results.length}
-							canPlaySets={canSavePlaylists}
+							canPlaySets={canPlaySets}
 						>
 							{canSavePlaylists ? (
 								<SavePlaylistButton

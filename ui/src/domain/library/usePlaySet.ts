@@ -1,8 +1,8 @@
 import { useCallback } from "react";
-import { canChangePlaylists, usePermissions } from "@/domain/player/usePlayer";
 import type { Refs } from "@/domain/track/project";
 import { playItem } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Library } from "./useLibrary";
 import { useScratchPlaylist } from "./useScratchPlaylist";
 
@@ -13,10 +13,13 @@ export function usePlaySet({
 	library: Library;
 	playlists: PlaylistInfo[];
 }) {
-	const permissions = usePermissions();
+	const { discovery } = useFooJean();
+	// The scratch playlist is filled through the component's own route rather than beefweb's, so it
+	// is `foo_jean` being reachable that playing a set asks for rather than beefweb's `changePlaylists`.
+	const canPlaySets = discovery.state.kind === "ready";
 	const scratch = useScratchPlaylist({
 		playlists,
-		canEdit: canChangePlaylists(permissions),
+		canEdit: canPlaySets,
 	});
 
 	const play = useCallback(
@@ -41,8 +44,6 @@ export function usePlaySet({
 		},
 		[scratch, library.source],
 	);
-
-	const canPlaySets = canChangePlaylists(permissions);
 
 	return { play, scratch, canPlaySets };
 }

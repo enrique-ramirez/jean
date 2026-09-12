@@ -212,3 +212,52 @@ test.describe("a player that reports no permissions at all", () => {
 		).toBeVisible();
 	});
 });
+
+test.describe("a beefweb install that will not let Jean change playlists", () => {
+	test.use({
+		playerState: {
+			permissions: {
+				changePlaylists: false,
+				changeOutput: true,
+				changeClientConfig: true,
+			},
+		},
+	});
+
+	// The scratch playlist these two fill is the component's own, made and
+	// filled over its own port, so beefweb's permission has nothing to say about
+	// playing a library set.
+	test("all music keeps Play and Shuffle", async ({ page }) => {
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+
+		const header = viewHeader(page);
+		await expect(
+			header.getByRole("button", { name: "Play", exact: true }),
+		).toBeEnabled();
+		await expect(
+			header.getByRole("button", { name: "Shuffle", exact: true }),
+		).toBeEnabled();
+	});
+});
+
+test.describe("a player with no foo_jean on it at all", () => {
+	test.use({ fooJean: null });
+
+	// The other half of the same question. Play and Shuffle wait on the
+	// component being reachable rather than on beefweb, so with no component
+	// there is nothing to fill a playlist from and no set to play. A build that
+	// dropped the gate instead of moving it draws both here.
+	test("all music offers neither Play nor Shuffle", async ({ page }) => {
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+
+		await expect(
+			viewHeader(page).getByRole("button", { name: /^(Play|Shuffle)$/ }),
+		).toHaveCount(0);
+	});
+});

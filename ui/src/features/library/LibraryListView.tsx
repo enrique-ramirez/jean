@@ -3,11 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { GENRES_HREF } from "@/domain/library/genreRoute";
 import type { Library } from "@/domain/library/useLibrary";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
-import {
-	canChangePlaylists,
-	useIsPlaying,
-	usePermissions,
-} from "@/domain/player/usePlayer";
+import { useIsPlaying } from "@/domain/player/usePlayer";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
@@ -82,7 +78,6 @@ export function LibraryListView({
 	}, [revealing, indices]);
 
 	const isPlaying = useIsPlaying();
-	const canWrite = canChangePlaylists(usePermissions());
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
@@ -98,7 +93,7 @@ export function LibraryListView({
 		label: t(FINDER_LABEL[kind] ?? "finder.inList"),
 	});
 
-	const { playAt, activeIndex } = useViewPlayback({
+	const { playAt, activeIndex, canPlaySets } = useViewPlayback({
 		library,
 		playlists,
 		kind,
@@ -156,7 +151,7 @@ export function LibraryListView({
 							<PlayActions
 								browserRef={browserRef}
 								trackCount={view.length}
-								canPlaySets={canWrite}
+								canPlaySets={canPlaySets}
 							/>
 							{isGenre && label && onOpenPlaylist ? (
 								<CreateAutoPlaylist

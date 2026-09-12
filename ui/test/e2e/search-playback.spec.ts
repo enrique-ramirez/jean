@@ -8,6 +8,7 @@ import {
 	playedFrom,
 	requestsTo,
 	revealSearch,
+	scratchFills,
 	scratchOf,
 	searchFor,
 	sidebar,
@@ -530,7 +531,18 @@ test.describe("saving results as a playlist", () => {
 	});
 });
 
-test.describe("a player that will not let Jean make playlists", () => {
+// The two writes beefweb would have had to permit to play a set: making the
+// scratch playlist, and filling it. Both are the component's now, so neither
+// should ever be sent.
+const beefwebPlaylistWrites = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "POST" &&
+			(entry.path.startsWith("/api/playlists/add") ||
+				entry.path.includes("add-from-library")),
+	);
+
+test.describe("a beefweb install that will not let Jean change playlists", () => {
 	test.use({
 		playerState: {
 			permissions: {
@@ -541,25 +553,37 @@ test.describe("a player that will not let Jean make playlists", () => {
 		},
 	});
 
-	// A library row has no playlist to be played from until Jean makes one, so a
-	// player that refuses playlist changes gets no playback from a result and no
-	// button offering it either.
-	test("results say nothing about playing, and nothing 403s", async ({
+	// The scratch playlist is the component's own plumbing, made and filled over
+	// its own port, so beefweb's permission governs none of it. The fake honours
+	// no beefweb permission either, so a result that plays is not on its own
+	// proof that Jean stopped asking beefweb for the playlist to play it from:
+	// what the traffic says it asked for is.
+	test("a result plays, and nothing beefweb could refuse is sent", async ({
 		page,
 		player,
 	}) => {
 		await search(page, QUERY.text);
 
 		const header = viewHeader(page);
-		await expect(header.getByRole("button", { name: "Shuffle" })).toHaveCount(
-			0,
-		);
-		await expect(header.getByRole("button", { name: "Play" })).toHaveCount(0);
+		await expect(
+			header.getByRole("button", { name: "Play", exact: true }),
+		).toBeEnabled();
+		await expect(
+			header.getByRole("button", { name: "Shuffle", exact: true }),
+		).toBeEnabled();
 
 		await trackRow(page, 2).dblclick();
 
-		await expectSettlesAt(player, () => scratchOf(player), undefined);
-		expect(playedFrom(player)).toBe(null);
+		await expect
+			.poll(() => scratchOf(player)?.items.length)
+			.toBe(QUERY.matches);
+		await expect
+			.poll(() => playedFrom(player)?.plref)
+			.toBe(scratchOf(player)!.id);
+		expect(playedFrom(player)!.index).toBe(2);
+
+		await expectSettlesAt(player, () => scratchFills(player).length, 1);
+		expect(beefwebPlaylistWrites(player)).toHaveLength(0);
 	});
 });
 

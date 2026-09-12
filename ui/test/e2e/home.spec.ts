@@ -286,6 +286,31 @@ test.describe("a front door on a player that offers no shuffle", () => {
 	});
 });
 
+test.describe("a front door on a beefweb install that will not let Jean change playlists", () => {
+	test.use({
+		playerState: {
+			permissions: {
+				changePlaylists: false,
+				changeOutput: true,
+				changeClientConfig: true,
+			},
+		},
+	});
+
+	// Both buttons fill the component's own scratch playlist over its own port,
+	// so beefweb's permission has nothing to say about either of them.
+	test("Play and Shuffle are both still offered", async ({ page }) => {
+		await page.goto("/");
+		const head = viewHeader(page);
+		await expect(
+			head.getByRole("button", { name: "Play", exact: true }),
+		).toBeEnabled();
+		await expect(
+			head.getByRole("button", { name: "Shuffle", exact: true }),
+		).toBeEnabled();
+	});
+});
+
 test.describe("all music", () => {
 	test("it is the library with no filter on it", async ({ page }) => {
 		await page.goto("/#/all");

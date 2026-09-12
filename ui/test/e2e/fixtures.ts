@@ -387,6 +387,15 @@ export const expectSettlesAt = async <T>(
 export const scratchOf = (player: FakePlayer) =>
 	player.playlists.find((entry) => entry.title.startsWith("#Jean ["));
 
+// The one call that makes and fills Jean's scratch playlist. The component owns
+// the playlist and answers to a role, so there is no id to match on.
+export const scratchFills = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "POST" &&
+			entry.path === "/api/playlists/own/scratch/items",
+	);
+
 // The last thing the player was told to play, from
 // /api/player/play/{plref}/{index}.
 export const playedFrom = (player: FakePlayer) => {

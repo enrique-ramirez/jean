@@ -3,9 +3,15 @@ import {
 	expectSettlesAt,
 	type FakePlayer,
 	FOO_JEAN_TOKEN,
+	openSidebar,
 	type Page,
+	playedFrom,
 	requestsTo,
+	scratchFills,
+	scratchOf,
+	sidebar,
 	test,
+	trackPlayed,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -26,6 +32,28 @@ const deltasAsked = (player: FakePlayer) =>
 
 const playsOf = (page: Page, row: number) =>
 	trackRow(page, row).locator("[data-zero]");
+
+// Every index the player was told to start at, oldest first.
+const playsAsked = (player: FakePlayer) =>
+	requestsTo(player, "/player/play/").map((entry) =>
+		Number(entry.path.split("/").pop()),
+	);
+
+const playlistsMade = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "POST" && entry.path.startsWith("/api/playlists/add"),
+	);
+
+// beefweb renames by posting a title to the playlist itself, so the body is what
+// tells a rename apart from every other post under `/api/playlists/`.
+const playlistsRenamed = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "POST" &&
+			/^\/api\/playlists\/[^/?]+$/.test(entry.path) &&
+			entry.body?.title !== undefined,
+	);
 
 test.use({ library: { supported: true, enabled: true } });
 
@@ -172,5 +200,104 @@ test.describe("a library rebuilt under Jean", () => {
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
 		await expect(trackRow(page, 0)).toContainText("Rotten Apple");
 		expect(deltasAsked(player)).toHaveLength(0);
+	});
+});
+
+test.describe("playing a set out of the library", () => {
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+
+	test("asks the component for its scratch playlist by role, titled, and makes none through beefweb", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+
+		await trackRow(page, 3).dblclick();
+
+		await expectSettlesAt(player, () => scratchFills(player).length, 1);
+		// The title rides the call that makes the playlist. Jean's four `#Jean…`
+		// readers key on it, and beefweb's playlist list is polled, so a playlist
+		// that exists under another name for one poll is a playlist that surfaced.
+		expect(scratchFills(player)[0].body?.title).toBe("#Jean [all music]");
+		expect(playlistsMade(player)).toHaveLength(0);
+		expect(playlistsRenamed(player)).toHaveLength(0);
+
+		expect(scratchOf(player)?.items).toHaveLength(54);
+		await openSidebar(page);
+		await expect(sidebar(page).getByText(/#Jean/)).toHaveCount(0);
+	});
+
+	test("a second row from the same view plays without filling the playlist again", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+		await trackRow(page, 3).dblclick();
+		await expectSettlesAt(player, () => scratchFills(player).length, 1);
+
+		await trackRow(page, 8).dblclick();
+
+		await expect.poll(() => playedFrom(player)?.index).toBe(8);
+		await expectSettlesAt(player, () => scratchFills(player).length, 1);
+	});
+});
+
+test.describe("the order a library set plays in", () => {
+	// Synthesised rather than captured: these tracks sit in a different order by
+	// tag than by path, so the player's own add order is not the library's and a
+	// set that arrived through beefweb would land scrambled.
+	test.use({
+		fooJean: {},
+		fooJeanToken: FOO_JEAN_TOKEN,
+		mediaLibrarySize: 4000,
+	});
+
+	test("plays the row that was clicked, with nothing sent to re-order what the component filled", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+
+		await trackRow(page, 12).dblclick();
+
+		await expect
+			.poll(() => playedFrom(player)?.plref)
+			.toBe(scratchOf(player)?.id);
+		await expect(trackRow(page, 12)).toContainText(trackPlayed(player)!);
+
+		// One component decides the order and does the filling. Jean re-deriving it
+		// is what plays a different track on a library with more than one root.
+		expect(requestsTo(player, "add-from-library")).toHaveLength(0);
+		expect(requestsTo(player, "items/sort")).toHaveLength(0);
+	});
+});
+
+test.describe("a second view played before the first one has landed", () => {
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+
+	// The component applies fills in the order they arrived, so the later click
+	// wins the playlist whichever response Jean waited for. What is left to get
+	// wrong is the response: acting on the abandoned one starts the wrong track.
+	test("plays only the view that was clicked last, never the one it gave up on", async ({
+		page,
+		player,
+	}) => {
+		await page.request.post("/__control/latency", { data: { ms: 1200 } });
+
+		await page.goto("/#/search/babasonicos");
+		await expect(trackRow(page, 0)).toBeAttached();
+		await trackRow(page, 0).dblclick();
+
+		await openAllMusic(page);
+		await trackRow(page, 3).dblclick();
+
+		// Dropped once both are in flight, so the assertions below wait on the app
+		// rather than on the delay.
+		await page.request.post("/__control/latency", { data: { ms: 0 } });
+
+		// Row 0 of the search would be index 0. One index, and it is the later one.
+		await expectSettlesAt(player, () => playsAsked(player), [3]);
+		expect(scratchOf(player)?.title).toBe("#Jean [all music]");
+		expect(scratchOf(player)?.items).toHaveLength(54);
 	});
 });

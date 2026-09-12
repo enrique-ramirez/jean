@@ -928,6 +928,11 @@ export async function handleAgent({
 
 	const ownFillMatch = /^\/api\/playlists\/own\/([^/]+)\/items$/.exec(path);
 	if (method === "POST" && ownFillMatch) {
+		// The same latency switch the beefweb fake honours. Held after the request
+		// is recorded and before the playlist is touched, so two racing fills are
+		// applied in the order they arrived, as `MainThreadQueue` applies them.
+		if (state.latency > 0) await delay(state.latency);
+
 		const role = ownFillMatch[1];
 		if (role !== "scratch" && role !== "queue")
 			return json(

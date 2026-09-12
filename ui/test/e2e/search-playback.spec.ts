@@ -363,7 +363,7 @@ test.describe("clearing the search", () => {
 });
 
 test.describe("saving results as a playlist", () => {
-	test("saving adopts the playlist the results were already playing from", async ({
+	test("saving copies the results without disturbing what is already playing", async ({
 		page,
 		player,
 	}) => {
@@ -374,15 +374,13 @@ test.describe("saving results as a playlist", () => {
 
 		await saveAs(page, "Keepers");
 
-		// Matched on id: two unrelated playlists in this fixture hold the same
-		// number of tracks.
 		const keepers = player.playlists.find(
 			(entry) => entry.title === "Keepers",
 		)!;
-		expect(keepers!.id).toBe(scratchId);
+		expect(keepers!.id).not.toBe(scratchId);
 		expect(keepers!.items).toHaveLength(QUERY.matches);
-		expect(player.playlists).toHaveLength(playlistsBefore);
-		expect(scratchOf(player)).toBeUndefined();
+		expect(player.playlists).toHaveLength(playlistsBefore + 1);
+		expect(scratchOf(player)!.id).toBe(scratchId);
 
 		expect(player.player.activeItem.playlistId).toBe(scratchId);
 		await expect(statusBar(page)).toContainText("Los Calientes");
@@ -400,7 +398,6 @@ test.describe("saving results as a playlist", () => {
 		player.stop();
 		await expect(statusBar(page)).toContainText("Nothing playing");
 
-		const scratchId = scratchOf(player)!.id;
 		await saveAs(page, "Keepers");
 
 		// Ordered rather than timed: a navigation after the save says anything it
@@ -410,8 +407,7 @@ test.describe("saving results as a playlist", () => {
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
 		).toBeVisible();
 
-		const keepers = player.playlists.find((entry) => entry.id === scratchId);
-		expect(keepers?.title).toBe("Keepers");
+		const keepers = player.playlists.find((entry) => entry.title === "Keepers");
 		expect(keepers?.items).toHaveLength(QUERY.matches);
 	});
 
@@ -446,6 +442,10 @@ test.describe("saving results as a playlist", () => {
 	}) => {
 		await searchAndPlay(page, player);
 		await expect(statusBar(page)).toContainText("Los Calientes");
+		// Saving copies rather than taking the scratch over, so the search stays
+		// in the sidebar for as long as the scratch itself keeps playing.
+		player.stop();
+		await expect(statusBar(page)).toContainText("Nothing playing");
 
 		await saveAs(page, "Keepers");
 

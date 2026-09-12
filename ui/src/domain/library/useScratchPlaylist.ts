@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import {
 	isScratchPlaylist,
@@ -9,14 +9,19 @@ import {
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import {
+	copyPlaylistItems,
 	createPlaylist,
 	fetchPlaylists,
-	renamePlaylist,
 } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
 export const SCRATCH_PIN_KEY = "jean.scratchPlaylist";
+
+// Module-scope rather than a ref: Home, a view and the now-playing menu each call this hook
+// separately, and a fill started from one must still be able to abandon a fill started from another.
+let sequence = 0;
 
 export function useScratchPlaylist({
 	playlists,
@@ -30,6 +35,7 @@ export function useScratchPlaylist({
 		null,
 	);
 	const queryClient = useQueryClient();
+	const { token } = useFooJean();
 
 	const playlist = useMemo(() => {
 		const pinned = pinnedId
@@ -50,8 +56,6 @@ export function useScratchPlaylist({
 		[playlist, held],
 	);
 
-	const pending = useRef<Promise<string | null> | null>(null);
-
 	const ensure = useCallback(
 		async ({
 			kind,
@@ -68,40 +72,52 @@ export function useScratchPlaylist({
 			if (holdsView(kind, label, refs.length))
 				return (playlist as PlaylistInfo).id;
 
-			const build = async () => {
-				const title = scratchTitle(kind, label);
-				let target = playlist as PlaylistInfo | null;
-				if (!target) target = await createPlaylist(title);
-				else if (target.title !== title) await renamePlaylist(target.id, title);
-				setPinnedId(target.id);
+			// The latest call wins rather than queueing behind an earlier one: the component applies
+			// fills in the order they arrive regardless of which response this waits for, so there is
+			// nothing to gain by waiting for an older view's fill before starting a newer one. A call
+			// superseded before its own fill lands resolves to null, so a caller awaiting it plays
+			// nothing rather than a stale view.
+			sequence += 1;
+			const mine = sequence;
+			const title = scratchTitle(kind, label);
+			const landedId = await source.fill(title, refs, { token });
+			if (sequence !== mine) return null;
 
-				const heldCount = source.needsHeldCount
-					? ((await fetchPlaylists()).find((entry) => entry.id === target.id)
-							?.itemCount ?? 0)
-					: 0;
-				await source.fill(target.id, refs, heldCount);
+			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
+			// `beefwebId` is null only where the fill made the playlist and beefweb has not looked again
+			// yet: the refetch just above is what makes it, so the title match right after finds it.
+			const id =
+				landedId ??
+				queryClient
+					.getQueryData<PlaylistInfo[]>(PLAYLISTS_KEY)
+					?.find((entry) => entry.title === title)?.id ??
+				null;
 
-				await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
-				return target.id;
-			};
-
-			pending.current = (pending.current ?? Promise.resolve()).then(
-				build,
-				build,
-			);
-			return pending.current;
+			setPinnedId(id);
+			return id;
 		},
-		[canEdit, holdsView, playlist, setPinnedId, queryClient],
+		[canEdit, holdsView, playlist, setPinnedId, queryClient, token],
 	);
 
 	const adopt = useCallback(
 		async (title: string) => {
 			if (!playlist) return null;
-			await renamePlaylist(playlist.id, title);
-			setPinnedId(null);
-			return playlist.id;
+			const [created, fresh] = await Promise.all([
+				createPlaylist(title),
+				fetchPlaylists(),
+			]);
+			const count =
+				fresh.find((entry) => entry.id === playlist.id)?.itemCount ?? 0;
+			if (count > 0) {
+				await copyPlaylistItems(
+					playlist.id,
+					created.id,
+					Array.from({ length: count }, (_, at) => at),
+				);
+			}
+			return created.id;
 		},
-		[playlist, setPinnedId],
+		[playlist],
 	);
 
 	return { playlist, held, holdsView, ensure, adopt };

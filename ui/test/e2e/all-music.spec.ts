@@ -7,6 +7,7 @@ import {
 	openSidebar,
 	playedFrom,
 	requestsTo,
+	scratchFills,
 	scratchOf,
 	searchFor,
 	sidebar,
@@ -17,10 +18,11 @@ import {
 } from "./fixtures.ts";
 
 test.describe("playing from all music", () => {
-	// Big enough that the set cannot be named in one request: as explicit
-	// {path, subsong} it outgrows the 1 MiB body beefweb hangs up over. The
-	// synthesised tracks also sit in a different order by tag than by path --
-	// see `browseOrder` in the fake.
+	// Big enough that the set cannot be named track by track: as explicit
+	// {path, subsong} it outgrows the 1 MiB body beefweb hangs up over, and as
+	// ordinals it outgrows the component's own 256 KiB. The synthesised tracks
+	// also sit in a different order by tag than by path -- see `browseOrder` in
+	// the fake.
 	test.use({ mediaLibrarySize: 30441 });
 
 	test("the whole library is asked for, not named track by track", async ({
@@ -46,8 +48,9 @@ test.describe("playing from all music", () => {
 		// One request, not a chunk per screenful. Naming 30,441 tracks explicitly
 		// would be a 2.9 MB body, and the fake hangs up over 1 MiB exactly as
 		// beefweb does -- so the count above is already the assertion that the app
-		// asked for the whole library rather than listing it.
-		expect(requestsTo(player, "add-from-library")).toHaveLength(1);
+		// described the whole library rather than listing it.
+		expect(scratchFills(player)).toHaveLength(1);
+		expect(requestsTo(player, "add-from-library")).toHaveLength(0);
 	});
 
 	test("the row you click is the row that plays", async ({ page, player }) => {
@@ -97,15 +100,11 @@ test.describe("the order a set is played in", () => {
 		).toBeVisible();
 		await trackRow(page, 0).dblclick();
 
-		// Polled on the sort, not on the item count: the add lands first and the
-		// sort a round trip later, so asserting on the contents the moment they
-		// arrive reads the playlist half way through being filled.
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "items/sort").length,
-			1,
-		);
-		expect(scratchOf(player)!.items.length).toBe(4000);
+		// The set arriving whole, and deliberately not the request log coming to
+		// rest: one call fills this playlist, so there is no later round trip to
+		// wait for, and waiting for one would let a client that fixed the order up
+		// afterwards pass.
+		await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(4000);
 
 		const held = scratchOf(player)!.items.map((track) =>
 			track["%path%"].replace(/\\/g, "/"),

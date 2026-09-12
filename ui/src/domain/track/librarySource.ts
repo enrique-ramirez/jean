@@ -5,22 +5,24 @@ import {
 	copyPlaylistItems,
 	fetchLibraryNodes,
 	fetchPlaylistItems,
-	LIBRARY_SORT,
 	libraryPathMatcher,
 	removePlaylistItems,
-	sortPlaylistItems,
 } from "@/shared/api/beefweb";
-import { libraryArtworkUrl } from "@/shared/api/fooJean";
+import { bearer, encodeFill, libraryArtworkUrl } from "@/shared/api/fooJean";
+import type { components } from "@/shared/api/fooJeanSchema";
 import type {
 	PlaybackPosition,
 	TrackColumns,
 	TrackIdentity,
 } from "@/shared/api/types";
-import { inSequence } from "@/shared/lib/sequence";
 import { FIELD, sameTagValue, value } from "./fields";
 import { positionOf } from "./libraryIndex";
 import type { PathTable } from "./pathTable";
+import { componentLibraryKey, playlistSnapshot } from "./playlistStore";
 import type { Refs } from "./project";
+
+type FillOwnPlaylistRequest = components["schemas"]["FillOwnPlaylistRequest"];
+type FillResult = components["schemas"]["FillResult"];
 
 export interface ResolvedTrack {
 	identity: TrackIdentity;
@@ -47,7 +49,15 @@ export interface LibrarySource {
 		row: TrackColumns,
 		columns?: string[],
 	) => Promise<ResolvedTrack | null>;
-	fill: (targetId: string, refs: Refs, heldCount?: number) => Promise<unknown>;
+	// `target` is the beefweb id to append into for a playlist source, and the title to give the
+	// scratch playlist for a library source: the component resolves and titles that playlist itself,
+	// in the same call that fills it, so there is no id to pass in ahead of the call. Answers the
+	// beefweb id the fill landed in, or null where the caller must resolve it another way.
+	fill: (
+		target: string,
+		refs: Refs,
+		options?: { heldCount?: number; token?: string },
+	) => Promise<string | null>;
 	addTo: (targetId: string, refs: Refs) => Promise<unknown>;
 	// Targets come back in the order asked for.
 	queueTargets: (
@@ -70,69 +80,53 @@ export type LibrarySourceOptions =
 	  }
 	| { kind: "playlist"; playlistId: string };
 
-interface ItemChunk {
-	items: { path: string; subsong: number }[];
-	bytes: number;
-}
-
 // Array.from, never refs.map: refs can be an Int32Array, and mapping one gives back a typed array
 // whose objects coerce to NaN.
 const itemsFor = (paths: PathTable, subsongs: Int32Array, refs: Refs) =>
 	Array.from(refs, (ref) => ({ path: paths.at(ref), subsong: subsongs[ref] }));
 
-// foobar2000 sorts by the path it is given, and this asks it for `%path%`, which is absolute, while
-// an ordinal is ordered by the library-relative path. `ARCHITECTURE.md`, *Absences that shape the
-// code*, is what that costs on a library with more than one root.
-const sortToLibraryOrder = (targetId: string) =>
-	sortPlaylistItems(targetId, LIBRARY_SORT);
+// The component resolves `own/scratch` to its own playlist and titles it in the same call that
+// fills it, so there is never a beefweb id to address ahead of time. `structure` is read once,
+// alongside `paths`, so the two describe the same snapshot the caller's refs were resolved against.
+const fillScratch =
+	(paths: PathTable, origin: string | null, structure: number) =>
+	async (
+		title: string,
+		refs: Refs,
+		{ token }: { token?: string } = {},
+	): Promise<string | null> => {
+		if (!origin || !token) return null;
 
-const MAX_BODY_BYTES = 768 * 1024;
+		const request: FillOwnPlaylistRequest = {
+			title,
+			...encodeFill(refs, { structure, trackCount: paths.length }),
+		};
 
-const chunkedItems = (items: { path: string; subsong: number }[]) =>
-	items.reduce<ItemChunk[]>((chunks, item) => {
-		const open = chunks[chunks.length - 1];
-		const size = JSON.stringify(item).length + 1;
+		const response = await fetch(`${origin}/api/playlists/own/scratch/items`, {
+			method: "POST",
+			headers: { ...bearer(token), "Content-Type": "application/json" },
+			body: JSON.stringify(request),
+		});
+		if (!response.ok)
+			throw new Error(
+				`POST /playlists/own/scratch/items failed: ${response.status}`,
+			);
 
-		if (!open || open.bytes + size > MAX_BODY_BYTES)
-			chunks.push({ items: [item], bytes: size });
-		else {
-			open.items.push(item);
-			open.bytes += size;
-		}
-
-		return chunks;
-	}, []);
-
-const fillByLibrary =
-	(paths: PathTable, subsongs: Int32Array) =>
-	async (targetId: string, refs: Refs) => {
-		// Omitting `items` means the whole library, in one request with no body.
-		if (refs.length === paths.length) {
-			await addFromLibrary(targetId, { replace: true });
-			return sortToLibraryOrder(targetId);
-		}
-
-		// Sequential, and it has to be: only the first request may replace, and run concurrently that
-		// replace could arrive last and empty what it filled.
-		await inSequence(
-			chunkedItems(itemsFor(paths, subsongs, refs)),
-			(chunk, at) =>
-				addFromLibrary(targetId, { items: chunk.items, replace: at === 0 }),
-		);
-
-		return sortToLibraryOrder(targetId);
+		const result = (await response.json()) as FillResult;
+		return result.beefwebId;
 	};
 
 const fillByCopy =
 	(sourceId: string) =>
-	async (targetId: string, refs: Refs, heldCount = 0) => {
+	async (targetId: string, refs: Refs, { heldCount = 0 } = {}) => {
 		if (heldCount > 0) {
 			await removePlaylistItems(
 				targetId,
 				Array.from({ length: heldCount }, (_, at) => at),
 			);
 		}
-		return copyPlaylistItems(sourceId, targetId, refs);
+		await copyPlaylistItems(sourceId, targetId, refs);
+		return targetId;
 	};
 
 const queueViaHolding =
@@ -178,55 +172,68 @@ const fromMediaLibrary = ({
 	paths: PathTable;
 	subsongs: Int32Array;
 	artworkOrigin: string | null;
-}): LibrarySource => ({
-	kind: "library",
-	playlistId: null,
-	needsHeldCount: false,
+}): LibrarySource => {
+	// Read once, alongside `paths`: both describe the same snapshot, and reading `structure` again
+	// later could see a rebuild `paths` has not, resolving refs against a generation they do not name.
+	const structure = artworkOrigin
+		? playlistSnapshot(componentLibraryKey(artworkOrigin)).structure
+		: 0;
 
-	artworkUrl: (ref: number) => libraryArtworkUrl(artworkOrigin, paths.at(ref)),
+	return {
+		kind: "library",
+		playlistId: null,
+		needsHeldCount: false,
 
-	identify: async (ref: number, _row: TrackColumns, columns: string[] = []) => {
-		const held = paths.at(ref);
-		if (!held) return null;
+		artworkUrl: (ref: number) =>
+			libraryArtworkUrl(artworkOrigin, paths.at(ref)),
 
-		const cut = held.lastIndexOf("/");
-		const { items } = await fetchLibraryNodes(
-			cut < 0 ? "" : held.slice(0, cut),
-			["%path%", ...columns],
-		);
+		identify: async (
+			ref: number,
+			_row: TrackColumns,
+			columns: string[] = [],
+		) => {
+			const held = paths.at(ref);
+			if (!held) return null;
 
-		const subsong = subsongs[ref] ?? 0;
-		const found = items.find(
-			(node) =>
-				node.type === "F" &&
-				node.path === held &&
-				(node.subsong ?? 0) === subsong,
-		);
-		if (!found?.columns) return null;
+			const cut = held.lastIndexOf("/");
+			const { items } = await fetchLibraryNodes(
+				cut < 0 ? "" : held.slice(0, cut),
+				["%path%", ...columns],
+			);
 
-		return {
-			identity: { path: found.columns[0] || null, subsong },
-			columns: found.columns.slice(1),
-		};
-	},
+			const subsong = subsongs[ref] ?? 0;
+			const found = items.find(
+				(node) =>
+					node.type === "F" &&
+					node.path === held &&
+					(node.subsong ?? 0) === subsong,
+			);
+			if (!found?.columns) return null;
 
-	fill: fillByLibrary(paths, subsongs),
-	queueTargets: queueViaHolding(paths, subsongs),
+			return {
+				identity: { path: found.columns[0] || null, subsong },
+				columns: found.columns.slice(1),
+			};
+		},
 
-	addTo: (targetId: string, refs: Refs) =>
-		addFromLibrary(targetId, { items: itemsFor(paths, subsongs, refs) }),
+		fill: fillScratch(paths, artworkOrigin, structure),
+		queueTargets: queueViaHolding(paths, subsongs),
 
-	// Linear, where the playlist source bisects: path order is not ref order.
-	playingPosition: (refs: Refs, track: TrackIdentity | null | undefined) => {
-		if (!track?.path) return -1;
-		const matches = libraryPathMatcher(track.path);
-		const subsong = track.subsong ?? 0;
-		return Array.prototype.findIndex.call(
-			refs,
-			(ref: number) => subsongs[ref] === subsong && matches(paths.at(ref)),
-		);
-	},
-});
+		addTo: (targetId: string, refs: Refs) =>
+			addFromLibrary(targetId, { items: itemsFor(paths, subsongs, refs) }),
+
+		// Linear, where the playlist source bisects: path order is not ref order.
+		playingPosition: (refs: Refs, track: TrackIdentity | null | undefined) => {
+			if (!track?.path) return -1;
+			const matches = libraryPathMatcher(track.path);
+			const subsong = track.subsong ?? 0;
+			return Array.prototype.findIndex.call(
+				refs,
+				(ref: number) => subsongs[ref] === subsong && matches(paths.at(ref)),
+			);
+		},
+	};
+};
 
 const fromPlaylist = ({
 	playlistId,

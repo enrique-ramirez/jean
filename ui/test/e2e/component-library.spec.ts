@@ -37,7 +37,6 @@ const deltasAsked = (player: FakePlayer) =>
 const playsOf = (page: Page, row: number) =>
 	trackRow(page, row).locator("[data-zero]");
 
-// Every index the player was told to start at, oldest first.
 const playsAsked = (player: FakePlayer) =>
 	requestsTo(player, "/player/play/").map((entry) =>
 		Number(entry.path.split("/").pop()),
@@ -92,12 +91,9 @@ const FAVORITES = "Favorites";
 const menuItem = (page: Page, name: string) =>
 	page.getByRole("menuitem", { name, exact: true });
 
-// Found by the action it names rather than by its whole label: where a setting
-// refuses the write, the same item carries the reason as well.
 const addToPlaylist = (page: Page) =>
 	page.getByRole("menuitem", { name: /Add to playlist/ });
 
-// Rows are direct children of the nav, so is the section header, hence the filter.
 const sidebarRow = (page: Page, title: string) =>
 	sidebar(page).locator("> div").filter({ hasText: title });
 
@@ -345,11 +341,8 @@ test.describe("a second view played before the first one has landed", () => {
 		await openAllMusic(page);
 		await trackRow(page, 3).dblclick();
 
-		// Dropped once both are in flight, so the assertions below wait on the app
-		// rather than on the delay.
 		await page.request.post("/__control/latency", { data: { ms: 0 } });
 
-		// Row 0 of the search would be index 0. One index, and it is the later one.
 		await expectSettlesAt(player, () => playsAsked(player), [3]);
 		expect(scratchOf(player)?.title).toBe("#Jean [all music]");
 		expect(scratchOf(player)?.items).toHaveLength(54);
@@ -379,8 +372,6 @@ test.describe("a view whose fill was refused because the library moved", () => {
 		await expect(trackRow(page, 0)).toBeAttached();
 	};
 
-	// What `libraryRebuilds` performs at a poll, driven here at the moment the test
-	// needs it: the structure generation moves, and an ordinal is a position.
 	const rebuildLibrary = (player: FakePlayer) => {
 		player.libraryFeed.building = [...player.libraryFeed.columns];
 		player.finishLibraryBuild();
@@ -563,9 +554,6 @@ test.describe("filing a library row into a playlist of your own", () => {
 	test.describe("on a component too old to report the setting at all", () => {
 		test.use({ fooJean: { canWritePlaylists: "absent" } });
 
-		// Absent is not refused. The field is read to take an affordance away and
-		// never to hand one out, so a component that predates it leaves the menu
-		// exactly as a component that permits the write does.
 		test("Add to playlist still offers the playlists a row can go to", async ({
 			page,
 			isMobile,

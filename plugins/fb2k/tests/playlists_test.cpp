@@ -8,6 +8,7 @@
 #include "third_party/json.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -88,7 +89,7 @@ std::string bitsetOf(const Ordinals& ordinals, size_t trackCount) {
 
 FillRequest filling(const std::string& form, size_t trackCount = kTracks) {
     return parseFill(R"({"structure": )" + std::to_string(kStructure) + ", " + form + "}",
-                     trackCount);
+                     trackCount, std::nullopt);
 }
 
 }  // namespace
@@ -230,7 +231,7 @@ TEST_CASE("a body names exactly one of the three forms, so two is refused and so
 
     // A body naming no set at all is the same refusal: a fill that would insert nothing is a
     // caller's mistake rather than a request to honour.
-    const auto silent = parseFill(R"({"structure": 41})", kTracks);
+    const auto silent = parseFill(R"({"structure": 41})", kTracks, std::nullopt);
     CHECK_FALSE(silent.ok());
     CHECK(describe(silent.refusal) == "unacceptable ordinal set");
     CHECK(httpStatusFor(silent.refusal) == 400);
@@ -242,7 +243,7 @@ TEST_CASE("a body that is not JSON is a malformed body rather than a bad ordinal
     // send a caller looking at ordinals it never managed to send.
     for (const std::string& body : {"not json", "[0, 1, 9]", R"("a string")"}) {
         INFO("body: ", body);
-        const auto request = parseFill(body, kTracks);
+        const auto request = parseFill(body, kTracks, std::nullopt);
 
         CHECK_FALSE(request.ok());
         CHECK(describe(request.refusal) == "malformed request");
@@ -269,9 +270,9 @@ TEST_CASE("an ordinal past the end of the library is refused rather than dropped
 }
 
 TEST_CASE("runs resolving to more rows than the library holds are refused") {
-    // Every ordinal here is in range, so nothing but the total says no. Runs are the one form
-    // whose wire cost and resolved cost come apart: overlapping pairs cost eight bytes each
-    // and resolve to a whole library each, and about 20,000 of them fit inside kMaxBodyBytes.
+    // Runs are the one form whose wire cost and resolved cost come apart: overlapping pairs
+    // cost eight bytes each and resolve to a whole library each, and about 20,000 of them fit
+    // inside kMaxBodyBytes.
     for (const std::string& form : {R"("runs": [[0, 12], [0, 1]])",
                                     R"("runs": [[0, 12], [0, 12], [0, 12]])"}) {
         INFO("form: ", form);
@@ -297,9 +298,6 @@ TEST_CASE("runs covering exactly the whole library are taken, as one run or as s
 }
 
 TEST_CASE("a plain list may name more rows than the library holds, since a repeat is meant") {
-    // The bound is on runs alone. A repeated ordinal costs an entry on the wire as well as one
-    // in the answer, and a queue of one track played over and over is a set a person asks for
-    // on a library of any size.
     const auto queued =
         filling(R"("ordinals": [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4])", kShortLibrary);
 

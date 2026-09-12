@@ -8,6 +8,7 @@ import { ratingItems, trackActions } from "@/domain/track/trackActions";
 import { useAddTracks } from "@/domain/track/useAddTracks";
 import { useQueueTracks } from "@/domain/track/useQueueTracks";
 import { readTrack } from "@/shared/api/beefweb";
+import { permitsPlaylistWrites } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
@@ -18,11 +19,7 @@ export function useNowPlayingMenu() {
 	const snapshot = useAudiblePlayer();
 	const { data: playlists = [] } = usePlaylists();
 	const { discovery } = useFooJean();
-	// Absent or unreached reads as writable: the field is read to take the "add" affordance away and
-	// never to hand it out.
-	const canWritePlaylists =
-		discovery.state.kind !== "ready" ||
-		discovery.state.capabilities.canWritePlaylists !== false;
+	const canWritePlaylists = permitsPlaylistWrites(discovery);
 	const { queueTracks, canQueue } = useQueueTracks();
 	const { raw, canWrite, write } = useNowPlayingRating();
 	const addTracks = useAddTracks();

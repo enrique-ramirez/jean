@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { Refs } from "@/domain/track/project";
 import { playItem } from "@/shared/api/beefweb";
+import { isFooJeanReady } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Library } from "./useLibrary";
@@ -14,9 +15,7 @@ export function usePlaySet({
 	playlists: PlaylistInfo[];
 }) {
 	const { discovery } = useFooJean();
-	// The scratch playlist is filled through the component's own route rather than beefweb's, so it
-	// is `foo_jean` being reachable that playing a set asks for rather than beefweb's `changePlaylists`.
-	const canPlaySets = discovery.state.kind === "ready";
+	const canPlaySets = isFooJeanReady(discovery);
 	const scratch = useScratchPlaylist({
 		playlists,
 		canEdit: canPlaySets,

@@ -6,7 +6,6 @@ import {
 	fetchPlaylistItems,
 	fetchPlaylists,
 	libraryPathMatcher,
-	removePlaylistItems,
 } from "@/shared/api/beefweb";
 import type {
 	FillOwnPlaylistRequest,
@@ -42,12 +41,8 @@ export interface HoldingPlaylist {
 	itemCount: number;
 }
 
-export interface LibrarySource {
-	kind: "library" | "playlist";
+export interface LibrarySourceCommon {
 	playlistId: string | null;
-	// Whether `fill` needs the target's live item count, which has to be read fresh: emptying is a
-	// remove-by-range, and a cached count is stale from the first write on.
-	needsHeldCount: boolean;
 
 	artworkUrl: (ref: number) => string | null;
 	// Null when the ref no longer names the row it was read from: indices move, and the failure mode
@@ -57,15 +52,6 @@ export interface LibrarySource {
 		row: TrackColumns,
 		columns?: string[],
 	) => Promise<ResolvedTrack | null>;
-	// `target` is the beefweb id to append into for a playlist source, and the title to give the
-	// scratch playlist for a library source: the component resolves and titles that playlist itself,
-	// in the same call that fills it, so there is no id to pass in ahead of the call. Answers the
-	// beefweb id the fill landed in, or null where the caller must resolve it another way.
-	fill: (
-		target: string,
-		refs: Refs,
-		options?: { heldCount?: number; token?: string },
-	) => Promise<string | null>;
 	addTo: (targetId: string, refs: Refs) => Promise<unknown>;
 	// Targets come back in the order asked for.
 	queueTargets: (
@@ -80,6 +66,21 @@ export interface LibrarySource {
 	) => number;
 }
 
+export type LibrarySource =
+	| (LibrarySourceCommon & {
+			kind: "library";
+			// `target` is the title to give the scratch playlist: the component resolves and titles that
+			// playlist itself, in the same call that fills it, so there is no id to pass in ahead of the
+			// call. Answers the beefweb id the fill landed in, or null where the caller must resolve it
+			// another way.
+			fill: (
+				target: string,
+				refs: Refs,
+				options?: { token?: string },
+			) => Promise<string | null>;
+	  })
+	| (LibrarySourceCommon & { kind: "playlist" });
+
 export type LibrarySourceOptions =
 	| {
 			kind: "library";
@@ -90,9 +91,6 @@ export type LibrarySourceOptions =
 	  }
 	| { kind: "playlist"; playlistId: string };
 
-// The component resolves `own/scratch` to its own playlist and titles it in the same call that
-// fills it, so there is never a beefweb id to address ahead of time. `structure` is read once,
-// alongside `paths`, so the two describe the same snapshot the caller's refs were resolved against.
 const fillScratch =
 	(paths: PathTable, origin: string | null, structure: number) =>
 	async (
@@ -137,23 +135,6 @@ const addToPlaylist =
 		return fillPlaylist(origin, token, guid, request);
 	};
 
-const fillByCopy =
-	(sourceId: string) =>
-	async (targetId: string, refs: Refs, { heldCount = 0 } = {}) => {
-		if (heldCount > 0) {
-			await removePlaylistItems(
-				targetId,
-				Array.from({ length: heldCount }, (_, at) => at),
-			);
-		}
-		await copyPlaylistItems(sourceId, targetId, refs);
-		return targetId;
-	};
-
-// The component resolves `own/queue` to its own playlist the same way it resolves the scratch, and
-// answers where each row landed, so there is nothing here to read back or match by path: `positions`
-// names where `refs` landed, in the order `refs` was given. `holding` still runs first, for its one
-// remaining job of clearing the playlist when the play queue that pointed into it is already empty.
 const queueViaHolding =
 	(paths: PathTable, origin: string | null, structure: number) =>
 	async (
@@ -171,8 +152,6 @@ const queueViaHolding =
 		};
 
 		const result = await fillOwnPlaylist(origin, token, "queue", request);
-		// `beefwebId` is null only where this call made the playlist and beefweb has not looked again
-		// yet, exactly as `fillScratch` above: the fresh list this falls back to is what makes it.
 		const beefwebId =
 			result.beefwebId ??
 			(await fetchPlaylists()).find((entry) => entry.title === QUEUE_TITLE)
@@ -196,7 +175,7 @@ const fromMediaLibrary = ({
 	subsongs: Int32Array;
 	artworkOrigin: string | null;
 	token: string | null;
-}): LibrarySource => {
+}): Extract<LibrarySource, { kind: "library" }> => {
 	// Read once, alongside `paths`: both describe the same snapshot, and reading `structure` again
 	// later could see a rebuild `paths` has not, resolving refs against a generation they do not name.
 	const structure = artworkOrigin
@@ -206,7 +185,6 @@ const fromMediaLibrary = ({
 	return {
 		kind: "library",
 		playlistId: null,
-		needsHeldCount: false,
 
 		artworkUrl: (ref: number) =>
 			libraryArtworkUrl(artworkOrigin, paths.at(ref)),
@@ -262,10 +240,9 @@ const fromPlaylist = ({
 	playlistId,
 }: {
 	playlistId: string;
-}): LibrarySource => ({
+}): Extract<LibrarySource, { kind: "playlist" }> => ({
 	kind: "playlist",
 	playlistId,
-	needsHeldCount: true,
 
 	artworkUrl: (ref: number) => artworkUrl(playlistId, ref),
 
@@ -285,8 +262,6 @@ const fromPlaylist = ({
 		};
 	},
 
-	fill: fillByCopy(playlistId),
-
 	queueTargets: async (refs: Refs) =>
 		Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
 	addTo: (targetId: string, refs: Refs) =>
@@ -304,9 +279,14 @@ const fromPlaylist = ({
 			: -1,
 });
 
-export const librarySourceOf = (
-	options: LibrarySourceOptions,
-): LibrarySource =>
-	options.kind === "library"
+export function librarySourceOf(
+	options: Extract<LibrarySourceOptions, { kind: "library" }>,
+): Extract<LibrarySource, { kind: "library" }>;
+export function librarySourceOf(
+	options: Extract<LibrarySourceOptions, { kind: "playlist" }>,
+): Extract<LibrarySource, { kind: "playlist" }>;
+export function librarySourceOf(options: LibrarySourceOptions): LibrarySource {
+	return options.kind === "library"
 		? fromMediaLibrary(options)
 		: fromPlaylist(options);
+}

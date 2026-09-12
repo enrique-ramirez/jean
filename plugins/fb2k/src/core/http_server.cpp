@@ -1035,8 +1035,14 @@ struct HttpServer::Impl {
                 return;
             }
 
-            auto request = refuseFillChange(parseFill(req.body, state.trackCount, true));
+            auto request =
+                refuseFillChange(parseFill(req.body, state.trackCount, state.structure, true));
             if (!request.ok()) {
+                if (request.outcome != PlaylistOutcome::done) {
+                    respond(res, httpStatusFor(request.outcome),
+                            playlistFailedDocument(playlistFailure(request.outcome)));
+                    return;
+                }
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
                 respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
@@ -1124,8 +1130,14 @@ struct HttpServer::Impl {
                 return;
             }
 
-            auto request = refuseFillChange(parseFill(req.body, state.trackCount));
+            auto request = refuseFillChange(
+                parseFill(req.body, state.trackCount, state.structure));
             if (!request.ok()) {
+                if (request.outcome != PlaylistOutcome::done) {
+                    respond(res, httpStatusFor(request.outcome),
+                            playlistFailedDocument(playlistFailure(request.outcome)));
+                    return;
+                }
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
                 respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));

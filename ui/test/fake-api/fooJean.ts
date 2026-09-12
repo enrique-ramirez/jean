@@ -44,10 +44,6 @@ export interface FooJeanOptions {
 	libraryEnabled?: boolean;
 	failCreate?: number | null;
 
-	// `writePlaylists` in `config.json`. `false` refuses a fill by GUID; the
-	// component's own two playlists stay writable regardless. `"absent"` is a
-	// component predating the field: `GET /api/capabilities` reports nothing,
-	// and a client must read that absence as writable, so it behaves as `true`.
 	canWritePlaylists?: boolean | "absent";
 
 	canStream?: boolean;
@@ -79,9 +75,6 @@ export interface FooJeanOptions {
 export interface FooJeanFake extends Required<Omit<FooJeanOptions, "port">> {
 	port: number | null;
 	installed: boolean;
-	// Which internal playlist a role currently resolves to. Never test-seeded: a
-	// role has no playlist until a fill asks for one, exactly as the component
-	// makes neither at startup.
 	ownPlaylists: Partial<Record<OwnPlaylistRole, string>>;
 }
 
@@ -129,8 +122,6 @@ export const fooJeanState = (options: FooJeanOptions | null): FooJeanFake => ({
 	...DEFAULTS,
 	installed: options !== null,
 	...options,
-	// Fresh every call: `DEFAULTS` is one module-level object, and copying its
-	// `ownPlaylists` reference would let every fake in the process share it.
 	ownPlaylists: {},
 });
 
@@ -396,9 +387,6 @@ const WRITES_DISABLED = {
 	detail: "",
 };
 
-// foobar2000's own playlist GUID, as the component would mint it. The fake has
-// no real GUIDs to hand out, so it derives one from a playlist's current index,
-// exactly as `/api/playlists` already reported it before this existed.
 const guidFor = (index: number) =>
 	`00000000-0000-0000-0000-${String(index).padStart(12, "0")}`;
 
@@ -426,8 +414,6 @@ type ParsedFill =
 	| { ok: true; title?: string; structure: number; ordinals: number[] }
 	| ({ ok: false } & FillFailure);
 
-// The inverse of `encodeFill` in `../../src/shared/api/fooJean.ts`: the three
-// forms it can emit, decoded back to the ordinals they named.
 function parseFill(
 	body: unknown,
 	{ requireTitle, trackCount }: { requireTitle: boolean; trackCount: number },
@@ -994,9 +980,6 @@ export async function handleAgent({
 				400,
 			);
 
-		// The rows go and the playlist stays, because deleting one the play queue
-		// points into kills foobar2000. A role with no playlist yet is not given one
-		// to empty, and answers the same 204 as a role that had rows to lose.
 		const held = fake.ownPlaylists[role];
 		const playlist = held ? state.playlistById(held) : undefined;
 		if (playlist && playlist.items.length > 0) {
@@ -1074,6 +1057,10 @@ export async function handleAgent({
 	}
 
 	if (method === "POST" && path === "/api/autoplaylists") {
+		// Before the limit, as the component checks it: the two refusals have separate causes and a
+		// fixture setting both would otherwise be told the wrong one.
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
 		if (fake.maxAutoPlaylists === 0)
 			return json(response, { error: "autoplaylists are not available" }, 503);
 		if (fake.failCreate)

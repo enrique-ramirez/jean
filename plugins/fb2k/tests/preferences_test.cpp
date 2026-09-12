@@ -306,7 +306,6 @@ TEST_CASE("a setting the page has no control for survives being applied") {
     CHECK(reading.settings.maxAutoPlaylists == 7);
 }
 
-// Both arguments can supply this key, and only one of them is the person at the dialog.
 TEST_CASE("the checkbox decides whether playlists are writable, rather than what was saved") {
     for (const bool writable : {true, false}) {
         Settings shown;

@@ -276,6 +276,15 @@ export const libraryOrigin = (discovery: FooJeanDiscovery) =>
 		? discovery.origin
 		: null;
 
+// Absent or unreached reads as writable: the field is read to take an affordance away and never to
+// hand it out.
+export const permitsPlaylistWrites = (discovery: FooJeanDiscovery) =>
+	discovery.state.kind !== "ready" ||
+	discovery.state.capabilities.canWritePlaylists !== false;
+
+export const isFooJeanReady = (discovery: FooJeanDiscovery) =>
+	discovery.state.kind === "ready";
+
 export async function discoverFooJean(
 	token: string | null,
 ): Promise<FooJeanDiscovery> {

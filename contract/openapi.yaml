@@ -1248,7 +1248,7 @@ components:
   responses:
     PlaylistRefused:
       description: |
-        The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, an id this component did not issue, or an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals`, or that names an ordinal outside the `structure` it claims.
+        The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, an id this component did not issue, or an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals`, or that names an ordinal outside the library while its `structure` is still the current one. A `structure` that has moved is a `409` instead, whether the library grew or shrank.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistRefusal" }

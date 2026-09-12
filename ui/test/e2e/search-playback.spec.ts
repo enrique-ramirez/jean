@@ -48,8 +48,6 @@ const searchAndPlay = async (
 	await expect.poll(() => scratchOf(player)?.items.length).toBe(query.matches);
 };
 
-// Found by the action it names rather than by its whole label: where a setting
-// refuses the write, the same button carries the reason as well.
 const saveAsPlaylist = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: /Save as playlist/ });
 
@@ -269,8 +267,8 @@ test.describe("a search outlives the tab it was typed in", () => {
 
 		await page.reload();
 
-		// The query is not stored in the browser; the scratch playlist's title is
-		// what remembers it.
+		// This client filled the view, so the query comes back from the title it
+		// stored rather than from the playlist's. The next test is the other client.
 		await expect(
 			page.getByRole("heading", { level: 1, name: QUERY.text }),
 		).toBeVisible();
@@ -669,9 +667,6 @@ test.describe("a beefweb install that will not let Jean change playlists", () =>
 test.describe("where the player owner has turned playlist writes off", () => {
 	test.use({ fooJean: { canWritePlaylists: false } });
 
-	// Drawn rather than hidden: a control that vanishes teaches nobody which
-	// setting took it away, and this one is the player owner's own, held in
-	// foo_jean's preferences.
 	test("Save as playlist is drawn disabled, naming the component's own setting", async ({
 		page,
 	}) => {

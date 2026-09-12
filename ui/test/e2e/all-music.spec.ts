@@ -45,10 +45,6 @@ test.describe("playing from all music", () => {
 			30441,
 		);
 
-		// One request, not a chunk per screenful. Naming 30,441 tracks explicitly
-		// would be a 2.9 MB body, and the fake hangs up over 1 MiB exactly as
-		// beefweb does -- so the count above is already the assertion that the app
-		// described the whole library rather than listing it.
 		expect(scratchFills(player)).toHaveLength(1);
 		expect(requestsTo(player, "add-from-library")).toHaveLength(0);
 	});

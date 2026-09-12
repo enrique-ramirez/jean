@@ -31,10 +31,7 @@ export function useScratchPlaylist({
 		SCRATCH_PIN_KEY,
 		null,
 	);
-	// foo_jean retitles its own playlist for the view being asked for before it can know a fill will
-	// be refused, so a 409 leaves the live title naming a view the playlist does not hold. `holdsView`
-	// and every other reader of what Jean is playing from trust this record of the last title a fill
-	// actually landed under, never the playlist's own.
+	// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
 	const [landedTitle, setLandedTitle] = useStoredState<string | null>(
 		SCRATCH_LANDED_KEY,
 		null,
@@ -68,7 +65,7 @@ export function useScratchPlaylist({
 			kind: string;
 			label: string | null;
 			refs: Refs;
-			source: LibrarySource;
+			source: Extract<LibrarySource, { kind: "library" }>;
 		}): Promise<string | null> => {
 			if (!canEdit || refs.length === 0) return null;
 			if (holdsView(kind, label, refs.length))
@@ -86,8 +83,6 @@ export function useScratchPlaylist({
 			if (sequence !== mine) return null;
 
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
-			// `beefwebId` is null only where the fill made the playlist and beefweb has not looked again
-			// yet: the refetch just above is what makes it, so the title match right after finds it.
 			const id =
 				landedId ??
 				queryClient

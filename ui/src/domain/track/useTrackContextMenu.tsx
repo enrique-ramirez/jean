@@ -6,6 +6,7 @@ import {
 	useState,
 } from "react";
 import { usePlaylists } from "@/domain/player/usePlayer";
+import { permitsPlaylistWrites } from "@/shared/api/fooJean";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -40,11 +41,7 @@ export function useTrackContextMenu({
 	const t = useTranslate();
 	const { data: playlists = [] } = usePlaylists();
 	const { discovery } = useFooJean();
-	// Absent or unreached reads as writable: the field is read to take the "add" affordance away and
-	// never to hand it out.
-	const canWritePlaylists =
-		discovery.state.kind !== "ready" ||
-		discovery.state.capabilities.canWritePlaylists !== false;
+	const canWritePlaylists = permitsPlaylistWrites(discovery);
 	const addTracks = useAddTracks();
 	const { queueTracks, canQueue } = useQueueTracks();
 	const { canRate, rate } = useTagWriting();

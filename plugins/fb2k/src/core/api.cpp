@@ -330,7 +330,8 @@ int httpStatusFor(PlaylistOutcome outcome) {
     return 500;
 }
 
-FillRequest parseFill(const std::string& body, size_t trackCount, bool allowsTitle) {
+FillRequest parseFill(const std::string& body, size_t trackCount,
+                      std::optional<uint64_t> expectedStructure, bool allowsTitle) {
     const auto document = parseJsonObject(body);
     if (!document.ok())
         return malformedFill();
@@ -360,6 +361,11 @@ FillRequest parseFill(const std::string& body, size_t trackCount, bool allowsTit
     FillRequest request;
     request.structure = structure->get<uint64_t>();
 
+    if (expectedStructure && request.structure != *expectedStructure) {
+        request.outcome = PlaylistOutcome::structureMoved;
+        return request;
+    }
+
     const auto inRange = [trackCount](uint64_t ordinal) { return ordinal < trackCount; };
 
     if (hasOrdinals) {
@@ -384,10 +390,6 @@ FillRequest parseFill(const std::string& body, size_t trackCount, bool allowsTit
         if (!runs->is_array())
             return refuseFill();
 
-        // Overlapping runs each pass the per-ordinal check, so the total across all of them,
-        // not any single run, is what has to stay inside the library's own size. Checked
-        // before a single ordinal is expanded: no honest request names more rows than the
-        // library holds, so a total past trackCount is refused rather than resolved.
         uint64_t total = 0;
         for (const auto& run : *runs) {
             if (!run.is_array() || run.size() != 2 || !run[0].is_number_unsigned() ||

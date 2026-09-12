@@ -20,10 +20,7 @@ export function usePlayingFrom() {
 		const scratch = playlists.find(isScratchPlaylist);
 		if (!scratch) return null;
 
-		// A client that filled the scratch itself trusts what it filled over the playlist's own
-		// title, which foo_jean may have already changed for a fill this client has not heard back
-		// from yet. A client that filled nothing still reads the title, which is the only account
-		// another device's fill leaves behind.
+		// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
 		const held = scratchContentsOf(
 			landedTitle ? { ...scratch, title: landedTitle } : scratch,
 		);

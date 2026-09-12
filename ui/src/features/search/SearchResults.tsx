@@ -13,6 +13,7 @@ import { PlayActions } from "@/domain/track/PlayActions";
 import { summarise } from "@/domain/track/stats";
 import { TrackBrowser } from "@/domain/track/TrackBrowser";
 import { ViewHeader } from "@/domain/track/ViewHeader";
+import { permitsPlaylistWrites } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -43,11 +44,7 @@ export function SearchResults({
 
 	const isPlaying = useIsPlaying();
 	const { discovery } = useFooJean();
-	// Absent or unreached reads as writable: the field is read to take the "save" affordance away and
-	// never to hand it out.
-	const canWritePlaylists =
-		discovery.state.kind !== "ready" ||
-		discovery.state.capabilities.canWritePlaylists !== false;
+	const canWritePlaylists = permitsPlaylistWrites(discovery);
 
 	const results = search.results;
 	const { indices, heat, patina, playedCount } = results;

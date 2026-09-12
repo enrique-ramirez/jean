@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -77,10 +78,12 @@ std::string fillResultDocument(const std::string& playlistId, const std::string&
 // ascending for `runs` and `bitset`, because neither of those can carry any other order.
 struct FillRequest {
     PlaylistRefusal refusal = PlaylistRefusal::none;
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+
     uint64_t structure = 0;
     std::vector<uint32_t> ordinals;
 
-    bool ok() const { return refusal == PlaylistRefusal::none; }
+    bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlaylistOutcome::done; }
 };
 
 // `trackCount` bounds what an ordinal may name; one at or past it is refused rather than
@@ -89,7 +92,11 @@ struct FillRequest {
 // `allowsTitle` is `FillOwnPlaylistRequest`'s alone: `title` is declared there and nowhere
 // else, so a body carrying it against `FillPlaylistRequest` is refused with any other field
 // neither schema declares.
-FillRequest parseFill(const std::string& body, size_t trackCount, bool allowsTitle = false);
+//
+// `expectedStructure` is `std::nullopt` only where there is no snapshot to check against,
+// such as a test exercising the decode on its own.
+FillRequest parseFill(const std::string& body, size_t trackCount,
+                      std::optional<uint64_t> expectedStructure, bool allowsTitle = false);
 
 // The small document a client polls for both generations. The snapshot itself is not JSON:
 // core/library.h serialises it, and contract/openapi.yaml describes the bytes.

@@ -35,9 +35,6 @@ const librarySource = (): LibrarySource => {
 	});
 };
 
-// `addTo` reads the annotations to turn a beefweb id into the GUID the fill
-// route takes. Stalling that read too would settle the call on a different
-// cause, so it is answered and only the fill is left hanging.
 const ANNOTATIONS = {
 	playlists: [{ id: TARGET_GUID, beefwebId: TARGET_PLAYLIST }],
 };
@@ -45,8 +42,6 @@ const ANNOTATIONS = {
 const answerFor = (url: string) =>
 	url.endsWith("/api/playlists") ? ANNOTATIONS : undefined;
 
-// A stalled connection is a request a browser leaves open: it answers nothing
-// and rejects with the signal's reason if something aborts it.
 const stallEverythingElse = () => {
 	globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
 		const answer = answerFor(String(input));

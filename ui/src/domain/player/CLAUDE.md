@@ -26,6 +26,8 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **The queue entries are cleared before a playlist is deleted, and the delete abandoned if they will not clear**, for the reason `../../shared/api/README.md` gives under its crash warning. That guard belongs to the *operation*, not to the sidebar, since the failure mode is the whole of foobar2000.
 
+**Queueing checks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits**, for the same reason playing a library set does: a queued library row fills a holding playlist through the component's own route rather than beefweb's. The gate covers every queue action alike, including moving or removing an already-queued playlist row that needed no fill of its own.
+
 ## The volume fader
 
 **Linear in perceived loudness, not in decibels or in amplitude.** About +10 dB is twice as loud, so half the slider is half as loud and equal distances are equal *ratios* of loudness wherever they are taken from.

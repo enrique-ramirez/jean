@@ -7,6 +7,7 @@ import {
 	fetchPlayQueue,
 	removeFromPlayQueue,
 } from "@/shared/api/beefweb";
+import { isFooJeanReady } from "@/shared/api/fooJean";
 import type { PlayQueueItem } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
@@ -42,11 +43,7 @@ export function useQueue() {
 export function useQueueActions() {
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
-
-	// The holding playlist a library row queues through is the component's own plumbing, filled
-	// through its own route rather than beefweb's, so it is `foo_jean` being reachable that queueing
-	// asks for rather than beefweb's `changePlaylists`.
-	const canQueue = discovery.state.kind === "ready";
+	const canQueue = isFooJeanReady(discovery);
 
 	const underQueueHold = useCallback(
 		async (run: () => Promise<unknown>) => {

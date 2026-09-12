@@ -196,7 +196,8 @@ export function buildShelves<A extends Album>(albums: A[]): FilledShelf<A>[] {
 	return [fill(STARTER, albums)].filter((entry) => entry !== null);
 }
 
-// Ascending, not the order the shelf is drawn in: beefweb's `add-from-library` ignores the order of `items` and adds them in the library's own.
+// Library order, not the order the shelf is drawn in. Ascending is also the only form `encodeFill`
+// can send as runs or a bitset, so a shelf costs one pair per album rather than one ordinal per row.
 export function refsOfShelf(shelf: FilledShelf<Album>) {
 	return Int32Array.from(
 		shelf.albums.flatMap((album) => [...album.refs]),

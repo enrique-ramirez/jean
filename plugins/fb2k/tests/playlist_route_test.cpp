@@ -120,8 +120,6 @@ std::string nameOf(OwnPlaylistRole role) {
     return role == OwnPlaylistRole::scratch ? "scratch" : "queue";
 }
 
-// What a role answers once its playlist has been destroyed and another made in its place.
-// foobar2000 mints a GUID per playlist and reuses none, so the replacement is a different one.
 constexpr char kRemadePlaylistId[] = "33333333-3333-3333-3333-333333333333";
 
 struct FillLog {
@@ -166,9 +164,7 @@ Player fillingPlayer(FillLog* log) {
         playlist.beefwebId = log->beefwebId;
 
         // A playlist made for a role carries its title from the start, which is what keeps it out
-        // of the sidebar for the poll that finds it. A role that already has one keeps whatever it
-        // is called until a fill lands, so there is no window in which a title has moved and the
-        // rows have not.
+        // of the sidebar for the poll that finds it.
         auto& named = log->titles[playlist.id];
         if (named.empty())
             named = title;
@@ -217,7 +213,6 @@ Player fillingPlayer(FillLog* log) {
         if (structure != log->structure)
             return FillResult{PlaylistOutcome::structureMoved, {}, ""};
 
-        // An empty title is a user's playlist saying it is not Jean's to rename.
         if (!title.empty())
             log->titles[playlistId] = title;
 
@@ -251,11 +246,11 @@ FillLog holding(uint64_t structure) {
 
 constexpr size_t kLibraryTracks = 8;
 
-void buildLibrary(Library& library) {
-    LibraryBuilder builder({"%title%"}, kLibraryTracks);
+void buildLibrary(Library& library, size_t trackCount = kLibraryTracks) {
+    LibraryBuilder builder({"%title%"}, trackCount);
     auto& sink = builder.sink();
 
-    for (size_t index = 0; index < kLibraryTracks; ++index) {
+    for (size_t index = 0; index < trackCount; ++index) {
         const auto ordinal = std::to_string(index);
         sink.row(index, {"Artist/Album/", ordinal + ".flac", "0", "Track " + ordinal});
     }
@@ -272,8 +267,6 @@ std::string userBody(uint64_t structure) {
     return R"({"structure": )" + std::to_string(structure) + R"(, "ordinals": [3, 1]})";
 }
 
-// A generation a client is holding from an export of its own, for a case where the component has
-// no snapshot to compare it with.
 constexpr uint64_t kHeldStructure = 1;
 
 struct Target {
@@ -369,10 +362,8 @@ Player fillingPlayerListing(FillLog* log) {
     return player;
 }
 
-// Reports the component's own playlists under the titles they currently carry, so a test can read
-// one back the way any client does. Two things write a title: OwnPlaylistResolver, when it makes
-// the playlist a role had none of, and PlaylistFiller, which renames the one it filled in the same
-// main-thread work item that checks the generation.
+// Reports the component's own playlists under the titles they currently carry, so a test can
+// read one back the way any client does.
 Player namingPlayer(FillLog* log) {
     auto player = fillingPlayer(log);
 
@@ -725,8 +716,6 @@ TEST_CASE("GET /api/capabilities says whether this install permits playlist writ
     }
 }
 
-// Before a snapshot exists the library reports no tracks, so every ordinal in the set is out of
-// range and a route that judged the body first would answer 400 and name the set as the problem.
 // The set is whatever the client built from its own export; what is missing is the thing to
 // resolve it against, and a client told the wrong one retries with a set that cannot land either.
 TEST_CASE("a fill with nothing to resolve a set against names what is missing, not the set") {
@@ -765,6 +754,33 @@ TEST_CASE("a fill resolved against a generation the library has moved past inser
     const uint64_t exported = library.state().structure;
 
     buildLibrary(library);
+
+    FillLog log;
+    log.structure = library.state().structure;
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    for (const auto& target : targets(exported)) {
+        INFO("target: ", target.name);
+
+        const auto response = post(server, target.path, target.body);
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+
+        CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
+    }
+
+    CHECK(log.inserted.empty());
+}
+
+// Play all and Shuffle all always reach the end of the library, so one deletion at the desktop
+// is enough to hit this from a client holding an otherwise valid export.
+TEST_CASE("a fill whose ordinals were valid against a larger library answers 409 once it shrinks") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t exported = library.state().structure;
+
+    buildLibrary(library, kLibraryTracks - 6);
 
     FillLog log;
     log.structure = library.state().structure;

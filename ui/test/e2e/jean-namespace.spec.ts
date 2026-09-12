@@ -13,11 +13,6 @@ import {
 	viewHeader,
 } from "./fixtures.ts";
 
-// Jean's own two playlists are plumbing rather than music: the scratch a library
-// view is played from, and the holding playlist a queued library row lands in.
-// Both sit on the player under titles a user can read, in the same list beefweb
-// answers with, so every surface that shows playlists has to take them back out.
-
 const menuItem = (page: Page, name: string | RegExp) =>
 	page.getByRole("menuitem", { name });
 
@@ -40,11 +35,6 @@ const jeanTitles = (player: FakePlayer) =>
 const playlistNamed = (player: FakePlayer, title: string) =>
 	player.playlists.find((entry) => entry.title === title)!;
 
-// Neither playlist exists until it is needed: queueing a library row makes the
-// holding playlist, playing the view makes the scratch. The "Playing from" line
-// is the scratch's own title, parsed out of the list the browser polled, so it
-// is also the proof that the browser is filtering a list it holds rather than an
-// empty one.
 const withBothJeanPlaylists = async (
 	page: Page,
 	player: FakePlayer,

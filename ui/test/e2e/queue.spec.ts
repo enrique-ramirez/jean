@@ -44,8 +44,6 @@ const queueTracks = async (page: Page, isMobile: boolean, index = 0) => {
 	if (isMobile) await pressAndHold(page, row);
 	else await row.click({ button: "right" });
 	const item = page.getByRole("menuitem", { name: "Add to queue" });
-	// Named rather than left to the click's own actionability wait, which reports
-	// a timeout where the real answer is that the player was refused the queue.
 	await expect(item).toBeEnabled();
 	await item.click();
 	await expect(item).toHaveCount(0);
@@ -64,9 +62,6 @@ const queuedTitles = (player: FakePlayer) =>
 const holdingOf = (player: FakePlayer) =>
 	player.playlists.find((entry) => entry.title === "#Jean Queue");
 
-// Every way beefweb has of emptying or dropping a playlist names it in the path:
-// `/playlists/{id}/clear`, `/playlists/{id}/items/remove` and
-// `/playlists/remove/{id}`. A player with `changePlaylists` off refuses all three.
 const beefwebWritesNaming = (player: FakePlayer, playlistId: string) =>
 	player.requests.filter(
 		(entry) =>
@@ -822,9 +817,6 @@ test.describe("deleting a playlist the queue points into", () => {
 	});
 });
 
-// The one state the holding playlist may be emptied in: it is holding a row and
-// the play queue no longer points into it. Leaves the panel open on an empty
-// queue, with that row still on the player.
 const drainThePlayQueue = async (
 	page: Page,
 	player: FakePlayer,
@@ -915,9 +907,6 @@ test.describe("queueing a row that is in no playlist", () => {
 			.poll(() => player.playQueue.length, { timeout: 10000 })
 			.toBe(1);
 
-		// A play queue entry holds a handle rather than a position, so an entry whose
-		// row was taken out from under it reports no track at all. A title here is
-		// the entry pointing at a row the playlist still holds.
 		const [queued] = queuedTitles(player);
 		expect(queued).toBeTruthy();
 		await expect(trackRow(page, 4)).toContainText(queued);
@@ -925,11 +914,6 @@ test.describe("queueing a row that is in no playlist", () => {
 	});
 });
 
-// A library row has no playlist to be queued from until one is made, and the one
-// it lands in belongs to the component rather than to the user's music. So
-// neither a beefweb that refuses Jean a playlist nor a player owner who has
-// turned the component's own playlist writes off is a reason the queue cannot
-// take a library row.
 const expectQueueTakesALibraryRow = async (
 	page: Page,
 	player: FakePlayer,

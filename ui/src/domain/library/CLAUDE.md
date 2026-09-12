@@ -4,7 +4,7 @@ Where "the library" comes from, what plays a set of tracks, and why search resul
 
 ## Browsing and playing are separate
 
-**The scratch playlist holds the last set you chose to play, not the thing you are looking at**, so you can start a shelf and wander elsewhere without touching it. The affordances that account for that, a temporary sidebar row named after the set and a "playing from" line in the status bar, both read the scratch playlist's own title, so they cannot disagree and neither needs state of Jean's own.
+**The scratch playlist holds the last set you chose to play, not the thing you are looking at**, so you can start a shelf and wander elsewhere without touching it. The affordances that account for that, a temporary sidebar row named after the set and a "playing from" line in the status bar, name whatever the scratch is holding, and they ask one reader rather than deciding separately, so they cannot disagree. What that reader trusts is below, under *Search results are a view until you play them*.
 
 **The accent on a sidebar icon means "this is playing" and nothing else.** Never tint it by selection.
 
@@ -83,8 +83,11 @@ Searching is a client-side filter over the in-memory index: **no request, no pla
 - **The playlist is how a search survives a reload and reaches another device.** The query is in the title and every client can see the player's playlists, so reading it costs nothing and does not touch the library.
 - **Dismissing the search deletes it, unless the player is on it.** Deleting the playing playlist does not end playback at the end of the track. The player falls back to another playlist and carries on, which is the wandering this arrangement exists to stop. **The check is the active item's `playlistId`, not `isCurrent`**, which stays pointing at the last playlist played from long after playback stopped and would keep the scratch alive forever.
 - **Playing a library set asks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits.** The scratch playlist fills through the component's own route rather than beefweb's. A playlist route is unaffected either way: its rows are already in a playlist.
+- **The scratch playlist's own title can lag the fill landing on it.** `foo_jean` retitles the playlist for the view being asked for before it knows whether that fill will be accepted, so a refused fill can leave the live title naming a view the playlist does not hold, and a poll landing in between sees exactly that. `useScratchPlaylist.ts` keeps `landedTitle`, the title of the last fill this client watched land, and every reader of what the scratch holds trusts it over the playlist's own title. A device that filled nothing itself has no `landedTitle` of its own and reads the live title instead, which is the only account another device's fill leaves behind.
 
 Emptying a playing playlist leaves the track playing but detached, which is harmless only because a play always follows immediately.
+
+- **Saving results copies the rows into a new playlist rather than renaming the scratch.** `foo_jean` finds its own playlists by a marker it writes, never by matching a title, so a renamed scratch is still the scratch and the next library view would refill whatever had been saved out of it. The cost is that a saved search is a second copy of its rows on the player, and it is accepted.
 
 ## Genres
 

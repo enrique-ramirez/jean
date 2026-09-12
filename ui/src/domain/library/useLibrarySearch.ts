@@ -83,9 +83,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	);
 	const [landedTitle] = useStoredState<string | null>(SCRATCH_LANDED_KEY, null);
 
-	// A client that filled the scratch trusts what it filled over the playlist's own title, for the
-	// reason `useScratchPlaylist.ts` records beside `landedTitle`; a client that filled nothing still
-	// reads the title.
+	// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
 	const remembered = useMemo(() => {
 		const scratch = playlists.find(isScratchPlaylist);
 		if (!scratch) return null;

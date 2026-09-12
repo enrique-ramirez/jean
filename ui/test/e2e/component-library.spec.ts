@@ -356,6 +356,99 @@ test.describe("a second view played before the first one has landed", () => {
 	});
 });
 
+test.describe("a view whose fill was refused because the library moved", () => {
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+
+	// Two genres the captured library holds the same number of tracks in, so that a
+	// refused fill is worse than wasted: the playlist keeps the first one's rows
+	// under a title naming the second, and the row counts agree, so the title is the
+	// only thing left saying which of them is in there.
+	const HELD = "Alternative Rock";
+	const ASKED = "Indie Rock";
+
+	// Different rows in each view, so a track played from the wrong one is never the
+	// track that was already playing.
+	const HELD_ROW = 0;
+	const ASKED_ROW = 3;
+
+	const openGenre = async (page: Page, genre: string) => {
+		await page.goto(`/#/genre/${encodeURIComponent(genre)}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: genre }),
+		).toBeVisible();
+		await expect(trackRow(page, 0)).toBeAttached();
+	};
+
+	// What `libraryRebuilds` performs at a poll, driven here at the moment the test
+	// needs it: the structure generation moves, and an ordinal is a position.
+	const rebuildLibrary = (player: FakePlayer) => {
+		player.libraryFeed.building = [...player.libraryFeed.columns];
+		player.finishLibraryBuild();
+	};
+
+	// Jean re-reads the library when the tab comes back, which is what a 409 asks of
+	// a client: export again, then ask again. Given here so the click that follows has
+	// a current snapshot to fill from, and the only thing left that can spoil it is
+	// the title the refused fill wrote.
+	const comeBackToTheTab = (page: Page) =>
+		page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+
+	// Resolving the role and filling are two main-thread hops, so the component has
+	// retitled its own playlist before it can know the generation has moved. The
+	// rebuild lands while the fill is held: 409, nothing inserted, and a playlist
+	// carrying the title of a view it does not hold.
+	const refuseAFill = async (page: Page, player: FakePlayer) => {
+		await openGenre(page, HELD);
+		await trackRow(page, HELD_ROW).dblclick();
+		await expectSettlesAt(player, () => scratchFills(player).length, 1);
+
+		await openGenre(page, ASKED);
+		await page.request.post("/__control/latency", { data: { ms: 1200 } });
+
+		const refused = page.waitForResponse(
+			(response) =>
+				response.url().endsWith("/api/playlists/own/scratch/items") &&
+				response.status() === 409,
+		);
+		await trackRow(page, ASKED_ROW).dblclick();
+		await expect.poll(() => scratchFills(player).length).toBe(2);
+
+		rebuildLibrary(player);
+		await page.request.post("/__control/latency", { data: { ms: 0 } });
+		await refused;
+	};
+
+	test("asking for it again plays its own rows, not the ones the playlist kept", async ({
+		page,
+		player,
+	}) => {
+		await refuseAFill(page, player);
+		await comeBackToTheTab(page);
+		await expect.poll(() => exportsAsked(player).length).toBe(2);
+
+		await trackRow(page, ASKED_ROW).dblclick();
+
+		await expect
+			.poll(() => requestsTo(player, "/player/play/"))
+			.toHaveLength(2);
+		await expect(trackRow(page, ASKED_ROW)).toContainText(
+			trackPlayed(player) as string,
+		);
+	});
+
+	test("the refusal is caught rather than reaching the page as an uncaught error", async ({
+		page,
+		player,
+	}) => {
+		const uncaught: string[] = [];
+		page.on("pageerror", (error) => uncaught.push(error.message));
+
+		await refuseAFill(page, player);
+
+		await expectSettlesAt(player, () => uncaught, []);
+	});
+});
+
 test.describe("filing a library row into a playlist of your own", () => {
 	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
 

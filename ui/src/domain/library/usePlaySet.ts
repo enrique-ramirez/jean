@@ -34,13 +34,20 @@ export function usePlaySet({
 			refs: Refs;
 			position: number;
 		}) => {
-			const id = await scratch.ensure({
-				kind,
-				label,
-				refs,
-				source: library.source,
-			});
-			return id ? playItem(id, position) : null;
+			try {
+				const id = await scratch.ensure({
+					kind,
+					label,
+					refs,
+					source: library.source,
+				});
+				return id ? playItem(id, position) : null;
+			} catch {
+				// foo_jean answers a fill it refuses or cannot attempt with a non-2xx status, most often
+				// a 409 for a structure that moved under it, rather than an empty result: there is
+				// nothing here to play until whatever asked for this tries again.
+				return null;
+			}
 		},
 		[scratch, library.source],
 	);

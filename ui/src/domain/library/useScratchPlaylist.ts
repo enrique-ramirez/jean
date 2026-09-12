@@ -1,11 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import {
-	isScratchPlaylist,
-	scratchContentsOf,
-	scratchTitle,
-} from "@/domain/track/jeanPlaylists";
+import { isScratchPlaylist, scratchTitle } from "@/domain/track/jeanPlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import {
@@ -18,6 +14,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
 export const SCRATCH_PIN_KEY = "jean.scratchPlaylist";
+const SCRATCH_LANDED_KEY = "jean.scratchPlaylistLanded";
 
 // Module-scope rather than a ref: Home, a view and the now-playing menu each call this hook
 // separately, and a fill started from one must still be able to abandon a fill started from another.
@@ -34,6 +31,13 @@ export function useScratchPlaylist({
 		SCRATCH_PIN_KEY,
 		null,
 	);
+	// foo_jean retitles its own playlist for the view being asked for before it can know a fill will
+	// be refused, so a 409 leaves the live title naming a view the playlist does not hold. `holdsView`
+	// trusts this record of the last title a fill actually landed under, never the playlist's own.
+	const [landedTitle, setLandedTitle] = useStoredState<string | null>(
+		SCRATCH_LANDED_KEY,
+		null,
+	);
 	const queryClient = useQueryClient();
 	const { token } = useFooJean();
 
@@ -45,15 +49,12 @@ export function useScratchPlaylist({
 		return byId ?? playlists.find(isScratchPlaylist) ?? null;
 	}, [playlists, pinnedId]);
 
-	const held = useMemo(() => scratchContentsOf(playlist), [playlist]);
-
 	const holdsView = useCallback(
 		(kind: string, label: string | null, count: number) =>
 			playlist !== null &&
-			held?.kind === kind &&
-			held?.label === label &&
+			landedTitle === scratchTitle(kind, label) &&
 			playlist.itemCount === count,
-		[playlist, held],
+		[playlist, landedTitle],
 	);
 
 	const ensure = useCallback(
@@ -94,9 +95,18 @@ export function useScratchPlaylist({
 				null;
 
 			setPinnedId(id);
+			setLandedTitle(title);
 			return id;
 		},
-		[canEdit, holdsView, playlist, setPinnedId, queryClient, token],
+		[
+			canEdit,
+			holdsView,
+			playlist,
+			setPinnedId,
+			setLandedTitle,
+			queryClient,
+			token,
+		],
 	);
 
 	const adopt = useCallback(
@@ -120,5 +130,5 @@ export function useScratchPlaylist({
 		[playlist],
 	);
 
-	return { playlist, held, holdsView, ensure, adopt };
+	return { playlist, holdsView, ensure, adopt };
 }

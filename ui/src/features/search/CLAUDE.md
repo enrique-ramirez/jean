@@ -55,5 +55,3 @@ The library-wide search control. How its results become playable is in `src/doma
 **A phone has nothing outside the panel to press**, since it covers everything below the top bar. Dismissing there is the swipe, the clear button or committing, and taking any of those away leaves the panel with no exit.
 
 **Search results shuffle, since playing them makes them a real playlist.** Playback order draws from the active playlist, so shuffling results that were never materialised starts inside them and then wanders the whole library. Materialising on play fixes the cause rather than the symptom.
-
-**Without `permissions.changePlaylists` there is no playlist to make**, so the Shuffle button is not drawn.

@@ -277,8 +277,6 @@ void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
 
         writeProperty(index, kOwnPlaylist, roleId(role));
         logInfo("created own playlist '" + title + "'");
-    } else {
-        playlist_manager::get()->playlist_rename(index, title.c_str(), title.size());
     }
 
     answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index)});
@@ -303,7 +301,7 @@ void beginEmptyOwnPlaylist(OwnPlaylistRole role, const AnswerPtr<PlaylistResult>
     answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index)});
 }
 
-void beginFill(const std::string& playlistId, uint64_t structure,
+void beginFill(const std::string& playlistId, const std::string& title, uint64_t structure,
                const std::vector<uint32_t>& ordinals, bool replace,
                const OrdinalResolver& resolveOrdinals, const AnswerPtr<FillResult>& answer) {
     const auto index = findPlaylist(playlistId);
@@ -317,6 +315,9 @@ void beginFill(const std::string& playlistId, uint64_t structure,
         answer->set(FillResult{PlaylistOutcome::structureMoved, {}});
         return;
     }
+
+    if (!title.empty())
+        playlist_manager::get()->playlist_rename(index, title.c_str(), title.size());
 
     auto manager = playlist_manager_v5::get();
 
@@ -435,13 +436,14 @@ OwnPlaylistEmptier makeOwnPlaylistEmptier(MainThreadQueue& mainThread) {
 }
 
 PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals) {
-    return [&mainThread, resolveOrdinals](const std::string& playlistId, uint64_t structure,
-                                          const std::vector<uint32_t>& ordinals, bool replace) {
+    return [&mainThread, resolveOrdinals](const std::string& playlistId, const std::string& title,
+                                          uint64_t structure, const std::vector<uint32_t>& ordinals,
+                                          bool replace) {
         return askPlayer<FillResult>(
             mainThread, "filling a playlist",
-            [playlistId, structure, ordinals, replace, resolveOrdinals](
+            [playlistId, title, structure, ordinals, replace, resolveOrdinals](
                 const AnswerPtr<FillResult>& answer) {
-                beginFill(playlistId, structure, ordinals, replace, resolveOrdinals, answer);
+                beginFill(playlistId, title, structure, ordinals, replace, resolveOrdinals, answer);
             },
             FillResult{PlaylistOutcome::timedOut, {}},
             FillResult{PlaylistOutcome::playerRefused, {}});

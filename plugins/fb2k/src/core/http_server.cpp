@@ -1050,7 +1050,7 @@ struct HttpServer::Impl {
             }
 
             const auto filled =
-                player.fill(resolved.playlist.id, request.structure, request.ordinals,
+                player.fill(resolved.playlist.id, title.value, request.structure, request.ordinals,
                             *role == OwnPlaylistRole::scratch);
             if (filled.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(filled.outcome),
@@ -1115,7 +1115,8 @@ struct HttpServer::Impl {
                 return;
             }
 
-            const auto filled = player.fill(id, request.structure, request.ordinals, false);
+            const auto filled =
+                player.fill(id, std::string{}, request.structure, request.ordinals, false);
             if (filled.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(filled.outcome),
                         playlistFailedDocument(playlistFailure(filled.outcome)));

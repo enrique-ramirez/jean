@@ -137,6 +137,7 @@ struct FillLog {
     std::vector<uint32_t> inserted;
     uint64_t structure = 1;
     std::map<std::string, size_t> held;
+    std::map<std::string, std::string> titles;
     std::map<std::string, std::string> playlists{{"scratch", kScratchPlaylistId},
                                                  {"queue", kQueuePlaylistId}};
     std::string beefwebId = "p4";
@@ -163,7 +164,16 @@ Player fillingPlayer(FillLog* log) {
         PlaylistAnnotation playlist;
         playlist.id = log->idFor(role);
         playlist.beefwebId = log->beefwebId;
-        playlist.title = title;
+
+        // A playlist made for a role carries its title from the start, which is what keeps it out
+        // of the sidebar for the poll that finds it. A role that already has one keeps whatever it
+        // is called until a fill lands, so there is no window in which a title has moved and the
+        // rows have not.
+        auto& named = log->titles[playlist.id];
+        if (named.empty())
+            named = title;
+
+        playlist.title = named;
 
         PlaylistResult result;
         result.playlist = playlist;
@@ -198,7 +208,7 @@ Player fillingPlayer(FillLog* log) {
         return result;
     };
 
-    player.fill = [log](const std::string& playlistId, uint64_t structure,
+    player.fill = [log](const std::string& playlistId, const std::string& title, uint64_t structure,
                         const std::vector<uint32_t>& ordinals, bool replace) {
         log->fills++;
         log->filled = playlistId;
@@ -206,6 +216,10 @@ Player fillingPlayer(FillLog* log) {
 
         if (structure != log->structure)
             return FillResult{PlaylistOutcome::structureMoved, {}, ""};
+
+        // An empty title is a user's playlist saying it is not Jean's to rename.
+        if (!title.empty())
+            log->titles[playlistId] = title;
 
         log->inserted.insert(log->inserted.end(), ordinals.begin(), ordinals.end());
 
@@ -349,6 +363,44 @@ Player fillingPlayerListing(FillLog* log) {
     };
 
     return player;
+}
+
+// Reports the component's own playlists under the titles they currently carry, so a test can read
+// one back the way any client does. Two things write a title: OwnPlaylistResolver, when it makes
+// the playlist a role had none of, and PlaylistFiller, which renames the one it filled in the same
+// main-thread work item that checks the generation.
+Player namingPlayer(FillLog* log) {
+    auto player = fillingPlayer(log);
+
+    player.listPlaylists = [log] {
+        std::vector<PlaylistAnnotation> playlists;
+        std::transform(log->titles.begin(), log->titles.end(), std::back_inserter(playlists),
+                       [](const std::pair<const std::string, std::string>& named) {
+                           PlaylistAnnotation playlist;
+                           playlist.id = named.first;
+                           playlist.title = named.second;
+                           return playlist;
+                       });
+
+        return PlaylistsResult{PlaylistOutcome::done, std::move(playlists)};
+    };
+
+    return player;
+}
+
+std::string titleOf(const TestServer& server, const std::string& id) {
+    const auto response = server.client().Get("/api/playlists", TestServer::bearer());
+    REQUIRE(response);
+
+    const auto body = json::parse(response->body);
+    const auto& playlists = body["playlists"];
+    const auto found = std::find_if(playlists.begin(), playlists.end(),
+                                    [&id](const json& playlist) { return playlist["id"] == id; });
+
+    if (found == playlists.end())
+        return {};
+
+    return found->at("title").get<std::string>();
 }
 
 std::string withField(const std::string& body, const std::string& field, const json& value) {
@@ -692,6 +744,45 @@ TEST_CASE("a fill resolved against a generation the library has moved past inser
     }
 
     CHECK(log.inserted.empty());
+}
+
+// Jean titles the scratch after the view it is filling it with, and reads that title back off the
+// playlist to say what is playing. So the title is a claim about the rows: a playlist retitled for
+// a view it was then refused the rows for is a wrong answer to every reader of it, and a playlist
+// left under the first view it ever held is a stale one. The title travels with the rows for that
+// reason, and the two arrive in the same main-thread work item as the generation check.
+TEST_CASE("the title a fill carries lands with its rows and never ahead of them") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t exported = library.state().structure;
+
+    FillLog log;
+    log.structure = exported;
+    const TestServer server(servingSettings(), namingPlayer(&log), &library);
+
+    const auto made = post(server, kScratchFill, ownBody("#Jean [all music]", exported));
+    REQUIRE(made);
+    REQUIRE(made->status == 200);
+    REQUIRE(titleOf(server, kScratchPlaylistId) == "#Jean [all music]");
+
+    SUBCASE("a second view retitles the playlist it filled") {
+        const auto landed = post(server, kScratchFill, ownBody("#Jean Indie Rock", exported));
+
+        REQUIRE(landed);
+        REQUIRE(landed->status == 200);
+        CHECK(titleOf(server, kScratchPlaylistId) == "#Jean Indie Rock");
+    }
+
+    SUBCASE("a view refused for a moved generation leaves the title where it was") {
+        buildLibrary(library);
+        log.structure = library.state().structure;
+
+        const auto refused = post(server, kScratchFill, ownBody("#Jean Indie Rock", exported));
+
+        REQUIRE(refused);
+        REQUIRE(refused->status == 409);
+        CHECK(titleOf(server, kScratchPlaylistId) == "#Jean [all music]");
+    }
 }
 
 TEST_CASE("each fill operation addresses its own kind of playlist") {

@@ -40,8 +40,9 @@ using LibraryRefresher = std::function<void(std::vector<std::string> columns, Re
 // Resolves `role` to the id of the component's own playlist for it, through the marker the
 // playlist carries rather than its title, so a rename at the player still finds it and a
 // playlist a user titled to look like it is not adopted. Creates one titled `title` if the
-// role has none yet; `title` is applied on every call, so retitling it from one fill to the
-// next is the same call that fills it.
+// role has none yet; a role that already has a playlist keeps whatever title it carries,
+// because retitling it for a view belongs to PlaylistFiller, in the same work item that
+// checks the generation.
 using OwnPlaylistResolver =
     std::function<PlaylistResult(OwnPlaylistRole role, const std::string& title)>;
 
@@ -57,10 +58,13 @@ struct FillResult {
 // Resolves `ordinals` against the snapshot built for `structure`, in the order given, and
 // inserts the tracks they name into `playlistId`, emptying it first when `replace` is set.
 // Whether the write is permitted is decided before this is called; this callback is never
-// asked to weigh in.
+// asked to weigh in. `title` renames the playlist in the same main-thread work item that
+// checks the generation, so a refusal never lands ahead of the rows it refused; an empty
+// `title` is a user's playlist saying it is not this component's to rename.
 using PlaylistFiller =
-    std::function<FillResult(const std::string& playlistId, uint64_t structure,
-                             const std::vector<uint32_t>& ordinals, bool replace)>;
+    std::function<FillResult(const std::string& playlistId, const std::string& title,
+                             uint64_t structure, const std::vector<uint32_t>& ordinals,
+                             bool replace)>;
 
 // Empties `role`'s own playlist and leaves the playlist itself standing. Takes no structure
 // and no ordinals: there is nothing here to resolve against the library, unlike a fill. A

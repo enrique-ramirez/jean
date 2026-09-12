@@ -272,6 +272,10 @@ std::string userBody(uint64_t structure) {
     return R"({"structure": )" + std::to_string(structure) + R"(, "ordinals": [3, 1]})";
 }
 
+// A generation a client is holding from an export of its own, for a case where the component has
+// no snapshot to compare it with.
+constexpr uint64_t kHeldStructure = 1;
+
 struct Target {
     std::string name;
     std::string path;
@@ -719,6 +723,40 @@ TEST_CASE("GET /api/capabilities says whether this install permits playlist writ
 
         CHECK(capabilitiesOf(settings)["canWritePlaylists"] == false);
     }
+}
+
+// Before a snapshot exists the library reports no tracks, so every ordinal in the set is out of
+// range and a route that judged the body first would answer 400 and name the set as the problem.
+// The set is whatever the client built from its own export; what is missing is the thing to
+// resolve it against, and a client told the wrong one retries with a set that cannot land either.
+TEST_CASE("a fill with nothing to resolve a set against names what is missing, not the set") {
+    FillLog log;
+    Library unbuilt;
+
+    const auto refused = [&log](Library* library, const std::string& error) {
+        const TestServer server(servingSettings(), fillingPlayer(&log), library);
+
+        for (const auto& target : targets(kHeldStructure)) {
+            INFO("target: ", target.name);
+
+            const auto response = post(server, target.path, target.body);
+
+            REQUIRE(response);
+            CHECK(response->status == 503);
+            CHECK(json::parse(response->body)["error"] == error);
+        }
+    };
+
+    SUBCASE("an install that does not serve the library at all") {
+        refused(nullptr, "the media library is not available");
+    }
+
+    SUBCASE("a library whose first snapshot has not been built yet") {
+        refused(&unbuilt, describe(DeltaOutcome::notBuilt));
+    }
+
+    CHECK(log.roles.empty());
+    CHECK(log.fills == 0);
 }
 
 TEST_CASE("a fill resolved against a generation the library has moved past inserts nothing") {
@@ -1274,6 +1312,26 @@ TEST_CASE("emptying a role takes its playlist's rows and leaves the playlist its
         for (const auto& other : ownRoles())
             if (other.name != role.name)
                 CHECK(log.held[other.id] == kHeldRows);
+    }
+}
+
+// One 503, two subsystems behind it. A player that cannot reach the component's own playlists
+// has said nothing about autoplaylists, and a message naming those sends a player owner to
+// maxAutoPlaylists over a playlist no limit governs.
+TEST_CASE("an empty the player cannot serve names its own playlists rather than autoplaylists") {
+    const TestServer server;
+
+    for (const auto& role : ownRoles()) {
+        INFO("role: ", role.name);
+
+        const auto response = server.client().Delete(role.path, TestServer::bearer());
+
+        REQUIRE(response);
+        CHECK(response->status == 503);
+
+        const std::string error = json::parse(response->body)["error"];
+        CHECK(error != describe(PlaylistOutcome::unavailable));
+        CHECK(error.find("autoplaylist") == std::string::npos);
     }
 }
 

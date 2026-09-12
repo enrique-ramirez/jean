@@ -725,7 +725,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
-        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "503": { $ref: "#/components/responses/OwnPlaylistsUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /playlists/{id}/items:
@@ -1373,6 +1373,16 @@ components:
               value: { error: the media library is not available }
             nothingYet:
               value: { error: the library snapshot has not been built yet, detail: "" }
+
+    OwnPlaylistsUnavailable:
+      description: |
+        The component could not reach the playlist machinery its own scratch and queue playlists depend on. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`, and unrelated to the read-only-playlists setting, which never reaches this route.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: the component's own playlists are not available }
 
     StreamUnavailable:
       description: |

@@ -324,6 +324,66 @@ test.describe("a search outlives the tab it was typed in", () => {
 	});
 });
 
+// The scratch playlist's title is not Jean's to trust. foo_jean finds its own
+// playlist by the marker it put there rather than by a name, so the name can be
+// changed at the player and the role still resolves; and a fill's new title
+// reaches a client a message after the playback that moved into it, because
+// beefweb may send a `player` section without a `playlists` one. The view Jean
+// filled is the answer that survives both, and the two readers of that title
+// each have a surface of their own.
+test.describe("a scratch playlist under a name that is not the view it holds", () => {
+	const renamedAtThePlayer = async (
+		page: Page,
+		player: FakePlayer,
+		title: string,
+	) => {
+		const scratch = scratchOf(player);
+		if (!scratch) throw new Error("nothing filled the scratch playlist");
+		player.renamePlaylist(scratch.id, title);
+
+		// Away from the results and reloaded: the committed query is what the
+		// search route answers with while it is there, and it outranks both the
+		// title and anything Jean remembers.
+		await page.goto("/#/p7");
+		await page.reload();
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Library" }),
+		).toBeVisible();
+	};
+
+	test("the header names the view whose track is playing", async ({
+		page,
+		player,
+	}) => {
+		await searchAndPlay(page, player, NARROWER);
+		await renamedAtThePlayer(page, player, QUERY.title);
+
+		await expectPlayingFrom(page, NARROWER.text);
+	});
+
+	test("the search comes back to the query whose results are playing", async ({
+		page,
+		player,
+	}) => {
+		await searchAndPlay(page, player, NARROWER);
+		await renamedAtThePlayer(page, player, QUERY.title);
+
+		await openSidebar(page);
+		const playing = sidebar(page).getByRole("button", {
+			name: "Playing from here",
+		});
+		await expect(playing).toContainText(NARROWER.text);
+
+		await playing.click();
+		await expect(
+			page.getByRole("heading", { level: 1, name: NARROWER.text }),
+		).toBeVisible();
+		await expect(page.getByLabel("Search your library")).toHaveValue(
+			NARROWER.text,
+		);
+	});
+});
+
 test.describe("clearing the search", () => {
 	test("takes the scratch playlist with it", async ({ page, player }) => {
 		await searchAndPlay(page, player);

@@ -14,7 +14,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
 export const SCRATCH_PIN_KEY = "jean.scratchPlaylist";
-const SCRATCH_LANDED_KEY = "jean.scratchPlaylistLanded";
+export const SCRATCH_LANDED_KEY = "jean.scratchPlaylistLanded";
 
 // Module-scope rather than a ref: Home, a view and the now-playing menu each call this hook
 // separately, and a fill started from one must still be able to abandon a fill started from another.
@@ -33,7 +33,8 @@ export function useScratchPlaylist({
 	);
 	// foo_jean retitles its own playlist for the view being asked for before it can know a fill will
 	// be refused, so a 409 leaves the live title naming a view the playlist does not hold. `holdsView`
-	// trusts this record of the last title a fill actually landed under, never the playlist's own.
+	// and every other reader of what Jean is playing from trust this record of the last title a fill
+	// actually landed under, never the playlist's own.
 	const [landedTitle, setLandedTitle] = useStoredState<string | null>(
 		SCRATCH_LANDED_KEY,
 		null,

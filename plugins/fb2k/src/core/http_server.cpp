@@ -56,6 +56,8 @@ constexpr char kNoStreaming[] = "streaming is not available";
 
 constexpr char kNoLibrary[] = "the media library is not available";
 
+constexpr char kNoOwnPlaylists[] = "the component's own playlists are not available";
+
 constexpr char kLibraryTooLarge[] = "the library snapshot is larger than this component sends";
 
 constexpr char kRefreshingTooFast[] = "too many library refreshes";
@@ -1021,14 +1023,19 @@ struct HttpServer::Impl {
                 return;
             }
 
+            const auto state = library->state();
+            if (!state.ready) {
+                respond(res, 503, libraryFailedDocument(DeltaOutcome::notBuilt));
+                return;
+            }
+
             const auto role = ownPlaylistRoleFor(req.matches[1].str());
             if (!role) {
                 respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
                 return;
             }
 
-            auto request =
-                refuseFillChange(parseFill(req.body, library->state().trackCount, true));
+            auto request = refuseFillChange(parseFill(req.body, state.trackCount, true));
             if (!request.ok()) {
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
@@ -1079,8 +1086,12 @@ struct HttpServer::Impl {
                 return;
             }
 
-            const auto emptied = askIfAvailable(
-                player.emptyOwnPlaylist, playlistFailure(PlaylistOutcome::unavailable), *role);
+            if (!player.emptyOwnPlaylist) {
+                respond(res, 503, errorDocument(kNoOwnPlaylists));
+                return;
+            }
+
+            const auto emptied = player.emptyOwnPlaylist(*role);
             if (emptied.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(emptied.outcome),
                         playlistFailedDocument(playlistFailure(emptied.outcome)));
@@ -1101,13 +1112,19 @@ struct HttpServer::Impl {
                 return;
             }
 
+            const auto state = library->state();
+            if (!state.ready) {
+                respond(res, 503, libraryFailedDocument(DeltaOutcome::notBuilt));
+                return;
+            }
+
             const auto id = req.matches[1].str();
             if (!isPlaylistId(id)) {
                 respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
                 return;
             }
 
-            auto request = refuseFillChange(parseFill(req.body, library->state().trackCount));
+            auto request = refuseFillChange(parseFill(req.body, state.trackCount));
             if (!request.ok()) {
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");

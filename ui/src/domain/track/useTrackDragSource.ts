@@ -4,6 +4,7 @@ import {
 	usePermissions,
 	usePlaylists,
 } from "@/domain/player/usePlayer";
+import type { Permissions } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useDragSource } from "@/shared/ui/dnd";
 import { titleOf } from "./fields";
@@ -12,6 +13,9 @@ import type { TrackRows } from "./project";
 import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
+
+export const canDropOnPlaylist = (permissions: Partial<Permissions>) =>
+	canChangePlaylists(permissions);
 
 export function useTrackDragSource({
 	rows,
@@ -52,7 +56,7 @@ export function useTrackDragSource({
 		canDrop: (id) => {
 			if (id === source.playlistId) return false;
 			if (id === QUEUE_DROP_TARGET || queueDropIndex(id) !== null) return true;
-			return canChangePlaylists(permissions);
+			return canDropOnPlaylist(permissions);
 		},
 
 		onDrop: (id, payload) => {

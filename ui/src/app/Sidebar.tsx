@@ -34,6 +34,7 @@ import {
 	usePlaylistActions,
 } from "@/domain/player/usePlayer";
 import { withoutJeanPlaylists } from "@/domain/track/jeanPlaylists";
+import { canDropOnPlaylist } from "@/domain/track/useTrackDragSource";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useSortableList } from "@/shared/hooks/useSortableList";
@@ -388,7 +389,7 @@ export function Sidebar({
 						isSelected={playlist.id === selectedId}
 						isRenaming={playlist.id === renamingId}
 						isAuto={autoPlaylists.has(playlist.id)}
-						isDropTarget={canEdit && drag.isDragging}
+						isDropTarget={canDropOnPlaylist(permissions) && drag.isDragging}
 						isDropOver={drag.over === playlist.id}
 						canEdit={canEdit}
 						rowProps={sortable.itemProps(index)}

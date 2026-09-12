@@ -27,7 +27,7 @@ import { readStoredState, useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
 import { fold, fuzzyScore, squash, TIER } from "@/shared/lib/text";
 import type { Library } from "./useLibrary";
-import { SCRATCH_PIN_KEY } from "./useScratchPlaylist";
+import { SCRATCH_LANDED_KEY, SCRATCH_PIN_KEY } from "./useScratchPlaylist";
 
 export type SearchSectionLabel = Extract<Phrase, `search.section.${string}`>;
 
@@ -81,11 +81,20 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		SCRATCH_PIN_KEY,
 		null,
 	);
+	const [landedTitle] = useStoredState<string | null>(SCRATCH_LANDED_KEY, null);
 
-	const remembered = useMemo(
-		() => queryOfScratchPlaylist(playlists.find(isScratchPlaylist)) || null,
-		[playlists],
-	);
+	// A client that filled the scratch trusts what it filled over the playlist's own title, for the
+	// reason `useScratchPlaylist.ts` records beside `landedTitle`; a client that filled nothing still
+	// reads the title.
+	const remembered = useMemo(() => {
+		const scratch = playlists.find(isScratchPlaylist);
+		if (!scratch) return null;
+		return (
+			queryOfScratchPlaylist(
+				landedTitle ? { ...scratch, title: landedTitle } : scratch,
+			) || null
+		);
+	}, [playlists, landedTitle]);
 
 	const restore = useCallback(() => {
 		setQuery((current) => current || remembered || "");

@@ -255,6 +255,7 @@ Which of these resolve varies by install, by component and by how the library wa
 
 - **`queueIndex` on `/playqueue/add` is accepted and silently ignored.** `{ plref, itemIndex, queueIndex: 0 }` answers **204** and appends anyway. It is not a 400, so **there is nothing to feature-detect it with**. There is no insert-at-position and no cheap "play next"; both are a remove-and-re-append of the queue's tail. `queueIndex` on *remove* does work, and is exact.
 - **Neither queue route has a bulk form.** `{ plref, items: [1,2,3] }` on add is `400 parameter is required: itemIndex`; `{ items: [0,1] }` on remove is `400 either queueIndex or plref plus itemIndex parameters are required`. That rules the queue out as a way to express "play this set of tracks": a playlist is the only mechanism the API has for it. Duplicates are allowed.
+- **A request body over 1 MiB is refused by hanging up, not answered with a status.** It reaches the client as a network error rather than a status code.
 - **Sending the wrong column parameter is not an error.** `/api/playqueue` with `qcolumns`, or `/api/player` with `trcolumns`, answers 200 with `"columns": []` on every entry, which reaches a UI as blank rows rather than as a failure.
 - **Playback order applies to the active playlist, and playing a track sets it.** `POST /player/play/p5/3` makes `p5` current, and shuffle then draws only from `p5`. Confining playback to a set of tracks means getting those tracks into a playlist; there is no selection concept to shuffle within.
 - **Emptying or deleting the playing playlist does not stop playback.** The current track keeps playing but is orphaned: `activeItem.playlistId` goes to `""` and `index` to `-1`. Emptying is harmless if a play follows immediately. Deleting is not: at the end of the track the player falls back to another playlist and carries on.
@@ -308,7 +309,7 @@ The only one of these that answers without the API, which is how a client discov
 ```
 
 - **A track is `(path, subsong)`.** Subsong is non-zero for cue sheets and disc images, so it is not decoration.
-- **Items are not naturally ordered.** The spec says they are produced by applying search criteria, so paging without an explicit `sort` may not be stable across requests. Pass `sort=%path%`. `LIBRARY_SORT` in `src/shared/api/beefweb.ts` is that constant, and it is the same expression a filled playlist is sorted by.
+- **Items are not naturally ordered.** The spec says they are produced by applying search criteria, so paging without an explicit `sort` may not be stable across requests. Pass `sort=%path%`.
 - **There is no caching on the player side.** Every call enumerates the library and computes a relative path per item, serialised on beefweb's single work queue, so concurrent requests do not overlap and chunking a whole-library read costs more than asking for it in one request.
 
 ### `GET /library/items/by-path`
@@ -346,17 +347,9 @@ Artwork without a playlist, which is the constraint it removes. A folder prefers
 
 `{ items: [{ path, subsong }] | query, index, replace, play }`. Requires `changePlaylists`.
 
-**`replace: true, play: true` is a whole scratch-playlist rebuild in one request**: no rename, no remove-by-range, no copy, no separate play, and so no client-side count arithmetic to get wrong.
+> **Omit both `items` and `query` to mean the whole library.**
 
-> **A request body over 1 MiB is refused by hanging up**, not answered with a status. It reaches the client as a network error rather than a status code. Naming every track in a large library exceeds it, so "play everything" never reaches the player at all.
->
-> **Omit both `items` and `query` to mean the whole library.** One request, no body, and it sidesteps the limit entirely.
-
-> **The order of `items` is ignored.** A set arrives in the **media library's browse order**, meaning album artist, then album, then track, while `GET /library/items` pages by **file path**. The order cannot be predicted: no `sort` expression reproduces it, and learning it by reading the filled playlist back has nothing to invalidate against, since the player publishes no library-change event.
->
-> **So overwrite it instead of predicting it**: fill, then `POST items/sort` with the same expression the library was read with.
-
-> **Matching `items` against the media library is unreliable and unresolved.** `{ items: [{ path, subsong }] }` has been observed to answer 204 and add **zero** tracks, for paths taken straight from `GET /library/items?columns=%path%`: with `subsong` omitted, with `replace: true`, with a `file://` scheme and with forward slashes alike. The body *is* parsed: an unrecognised key falls through to "neither items nor query" and adds the whole library, and `{ query: … }` works. `POST /playlists/{id}/items/add` with the same plain path also works. **Re-measure before relying on `items`.**
+> **The order of `items` is ignored.** A set arrives in the **media library's browse order**, meaning album artist, then album, then track, while `GET /library/items` pages by **file path**. The order cannot be predicted: no `sort` expression reproduces it.
 
 > **Do not mix the two filters.** `query` is the player's own syntax; a client-side search is not. They do not return the same set, so filtering client-side and then adding server-side by `query` adds tracks that are not the ones on screen.
 

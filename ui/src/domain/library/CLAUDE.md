@@ -35,9 +35,9 @@ Shapes and costs for every route are in [../../shared/api/README.md](../../share
 
 ### Filling a playlist from the library
 
-Playing a set means writing it to the scratch playlist and playing a position in it, and both halves have a trap.
+Playing a set means filling the scratch playlist through `foo_jean` and playing a position in it.
 
-- **Sort the playlist once it is filled, because the fill order is the player's rather than Jean's.** Unsorted, every position computed from a row addresses a different track; `../../shared/api/README.md` is why that order cannot be predicted or read back. So overwrite it: one sort into the order the snapshot is already in, and no client state.
+- **The fill lands in library order because `foo_jean` does the filling.** The component resolves the ordinals a view already holds and inserts them itself, in the order the request form promises, so there is no order for Jean to predict or restore afterwards.
 - **Adding to a user's playlist does not sort.** That playlist is theirs and its order is theirs. Undo is unaffected either way: it removes the range that was appended, not particular rows.
 
 ## Playing a view, and marking it
@@ -82,7 +82,7 @@ Searching is a client-side filter over the in-memory index: **no request, no pla
 - **Lazy.** Nothing is written while typing or refining, and a second play of the same set reuses what is there.
 - **The playlist is how a search survives a reload and reaches another device.** The query is in the title and every client can see the player's playlists, so reading it costs nothing and does not touch the library.
 - **Dismissing the search deletes it, unless the player is on it.** Deleting the playing playlist does not end playback at the end of the track. The player falls back to another playlist and carries on, which is the wandering this arrangement exists to stop. **The check is the active item's `playlistId`, not `isCurrent`**, which stays pointing at the last playlist played from long after playback stopped and would keep the scratch alive forever.
-- **No `changePlaylists` means no scratch playlist**, and a library row then has nowhere to be played from at all. A playlist route is unaffected: its rows are already in a playlist.
+- **Playing a library set asks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits.** The scratch playlist fills through the component's own route rather than beefweb's. A playlist route is unaffected either way: its rows are already in a playlist.
 
 Emptying a playing playlist leaves the track playing but detached, which is harmless only because a play always follows immediately.
 

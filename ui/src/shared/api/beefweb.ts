@@ -1,6 +1,5 @@
 import { translate } from "@/shared/i18n/locale";
 import type {
-	AddFromLibraryBody,
 	LibraryNodesResponse,
 	NowPlayingTrack,
 	PlayerState,
@@ -110,8 +109,6 @@ export async function fetchPlaylistItems(
 export const artworkUrl = (playlistId: string, index: number) =>
 	`/api/artwork/${id(playlistId)}/${index}`;
 
-export const LIBRARY_SORT = "%path%";
-
 // One folder of the library tree, which is how a client reaches one track by a path it holds. See
 // README.md: an ordinal is not an offset into `/library/items`.
 export async function fetchLibraryNodes(
@@ -126,12 +123,6 @@ export async function fetchLibraryNodes(
 	};
 	return libraryNodes;
 }
-
-export const addFromLibrary = (playlistId: string, body: AddFromLibraryBody) =>
-	post(`/api/playlists/${id(playlistId)}/items/add-from-library`, body);
-
-export const sortPlaylistItems = (playlistId: string, by: string) =>
-	post(`/api/playlists/${id(playlistId)}/items/sort`, { by });
 
 export const playPause = () => post("/api/player/play-pause");
 

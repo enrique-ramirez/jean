@@ -23,7 +23,7 @@ IDD_PREFERENCES DIALOGEX 0, 0, 332, 232
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    GROUPBOX        "Networking", IDC_STATIC, 7, 7, 318, 68
+    GROUPBOX        "Networking", IDC_STATIC, 7, 7, 318, 66
     LTEXT           "Port:", IDC_STATIC, 14, 22, 32, 10
     EDITTEXT        IDC_PORT, 50, 20, 46, 14, ES_AUTOHSCROLL | ES_NUMBER
     LTEXT           "Address:", IDC_STATIC, 14, 42, 32, 10
@@ -31,16 +31,19 @@ BEGIN
     LTEXT           "0.0.0.0 is every local interface. 127.0.0.1 is this machine only.",
                     IDC_STATIC, 14, 58, 304, 10
 
-    GROUPBOX        "Allowed origins", IDC_STATIC, 7, 79, 318, 56
-    LTEXT           "One per line. Empty allows any origin.", IDC_STATIC, 14, 91, 304, 10
-    EDITTEXT        IDC_ORIGINS, 14, 103, 304, 24,
+    GROUPBOX        "Allowed origins", IDC_STATIC, 7, 77, 318, 53
+    LTEXT           "One per line. Empty allows any origin.", IDC_STATIC, 14, 89, 304, 10
+    EDITTEXT        IDC_ORIGINS, 14, 101, 304, 24,
                     ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
 
-    GROUPBOX        "Fields this may write", IDC_STATIC, 7, 139, 318, 56
+    GROUPBOX        "Fields this may write", IDC_STATIC, 7, 134, 318, 53
     LTEXT           "One per line. Nothing outside this list is ever written.", IDC_STATIC,
-                    14, 151, 304, 10
-    EDITTEXT        IDC_FIELDS, 14, 163, 304, 24,
+                    14, 146, 304, 10
+    EDITTEXT        IDC_FIELDS, 14, 158, 304, 24,
                     ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
+
+    CONTROL         "Allow Jean to change playlists", IDC_WRITE_PLAYLISTS, "Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP, 14, 191, 304, 10
 
     LTEXT           "", IDC_CONFIG_PATH, 7, 203, 318, 22
 END

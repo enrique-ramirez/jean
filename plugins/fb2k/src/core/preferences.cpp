@@ -67,7 +67,8 @@ FormReading refusing(std::string error) {
 
 bool operator==(const SettingsForm& a, const SettingsForm& b) {
     return a.port == b.port && a.bindAddress == b.bindAddress && a.authToken == b.authToken &&
-           a.allowedOrigins == b.allowedOrigins && a.allowedFields == b.allowedFields;
+           a.allowedOrigins == b.allowedOrigins && a.allowedFields == b.allowedFields &&
+           a.writePlaylists == b.writePlaylists;
 }
 
 SettingsForm toForm(const Settings& settings) {
@@ -77,6 +78,7 @@ SettingsForm toForm(const Settings& settings) {
     form.authToken = settings.authToken;
     form.allowedOrigins = joinLines(settings.allowedOrigins);
     form.allowedFields = joinLines(settings.allowedFields);
+    form.writePlaylists = settings.writePlaylists;
     return form;
 }
 
@@ -120,6 +122,7 @@ FormReading readForm(const SettingsForm& form, const Settings& unshown) {
 
     settings.allowedOrigins = splitLines(form.allowedOrigins);
     settings.allowedFields = splitLines(form.allowedFields);
+    settings.writePlaylists = form.writePlaylists;
 
     FormReading reading;
     reading.settings = std::move(settings);

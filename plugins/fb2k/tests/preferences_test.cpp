@@ -305,3 +305,67 @@ TEST_CASE("a setting the page has no control for survives being applied") {
     CHECK(reading.settings.port == 9001);
     CHECK(reading.settings.maxAutoPlaylists == 7);
 }
+
+// Both arguments can supply this key, and only one of them is the person at the dialog.
+TEST_CASE("the checkbox decides whether playlists are writable, rather than what was saved") {
+    for (const bool writable : {true, false}) {
+        Settings shown;
+        shown.authToken = std::string(64, 'a');
+        shown.writePlaylists = writable;
+
+        Settings saved = shown;
+        saved.writePlaylists = !writable;
+
+        const auto reading = readForm(toForm(shown), saved);
+
+        REQUIRE(reading.ok());
+        CHECK(reading.settings.writePlaylists == writable);
+    }
+}
+
+TEST_CASE("a ticked checkbox and an unticked one are not the same form") {
+    Settings writable;
+    Settings readOnly = writable;
+    readOnly.writePlaylists = false;
+
+    CHECK(toForm(writable) != toForm(readOnly));
+}
+
+TEST_CASE("resetting permits playlist writes, because that is what an untouched setting means") {
+    Settings readOnly;
+    readOnly.writePlaylists = false;
+
+    const auto reading = readForm(defaultForm(std::string(64, 'a')), readOnly);
+
+    REQUIRE(reading.ok());
+    CHECK(reading.settings.writePlaylists);
+}
+
+// core/preferences.h requires `unshown` rather than defaulting it because forgetting a key
+// silently resets one somebody set by hand. This is that promise, over every such key.
+TEST_CASE("every setting the page has no control for survives being applied") {
+    Settings saved;
+    saved.authToken = std::string(64, 'a');
+    saved.maxAutoPlaylists = 7;
+    saved.opusBitrate = 64000;
+    saved.aacBitrate = 96000;
+    saved.streamingEnabled = false;
+    saved.maxConcurrentStreams = 2;
+    saved.streamTicketTtlSeconds = 30;
+    saved.muteWhileStreaming = false;
+
+    auto form = toForm(saved);
+    form.port = "9001";
+
+    const auto reading = readForm(form, saved);
+
+    REQUIRE(reading.ok());
+    CHECK(reading.settings.port == 9001);
+    CHECK(reading.settings.maxAutoPlaylists == 7);
+    CHECK(reading.settings.opusBitrate == 64000);
+    CHECK(reading.settings.aacBitrate == 96000);
+    CHECK_FALSE(reading.settings.streamingEnabled);
+    CHECK(reading.settings.maxConcurrentStreams == 2);
+    CHECK(reading.settings.streamTicketTtlSeconds == 30);
+    CHECK_FALSE(reading.settings.muteWhileStreaming);
+}

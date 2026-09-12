@@ -35,6 +35,30 @@ struct Control {
     std::string SettingsForm::* field;
 };
 
+struct BoolControl {
+    int id;
+    bool SettingsForm::* field;
+};
+
+template <typename Entry>
+class ControlList {
+public:
+    constexpr ControlList() : first_(nullptr), last_(nullptr) {}
+
+    template <size_t N>
+    constexpr ControlList(const Entry (&table)[N]) : first_(table), last_(table + N) {}
+
+    constexpr const Entry* begin() const { return first_; }
+    constexpr const Entry* end() const { return last_; }
+
+private:
+    const Entry* first_;
+    const Entry* last_;
+};
+
+using Controls = ControlList<Control>;
+using BoolControls = ControlList<BoolControl>;
+
 constexpr Control kMainControls[] = {{IDC_PORT, &SettingsForm::port},
                                      {IDC_BIND, &SettingsForm::bindAddress},
                                      {IDC_ORIGINS, &SettingsForm::allowedOrigins},
@@ -42,30 +66,21 @@ constexpr Control kMainControls[] = {{IDC_PORT, &SettingsForm::port},
 
 constexpr Control kDevicesControls[] = {{IDC_TOKEN, &SettingsForm::authToken}};
 
-class Controls {
-public:
-    template <size_t N>
-    constexpr Controls(const Control (&table)[N]) : first_(table), last_(table + N) {}
-
-    constexpr const Control* begin() const { return first_; }
-    constexpr const Control* end() const { return last_; }
-
-private:
-    const Control* first_;
-    const Control* last_;
-};
+constexpr BoolControl kMainBoolControls[] = {{IDC_WRITE_PLAYLISTS, &SettingsForm::writePlaylists}};
 
 struct Page {
     const char* name;
     int templateId;
     Controls controls;
+    BoolControls boolControls;
 
     bool pairing;
     bool configPath;
 };
 
-constexpr Page kMainPage{kPageName, IDD_PREFERENCES, kMainControls, false, true};
-constexpr Page kDevicesPage{kDevicesName, IDD_DEVICES, kDevicesControls, true, false};
+constexpr Page kMainPage{kPageName, IDD_PREFERENCES, kMainControls, kMainBoolControls, false, true};
+constexpr Page kDevicesPage{kDevicesName, IDD_DEVICES, kDevicesControls, BoolControls(), true,
+                            false};
 
 std::string readControl(HWND dialog, int id) {
     const auto control = GetDlgItem(dialog, id);
@@ -79,6 +94,14 @@ std::string readControl(HWND dialog, int id) {
 
 void writeControl(HWND dialog, int id, const std::string& text) {
     SetDlgItemTextW(dialog, id, toWide(text).c_str());
+}
+
+bool readCheckbox(HWND dialog, int id) {
+    return IsDlgButtonChecked(dialog, id) == BST_CHECKED;
+}
+
+void writeCheckbox(HWND dialog, int id, bool checked) {
+    CheckDlgButton(dialog, id, checked ? BST_CHECKED : BST_UNCHECKED);
 }
 
 constexpr UINT_PTR kPairTimer = 1;
@@ -224,6 +247,14 @@ private:
             return TRUE;
         }
 
+        for (const BoolControl& control : page_.boolControls) {
+            if (control.id == id && notification == BN_CLICKED) {
+                if (live_)
+                    callback_->on_state_changed();
+                return TRUE;
+            }
+        }
+
         if (notification != EN_CHANGE || !live_)
             return FALSE;
 
@@ -295,6 +326,8 @@ private:
     void show(const SettingsForm& form) {
         for (const Control& control : page_.controls)
             writeControl(dialog_, control.id, form.*control.field);
+        for (const BoolControl& control : page_.boolControls)
+            writeCheckbox(dialog_, control.id, form.*control.field);
     }
 
     SettingsForm currentForm() const {
@@ -304,6 +337,8 @@ private:
         auto form = toForm(saved_);
         for (const Control& control : page_.controls)
             form.*control.field = readControl(dialog_, control.id);
+        for (const BoolControl& control : page_.boolControls)
+            form.*control.field = readCheckbox(dialog_, control.id);
         return form;
     }
 

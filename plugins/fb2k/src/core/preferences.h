@@ -15,6 +15,7 @@ struct SettingsForm {
     std::string authToken;
     std::string allowedOrigins;
     std::string allowedFields;
+    bool writePlaylists = true;
 };
 
 bool operator==(const SettingsForm& a, const SettingsForm& b);

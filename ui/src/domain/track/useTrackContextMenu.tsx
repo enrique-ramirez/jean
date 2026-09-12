@@ -5,12 +5,9 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import {
-	canChangePlaylists,
-	usePermissions,
-	usePlaylists,
-} from "@/domain/player/usePlayer";
+import { usePlaylists } from "@/domain/player/usePlayer";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { artistOf, FIELD, titleOf, value } from "./fields";
@@ -42,7 +39,12 @@ export function useTrackContextMenu({
 }) {
 	const t = useTranslate();
 	const { data: playlists = [] } = usePlaylists();
-	const permissions = usePermissions();
+	const { discovery } = useFooJean();
+	// Absent or unreached reads as writable: the field is read to take the "add" affordance away and
+	// never to hand it out.
+	const canWritePlaylists =
+		discovery.state.kind !== "ready" ||
+		discovery.state.capabilities.canWritePlaylists !== false;
 	const addTracks = useAddTracks();
 	const { queueTracks, canQueue } = useQueueTracks();
 	const { canRate, rate } = useTagWriting();
@@ -54,8 +56,6 @@ export function useTrackContextMenu({
 	const written = useWrittenRating(rows.columns, rated);
 	const rawRating =
 		rated === undefined ? null : rawRatingWith(rows.at(positions[0]), written);
-
-	const canEdit = canChangePlaylists(permissions);
 
 	// `adopt` is off for the hold: claiming the selection on pointer-down would undo the shift-click
 	// in the same event.
@@ -97,7 +97,7 @@ export function useTrackContextMenu({
 			source,
 			itemIndices,
 			playlists,
-			canEdit,
+			canWritePlaylists,
 			canQueue,
 			queueTracks,
 			addTracks,
@@ -126,7 +126,7 @@ export function useTrackContextMenu({
 		rows,
 		playlists,
 		source,
-		canEdit,
+		canWritePlaylists,
 		addTracks,
 		canQueue,
 		queueTracks,

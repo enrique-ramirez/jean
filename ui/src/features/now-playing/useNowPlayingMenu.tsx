@@ -1,18 +1,14 @@
 import { Music, Star } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import {
-	canChangePlaylists,
-	useAudiblePlayer,
-	usePermissions,
-	usePlaylists,
-} from "@/domain/player/usePlayer";
+import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
 import { librarySourceOf } from "@/domain/track/librarySource";
 import { starsOf } from "@/domain/track/rating";
 import { ratingItems, trackActions } from "@/domain/track/trackActions";
 import { useAddTracks } from "@/domain/track/useAddTracks";
 import { useQueueTracks } from "@/domain/track/useQueueTracks";
 import { readTrack } from "@/shared/api/beefweb";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { useNowPlayingRating } from "./useNowPlayingRating";
@@ -21,7 +17,12 @@ export function useNowPlayingMenu() {
 	const t = useTranslate();
 	const snapshot = useAudiblePlayer();
 	const { data: playlists = [] } = usePlaylists();
-	const permissions = usePermissions();
+	const { discovery } = useFooJean();
+	// Absent or unreached reads as writable: the field is read to take the "add" affordance away and
+	// never to hand it out.
+	const canWritePlaylists =
+		discovery.state.kind !== "ready" ||
+		discovery.state.capabilities.canWritePlaylists !== false;
 	const { queueTracks, canQueue } = useQueueTracks();
 	const { raw, canWrite, write } = useNowPlayingRating();
 	const addTracks = useAddTracks();
@@ -49,7 +50,7 @@ export function useNowPlayingMenu() {
 			source,
 			itemIndices: [item.index],
 			playlists,
-			canEdit: canChangePlaylists(permissions),
+			canWritePlaylists,
 			canQueue,
 			queueTracks,
 			addTracks,
@@ -70,7 +71,7 @@ export function useNowPlayingMenu() {
 		item,
 		track?.artist,
 		playlists,
-		permissions,
+		canWritePlaylists,
 		canQueue,
 		queueTracks,
 		addTracks,

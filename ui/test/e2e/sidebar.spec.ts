@@ -1,5 +1,6 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	dragFrom,
 	expect,
 	expectSettlesAt,
 	openSidebar,
@@ -364,22 +365,8 @@ test.describe("dragging tracks onto a playlist", () => {
 	);
 
 	const dragTrackTo = async (page: Page, index: number, title: string) => {
-		const track = trackRow(page, index);
 		const target = row(page, title);
-
-		const source = await track.boundingBox();
-		const drop = await target.boundingBox();
-
-		await page.mouse.move(
-			source!.x + source!.width / 2,
-			source!.y + source!.height / 2,
-		);
-		await page.mouse.down();
-		await page.mouse.move(
-			drop!.x + drop!.width / 2,
-			drop!.y + drop!.height / 2,
-			{ steps: 16 },
-		);
+		await dragFrom(page, trackRow(page, index), target);
 		return target;
 	};
 

@@ -348,6 +348,23 @@ export const searchFor = async (page: Page, text: string) => {
 	).toBeVisible();
 };
 
+const NAMES_THE_COMPONENT = /foo_jean/i;
+const READS_AS_A_LOGIN =
+	/denied|forbidden|unauthoris|unauthoriz|sign in|signed out|log in|logged out|password|credential/i;
+
+// A playlist control Jean may not use is drawn disabled with its reason in its own
+// label, and the reason is one setting: foo_jean's `writePlaylists`, which the
+// player owner holds in the component's own preferences. So the label has to name
+// the component somebody goes and changes it in, and it may not read as a
+// credential problem, because nobody is signed out of anything. How it is worded
+// beyond that is nobody's business here.
+export const expectDisabledWithItsReason = async (control: Locator) => {
+	await expect(control).toBeVisible();
+	await expect(control).toBeDisabled();
+	await expect(control).toHaveAccessibleName(NAMES_THE_COMPONENT);
+	await expect(control).not.toHaveAccessibleName(READS_AS_A_LOGIN);
+};
+
 // ---- reading the player -----------------------------------------------------
 
 export const requestsTo = (player: FakePlayer, pattern: string) =>
@@ -483,6 +500,20 @@ export const dragTo = async (
 	await page.mouse.down();
 	await page.mouse.move(end.x, end.y, { steps });
 	await page.mouse.up();
+};
+
+// Drags one element over another and stops there, still holding: a drop target
+// arms on an animation frame rather than on the move, so a caller waits for it to
+// light up before releasing, and one caller releases somewhere else on purpose.
+export const dragFrom = async (page: Page, source: Locator, onto: Locator) => {
+	const from = await source.boundingBox();
+	const to = await onto.boundingBox();
+
+	await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, {
+		steps: 16,
+	});
 };
 
 // Press-and-hold, which is touch's right-click. Dispatched rather than driven by

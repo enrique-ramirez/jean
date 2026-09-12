@@ -18,6 +18,7 @@ export function SavePlaylistButton({
 	library,
 	scratch,
 	holdsResults,
+	canWritePlaylists,
 	isOpen,
 	onOpenChange,
 	onOpenPlaylist,
@@ -26,6 +27,7 @@ export function SavePlaylistButton({
 	library: Library;
 	scratch: ReturnType<typeof useScratchPlaylist>;
 	holdsResults: boolean;
+	canWritePlaylists: boolean;
 	isOpen: boolean;
 	onOpenChange: (isOpen: boolean) => void;
 	onOpenPlaylist: (id: string) => void;
@@ -84,11 +86,13 @@ export function SavePlaylistButton({
 				<Button
 					icon={ListPlus}
 					aria-expanded={isOpen}
-					disabled={trackCount === 0 || library.isLoading}
+					disabled={!canWritePlaylists || trackCount === 0 || library.isLoading}
 					title={library.isLoading ? t("search.stillReading") : undefined}
 					onClick={() => onOpenChange(!isOpen)}
 				>
-					{t("search.saveAsPlaylist")}
+					{canWritePlaylists
+						? t("search.saveAsPlaylist")
+						: t("search.saveAsPlaylistLocked")}
 				</Button>
 			}
 		>

@@ -301,13 +301,24 @@ test.describe("a player that will not let Jean change playlists", () => {
 		).toBeVisible();
 	});
 
-	test("and the row menu offers nowhere to file a track", async ({
+	// The other half of the same permission, and it goes the other way. Filing a
+	// row goes to foo_jean over its own port, so beefweb has no say in it and the
+	// item carries no reason: the only setting that can refuse it is the player
+	// owner's, and this install has not set it.
+	test("and the row menu still offers somewhere to file a track", async ({
 		page,
 		isMobile,
 	}) => {
 		await openLibrary(page);
 		await openTrackMenu(page, isMobile);
 
-		await expect(menuItem(page, "Add to playlist")).toBeDisabled();
+		const add = menuItem(page, /Add to playlist/);
+		// Named rather than left to the click's own actionability wait, which reports
+		// a timeout where the real answer is that the item was refused.
+		await expect(add).toBeEnabled();
+		await expect(add).not.toHaveAccessibleName(/foo_jean/i);
+
+		await add.click();
+		await expect(menuItem(page, "Favorites")).toBeVisible();
 	});
 });

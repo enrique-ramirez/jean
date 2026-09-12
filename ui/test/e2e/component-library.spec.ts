@@ -1,5 +1,7 @@
 import {
+	dragFrom,
 	expect,
+	expectDisabledWithItsReason,
 	expectSettlesAt,
 	type FakePlayer,
 	FOO_JEAN_TOKEN,
@@ -89,11 +91,20 @@ const FAVORITES = "Favorites";
 const menuItem = (page: Page, name: string) =>
 	page.getByRole("menuitem", { name, exact: true });
 
+// Found by the action it names rather than by its whole label: where a setting
+// refuses the write, the same item carries the reason as well.
+const addToPlaylist = (page: Page) =>
+	page.getByRole("menuitem", { name: /Add to playlist/ });
+
+// Rows are direct children of the nav, so is the section header, hence the filter.
+const sidebarRow = (page: Page, title: string) =>
+	sidebar(page).locator("> div").filter({ hasText: title });
+
 const openTrackMenu = async (page: Page, isMobile: boolean, index: number) => {
 	const row = trackRow(page, index);
 	if (isMobile) await pressAndHold(page, row);
 	else await row.click({ button: "right" });
-	await expect(menuItem(page, "Add to playlist")).toBeVisible();
+	await expect(addToPlaylist(page)).toBeVisible();
 };
 
 const fileInto = async (
@@ -103,7 +114,7 @@ const fileInto = async (
 	title: string,
 ) => {
 	await openTrackMenu(page, isMobile, index);
-	await menuItem(page, "Add to playlist").click();
+	await addToPlaylist(page).click();
 	await menuItem(page, title).click();
 };
 
@@ -381,21 +392,32 @@ test.describe("filing a library row into a playlist of your own", () => {
 		// queue's holding playlist is the component's own plumbing and holds none of
 		// the user's music, so a setting that stopped a row reaching it would be the
 		// setting doing the wrong thing.
+		//
+		// Driven by the drag, because the menu says no before it asks: the reason
+		// belongs in the label there, and a refusal nothing can reach is a refusal
+		// nothing exercises. The drag is the one surface left that still sends the
+		// fill, and it is mouse-only, so the phone has no case of its own here.
 		test("the row is refused, and the same row still queues", async ({
 			page,
 			player,
 			isMobile,
 		}) => {
+			test.skip(isMobile, "dragging a row onto a playlist is mouse-only");
+
 			await openAllMusic(page);
+			await openSidebar(page);
 			const before = titlesIn(player, FAVORITES);
 
-			await fileInto(page, isMobile, 2, FAVORITES);
+			const target = sidebarRow(page, FAVORITES);
+			await dragFrom(page, trackRow(page, 2), target);
+			await expect(target).toHaveAttribute("data-drop-over", "true");
+			await page.mouse.up();
 
 			await expectSettlesAt(player, () => titlesIn(player, FAVORITES), before);
 
-			// Asked and refused, rather than never asked. A client-side guard would
-			// leave the refusal itself unexercised, and the setting is the player
-			// owner's, held by the component.
+			// Asked and refused, rather than never asked. A guard on every surface
+			// would leave the refusal itself unexercised, and the setting is the
+			// player owner's, held by the component.
 			expect(addsSent(player)).toEqual({ component: 1, beefweb: 0 });
 
 			await openTrackMenu(page, isMobile, 2);
@@ -404,6 +426,39 @@ test.describe("filing a library row into a playlist of your own", () => {
 			await expect
 				.poll(() => player.playQueue.length, { timeout: 10_000 })
 				.toBe(1);
+		});
+
+		// The reason goes in the label because that is the only place both surfaces
+		// have: there is no tooltip component, and a phone reaches no `title`. And it
+		// names foo_jean because the setting is the player owner's own, held in the
+		// component's preferences, so that is where somebody goes to undo it.
+		test("Add to playlist is drawn disabled, naming the component's own setting", async ({
+			page,
+			isMobile,
+		}) => {
+			await openAllMusic(page);
+			await openTrackMenu(page, isMobile, 2);
+
+			await expectDisabledWithItsReason(addToPlaylist(page));
+		});
+	});
+
+	test.describe("on a component too old to report the setting at all", () => {
+		test.use({ fooJean: { canWritePlaylists: "absent" } });
+
+		// Absent is not refused. The field is read to take an affordance away and
+		// never to hand one out, so a component that predates it leaves the menu
+		// exactly as a component that permits the write does.
+		test("Add to playlist still offers the playlists a row can go to", async ({
+			page,
+			isMobile,
+		}) => {
+			await openAllMusic(page);
+			await openTrackMenu(page, isMobile, 2);
+
+			await expect(addToPlaylist(page)).toBeEnabled();
+			await addToPlaylist(page).click();
+			await expect(menuItem(page, FAVORITES)).toBeVisible();
 		});
 	});
 });

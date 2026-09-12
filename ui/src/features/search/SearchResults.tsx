@@ -4,11 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
-import {
-	canChangePlaylists,
-	useIsPlaying,
-	usePermissions,
-} from "@/domain/player/usePlayer";
+import { useIsPlaying } from "@/domain/player/usePlayer";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
@@ -18,6 +14,7 @@ import { summarise } from "@/domain/track/stats";
 import { TrackBrowser } from "@/domain/track/TrackBrowser";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -45,7 +42,12 @@ export function SearchResults({
 	const [isSaving, setIsSaving] = useState(false);
 
 	const isPlaying = useIsPlaying();
-	const canSavePlaylists = canChangePlaylists(usePermissions());
+	const { discovery } = useFooJean();
+	// Absent or unreached reads as writable: the field is read to take the "save" affordance away and
+	// never to hand it out.
+	const canWritePlaylists =
+		discovery.state.kind !== "ready" ||
+		discovery.state.capabilities.canWritePlaylists !== false;
 
 	const results = search.results;
 	const { indices, heat, patina, playedCount } = results;
@@ -67,7 +69,7 @@ export function SearchResults({
 	useKeymap(
 		SCOPE.search,
 		{ saveSearch: () => setIsSaving(true) },
-		{ enabled: canSavePlaylists && results.length > 0 && !library.isLoading },
+		{ enabled: canWritePlaylists && results.length > 0 && !library.isLoading },
 	);
 
 	if (library.error) {
@@ -131,17 +133,16 @@ export function SearchResults({
 							trackCount={results.length}
 							canPlaySets={canPlaySets}
 						>
-							{canSavePlaylists ? (
-								<SavePlaylistButton
-									search={search}
-									library={library}
-									scratch={scratch}
-									holdsResults={holdsThisView}
-									isOpen={isSaving}
-									onOpenChange={setIsSaving}
-									onOpenPlaylist={onOpenPlaylist}
-								/>
-							) : null}
+							<SavePlaylistButton
+								search={search}
+								library={library}
+								scratch={scratch}
+								holdsResults={holdsThisView}
+								canWritePlaylists={canWritePlaylists}
+								isOpen={isSaving}
+								onOpenChange={setIsSaving}
+								onOpenPlaylist={onOpenPlaylist}
+							/>
 						</PlayActions>
 					}
 				/>

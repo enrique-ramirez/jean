@@ -38,7 +38,7 @@ export function trackActions({
 	source,
 	itemIndices,
 	playlists,
-	canEdit,
+	canWritePlaylists,
 	canQueue,
 	queueTracks,
 	addTracks,
@@ -50,7 +50,7 @@ export function trackActions({
 	source: LibrarySource;
 	itemIndices: number[];
 	playlists: PlaylistInfo[];
-	canEdit: boolean;
+	canWritePlaylists: boolean;
 	canQueue: boolean;
 	queueTracks: (options: {
 		source: LibrarySource;
@@ -126,9 +126,11 @@ export function trackActions({
 		{ type: "separator" as const },
 		{
 			id: "add",
-			label: t("track.addToPlaylist"),
+			label: canWritePlaylists
+				? t("track.addToPlaylist")
+				: t("track.addToPlaylistLocked"),
 			icon: ListPlus,
-			disabled: !canEdit || targets.length === 0,
+			disabled: !canWritePlaylists || targets.length === 0,
 			filter: t("track.findPlaylist"),
 			items: targets.map((target) => ({
 				id: target.id,

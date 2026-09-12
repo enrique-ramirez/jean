@@ -2,6 +2,7 @@ import type { Track } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectDisabledWithItsReason,
 	expectPlayingFrom,
 	expectSettlesAt,
 	openSidebar,
@@ -46,6 +47,11 @@ const searchAndPlay = async (
 	await trackRow(page, row).dblclick();
 	await expect.poll(() => scratchOf(player)?.items.length).toBe(query.matches);
 };
+
+// Found by the action it names rather than by its whole label: where a setting
+// refuses the write, the same button carries the reason as well.
+const saveAsPlaylist = (page: Page) =>
+	viewHeader(page).getByRole("button", { name: /Save as playlist/ });
 
 const saveAs = async (page: Page, name: string) => {
 	await page.getByRole("button", { name: "Save as playlist" }).click();
@@ -584,6 +590,34 @@ test.describe("a beefweb install that will not let Jean change playlists", () =>
 
 		await expectSettlesAt(player, () => scratchFills(player).length, 1);
 		expect(beefwebPlaylistWrites(player)).toHaveLength(0);
+	});
+
+	// Nothing here asks beefweb whether a search may be kept: the playlist is the
+	// component's to write, so beefweb's permission is not a reason and the button
+	// carries none. Hidden today, which is the gate this is here to keep out.
+	test("Save as playlist is drawn and enabled, with no reason to give", async ({
+		page,
+	}) => {
+		await search(page, QUERY.text);
+
+		await expect(saveAsPlaylist(page)).toBeVisible();
+		await expect(saveAsPlaylist(page)).toBeEnabled();
+		await expect(saveAsPlaylist(page)).not.toHaveAccessibleName(/foo_jean/i);
+	});
+});
+
+test.describe("where the player owner has turned playlist writes off", () => {
+	test.use({ fooJean: { canWritePlaylists: false } });
+
+	// Drawn rather than hidden: a control that vanishes teaches nobody which
+	// setting took it away, and this one is the player owner's own, held in
+	// foo_jean's preferences.
+	test("Save as playlist is drawn disabled, naming the component's own setting", async ({
+		page,
+	}) => {
+		await search(page, QUERY.text);
+
+		await expectDisabledWithItsReason(saveAsPlaylist(page));
 	});
 });
 

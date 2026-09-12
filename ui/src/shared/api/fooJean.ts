@@ -18,6 +18,10 @@ export type PlaylistAnnotation = Schema["PlaylistAnnotation"];
 export type AutoPlaylistRequest = Schema["AutoPlaylistRequest"];
 export type QueryPreview = Schema["QueryPreview"];
 export type FillPlaylistRequest = Schema["FillPlaylistRequest"];
+export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
+export type FillResult = Schema["FillResult"];
+
+export type OwnPlaylistRole = "scratch" | "queue";
 
 // Never moves to `/api/clientconfig`: beefweb serves that namespace unauthenticated. The root CLAUDE.md holds the rest of the exclusion list.
 export const TOKEN_KEY = "jean.fooJeanToken";
@@ -443,6 +447,78 @@ export async function createAutoPlaylist(
 
 	const { message } = await messageOf(response, `HTTP ${response.status}`);
 	return { ok: false, message };
+}
+
+// Unlike `postJson` and `authedJson`, these throw rather than answer null: the two fill refusals a
+// caller cares about, `writePlaylists` off and a moved `structure`, ride the status on the error's
+// `cause`, and an answer of `null` would have nowhere to carry it.
+const postThrowing = async (
+	url: string,
+	token: string,
+	body: unknown,
+): Promise<Response> => {
+	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
+		fetch(url, {
+			method: "POST",
+			headers: { ...bearer(token), ...JSON_BODY },
+			body: JSON.stringify(body),
+			signal,
+		}),
+	);
+	if (!response.ok)
+		throw new Error(`POST ${url} failed: ${response.status}`, {
+			cause: response.status,
+		});
+	return response;
+};
+
+const deleteThrowing = async (url: string, token: string): Promise<void> => {
+	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
+		fetch(url, { method: "DELETE", headers: bearer(token), signal }),
+	);
+	if (!response.ok)
+		throw new Error(`DELETE ${url} failed: ${response.status}`, {
+			cause: response.status,
+		});
+};
+
+export async function fillOwnPlaylist(
+	origin: string,
+	token: string,
+	role: OwnPlaylistRole,
+	request: FillOwnPlaylistRequest,
+): Promise<FillResult> {
+	const response = await postThrowing(
+		`${origin}/api/playlists/own/${role}/items`,
+		token,
+		request,
+	);
+	return (await response.json()) as FillResult;
+}
+
+// A 403 here is always `writePlaylists` off: this route addresses a playlist by the GUID its own
+// annotation carries, so the other 403 this contract has, a target foo_jean did not create, cannot
+// apply to it.
+export async function fillPlaylist(
+	origin: string,
+	token: string,
+	guid: string,
+	request: FillPlaylistRequest,
+): Promise<FillResult> {
+	const response = await postThrowing(
+		`${origin}/api/playlists/${guid}/items`,
+		token,
+		request,
+	);
+	return (await response.json()) as FillResult;
+}
+
+export async function emptyOwnPlaylist(
+	origin: string,
+	token: string,
+	role: OwnPlaylistRole,
+): Promise<void> {
+	await deleteThrowing(`${origin}/api/playlists/own/${role}/items`, token);
 }
 
 // Tells a deliberate stop from a dropped connection: both close the socket, and only this one gives

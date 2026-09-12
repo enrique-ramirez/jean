@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { useQueueActions } from "@/domain/player/useQueue";
 import { fetchPlaylists, fetchPlayQueue } from "@/shared/api/beefweb";
-import { bearer } from "@/shared/api/fooJean";
+import { emptyOwnPlaylist } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
@@ -39,14 +39,7 @@ export function useQueueTracks() {
 			playlists.find((entry) => entry.id === held.id)?.itemCount ?? 0;
 
 		if (queued?.length === 0 && itemCount > 0 && origin && token) {
-			const response = await fetch(`${origin}/api/playlists/own/queue/items`, {
-				method: "DELETE",
-				headers: bearer(token),
-			});
-			if (!response.ok)
-				throw new Error(
-					`DELETE /playlists/own/queue/items failed: ${response.status}`,
-				);
+			await emptyOwnPlaylist(origin, token, "queue");
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			return { id: held.id, itemCount: 0 };
 		}

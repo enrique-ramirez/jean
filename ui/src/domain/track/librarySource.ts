@@ -8,13 +8,18 @@ import {
 	libraryPathMatcher,
 	removePlaylistItems,
 } from "@/shared/api/beefweb";
+import type {
+	FillOwnPlaylistRequest,
+	FillPlaylistRequest,
+	FillResult,
+} from "@/shared/api/fooJean";
 import {
-	bearer,
 	encodeFill,
 	fetchPlaylistAnnotations,
+	fillOwnPlaylist,
+	fillPlaylist,
 	libraryArtworkUrl,
 } from "@/shared/api/fooJean";
-import type { components } from "@/shared/api/fooJeanSchema";
 import type {
 	PlaybackPosition,
 	TrackColumns,
@@ -26,10 +31,6 @@ import { positionOf } from "./libraryIndex";
 import type { PathTable } from "./pathTable";
 import { componentLibraryKey, playlistSnapshot } from "./playlistStore";
 import type { Refs } from "./project";
-
-type FillOwnPlaylistRequest = components["schemas"]["FillOwnPlaylistRequest"];
-type FillPlaylistRequest = components["schemas"]["FillPlaylistRequest"];
-type FillResult = components["schemas"]["FillResult"];
 
 export interface ResolvedTrack {
 	identity: TrackIdentity;
@@ -106,17 +107,7 @@ const fillScratch =
 			...encodeFill(refs, { structure, trackCount: paths.length }),
 		};
 
-		const response = await fetch(`${origin}/api/playlists/own/scratch/items`, {
-			method: "POST",
-			headers: { ...bearer(token), "Content-Type": "application/json" },
-			body: JSON.stringify(request),
-		});
-		if (!response.ok)
-			throw new Error(
-				`POST /playlists/own/scratch/items failed: ${response.status}`,
-			);
-
-		const result = (await response.json()) as FillResult;
+		const result = await fillOwnPlaylist(origin, token, "scratch", request);
 		return result.beefwebId;
 	};
 
@@ -143,21 +134,7 @@ const addToPlaylist =
 			trackCount: paths.length,
 		});
 
-		const response = await fetch(`${origin}/api/playlists/${guid}/items`, {
-			method: "POST",
-			headers: { ...bearer(token), "Content-Type": "application/json" },
-			body: JSON.stringify(request),
-		});
-		// A 403 here is always `writePlaylists` off: this route addresses a playlist by the GUID its
-		// own annotation carries, so the other 403 this contract has, a target foo_jean did not
-		// create, cannot apply to it.
-		if (!response.ok)
-			throw new Error(
-				`POST /playlists/${guid}/items failed: ${response.status}`,
-				{ cause: response.status },
-			);
-
-		return (await response.json()) as FillResult;
+		return fillPlaylist(origin, token, guid, request);
 	};
 
 const fillByCopy =
@@ -193,17 +170,7 @@ const queueViaHolding =
 			...encodeFill(refs, { structure, trackCount: paths.length }),
 		};
 
-		const response = await fetch(`${origin}/api/playlists/own/queue/items`, {
-			method: "POST",
-			headers: { ...bearer(token), "Content-Type": "application/json" },
-			body: JSON.stringify(request),
-		});
-		if (!response.ok)
-			throw new Error(
-				`POST /playlists/own/queue/items failed: ${response.status}`,
-			);
-
-		const result = (await response.json()) as FillResult;
+		const result = await fillOwnPlaylist(origin, token, "queue", request);
 		// `beefwebId` is null only where this call made the playlist and beefweb has not looked again
 		// yet, exactly as `fillScratch` above: the fresh list this falls back to is what makes it.
 		const beefwebId =

@@ -1065,6 +1065,31 @@ struct HttpServer::Impl {
                                        filled.positions));
         });
 
+        server.Delete(kOwnItems, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto role = ownPlaylistRoleFor(req.matches[1].str());
+            if (!role) {
+                respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
+                return;
+            }
+
+            if (changingTooFast()) {
+                res.set_header("Retry-After", "1");
+                respond(res, httpStatusFor(PlaylistRefusal::tooFast),
+                        fillRefusedDocument(PlaylistRefusal::tooFast));
+                return;
+            }
+
+            const auto emptied = askIfAvailable(
+                player.emptyOwnPlaylist, playlistFailure(PlaylistOutcome::unavailable), *role);
+            if (emptied.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(emptied.outcome),
+                        playlistFailedDocument(playlistFailure(emptied.outcome)));
+                return;
+            }
+
+            res.status = 204;
+        });
+
         constexpr char kPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items)";
 
         server.Post(kPlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {

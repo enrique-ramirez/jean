@@ -708,6 +708,25 @@ paths:
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/FillUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
+    delete:
+      tags: [playlists]
+      operationId: emptyOwnPlaylist
+      summary: Take every row out of one of the component's own playlists, keeping the playlist.
+      description: |
+        Removes every item rather than the playlist itself, the same guard a replacing fill of `scratch` already keeps: deleting a playlist the play queue points into kills foobar2000. The playlist keeps its id, its position and beefweb's id for it.
+
+        Idempotent: a role with no playlist yet is not made one just to answer this, and reports success regardless, exactly as `DELETE /stream/hold` reports success whether or not there was a hold to release.
+
+        The read-only-playlists setting never refuses this operation, for the reason it never refuses a fill of either role: neither holds any of the user's music.
+      responses:
+        "204":
+          description: Emptied, or already empty because there was nothing to empty.
+        "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /playlists/{id}/items:
     parameters:

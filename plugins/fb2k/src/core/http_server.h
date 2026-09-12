@@ -62,6 +62,11 @@ using PlaylistFiller =
     std::function<FillResult(const std::string& playlistId, uint64_t structure,
                              const std::vector<uint32_t>& ordinals, bool replace)>;
 
+// Empties `role`'s own playlist and leaves the playlist itself standing. Takes no structure
+// and no ordinals: there is nothing here to resolve against the library, unlike a fill. A
+// role with no playlist yet is a quiet success rather than one made to answer this.
+using OwnPlaylistEmptier = std::function<PlaylistResult(OwnPlaylistRole role)>;
+
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.
 struct Player {
@@ -72,6 +77,7 @@ struct Player {
     AutoPlaylistRemover removeAutoPlaylist;
     OwnPlaylistResolver ownPlaylist;
     PlaylistFiller fill;
+    OwnPlaylistEmptier emptyOwnPlaylist;
     QueryPreviewer previewQuery;
     StreamOpener openStream;
 

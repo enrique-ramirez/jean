@@ -17,6 +17,7 @@ AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread, int max
 AutoPlaylistUpdater makeAutoPlaylistUpdater(MainThreadQueue& mainThread);
 AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread);
 OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread);
+OwnPlaylistEmptier makeOwnPlaylistEmptier(MainThreadQueue& mainThread);
 PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals);
 QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread);
 

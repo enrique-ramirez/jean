@@ -120,6 +120,10 @@ std::string nameOf(OwnPlaylistRole role) {
     return role == OwnPlaylistRole::scratch ? "scratch" : "queue";
 }
 
+// What a role answers once its playlist has been destroyed and another made in its place.
+// foobar2000 mints a GUID per playlist and reuses none, so the replacement is a different one.
+constexpr char kRemadePlaylistId[] = "33333333-3333-3333-3333-333333333333";
+
 struct FillLog {
     std::vector<std::string> roles;
     std::string title;
@@ -128,11 +132,23 @@ struct FillLog {
     std::string filled;
     bool replace = false;
 
+    int deletes = 0;
+
     std::vector<uint32_t> inserted;
     uint64_t structure = 1;
     std::map<std::string, size_t> held;
+    std::map<std::string, std::string> playlists{{"scratch", kScratchPlaylistId},
+                                                 {"queue", kQueuePlaylistId}};
     std::string beefwebId = "p4";
     std::string listedTitle;
+
+    const std::string& idFor(OwnPlaylistRole role) {
+        auto& id = playlists[nameOf(role)];
+        if (id.empty())
+            id = kRemadePlaylistId;
+
+        return id;
+    }
 };
 
 // Stands in for fb2k/playlists.cpp: a role resolves to the playlist carrying its marker, and a
@@ -145,12 +161,40 @@ Player fillingPlayer(FillLog* log) {
         log->title = title;
 
         PlaylistAnnotation playlist;
-        playlist.id = role == OwnPlaylistRole::scratch ? kScratchPlaylistId : kQueuePlaylistId;
+        playlist.id = log->idFor(role);
         playlist.beefwebId = log->beefwebId;
         playlist.title = title;
 
         PlaylistResult result;
         result.playlist = playlist;
+        return result;
+    };
+
+    player.emptyOwnPlaylist = [log](OwnPlaylistRole role) {
+        PlaylistAnnotation playlist;
+        playlist.id = log->idFor(role);
+        playlist.beefwebId = log->beefwebId;
+
+        log->held[playlist.id] = 0;
+
+        PlaylistResult result;
+        result.playlist = playlist;
+        return result;
+    };
+
+    // The seam's one delete, and the only way anything in core/ can destroy a playlist. The fake
+    // answers it rather than leaving it null, so a route that emptied a playlist by deleting it
+    // is caught having done so instead of crashing on the way.
+    player.removeAutoPlaylist = [log](const std::string& id) {
+        log->deletes++;
+        log->held.erase(id);
+
+        for (auto& playlist : log->playlists)
+            if (playlist.second == id)
+                playlist.second.clear();
+
+        PlaylistResult result;
+        result.playlist.id = id;
         return result;
     };
 
@@ -228,6 +272,25 @@ std::vector<Target> targets(uint64_t structure) {
          kScratchPlaylistId},
         {"the queue role", kQueueFill, ownBody(kQueueTitle, structure), false, kQueuePlaylistId},
         {"a user's playlist", userFill(), userBody(structure), false, kPlaylistId}};
+}
+
+struct Own {
+    std::string name;
+    std::string path;
+    std::string title;
+    std::string id;
+};
+
+std::vector<Own> ownRoles() {
+    return {{"scratch", kScratchFill, kScratchTitle, kScratchPlaylistId},
+            {"queue", kQueueFill, kQueueTitle, kQueuePlaylistId}};
+}
+
+// Whether an empty answers a document like a fill does or a bare 204 like DELETE /stream/hold is
+// the contract's to settle. What a caller depends on either way is that the rows went.
+bool accepted(const httplib::Result& response) {
+    constexpr int kRedirected = 300;
+    return response && response->status >= 200 && response->status < kRedirected;
 }
 
 Settings readOnlyPlaylists() {
@@ -1023,18 +1086,8 @@ TEST_CASE("the component's own two playlists fill whether writePlaylists is on o
     Library library;
     buildLibrary(library);
 
-    struct Role {
-        std::string name;
-        std::string path;
-        std::string title;
-        std::string id;
-    };
-
-    const std::vector<Role> roles{{"scratch", kScratchFill, kScratchTitle, kScratchPlaylistId},
-                                  {"queue", kQueueFill, kQueueTitle, kQueuePlaylistId}};
-
     for (const bool writePlaylists : {true, false}) {
-        for (const auto& role : roles) {
+        for (const auto& role : ownRoles()) {
             INFO("writePlaylists: ", writePlaylists, ", role: ", role.name);
 
             FillLog fills;
@@ -1101,6 +1154,93 @@ TEST_CASE("what refuses a fill is the setting and never the playlist's title") {
     }
 }
 
+// Deleting a playlist the play queue points into kills foobar2000, and the queue's holding
+// playlist is the one the play queue always points into. So "it holds nothing afterwards" is
+// half the promise: an empty that deleted the playlist and made another would satisfy that and
+// take the player down with it.
+TEST_CASE("emptying a role takes its playlist's rows and leaves the playlist itself standing") {
+    Library library;
+    buildLibrary(library);
+
+    for (const auto& role : ownRoles()) {
+        INFO("role: ", role.name);
+
+        auto log = holding(library.state().structure);
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto response = server.client().Delete(role.path, TestServer::bearer());
+
+        REQUIRE(response);
+        INFO("status: ", response->status);
+        CHECK(accepted(response));
+
+        CHECK(log.held[role.id] == 0);
+        CHECK(log.playlists[role.name] == role.id);
+        CHECK(log.deletes == 0);
+
+        // The other role's rows are not this request's to take. Jean empties the queue's holding
+        // playlist the moment the play queue drains, and the scratch holds the view being played.
+        for (const auto& other : ownRoles())
+            if (other.name != role.name)
+                CHECK(log.held[other.id] == kHeldRows);
+    }
+}
+
+// Jean empties the queue's holding playlist whenever the play queue has drained, so a setting
+// that refused this would leave that playlist growing for the life of the install. It holds no
+// music of the user's: it is how Jean queues a track.
+TEST_CASE("the component's own two playlists empty whether writePlaylists is on or off") {
+    Library library;
+    buildLibrary(library);
+
+    for (const bool writePlaylists : {true, false}) {
+        for (const auto& role : ownRoles()) {
+            INFO("writePlaylists: ", writePlaylists, ", role: ", role.name);
+
+            auto log = holding(library.state().structure);
+            const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
+                                    fillingPlayer(&log), &library);
+
+            const auto response = server.client().Delete(role.path, TestServer::bearer());
+
+            REQUIRE(response);
+            INFO("status: ", response->status);
+            CHECK(accepted(response));
+            CHECK(log.held[role.id] == 0);
+        }
+    }
+}
+
+TEST_CASE("a role the contract does not name is refused on an empty exactly as it is on a fill") {
+    Library library;
+    buildLibrary(library);
+
+    auto log = holding(library.state().structure);
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    for (const std::string& role : {std::string("library"), std::string("Scratch"),
+                                    std::string("queue2"), std::string(kPlaylistId)}) {
+        INFO("role: ", role);
+        const auto path = "/api/playlists/own/" + role + "/items";
+
+        const auto emptied = server.client().Delete(path, TestServer::bearer());
+        const auto filled = post(server, path, ownBody(kScratchTitle, log.structure));
+
+        REQUIRE(emptied);
+        REQUIRE(filled);
+
+        CHECK(emptied->status == 400);
+        CHECK(emptied->status == filled->status);
+        CHECK(json::parse(emptied->body)["error"] == json::parse(filled->body)["error"]);
+    }
+
+    for (const auto& role : ownRoles())
+        CHECK(log.held[role.id] == kHeldRows);
+
+    CHECK(log.roles.empty());
+    CHECK(log.fills == 0);
+}
+
 TEST_CASE("the contract publishes a 403 on exactly the writes the setting can refuse") {
     const auto published = publishedRoutes();
 
@@ -1122,4 +1262,5 @@ TEST_CASE("the contract publishes a 403 on exactly the writes the setting can re
     }
 
     CHECK_FALSE(answers403("POST /playlists/own/{role}/items"));
+    CHECK_FALSE(answers403("DELETE /playlists/own/{role}/items"));
 }

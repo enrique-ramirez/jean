@@ -63,6 +63,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread);
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);
     player.ownPlaylist = makeOwnPlaylistResolver(mainThread);
+    player.emptyOwnPlaylist = makeOwnPlaylistEmptier(mainThread);
     player.fill = makePlaylistFiller(mainThread, libraryFeed.ordinalResolver());
     player.previewQuery = makeQueryPreviewer(mainThread);
     player.refreshLibrary = libraryFeed.refresher();

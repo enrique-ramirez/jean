@@ -284,6 +284,25 @@ void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
     answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index)});
 }
 
+// foobar2000 crashes if a playlist the play queue points into is deleted. Removing its items
+// rather than the playlist itself keeps the id, and the queue, intact.
+void removeEveryItem(size_t index) {
+    playlist_manager_v5::get()->playlist_remove_items(index, bit_array_true());
+}
+
+// A role with no playlist yet has nothing to empty, so this reports success without making
+// one: creating a playlist only to answer a request for less music in it would be odd.
+void beginEmptyOwnPlaylist(OwnPlaylistRole role, const AnswerPtr<PlaylistResult>& answer) {
+    const auto index = findOwnPlaylist(role);
+    if (index == pfc::infinite_size) {
+        answer->set(PlaylistResult{});
+        return;
+    }
+
+    removeEveryItem(index);
+    answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index)});
+}
+
 void beginFill(const std::string& playlistId, uint64_t structure,
                const std::vector<uint32_t>& ordinals, bool replace,
                const OrdinalResolver& resolveOrdinals, const AnswerPtr<FillResult>& answer) {
@@ -301,10 +320,8 @@ void beginFill(const std::string& playlistId, uint64_t structure,
 
     auto manager = playlist_manager_v5::get();
 
-    // foobar2000 crashes if a playlist the play queue points into is deleted. Removing its
-    // items rather than the playlist itself keeps the id, and the queue, intact.
     if (replace)
-        manager->playlist_remove_items(index, bit_array_true());
+        removeEveryItem(index);
 
     const auto base = manager->playlist_get_item_count(index);
     manager->playlist_insert_items(index, base, resolved.items, bit_array_false());
@@ -399,6 +416,18 @@ OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread) {
             mainThread, "resolving one of the component's own playlists",
             [role, title](const AnswerPtr<PlaylistResult>& answer) {
                 beginOwnPlaylist(role, title, answer);
+            },
+            playlistFailure(PlaylistOutcome::timedOut),
+            playlistFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+OwnPlaylistEmptier makeOwnPlaylistEmptier(MainThreadQueue& mainThread) {
+    return [&mainThread](OwnPlaylistRole role) {
+        return askPlayer<PlaylistResult>(
+            mainThread, "emptying one of the component's own playlists",
+            [role](const AnswerPtr<PlaylistResult>& answer) {
+                beginEmptyOwnPlaylist(role, answer);
             },
             playlistFailure(PlaylistOutcome::timedOut),
             playlistFailure(PlaylistOutcome::playerRefused));

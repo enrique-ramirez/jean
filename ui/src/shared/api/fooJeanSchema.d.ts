@@ -246,7 +246,15 @@ export interface paths {
          *     The read-only-playlists setting never refuses this operation: it protects a user's own playlists, and neither of the component's own holds any.
          */
         post: operations["fillOwnPlaylist"];
-        delete?: never;
+        /**
+         * Take every row out of one of the component's own playlists, keeping the playlist.
+         * @description Removes every item rather than the playlist itself, the same guard a replacing fill of `scratch` already keeps: deleting a playlist the play queue points into kills foobar2000. The playlist keeps its id, its position and beefweb's id for it.
+         *
+         *     Idempotent: a role with no playlist yet is not made one just to answer this, and reports success regardless, exactly as `DELETE /stream/hold` reports success whether or not there was a hold to release.
+         *
+         *     The read-only-playlists setting never refuses this operation, for the reason it never refuses a fill of either role: neither holds any of the user's music.
+         */
+        delete: operations["emptyOwnPlaylist"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1837,6 +1845,36 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["FillUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    emptyOwnPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Which of the component's own playlists to fill. `scratch` is emptied first, so the insert leaves it holding only this request's rows; `queue` is never emptied, and the insert appends after whatever it already holds. Neither is reached by the read-only-playlists setting: both are how this component works, not the user's music. A `role` outside these two is a `400`.
+                 * @example scratch
+                 */
+                role: "scratch" | "queue";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Emptied, or already empty because there was nothing to empty. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["PlaylistRefused"];
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };

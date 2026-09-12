@@ -119,6 +119,10 @@ export const drives: Drive[] = [
 		}),
 	},
 	{
+		id: "emptyOwnPlaylist",
+		probe: () => ({ pathParams: { role: "scratch" } }),
+	},
+	{
 		// Same refusal, and the id is one nobody issued, so a `404` is at least as likely as the
 		// `409` -- either way this inserts nothing, which is the point.
 		id: "fillPlaylist",

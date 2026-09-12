@@ -643,6 +643,9 @@ export function createState({
 		>(),
 		libraryTracks,
 		libraryFeed: state.libraryFeed,
+		// The order `GET /library/export` numbers ordinals in. The one comparator both
+		// the export and a fill resolve ordinals against, so the two cannot drift.
+		ordinalOrder,
 		get playlists() {
 			return state.playlists;
 		},

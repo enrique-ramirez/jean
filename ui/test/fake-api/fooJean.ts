@@ -1,8 +1,10 @@
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { ArtworkServer } from "./routes.ts";
-import type { createState, Track } from "./state.ts";
+import type { createState, FakePlaylist, Track } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
+
+type OwnPlaylistRole = "scratch" | "queue";
 
 export interface FooJeanOptions {
 	listening?: boolean;
@@ -42,6 +44,12 @@ export interface FooJeanOptions {
 	libraryEnabled?: boolean;
 	failCreate?: number | null;
 
+	// `writePlaylists` in `config.json`. `false` refuses a fill by GUID; the
+	// component's own two playlists stay writable regardless. `"absent"` is a
+	// component predating the field: `GET /api/capabilities` reports nothing,
+	// and a client must read that absence as writable, so it behaves as `true`.
+	canWritePlaylists?: boolean | "absent";
+
 	canStream?: boolean;
 	// Best first, as the component reports it. An install whose Windows has no AAC
 	// encoder reports `opus` alone.
@@ -71,10 +79,15 @@ export interface FooJeanOptions {
 export interface FooJeanFake extends Required<Omit<FooJeanOptions, "port">> {
 	port: number | null;
 	installed: boolean;
+	// Which internal playlist a role currently resolves to. Never test-seeded: a
+	// role has no playlist until a fill asks for one, exactly as the component
+	// makes neither at startup.
+	ownPlaylists: Partial<Record<OwnPlaylistRole, string>>;
 }
 
 const DEFAULTS: FooJeanFake = {
 	installed: false,
+	ownPlaylists: {},
 	listening: true,
 	error: "",
 	portInUse: false,
@@ -109,12 +122,16 @@ const DEFAULTS: FooJeanFake = {
 	autoPlaylists: [],
 	libraryEnabled: true,
 	failCreate: null,
+	canWritePlaylists: true,
 };
 
 export const fooJeanState = (options: FooJeanOptions | null): FooJeanFake => ({
 	...DEFAULTS,
 	installed: options !== null,
 	...options,
+	// Fresh every call: `DEFAULTS` is one module-level object, and copying its
+	// `ownPlaylists` reference would let every fake in the process share it.
+	ownPlaylists: {},
 });
 
 export const discoveryRecord = (fake: FooJeanFake, listeningPort: number) => {
@@ -367,6 +384,228 @@ const NOT_BUILT = {
 	error: "the library snapshot has not been built yet",
 	detail: "",
 };
+
+const STRUCTURE_MOVED = {
+	error: "tracks were added or removed; export the library again",
+	detail: "",
+};
+
+const WRITES_DISABLED = {
+	error:
+		"this install has playlist writes turned off; turn on writePlaylists in config.json to allow them",
+	detail: "",
+};
+
+// foobar2000's own playlist GUID, as the component would mint it. The fake has
+// no real GUIDs to hand out, so it derives one from a playlist's current index,
+// exactly as `/api/playlists` already reported it before this existed.
+const guidFor = (index: number) =>
+	`00000000-0000-0000-0000-${String(index).padStart(12, "0")}`;
+
+const GUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+type FillFailure = { status: number; body: { error: string; detail: string } };
+
+const fillFailure = (
+	status: number,
+	error: string,
+	detail = "",
+): FillFailure => ({ status, body: { error, detail } });
+
+const isNonNegInt = (value: unknown): value is number =>
+	Number.isInteger(value) && (value as number) >= 0;
+
+const isRunPair = (value: unknown): value is [number, number] =>
+	Array.isArray(value) &&
+	value.length === 2 &&
+	isNonNegInt(value[0]) &&
+	isNonNegInt(value[1]);
+
+type ParsedFill =
+	| { ok: true; title?: string; structure: number; ordinals: number[] }
+	| ({ ok: false } & FillFailure);
+
+// The inverse of `encodeFill` in `../../src/shared/api/fooJean.ts`: the three
+// forms it can emit, decoded back to the ordinals they named.
+function parseFill(
+	body: unknown,
+	{ requireTitle, trackCount }: { requireTitle: boolean; trackCount: number },
+): ParsedFill {
+	if (typeof body !== "object" || body === null)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"malformed request",
+				"the body did not parse as JSON",
+			),
+		};
+
+	const record = body as Record<string, unknown>;
+	const allowed = new Set([
+		"structure",
+		"runs",
+		"bitset",
+		"ordinals",
+		...(requireTitle ? ["title"] : []),
+	]);
+	const stray = Object.keys(record).find((key) => !allowed.has(key));
+	if (stray)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"malformed request",
+				`'${stray}' is not a field this route accepts`,
+			),
+		};
+
+	let title: string | undefined;
+	if (requireTitle) {
+		if (typeof record.title !== "string" || record.title.length === 0)
+			return {
+				ok: false,
+				...fillFailure(400, "unacceptable title", "'title' is required"),
+			};
+		title = record.title;
+	}
+
+	if (!Number.isInteger(record.structure))
+		return {
+			ok: false,
+			...fillFailure(400, "malformed request", "'structure' is required"),
+		};
+
+	const forms = (["runs", "bitset", "ordinals"] as const).filter(
+		(key) => record[key] !== undefined,
+	);
+	if (forms.length !== 1)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"unacceptable ordinal set",
+				forms.length === 0
+					? "one of 'runs', 'bitset' or 'ordinals' is required"
+					: `'${forms[0]}' and '${forms[1]}' were both present; send exactly one`,
+			),
+		};
+
+	const [form] = forms;
+	let ordinals: number[];
+
+	if (form === "ordinals") {
+		const asked = record.ordinals;
+		if (!Array.isArray(asked) || !asked.every(isNonNegInt))
+			return {
+				ok: false,
+				...fillFailure(
+					400,
+					"unacceptable ordinal set",
+					"'ordinals' must be a list of non-negative integers",
+				),
+			};
+		ordinals = asked;
+	} else if (form === "runs") {
+		const asked = record.runs;
+		if (!Array.isArray(asked) || !asked.every(isRunPair))
+			return {
+				ok: false,
+				...fillFailure(
+					400,
+					"unacceptable ordinal set",
+					"'runs' must be a list of [start, count] pairs",
+				),
+			};
+		ordinals = asked
+			.flatMap(([start, count]) =>
+				Array.from({ length: count }, (_, at) => start + at),
+			)
+			.sort((a, b) => a - b);
+	} else {
+		const asked = record.bitset;
+		if (typeof asked !== "string")
+			return {
+				ok: false,
+				...fillFailure(
+					400,
+					"unacceptable ordinal set",
+					"'bitset' must be base64",
+				),
+			};
+		let bytes: Uint8Array;
+		try {
+			bytes = Uint8Array.from(atob(asked), (char) => char.charCodeAt(0));
+		} catch {
+			return {
+				ok: false,
+				...fillFailure(
+					400,
+					"unacceptable ordinal set",
+					"'bitset' is not valid base64",
+				),
+			};
+		}
+		ordinals = [];
+		for (let byte = 0; byte < bytes.length; byte += 1)
+			for (let bit = 0; bit < 8; bit += 1)
+				if (bytes[byte] & (1 << bit)) ordinals.push(byte * 8 + bit);
+	}
+
+	const outOfRange = ordinals.find((ordinal) => ordinal >= trackCount);
+	if (outOfRange !== undefined)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"unacceptable ordinal set",
+				`ordinal ${outOfRange} is outside a library of ${trackCount} tracks`,
+			),
+		};
+
+	return { ok: true, title, structure: record.structure as number, ordinals };
+}
+
+const requirePlaylist = (state: FakeState, id: string): FakePlaylist => {
+	const playlist = state.playlistById(id);
+	if (!playlist)
+		throw new Error(
+			`fake fooJean: lost playlist ${id} immediately after creating it`,
+		);
+	return playlist;
+};
+
+// Applies `title` on every call, whether this is what makes the playlist for
+// `role` or finds one already there, so a retitle from one fill to the next is
+// the same call that fills it. Keyed on the role rather than on the title, so a
+// playlist renamed at the player is still found.
+function resolveOwnPlaylist(
+	state: FakeState,
+	fake: FooJeanFake,
+	role: OwnPlaylistRole,
+	title: string,
+): FakePlaylist {
+	const existingId = fake.ownPlaylists[role];
+	if (existingId && state.playlistById(existingId)) {
+		state.renamePlaylist(existingId, title);
+		return requirePlaylist(state, existingId);
+	}
+	const made = state.addPlaylist(title);
+	fake.ownPlaylists[role] = made.id;
+	return requirePlaylist(state, made.id);
+}
+
+function insertTracks(
+	playlist: FakePlaylist,
+	tracks: Track[],
+	{ replace }: { replace: boolean },
+): number[] {
+	if (replace) playlist.items = [];
+	const start = playlist.items.length;
+	playlist.items.push(...tracks);
+	return tracks.map((_, at) => start + at);
+}
 
 const libraryStateOf = (state: FakeState) => {
 	const { structure, revision, columns } = state.libraryFeed;
@@ -647,11 +886,15 @@ export async function handleAgent({
 			allowedFields: fake.allowedFields,
 			canWrite: fake.allowedFields.length > 0,
 			maxAutoPlaylists: fake.maxAutoPlaylists,
-			canCreateAutoPlaylists: fake.maxAutoPlaylists > 0,
+			canCreateAutoPlaylists:
+				fake.canWritePlaylists !== false && fake.maxAutoPlaylists > 0,
 			canReadLibrary: fake.canReadLibrary,
 			canStream: fake.canStream && fake.streamFormats.length > 0,
 			canMuteWhileStreaming: fake.canMuteWhileStreaming,
 			...(fake.canStream ? { streamFormats: fake.streamFormats } : null),
+			...(fake.canWritePlaylists === "absent"
+				? null
+				: { canWritePlaylists: fake.canWritePlaylists }),
 		});
 	}
 
@@ -673,13 +916,119 @@ export async function handleAgent({
 	if (path === "/api/playlists") {
 		return json(response, {
 			playlists: state.playlists.map((playlist, index) => ({
-				id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
+				id: guidFor(index),
 				beefwebId: playlist.id,
 				index,
 				title: playlist.title,
 				isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
 				managed: null,
 			})),
+		});
+	}
+
+	const ownFillMatch = /^\/api\/playlists\/own\/([^/]+)\/items$/.exec(path);
+	if (method === "POST" && ownFillMatch) {
+		const role = ownFillMatch[1];
+		if (role !== "scratch" && role !== "queue")
+			return json(
+				response,
+				{
+					error: "malformed request",
+					detail: `'${role}' is not a role this component knows`,
+				},
+				400,
+			);
+
+		if (!fake.canReadLibrary)
+			return json(
+				response,
+				{ error: "the media library is not available" },
+				503,
+			);
+		if (state.libraryFeed.columns.length === 0)
+			return json(response, NOT_BUILT, 503);
+
+		const parsed = parseFill(body, {
+			requireTitle: true,
+			trackCount: state.libraryTracks.length,
+		});
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
+
+		// Made or found before the structure is checked: the same order the
+		// component takes, so a fill refused for a stale structure can still leave
+		// the component's own playlist behind.
+		const playlist = resolveOwnPlaylist(state, fake, role, parsed.title ?? "");
+
+		if (parsed.structure !== state.libraryFeed.structure)
+			return json(response, STRUCTURE_MOVED, 409);
+
+		const tracks = state.ordinalOrder();
+		const positions = insertTracks(
+			playlist,
+			parsed.ordinals.map((ordinal) => tracks[ordinal].track),
+			{ replace: role === "scratch" },
+		);
+		state.notifyPlaylists();
+
+		return json(response, {
+			playlistId: guidFor(state.playlists.indexOf(playlist)),
+			beefwebId: playlist.id,
+			positions,
+		});
+	}
+
+	const idFillMatch = /^\/api\/playlists\/([^/]+)\/items$/.exec(path);
+	if (method === "POST" && idFillMatch) {
+		const guid = idFillMatch[1];
+
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+
+		if (!GUID_PATTERN.test(guid))
+			return json(
+				response,
+				{
+					error: "unacceptable playlist id",
+					detail: `'${guid}' is not a playlist id this component issued`,
+				},
+				400,
+			);
+
+		if (!fake.canReadLibrary)
+			return json(
+				response,
+				{ error: "the media library is not available" },
+				503,
+			);
+		if (state.libraryFeed.columns.length === 0)
+			return json(response, NOT_BUILT, 503);
+
+		const index = state.playlists.findIndex((_, at) => guidFor(at) === guid);
+		if (index < 0)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+		const playlist = state.playlists[index];
+
+		const parsed = parseFill(body, {
+			requireTitle: false,
+			trackCount: state.libraryTracks.length,
+		});
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
+
+		if (parsed.structure !== state.libraryFeed.structure)
+			return json(response, STRUCTURE_MOVED, 409);
+
+		const tracks = state.ordinalOrder();
+		const positions = insertTracks(
+			playlist,
+			parsed.ordinals.map((ordinal) => tracks[ordinal].track),
+			{ replace: false },
+		);
+		state.notifyPlaylists();
+
+		return json(response, {
+			playlistId: guid,
+			beefwebId: playlist.id,
+			positions,
 		});
 	}
 
@@ -715,7 +1064,7 @@ export async function handleAgent({
 		fake.autoPlaylists.push(made.id);
 
 		return json(response, {
-			id: `00000000-0000-0000-0000-${String(state.playlists.length).padStart(12, "0")}`,
+			id: guidFor(state.playlists.length),
 			beefwebId: made.id,
 			index: state.playlists.length - 1,
 			title: made.title,

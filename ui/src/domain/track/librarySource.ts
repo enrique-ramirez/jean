@@ -1,6 +1,5 @@
 import type { QueueTarget } from "@/domain/player/queue";
 import {
-	addFromLibrary,
 	artworkUrl,
 	copyPlaylistItems,
 	fetchLibraryNodes,
@@ -9,7 +8,12 @@ import {
 	libraryPathMatcher,
 	removePlaylistItems,
 } from "@/shared/api/beefweb";
-import { bearer, encodeFill, libraryArtworkUrl } from "@/shared/api/fooJean";
+import {
+	bearer,
+	encodeFill,
+	fetchPlaylistAnnotations,
+	libraryArtworkUrl,
+} from "@/shared/api/fooJean";
 import type { components } from "@/shared/api/fooJeanSchema";
 import type {
 	PlaybackPosition,
@@ -24,6 +28,7 @@ import { componentLibraryKey, playlistSnapshot } from "./playlistStore";
 import type { Refs } from "./project";
 
 type FillOwnPlaylistRequest = components["schemas"]["FillOwnPlaylistRequest"];
+type FillPlaylistRequest = components["schemas"]["FillPlaylistRequest"];
 type FillResult = components["schemas"]["FillResult"];
 
 export interface ResolvedTrack {
@@ -80,13 +85,9 @@ export type LibrarySourceOptions =
 			paths: PathTable;
 			subsongs: Int32Array;
 			artworkOrigin: string | null;
+			token: string | null;
 	  }
 	| { kind: "playlist"; playlistId: string };
-
-// Array.from, never refs.map: refs can be an Int32Array, and mapping one gives back a typed array
-// whose objects coerce to NaN.
-const itemsFor = (paths: PathTable, subsongs: Int32Array, refs: Refs) =>
-	Array.from(refs, (ref) => ({ path: paths.at(ref), subsong: subsongs[ref] }));
 
 // The component resolves `own/scratch` to its own playlist and titles it in the same call that
 // fills it, so there is never a beefweb id to address ahead of time. `structure` is read once,
@@ -117,6 +118,42 @@ const fillScratch =
 
 		const result = (await response.json()) as FillResult;
 		return result.beefwebId;
+	};
+
+// A user's playlist is addressed by foobar2000's own GUID, from `PlaylistAnnotation.id`, which is
+// not the beefweb id this seam is handed. The target already exists and beefweb already knows it, so
+// the join is a plain lookup rather than the lazy-id wait `fetchPlaylistAnnotations` warns about.
+const addToPlaylist =
+	(
+		paths: PathTable,
+		origin: string | null,
+		structure: number,
+		token: string | null,
+	) =>
+	async (targetId: string, refs: Refs): Promise<FillResult> => {
+		if (!origin || !token) throw new Error("foo_jean is not reachable");
+
+		const annotations = await fetchPlaylistAnnotations(origin, token);
+		const guid = annotations?.find((entry) => entry.beefwebId === targetId)?.id;
+		if (!guid)
+			throw new Error(`no foo_jean playlist for beefweb id ${targetId}`);
+
+		const request: FillPlaylistRequest = encodeFill(refs, {
+			structure,
+			trackCount: paths.length,
+		});
+
+		const response = await fetch(`${origin}/api/playlists/${guid}/items`, {
+			method: "POST",
+			headers: { ...bearer(token), "Content-Type": "application/json" },
+			body: JSON.stringify(request),
+		});
+		if (!response.ok)
+			throw new Error(
+				`POST /playlists/${guid}/items failed: ${response.status}`,
+			);
+
+		return (await response.json()) as FillResult;
 	};
 
 const fillByCopy =
@@ -182,10 +219,12 @@ const fromMediaLibrary = ({
 	paths,
 	subsongs,
 	artworkOrigin,
+	token,
 }: {
 	paths: PathTable;
 	subsongs: Int32Array;
 	artworkOrigin: string | null;
+	token: string | null;
 }): LibrarySource => {
 	// Read once, alongside `paths`: both describe the same snapshot, and reading `structure` again
 	// later could see a rebuild `paths` has not, resolving refs against a generation they do not name.
@@ -233,8 +272,7 @@ const fromMediaLibrary = ({
 		fill: fillScratch(paths, artworkOrigin, structure),
 		queueTargets: queueViaHolding(paths, artworkOrigin, structure),
 
-		addTo: (targetId: string, refs: Refs) =>
-			addFromLibrary(targetId, { items: itemsFor(paths, subsongs, refs) }),
+		addTo: addToPlaylist(paths, artworkOrigin, structure, token),
 
 		// Linear, where the playlist source bisects: path order is not ref order.
 		playingPosition: (refs: Refs, track: TrackIdentity | null | undefined) => {

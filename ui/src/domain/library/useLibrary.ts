@@ -27,8 +27,9 @@ export function useLibrary() {
 				paths: library.paths as PathTable,
 				subsongs: library.subsongs as Int32Array,
 				artworkOrigin: origin,
+				token: discovery.token,
 			}),
-		[library.paths, library.subsongs, origin],
+		[library.paths, library.subsongs, origin, discovery.token],
 	);
 
 	return {

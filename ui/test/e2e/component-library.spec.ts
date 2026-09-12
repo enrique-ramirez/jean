@@ -6,6 +6,7 @@ import {
 	openSidebar,
 	type Page,
 	playedFrom,
+	pressAndHold,
 	requestsTo,
 	scratchFills,
 	scratchOf,
@@ -55,6 +56,24 @@ const playlistsRenamed = (player: FakePlayer) =>
 			entry.body?.title !== undefined,
 	);
 
+// The two routes that can put a library row into somebody's playlist, counted
+// side by side so that a failure names which one took it. The component's fill by
+// playlist id is two segments past `/api/playlists/`, where `own/{role}` is three
+// and every beefweb add is four, so the shape belongs to that route alone.
+const addsSent = (player: FakePlayer) => ({
+	component: player.requests.filter(
+		(entry) =>
+			entry.method === "POST" &&
+			/^\/api\/playlists\/[^/]+\/items$/.test(entry.path),
+	).length,
+	beefweb: requestsTo(player, "add-from-library").length,
+});
+
+const titlesIn = (player: FakePlayer, title: string) =>
+	player.playlists
+		.find((entry) => entry.title === title)!
+		.items.map((track) => track["%title%"]);
+
 test.use({ library: { supported: true, enabled: true } });
 
 const openAllMusic = async (page: Page) => {
@@ -63,6 +82,29 @@ const openAllMusic = async (page: Page) => {
 		page.getByRole("heading", { level: 1, name: "All music" }),
 	).toBeVisible();
 	await expect(trackRow(page, 0)).toBeAttached();
+};
+
+const FAVORITES = "Favorites";
+
+const menuItem = (page: Page, name: string) =>
+	page.getByRole("menuitem", { name, exact: true });
+
+const openTrackMenu = async (page: Page, isMobile: boolean, index: number) => {
+	const row = trackRow(page, index);
+	if (isMobile) await pressAndHold(page, row);
+	else await row.click({ button: "right" });
+	await expect(menuItem(page, "Add to playlist")).toBeVisible();
+};
+
+const fileInto = async (
+	page: Page,
+	isMobile: boolean,
+	index: number,
+	title: string,
+) => {
+	await openTrackMenu(page, isMobile, index);
+	await menuItem(page, "Add to playlist").click();
+	await menuItem(page, title).click();
 };
 
 test.describe("the library as one snapshot", () => {
@@ -299,5 +341,69 @@ test.describe("a second view played before the first one has landed", () => {
 		await expectSettlesAt(player, () => playsAsked(player), [3]);
 		expect(scratchOf(player)?.title).toBe("#Jean [all music]");
 		expect(scratchOf(player)?.items).toHaveLength(54);
+	});
+});
+
+test.describe("filing a library row into a playlist of your own", () => {
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+
+	test("goes to the component by playlist id, and adds nothing through beefweb", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openAllMusic(page);
+		const before = titlesIn(player, FAVORITES);
+
+		await fileInto(page, isMobile, 2, FAVORITES);
+
+		await expect(page.getByRole("status")).toContainText(
+			`Added 1 track to ${FAVORITES}`,
+		);
+
+		// The row that was clicked rather than merely a row: a ref is an ordinal in
+		// the component's library order, and beefweb's own add resolves a path
+		// against a library it enumerates in another.
+		const after = titlesIn(player, FAVORITES);
+		expect(after).toHaveLength(before.length + 1);
+		await expect(trackRow(page, 2)).toContainText(after.at(-1) as string);
+
+		await expectSettlesAt(player, () => addsSent(player), {
+			component: 1,
+			beefweb: 0,
+		});
+	});
+
+	test.describe("where the player owner has turned playlist writes off", () => {
+		test.use({ fooJean: { canWritePlaylists: false } });
+
+		// One setting, two answers, decided by whose playlist the fill names. The
+		// queue's holding playlist is the component's own plumbing and holds none of
+		// the user's music, so a setting that stopped a row reaching it would be the
+		// setting doing the wrong thing.
+		test("the row is refused, and the same row still queues", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await openAllMusic(page);
+			const before = titlesIn(player, FAVORITES);
+
+			await fileInto(page, isMobile, 2, FAVORITES);
+
+			await expectSettlesAt(player, () => titlesIn(player, FAVORITES), before);
+
+			// Asked and refused, rather than never asked. A client-side guard would
+			// leave the refusal itself unexercised, and the setting is the player
+			// owner's, held by the component.
+			expect(addsSent(player)).toEqual({ component: 1, beefweb: 0 });
+
+			await openTrackMenu(page, isMobile, 2);
+			await menuItem(page, "Add to queue").click();
+
+			await expect
+				.poll(() => player.playQueue.length, { timeout: 10_000 })
+				.toBe(1);
+		});
 	});
 });

@@ -1,5 +1,6 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	dragFrom,
 	expect,
 	expectSettlesAt,
 	nowPlayingScreen,
@@ -969,6 +970,31 @@ test.describe("a player that will not let Jean make playlists", () => {
 		isMobile,
 	}) => {
 		await expectQueueTakesALibraryRow(page, player, isMobile);
+	});
+
+	// The menu and the drag are two surfaces and they are gated separately.
+	// Queueing a library row writes through the component rather than through
+	// beefweb, so what beefweb permits is not a reason for either one to refuse.
+	test("queues a library row dragged onto the queue", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "drag is mouse-only; touch has the menu");
+		await openAllMusic(page);
+		await expect(trackRow(page, 2)).toBeVisible();
+
+		await dragFrom(page, trackRow(page, 2), queueButton(page));
+		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
+		await page.mouse.up();
+
+		await expect
+			.poll(() => player.playQueue.length, { timeout: 10_000 })
+			.toBe(1);
+		const [queued] = queuedTitles(player);
+		expect(queued).toBeTruthy();
+		await expect(trackRow(page, 2)).toContainText(queued);
+		await expect(queueRows(page)).toHaveCount(1);
 	});
 
 	test("empties the holding playlist at the component, and asks beefweb for nothing", async ({

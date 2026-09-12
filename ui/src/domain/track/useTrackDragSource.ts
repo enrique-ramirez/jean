@@ -29,8 +29,6 @@ export function useTrackDragSource({
 	const { queueTracks } = useQueueTracks();
 
 	return useDragSource<number[]>({
-		disabled: !canChangePlaylists(permissions),
-
 		getPayload: (event) => {
 			const aimed = targetsFrom(event, rows.length, selection);
 			if (!aimed) return null;
@@ -51,7 +49,11 @@ export function useTrackDragSource({
 			};
 		},
 
-		canDrop: (id) => id !== source.playlistId,
+		canDrop: (id) => {
+			if (id === source.playlistId) return false;
+			if (id === QUEUE_DROP_TARGET || queueDropIndex(id) !== null) return true;
+			return canChangePlaylists(permissions);
+		},
 
 		onDrop: (id, payload) => {
 			if (id === QUEUE_DROP_TARGET) {

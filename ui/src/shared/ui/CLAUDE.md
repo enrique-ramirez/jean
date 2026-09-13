@@ -54,6 +54,8 @@ Two primitives, deliberately separate. `useSortableList.ts` reorders a single li
 
 **`HelpHint.tsx` holds a caveat worth having and not worth reading.** The label carries the setting; the hint carries the exception. Reach for it only when the text says something the label does not. It returns a **fragment**, and the head row it sits in must `flex-wrap`. It is deliberately not a popover: an absolutely positioned panel inside a scrolling column is clipped by that scroller.
 
+**A disabled control carries its reason in its own label.** There is no tooltip component and there is not going to be one: a tooltip is a hover, a phone has no hover, and the `title` attribute a browser would fall back on is unreachable by touch and by a screen reader both. So a control that is unavailable says why in the name it already announces, which is the one place every input can read. `columns.unavailable` and `track.queueLimited` are the shape.
+
 **Notifications come from `toastStore.ts`, and only for things you cannot see.** Confirm only what is not already visible. Creating a playlist needs no notification, since the row appears, named, waiting to be renamed. It is a module-level store rather than a context: a provider holding the list would re-render the virtualised track list every time a toast appeared or expired.
 
 **An ask is the shape for the other half of that**: `shared/lib/ask.ts`, a one-shot request raised where the thing that can grant it is not. An ask stands until answered, since what answers it has to arrive or load first.

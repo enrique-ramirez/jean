@@ -5,6 +5,7 @@
 #include "core/audience.h"
 #include "core/library.h"
 #include "core/pairing.h"
+#include "core/player_state.h"
 #include "core/settings.h"
 #include "core/stream.h"
 #include "core/stream_ticket.h"
@@ -88,6 +89,21 @@ struct Player {
     // Which formats openStream will accept, best first. Empty means no streaming.
     std::vector<std::string> streamFormats;
 
+    // Published once through GET /capabilities rather than ridden on every poll, because
+    // none of the five changes while the player runs. An empty playerName or playerVersion,
+    // or an equal volumeMin/volumeMax, is how a null Player{} in a test says it carries no
+    // report; a real one always fills them.
+    std::string playerName;
+    std::string playerVersion;
+    double volumeMin = 0;
+    double volumeMax = 0;
+    std::string volumeUnit;
+
+    // The player's own listing of its playback orders, in its own order. Extensible: a
+    // component can add one, so a name missing from core/playback_modes.h is expected rather
+    // than a defect.
+    std::vector<std::string> playbackOrders;
+
     // Already rendered: the stream clock and the marks agree only at the moment they are
     // read together.
     TimelineReader readTimeline;
@@ -105,11 +121,13 @@ struct Player {
 
 class HttpServer {
 public:
-    // `audience` and `library` outlive the server: a connection unwinds through the first as
-    // it closes, and reads the second from a connection thread. A null `library` is how an
-    // install with the feature off says so, and every library route then answers 503.
+    // `audience`, `library` and `playerState` outlive the server: a connection unwinds through
+    // the first as it closes, and reads the other two from a connection thread. A null
+    // `library` is how an install with the feature off says so, and every library route then
+    // answers 503. A null `playerState` is answered from a stopped default, because a player
+    // report is never optional: GET /state carries one on every 200 it gives.
     HttpServer(Settings settings, Audience& audience, Player player = {}, TicketMint mint = {},
-               Library* library = nullptr);
+               Library* library = nullptr, PlayerStateStore* playerState = nullptr);
     ~HttpServer();
 
     // Call once.

@@ -45,9 +45,12 @@ constexpr auto kRefreshRefill = std::chrono::seconds(30);
 constexpr int kArtworkBurst = 300;
 constexpr auto kArtworkRefill = std::chrono::milliseconds(50);
 
+constexpr int kPollBurst = 30;
+constexpr auto kPollRefill = std::chrono::milliseconds(100);
+
 constexpr char kPairPath[] = "/api/pair";
 constexpr char kArtworkPath[] = "/api/artwork";
-constexpr char kLibraryPath[] = "/api/library";
+constexpr char kStatePath[] = "/api/state";
 constexpr char kLibraryExportPath[] = "/api/library/export";
 constexpr char kLibraryChangesPath[] = "/api/library/changes";
 constexpr char kLibraryRefreshPath[] = "/api/library/refresh";
@@ -61,6 +64,8 @@ constexpr char kNoOwnPlaylists[] = "the component's own playlists are not availa
 constexpr char kLibraryTooLarge[] = "the library snapshot is larger than this component sends";
 
 constexpr char kRefreshingTooFast[] = "too many library refreshes";
+
+constexpr char kPollingTooFast[] = "too many state polls";
 
 constexpr char kNoArtwork[] = "artwork is not available";
 
@@ -95,8 +100,9 @@ std::string quoted(const std::string& tag) {
     return "\"" + tag + "\"";
 }
 
-std::string generationsOf(const Library::State& state) {
-    return "s" + std::to_string(state.structure) + "-r" + std::to_string(state.revision);
+std::string generationsOf(const Library::State& state, uint64_t playerVersion = 0) {
+    return "s" + std::to_string(state.structure) + "-r" + std::to_string(state.revision) +
+           "-p" + std::to_string(playerVersion);
 }
 
 // cpp-httplib evaluates If-None-Match for its own file handler alone, so a route serving
@@ -345,11 +351,13 @@ void reportFailuresWithoutLeaking(httplib::Server& server) {
 }  // namespace
 
 struct HttpServer::Impl {
-    Impl(Settings s, Audience& a, Player p, TicketMint mint, Library* lib)
+    Impl(Settings s, Audience& a, Player p, TicketMint mint, Library* lib,
+        PlayerStateStore* state)
         : settings(std::move(s)),
           audience(a),
           player(std::move(p)),
           library(lib),
+          playerState(state),
           tickets(std::move(mint), std::chrono::seconds(settings.streamTicketTtlSeconds),
                   kMaxOutstandingTickets) {}
 
@@ -357,6 +365,7 @@ struct HttpServer::Impl {
     Audience& audience;
     const Player player;
     Library* const library;
+    PlayerStateStore* const playerState;
     httplib::Server server;
     std::thread thread;
     std::atomic<bool> stopping{false};
@@ -369,6 +378,8 @@ struct HttpServer::Impl {
     RateLimiter libraryRebuilds{kRefreshBurst, kRefreshRefill};
 
     RateLimiter artworkReads{kArtworkBurst, kArtworkRefill};
+
+    PerClientRateLimiter statePolls{kPollBurst, kPollRefill};
 
     // An export names the columns it wants and this is what it named, so a later rebuild,
     // whether from the player noticing a change or from POST /library/refresh, reproduces the
@@ -691,7 +702,7 @@ struct HttpServer::Impl {
     }
 
     // The set asked for is not the one that is ready. Say what is ready, start building what
-    // was asked for, and let the client poll GET /library. A set already declared is already
+    // was asked for, and let the client poll GET /state. A set already declared is already
     // being built, so it is answered without asking the player a second time.
     void startBuilding(httplib::Response& res, const std::vector<std::string>& columns,
                        const Library::State& state) {
@@ -711,16 +722,33 @@ struct HttpServer::Impl {
         respond(res, 202, libraryDocument(state));
     }
 
-    void addLibraryRoutes() {
-        server.Get(kLibraryPath, [this](const httplib::Request& req, httplib::Response& res) {
-            if (!library) {
-                respond(res, 503, errorDocument(kNoLibrary));
-                return;
-            }
+    bool pollingTooFast(httplib::Response& res, const std::string& client) {
+        if (statePolls.allow(client, std::chrono::steady_clock::now()))
+            return false;
 
-            const auto state = library->state();
-            sendIfChanged(req, res, generationsOf(state), "application/json",
-                          [&state] { return libraryDocument(state); });
+        res.set_header("Retry-After", "1");
+        respond(res, 429, errorDocument(kPollingTooFast));
+        return true;
+    }
+
+    void addLibraryRoutes() {
+        server.Get(kStatePath, [this](const httplib::Request& req, httplib::Response& res) {
+            // cpp-httplib gives one pooled thread the whole life of a socket, not just one
+            // request on it, so a poller left on keep-alive would hold that thread idle
+            // between ticks; closing the connection here frees it for the next client instead.
+            res.set_header("Connection", "close");
+
+            if (pollingTooFast(res, req.remote_addr))
+                return;
+
+            const auto state = library ? library->state() : Library::State{};
+            const auto published =
+                playerState ? playerState->read() : PlayerStateStore::Published{};
+            sendIfChanged(req, res, generationsOf(state, published.version), "application/json",
+                          [&state, &published] {
+                              return stateDocument(state, published.state,
+                                                   std::chrono::steady_clock::now());
+                          });
         });
 
         server.Get(kLibraryExportPath, [this](const httplib::Request& req, httplib::Response& res) {
@@ -1166,9 +1194,9 @@ struct HttpServer::Impl {
 };
 
 HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint,
-                       Library* library)
+                       Library* library, PlayerStateStore* playerState)
     : impl_(std::make_unique<Impl>(std::move(settings), audience, std::move(player),
-                                   std::move(mint), library)) {}
+                                   std::move(mint), library, playerState)) {}
 
 HttpServer::~HttpServer() {
     stop();
@@ -1201,7 +1229,10 @@ ListenerStatus HttpServer::start() {
         respond(
             res, 200,
             capabilitiesDocument(impl.settings, impl.player.streamFormats,
-                                 impl.player.releaseOutput != nullptr, impl.library != nullptr));
+                                 impl.player.releaseOutput != nullptr, impl.library != nullptr,
+                                 impl.player.playerName, impl.player.playerVersion,
+                                 impl.player.volumeMin, impl.player.volumeMax,
+                                 impl.player.volumeUnit, impl.player.playbackOrders));
     });
 
     impl.addTagRoutes();

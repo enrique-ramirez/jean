@@ -17,6 +17,16 @@ Settings servingSettingsAllowing(std::vector<std::string> fields) {
     return settings;
 }
 
+Player servingPlayer() {
+    Player player;
+    player.playerName = "foobar2000";
+    player.playerVersion = "2.25.3";
+    player.volumeMin = -100;
+    player.volumeMax = 0;
+    player.volumeUnit = "db";
+    return player;
+}
+
 ListenerStatus listeningStatus() {
     ListenerStatus status;
     status.listening = true;

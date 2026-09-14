@@ -5,12 +5,14 @@
 #include "core/library.h"
 #include "core/log.h"
 #include "core/output_hold.h"
+#include "core/player_state.h"
 #include "core/version.h"
 #include "fb2k/advertise.h"
 #include "fb2k/config_file.h"
 #include "fb2k/library.h"
 #include "fb2k/main_thread.h"
 #include "fb2k/paths.h"
+#include "fb2k/playback_watch.h"
 #include "fb2k/player_mute.h"
 #include "fb2k/playlists.h"
 #include "fb2k/running_server.h"
@@ -80,6 +82,20 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
         player.releaseOutput = [&outputHold] { outputHold.release(); };
     }
 
+    // Static for the life of the process, so read once here rather than on every capabilities
+    // request. The foobar2000 SDK documents playback_control's volume as dB against full
+    // scale, with 0 the ceiling and volume_mute the floor.
+    const auto version = core_version_info_v2::get();
+    player.playerName = version->get_name();
+    player.playerVersion = version->get_version_as_text();
+    player.volumeMin = playback_control::volume_mute;
+    player.volumeMax = 0;
+    player.volumeUnit = "db";
+
+    const auto playlists = playlist_manager::get();
+    for (t_size index = 0; index < playlists->playback_order_get_count(); ++index)
+        player.playbackOrders.emplace_back(playlists->playback_order_get_name(index));
+
     return player;
 }
 
@@ -97,9 +113,10 @@ public:
           outputHold_(audience_, playerMuteVia(mainThread_), holdsOutput_),
           volumeWatch_(holdsOutput_ ? std::make_unique<PlayerVolumeWatch>(outputHold_) : nullptr),
           libraryFeed_(mainThread_, library_),
+          playbackWatch_(playerState_, outputHold_),
           server_(settings_, audience_,
                   playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_),
-                  generateToken, libraryFeed_.enabled() ? &library_ : nullptr),
+                  generateToken, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_),
           status_(server_.start()) {
         if (status_.listening) {
             logInfo("listening on " + settings_.bindAddress + ":" + std::to_string(settings_.port));
@@ -142,6 +159,8 @@ private:
     std::unique_ptr<PlayerVolumeWatch> volumeWatch_;
     Library library_;
     LibraryFeed libraryFeed_;
+    PlayerStateStore playerState_;
+    PlaybackWatch playbackWatch_;
     HttpServer server_;
     const ListenerStatus status_;
 };

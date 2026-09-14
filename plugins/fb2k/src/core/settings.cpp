@@ -156,6 +156,7 @@ Settings parseSettings(const std::string& text) {
     keys.readList("allowedFields", settings.allowedFields);
     keys.read("maxAutoPlaylists", settings.maxAutoPlaylists);
     keys.read("writePlaylists", settings.writePlaylists);
+    keys.read("changeOutput", settings.changeOutput);
     keys.read("opusBitrate", settings.opusBitrate);
     keys.read("aacBitrate", settings.aacBitrate);
     keys.read("streamingEnabled", settings.streamingEnabled);
@@ -180,6 +181,7 @@ std::string serialiseSettings(const Settings& settings) {
                     {"allowedFields", settings.allowedFields},
                     {"maxAutoPlaylists", settings.maxAutoPlaylists},
                     {"writePlaylists", settings.writePlaylists},
+                    {"changeOutput", settings.changeOutput},
                     {"opusBitrate", settings.opusBitrate},
                     {"aacBitrate", settings.aacBitrate},
                     {"streamingEnabled", settings.streamingEnabled},

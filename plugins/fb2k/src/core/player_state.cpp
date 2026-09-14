@@ -1,0 +1,93 @@
+#include "core/player_state.h"
+
+#include <utility>
+
+namespace jean {
+
+using std::chrono::duration;
+using std::chrono::steady_clock;
+
+bool operator==(const PlayerState& a, const PlayerState& b) {
+    return a.playback == b.playback && a.path == b.path && a.subsong == b.subsong &&
+           a.position.seconds == b.position.seconds && a.position.taken == b.position.taken &&
+           a.duration == b.duration && a.volume == b.volume && a.muted == b.muted &&
+           a.playbackMode == b.playbackMode;
+}
+
+void PlayerStateStore::publish(PlayerState state) {
+    const std::lock_guard<std::mutex> held(mutex_);
+    applyLocked(std::move(state));
+}
+
+PlayerStateStore::Published PlayerStateStore::read() const {
+    const std::lock_guard<std::mutex> held(mutex_);
+    return {version_, state_};
+}
+
+void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.playback = PlaybackState::playing;
+    next.path = std::move(track.path);
+    next.subsong = track.subsong;
+    next.duration = track.duration;
+    next.position = {0, now};
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::paused(steady_clock::time_point now) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    // Anything but playing returns early: a repeated pause must not add the run since the
+    // last mark twice and jump the trackbar forward.
+    if (state_.playback != PlaybackState::playing)
+        return;
+
+    PlayerState next = state_;
+    next.playback = PlaybackState::paused;
+    next.position.seconds += duration<double>(now - state_.position.taken).count();
+    next.position.taken = now;
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::resumed(steady_clock::time_point now) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    // Symmetric with paused(): a resume that is not leaving a pause would move the mark to
+    // `now` without carrying the position through anything, which is the same double-count
+    // paused() guards against.
+    if (state_.playback != PlaybackState::paused)
+        return;
+
+    PlayerState next = state_;
+    next.playback = PlaybackState::playing;
+    next.position.taken = now;
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::stopped() {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.playback = PlaybackState::stopped;
+    next.path.clear();
+    next.subsong = 0;
+    next.duration = 0;
+    next.position = PositionMark{};
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::applyLocked(PlayerState next) {
+    if (next == state_)
+        return;
+
+    state_ = std::move(next);
+    ++version_;
+}
+
+}  // namespace jean

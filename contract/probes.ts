@@ -39,11 +39,11 @@ export const drives: Drive[] = [
 	{ id: "getCapabilities", probe: () => ({}) },
 	{ id: "getPlaylists", probe: () => ({}) },
 	{
-		id: "getLibrary",
+		id: "getState",
 		probe: () => ({}),
 		learns: (body, context) => {
-			const state = body as { revision?: number };
-			context.revision = state.revision ?? null;
+			const state = body as { library?: { revision?: number } };
+			context.revision = state.library?.revision ?? null;
 		},
 	},
 	{

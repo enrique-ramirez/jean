@@ -2,6 +2,7 @@
 
 #include "core/api.h"
 #include "core/audience.h"
+#include "core/http_server.h"
 #include "core/settings.h"
 #include "core/stream_ticket.h"
 
@@ -38,6 +39,13 @@ constexpr char kRatingWritePath[] = R"(F:\foo_jean-test\sample.mp3)";
 
 // A configuration that would serve: a legal token, every other default left alone.
 Settings servingSettings();
+
+// The report a real player always carries: its name, its version and its volume range.
+// A default-constructed Player{} leaves these empty, which is right for a test asserting
+// that a feature is off by default, and wrong for a route that promises never to answer
+// an empty playerName or playerVersion. Every other callback stays null, exactly as
+// Player{} leaves it.
+Player servingPlayer();
 
 // The same, with the write allowlist widened past its default of rating alone.
 Settings servingSettingsAllowing(std::vector<std::string> fields);

@@ -6,16 +6,21 @@
 
 #include "core/http_server.h"
 #include "core/library.h"
+#include "core/player_state.h"
+#include "core/text.h"
 #include "support/spec.h"
 #include "support/test_server.h"
 #include "support/wire.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace jean;
@@ -32,6 +37,10 @@ constexpr char kExport[] = "/api/library/export?columns=%25title%25&columns=%25p
 
 TestServer serving(Library* library, const Player& player = {}) {
     return TestServer(servingSettings(), player, library);
+}
+
+TestServer serving(Library* library, PlayerStateStore* playerState) {
+    return TestServer(servingSettings(), Player{}, library, countingMint(), playerState);
 }
 
 httplib::Result getHolding(const TestServer& server, const std::string& path,
@@ -73,6 +82,23 @@ void fillPastTheCap(Library& library) {
     library.replace(builder.finish());
 }
 
+// A player halfway through a track, with its position marked well in the past so that a
+// component reporting where playback would be now rather than where the mark was taken would
+// report a different number on every poll.
+PlayerState playing() {
+    constexpr std::chrono::seconds kMarkAge{30};
+
+    PlayerState state;
+    state.playback = PlaybackState::playing;
+    state.path = R"(X:\music\one.flac)";
+    state.position.seconds = 42.5;
+    state.position.taken = std::chrono::steady_clock::now() - kMarkAge;
+    state.duration = 210;
+    state.volume = -6;
+    state.playbackMode = "repeatAll";
+    return state;
+}
+
 uint64_t playOne(Library& library, const std::string& count) {
     return library.apply({{0, {"Artist/Album/", "01.flac", "0", "One", count}}});
 }
@@ -86,6 +112,78 @@ bool variesOnEncoding(const httplib::Response& response) {
     }
 
     return false;
+}
+
+// The budget the poll is given: a burst of thirty, one token back every hundred milliseconds. A
+// client polling at its interval never spends it; a client in a loop does.
+constexpr int kPollBurst = 30;
+
+// Enough polls past the burst that a machine slow enough to earn tokens back while the loop runs
+// still reaches the refusal, since refilling through all of them would take seconds.
+constexpr int kPollsPastTheBudget = 30;
+
+constexpr char kOrigin[] = "https://jean.example";
+
+httplib::Headers bearerFrom(const char* origin) {
+    auto headers = TestServer::bearer();
+    headers.emplace("Origin", origin);
+    return headers;
+}
+
+// Polls until the bucket is empty and answers with the refusal a client meets, so a case about
+// the shape of that refusal does not restate the burst that provokes it.
+std::optional<httplib::Response> pollPastTheBudget(
+    httplib::Client& client, const httplib::Headers& headers = TestServer::bearer()) {
+    for (int attempt = 0; attempt < kPollBurst + kPollsPastTheBudget; attempt++) {
+        const auto response = client.Get("/api/state", headers);
+        if (response && response->status == 429)
+            return *response;
+    }
+
+    return std::nullopt;
+}
+
+// A client that does not ask to keep its connection is answered `Connection: close` whatever the
+// route decided, because cpp-httplib echoes back the close the client itself sent. httplib::Client
+// sends one by default, so a case about keep-alive has to turn that off or it reads its own header.
+httplib::Client polling(const TestServer& server) {
+    auto client = server.client();
+    client.set_keep_alive(true);
+    return client;
+}
+
+// RFC 9112 section 9.6: a client reading the `close` connection option sends nothing further on
+// that connection. It is the only thing in a response that ends one, and cpp-httplib puts its own
+// `Keep-Alive` field beside whatever a handler set, so the Connection field is what decides.
+bool endsTheConnection(const httplib::Response& response) {
+    for (size_t at = 0; at < response.get_header_value_count("Connection"); ++at) {
+        for (const auto& option : splitOn(response.get_header_value("Connection", "", at), ','))
+            if (equalsIgnoringCase(option, "close"))
+                return true;
+    }
+
+    return false;
+}
+
+// One socket answering both stacks, which is how a test reaches the component from two source
+// addresses without an interface alias: 127.0.0.1 arrives as ::ffff:127.0.0.1 and ::1 as itself.
+// cpp-httplib sets IPV6_V6ONLY to 0 on a listening socket unless it is told otherwise.
+TestServer servingBothStacks(Library* library) {
+    Settings settings = servingSettings();
+    settings.bindAddress = "::";
+    return TestServer(std::move(settings), Player{}, library);
+}
+
+httplib::Client overIpv6(const TestServer& server) {
+    httplib::Client client("::1", server.port());
+    client.set_connection_timeout(2, 0);
+    client.set_read_timeout(5, 0);
+    return client;
+}
+
+bool isDelaySeconds(const std::string& value) {
+    return !value.empty() &&
+           std::all_of(value.begin(), value.end(), [](char c) { return c >= '0' && c <= '9'; });
 }
 
 struct BuildLog {
@@ -111,17 +209,153 @@ TEST_CASE("the poll document carries both generations and the set that is ready"
     fill(library);
     const TestServer server = serving(&library);
 
-    const auto response = get(server, "/api/library");
+    const auto response = get(server, "/api/state");
 
     REQUIRE(response);
     CHECK(response->status == 200);
 
-    const auto body = json::parse(response->body);
+    const auto body = json::parse(response->body)["library"];
     CHECK(body["ready"] == true);
     CHECK(body["structure"] == 1);
     CHECK(body["revision"] == 1);
     CHECK(body["trackCount"] == 3);
     CHECK(body["columns"] == json::array({kTitle, kPlays}));
+}
+
+TEST_CASE("the poll document carries what the player is doing beside the library's generations") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    const auto response = get(server, "/api/state");
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+
+    const auto body = json::parse(response->body);
+    CHECK(body.contains("player"));
+
+    REQUIRE(body.contains("library"));
+    CHECK(body["library"] == json{{"ready", true},
+                                  {"structure", 1},
+                                  {"revision", 1},
+                                  {"trackCount", 3},
+                                  {"columns", json::array({kTitle, kPlays})}});
+}
+
+// The first poll of a component that has just started, before a playback callback has fired.
+// A client has to be able to draw "nothing is playing" from it, and a section that is absent or
+// null leaves it nothing to draw from.
+TEST_CASE("a player with nothing playing still answers a player section a client can draw") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    const auto response = get(server, "/api/state");
+
+    REQUIRE(response);
+    const auto body = json::parse(response->body);
+    REQUIRE(body.contains("player"));
+
+    const auto player = body["player"];
+    REQUIRE(player.is_object());
+
+    const std::vector<std::string> published = {"playback", "path",   "subsong", "position",
+                                                "duration", "volume", "muted",   "playbackMode"};
+    for (const std::string& field : published) {
+        INFO("field: ", field);
+        REQUIRE(player.contains(field));
+    }
+
+    CHECK(player["playback"] == "stopped");
+    CHECK(player["path"] == "");
+    CHECK(player["subsong"] == 0);
+    CHECK(player["duration"] == 0);
+    CHECK(player["volume"] == 0);
+    CHECK(player["muted"] == false);
+    CHECK(player["playbackMode"] == nullptr);
+}
+
+// A steady_clock time point means nothing on another machine, so what crosses the wire is how old
+// the mark is when the response is built, and the client adds its own elapsed time to that. The
+// default time point is the clock's epoch, which is the machine's boot on Windows and on macOS,
+// so a mark nobody has taken yet reports an uptime unless the component says there is no age.
+TEST_CASE("the position is a mark with how old it is, never a number the server advanced") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    const auto response = get(server, "/api/state");
+
+    REQUIRE(response);
+    const auto body = json::parse(response->body);
+    REQUIRE(body.contains("player"));
+    REQUIRE(body["player"].contains("position"));
+
+    const auto position = body["player"]["position"];
+    REQUIRE(position.is_object());
+    REQUIRE(position.contains("seconds"));
+    REQUIRE(position.contains("ageSeconds"));
+    CHECK(position["seconds"] == 0);
+
+    // The document is built in microseconds, so anything approaching a second is an uptime.
+    constexpr double kFreshSeconds = 1;
+    const double age = position["ageSeconds"].get<double>();
+    CHECK(age >= 0);
+    CHECK(age < kFreshSeconds);
+}
+
+// A pause and a stop are different things to a person, and a client has to be able to tell them
+// apart from the document rather than by guessing from an empty path.
+TEST_CASE("a paused player publishes the track it is holding, and the document says paused") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    const PlayerState started = playing();
+    store.publish(started);
+    const TestServer server = serving(&library, &store);
+
+    constexpr std::chrono::seconds kRanOnFor{10};
+    store.paused(started.position.taken + kRanOnFor);
+
+    const auto response = get(server, "/api/state");
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto player = json::parse(response->body)["player"];
+    CHECK(player["playback"] == "paused");
+    CHECK(player["path"] == R"(X:\music\one.flac)");
+    CHECK(player["duration"] == 210);
+    CHECK(player["position"]["seconds"].get<double>() ==
+          doctest::Approx(started.position.seconds + kRanOnFor.count()));
+}
+
+TEST_CASE("a stopped player publishes no track, and the document says stopped") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    const TestServer server = serving(&library, &store);
+
+    store.stopped();
+
+    const auto response = get(server, "/api/state");
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto player = json::parse(response->body)["player"];
+    CHECK(player["playback"] == "stopped");
+    CHECK(player["path"] == "");
+    CHECK(player["duration"] == 0);
+    CHECK(player["position"]["seconds"] == 0);
+    CHECK(player["volume"] == -6);
+
+    // The mark goes with the position it dates. One left standing publishes a position of zero
+    // aged by however long the track had been playing, which a client interpolates forward.
+    constexpr double kFreshSeconds = 1;
+    CHECK(player["position"]["ageSeconds"].get<double>() < kFreshSeconds);
 }
 
 // The spine is the component's own rather than something a client declared, so naming it in
@@ -131,10 +365,10 @@ TEST_CASE("the poll document does not report the spine as a column") {
     fill(library);
     const TestServer server = serving(&library);
 
-    const auto response = get(server, "/api/library");
+    const auto response = get(server, "/api/state");
 
     REQUIRE(response);
-    const auto columns = json::parse(response->body)["columns"];
+    const auto columns = json::parse(response->body)["library"]["columns"];
     CHECK(std::find(columns.begin(), columns.end(), "directory") == columns.end());
 }
 
@@ -143,7 +377,7 @@ TEST_CASE("a client that already holds a representation is answered without one"
     fill(library);
     const TestServer server = serving(&library);
 
-    for (const char* path : {"/api/library", kExport}) {
+    for (const char* path : {"/api/state", kExport}) {
         INFO("path: ", path);
 
         const auto first = get(server, path);
@@ -166,7 +400,7 @@ TEST_CASE("a wildcard validator is honoured, as RFC 9110 requires") {
     fill(library);
     const TestServer server = serving(&library);
 
-    const auto response = getHolding(server, "/api/library", "*");
+    const auto response = getHolding(server, "/api/state", "*");
 
     REQUIRE(response);
     CHECK(response->status == 304);
@@ -186,6 +420,102 @@ TEST_CASE("a revision moving invalidates what a client was holding") {
     playOne(library, "5");
 
     const auto again = getHolding(server, kExport, tag);
+    REQUIRE(again);
+    CHECK(again->status == 200);
+    CHECK(again->get_header_value("ETag") != tag);
+}
+
+// The library is left alone throughout, so a 200 here can only have come from the player half of
+// the validator. Every movement gets a subcase, because one that the validator misses strands a
+// client on a stale document until something else moves.
+TEST_CASE("the player moving invalidates what a client was holding") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    const PlayerState started = playing();
+    store.publish(started);
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    PlayerState moved = started;
+
+    SUBCASE("another track starts") {
+        moved.path = R"(X:\music\two.flac)";
+        moved.duration = 185;
+        moved.position.seconds = 0;
+    }
+    SUBCASE("the player is paused") {
+        moved.playback = PlaybackState::paused;
+    }
+    SUBCASE("somebody seeks") {
+        moved.position.seconds = 90;
+    }
+    SUBCASE("the volume moves") {
+        moved.volume = -12;
+    }
+
+    store.publish(moved);
+
+    const auto again = getHolding(server, "/api/state", tag);
+    REQUIRE(again);
+    CHECK(again->status == 200);
+    CHECK(again->get_header_value("ETag") != tag);
+}
+
+// The 304 is what the poll is for, and the position is what threatens it. The mark's age is
+// computed per request, so a validator taken from the document rather than from the two versions
+// makes every poll of a playing player a 200 carrying the whole library section again.
+TEST_CASE("an untouched player stays a 304, however old its position mark is") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    const auto second = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(second);
+    REQUIRE(first->status == 200);
+    REQUIRE(second->status == 200);
+    REQUIRE(first->body != second->body);
+
+    const auto held = getHolding(server, "/api/state", second->get_header_value("ETag"));
+    REQUIRE(held);
+    CHECK(held->status == 304);
+    CHECK(held->body.empty());
+}
+
+// One document carries both halves, so a validator that stopped reporting the library when the
+// player was folded into it would leave every library view stale until the player moved.
+TEST_CASE("either library generation moving invalidates what a client was holding") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    SUBCASE("a track's data changed") {
+        playOne(library, "5");
+    }
+    SUBCASE("the snapshot was rebuilt") {
+        fill(library);
+    }
+
+    const auto again = getHolding(server, "/api/state", tag);
     REQUIRE(again);
     CHECK(again->status == 200);
     CHECK(again->get_header_value("ETag") != tag);
@@ -288,7 +618,7 @@ TEST_CASE("each coding gets its own validator, and every answer says the body de
     fill(library);
     const TestServer server = serving(&library);
 
-    for (const char* path : {"/api/library", kExport}) {
+    for (const char* path : {"/api/state", kExport}) {
         INFO("path: ", path);
 
         const auto packed = undecoding(server).Get(path, accepting("gzip"));
@@ -518,8 +848,12 @@ TEST_CASE("a client too far behind to be patched is told so, and so is one from 
     CHECK(json::parse(ahead->body)["error"] == "no such revision");
 }
 
-TEST_CASE("an install with the library switched off says so on every route") {
-    const TestServer off = serving(nullptr);
+// The player can walk its library here, so each route's own guard is the only thing left to
+// answer 503: one relaxed along with GET /state sends a client an export of nothing, or starts a
+// walk on an install that has no library to walk.
+TEST_CASE("an install with the library switched off says so on every library route") {
+    BuildLog log;
+    const TestServer off = serving(nullptr, building(&log));
 
     const auto unavailable = [](const httplib::Result& answer) {
         REQUIRE(answer);
@@ -527,24 +861,91 @@ TEST_CASE("an install with the library switched off says so on every route") {
         CHECK(json::parse(answer->body)["error"] == "the media library is not available");
     };
 
-    unavailable(get(off, "/api/library"));
     unavailable(get(off, kExport));
     unavailable(get(off, "/api/library/changes?since=1"));
     unavailable(refresh(off));
+    CHECK(log.calls == 0);
+}
+
+// A player with no media library is still a player, and the poll is the only thing telling a
+// client what it is doing. A 200 carrying a stopped player would pass the status code and leave
+// the status bar blank, so the store is driven through a playing track and the section has to
+// report it.
+TEST_CASE("a player with no media library still answers what it is playing") {
+    PlayerStateStore store;
+    const PlayerState started = playing();
+    store.publish(started);
+    const TestServer server = serving(nullptr, &store);
+
+    const auto response = get(server, "/api/state");
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+
+    const auto body = json::parse(response->body);
+    REQUIRE(body.contains("player"));
+
+    const auto player = body["player"];
+    CHECK(player["playback"] == "playing");
+    CHECK(player["path"] == started.path);
+    CHECK(player["position"]["seconds"] == started.position.seconds);
+    CHECK(player["duration"] == started.duration);
+    CHECK(player["volume"] == started.volume);
+    CHECK(player["muted"] == started.muted);
+    CHECK(player["playbackMode"] == *started.playbackMode);
+
+    REQUIRE(body.contains("library"));
+    CHECK(body["library"] == json{{"ready", false},
+                                  {"structure", 0},
+                                  {"revision", 0},
+                                  {"trackCount", 0},
+                                  {"columns", json::array()}});
+}
+
+// Every other validator case fills the library, so this is the one where the player half of the
+// tag is the only half that can move. A component reaching for a generation it has no library to
+// read would hand a client the same tag whatever the player did.
+TEST_CASE("the validator still moves with the player when there is no media library") {
+    PlayerStateStore store;
+    const PlayerState started = playing();
+    store.publish(started);
+    const TestServer server = serving(nullptr, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    const auto untouched = getHolding(server, "/api/state", tag);
+    REQUIRE(untouched);
+    CHECK(untouched->status == 304);
+    CHECK(untouched->body.empty());
+
+    PlayerState moved = started;
+    moved.playback = PlaybackState::paused;
+    store.publish(moved);
+
+    const auto again = getHolding(server, "/api/state", tag);
+    REQUIRE(again);
+    CHECK(again->status == 200);
+    CHECK(again->get_header_value("ETag") != tag);
+    CHECK(json::parse(again->body)["player"]["playback"] == "paused");
 }
 
 // The one state where the routes disagree on purpose: a client declares at the export route
-// and waits at GET /library, and there is nothing yet for a delta to be a delta against.
+// and waits at GET /state, and there is nothing yet for a delta to be a delta against.
 TEST_CASE("a library that has not been built yet is a wait rather than an absence") {
     BuildLog log;
     Library library;
     const TestServer server = serving(&library, building(&log));
 
-    const auto polled = get(server, "/api/library");
+    const auto polled = get(server, "/api/state");
     REQUIRE(polled);
     CHECK(polled->status == 200);
-    CHECK(json::parse(polled->body)["ready"] == false);
-    CHECK(json::parse(polled->body)["structure"] == 0);
+    CHECK(json::parse(polled->body)["library"]["ready"] == false);
+    CHECK(json::parse(polled->body)["library"]["structure"] == 0);
 
     const auto exported = get(server, kExport);
     REQUIRE(exported);
@@ -649,6 +1050,159 @@ TEST_CASE("a client varying the set it declares stops reaching the player too") 
     CHECK(log.calls == kAttempts - refused);
 }
 
+// The poll is the one route a client asks for on a timer, so a client bug turns into a request per
+// millisecond. Rule 5 of CONTRIBUTING.md, *Tests*: answering 429 and not building the document are
+// different promises, and the second is what keeps a looping client off the rest of the component.
+TEST_CASE("a burst of polls past the budget is refused rather than served") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    std::optional<httplib::Response> refusal;
+
+    for (int attempt = 0; attempt < kPollBurst + kPollsPastTheBudget; attempt++) {
+        INFO("poll: ", attempt);
+
+        const auto response = get(server, "/api/state");
+        REQUIRE(response);
+
+        if (attempt < kPollBurst) {
+            CHECK(response->status == 200);
+            continue;
+        }
+
+        if (response->status == 429 && !refusal)
+            refusal = *response;
+    }
+
+    REQUIRE(refusal.has_value());
+    CHECK(refusal->get_header_value("ETag").empty());
+
+    const auto body = json::parse(refusal->body);
+    CHECK_FALSE(body.contains("player"));
+    CHECK_FALSE(body.contains("library"));
+}
+
+// A refusal a client cannot render is a client that stops updating with nothing on screen. It needs
+// three things: a delay it can wait, a reason it can tell from the component's other refusals, and
+// the delay readable from script on another origin, since a browser hands over no other headers.
+TEST_CASE("a refused poll says how long to wait and why, where a browser can read both") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    auto client = server.client();
+    const auto refusal = pollPastTheBudget(client, bearerFrom(kOrigin));
+    REQUIRE(refusal.has_value());
+
+    const auto wait = refusal->get_header_value("Retry-After");
+    INFO("Retry-After: ", wait);
+
+    // RFC 9110 allows an HTTP-date here as well, and the component's other two refusals send
+    // delay-seconds. A client written to read one form cannot read the other.
+    REQUIRE(isDelaySeconds(wait));
+
+    // Zero tells a client to come straight back, which is the loop the budget exists to stop, and a
+    // wait longer than this leaves a poll dead for minutes over a burst that refills in seconds.
+    constexpr int kLongestUsefulWait = 60;
+    const int seconds = std::stoi(wait);
+    CHECK(seconds >= 1);
+    CHECK(seconds <= kLongestUsefulWait);
+
+    CHECK(refusal->get_header_value("Content-Type") == "application/json");
+
+    const auto body = json::parse(refusal->body);
+    REQUIRE(body.contains("error"));
+    REQUIRE(body["error"].is_string());
+    CHECK_FALSE(body["error"].get<std::string>().empty());
+    CHECK(body["error"] != "too many library refreshes");
+    CHECK(body["error"] != "too many artwork requests");
+
+    const auto exposed = refusal->get_header_value("Access-Control-Expose-Headers");
+    INFO("exposed: ", exposed);
+    CHECK(exposed.find("Retry-After") != std::string::npos);
+}
+
+// The reason the bucket is keyed on the source address rather than held once for the route: a phone
+// left looping in a pocket must not stop the laptop in the next room from seeing the player. One
+// socket serves both stacks here, so the two clients arrive on two addresses over a real connection.
+TEST_CASE("a client on another address polls on while one is being refused") {
+    Library library;
+    fill(library);
+    const TestServer server = servingBothStacks(&library);
+    REQUIRE(server.status().listening);
+
+    auto elsewhere = overIpv6(server);
+
+    INFO("the second address is ::1, reached through a dual-stack bind");
+    const auto reachable = elsewhere.Get("/api/state", TestServer::bearer());
+    REQUIRE(reachable);
+    REQUIRE(reachable->status == 200);
+
+    auto looping = server.client();
+    REQUIRE(pollPastTheBudget(looping).has_value());
+
+    const auto unaffected = elsewhere.Get("/api/state", TestServer::bearer());
+    REQUIRE(unaffected);
+    CHECK(unaffected->status == 200);
+
+    const auto stillRefused = looping.Get("/api/state", TestServer::bearer());
+    REQUIRE(stillRefused);
+    CHECK(stillRefused->status == 429);
+}
+
+// cpp-httplib gives one pooled thread the whole life of a socket, keep-alive loop included, so a
+// client polling faster than the keep-alive window holds a thread for as long as it polls, which is
+// the cost the poll was chosen over a subscription to avoid. All three answers a poller meets are
+// here, because a fix on the document alone leaves the two it meets most often idling on a socket.
+TEST_CASE("the answer to a poll ends its connection rather than waiting on it for the next one") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    auto client = polling(server);
+
+    const auto document = client.Get("/api/state", TestServer::bearer());
+    REQUIRE(document);
+    REQUIRE(document->status == 200);
+
+    SUBCASE("the document") {
+        CHECK(endsTheConnection(*document));
+    }
+
+    SUBCASE("the 304 that says nothing moved") {
+        auto headers = TestServer::bearer();
+        headers.emplace("If-None-Match", document->get_header_value("ETag"));
+
+        const auto again = client.Get("/api/state", headers);
+        REQUIRE(again);
+        REQUIRE(again->status == 304);
+        CHECK(endsTheConnection(*again));
+    }
+
+    SUBCASE("the refusal a client polling too fast is sent") {
+        const auto refusal = pollPastTheBudget(client);
+        REQUIRE(refusal.has_value());
+        CHECK(endsTheConnection(*refusal));
+    }
+}
+
+// The connection the poll gives up is the poll's alone. An export is one request in a burst of
+// them, and a client paying a fresh connection for each is what turning keep-alive down across the
+// component would cost every route that asks in bursts.
+TEST_CASE("an export is still answered on a connection a client may ask again on") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    auto client = polling(server);
+    const auto response = client.Get(kExport, TestServer::bearer());
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    CHECK_FALSE(endsTheConnection(*response));
+}
+
 TEST_CASE("no library route answers without a token") {
     Library library;
     fill(library);
@@ -659,7 +1213,7 @@ TEST_CASE("no library route answers without a token") {
         CHECK(answer->status == 401);
     };
 
-    rejected(server.client().Get("/api/library"));
+    rejected(server.client().Get("/api/state"));
     rejected(server.client().Get(kExport));
     rejected(server.client().Get("/api/library/changes?since=1"));
     rejected(server.client().Post("/api/library/refresh", "", "application/json"));
@@ -696,9 +1250,12 @@ TEST_CASE("no library route answers a status contract/openapi.yaml does not docu
         seen[route].insert(response->status);
     };
 
-    note("GET /library", get(server, "/api/library"));
-    note("GET /library", server.client().Get("/api/library"));
-    note("GET /library", get(off, "/api/library"));
+    note("GET /state", get(server, "/api/state"));
+    note("GET /state", server.client().Get("/api/state"));
+    note("GET /state", get(off, "/api/state"));
+
+    for (int attempt = 0; attempt < kPollBurst + kPollsPastTheBudget; ++attempt)
+        note("GET /state", get(server, "/api/state"));
 
     note("GET /library/export", get(off, kExport));
     note("GET /library/export", get(server, "/api/library/export"));
@@ -738,7 +1295,7 @@ TEST_CASE("no library route answers a status contract/openapi.yaml does not docu
     }
 
     for (const auto& route : publishedRoutes()) {
-        if (route.path.rfind("/library", 0) != 0)
+        if (route.path.rfind("/library", 0) != 0 && route.path != "/state")
             continue;
 
         const auto name = route.method + " " + route.path;

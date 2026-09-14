@@ -1,6 +1,7 @@
 #include "core/api.h"
 
 #include "core/json.h"
+#include "core/playback_modes.h"
 #include "core/version.h"
 #include "third_party/json.hpp"
 
@@ -46,6 +47,60 @@ json annotation(const PlaylistAnnotation& playlist) {
                                               {"forceSort", playlist.managed->forceSort}}
                                        : json(nullptr);
     return body;
+}
+
+json libraryFields(const Library::State& state) {
+    return json{{"ready", state.ready},
+                {"structure", state.structure},
+                {"revision", state.revision},
+                {"trackCount", state.trackCount},
+                {"columns", state.columns}};
+}
+
+const char* playbackName(PlaybackState playback) {
+    switch (playback) {
+        case PlaybackState::stopped:
+            return "stopped";
+        case PlaybackState::paused:
+            return "paused";
+        case PlaybackState::playing:
+            return "playing";
+    }
+    return "stopped";
+}
+
+// A steady_clock::time_point means nothing off this machine, so what crosses the wire is how
+// old the mark is rather than the time_point itself; the client adds its own elapsed time to
+// `seconds` from there. `taken` at its default value means no mark has ever been recorded,
+// which reports as no age rather than as the clock's epoch.
+json positionOf(const PositionMark& mark, std::chrono::steady_clock::time_point now) {
+    const bool everTaken = mark.taken.time_since_epoch().count() != 0;
+    const double age =
+        everTaken ? std::chrono::duration<double>(now - mark.taken).count() : 0.0;
+    return json{{"seconds", mark.seconds}, {"ageSeconds", age}};
+}
+
+json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now) {
+    return json{{"playback", playbackName(player.playback)},
+                {"path", player.path},
+                {"subsong", player.subsong},
+                {"position", positionOf(player.position, now)},
+                {"duration", player.duration},
+                {"volume", player.volume},
+                {"muted", player.muted},
+                {"playbackMode",
+                 player.playbackMode ? json(*player.playbackMode) : json(nullptr)}};
+}
+
+// The player's own listing order, kept: a sorted one would tell a client the modes came off a
+// table here rather than off the player it is actually running against.
+std::vector<std::string> playbackModesOf(const std::vector<std::string>& playbackOrders) {
+    std::vector<std::string> modes;
+    for (const auto& order : playbackOrders) {
+        if (auto mode = jeanModeFor(order))
+            modes.push_back(std::move(*mode));
+    }
+    return modes;
 }
 
 FillRequest refuseFill() {
@@ -147,18 +202,28 @@ std::string statusDocument() {
 
 std::string capabilitiesDocument(const Settings& settings,
                                  const std::vector<std::string>& streamFormats,
-                                 bool mutesWhileStreaming, bool servesLibrary) {
+                                 bool mutesWhileStreaming, bool servesLibrary,
+                                 const std::string& playerName, const std::string& playerVersion,
+                                 double volumeMin, double volumeMax, const std::string& volumeUnit,
+                                 const std::vector<std::string>& playbackOrders) {
     const json body{{"apiVersion", kApiVersion},
                     {"allowedFields", settings.allowedFields},
                     {"canWrite", !settings.allowedFields.empty()},
                     {"canWritePlaylists", settings.writePlaylists},
+                    {"canChangeOutput", settings.changeOutput},
                     {"maxAutoPlaylists", settings.maxAutoPlaylists},
                     {"canCreateAutoPlaylists",
                      settings.writePlaylists && settings.maxAutoPlaylists > 0},
                     {"canStream", !streamFormats.empty()},
                     {"streamFormats", streamFormats},
                     {"canMuteWhileStreaming", mutesWhileStreaming},
-                    {"canReadLibrary", servesLibrary}};
+                    {"canReadLibrary", servesLibrary},
+                    {"playerName", playerName},
+                    {"playerVersion", playerVersion},
+                    {"volumeMin", volumeMin},
+                    {"volumeMax", volumeMax},
+                    {"volumeUnit", volumeUnit},
+                    {"playbackModes", playbackModesOf(playbackOrders)}};
     return body.dump();
 }
 
@@ -442,12 +507,12 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
 }
 
 std::string libraryDocument(const Library::State& state) {
-    return json{{"ready", state.ready},
-                {"structure", state.structure},
-                {"revision", state.revision},
-                {"trackCount", state.trackCount},
-                {"columns", state.columns}}
-        .dump();
+    return libraryFields(state).dump();
+}
+
+std::string stateDocument(const Library::State& state, const PlayerState& player,
+                          std::chrono::steady_clock::time_point now) {
+    return json{{"library", libraryFields(state)}, {"player", playerFields(player, now)}}.dump();
 }
 
 std::string libraryRefusedDocument(const LibraryRequest& request) {

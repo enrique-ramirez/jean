@@ -2,11 +2,13 @@
 
 #include "core/audience.h"
 #include "core/library.h"
+#include "core/player_state.h"
 #include "core/playlists.h"
 #include "core/settings.h"
 #include "core/tag_write.h"
 #include "core/timeline.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -31,9 +33,20 @@ std::string statusDocument();
 // `mutesWhileStreaming` is whether this install actually holds the player's output, not
 // whether it was asked to: the setting alone is true on an install with no encoder, where
 // there is nothing to hold and DELETE /stream/hold answers 503.
+//
+// `playerName`, `playerVersion`, `volumeMin`, `volumeMax` and `volumeUnit` are read once from
+// the player and never change while it runs, which is why they ride this document and not the
+// poll: see GET /state's `PlayerState.volume`, which is a bare number in this same range.
+//
+// `playbackOrders` is the player's own listing of its playback orders, in its own order; the
+// document maps each through core/playback_modes.h and keeps the ones that answer, so an order
+// this component has no Jean name for is offered to a client not at all.
 std::string capabilitiesDocument(const Settings& settings,
                                  const std::vector<std::string>& streamFormats,
-                                 bool mutesWhileStreaming, bool servesLibrary);
+                                 bool mutesWhileStreaming, bool servesLibrary,
+                                 const std::string& playerName, const std::string& playerVersion,
+                                 double volumeMin, double volumeMax, const std::string& volumeUnit,
+                                 const std::vector<std::string>& playbackOrders);
 
 std::string streamListenersDocument(const std::vector<AudienceMember>& members, int connections,
                                     int maxConnections, bool playerMuted);
@@ -98,9 +111,17 @@ struct FillRequest {
 FillRequest parseFill(const std::string& body, size_t trackCount,
                       std::optional<uint64_t> expectedStructure, bool allowsTitle = false);
 
-// The small document a client polls for both generations. The snapshot itself is not JSON:
-// core/library.h serialises it, and contract/openapi.yaml describes the bytes.
+// The library section of stateDocument, and what GET /library/export and POST /library/refresh
+// hand back on a 202. The snapshot itself is not JSON: core/library.h serialises it, and
+// contract/openapi.yaml describes the bytes.
 std::string libraryDocument(const Library::State& state);
+
+// The small document a client polls, GET /state's body. The library's five keys ride under
+// `library`, and what the player is doing rides under `player`, always present and never
+// null. `now` is when the response is built, and is what a mark's `ageSeconds` is measured
+// against.
+std::string stateDocument(const Library::State& state, const PlayerState& player,
+                          std::chrono::steady_clock::time_point now);
 
 std::string libraryRefusedDocument(const LibraryRequest& request);
 std::string libraryFailedDocument(DeltaOutcome outcome);

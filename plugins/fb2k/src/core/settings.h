@@ -23,6 +23,10 @@ struct Settings {
 
     bool writePlaylists = true;
 
+    // Reported through GET /capabilities as canChangeOutput. Nothing in this component acts
+    // on it yet: no route reads it back.
+    bool changeOutput = true;
+
     int opusBitrate = 256000;
     int aacBitrate = 192000;
 

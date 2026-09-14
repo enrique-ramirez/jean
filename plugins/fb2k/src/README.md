@@ -9,7 +9,7 @@ Why that boundary exists and what enforces it is [`../ARCHITECTURE.md`](../ARCHI
 
 ## `src/core/`
 
-Nine features are split across the boundary, and each is a pair. Five share a name: `artwork`, `library`, `log`, `playlists` and `preferences`. Four do not: `settings` against `config_file`, `tag_write` against `tag_writer`, `stream` against `streamer`, and `output_hold` against `player_mute`. The `core/` half decides and the `fb2k/` half asks the player, so a question about whether something is *permitted* is answered here and a question about what the player *did* is answered there.
+Ten features are split across the boundary, and each is a pair. Five share a name: `artwork`, `library`, `log`, `playlists` and `preferences`. Five do not: `settings` against `config_file`, `tag_write` against `tag_writer`, `stream` against `streamer`, `output_hold` against `player_mute`, and `player_state` against `playback_watch`. The `core/` half decides and the `fb2k/` half asks the player, so a question about whether something is *permitted* is answered here and a question about what the player *did* is answered there.
 
 The rest of `core/` is the machinery those decisions run on: `json` reads anything that came from outside, `api` is every JSON document this component publishes, `pairing`, `rate_limit` and `stream_ticket` are the credentials and the bounds, and `pcm_ring`, `broadcast_ring`, `opus_stream`, `timeline` and `audience` are the audio path.
 
@@ -22,6 +22,8 @@ The rest of `core/` is the machinery those decisions run on: `json` reads anythi
 | `device.{h,cpp}` | How a device names itself, and the bound on what it may call itself |
 | `audience.{h,cpp}` | Who is listening. Groups sockets into devices, caps the sockets, and holds the linger that stops a reconnect reading as a departure |
 | `output_hold.{h,cpp}` | Silencing the player while somebody listens elsewhere, and never arguing with a person who undoes it |
+| `player_state.{h,cpp}` | What the player is doing, held under a mutex with a monotonic version, and the transitions a real player writes it through |
+| `playback_modes.{h,cpp}` | Jean's own names for a playback order, and the map to and from whatever foobar2000 calls its own |
 | `text.{h,cpp}` | Case-insensitive comparison, the printable-text check, and `secureEquals`, the constant-time compare every credential goes through |
 
 ## `src/fb2k/`
@@ -34,6 +36,7 @@ And the ones with no description of their own:
 |---|---|
 | `paths.{h,cpp}` | Every path used, resolved against what the player reports rather than remembered |
 | `streamer.{h,cpp}` | The live pipeline: the capture callback, the player's resampler chain, and the encoder thread |
+| `playback_watch.{h,cpp}` | Two callbacks writing `player_state`, each seeded at construction from what the player is already doing: a `play_callback_impl_base` for new track, pause, stop, seek, dynamic info and volume, the last depending on `output_hold` to tell the user's own mute from the stream's; and a `playlist_callback_impl_base` for the playback order, which `playback_control` does not carry |
 | `running_server.{h,cpp}` | The live listener itself, so the preferences page can open a pairing window on it. Safe when nothing is serving |
 | `preferences.{cpp,rc}` | The page under **Tools**, which moves text between controls and `core/preferences.h` and decides nothing itself |
 | `log.cpp` | The console and `<profile>/foo_jean/foo_jean.log`, which appends, carries levels, and starts over rather than rotating past its cap |

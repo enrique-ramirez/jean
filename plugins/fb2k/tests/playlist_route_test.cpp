@@ -5,6 +5,7 @@
 #include "third_party/doctest.h"
 
 #include "core/library.h"
+#include "core/settings.h"
 #include "support/log_capture.h"
 #include "support/spec.h"
 #include "support/test_server.h"
@@ -102,6 +103,28 @@ json capabilitiesOf(const Settings& settings) {
     REQUIRE(response);
     return json::parse(response->body);
 }
+
+json capabilitiesReporting(std::vector<std::string> orders) {
+    Player player = servingPlayer();
+    player.playbackOrders = std::move(orders);
+
+    const TestServer server(servingSettings(), player);
+    const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+
+    REQUIRE(response);
+    return json::parse(response->body);
+}
+
+// Three of the playback orders a stock foobar2000 reports, out of its own listing order so that
+// the list a client draws can be told from a list built by walking a table of names. The whole
+// set, and the Jean name each order carries, is pinned in tests/playback_modes_test.cpp; these
+// cases are about which of them an install can offer, which is the other question.
+const std::vector<std::string> kReportedOrders = {"Shuffle (albums)", "Default", "Repeat (track)"};
+const std::vector<std::string> kOfferedModes = {"shuffleAlbums", "inOrder", "repeatOne"};
+
+// foobar2000's playback orders are extensible, so a component can register one this component
+// has never seen.
+constexpr char kOrderAddedByAComponent[] = "Shuffle (artists)";
 
 constexpr char kScratchPlaylistId[] = "11111111-1111-1111-1111-111111111111";
 constexpr char kQueuePlaylistId[] = "22222222-2222-2222-2222-222222222222";
@@ -713,6 +736,96 @@ TEST_CASE("GET /api/capabilities says whether this install permits playlist writ
         settings.writePlaylists = false;
 
         CHECK(capabilitiesOf(settings)["canWritePlaylists"] == false);
+    }
+}
+
+// A client reads this once and draws the player from it, so one of these dropped later is a
+// client back on the poll for something that cannot change while the player runs.
+TEST_CASE("one read of GET /api/capabilities answers everything static a player UI needs") {
+    const auto body = capabilitiesOf(servingSettings());
+
+    const std::vector<std::string> published = {"playerName",     "playerVersion",
+                                                "volumeMin",      "volumeMax",
+                                                "volumeUnit",     "canWritePlaylists",
+                                                "canChangeOutput"};
+
+    for (const std::string& field : published) {
+        INFO("field: ", field);
+        REQUIRE(body.contains(field));
+    }
+
+    // The fader maps this range onto its curve, so a range that is not the player's own is
+    // wrong along the slider's whole length. foobar2000 answers decibels from a negative floor
+    // up to zero, and the unit is what lets a client label it without knowing that.
+    CHECK(body["volumeMin"].get<double>() < body["volumeMax"].get<double>());
+    CHECK_FALSE(body["volumeUnit"].get<std::string>().empty());
+
+    // foo_jean loads in foobar2000 alone, so the name is here for the player to say which one
+    // it is rather than for a client to assume.
+    CHECK_FALSE(body["playerName"].get<std::string>().empty());
+    CHECK_FALSE(body["playerVersion"].get<std::string>().empty());
+}
+
+// A client draws the playback-mode control from this and can send any name back, so a mode
+// offered here that GET /state cannot publish, or one the player cannot be put into, is a
+// control that refuses the moment somebody uses it.
+TEST_CASE("GET /api/capabilities offers the playback modes in Jean's names, as the player lists them") {
+    const auto body = capabilitiesReporting(kReportedOrders);
+
+    CHECK(body["playbackModes"] == kOfferedModes);
+
+    for (const std::string& order : kReportedOrders) {
+        INFO("order: ", order);
+        CHECK(body.dump().find(order) == std::string::npos);
+    }
+}
+
+TEST_CASE("a playback order this component has no name for is not offered at all") {
+    auto reported = kReportedOrders;
+    reported.emplace_back(kOrderAddedByAComponent);
+
+    const auto body = capabilitiesReporting(reported);
+
+    CHECK(body["playbackModes"] == kOfferedModes);
+    CHECK(body.dump().find(kOrderAddedByAComponent) == std::string::npos);
+}
+
+// The offer is what this player answers rather than what foobar2000 usually answers, so a client
+// never draws a control for a mode this install cannot be put into.
+TEST_CASE("an order the player does not report is not offered, even though Jean has a name for it") {
+    const auto body = capabilitiesReporting({"Default", "Random"});
+
+    CHECK(body["playbackModes"] == std::vector<std::string>{"inOrder", "random"});
+}
+
+TEST_CASE("a player reporting no playback orders offers an empty list rather than no key") {
+    const auto body = capabilitiesReporting({});
+
+    REQUIRE(body.contains("playbackModes"));
+    REQUIRE(body["playbackModes"].is_array());
+    CHECK(body["playbackModes"].empty());
+}
+
+// Driven from config text rather than from the Settings struct: the key a player owner writes
+// and the name a client reads are one decision, and setting the field directly pins half of it.
+TEST_CASE("GET /api/capabilities publishes what this install permits, off its own config.json") {
+    const auto permitting = [](const char* config) {
+        auto settings = parseSettings(config);
+        settings.authToken = kToken;
+        return capabilitiesOf(settings);
+    };
+
+    SUBCASE("a config nobody narrowed permits both") {
+        CHECK(permitting("{}")["canWritePlaylists"] == true);
+        CHECK(permitting("{}")["canChangeOutput"] == true);
+    }
+
+    SUBCASE("each one narrows on its own and leaves the other alone") {
+        CHECK(permitting(R"({"writePlaylists": false})")["canWritePlaylists"] == false);
+        CHECK(permitting(R"({"writePlaylists": false})")["canChangeOutput"] == true);
+
+        CHECK(permitting(R"({"changeOutput": false})")["canChangeOutput"] == false);
+        CHECK(permitting(R"({"changeOutput": false})")["canWritePlaylists"] == true);
     }
 }
 

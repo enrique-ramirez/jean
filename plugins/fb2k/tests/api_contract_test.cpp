@@ -135,10 +135,12 @@ TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
 
 TEST_CASE("GET /capabilities is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
-    CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true, true)) ==
-          Keys{"apiVersion", "allowedFields", "canWrite", "canWritePlaylists", "maxAutoPlaylists",
-               "canCreateAutoPlaylists", "canStream", "streamFormats", "canMuteWhileStreaming",
-               "canReadLibrary"});
+    CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true, true,
+                                      "foobar2000", "2.25.3", -100, 0, "db", {"Default"})) ==
+          Keys{"apiVersion", "allowedFields", "canWrite", "canWritePlaylists", "canChangeOutput",
+               "maxAutoPlaylists", "canCreateAutoPlaylists", "canStream", "streamFormats",
+               "canMuteWhileStreaming", "canReadLibrary", "playerName", "playerVersion",
+               "volumeMin", "volumeMax", "volumeUnit", "playbackModes"});
 }
 
 TEST_CASE("a listener roster is the shape contract/openapi.yaml publishes") {

@@ -2,7 +2,12 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	dragFrom,
 	expect,
+	expectPlayingFrom,
 	expectSettlesAt,
+	inSequence,
+	nowPlayingScreen,
+	openLibrary,
+	openNowPlaying,
 	openSidebar,
 	pressAndHold,
 	requestsTo,
@@ -18,6 +23,7 @@ const DEFAULT_PLAYLIST = "Default Playlist";
 const LIBRARY = "Library";
 const FAVORITES = "Favorites";
 const SPANISH = "Rock en Español";
+const SHELF = "Most played";
 // An autoplaylist, indistinguishable from the rest over the API: it accepts a
 // copy with a 204 rather than a 4xx, and adds nothing. See `useAddTracks`.
 const AUTO = "Recently Added";
@@ -39,6 +45,17 @@ const openApp = async (page: Page) => {
 		page.getByRole("heading", { level: 1, name: LIBRARY }),
 	).toBeVisible();
 	await openSidebar(page);
+};
+
+// Nothing but playback puts the shelf row in the sidebar: it is there for as
+// long as a shelf is what is playing. Most played is the tab Explore opens on.
+const playAShelf = async (page: Page) => {
+	await page.goto("/");
+	await page
+		.getByRole("region", { name: "Explore" })
+		.getByRole("button", { name: /^Jessico/ })
+		.click();
+	await expectPlayingFrom(page, SHELF);
 };
 
 // Right-click on a pointer, press-and-hold on touch: the same menu, asked for
@@ -220,6 +237,167 @@ test.describe("the drawer", () => {
 
 		await expect(link(page, LIBRARY)).toBeHidden();
 	});
+});
+
+test.describe("beside the now-playing screen", () => {
+	test.skip(
+		({ isMobile }) => isMobile,
+		"on a phone the screen covers both the sidebar and its toggle",
+	);
+
+	// The four rows that decide they are current by comparing the shell's route
+	// against their own. The three sections hold a literal each; the playing-from
+	// row computes one, and it is drawn only while a set that is not a playlist
+	// is playing, so it is reached another way.
+	const ROUTED_ROWS: {
+		label: string;
+		reach: (page: Page) => Promise<void>;
+	}[] = [
+		{ label: "Home", reach: openApp },
+		{ label: "All music", reach: openApp },
+		{ label: "Genres", reach: openApp },
+		{ label: SHELF, reach: playAShelf },
+	];
+
+	// The toggle by its place in the top bar, not by its name: the name is what
+	// the second test here is about, and `openSidebar` in `fixtures.ts` asks for
+	// it by name.
+	const toggle = (page: Page) =>
+		page.locator("header").first().getByRole("button").first();
+
+	const expectToggleMatchesSidebar = async (page: Page, isShown: boolean) => {
+		await expect(
+			sidebar(page).getByRole("button", { name: "Home" }),
+		).toBeVisible({ visible: isShown });
+		// The accessible name, not `aria-expanded`. That attribute already reads
+		// the flag the label should have read, so a test on it goes green against
+		// a label naming the other one.
+		await expect(toggle(page)).toHaveAccessibleName(
+			isShown ? "Hide playlists" : "Show playlists",
+		);
+	};
+
+	test("every sidebar row that reads the route still reads as current with the screen open", async ({
+		page,
+	}) => {
+		// `aria-current` rather than the highlight beside it. Both come off one
+		// expression, so an assertion on what the row looks like would pass while
+		// the half a screen reader reads stayed dead.
+		await inSequence(ROUTED_ROWS, async ({ label, reach }) => {
+			await reach(page);
+			await openSidebar(page);
+
+			await link(page, label).click();
+			await expect(link(page, label)).toHaveAttribute("aria-current", "true");
+
+			await openNowPlaying(page);
+			await expect(link(page, label)).toHaveAttribute("aria-current", "true");
+
+			await nowPlayingScreen(page)
+				.getByRole("button", { name: "Close now playing" })
+				.click();
+			await expect(nowPlayingScreen(page)).toBeHidden();
+		});
+	});
+
+	test("the toggle says Hide playlists while the sidebar is shown and Show playlists while it is not, screen open or shut", async ({
+		page,
+	}) => {
+		await openApp(page);
+		await expectToggleMatchesSidebar(page, true);
+
+		await toggle(page).click();
+		await expectToggleMatchesSidebar(page, false);
+
+		await openNowPlaying(page);
+		await expectToggleMatchesSidebar(page, false);
+
+		await toggle(page).click();
+		await expectToggleMatchesSidebar(page, true);
+	});
+});
+
+// Six rows through three handlers: the four section rows go through one, the
+// search row through a second, a playlist through a third.
+test.describe("choosing a row while the now-playing screen is open", () => {
+	const SEARCHED = "babasonicos";
+
+	// The screen covers the toggle on a phone, deliberately, so Mod+B is the only
+	// way into the drawer while the screen is up.
+	const revealSidebar = async (page: Page, isMobile: boolean) => {
+		if (!isMobile) return openSidebar(page);
+		await page.keyboard.press("ControlOrMeta+b");
+		await expect(sidebar(page)).toBeVisible();
+	};
+
+	const CHOICES: {
+		what: string;
+		label: string;
+		route: string;
+		heading: string | RegExp;
+		setUp?: (page: Page) => Promise<void>;
+	}[] = [
+		{ what: "Home", label: "Home", route: "home", heading: /of music/ },
+		{
+			what: "All music",
+			label: "All music",
+			route: "all",
+			heading: "All music",
+		},
+		{ what: "Genres", label: "Genres", route: "genres", heading: "Genres" },
+		{
+			what: "the search row",
+			label: SEARCHED,
+			route: `search/${SEARCHED}`,
+			heading: SEARCHED,
+			setUp: async (page) => {
+				await page.goto("/");
+				await searchFor(page, SEARCHED);
+			},
+		},
+		{
+			what: "the playing-from row",
+			label: SHELF,
+			route: "shelf/top",
+			heading: SHELF,
+			setUp: playAShelf,
+		},
+		{
+			what: "a playlist",
+			label: FAVORITES,
+			route: "p2",
+			heading: FAVORITES,
+		},
+	];
+
+	for (const { what, label, route, heading, setUp } of CHOICES) {
+		test(`${what} closes the screen and lands on #/${route}, not back on ${LIBRARY}`, async ({
+			page,
+			isMobile,
+		}) => {
+			await setUp?.(page);
+
+			// The screen is opened from Library, which is none of the six
+			// destinations. Open it from the row under test instead and a screen that
+			// went back to where it was opened from would land on the right route
+			// anyway, and the case would prove nothing.
+			await openLibrary(page);
+			await openNowPlaying(page);
+			await revealSidebar(page, isMobile);
+
+			await link(page, label).click();
+
+			await expect(nowPlayingScreen(page)).toBeHidden();
+			await expect(page).toHaveURL(new RegExp(`#/${route}$`));
+			await expect(
+				page.getByRole("heading", { level: 1, name: heading }),
+			).toBeVisible();
+
+			// The drawer is the compact sidebar, and a choice made in it shuts it on
+			// the way. On a desktop the column stays where it is.
+			if (isMobile) await expect(sidebar(page)).toBeHidden();
+		});
+	}
 });
 
 test.describe("the search entry", () => {

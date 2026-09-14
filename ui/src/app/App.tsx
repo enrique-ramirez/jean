@@ -647,11 +647,7 @@ function Shell() {
 					<Button
 						variant="ghost"
 						icon={PanelLeft}
-						aria-label={
-							isSidebarCollapsed || !isSidebarOpen
-								? t("sidebar.show")
-								: t("sidebar.hide")
-						}
+						aria-label={isSidebarShown ? t("sidebar.hide") : t("sidebar.show")}
 						aria-expanded={
 							isCompactViewport ? isSidebarOpen : !isSidebarCollapsed
 						}
@@ -763,7 +759,7 @@ function Shell() {
 						search={search}
 						isSearchOpen={isSearch}
 						onOpenSearch={openSearch}
-						route={route}
+						route={shellRoute}
 						onOpenRoute={openRoute}
 						playingFrom={playingFrom}
 						isOpen={isSidebarOpen}

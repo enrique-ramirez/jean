@@ -211,6 +211,10 @@ The shell is a fixed-height flex column rather than a scrolling document. That p
 
 Below the compact breakpoint the sidebar becomes a drawer, menus become sheets, and several components are a *different component* rather than a narrower one. That is why the test suite runs every spec on both a desktop and a mobile project.
 
+**An absolutely positioned grid item takes its containing block from an explicit `grid-column`, not from the grid as a whole.** That is how the now-playing screen tracks `.body`'s own column transition on a desktop, with no inset computed from `--sidebar-width`.
+
+**A CSS size container query measures the content box, not the border box.** A threshold meant to read as the padded width has to subtract the padding, or it fires one padding-width late.
+
 ## The fake player
 
 `test/fake-api/` is an in-memory foobar2000: portable route tables with no host in them, plus the node sockets that serve them. `demo/sw.ts` hands the same tables a service worker `fetch` event, which is how the live demo runs a whole player in the browser. The seam is `Responder` in `test/fake-api/http.ts`.

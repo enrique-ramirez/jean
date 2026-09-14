@@ -547,6 +547,7 @@ export const en = {
 	"shortcut.finderNext": "Next match",
 	"shortcut.finderPrevious": "Previous match",
 	"shortcut.focusSidebar": "Go to the sidebar",
+	"shortcut.fullScreen": "Full-screen lyrics",
 	"shortcut.globalSearch": "Search the library",
 	"shortcut.goToPlayingFrom": "Go to what is playing",
 	"shortcut.jumpToPlaying": "Jump to now playing",

@@ -82,11 +82,19 @@ export function TrackPanels({
 
 	const swipe = useSwipe({ onLeft: () => step(1), onRight: () => step(-1) });
 
+	const canExpand = Boolean(onExpand) && tab === "lyrics" && hasLyrics;
+
 	useKeymap(
 		SCOPE.nowPlaying,
 		Object.fromEntries(
 			TABS.map((entry) => [entry.binding, () => select(entry.id)]),
 		),
+	);
+
+	useKeymap(
+		SCOPE.nowPlaying,
+		{ fullScreen: () => onExpand?.() },
+		{ enabled: canExpand },
 	);
 
 	const panel =
@@ -113,7 +121,7 @@ export function TrackPanels({
 				}))}
 				onChange={select}
 			>
-				{onExpand && tab === "lyrics" && hasLyrics ? (
+				{canExpand ? (
 					<button
 						type="button"
 						className={styles.expand}

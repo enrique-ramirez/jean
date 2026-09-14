@@ -48,15 +48,23 @@ export const TAGGED = {
 		Deléctrico: { "$meta(unsynced lyrics)": LYRIC.boilerplate },
 		Pendejo: { "$meta(unsynced lyrics)": LYRIC.long },
 		"El Loco": { "$meta(unsynced lyrics)": LYRIC.longSynced },
-		// Soy Rock is left with no lyric tag at all -- the common case in a real library.
+		// Soy Rock is left with no lyric tag at all, the common case in a real
+		// library, and it is library row 3. Every case that wants a track with no
+		// lyric plays that row.
 	},
 };
 
+// The fake builds every state from one set of captured track objects, so a tag
+// written onto a row in place would outlive the test and leave Soy Rock
+// carrying a lyric for everything the worker runs afterwards. A copy in the
+// playlist's slot keeps the write inside this test.
 export const writeLyric = (player: FakePlayer, lyric: string) => {
 	const item = player.player.activeItem;
-	const track = player.playlistById(item.playlistId)?.items[item.index];
-	if (!track) throw new Error("nothing is playing to write a lyric onto");
-	track["$meta(unsynced lyrics)"] = lyric;
+	const playlist = player.playlistById(item.playlistId);
+	const track = playlist?.items[item.index];
+	if (!playlist || !track)
+		throw new Error("nothing is playing to write a lyric onto");
+	playlist.items[item.index] = { ...track, "$meta(unsynced lyrics)": lyric };
 };
 
 export const playRow = async (page: Page, row: number) => {

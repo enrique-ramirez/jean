@@ -1,9 +1,13 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
+	expectTheScreenIsStillOpen,
 	inSequence,
 	nowPlayingScreen,
+	openAllMusic,
 	openLibrary,
+	openNowPlaying,
 	requestsTo,
 	scrollTo,
 	scrollTop,
@@ -11,9 +15,11 @@ import {
 	searchField,
 	searchFor,
 	sidebar,
+	sidebarToggle,
 	test,
 	trackRow,
 } from "./fixtures.ts";
+import { panelTab, playRow, TAGGED } from "./nowPlaying.ts";
 
 // One test per binding in keymap.ts: `useKeymap` registers only the ids a scope
 // both declares and has a handler for, so a deleted handler leaves the shortcut
@@ -28,6 +34,10 @@ import {
 //                                                      it must NOT fire)
 //   Mod+Shift+p                      search-playback.spec.ts
 //   Alt+ArrowDown                    sidebar.spec.ts  (against a real reorder)
+//   Mod+B with the screen open       now-playing.spec.ts (whether it moves the
+//                                                        screen is a reading of
+//                                                        two boxes, and the
+//                                                        reader is there)
 //
 // Mod is spelled ControlOrMeta rather than Meta: @tanstack/react-hotkeys and
 // Playwright both map Mod by platform, so the literal would pass here and fail
@@ -35,6 +45,9 @@ import {
 
 const sidebarLink = (page: Page, title: string) =>
 	sidebar(page).getByRole("button").filter({ hasText: title });
+
+const currentSidebarRow = (page: Page) =>
+	sidebar(page).locator('button[aria-current="true"]');
 
 const paths = (player: FakePlayer, fragment: string) =>
 	requestsTo(player, fragment).map((entry) => entry.path);
@@ -172,6 +185,22 @@ test.describe("navigation and appearance", () => {
 		await expect(sidebarLink(page, "Library")).toBeFocused();
 	});
 
+	// Opened over All music rather than over the playlist the rest of this file
+	// works in, so that the row reading as current is not also the first row: the
+	// caret falls back to the first row when no row reads as current, and a case
+	// where the two coincide goes green either way.
+	test("b lands the caret on the row that reads as current, with the screen open", async ({
+		page,
+	}) => {
+		await openAllMusic(page);
+		await openNowPlaying(page);
+		await expect(currentSidebarRow(page)).toHaveText(["All music"]);
+
+		await page.keyboard.press("b");
+		await expect(sidebarLink(page, "All music")).toBeFocused();
+		await expect(sidebarLink(page, "Home")).not.toBeFocused();
+	});
+
 	test("? opens the shortcut sheet", async ({ page }) => {
 		// Playwright sends `key: '?'` with shiftKey set, as a browser does on every
 		// layout. The binding matches that rather than the physical slash key, which
@@ -212,6 +241,30 @@ test.describe("navigation and appearance", () => {
 			.filter({ hasText: /^Keyboard shortcuts/ })
 			.last();
 		await expect(shortcuts.locator("kbd")).toHaveText(["?"]);
+	});
+
+	test("the sheet lists F under While what's playing is open", async ({
+		page,
+	}) => {
+		await page.keyboard.press("Shift+?");
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+
+		// The group is how the key carries its condition, the way L, D and A do, so
+		// the row has to be in this section rather than merely in the sheet.
+		const whatIsPlaying = sheet.locator("section").filter({
+			has: page.getByRole("heading", {
+				name: "While what's playing is open",
+			}),
+		});
+		const row = whatIsPlaying
+			.locator("div")
+			.filter({ has: page.locator("kbd", { hasText: /^F$/ }) });
+
+		await expect(row.locator("kbd")).toHaveText(["F"]);
+
+		// A key with nothing beside it is what a missing phrase looks like. Which
+		// words go there is not this test's business.
+		await expect(row.locator("span").first()).not.toBeEmpty();
 	});
 
 	test("w shows what is playing and hides it again", async ({ page }) => {
@@ -490,5 +543,164 @@ test.describe("in the sidebar", () => {
 		await expect
 			.poll(() => player.playlists.map((entry) => entry.title).slice(0, 3))
 			.toEqual(["Default Playlist", "Favorites", "Library"]);
+	});
+});
+
+test.describe("with the full-screen lyric open", () => {
+	// A lyric to expand, and a rating on the track carrying it: the digit keys are
+	// part of what has to go quiet, and a track on a scale Jean will not write
+	// would refuse the digit for a reason of its own.
+	test.use({
+		...TAGGED,
+		retagged: {
+			...TAGGED.retagged,
+			"Los Calientes": {
+				...TAGGED.retagged["Los Calientes"],
+				"%rating%": "5",
+			},
+		},
+	});
+
+	const lyricScreenClose = (page: Page) =>
+		page.getByRole("button", { name: "Close full-screen lyrics" });
+
+	const openTheLyricScreen = async (page: Page) => {
+		await panelTab(nowPlayingScreen(page), "Lyrics").click();
+		await page.getByRole("button", { name: "Full-screen lyrics" }).click();
+		await expect(lyricScreenClose(page)).toBeVisible();
+	};
+
+	const closeTheLyricScreen = async (page: Page) => {
+		await lyricScreenClose(page).click();
+		await expect(lyricScreenClose(page)).toHaveCount(0);
+	};
+
+	const queuePanel = (page: Page) =>
+		page.getByRole("complementary", { name: "Queue" });
+
+	const ratingOnTheScreen = (page: Page) =>
+		nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ });
+
+	const tagWrites = (player: FakePlayer) =>
+		requestsTo(player, "/api/tags").filter((entry) => entry.method === "POST");
+
+	// One case per key rather than one case pressing all six. A keyboard that is
+	// off is proved by absence, and absence is proved one key at a time: a case
+	// that goes red says which key got through.
+	//
+	// Each key is pressed twice, once while the screen is up and once after it has
+	// gone. The second press is what stops the first assertion passing for a key
+	// that was never going to do anything, and the closing click between them is
+	// what makes the reading settled: a key that reached the keymap has already
+	// acted by the time that click has landed.
+	//
+	// Escape is not in the list. It is the way out, and it is not a keymap binding
+	// at all: `useEscapeCapture` takes it in the capture phase.
+
+	test("Space leaves the transport alone, and reaches it again after it closes", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 0);
+		await openTheLyricScreen(page);
+
+		await page.keyboard.press("Space");
+
+		await closeTheLyricScreen(page);
+		await expectSettlesAt(
+			player,
+			() => paths(player, "/player/play-pause"),
+			[],
+		);
+		// The player as well as the wire, because a miss here is the music stopping.
+		expect(player.player.playbackState).toBe("playing");
+
+		await page.keyboard.press("Space");
+		await expect.poll(() => player.player.playbackState).toBe("paused");
+	});
+
+	test("Mod+B leaves the sidebar where it is, and moves it again after it closes", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await expect(sidebarLink(page, "Favorites")).toBeVisible();
+		await openTheLyricScreen(page);
+
+		await page.keyboard.press("ControlOrMeta+b");
+
+		await closeTheLyricScreen(page);
+		await expect(sidebarLink(page, "Favorites")).toBeVisible();
+
+		await page.keyboard.press("ControlOrMeta+b");
+		await expect(sidebarLink(page, "Favorites")).toBeHidden();
+	});
+
+	// Started with the sidebar hidden, because revealing it is the half of `b` that
+	// outlives the closing click. The click takes focus itself, so a caret this key
+	// had put on a row is gone by the time the screen is.
+	test("b leaves the sidebar hidden, and reveals it again after it closes", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await sidebarToggle(page).click();
+		await expect(sidebarLink(page, "Favorites")).toBeHidden();
+		await openTheLyricScreen(page);
+
+		await page.keyboard.press("b");
+
+		await closeTheLyricScreen(page);
+		await expect(sidebarLink(page, "Favorites")).toBeHidden();
+
+		await page.keyboard.press("b");
+		await expect(sidebarLink(page, "Library")).toBeFocused();
+	});
+
+	test("W leaves the screen under it open, and dismisses it again after it closes", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await openTheLyricScreen(page);
+
+		await page.keyboard.press("w");
+
+		await closeTheLyricScreen(page);
+		await expectTheScreenIsStillOpen(page);
+
+		await page.keyboard.press("w");
+		await expect(page).toHaveURL(/#\/p7$/);
+	});
+
+	test("Q leaves the queue shut, and opens it again after it closes", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await openTheLyricScreen(page);
+
+		await page.keyboard.press("q");
+
+		await closeTheLyricScreen(page);
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+
+		await page.keyboard.press("q");
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+	});
+
+	test("a rating digit writes nothing, and writes again after it closes", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 0);
+		// The screen has to be holding the player's answer, or a digit would have
+		// nothing to rate and the silence would mean something else.
+		await expect(ratingOnTheScreen(page)).toHaveAccessibleName("5 of 5 stars");
+		await openTheLyricScreen(page);
+
+		await page.keyboard.press("4");
+
+		await closeTheLyricScreen(page);
+		await expectSettlesAt(player, () => tagWrites(player), []);
+
+		await page.keyboard.press("4");
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 	});
 });

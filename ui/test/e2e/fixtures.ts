@@ -297,15 +297,30 @@ export const expectPlayingFrom = async (page: Page, name: string) => {
 export const sidebar = (page: Page) =>
 	page.getByRole("navigation", { name: "Playlists" });
 
-// On a phone the sidebar is a drawer; on a desktop it is simply there. The
-// toggle's label cannot tell the two apart -- it reads 'Show playlists' on a
-// desktop as well -- so asking for it by name collapses a sidebar that was
-// already open. Ask the sidebar itself instead.
+// The guard reads the sidebar rather than the toggle, so a call against one
+// that is already open does nothing. Drop it and the click asks for a button
+// named "Show playlists" when the toggle by then says "Hide playlists", and
+// waits out the timeout for a control that is not there.
 export const openSidebar = async (page: Page) => {
 	const home = sidebar(page).getByRole("button", { name: "Home" });
 	if (await home.isVisible()) return;
 	await page.getByRole("button", { name: "Show playlists" }).click();
 	await expect(home).toBeVisible();
+};
+
+// Either name: which one belongs to which state is `sidebar.spec.ts`'s
+// question, and this is the one control either way.
+export const sidebarToggle = (page: Page) =>
+	page.getByRole("button", { name: /^(Show|Hide) playlists$/ });
+
+// The hash as well as the element: a dismissed now-playing screen navigates at
+// once and then takes its exit animation to leave, so one on its way out still
+// answers to visible. The tab is part of the screen's own route and a track
+// carrying a lyric selects one without being asked, so the suffix is open, and
+// the route leaving /playing is what this catches.
+export const expectTheScreenIsStillOpen = async (page: Page) => {
+	await expect(page).toHaveURL(/#\/playing(\/(lyrics|details|artist))?$/);
+	await expect(nowPlayingScreen(page)).toBeVisible();
 };
 
 // The captured `Library` playlist, which most specs use as a list long enough to

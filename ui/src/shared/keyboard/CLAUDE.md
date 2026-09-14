@@ -28,7 +28,7 @@ So **a shifted character is declared twice**, `Shift+X` and bare `X`, so it work
 
 ## Overlays
 
-**An overlay owns the keyboard** (`keyboardOwner.ts`). A dialog leaves the app behind it mounted, so a bare letter would still act on a list nobody can see and Space on a focused switch would both flip it and pause the music, and a `<button role="switch">` is not an input element, so the manager's input guard does not cover it. While an overlay holds the keyboard only registrations naming it stay enabled, and **the binding that opens the overlay MUST be one of them**, or it cannot close it again.
+**An overlay owns the keyboard** (`keyboardOwner.ts`). A dialog leaves the app behind it mounted, so a bare letter would still act on a list nobody can see and Space on a focused switch would both flip it and pause the music, and a `<button role="switch">` is not an input element, so the manager's input guard does not cover it. While an overlay holds the keyboard only registrations naming it stay enabled, and **the binding that opens the overlay MUST be one of them**, or it cannot close it again. That rule only reaches a binding that also closes the overlay: one that only opens, with Escape as the sole way out, has nothing left to press again and needs no owner to name.
 
 **Escape in an overlay MUST be caught in the capture phase**, which is what `useEscapeCapture` is for. The manager binds `keydown` on the document at bubble and the playlist scope binds Escape to clearing the track selection, so a later listener would close the overlay *and* wipe the selection in one keystroke.
 

@@ -4,9 +4,12 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import { Lyrics } from "./Lyrics";
 import styles from "./LyricsScreen.module.css";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
+
+const LYRICS_KEYBOARD = "lyrics-full";
 
 export function LyricsScreen({
 	lyrics,
@@ -20,6 +23,7 @@ export function LyricsScreen({
 	onClose: () => void;
 }) {
 	const t = useTranslate();
+	useKeyboardOwnership(LYRICS_KEYBOARD);
 	useEscapeCapture(onClose);
 
 	const swipe = useSwipe({ onDown: onClose });

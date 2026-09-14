@@ -126,7 +126,6 @@ export function NowPlaying({
 	const ownsEscape =
 		isOpen &&
 		!isInfoOpen &&
-		!isLyricsFull &&
 		!isQueueOpen &&
 		!menu.isOpen &&
 		keyboardOwner === null;

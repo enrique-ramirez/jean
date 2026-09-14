@@ -1,20 +1,31 @@
 import type { Page } from "./fixtures.ts";
 import {
+	closeSidebar,
 	expect,
+	expectTheScreenIsStillOpen,
 	isRowOnScreen,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	openSidebar,
 	requestsTo,
 	scrollTo,
 	scrollTop,
 	scrollUntilMounted,
+	sidebar,
+	sidebarToggle,
 	statusBar,
 	test,
 	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
-import { expectPanelOpen, panelTab, playRow, trackInfo } from "./nowPlaying.ts";
+import {
+	expectPanelOpen,
+	panelTab,
+	playRow,
+	TAGGED,
+	trackInfo,
+} from "./nowPlaying.ts";
 
 test.describe("the way in and the way out", () => {
 	test("the status bar block opens it and the chevron closes it", async ({
@@ -199,6 +210,342 @@ test.describe("the set it is playing from", () => {
 	});
 });
 
+test.describe("the screen a desktop gets", () => {
+	// A long, untimed lyric on row 4: something to scroll, with nothing following
+	// the playing position back up while a test is reading where it was left.
+	test.use(TAGGED);
+	const LYRIC_ROW = 4;
+
+	// Far enough down that a screen which had remounted, and so opened at the top
+	// again, could not have this line on screen.
+	const MARK = "Line 40";
+
+	test.skip(
+		({ isMobile }) => isMobile,
+		"on a phone the screen is the whole viewport and the sidebar is a drawer over it",
+	);
+
+	// `.body` transitions `grid-template-columns` over 0.22s, so a reading taken
+	// on the click is a reading of the animation.
+	const PAST_THE_COLUMN_TRANSITION_MS = 300;
+
+	const FLUSH = "flush with the sidebar";
+
+	const screenStartsAt = (page: Page) =>
+		nowPlayingScreen(page).evaluate((node) =>
+			Math.round(node.getBoundingClientRect().left),
+		);
+
+	// Boxes, and both of them read in one frame. Boxes because the fault this
+	// replaces was invisible to every hook: the sidebar was laid out correctly
+	// and the screen was simply drawn over it, so a class or a data attribute
+	// said the right thing throughout. One frame because the column animates,
+	// and two round trips would measure the sidebar at one moment and the screen
+	// at another.
+	const whereTheScreenStarts = (page: Page) =>
+		page.evaluate((flush) => {
+			const screen = document.querySelector("[data-now-playing]");
+			// Not the role query: a hidden sidebar is `aria-hidden`, so it leaves
+			// the accessibility tree at the moment this has to measure it.
+			const nav = document.querySelector('nav[aria-label="Playlists"]');
+			if (!screen || !nav)
+				throw new Error("the screen and the sidebar are both meant to be here");
+
+			const over = Math.round(
+				screen.getBoundingClientRect().left - nav.getBoundingClientRect().right,
+			);
+			if (over === 0) return flush;
+			return over < 0
+				? `${-over}px of the sidebar is under the screen`
+				: `${over}px of empty column is beside the screen`;
+		}, FLUSH);
+
+	const expectItClearsTheSidebar = async (page: Page, state: string) => {
+		await expect
+			.poll(() => whereTheScreenStarts(page), { message: `sidebar ${state}` })
+			.toBe(FLUSH);
+
+		// Read again once the column has stopped: a screen passing through the
+		// right place on its way to the wrong one satisfies a single early sample.
+		await page.waitForTimeout(PAST_THE_COLUMN_TRANSITION_MS);
+		expect(await whereTheScreenStarts(page), `sidebar ${state}`).toBe(FLUSH);
+	};
+
+	// The width below which the gatefold gives up its second leaf,
+	// `NowPlaying.module.css`.
+	const TWO_LEAF_THRESHOLD = 1040;
+
+	// The window where the screen's own width and the viewport's disagree: above
+	// the threshold with the sidebar hidden, below it with the sidebar shown.
+	// That window is exactly as wide as the sidebar, so its middle is the one
+	// width that needs no other number, and the sidebar is measured rather than
+	// written down so that widening it cannot quietly move this outside. At any
+	// width outside the window both readings of the threshold draw the same
+	// gatefold and the test proves nothing.
+	const insideTheWindow = async (page: Page) => {
+		const column = (await sidebar(page).boundingBox())!;
+		return TWO_LEAF_THRESHOLD + Math.round(column.width / 2);
+	};
+
+	const BESIDE = "the panels are beside the title";
+	const BELOW = "the panels are below the title";
+
+	// Where the panels land, which is what two leaves and one look like to
+	// somebody reading the screen. Both boxes in one frame for the reason
+	// `whereTheScreenStarts` gives: the column animates, so two round trips can
+	// measure the title at one width and the panels at another.
+	const whereThePanelsSit = (page: Page) =>
+		page.evaluate(
+			(reads) => {
+				const screen = document.querySelector("[data-now-playing]");
+				const title = screen?.querySelector("h1");
+				const panels = screen?.querySelector('nav[aria-label="Track views"]');
+				if (!title || !panels)
+					throw new Error("the gatefold has a title and a strip of panel tabs");
+
+				const name = title.getBoundingClientRect();
+				const strip = panels.getBoundingClientRect();
+				if (strip.left >= name.right) return reads.beside;
+				if (strip.top >= name.bottom) return reads.below;
+				return `the panels start ${Math.round(strip.left)}px across and ${Math.round(strip.top)}px down, where the title ends ${Math.round(name.right)}px across and ${Math.round(name.bottom)}px down`;
+			},
+			{ beside: BESIDE, below: BELOW },
+		);
+
+	const expectTheGatefold = async (
+		page: Page,
+		reads: string,
+		state: string,
+	) => {
+		await expect
+			.poll(() => whereThePanelsSit(page), { message: `sidebar ${state}` })
+			.toBe(reads);
+
+		await page.waitForTimeout(PAST_THE_COLUMN_TRANSITION_MS);
+		expect(await whereThePanelsSit(page), `sidebar ${state}`).toBe(reads);
+	};
+
+	test("leaves the sidebar beside it rather than covering it, shown or hidden", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openSidebar(page);
+		await openNowPlaying(page);
+
+		await expectItClearsTheSidebar(page, "shown");
+
+		await sidebarToggle(page).click();
+		await expectItClearsTheSidebar(page, "hidden");
+	});
+
+	// The two controls belong to `keyboard.spec.ts` and this reading does not:
+	// whether the key moves the screen or only collapses the column behind it is
+	// a question about two boxes, and `whereTheScreenStarts` is the only thing in
+	// the suite that can answer it. A collapsed sidebar is `aria-hidden`, so the
+	// row queries below go quiet whichever of the two happened, which is why the
+	// pair came apart in the first place and why both readings are taken on every
+	// leg: the rows for whether the control acted at all, the boxes for whether
+	// the screen went with it.
+	//
+	// One test rather than one each, because agreeing is the criterion: two tests
+	// holding each control to its own expectation would both stay green while the
+	// pair came apart. Each control is driven in both directions, since a control
+	// that only ever revealed would satisfy a test that only ever revealed.
+	test("the icon and Mod+B move the screen the same way, and neither closes it", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openSidebar(page);
+		await openNowPlaying(page);
+		const home = sidebar(page).getByRole("button", { name: "Home" });
+
+		// The screen first on every leg: a control that dismissed it takes its exit
+		// animation to leave, so the boxes read as flush for a frame or two and
+		// then the screen is not there to measure at all. Asked in this order the
+		// failure says the screen closed, rather than that it went missing.
+		await page.keyboard.press("ControlOrMeta+b");
+		await expectTheScreenIsStillOpen(page);
+		await expect(home).toBeHidden();
+		await expectItClearsTheSidebar(page, "hidden by the key");
+
+		await page.keyboard.press("ControlOrMeta+b");
+		await expectTheScreenIsStillOpen(page);
+		await expect(home).toBeVisible();
+		await expectItClearsTheSidebar(page, "shown by the key");
+
+		await sidebarToggle(page).click();
+		await expectTheScreenIsStillOpen(page);
+		await expect(home).toBeHidden();
+		await expectItClearsTheSidebar(page, "hidden by the icon");
+
+		await sidebarToggle(page).click();
+		await expectTheScreenIsStillOpen(page);
+		await expect(home).toBeVisible();
+		await expectItClearsTheSidebar(page, "shown by the icon");
+	});
+
+	test("moves when the sidebar is hidden, and stays open, scrolled and on the same tab", async ({
+		page,
+	}) => {
+		await playRow(page, LYRIC_ROW);
+		await openSidebar(page);
+
+		const screen = nowPlayingScreen(page);
+		await panelTab(screen, "Lyrics").click();
+
+		// A line rather than a scroll offset. Widening the screen rewraps the
+		// lyric, and the browser then holds the reader in place by moving the
+		// offset, so the number is allowed to change where what is on screen is
+		// not.
+		const mark = page.getByText(MARK, { exact: true });
+		await mark.evaluate((line) => {
+			line.scrollIntoView({ block: "center" });
+		});
+		await expect(mark).toBeInViewport();
+
+		const before = await screenStartsAt(page);
+		await sidebarToggle(page).click();
+
+		await expect
+			.poll(() => screenStartsAt(page), {
+				message: "the screen takes the column the sidebar gave up",
+			})
+			.not.toBe(before);
+
+		await expect(page).toHaveURL(/#\/playing\/lyrics$/);
+		await expect(screen).toBeVisible();
+		await expect(mark).toBeInViewport();
+		await expectPanelOpen(screen, "Lyrics");
+	});
+
+	test("collapses to one leaf when the sidebar narrows it, at a viewport wide enough for two", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await openSidebar(page);
+
+		await page.setViewportSize({
+			width: await insideTheWindow(page),
+			height: page.viewportSize()!.height,
+		});
+
+		await sidebarToggle(page).click();
+		await expectTheGatefold(page, BESIDE, "hidden");
+
+		await sidebarToggle(page).click();
+		await expectTheGatefold(page, BELOW, "shown");
+	});
+
+	// The JS compact flag and `.body`'s single column both switch at 860px,
+	// `useMediaQuery.ts` and `App.module.css`, so one pixel above it is the
+	// narrowest viewport that still gets the desktop layout. Less the sidebar
+	// column the screen is drawn at around 600px, which is as narrow as it ever
+	// gets on a desktop and a width a real window reaches.
+	const COMPACT_THRESHOLD = 860;
+	const NARROWEST_DESKTOP = COMPACT_THRESHOLD + 1;
+
+	const NOTHING_STICKS_OUT = "nothing reaches past the screen's edges";
+
+	// The screen is `overflow-x: clip`, so sideways overflow never announces
+	// itself with a scrollbar: it is cut off, silently, and whatever was out
+	// there is gone. The boxes are the reading, against the screen's own.
+	const whatSticksOutSideways = (page: Page) =>
+		page.evaluate((clear) => {
+			const screen = document.querySelector("[data-now-playing]");
+			if (!screen) throw new Error("the screen is meant to be open");
+			const box = screen.getBoundingClientRect();
+
+			const drawn = Array.from(screen.querySelectorAll("*"))
+				.map((node) => ({ node, rect: node.getBoundingClientRect() }))
+				.filter(({ rect }) => rect.width > 0 && rect.height > 0);
+			// A screen that laid nothing out would satisfy a walk over nothing.
+			if (drawn.length === 0) return "the screen has nothing laid out in it";
+
+			// A pixel of slack: a box laid out on a fractional boundary rounds out.
+			const out = drawn.find(
+				({ rect }) => rect.right > box.right + 1 || rect.left < box.left - 1,
+			);
+			if (!out) return clear;
+
+			const name =
+				out.node.getAttribute("aria-label") ??
+				out.node.textContent?.trim().slice(0, 40) ??
+				out.node.tagName.toLowerCase();
+			return `${name} runs from ${Math.round(out.rect.left)}px to ${Math.round(out.rect.right)}px, where the screen runs ${Math.round(box.left)}px to ${Math.round(box.right)}px`;
+		}, NOTHING_STICKS_OUT);
+
+	const ALL_REACHABLE = "every control in the head takes a press";
+
+	// Reachable is not visible and is not on screen: a control the screen has
+	// clipped, one another element covers and one pushed past the edge all still
+	// report a box. What a pointer and a finger both go through is the hit test,
+	// so the question is what the browser hands a press in the middle of each
+	// control.
+	const whatTheHeadRefuses = (page: Page) =>
+		page.evaluate((clear) => {
+			const head = document.querySelector("[data-now-playing] header");
+			if (!head) throw new Error("the screen is meant to have a head");
+
+			const controls = head.querySelectorAll("button");
+			// A head that emptied would satisfy a walk over nothing.
+			if (controls.length === 0) return "the head has no controls at all";
+
+			for (const control of controls) {
+				const rect = control.getBoundingClientRect();
+				const hit = document.elementFromPoint(
+					rect.left + rect.width / 2,
+					rect.top + rect.height / 2,
+				);
+				if (hit && control.contains(hit)) continue;
+
+				const name =
+					control.getAttribute("aria-label") ??
+					control.textContent?.trim().slice(0, 40) ??
+					"a head control";
+				const over = hit
+					? `${hit.tagName.toLowerCase()} is over it`
+					: "nothing is there";
+				return `a press at the middle of ${name} lands nowhere: ${over}`;
+			}
+			return clear;
+		}, ALL_REACHABLE);
+
+	test("draws one leaf at its narrowest desktop width, with nothing cut off sideways and every head control still pressable", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await openSidebar(page);
+
+		await page.setViewportSize({
+			width: NARROWEST_DESKTOP,
+			height: page.viewportSize()!.height,
+		});
+
+		// Measured rather than written down, so widening the sidebar moves this
+		// case with it rather than leaving it asserting a width nothing has.
+		const column = (await sidebar(page).boundingBox())!;
+		const narrowest = NARROWEST_DESKTOP - Math.round(column.width);
+		await expect
+			.poll(
+				() =>
+					nowPlayingScreen(page).evaluate((node) =>
+						Math.round(node.getBoundingClientRect().width),
+					),
+				{ message: "the screen is the viewport less the sidebar column" },
+			)
+			.toBe(narrowest);
+
+		await expectTheGatefold(page, BELOW, "shown");
+
+		await expect
+			.poll(() => whatSticksOutSideways(page), { message: "at its narrowest" })
+			.toBe(NOTHING_STICKS_OUT);
+		await expect
+			.poll(() => whatTheHeadRefuses(page), { message: "at its narrowest" })
+			.toBe(ALL_REACHABLE);
+	});
+});
+
 test.describe("the screen a phone gets", () => {
 	test.skip(
 		({ isMobile }) => !isMobile,
@@ -213,6 +560,139 @@ test.describe("the screen a phone gets", () => {
 		const view = page.viewportSize()!;
 		expect(box.y, "the screen starts below the top bar").toBe(0);
 		expect(box.height).toBeGreaterThanOrEqual(view.height);
+	});
+
+	const COVERED = "the screen reaches all four edges of the viewport";
+
+	const whereTheScreenStops = (page: Page) =>
+		page.evaluate((covered) => {
+			const screen = document.querySelector("[data-now-playing]");
+			if (!screen) throw new Error("the screen is meant to be open");
+
+			const box = screen.getBoundingClientRect();
+			const short = [
+				box.left > 0 && `${Math.round(box.left)}px in from the left`,
+				box.top > 0 && `${Math.round(box.top)}px down from the top`,
+				box.right < window.innerWidth &&
+					`${Math.round(window.innerWidth - box.right)}px short of the right`,
+				box.bottom < window.innerHeight &&
+					`${Math.round(window.innerHeight - box.bottom)}px short of the bottom`,
+			].filter((edge): edge is string => edge !== false);
+
+			return short.length === 0
+				? covered
+				: `the screen stops ${short.join(", ")}`;
+		}, COVERED);
+
+	const DRAWER_ON_TOP = "the drawer takes a press at its middle";
+
+	// Which of two overlapping fixed boxes is on top is not in either box, so
+	// this asks the browser the way a finger does. The drawer is two elements
+	// and only one of them is the question: `Sidebar.module.css` gives the
+	// sliding panel `z-index: 40` at 320px wide and its scrim `z-index: 39`
+	// across the whole viewport, and the screen is meant to be under the panel
+	// and over nothing. Measuring the scrim would be measuring the wrong
+	// element, and the scrim winning this hit test means the panel has fallen
+	// below it, which is why the panel's own stacking is in the message.
+	const whatCoversTheDrawer = (page: Page) =>
+		page.evaluate((clear) => {
+			const drawer = document.querySelector('nav[aria-label="Playlists"]');
+			if (!drawer) throw new Error("the drawer is meant to be open");
+
+			const box = drawer.getBoundingClientRect();
+			const hit = document.elementFromPoint(
+				box.left + box.width / 2,
+				box.top + box.height / 2,
+			);
+			if (hit && drawer.contains(hit)) return clear;
+			if (!hit) return "nothing is at the middle of the drawer";
+
+			const name = hit.closest("[data-now-playing]")
+				? "the now-playing screen"
+				: (hit.getAttribute("aria-label") ?? hit.tagName.toLowerCase());
+			const stack = getComputedStyle(drawer).zIndex;
+			return `${name} is over the drawer, which stacks at ${stack}`;
+		}, DRAWER_ON_TOP);
+
+	// Nothing here is being changed, and that is the point of it. The 860px
+	// crossing is enforced twice, by the JS flag behind `data-compact` and by
+	// `.body`'s own media query, and either file goes on looking correct while
+	// the two disagree. This is what catches them parting company. Both readings
+	// are taken with the drawer open, the state the case above does not reach.
+	test("covers the viewport edge to edge, and stays open under the drawer", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openNowPlaying(page);
+
+		// The keyboard, because there is nothing to press: on a phone the screen
+		// covers the sidebar icon, deliberately.
+		await page.keyboard.press("ControlOrMeta+b");
+		await expect(sidebar(page)).toBeVisible();
+
+		await expect(page).toHaveURL(/#\/playing$/);
+		await expect(nowPlayingScreen(page)).toBeVisible();
+		await expect
+			.poll(() => whereTheScreenStops(page), {
+				message: "with the drawer open",
+			})
+			.toBe(COVERED);
+		await expect.poll(() => whatCoversTheDrawer(page)).toBe(DRAWER_ON_TOP);
+	});
+
+	const ICON_TAKES_IT = "the sidebar icon takes a press at its middle";
+	const SCREEN_OVER_IT = "the now-playing screen is over the sidebar icon";
+
+	// Reachable is a hit test rather than a box or a visibility check: the icon
+	// keeps its place in the top bar with the screen over it, so it goes on
+	// reporting a box and answering to visible while a finger lands on the screen.
+	const whatTakesAPressOnTheIcon = (page: Page) =>
+		page.evaluate(
+			(reads) => {
+				const icon = document.querySelector(
+					'button[aria-label="Show playlists"], button[aria-label="Hide playlists"]',
+				);
+				if (!icon)
+					throw new Error("the top bar is meant to carry the sidebar icon");
+
+				const box = icon.getBoundingClientRect();
+				const hit = document.elementFromPoint(
+					box.left + box.width / 2,
+					box.top + box.height / 2,
+				);
+				if (hit && icon.contains(hit)) return reads.icon;
+				if (!hit) return "nothing is at the middle of the sidebar icon";
+				return hit.closest("[data-now-playing]")
+					? reads.screen
+					: `${hit.getAttribute("aria-label") ?? hit.tagName.toLowerCase()} is over the sidebar icon`;
+			},
+			{ icon: ICON_TAKES_IT, screen: SCREEN_OVER_IT },
+		);
+
+	// The asymmetry is deliberate and reads like an oversight, which is why it is
+	// asserted rather than left out: on a phone the screen covers the icon, so the
+	// key is the only way to the sidebar and the icon comes back the moment the
+	// screen goes.
+	test("covers the sidebar icon, so Mod+B is the only way in", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openNowPlaying(page);
+		await expect
+			.poll(() => whatTakesAPressOnTheIcon(page))
+			.toBe(SCREEN_OVER_IT);
+
+		await page.keyboard.press("ControlOrMeta+b");
+		await expect(sidebar(page)).toBeVisible();
+		await expect(page).toHaveURL(/#\/playing$/);
+		await expect(nowPlayingScreen(page)).toBeVisible();
+
+		await closeSidebar(page);
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Close now playing" })
+			.click();
+		await expect(nowPlayingScreen(page)).toBeHidden();
+		await expect.poll(() => whatTakesAPressOnTheIcon(page)).toBe(ICON_TAKES_IT);
 	});
 
 	test("Play is lifted off the bottom edge where there is height to spare", async ({

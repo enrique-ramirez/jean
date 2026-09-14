@@ -250,6 +250,14 @@ export const KEYMAP: Binding[] = [
 	},
 
 	{
+		id: "fullScreen",
+		scope: SCOPE.nowPlaying,
+		group: "shortcutGroup.nowPlaying",
+		name: "shortcut.fullScreen",
+		keys: ["F"],
+	},
+
+	{
 		id: "movePlaylistUp",
 		scope: SCOPE.sidebar,
 		group: "shortcutGroup.sidebar",

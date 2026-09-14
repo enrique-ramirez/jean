@@ -28,7 +28,7 @@ The grid every feature is drawn inside, hash routing, the themes, the browser ta
 
 **The JavaScript compact flag switches at 860px; the main CSS breakpoint is 720px.** `useIsCompactViewport()` drives what is a different *component* below it: a drawer instead of a column, a sheet instead of a popover, a stacked layout instead of a side-by-side one. Media queries drive what is the same component at a different *size*: gutters, type, row heights.
 
-The band between them is real and easy to forget. **Anything spatial belongs to the media query.** If a JS flag is setting padding, that is the bug.
+The band between them is real and easy to forget. **Anything spatial belongs to the media query.** If a JS flag is setting padding, that is the bug. The now-playing screen's gatefold threshold is the one exception, a container query against the screen's own box, because that box sits in a grid column beside the sidebar and no longer tracks the viewport.
 
 ## Theming
 

@@ -724,6 +724,55 @@ const sendBlob = async (
 	return true;
 };
 
+// A player with no media library at all still answers what it is playing: this
+// route never 503s on that account, unlike the three `handleLibrary` routes,
+// which have nothing to serve without one.
+async function handleState({
+	state,
+	fake,
+	method,
+	headers,
+	response,
+}: {
+	state: FakeState;
+	fake: FooJeanFake;
+	method: string;
+	headers: RequestHeaders;
+	response: Responder;
+}) {
+	if (method !== "GET") return json(response, { error: "not found" }, 404);
+	if (fake.failState) {
+		if (fake.failState === 429) response.setHeader("Retry-After", "1");
+		return json(
+			response,
+			{ error: "the state route is not answering", detail: "" },
+			fake.failState,
+		);
+	}
+
+	if (fake.libraryRebuilds > 0 && state.libraryFeed.columns.length > 0) {
+		fake.libraryRebuilds -= 1;
+		state.libraryFeed.building = [...state.libraryFeed.columns];
+	}
+	if (state.libraryFeed.building) {
+		if (fake.libraryBuilds > 0) fake.libraryBuilds -= 1;
+		else state.finishLibraryBuild();
+	}
+	const tag = stateTagOf(state, "identity");
+	response.setHeader("Vary", "Origin, Accept-Encoding");
+	response.setHeader("Cache-Control", KEEP_AND_REVALIDATE);
+	response.setHeader("ETag", tag);
+	if (one(headers["if-none-match"]) === tag) {
+		response.writeHead(304);
+		response.end();
+		return true;
+	}
+	return json(response, {
+		library: libraryStateOf(state),
+		player: playerSectionOf(state),
+	});
+}
+
 async function handleLibrary({
 	state,
 	fake,
@@ -741,43 +790,6 @@ async function handleLibrary({
 	headers: RequestHeaders;
 	response: Responder;
 }) {
-	// A player with no media library at all still answers what it is playing:
-	// GET /api/state never 503s on this, unlike the three routes below, which
-	// have nothing to serve without one.
-	if (path === "/api/state") {
-		if (method !== "GET") return json(response, { error: "not found" }, 404);
-		if (fake.failState) {
-			if (fake.failState === 429) response.setHeader("Retry-After", "1");
-			return json(
-				response,
-				{ error: "the state route is not answering", detail: "" },
-				fake.failState,
-			);
-		}
-
-		if (fake.libraryRebuilds > 0 && state.libraryFeed.columns.length > 0) {
-			fake.libraryRebuilds -= 1;
-			state.libraryFeed.building = [...state.libraryFeed.columns];
-		}
-		if (state.libraryFeed.building) {
-			if (fake.libraryBuilds > 0) fake.libraryBuilds -= 1;
-			else state.finishLibraryBuild();
-		}
-		const tag = stateTagOf(state, "identity");
-		response.setHeader("Vary", "Origin, Accept-Encoding");
-		response.setHeader("Cache-Control", KEEP_AND_REVALIDATE);
-		response.setHeader("ETag", tag);
-		if (one(headers["if-none-match"]) === tag) {
-			response.writeHead(304);
-			response.end();
-			return true;
-		}
-		return json(response, {
-			library: libraryStateOf(state),
-			player: playerSectionOf(state),
-		});
-	}
-
 	if (!fake.canReadLibrary)
 		return json(response, { error: "the media library is not available" }, 503);
 	if (method !== "GET") return json(response, { error: "not found" }, 404);
@@ -982,7 +994,10 @@ export async function handleAgent({
 		});
 	}
 
-	if (path === "/api/state" || path.startsWith("/api/library/"))
+	if (path === "/api/state")
+		return handleState({ state, fake, method, headers, response });
+
+	if (path.startsWith("/api/library/"))
 		return handleLibrary({ state, fake, method, path, url, headers, response });
 
 	if (path === "/api/artwork") {

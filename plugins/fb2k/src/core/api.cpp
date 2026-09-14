@@ -69,10 +69,6 @@ const char* playbackName(PlaybackState playback) {
     return "stopped";
 }
 
-// A steady_clock::time_point means nothing off this machine, so what crosses the wire is how
-// old the mark is rather than the time_point itself; the client adds its own elapsed time to
-// `seconds` from there. `taken` at its default value means no mark has ever been recorded,
-// which reports as no age rather than as the clock's epoch.
 json positionOf(const PositionMark& mark, std::chrono::steady_clock::time_point now) {
     const bool everTaken = mark.taken.time_since_epoch().count() != 0;
     const double age =

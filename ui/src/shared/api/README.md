@@ -421,6 +421,14 @@ This is the one part of the component's surface the spec does not describe, beca
 
 > **The record is writable by anyone who can reach beefweb, so it is a hint and never a credential target.** A forged record can name any port, and a client that believed it would POST the user's bearer token to an attacker's listener. **The order in which a token may be attached is the security model**, and `ui/ARCHITECTURE.md` holds it; `discoverFooJean()` in `fooJean.ts` is the one implementation, and the states it resolves to are the union declared beside it.
 
+## What Jean does about state
+
+`GET /api/state` is the one route `domain/player/playerPoll.ts` asks, on a one-second interval with `If-None-Match`. Its two sections ride together: `library` carries the two generations covered next, in *What Jean does about the library*, and `player` carries what the player is doing right now. `contract/openapi.yaml`'s `State`, `Library` and `PlayerState` schemas are the reference; this is only the part that catches an unwary client.
+
+- **`player.position` is a mark, not a moving number.** It carries `seconds`, the position at the moment the component last looked, and `ageSeconds`, how long ago that was. A client adds the two to place the mark and then keeps counting on its own while `player.playback` is `playing`, exactly as it already does with beefweb's `activeItem.position`.
+- **`player` carries no `info` block.** The player's name and version do not change while it runs, so the poll does not repeat them; they come off a startup read of `GET /api/capabilities` instead, alongside the volume range (`volumeMin`, `volumeMax`, `volumeUnit`), the permissions (`canWritePlaylists`, `canChangeOutput`) and the list of playback modes this install can be put into.
+- **`player.playbackMode` crosses the wire as Jean's own name**, one of `inOrder`, `repeatAll`, `repeatOne`, `random`, `shuffleTracks`, `shuffleAlbums` or `shuffleFolders`, mapped from whatever the player calls its own orders. `null` means the player is in an order this component has no name for, never a wrong one.
+
 ## What Jean does about the library
 
 `GET /api/library/export?columns=…` answers the whole library in one binary body. `jlib.ts` decodes it and `fooJeanLibrary.ts` is the loop that asks for it. `contract/openapi.yaml`, *The media library*, is the format, the two generations and every status. Three things on this side:

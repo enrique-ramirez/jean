@@ -114,12 +114,7 @@ bool variesOnEncoding(const httplib::Response& response) {
     return false;
 }
 
-// The budget the poll is given: a burst of thirty, one token back every hundred milliseconds. A
-// client polling at its interval never spends it; a client in a loop does.
 constexpr int kPollBurst = 30;
-
-// Enough polls past the burst that a machine slow enough to earn tokens back while the loop runs
-// still reaches the refusal, since refilling through all of them would take seconds.
 constexpr int kPollsPastTheBudget = 30;
 
 constexpr char kOrigin[] = "https://jean.example";
@@ -130,8 +125,6 @@ httplib::Headers bearerFrom(const char* origin) {
     return headers;
 }
 
-// Polls until the bucket is empty and answers with the refusal a client meets, so a case about
-// the shape of that refusal does not restate the burst that provokes it.
 std::optional<httplib::Response> pollPastTheBudget(
     httplib::Client& client, const httplib::Headers& headers = TestServer::bearer()) {
     for (int attempt = 0; attempt < kPollBurst + kPollsPastTheBudget; attempt++) {
@@ -152,9 +145,6 @@ httplib::Client polling(const TestServer& server) {
     return client;
 }
 
-// RFC 9112 section 9.6: a client reading the `close` connection option sends nothing further on
-// that connection. It is the only thing in a response that ends one, and cpp-httplib puts its own
-// `Keep-Alive` field beside whatever a handler set, so the Connection field is what decides.
 bool endsTheConnection(const httplib::Response& response) {
     for (size_t at = 0; at < response.get_header_value_count("Connection"); ++at) {
         for (const auto& option : splitOn(response.get_header_value("Connection", "", at), ','))

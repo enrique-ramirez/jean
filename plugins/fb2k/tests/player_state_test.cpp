@@ -218,3 +218,72 @@ TEST_CASE("a track started after a stop is published in full") {
     CHECK(published.state.position.taken == startedAt);
     CHECK(published.version > whileStopped);
 }
+
+// A seek moves the mark to where the player jumped to and to when it jumped, and touches
+// nothing else the track was carrying.
+TEST_CASE("a seek moves the position mark and leaves the rest of the track alone") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().version;
+
+    const auto seekedAt = kMarkedAt + kRanOnFor;
+    store.seeked(90.0, seekedAt);
+
+    const auto published = store.read();
+    CHECK(published.state.playback == PlaybackState::playing);
+    CHECK(published.state.path == R"(X:\music\a.flac)");
+    CHECK(published.state.duration == doctest::Approx(210.0));
+    CHECK(published.state.position.seconds == doctest::Approx(90.0));
+    CHECK(published.state.position.taken == seekedAt);
+    CHECK(published.version > before);
+}
+
+// The hold's mute and the user's own look identical to the store, since neither carries which
+// one asked; volumeChanged takes both because that distinction is `fb2k/`'s to make, not the
+// store's.
+TEST_CASE("a volume change moves the volume and the mute together") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().version;
+
+    store.volumeChanged(-12.0, true);
+
+    const auto published = store.read();
+    CHECK(published.state.volume == doctest::Approx(-12.0));
+    CHECK(published.state.muted);
+    CHECK(published.version > before);
+}
+
+// A dynamic-info duration is the one field foobar2000 revises mid-track, for a stream whose
+// length was not known when it started.
+TEST_CASE("a duration change leaves the track and its position alone") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().version;
+
+    store.durationChanged(185.0);
+
+    const auto published = store.read();
+    CHECK(published.state.path == R"(X:\music\a.flac)");
+    CHECK(published.state.duration == doctest::Approx(185.0));
+    CHECK(published.state.position.seconds == doctest::Approx(kReachedSeconds));
+    CHECK(published.version > before);
+}
+
+TEST_CASE("a playback mode change reaches a client, and an order with no Jean name clears it") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().version;
+
+    store.playbackModeChanged("random");
+    CHECK(store.read().state.playbackMode == "random");
+
+    const uint64_t withRandom = store.read().version;
+    CHECK(withRandom > before);
+
+    store.playbackModeChanged(std::nullopt);
+
+    const auto published = store.read();
+    CHECK_FALSE(published.state.playbackMode.has_value());
+    CHECK(published.version > withRandom);
+}

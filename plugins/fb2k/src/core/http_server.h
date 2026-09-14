@@ -89,10 +89,8 @@ struct Player {
     // Which formats openStream will accept, best first. Empty means no streaming.
     std::vector<std::string> streamFormats;
 
-    // Published once through GET /capabilities rather than ridden on every poll, because
-    // none of the five changes while the player runs. An empty playerName or playerVersion,
-    // or an equal volumeMin/volumeMax, is how a null Player{} in a test says it carries no
-    // report; a real one always fills them.
+    // An empty playerName or playerVersion, or an equal volumeMin/volumeMax, is how a null
+    // Player{} in a test says it carries no report; a real one always fills them.
     std::string playerName;
     std::string playerVersion;
     double volumeMin = 0;

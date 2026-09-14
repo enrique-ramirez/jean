@@ -337,8 +337,6 @@ const JEAN_ORDER: PlaybackMode[] = [
 	"shuffleFolders",
 ];
 
-// The mode the switch enters, preferring a per-track shuffle where an install names more than one and
-// falling back to `random` for an install with no dedicated shuffle order at all.
 const SHUFFLE_PRIORITY: PlaybackMode[] = [
 	"shuffleTracks",
 	"shuffleAlbums",
@@ -368,19 +366,12 @@ export function usePlaybackOrder() {
 	const player = data?.player;
 	const option = player?.options?.find((entry) => entry.id === "playbackOrder");
 
-	// `foo_jean` pairs with foobar2000 alone, so its presence is what `player.info.name` would
-	// otherwise say: the order rides back as the `options` entry foobar2000 wants, and DeaDBeeF's
-	// only other player takes the deprecated top-level field instead.
 	const capabilities =
 		discovery.state.kind === "ready" ? discovery.state.capabilities : null;
 
-	// `foo_jean`'s own name for the order the player is in right now, or `null` where there is no
-	// `foo_jean` to ask or the player is in an order it has no name for.
 	const mode = player?.jeanPlaybackMode ?? null;
 	const modeOrdinal = mode !== null ? JEAN_ORDER.indexOf(mode) : -1;
 
-	// beefweb's `options` is an open list carrying both enum and bool entries, so the value is only a
-	// number when this really is the enum one; `jeanPlaybackMode` is the one still fed by anything.
 	const value =
 		(modeOrdinal >= 0 ? modeOrdinal : undefined) ??
 		(typeof option?.value === "number" ? option.value : player?.playbackMode) ??

@@ -2,7 +2,6 @@ import {
 	dragFrom,
 	expect,
 	expectDisabledWithItsReason,
-	expectRefusalNamesTheSetting,
 	expectSettlesAt,
 	type FakePlayer,
 	FOO_JEAN_TOKEN,
@@ -470,19 +469,42 @@ test.describe("filing a library row into a playlist of your own", () => {
 		});
 	});
 
+	test("the sidebar row lights up as a drop target, and the dropped row is filed there", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "dragging a row onto a playlist is mouse-only");
+
+		await openAllMusic(page);
+		await openSidebar(page);
+		const before = titlesIn(player, FAVORITES);
+
+		const target = sidebarRow(page, FAVORITES);
+		await dragFrom(page, trackRow(page, 2), target);
+		await expect(target).toHaveAttribute("data-drop-over", "true");
+		await page.mouse.up();
+
+		await expect(page.getByRole("status")).toContainText(
+			`Added 1 track to ${FAVORITES}`,
+		);
+
+		await expect
+			.poll(() => titlesIn(player, FAVORITES).length)
+			.toBe(before.length + 1);
+		const after = titlesIn(player, FAVORITES);
+		await expect(trackRow(page, 2)).toContainText(after.at(-1) as string);
+
+		await expectSettlesAt(player, () => addsSent(player), {
+			component: 1,
+			beefweb: 0,
+		});
+	});
+
 	test.describe("where the player owner has turned playlist writes off", () => {
 		test.use({ fooJean: { canWritePlaylists: false } });
 
-		// One setting, two answers, decided by whose playlist the fill names. The
-		// queue's holding playlist is the component's own plumbing and holds none of
-		// the user's music, so a setting that stopped a row reaching it would be the
-		// setting doing the wrong thing.
-		//
-		// Driven by the drag, because the menu says no before it asks: the reason
-		// belongs in the label there, and a refusal nothing can reach is a refusal
-		// nothing exercises. The drag is the one surface left that still sends the
-		// fill, and it is mouse-only, so the phone has no case of its own here.
-		test("the row is refused, and the same row still queues", async ({
+		test("the sidebar row never offers itself as a drop target, and no fill is sent", async ({
 			page,
 			player,
 			isMobile,
@@ -495,45 +517,39 @@ test.describe("filing a library row into a playlist of your own", () => {
 
 			const target = sidebarRow(page, FAVORITES);
 			await dragFrom(page, trackRow(page, 2), target);
-			await expect(target).toHaveAttribute("data-drop-over", "true");
+
+			// Read while a row is still held over the sidebar: `data-receiving` is what
+			// says the drag reached it at all, so the missing target is a refusal rather
+			// than a gesture that never started.
+			await expect(sidebar(page)).toHaveAttribute("data-receiving", "true");
+			await expect(target).not.toHaveAttribute("data-drop-target");
+			await expect(target).not.toHaveAttribute("data-drop-over");
 			await page.mouse.up();
 
-			await expectSettlesAt(player, () => titlesIn(player, FAVORITES), before);
+			await expectSettlesAt(player, () => addsSent(player), {
+				component: 0,
+				beefweb: 0,
+			});
+			expect(titlesIn(player, FAVORITES)).toEqual(before);
+		});
 
-			// Asked and refused, rather than never asked. A guard on every surface
-			// would leave the refusal itself unexercised, and the setting is the
-			// player owner's, held by the component.
-			expect(addsSent(player)).toEqual({ component: 1, beefweb: 0 });
-
+		// One setting, two answers, decided by whose playlist the fill names. The
+		// queue's holding playlist is the component's own plumbing and holds none of
+		// the user's music, so a setting that stopped a row reaching it would be the
+		// setting doing the wrong thing.
+		test("the same row still queues", async ({ page, player, isMobile }) => {
+			await openAllMusic(page);
 			await openTrackMenu(page, isMobile, 2);
-			await menuItem(page, "Add to queue").click();
+
+			const queue = menuItem(page, "Add to queue");
+			// Named rather than left to the click's own actionability wait, which
+			// reports a timeout where the real answer is that the item was refused.
+			await expect(queue).toBeEnabled();
+			await queue.click();
 
 			await expect
 				.poll(() => player.playQueue.length, { timeout: 10_000 })
 				.toBe(1);
-		});
-
-		// The drag is the one surface that asks and is told no, so it is the one
-		// place a sentence has to explain a refusal after the fact. Three causes
-		// reach it: a target that took the write and ignored it, this setting, and
-		// anything else going wrong. The first has a message of its own that names
-		// what a smart playlist does, and it is the wrong thing to tell somebody
-		// whose player owner turned writes off.
-		test("the drag that is refused names the setting, rather than blaming a smart playlist", async ({
-			page,
-			isMobile,
-		}) => {
-			test.skip(isMobile, "dragging a row onto a playlist is mouse-only");
-
-			await openAllMusic(page);
-			await openSidebar(page);
-
-			const target = sidebarRow(page, FAVORITES);
-			await dragFrom(page, trackRow(page, 2), target);
-			await expect(target).toHaveAttribute("data-drop-over", "true");
-			await page.mouse.up();
-
-			await expectRefusalNamesTheSetting(page.getByRole("status"));
 		});
 
 		// The reason goes in the label because that is the only place both surfaces

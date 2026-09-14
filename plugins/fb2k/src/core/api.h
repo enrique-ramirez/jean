@@ -111,15 +111,8 @@ struct FillRequest {
 FillRequest parseFill(const std::string& body, size_t trackCount,
                       std::optional<uint64_t> expectedStructure, bool allowsTitle = false);
 
-// The library section of stateDocument, and what GET /library/export and POST /library/refresh
-// hand back on a 202. The snapshot itself is not JSON: core/library.h serialises it, and
-// contract/openapi.yaml describes the bytes.
 std::string libraryDocument(const Library::State& state);
 
-// The small document a client polls, GET /state's body. The library's five keys ride under
-// `library`, and what the player is doing rides under `player`, always present and never
-// null. `now` is when the response is built, and is what a mark's `ageSeconds` is measured
-// against.
 std::string stateDocument(const Library::State& state, const PlayerState& player,
                           std::chrono::steady_clock::time_point now);
 

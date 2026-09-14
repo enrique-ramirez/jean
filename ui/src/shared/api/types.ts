@@ -58,11 +58,8 @@ export interface PlayerState {
 	info: PlayerInfo;
 	options?: PlayerOption[];
 	permissions: Permissions;
-	// beefweb's own deprecated pair, read only where `options` carries no `playbackOrder` entry.
 	playbackMode: number;
 	playbackModes: string[];
-	// Jean's own name for the order the player is in right now, from `foo_jean`'s poll. `null` when
-	// there is no `foo_jean` to ask, or when the player is in an order it has no name for.
 	jeanPlaybackMode: PlaybackMode | null;
 	playbackState: PlaybackState;
 	volume: Volume;

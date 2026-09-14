@@ -40,8 +40,6 @@ void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now)
 void PlayerStateStore::paused(steady_clock::time_point now) {
     const std::lock_guard<std::mutex> held(mutex_);
 
-    // Anything but playing returns early: a repeated pause must not add the run since the
-    // last mark twice and jump the trackbar forward.
     if (state_.playback != PlaybackState::playing)
         return;
 
@@ -56,9 +54,6 @@ void PlayerStateStore::paused(steady_clock::time_point now) {
 void PlayerStateStore::resumed(steady_clock::time_point now) {
     const std::lock_guard<std::mutex> held(mutex_);
 
-    // Symmetric with paused(): a resume that is not leaving a pause would move the mark to
-    // `now` without carrying the position through anything, which is the same double-count
-    // paused() guards against.
     if (state_.playback != PlaybackState::paused)
         return;
 
@@ -78,6 +73,43 @@ void PlayerStateStore::stopped() {
     next.subsong = 0;
     next.duration = 0;
     next.position = PositionMark{};
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::seeked(double seconds, steady_clock::time_point now) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.position = {seconds, now};
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::volumeChanged(double volume, bool muted) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.volume = volume;
+    next.muted = muted;
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::durationChanged(double duration) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.duration = duration;
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::playbackModeChanged(std::optional<std::string> mode) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.playbackMode = std::move(mode);
 
     applyLocked(std::move(next));
 }

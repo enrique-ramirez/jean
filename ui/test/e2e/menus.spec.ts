@@ -276,16 +276,8 @@ test.describe("a dropdown owns the keyboard too", () => {
 	});
 });
 
-test.describe("a player that will not let Jean change playlists", () => {
-	test.use({
-		playerState: {
-			permissions: {
-				changePlaylists: false,
-				changeOutput: true,
-				changeClientConfig: true,
-			},
-		},
-	});
+test.describe("an install that will not let Jean change playlists", () => {
+	test.use({ fooJean: { canWritePlaylists: false } });
 
 	test("the sidebar offers no edits rather than buttons that would 403", async ({
 		page,
@@ -300,12 +292,24 @@ test.describe("a player that will not let Jean change playlists", () => {
 			sidebar(page).getByRole("button", { name: /Favorites/ }),
 		).toBeVisible();
 	});
+});
 
-	// The other half of the same permission, and it goes the other way. Filing a
-	// row goes to foo_jean over its own port, so beefweb has no say in it and the
-	// item carries no reason: the only setting that can refuse it is the player
-	// owner's, and this install has not set it.
-	test("and the row menu still offers somewhere to file a track", async ({
+test.describe("a player whose own permissions refuse playlist changes", () => {
+	test.use({
+		playerState: {
+			permissions: {
+				changePlaylists: false,
+				changeOutput: true,
+				changeClientConfig: true,
+			},
+		},
+	});
+
+	// beefweb's own permission is not what gates an edit. Filing a row goes to
+	// foo_jean over its own port, so the item carries no reason: the only setting
+	// that can refuse it is the player owner's, held by the component, and this
+	// install has not set it.
+	test("the row menu still offers somewhere to file a track", async ({
 		page,
 		isMobile,
 	}) => {

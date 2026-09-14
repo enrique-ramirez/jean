@@ -55,18 +55,20 @@ A file whose home is unclear is usually in the wrong tier. Shared infrastructure
 
 Two mechanisms, and the split is not arbitrary.
 
-**TanStack Query holds the player's own state**, meaning anything beefweb is the authority on. `usePlayerStream` opens one `EventSource` against `/api/query/updates` and writes each push straight into the cache with `setQueryData`, so the SSE stream is the writer and `useQuery` is only ever a reader.
+**TanStack Query holds state whose authority lives outside Jean.** `useQuery` is a pure cache reader everywhere; what writes into a key is named per row below, through `setQueryData`.
 
-| Key | Holds | Refreshed by |
+| Key | Holds | Written by |
 |---|---|---|
-| `["player"]` | player state and `activeItem` | SSE |
+| `["player"]` | player state and `activeItem` | `startPlayerPoll` and beefweb's subscription, reconciled field by field |
 | `["playlists"]` | the playlist list | SSE |
 | `["playQueue"]` | the whole queue | SSE |
 | `["fooJean", token]` | the discovery result | backoff while retryable, focus otherwise |
 | `["fooJeanPlaylists", …]` | which playlists the player fills itself | when beefweb's playlist list changes |
 | `["artistInfo", artist]` | MusicBrainz and Wikipedia | never; off unless switched on in Settings |
 
-EventSource reconnects by itself and beefweb replays a full snapshot on connect, so a dropped stream needs no recovery code, but a test that wants to watch it happen needs the fake to hang up on purpose.
+**`["player"]` has two writers, and neither blanks the other's fields.** `startPlayerPoll` in `domain/player/playerPoll.ts` reads `GET /api/state` once a second and writes `permissions` and `jeanPlaybackMode`; `usePlayerStream`'s `EventSource` against `/api/query/updates` writes everything else the key holds, `activeItem` included. `mergePlayer` and `keepPollOwned`, both in `playerPoll.ts`, keep the split honest: a push from the subscription carries whatever it last had for the poll's two fields, stale or absent rather than current, so those two survive a push instead of being overwritten by it. Every view reads `["player"]` through the cache and none of them knows which of the two wrote a given field.
+
+EventSource reconnects by itself and beefweb replays a full snapshot on connect, so `["playlists"]` and `["playQueue"]` need no recovery code beyond that, though a test that wants to watch it happen needs the fake to hang up on purpose. `["player"]` recovers differently: a missed tick or a dropped connection leaves it stale until the poll's next successful response, which carries the whole document and replaces what is stale. There is no reconnect protocol behind that and nothing replays; the next tick is the whole of the recovery.
 
 **Everything else is a hand-rolled `useSyncExternalStore` store over `src/shared/lib/store.ts`.** That module is the listener half and nothing else: a `Set` of callbacks, `subscribe`, `notify`, `size`. What each store *holds* stays its own business, and there is no shared reducer, no action type and no middleware. `notify()` iterates a copy, since a listener may unsubscribe from inside its own notification and mutating the set mid-iteration would skip its neighbour.
 
@@ -84,11 +86,11 @@ It is a flat array rather than a tree for three reasons. beefweb answers ranges,
 
 Chunking is a playlist read's problem: it is almost all round trip, so the first chunk is small enough to paint from and the rest are large and concurrent. The library does not arrive that way. `foo_jean` answers it as one columnar snapshot, dictionary-encoded per column, with a per-column delta behind it, so the schedule is one request and then patches rather than a queue of reads.
 
-**The export request is Jean's column declaration, so the first ask may be a `202`.** `shared/api/fooJeanLibrary.ts` names the whole set on every request, and a `202` means the component holds no snapshot of that set and has started one, so the loader polls `GET /api/library` with a backoff until that set is ready and asks again, giving up at a build deadline. Every failure comes back as a named reason rather than a throw, so a view draws a state for an unreachable component, an unauthorised one, a refusal, a library over the component's ceiling and a build that never finished, and a `429` waits out the component's own `Retry-After`.
+**The export request is Jean's column declaration, so the first ask may be a `202`.** `shared/api/fooJeanLibrary.ts` names the whole set on every request, and a `202` means the component holds no snapshot of that set and has started one, so the loader polls `GET /api/state` with a backoff until its `library` section reports `ready` with a matching `columns` set, and asks again, giving up at a build deadline. Every failure comes back as a named reason rather than a throw, so a view draws a state for an unreachable component, an unauthorised one, a refusal, a library over the component's ceiling and a build that never finished, and a `429` waits out the component's own `Retry-After`.
 
 **`shared/api/jlib.ts` decodes without copying.** The ids are typed-array views over the bytes as they arrived, which is what the format's four-byte alignment is for, and a dictionary's text stays one `Uint8Array` that a value is sliced out of on demand, because a screen draws a few dozen rows and materialising every value of a large library eagerly costs object overhead nothing reads. Each section is checked against the blob's length before a view is taken over it, since a bad offset is otherwise a throw from a typed-array constructor with nothing in it naming the column.
 
-**The two generations live on the store entry, beside the poller, and never on the data.** `structure` and `revision` say what a client has to do next rather than what a row holds, and the thing that acts on them is the store. `recheckComponentLibrary` asks `GET /api/library`, patches where the ordinals still hold and exports again where they do not; `domain/track/useLibraryFeed.ts` is what calls it, off a track change and off a slow interval while the tab is visible, because almost every revision comes from a track finishing and Jean already learns about those.
+**The two generations live on the store entry, beside the poller, and never on the data.** `structure` and `revision` say what a client has to do next rather than what a row holds, and the thing that acts on them is the store. `recheckComponentLibrary` takes the generations off the `library` section of whatever `GET /api/state` last answered, patches where the ordinals still hold and exports again where they do not; `domain/player/playerPoll.ts` is what calls it, on every tick of the one poll that also carries player state, because almost every revision comes from a track finishing and that poll already learns about those.
 
 **A patch replaces the columns it names and leaves the rest alone, identity and all.** That is the whole point of a per-column delta: every derived structure in Jean is built from named columns, so a play count moving must invalidate the heat and patina arrays and touch neither the folded search text nor the artist and genre groupings. Anything caching across the rows declares which fields it reads and compares them by identity; `someFieldMoved` is that comparison and `growingIndex` and `foldCache` are the two that use it. An index whose fields a delta did move is rebuilt rather than extended, since a draft already summed cannot be un-summed.
 

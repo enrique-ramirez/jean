@@ -11,10 +11,6 @@ class OutputHold;
 // Registering a callback touches the player, so this is constructed and destroyed on the
 // main thread. Construction also seeds the store with what the player is already doing, since
 // the callbacks it registers fire only on the next change.
-//
-// Two callbacks, against two different SDK services: `playback_control` for the transport and
-// the volume, `playlist_manager` for the playback order, because that is where foobar2000 keeps
-// it.
 class PlaybackWatch {
 public:
     PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold);

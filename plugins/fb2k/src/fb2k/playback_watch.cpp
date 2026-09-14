@@ -103,9 +103,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
     }
 
     void on_playback_seek(double time) override {
-        auto published = store_.read();
-        published.state.position = {time, std::chrono::steady_clock::now()};
-        store_.publish(std::move(published.state));
+        store_.seeked(time, std::chrono::steady_clock::now());
     }
 
     void on_playback_pause(bool state) override {
@@ -117,16 +115,11 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
     }
 
     void on_playback_dynamic_info(const file_info& info) override {
-        auto published = store_.read();
-        published.state.duration = info.get_length();
-        store_.publish(std::move(published.state));
+        store_.durationChanged(info.get_length());
     }
 
     void on_volume_change(float value) override {
-        auto published = store_.read();
-        published.state.volume = value;
-        published.state.muted = userMuted(value, outputHold_);
-        store_.publish(std::move(published.state));
+        store_.volumeChanged(value, userMuted(value, outputHold_));
     }
 
     PlayerStateStore& store_;
@@ -141,10 +134,7 @@ struct PlaybackWatch::OrderCallback : public playlist_callback_impl_base {
 
     void on_playback_order_changed(t_size newIndex) override {
         const auto name = playlist_manager::get()->playback_order_get_name(newIndex);
-
-        auto published = store_.read();
-        published.state.playbackMode = jeanModeFor(std::string(name));
-        store_.publish(std::move(published.state));
+        store_.playbackModeChanged(jeanModeFor(std::string(name)));
     }
 
     PlayerStateStore& store_;

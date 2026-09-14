@@ -26,14 +26,8 @@ private:
     std::chrono::steady_clock::time_point last_;
 };
 
-// A cap on how many source addresses PerClientRateLimiter tracks at once, so a client that
-// keeps changing address cannot grow the map without bound.
 constexpr size_t kMaxTrackedClients = 256;
 
-// One RateLimiter per source address, so one client spending its own burst never refuses
-// another. Past kMaxTrackedClients the least-recently-seen address gives up its place to the
-// one arriving; recency moves on every call, refused or not, so an address that keeps asking
-// keeps its place and cannot be aged out by cycling in fresh ones.
 class PerClientRateLimiter {
 public:
     PerClientRateLimiter(int burst, std::chrono::milliseconds perToken);

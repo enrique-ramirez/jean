@@ -30,8 +30,6 @@ constexpr size_t kTrackedClients = 256;
 constexpr const char* kPhone = "192.168.1.20";
 constexpr const char* kLaptop = "192.168.1.21";
 
-// A crowd of addresses arriving microseconds apart: far too little for a token to come back,
-// and enough that which address was seen last is never a tie.
 steady_clock::time_point atMicros(int64_t micros) {
     return kStart + microseconds(micros);
 }
@@ -127,8 +125,6 @@ TEST_CASE("an address that will not stop asking keeps its empty bucket") {
     spendBurst(limiter, kPhone, kStart);
     CHECK_FALSE(limiter.allow(kPhone, kStart));
 
-    // Eviction that dropped the heavy caller would hand out a fresh budget for the price of
-    // cycling source addresses, which is the whole of the attack.
     int allowed = 0;
     for (size_t i = 0; i < 4 * kTrackedClients; i++) {
         const auto now = atMicros(static_cast<int64_t>(i) + 1);

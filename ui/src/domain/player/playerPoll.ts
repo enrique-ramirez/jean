@@ -127,9 +127,6 @@ export function startPlayerPoll(
 		}
 	};
 
-	// Fired once up front so a person opening Jean sees what is playing at once rather than after a
-	// full `POLL_MS`; the in-flight guard above is what keeps this from racing the timer's own first
-	// callback.
 	void tick();
 	const timer = setInterval(() => void tick(), POLL_MS);
 	return () => clearInterval(timer);
@@ -143,8 +140,6 @@ export function usePlayerPoll(
 	const client = useQueryClient();
 
 	useEffect(() => {
-		// Capabilities lands with `origin` and `token` together, off the same discovery: waiting on it
-		// too is what keeps the first write from drawing the fader at the wrong scale for a tick.
 		if (!origin || !token || !capabilities) return undefined;
 		return startPlayerPoll(client, origin, token, capabilities);
 	}, [client, origin, token, capabilities]);

@@ -62,8 +62,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * What this install permits.
-         * @description The write allowlist and the streaming and autoplaylist limits for this install. A client SHOULD render controls for the fields named here and nothing else, rather than being configured with its own copy of the list.
+         * What this install permits, and what does not change while it runs.
+         * @description The write allowlist, the streaming and autoplaylist limits, what this install permits, and the player's own name, version and volume range. A client reads this once and draws the player from it; none of it rides `GET /state`. A client SHOULD render controls for the fields named here and nothing else, rather than being configured with its own copy of the list.
          */
         get: operations["getCapabilities"];
         put?: never;
@@ -290,7 +290,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/library": {
+    "/state": {
         parameters: {
             query?: never;
             header?: never;
@@ -298,18 +298,18 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Both generations, and how big the library is.
+         * What the player is doing, and the library's two generations.
          * @description The document a client polls. It is small, it is `ETag`ged, and a poll that finds nothing new is a `304` with no body.
          *
-         *     Read `structure` and `revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means export again. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do.
+         *     Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means export again. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do.
          *
-         *     `ready` is `false` between the component starting and its first snapshot being built. This is also what a client polls after a `202` from `GET /library/export`: wait until `ready` is true and `columns` has the same members as the set declared, then ask for the export again.
+         *     `library.ready` is `false` between the component starting and its first snapshot being built, and also on an install with no media library at all: the two are indistinguishable from this document alone. This is also what a client polls after a `202` from `GET /library/export`: wait until `library.ready` is true and `library.columns` has the same members as the set declared, then ask for the export again.
          *
-         *     Once player state moves into this component the generations will ride that poll, and this route will cost nothing extra. Do not build a second poller for it.
+         *     This route never answers `503`: a player with no library is still a player, so it answers `200` with `library.ready` false and a populated `player` section. The three routes under `/library` keep their own `503` when there is no library to serve.
          *
          *     Its `ETag` names the content coding, exactly as the two binary routes do. See *Compression*.
          */
-        get: operations["getLibrary"];
+        get: operations["getState"];
         put?: never;
         post?: never;
         delete?: never;
@@ -329,11 +329,11 @@ export interface paths {
          * Declare a column set, and take the whole library in one binary snapshot.
          * @description Every track, every declared column, in one response. The format is in the description at the top of this document, under *The media library*; the header's shape is `LibraryHeader`.
          *
-         *     `columns` is the declaration, and it is required. A `200` means a snapshot of exactly that set is built and this is it. A `202` means one is not, that the component has started building it, and that the client should poll `GET /library` until `columns` match and `ready` is true, then ask again. **The first export after the component starts, and the first after the declared set changes, is the slow one**: it walks and formats every track. Nothing else on this API is affected while it runs.
+         *     `columns` is the declaration, and it is required. A `200` means a snapshot of exactly that set is built and this is it. A `202` means one is not, that the component has started building it, and that the client should poll `GET /state` until `library.columns` match and `library.ready` is true, then ask again. **The first export after the component starts, and the first after the declared set changes, is the slow one**: it walks and formats every track. Nothing else on this API is affected while it runs.
          *
          *     There is no paged variant and none is planned. Paging a library needs a stable sorted order, producing one needs a full pass, and the component is where the whole database already sits in memory. A client that holds everything answers its own searches, counts and shelves without another request.
          *
-         *     The response is `ETag`ged on the two generations, so a client that polls `GET /library` and finds nothing new never gets here, and one that arrives anyway is answered `304`.
+         *     The response is `ETag`ged on the two generations, so a client that polls `GET /state` and finds nothing new never gets here, and one that arrives anyway is answered `304`.
          *
          *     Large. Expect single-digit megabytes for a library of thirty thousand tracks, growing roughly linearly. A client MUST read it as an `ArrayBuffer` rather than as text.
          */
@@ -357,7 +357,7 @@ export interface paths {
          * What has changed since a revision, per column.
          * @description The patch between the revision a client holds and the current one, in the same binary format as the snapshot. It carries only the columns that moved and, within each, only the rows that moved, so the common case of a play count and a last-played date advancing touches two columns and leaves the rest of a client's arrays untouched by identity as well as by value.
          *
-         *     Call this when `GET /library` reports the same `structure` and a higher `revision`. A different `structure` is a `409`: ordinals have shifted and the patch would be meaningless, so export again.
+         *     Call this when `GET /state` reports the same `library.structure` and a higher `library.revision`. A different `structure` is a `409`: ordinals have shifted and the patch would be meaningless, so export again.
          *
          *     There is no `columns` here, because `since` already names the generation. A rebuild with a different set moves `structure`, so a client whose declaration is stale reaches the `409` and exports, which is where it declares again.
          *
@@ -391,7 +391,7 @@ export interface paths {
          *
          *     Expensive: it re-queries and re-formats every track. Rate limited to a burst of three, refilling one every thirty seconds, which is what a person pressing a button needs and a looping client does not get.
          *
-         *     The answer is `202` rather than `200`. The rebuild may still be running, and the body carries the generations as they stand at the moment of the request, so a client watches `GET /library` for `structure` to move past them. It MUST NOT treat the answer as the finished rebuild.
+         *     The answer is `202` rather than `200`. The rebuild may still be running, and the body carries the generations as they stand at the moment of the request, so a client watches `GET /state`'s `library.structure` for it to move past them. It MUST NOT treat the answer as the finished rebuild.
          */
         post: operations["refreshLibrary"];
         delete?: never;
@@ -626,6 +626,8 @@ export interface components {
              *     The component's own two playlists, its scratch space and the play queue's holding playlist, stay writable regardless: this governs the user's playlists, not the component's own plumbing.
              */
             canWritePlaylists: boolean;
+            /** @description Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. Reported only: no route in this bundle reads it back or acts on it. */
+            canChangeOutput: boolean;
             /**
              * @description How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
              *
@@ -654,12 +656,55 @@ export interface components {
              */
             canMuteWhileStreaming: boolean;
             /**
-             * @description Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`, as does `GET /artwork`, which addresses a cover through the snapshot. A client MUST hide the library rather than offer it and fail.
+             * @description Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`, as does `GET /artwork`, which addresses a cover through the snapshot. `GET /state` answers `200` regardless, with `library.ready` false. A client MUST hide the library rather than offer it and fail.
              *
-             *     True says the routes are there, not that a snapshot is built yet. `GET /library` reports `ready` for that.
+             *     True says the routes are there, not that a snapshot is built yet. `GET /state` reports `library.ready` for that.
              */
             canReadLibrary: boolean;
+            /**
+             * @description The player's own name, read once at startup and static for as long as it runs. foo_jean loads in foobar2000 alone, so this is the player identifying itself rather than a client needing to guess.
+             * @example foobar2000
+             */
+            playerName: string;
+            /**
+             * @description The player's own version string, read the same way.
+             * @example 2.25.3
+             */
+            playerVersion: string;
+            /**
+             * @description The floor of the range `PlayerState.volume` in `GET /state` moves within. A client draws the fader's whole length against `volumeMin`..`volumeMax` rather than assuming any particular scale.
+             * @example -100
+             */
+            volumeMin: number;
+            /**
+             * @description The ceiling of that range.
+             * @example 0
+             */
+            volumeMax: number;
+            /**
+             * @description What `volumeMin`, `volumeMax` and `PlayerState.volume` are all measured in.
+             * @example db
+             */
+            volumeUnit: string;
+            /**
+             * @description The playback modes this install can be put into, in the order the player itself lists them. An order the player reports that this component has no Jean name for is missing from here rather than guessed at, and an install reporting none answers an empty array.
+             * @example [
+             *       "inOrder",
+             *       "repeatAll",
+             *       "repeatOne",
+             *       "random",
+             *       "shuffleTracks",
+             *       "shuffleAlbums",
+             *       "shuffleFolders"
+             *     ]
+             */
+            playbackModes: components["schemas"]["PlaybackMode"][];
         };
+        /**
+         * @description Jean's own name for a playback order. `foo_jean` maps it both ways against whatever the player calls its own orders; neither foobar2000's own string nor its ordinal ever crosses this API.
+         * @enum {string}
+         */
+        PlaybackMode: "inOrder" | "repeatAll" | "repeatOne" | "random" | "shuffleTracks" | "shuffleAlbums" | "shuffleFolders";
         StreamTimeline: {
             /** @description Seconds of audio encoded since the component started. Not wall-clock time and not the player's position. It is the clock `marks[].at` is expressed in. */
             streamTime: number;
@@ -873,7 +918,7 @@ export interface components {
              */
             title: string;
             /**
-             * @description The `structure` generation the set was resolved against, read from `GET /library`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
              * @example 41
              */
             structure: number;
@@ -883,7 +928,7 @@ export interface components {
         };
         FillPlaylistRequest: {
             /**
-             * @description The `structure` generation the set was resolved against, read from `GET /library`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
              * @example 41
              */
             structure: number;
@@ -968,7 +1013,15 @@ export interface components {
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
-        /** @description What `GET /library` answers, and what `POST /library/refresh` hands back. Small on purpose: it is polled. */
+        /**
+         * @description What `GET /state` answers. The library's two generations ride under `library`, and
+         *     what the player is doing rides under `player`.
+         */
+        State: {
+            library: components["schemas"]["Library"];
+            player: components["schemas"]["PlayerState"];
+        };
+        /** @description What rides under `library` in `GET /state`'s `200`, and what `GET /library/export` and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled. */
         Library: {
             /** @description Whether a snapshot has been built. False only between the component starting and its first walk finishing. Every other library route answers `503` while it is false. */
             ready: boolean;
@@ -998,6 +1051,44 @@ export interface components {
              *     ]
              */
             columns: string[];
+        };
+        /**
+         * @description What rides under `player` in `GET /state`'s `200`. Always present and never null: a
+         *     stopped player still answers this section, with `playback` `stopped` and `path` empty.
+         */
+        PlayerState: {
+            /**
+             * @description What the player is doing right now.
+             * @enum {string}
+             */
+            playback: "stopped" | "paused" | "playing";
+            /** @description What is playing, or empty when nothing is. */
+            path: string;
+            /** @description The index within `path`, for a cue sheet or a disc image. `0` for an ordinary file. */
+            subsong: number;
+            position: components["schemas"]["Position"];
+            /** @description The playing track's length in seconds, or `0` when nothing is playing. */
+            duration: number;
+            /** @description The player's own volume, in whatever range it reports. */
+            volume: number;
+            muted: boolean;
+            /** @description Jean's name for the playback order the player is in right now, or `null` when this component has no name for the order the player reports. Always present and never omitted, so a client can tell "no name for this" from "too old to report". */
+            playbackMode: components["schemas"]["PlaybackMode"] | null;
+        };
+        /**
+         * @description Where playback was at the moment this component last looked, and how long ago that
+         *     was. A `steady_clock` mark means nothing on another machine, so `ageSeconds` is the
+         *     only part of it a client can use: it adds `ageSeconds` to `seconds` and keeps counting
+         *     from there while `player.playback` is `playing`.
+         */
+        Position: {
+            /** @description Playback position at the mark, in seconds. */
+            seconds: number;
+            /**
+             * @description How long before this response was built the mark was taken, in seconds. `0` when
+             *     no mark has ever been taken.
+             */
+            ageSeconds: number;
         };
         /** @description The JSON header inside a snapshot or a delta, between the four-byte magic number and the blob. It is not served on its own by any route; it is documented here so a client can be generated for it. *The media library*, at the top of this document, has the framing and how to read a column. */
         LibraryHeader: {
@@ -1130,7 +1221,7 @@ export interface components {
         };
     };
     responses: {
-        /** @description The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, an id this component did not issue, or an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals`, or that names an ordinal outside the `structure` it claims. */
+        /** @description The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, an id this component did not issue, or an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals`, or that names an ordinal outside the library while its `structure` is still the current one. A `structure` that has moved is a `409` instead, whether the library grew or shrank. */
         PlaylistRefused: {
             headers: {
                 [name: string]: unknown;
@@ -1252,6 +1343,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The component could not reach the playlist machinery its own scratch and queue playlists depend on. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`, and unrelated to the read-only-playlists setting, which never reaches this route. */
+        OwnPlaylistsUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Either this install does not stream, because no encoder started or `streamingEnabled` is false, or it is already serving as many connections as `maxConcurrentStreams` allows. The `error` string distinguishes them, and a client SHOULD present the second as busy and retry rather than as unsupported. `GET /capabilities` reports the first in advance. */
         StreamUnavailable: {
             headers: {
@@ -1277,6 +1377,21 @@ export interface components {
                 [name: string]: unknown;
             };
             content?: never;
+        };
+        /**
+         * @description Polls of `GET /state` are arriving faster than this component will answer them: a burst of 30, refilling one every 100 milliseconds, per source address. An ordinary poll on its own interval never meets this; a client stuck in a loop does.
+         *
+         *     The refusal is decided before the document is built, so it carries no `ETag` and neither the `player` nor the `library` section. `Retry-After` is sent in seconds.
+         */
+        StatePolledTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
         };
         /** @description The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, or a `since` that is missing or not a whole number. */
         LibraryRefused: {
@@ -1533,7 +1648,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description What may be written. */
+            /** @description What may be written, and what a client needs to draw the player. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1874,7 +1989,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
-            503: components["responses"]["PlaylistUnavailable"];
+            503: components["responses"]["OwnPlaylistsUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };
@@ -1918,7 +2033,7 @@ export interface operations {
             504: components["responses"]["PlayerTooSlow"];
         };
     };
-    getLibrary: {
+    getState: {
         parameters: {
             query?: never;
             header?: never;
@@ -1939,12 +2054,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Library"];
+                    "application/json": components["schemas"]["State"];
                 };
             };
             304: components["responses"]["NotModified"];
             401: components["responses"]["Unauthorized"];
-            503: components["responses"]["LibraryUnavailable"];
+            429: components["responses"]["StatePolledTooFast"];
         };
     };
     exportLibrary: {
@@ -1983,9 +2098,9 @@ export interface operations {
                 };
             };
             /**
-             * @description No snapshot of that set exists and one is being built. The body is what `GET /library` answers now, so a client can see what it is waiting to change.
+             * @description No snapshot of that set exists and one is being built. The body is the `Library` object `GET /state` carries under `library`, as it stands now, so a client can see what it is waiting to change.
              *
-             *     Asking again for a set already being built is another `202` and does not start a second build. A client SHOULD poll `GET /library` rather than re-asking here.
+             *     Asking again for a set already being built is another `202` and does not start a second build. A client SHOULD poll `GET /state` rather than re-asking here.
              */
             202: {
                 headers: {
@@ -2053,7 +2168,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The rebuild was asked for. The body is what `GET /library` would answer now. */
+            /** @description The rebuild was asked for. The body is the `Library` object `GET /state` carries under `library`, as it stands now. */
             202: {
                 headers: {
                     [name: string]: unknown;

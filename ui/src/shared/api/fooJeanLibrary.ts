@@ -1,8 +1,5 @@
-import { bearer, withTimeout } from "./fooJean";
-import type { components } from "./fooJeanSchema";
+import { bearer, fetchState, withTimeout } from "./fooJean";
 import { decodeJlib, type JlibDelta, type JlibSnapshot } from "./jlib";
-
-export type LibraryState = components["schemas"]["Library"];
 
 export type LibraryFailureReason =
 	| "unavailable"
@@ -29,13 +26,7 @@ export type LibraryChanges =
 	| { ok: true; kind: "restart" }
 	| LibraryFailure;
 
-export type LibraryStateResult =
-	| { ok: true; kind: "unchanged" }
-	| { ok: true; kind: "state"; state: LibraryState; tag: string | null }
-	| LibraryFailure;
-
 const EXPORT_TIMEOUT_MS = 120_000;
-const STATE_TIMEOUT_MS = 5_000;
 const CHANGES_TIMEOUT_MS = 30_000;
 
 const POLL_MIN_MS = 500;
@@ -189,34 +180,6 @@ const TRANSIENT: ReadonlySet<LibraryFailureReason> = new Set([
 	"failed",
 ]);
 
-export async function fetchLibraryState(
-	origin: string,
-	token: string,
-	tag: string | null,
-	signal?: AbortSignal,
-): Promise<LibraryStateResult> {
-	const asked = await ask(
-		`${origin}/api/library`,
-		tag ? { ...bearer(token), "If-None-Match": tag } : bearer(token),
-		STATE_TIMEOUT_MS,
-		signal,
-	);
-	if (!asked.ok) return asked;
-
-	const { response } = asked;
-	if (response.status === 304) return { ok: true, kind: "unchanged" };
-
-	const refused = await refusalOf(response);
-	if (refused) return refused;
-
-	return {
-		ok: true,
-		kind: "state",
-		state: (await response.json()) as LibraryState,
-		tag: response.headers.get("ETag"),
-	};
-}
-
 const RESTARTS = new Set([409, 410]);
 
 export async function fetchLibraryChanges(
@@ -271,13 +234,13 @@ export async function fetchLibrary(
 			await sleep(pollMs, signal);
 			pollMs = Math.min(pollMs * 2, POLL_MAX_MS);
 
-			const polled = await fetchLibraryState(origin, token, null, signal);
+			const polled = await fetchState(origin, token, null, signal);
 			if (!polled.ok && !TRANSIENT.has(polled.reason)) return polled;
 			if (
 				polled.ok &&
 				polled.kind === "state" &&
-				polled.state.ready &&
-				sameColumns(polled.state.columns, columns)
+				polled.state.library.ready &&
+				sameColumns(polled.state.library.columns, columns)
 			)
 				break;
 		}

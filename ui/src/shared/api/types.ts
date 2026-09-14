@@ -1,5 +1,17 @@
 export type PlaybackState = "playing" | "paused" | "stopped";
 
+// Jean's own playback-mode vocabulary, matching `contract/openapi.yaml`'s `PlaybackMode`. `foo_jean`
+// maps it onto whatever the player calls its own orders, both ways; neither foobar2000's string nor
+// its ordinal ever reaches here.
+export type PlaybackMode =
+	| "inOrder"
+	| "repeatAll"
+	| "repeatOne"
+	| "random"
+	| "shuffleTracks"
+	| "shuffleAlbums"
+	| "shuffleFolders";
+
 // Decibels rather than a percentage, and `type` is what says so. The range is the player's:
 // -100..0 on foobar2000, -50..0 on DeaDBeeF, so read `min` and `max`.
 export interface Volume {
@@ -46,8 +58,12 @@ export interface PlayerState {
 	info: PlayerInfo;
 	options?: PlayerOption[];
 	permissions: Permissions;
+	// beefweb's own deprecated pair, read only where `options` carries no `playbackOrder` entry.
 	playbackMode: number;
 	playbackModes: string[];
+	// Jean's own name for the order the player is in right now, from `foo_jean`'s poll. `null` when
+	// there is no `foo_jean` to ask, or when the player is in an order it has no name for.
+	jeanPlaybackMode: PlaybackMode | null;
 	playbackState: PlaybackState;
 	volume: Volume;
 }

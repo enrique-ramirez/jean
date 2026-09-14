@@ -1,8 +1,8 @@
 import { fetchPlaylistItems } from "@/shared/api/beefweb";
+import type { StateDocument } from "@/shared/api/fooJean";
 import {
 	fetchLibrary,
 	fetchLibraryChanges,
-	fetchLibraryState,
 	type LibraryFailure,
 	type LibraryFailureReason,
 } from "@/shared/api/fooJeanLibrary";
@@ -45,7 +45,6 @@ interface Chunk {
 interface Feed {
 	structure: number;
 	revision: number;
-	tag: string | null;
 	isChecking: boolean;
 }
 
@@ -289,7 +288,6 @@ async function loadSnapshot(entry: Entry, origin: string, token: string) {
 		entry.feed = {
 			structure: library.structure,
 			revision: library.revision,
-			tag: null,
 			isChecking: false,
 		};
 
@@ -343,21 +341,20 @@ function applyDelta(entry: Entry, feed: Feed, delta: JlibDelta) {
 	return true;
 }
 
-export async function recheckComponentLibrary(origin: string, token: string) {
+export async function recheckComponentLibrary(
+	origin: string,
+	token: string,
+	library: Pick<StateDocument["library"], "structure" | "revision">,
+) {
 	const entry = entries.get(componentLibraryKey(origin));
 	const feed = entry?.feed;
 	if (!entry || !feed || feed.isChecking || entry.snapshot.isLoading) return;
 
 	feed.isChecking = true;
 	try {
-		const answer = await fetchLibraryState(origin, token, feed.tag);
-		if (!answer.ok || answer.kind === "unchanged") return;
-
-		feed.tag = answer.tag;
-		const { structure, revision } = answer.state;
-		if (structure !== feed.structure)
+		if (library.structure !== feed.structure)
 			return void (await exportAgain(entry, origin, token));
-		if (revision <= feed.revision) return;
+		if (library.revision <= feed.revision) return;
 
 		const changes = await fetchLibraryChanges(origin, token, feed.revision);
 		if (!changes.ok) return;

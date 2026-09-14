@@ -394,6 +394,17 @@ export const expectRefusalNamesTheSetting = async (message: Locator) => {
 	await expect(message).not.toHaveText(BLAMES_A_SMART_PLAYLIST);
 };
 
+// ---- driving the player from outside ----------------------------------------
+
+// A wifi hiccup, a proxy timing out, a phone coming out of a pocket. Asserts on
+// the count the fake answers with, because a test that dropped nothing would be
+// asserting the app survived an event that never happened.
+export const dropTheStream = async (page: Page) => {
+	const answer = await page.request.post("/__control/dropStream");
+	const { dropped } = (await answer.json()) as { dropped: number };
+	expect(dropped, "no update stream was open to drop").toBeGreaterThan(0);
+};
+
 // ---- reading the player -----------------------------------------------------
 
 export const requestsTo = (player: FakePlayer, pattern: string) =>

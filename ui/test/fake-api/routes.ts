@@ -366,15 +366,24 @@ function streamUpdates({
 
 export function handleControl({
 	state,
+	method,
 	path,
 	body,
 	response,
-}: Pick<ApiRequest, "state" | "path" | "body" | "response">) {
+}: Pick<ApiRequest, "state" | "method" | "path" | "body" | "response">) {
 	const action = path.replace("/__control/", "");
 
 	const input = body ?? {};
 
 	if (action === "state") {
+		if (method === "POST") {
+			// Switches GET /api/state's refusal mid-test, unlike `failWrites`,
+			// which only takes effect at fixture construction. Omitting the field
+			// (or sending it null) turns the refusal back off.
+			state.fooJean.failState =
+				typeof input.failState === "number" ? input.failState : null;
+			return empty(response);
+		}
 		return json(response, {
 			player: state.player,
 			playlists: state.playlists.map((entry) => ({

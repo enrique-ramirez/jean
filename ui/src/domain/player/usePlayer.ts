@@ -1,5 +1,6 @@
 import {
 	type QueryKey,
+	skipToken,
 	useMutation,
 	useQuery,
 	useQueryClient,
@@ -8,7 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
 	createPlaylist,
-	fetchPlayer,
 	fetchPlaylists,
 	movePlaylist,
 	nextTrack,
@@ -29,17 +29,21 @@ import {
 import type {
 	ActiveItem,
 	Permissions,
+	PlaybackMode,
 	PlayerSnapshot,
 	PlayerState,
 	PlaylistInfo,
 	UpdateMessage,
 } from "@/shared/api/types";
 import { useCoalescedWrite } from "@/shared/hooks/useCoalescedWrite";
+import { useFooJean } from "@/shared/hooks/useFooJean";
+import type { Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 import { clamp } from "@/shared/lib/math";
 import { refusal } from "@/shared/lib/refusal";
 import { rememberSnapshot, useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
+import { keepPollOwned, PLAYER_KEY, VOLUME_SETTLE_MS } from "./playerPoll";
 import { positionAt } from "./position";
 import {
 	dequeuePlaylist,
@@ -48,11 +52,12 @@ import {
 	QUEUE_KEY,
 } from "./queue";
 
-const PLAYER_KEY = ["player"];
 export const PLAYLISTS_KEY = ["playlists"];
 
 let held: { item: ActiveItem; syncedAt: number } | null = null;
 
+// foobar2000 empties `activeItem` for as long as a skip takes to open the next file. See
+// ../../shared/api/README.md, "the gap a skip leaves".
 const holdThroughGap = (player: PlayerState, syncedAt: number) => {
 	if (player.playbackState === "stopped") {
 		held = null;
@@ -88,7 +93,13 @@ export function usePlayerStream() {
 			const { player, playlists, playQueue } = JSON.parse(
 				event.data,
 			) as UpdateMessage;
-			if (player) queryClient.setQueryData(PLAYER_KEY, snapshot(player));
+			if (player) {
+				const previous = queryClient.getQueryData<PlayerSnapshot>(PLAYER_KEY);
+				queryClient.setQueryData(
+					PLAYER_KEY,
+					snapshot(keepPollOwned(previous?.player, player)),
+				);
+			}
 			if (playlists) queryClient.setQueryData(PLAYLISTS_KEY, playlists);
 			if (playQueue && !isQueueStreamHeld())
 				queryClient.setQueryData(QUEUE_KEY, playQueue);
@@ -99,9 +110,9 @@ export function usePlayerStream() {
 }
 
 export function usePlayer() {
-	return useQuery({
+	return useQuery<PlayerSnapshot>({
 		queryKey: PLAYER_KEY,
-		queryFn: async () => snapshot(await fetchPlayer()),
+		queryFn: skipToken,
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
 	});
@@ -313,46 +324,82 @@ export const useSeekBy = () =>
 		return { activeItem: { ...item, position } };
 	});
 
-function findShuffleIndex(names: string[]) {
-	const lower = names.map((name) => name.toLowerCase());
+// `foo_jean`'s own vocabulary, in the fixed order that matches foobar2000's stock `playbackOrder`
+// enum. The deprecated numeric write still needs an ordinal to send beefweb, and this correspondence
+// is the only one left once the live enum stopped riding the wire.
+const JEAN_ORDER: PlaybackMode[] = [
+	"inOrder",
+	"repeatAll",
+	"repeatOne",
+	"random",
+	"shuffleTracks",
+	"shuffleAlbums",
+	"shuffleFolders",
+];
 
-	return (
-		[
-			lower.indexOf("shuffle (tracks)"),
-			lower.findIndex((name) => name.includes("shuffle")),
-			lower.findIndex((name) => name.includes("random")),
-		].find((at) => at >= 0) ?? -1
-	);
-}
+// The mode the switch enters, preferring a per-track shuffle where an install names more than one and
+// falling back to `random` for an install with no dedicated shuffle order at all.
+const SHUFFLE_PRIORITY: PlaybackMode[] = [
+	"shuffleTracks",
+	"shuffleAlbums",
+	"shuffleFolders",
+	"random",
+];
 
-function findDefaultIndex(names: string[]) {
-	const at = names.findIndex((name) => name.toLowerCase() === "default");
-	return at >= 0 ? at : 0;
-}
+type OrderPhrase = Extract<Phrase, `player.order.${string}`>;
+
+const ORDER_NAME_PHRASE: Record<PlaybackMode, OrderPhrase> = {
+	inOrder: "player.order.inOrder",
+	repeatAll: "player.order.repeatAll",
+	repeatOne: "player.order.repeatOne",
+	random: "player.order.random",
+	shuffleTracks: "player.order.shuffleTracks",
+	shuffleAlbums: "player.order.shuffleAlbums",
+	shuffleFolders: "player.order.shuffleFolders",
+};
+
+const findShuffleMode = (offered: PlaybackMode[]) =>
+	SHUFFLE_PRIORITY.find((mode) => offered.includes(mode)) ?? null;
 
 export function usePlaybackOrder() {
 	const { data } = usePlayer();
+	const { discovery } = useFooJean();
 
 	const player = data?.player;
 	const option = player?.options?.find((entry) => entry.id === "playbackOrder");
-	const names = option?.enumNames ?? player?.playbackModes ?? [];
+
+	// `foo_jean` pairs with foobar2000 alone, so its presence is what `player.info.name` would
+	// otherwise say: the order rides back as the `options` entry foobar2000 wants, and DeaDBeeF's
+	// only other player takes the deprecated top-level field instead.
+	const capabilities =
+		discovery.state.kind === "ready" ? discovery.state.capabilities : null;
+
+	// `foo_jean`'s own name for the order the player is in right now, or `null` where there is no
+	// `foo_jean` to ask or the player is in an order it has no name for.
+	const mode = player?.jeanPlaybackMode ?? null;
+	const modeOrdinal = mode !== null ? JEAN_ORDER.indexOf(mode) : -1;
+
 	// beefweb's `options` is an open list carrying both enum and bool entries, so the value is only a
-	// number when this really is the enum one.
+	// number when this really is the enum one; `jeanPlaybackMode` is the one still fed by anything.
 	const value =
+		(modeOrdinal >= 0 ? modeOrdinal : undefined) ??
 		(typeof option?.value === "number" ? option.value : player?.playbackMode) ??
 		0;
 
-	const shuffleIndex = useMemo(() => findShuffleIndex(names), [names]);
-	const isShuffle = shuffleIndex >= 0 && value === shuffleIndex;
-	const defaultIndex = useMemo(() => findDefaultIndex(names), [names]);
+	const offeredModes = capabilities?.playbackModes ?? [];
+	const shuffleMode = useMemo(
+		() => findShuffleMode(offeredModes),
+		[offeredModes],
+	);
+	const isShuffle = shuffleMode !== null && mode === shuffleMode;
+
+	const isInOrder = mode === null ? value === 0 : mode === "inOrder";
 
 	const previousOrder = useRef(0);
 	if (!isShuffle && value !== previousOrder.current)
 		previousOrder.current = value;
 
-	// The write has to agree with the read: where the order came from an option it goes back as one,
-	// and where it came from the deprecated field that is all the player accepts.
-	const hasOrderOption = option !== undefined;
+	const hasOrderOption = capabilities !== null;
 	const write = useCallback(
 		(next: number) => setPlaybackOrder(next, hasOrderOption),
 		[hasOrderOption],
@@ -360,6 +407,7 @@ export function usePlaybackOrder() {
 
 	const mutation = usePlayerPatch(write, (player, next: number) => ({
 		playbackMode: next,
+		jeanPlaybackMode: JEAN_ORDER[next] ?? player.jeanPlaybackMode,
 		options: player.options?.map((entry) =>
 			entry.id === "playbackOrder" ? { ...entry, value: next } : entry,
 		),
@@ -368,26 +416,25 @@ export function usePlaybackOrder() {
 	const { mutate } = mutation;
 
 	const toggleShuffle = useCallback(() => {
-		if (shuffleIndex < 0) return;
-		mutate(isShuffle ? previousOrder.current : shuffleIndex);
-	}, [isShuffle, shuffleIndex, mutate]);
+		if (shuffleMode === null) return;
+		mutate(isShuffle ? previousOrder.current : JEAN_ORDER.indexOf(shuffleMode));
+	}, [isShuffle, shuffleMode, mutate]);
 
 	const enableShuffle = useCallback(() => {
-		if (shuffleIndex < 0 || isShuffle) return;
-		mutate(shuffleIndex);
-	}, [isShuffle, shuffleIndex, mutate]);
+		if (shuffleMode === null || isShuffle) return;
+		mutate(JEAN_ORDER.indexOf(shuffleMode));
+	}, [isShuffle, shuffleMode, mutate]);
 
 	return {
 		isShuffle,
-		canShuffle: shuffleIndex >= 0,
-		orderName: names[value] ?? null,
-		isInOrder: value === defaultIndex,
+		canShuffle: shuffleMode !== null,
+		orderName: mode ? translate(ORDER_NAME_PHRASE[mode]) : null,
+		isInOrder,
 		toggleShuffle,
 		enableShuffle,
 	};
 }
 
-const VOLUME_SETTLE_MS = 1000;
 const VOLUME_EPSILON = 0.5;
 
 export function useVolume() {

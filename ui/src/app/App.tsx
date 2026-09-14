@@ -14,6 +14,7 @@ import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { usePlaySet } from "@/domain/library/usePlaySet";
+import { usePlayerPoll } from "@/domain/player/playerPoll";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -183,6 +184,11 @@ function Shell() {
 	} = resolveRoute(shellRoute);
 
 	const { discovery } = useFooJean();
+	usePlayerPoll(
+		discovery.origin,
+		discovery.token,
+		discovery.state.kind === "ready" ? discovery.state.capabilities : null,
+	);
 	const artworkAccess = useMemo(
 		() =>
 			discovery.origin && discovery.token

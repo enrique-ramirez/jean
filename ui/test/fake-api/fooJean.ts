@@ -1,6 +1,8 @@
+import type { PlaybackMode } from "../../src/shared/api/types.ts";
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { ArtworkServer } from "./routes.ts";
 import type { createState, FakePlaylist, Track } from "./state.ts";
+import { evaluate } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
@@ -31,6 +33,12 @@ export interface FooJeanOptions {
 
 	failWrites?: number | null;
 
+	// Refuses GET /api/state with this status for a stretch, shaped like
+	// `failWrites`. Unlike it, a spec switches this one at runtime through
+	// `POST /__control/state`, because the case it exists for is a poll cut off
+	// mid-test rather than one refused from the start.
+	failState?: number | null;
+
 	canReadLibrary?: boolean;
 	libraryBuilds?: number;
 	libraryBusy?: number;
@@ -45,6 +53,7 @@ export interface FooJeanOptions {
 	failCreate?: number | null;
 
 	canWritePlaylists?: boolean | "absent";
+	canChangeOutput?: boolean;
 
 	canStream?: boolean;
 	// Best first, as the component reports it. An install whose Windows has no AAC
@@ -94,6 +103,7 @@ const DEFAULTS: FooJeanFake = {
 	token: "0123456789abcdef0123456789abcdef",
 	allowedFields: ["rating"],
 	failWrites: null,
+	failState: null,
 	canStream: true,
 	streamFormats: ["opus", "aac"],
 	playableFormats: ["opus", "aac"],
@@ -116,6 +126,7 @@ const DEFAULTS: FooJeanFake = {
 	libraryEnabled: true,
 	failCreate: null,
 	canWritePlaylists: true,
+	canChangeOutput: true,
 };
 
 export const fooJeanState = (options: FooJeanOptions | null): FooJeanFake => ({
@@ -605,6 +616,60 @@ const libraryStateOf = (state: FakeState) => {
 	};
 };
 
+// foobar2000's stock playback-order names, matched against `enumNames` and translated to
+// Jean's own mode names the way `plugins/fb2k/src/core/playback_modes.cpp`'s `kModes` does.
+// An order this map does not carry is not offered, exactly as `jeanModeFor` refuses one.
+const JEAN_MODE_BY_ORDER: Record<string, PlaybackMode> = {
+	Default: "inOrder",
+	"Repeat (playlist)": "repeatAll",
+	"Repeat (track)": "repeatOne",
+	Random: "random",
+	"Shuffle (tracks)": "shuffleTracks",
+	"Shuffle (albums)": "shuffleAlbums",
+	"Shuffle (folders)": "shuffleFolders",
+};
+
+const jeanModeFor = (order: string): PlaybackMode | null =>
+	JEAN_MODE_BY_ORDER[order] ?? null;
+
+// The orders this fixture's player actually declares, in the order it declares them, never the
+// full stock list regardless of what a spec asked the player to report.
+const declaredOrders = (state: FakeState): string[] =>
+	state.player.options?.find((entry) => entry.id === "playbackOrder")
+		?.enumNames ?? [];
+
+// What GET /api/capabilities offers: the declared orders translated and filtered, so an install
+// whose player reports fewer orders, or one this component has no name for, offers fewer modes.
+const playbackModesOf = (state: FakeState): PlaybackMode[] =>
+	declaredOrders(state)
+		.map(jeanModeFor)
+		.filter((mode): mode is PlaybackMode => mode !== null);
+
+// What rides under `player` in `GET /api/state`'s `200`. Position comes from
+// `state.positionMark` rather than from `activeItem.position` directly, since
+// that is where the age the client interpolates from is kept.
+const playerSectionOf = (state: FakeState) => {
+	const item = state.player.activeItem;
+	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
+	const track = playlist?.items[item.index];
+	const { seconds, takenAtMs } = state.positionMark;
+	return {
+		playback: state.player.playbackState,
+		path: track ? String(evaluate(track, "%path%") ?? "") : "",
+		subsong: track ? Number(track["%subsong%"]) || 0 : 0,
+		position: {
+			seconds: Math.max(seconds, 0),
+			ageSeconds: Math.max((Date.now() - takenAtMs) / 1000, 0),
+		},
+		duration: Math.max(item.duration, 0),
+		volume: state.playerHeld ? -100 : state.player.volume.value,
+		muted: state.playerHeld ? true : state.player.volume.isMuted,
+		playbackMode: jeanModeFor(
+			declaredOrders(state)[state.player.playbackMode] ?? "",
+		),
+	};
+};
+
 const sameMembers = (held: string[], asked: string[]) =>
 	held.length === asked.length && asked.every((one) => held.includes(one));
 
@@ -631,6 +696,12 @@ const tagOf = (state: FakeState, coding: string, since?: string) =>
 	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}${
 		since === undefined ? "" : `-f${since}`
 	}-${coding}"`;
+
+// `GET /api/state`'s own validator, distinct from the two binary routes'
+// `tagOf`: it folds the player's version too, so a poll that only drove the
+// player still sees the tag move.
+const stateTagOf = (state: FakeState, coding: string) =>
+	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-p${state.playerVersion}-${coding}"`;
 
 const sendBlob = async (
 	response: Responder,
@@ -670,11 +741,20 @@ async function handleLibrary({
 	headers: RequestHeaders;
 	response: Responder;
 }) {
-	if (!fake.canReadLibrary)
-		return json(response, { error: "the media library is not available" }, 503);
-	if (method !== "GET") return json(response, { error: "not found" }, 404);
+	// A player with no media library at all still answers what it is playing:
+	// GET /api/state never 503s on this, unlike the three routes below, which
+	// have nothing to serve without one.
+	if (path === "/api/state") {
+		if (method !== "GET") return json(response, { error: "not found" }, 404);
+		if (fake.failState) {
+			if (fake.failState === 429) response.setHeader("Retry-After", "1");
+			return json(
+				response,
+				{ error: "the state route is not answering", detail: "" },
+				fake.failState,
+			);
+		}
 
-	if (path === "/api/library") {
 		if (fake.libraryRebuilds > 0 && state.libraryFeed.columns.length > 0) {
 			fake.libraryRebuilds -= 1;
 			state.libraryFeed.building = [...state.libraryFeed.columns];
@@ -683,7 +763,7 @@ async function handleLibrary({
 			if (fake.libraryBuilds > 0) fake.libraryBuilds -= 1;
 			else state.finishLibraryBuild();
 		}
-		const tag = tagOf(state, "identity");
+		const tag = stateTagOf(state, "identity");
 		response.setHeader("Vary", "Origin, Accept-Encoding");
 		response.setHeader("Cache-Control", KEEP_AND_REVALIDATE);
 		response.setHeader("ETag", tag);
@@ -692,8 +772,15 @@ async function handleLibrary({
 			response.end();
 			return true;
 		}
-		return json(response, libraryStateOf(state));
+		return json(response, {
+			library: libraryStateOf(state),
+			player: playerSectionOf(state),
+		});
 	}
+
+	if (!fake.canReadLibrary)
+		return json(response, { error: "the media library is not available" }, 503);
+	if (method !== "GET") return json(response, { error: "not found" }, 404);
 
 	if (path === "/api/library/export") {
 		const asked = [...new Set(url.searchParams.getAll("columns"))];
@@ -781,7 +868,11 @@ export async function handleAgent({
 	if (method === "OPTIONS") {
 		response.writeHead(204, {
 			"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-			"Access-Control-Allow-Headers": "Authorization, Content-Type",
+			// If-None-Match belongs on this list too: without it a browser's own
+			// preflight check refuses a poll's second conditional request before it
+			// ever leaves, and no route here answers a 304 on the first.
+			"Access-Control-Allow-Headers":
+				"Authorization, Content-Type, If-None-Match",
 			"Access-Control-Max-Age": "600",
 		});
 		return response.end();
@@ -877,6 +968,13 @@ export async function handleAgent({
 			canReadLibrary: fake.canReadLibrary,
 			canStream: fake.canStream && fake.streamFormats.length > 0,
 			canMuteWhileStreaming: fake.canMuteWhileStreaming,
+			canChangeOutput: fake.canChangeOutput,
+			playerName: state.player.info.name,
+			playerVersion: state.player.info.version,
+			volumeMin: state.player.volume.min,
+			volumeMax: state.player.volume.max,
+			volumeUnit: state.player.volume.type,
+			playbackModes: playbackModesOf(state),
 			...(fake.canStream ? { streamFormats: fake.streamFormats } : null),
 			...(fake.canWritePlaylists === "absent"
 				? null
@@ -884,7 +982,7 @@ export async function handleAgent({
 		});
 	}
 
-	if (path === "/api/library" || path.startsWith("/api/library/"))
+	if (path === "/api/state" || path.startsWith("/api/library/"))
 		return handleLibrary({ state, fake, method, path, url, headers, response });
 
 	if (path === "/api/artwork") {

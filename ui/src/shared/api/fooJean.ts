@@ -33,6 +33,7 @@ export const SUPPORTED_API_VERSION = 1;
 
 const PROBE_TIMEOUT_MS = 4000;
 const WRITE_TIMEOUT_MS = 35_000;
+const STATE_TIMEOUT_MS = 5_000;
 
 // The component listens on the player's host, which is the page's own host in a build but not on the
 // dev server: there `/api` is proxied and this is not.
@@ -180,6 +181,80 @@ export async function fetchCapabilities(
 	} catch {
 		return { ok: false, reason: "unreachable" };
 	}
+}
+
+export type StateDocument = Schema["State"];
+
+export type StateFailureReason =
+	| "unavailable"
+	| "unauthorized"
+	| "unreachable"
+	| "failed";
+
+export interface StateFailure {
+	ok: false;
+	reason: StateFailureReason;
+	detail: string;
+}
+
+export type StateResult =
+	| { ok: true; kind: "unchanged" }
+	| { ok: true; kind: "state"; state: StateDocument; tag: string | null }
+	| StateFailure;
+
+const STATE_REFUSALS: Partial<Record<number, StateFailureReason>> = {
+	401: "unauthorized",
+	503: "unavailable",
+};
+
+export async function fetchState(
+	origin: string,
+	token: string,
+	tag: string | null,
+	signal?: AbortSignal,
+): Promise<StateResult> {
+	let response: Response;
+	try {
+		response = await withTimeout(
+			STATE_TIMEOUT_MS,
+			(inner) =>
+				fetch(`${origin}/api/state`, {
+					headers: tag
+						? { ...bearer(token), "If-None-Match": tag }
+						: bearer(token),
+					signal: inner,
+				}),
+			signal,
+		);
+	} catch (error) {
+		if (signal?.aborted) throw error;
+		return { ok: false, reason: "unreachable", detail: "" };
+	}
+
+	if (response.status === 304) return { ok: true, kind: "unchanged" };
+
+	const refusal = STATE_REFUSALS[response.status];
+	if (refusal) {
+		const body = (await response.json().catch(() => null)) as {
+			error?: string;
+			detail?: string;
+		} | null;
+		const detail = body?.error
+			? body.detail
+				? `${body.error}: ${body.detail}`
+				: body.error
+			: "";
+		return { ok: false, reason: refusal, detail };
+	}
+	if (!response.ok)
+		return { ok: false, reason: "failed", detail: `HTTP ${response.status}` };
+
+	return {
+		ok: true,
+		kind: "state",
+		state: (await response.json()) as StateDocument,
+		tag: response.headers.get("ETag"),
+	};
 }
 
 export type WriteFailure =

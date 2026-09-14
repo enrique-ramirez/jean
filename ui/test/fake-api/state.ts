@@ -358,9 +358,14 @@ export function createState({
 		},
 	};
 
+	let playerVersion = 0;
+
 	const notify = (changed: Changed) => {
 		const message: Changed = {};
-		if (changed.player) message.player = true;
+		if (changed.player) {
+			message.player = true;
+			playerVersion += 1;
+		}
 		if (changed.playlists) message.playlists = true;
 		if (changed.playQueue) message.playQueue = true;
 		for (const listener of listeners) listener(message);
@@ -397,6 +402,21 @@ export function createState({
 		return byId(item.playlistId)?.items[item.index] ?? null;
 	};
 
+	// What `GET /api/state`'s `player.position` reports: the position as of the
+	// last time it was set, and when that was. Distinct from `streamMarks`
+	// above, which is the audio stream's own clock. Re-taken on a track change,
+	// a pause, a resume, a stop or a seek, and never on a volume-only write,
+	// which would otherwise erase time a client has already counted since the
+	// last mark.
+	let positionMark: { seconds: number; takenAtMs: number } = {
+		seconds: Math.max(state.player.activeItem.position, 0),
+		takenAtMs: Date.now(),
+	};
+
+	const markPosition = (seconds: number) => {
+		positionMark = { seconds, takenAtMs: Date.now() };
+	};
+
 	const setActive = (
 		playlist: FakePlaylist,
 		index: number,
@@ -419,6 +439,7 @@ export function createState({
 			position: 0,
 		};
 		state.player.playbackState = playbackState;
+		markPosition(0);
 		// Playing from a playlist makes it the current one, as the player does.
 		for (const entry of state.playlists) entry.isCurrent = entry === playlist;
 		notify({ player: true, playlists: true, playQueue: dequeued });
@@ -428,6 +449,7 @@ export function createState({
 	const withSkipGap = (play: () => void) => {
 		if (state.skipGapMs <= 0) return play();
 		state.player.activeItem = { ...GAP_ITEM };
+		markPosition(0);
 		notify({ player: true });
 		setTimeout(play, state.skipGapMs);
 	};
@@ -618,6 +640,12 @@ export function createState({
 		get streamMarks() {
 			return state.streamMarks;
 		},
+		get positionMark() {
+			return positionMark;
+		},
+		get playerVersion() {
+			return playerVersion;
+		},
 		library: state.library,
 		fooJean: fooJeanState(fooJean),
 		// Which `?format=` each stream was opened with, in order; `requests` records
@@ -747,12 +775,14 @@ export function createState({
 			}
 			state.player.playbackState =
 				playbackState === "playing" ? "paused" : "playing";
+			markPosition(activeItem.position);
 			notify({ player: true });
 		},
 
 		stop() {
 			state.player.playbackState = "stopped";
 			state.player.activeItem = { ...IDLE_ITEM };
+			markPosition(0);
 			notify({ player: true });
 		},
 
@@ -778,7 +808,8 @@ export function createState({
 					item.duration,
 				);
 			}
-			if (item.position !== before) {
+			const repositioned = item.position !== before;
+			if (repositioned) {
 				const track = byId(item.playlistId)?.items[item.index];
 				if (track) mark(track, item.position);
 			}
@@ -797,6 +828,7 @@ export function createState({
 				if (option.id === "playbackOrder")
 					state.player.playbackMode = option.value as number;
 			}
+			if (repositioned || body.playbackState) markPosition(item.position);
 			notify({ player: true });
 		},
 

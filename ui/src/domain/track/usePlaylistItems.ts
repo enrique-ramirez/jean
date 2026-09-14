@@ -9,7 +9,6 @@ import {
 	playlistSnapshot,
 	subscribePlaylist,
 } from "./playlistStore";
-import { useLibraryFeed } from "./useLibraryFeed";
 
 const stayUnsubscribed = () => () => {};
 
@@ -51,8 +50,6 @@ export function useComponentLibraryItems(
 	token: string | null,
 ) {
 	const isReady = Boolean(origin) && Boolean(token);
-
-	useLibraryFeed(isReady ? origin : null, token);
 
 	return useLoadedRows(
 		isReady ? componentLibraryKey(origin as string) : null,

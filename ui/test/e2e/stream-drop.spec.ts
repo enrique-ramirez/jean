@@ -1,33 +1,17 @@
-import type { Page } from "./fixtures.ts";
-import { expect, openLibrary, statusBar, test, trackRow } from "./fixtures.ts";
+import {
+	dropTheStream,
+	expect,
+	globalControls,
+	openLibrary,
+	test,
+	trackRow,
+} from "./fixtures.ts";
 
-const dropTheStream = async (page: Page) => {
-	const answer = await page.request.post("/__control/dropStream");
-	const { dropped } = (await answer.json()) as { dropped: number };
-	// A test that dropped nothing would assert that the app survived an event
-	// that never happened.
-	expect(dropped, "no update stream was open to drop").toBeGreaterThan(0);
-};
-
+// What the player is doing arrives on the component's poll and recovers there.
+// beefweb's narrowed subscription carries the playlist list and the play queue,
+// and those two recover for free because EventSource reconnects by itself and
+// beefweb replays a full snapshot of whatever was subscribed to.
 test.describe("the update stream going away", () => {
-	test("the app catches up with what the desktop did while it was gone", async ({
-		page,
-		player,
-	}) => {
-		await openLibrary(page);
-		await trackRow(page, 0).dblclick();
-		await expect(statusBar(page)).toContainText("Los Calientes");
-
-		await dropTheStream(page);
-
-		// Driven on the player, so nothing Jean did can be what brings it back:
-		// somebody at the desktop pressed next while the phone's wifi was out.
-		player.playItem("p7", 1);
-
-		await expect(statusBar(page)).toContainText("Fizz");
-		await expect(trackRow(page, 1)).toHaveAttribute("data-active", "true");
-	});
-
 	test("a playlist changed while it was gone still shows up", async ({
 		page,
 		player,
@@ -43,26 +27,23 @@ test.describe("the update stream going away", () => {
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "55");
 	});
 
-	test("the transport still works after the reconnect", async ({
+	test("a track queued while it was gone still shows up", async ({
 		page,
 		player,
+		isMobile,
 	}) => {
 		await openLibrary(page);
 		await trackRow(page, 0).dblclick();
-		await expect(statusBar(page)).toContainText("Los Calientes");
+		const queue = (await globalControls(page, isMobile)).getByRole("button", {
+			name: /^Queue/,
+		});
+		await expect(queue).toHaveAccessibleName("Queue");
 
 		await dropTheStream(page);
-		player.playItem("p7", 1);
-		await expect(statusBar(page)).toContainText("Fizz");
 
-		// A reconnect that left two streams open, or none, shows up here: the
-		// button reads its state from the snapshot the live one is pushing.
-		await statusBar(page)
-			.getByRole("button", { name: "Pause", exact: true })
-			.click();
-		await expect.poll(() => player.player.playbackState).toBe("paused");
-		await expect(
-			statusBar(page).getByRole("button", { name: "Play", exact: true }),
-		).toBeVisible();
+		// Queued at the desktop, so nothing Jean did can be what brings it back.
+		expect(player.queueAdd("p7", 3)).toBe(true);
+
+		await expect(queue).toHaveAccessibleName("Queue, 1 track");
 	});
 });

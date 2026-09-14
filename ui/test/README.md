@@ -116,10 +116,12 @@ The routes model the declaration the contract describes rather than answering fr
 
 | | |
 |---|---|
-| `canReadLibrary: false` | the component loaded without the feature, and every `/api/library` route is a `503` |
+| `canReadLibrary: false` | the component loaded without the feature: the three `/api/library/*` routes are a `503`, and `GET /api/state` answers `200` regardless, with a zero `library` and a populated `player`, since a player with no library is still a player |
 | `libraryBuilds: n` | polls of `GET /library` answered before a declared set finishes building, so the export is a `202` first |
 | `libraryBusy: n` | exports answered `429` before the rate limiter lets one through |
 | `libraryRebuilds: n` | structure rebuilds, one performed at the next poll of `GET /library` each. This is the `409` and the re-export behind it |
+
+`GET /api/state`'s `player` section reads off `state.player` and `state.positionMark`, the position and the wall-clock time it was last set: a track change, a pause, a resume, a stop or a seek re-takes the mark, and a volume-only write does not, so a client interpolating `seconds + ageSeconds` never loses time it already counted. Its `ETag` folds a player version on top of the two library generations, so driving the player alone still moves the validator. **`failState`, set through `fooJean` or through `POST /__control/state { failState: n }`, refuses the route with status `n`** until cleared with `{ failState: null }`, shaped like `failWrites` but switchable mid-test, since the case it exists for is a poll cut off partway through a spec rather than one refused from the start.
 
 `countsPlays` is the other half and sits beside the player's own options rather than the component's, because a play count is foobar2000's business: with it on, leaving a track advances that track's `%lastfm_play_count%` and moves the library's `revision` with it, which is what a delta is made of. It is off by default, so the captured counts every other spec asserts stay where they are.
 
@@ -249,7 +251,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |
 | `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
-| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
+| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failState: 503 }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
 | `fooJeanToken` | seeds the credential. `FOO_JEAN_TOKEN` by default; `null` is a device that has never paired |
 | `motion` | reduced by default, since Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work. It is accepted and silently ignored, so the fixture calls `page.emulateMedia()` |
 
@@ -259,7 +261,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 - **`POST /__control/latency`** holds writes for N milliseconds. On localhost every request settles before the next pointer event, so a control coalescing forty moves into three looks identical to one sending forty. `useCoalescedWrite` is untestable without it.
 - **`POST /__control/skipGap`** spends N milliseconds reporting an empty `activeItem` on a skip, as the real player does while it opens the next file. Off by default, since the gap makes `next` asynchronous and no other spec should have to wait one out.
 - **`POST /__control/dropStream`** hangs up on every open update stream and answers how many it dropped: a wifi hiccup, a proxy timing out, a phone coming out of a pocket. `usePlayer` rests on EventSource reconnecting by itself and beefweb replaying a full snapshot, and this is the only way to watch that happen. Assert on the count it returns: a test that dropped nothing is asserting the app survived an event that never occurred.
-- **`GET /__control/state`** returns the player, the playlists, the queue and the request log in one read, for a spec driving the fake from outside the fixture.
+- **`GET /__control/state`** returns the player, the playlists, the queue and the request log in one read, for a spec driving the fake from outside the fixture. **`POST /__control/state { failState: n }`** switches `GET /api/state`'s refusal on mid-test and `{ failState: null }` turns it back off, the one thing `failWrites` cannot do: a spec cuts the poll off, drives the player through the routes above while it is blind, then lets it back and reads the next tick.
 - **`POST /__control/requests`** empties the request log.
 
 ### Rules

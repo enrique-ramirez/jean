@@ -91,7 +91,7 @@ export function createServer({
 
 		if (path.startsWith("/__control/")) {
 			const body = method === "POST" ? await readBody(request) : null;
-			return handleControl({ state, path, body, response });
+			return handleControl({ state, method, path, body, response });
 		}
 
 		if (serveDir) return serveStatic(serveDir, path, response);

@@ -278,21 +278,27 @@ function Test-ConditionalRoute([string]$label, [string]$uri) {
   $crossedOnGzip['If-None-Match'] = $identityTag
   $crossedOnGzipResult = Invoke-ApiProbe $uri 'Get' $crossedOnGzip
   if ($crossedOnGzipResult.StatusCode -ne 200) {
-    throw "$label: the identity ETag revalidated a gzip request ($($crossedOnGzipResult.StatusCode), not 200)"
+    throw "${label}: the identity ETag revalidated a gzip request ($($crossedOnGzipResult.StatusCode), not 200)"
   }
 
   $crossedOnIdentity = $identityHeaders.Clone()
   $crossedOnIdentity['If-None-Match'] = $gzipTag
   $crossedOnIdentityResult = Invoke-ApiProbe $uri 'Get' $crossedOnIdentity
   if ($crossedOnIdentityResult.StatusCode -ne 200) {
-    throw "$label: the gzip ETag revalidated an identity request ($($crossedOnIdentityResult.StatusCode), not 200)"
+    throw "${label}: the gzip ETag revalidated an identity request ($($crossedOnIdentityResult.StatusCode), not 200)"
   }
 }
 
-$script:SnapshotSkipMessage = 'needs a warm snapshot matching the declared columns; run with -Full to let a check build one'
+$script:exportCheckAttempted = $false
+function Get-SnapshotSkipMessage {
+  $needs = 'needs a warm snapshot matching the declared columns'
+  if (-not $Full) { return "$needs; run with -Full to let a check build one" }
+  if ($script:exportCheckAttempted) { return "$needs; the export check above already ran, so read its result first" }
+  return "$needs; the export check below builds one, so a second run reaches this"
+}
 function Assert-SnapshotWarm {
   if (-not $script:snapshotWarm) {
-    Skip-Check $script:SnapshotSkipMessage
+    Skip-Check (Get-SnapshotSkipMessage)
   }
 }
 
@@ -369,8 +375,9 @@ Invoke-Check -Name "GET /library/changes revalidates by ETag, in both codings, a
 
 Invoke-Check -Name "GET /library/export captures the export to JEAN_LIBRARY_EXPORT, in the identity coding" -Body {
   if (-not $script:snapshotWarm -and -not $Full) {
-    Skip-Check $script:SnapshotSkipMessage
+    Skip-Check (Get-SnapshotSkipMessage)
   }
+  $script:exportCheckAttempted = $true
 
   $headers = Get-CodingHeaders 'identity'
   $uri = "$FooJean/library/export?$(Get-LibraryExportQuery)"

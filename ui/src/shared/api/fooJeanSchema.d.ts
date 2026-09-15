@@ -1062,7 +1062,12 @@ export interface components {
              * @enum {string}
              */
             playback: "stopped" | "paused" | "playing";
-            /** @description What is playing, or empty when nothing is. */
+            /**
+             * @description What is playing, or empty when nothing is. foobar2000's own absolute
+             *     display path, in the player's own separator. Not the media library
+             *     snapshot's key, which is `directory` plus `filename`, library-relative
+             *     and forward-slashed everywhere.
+             */
             path: string;
             /** @description The index within `path`, for a cue sheet or a disc image. `0` for an ordinary file. */
             subsong: number;

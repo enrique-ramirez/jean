@@ -847,7 +847,7 @@ paths:
                       columns: ["%title%", "%album artist%", "%play_count%"]
                     player:
                       playback: playing
-                      path: "Artist/Album/01 Track.flac"
+                      path: 'C:\Music\Fictional Artist\Imaginary Album\01 Track.flac'
                       subsong: 0
                       position: { seconds: 83.4, ageSeconds: 0.2 }
                       duration: 214.0
@@ -2272,7 +2272,11 @@ components:
           description: What the player is doing right now.
         path:
           type: string
-          description: What is playing, or empty when nothing is.
+          description: |
+            What is playing, or empty when nothing is. foobar2000's own absolute
+            display path, in the player's own separator. Not the media library
+            snapshot's key, which is `directory` plus `filename`, library-relative
+            and forward-slashed everywhere.
         subsong:
           type: integer
           description: The index within `path`, for a cue sheet or a disc image. `0` for an ordinary file.

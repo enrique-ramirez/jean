@@ -80,9 +80,6 @@ std::optional<std::string> activePlaybackModeOf() {
     return jeanModeFor(std::string(name));
 }
 
-// `get_playing_item_location`, SDK/playlist.h:179, answers two integers rather than a walk:
-// absent when nothing is playing or the playing item has since been removed from the playlist
-// it was on when playback started.
 std::optional<PlayingLocation> currentLocation() {
     t_size playlist = 0;
     t_size index = 0;
@@ -202,11 +199,9 @@ struct PlaybackWatch::OrderCallback : public playlist_callback_impl_base {
     PlayerStateStore& store_;
 };
 
-// The SDK has no per-playlist subscription: every edit to every playlist reaches this, so
-// comparing against the playing playlist happens first, against nothing more than the two
-// integers `get_playing_item_location` answers. An edit to a playlist that is not playing
-// returns before the store is ever touched, which is what keeps the work constant and keeps
-// a library import into some other playlist from becoming a published change here.
+// Every edit to every playlist reaches this, so comparing against the playing playlist happens
+// first and an edit elsewhere returns before the store is ever touched: see ARCHITECTURE.md,
+// *Facts about the player*.
 struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
     explicit LocationCallback(PlayerStateStore& store)
         : playlist_callback_impl_base(flag_on_items_added | flag_on_items_removed |
@@ -227,14 +222,25 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
     }
 
     void updateIfPlaying(t_size playlist) {
+        const auto playlists = playlist_manager::get();
+
         t_size playingPlaylist = 0;
         t_size index = 0;
-        if (!playlist_manager::get()->get_playing_item_location(&playingPlaylist, &index) ||
-            playingPlaylist != playlist)
+        if (playlists->get_playing_item_location(&playingPlaylist, &index)) {
+            if (playingPlaylist != playlist)
+                return;
+
+            store_.playingLocationChanged(
+                PlayingLocation{playlistId(playingPlaylist), static_cast<uint32_t>(index)});
+            return;
+        }
+
+        // Also covers nothing playing, without needing to tell the two apart: see
+        // ARCHITECTURE.md, *Facts about the player*.
+        if (playlists->get_playing_playlist() != playlist)
             return;
 
-        store_.playingLocationChanged(PlayingLocation{playlistId(playingPlaylist),
-                                                       static_cast<uint32_t>(index)});
+        store_.playingLocationChanged(std::nullopt);
     }
 
     PlayerStateStore& store_;

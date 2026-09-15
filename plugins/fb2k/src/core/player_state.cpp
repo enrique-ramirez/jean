@@ -38,6 +38,8 @@ void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now)
     next.subsong = track.subsong;
     next.duration = track.duration;
     next.position = {0, now};
+    next.title.reset();
+    next.artist.reset();
 
     applyLocked(std::move(next));
 }
@@ -78,6 +80,9 @@ void PlayerStateStore::stopped() {
     next.subsong = 0;
     next.duration = 0;
     next.position = PositionMark{};
+    next.title.reset();
+    next.artist.reset();
+    next.playingLocation.reset();
 
     applyLocked(std::move(next));
 }

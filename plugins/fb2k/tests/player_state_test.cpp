@@ -44,10 +44,19 @@ PlayingTrack anotherTrack() {
 constexpr char kPlayingPlaylist[] = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 constexpr uint32_t kPlayingRow = 7;
 constexpr int kEditsInABurst = 50;
+constexpr char kTitle[] = "Cirrus Minor";
+constexpr char kArtist[] = "Pink Floyd";
 
 PlayerState playingFrom(uint32_t row) {
     PlayerState state = playing();
     state.playingLocation = PlayingLocation{kPlayingPlaylist, row};
+    return state;
+}
+
+PlayerState namedAndPlaced() {
+    PlayerState state = playingFrom(kPlayingRow);
+    state.title = kTitle;
+    state.artist = kArtist;
     return state;
 }
 
@@ -343,4 +352,48 @@ TEST_CASE("playing from nowhere is distinguishable from playing at the first row
     CHECK(atTheFirstRow.state.playingLocation.has_value());
     CHECK_FALSE(fromNowhere.state.playingLocation.has_value());
     CHECK(fromNowhere.version > atTheFirstRow.version);
+}
+
+TEST_CASE("a stop clears the name and the place, so a stopped player names nothing") {
+    PlayerStateStore store;
+    store.publish(namedAndPlaced());
+    const uint64_t before = store.read().version;
+
+    store.stopped();
+
+    const auto published = store.read();
+    CHECK_FALSE(published.state.title.has_value());
+    CHECK_FALSE(published.state.artist.has_value());
+    CHECK_FALSE(published.state.playingLocation.has_value());
+    CHECK(published.version > before);
+}
+
+TEST_CASE("a track change does not leave the previous track's name standing") {
+    PlayerStateStore store;
+    store.publish(namedAndPlaced());
+
+    store.started(anotherTrack(), kMarkedAt + minutes(1));
+
+    const auto published = store.read();
+    CHECK(published.state.path == R"(X:\music\b.flac)");
+    CHECK_FALSE(published.state.title.has_value());
+    CHECK_FALSE(published.state.artist.has_value());
+}
+
+// Clearing the place here would blank the "Playing from" line until the next
+// playingLocationChanged() call catches it up.
+TEST_CASE("a track change keeps the playing location, because the row change is what moves it") {
+    PlayerStateStore store;
+    store.publish(namedAndPlaced());
+
+    store.started(anotherTrack(), kMarkedAt + minutes(1));
+
+    const auto afterTheTrack = store.read();
+    REQUIRE(afterTheTrack.state.playingLocation.has_value());
+    CHECK(afterTheTrack.state.playingLocation->playlistId == kPlayingPlaylist);
+    CHECK(afterTheTrack.state.playingLocation->index == kPlayingRow);
+
+    store.playingLocationChanged(PlayingLocation{kPlayingPlaylist, kPlayingRow + 1});
+
+    CHECK(store.read().state.playingLocation->index == kPlayingRow + 1);
 }

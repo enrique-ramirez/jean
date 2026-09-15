@@ -100,6 +100,16 @@ PlayerState playing() {
     return state;
 }
 
+constexpr char kSongTitle[] = "Salt Flats";
+constexpr char kSongArtist[] = "The Vela Ensemble";
+
+json playerSection(const TestServer& server) {
+    const auto response = get(server, "/api/state");
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    return json::parse(response->body)["player"];
+}
+
 uint64_t playOne(Library& library, const std::string& count) {
     return library.apply({{0, {"Artist/Album/", "01.flac", "0", "One", count}}});
 }
@@ -347,6 +357,68 @@ TEST_CASE("a stopped player publishes no track, and the document says stopped") 
     // aged by however long the track had been playing, which a client interpolates forward.
     constexpr double kFreshSeconds = 1;
     CHECK(player["position"]["ageSeconds"].get<double>() < kFreshSeconds);
+}
+
+TEST_CASE("the poll document names the playing track, whether the media library holds it or not") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    PlayerState started = playing();
+    started.title = kSongTitle;
+    started.artist = kSongArtist;
+    store.publish(started);
+    const TestServer server = serving(&library, &store);
+
+    const auto player = playerSection(server);
+    REQUIRE(player.contains("title"));
+    REQUIRE(player.contains("artist"));
+
+    CHECK(player["title"] == kSongTitle);
+    CHECK(player["artist"] == kSongArtist);
+    CHECK(player["path"] == started.path);
+}
+
+// A client that cannot tell an unnamed track from one named with an empty string draws a blank
+// status bar for both, and only one of those is honest.
+TEST_CASE("a name the player did not compute is null, never a missing key or an empty string") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    const TestServer server = serving(&library, &store);
+
+    SUBCASE("the player named neither") {
+        store.publish(playing());
+
+        const auto player = playerSection(server);
+        REQUIRE(player.contains("title"));
+        REQUIRE(player.contains("artist"));
+        CHECK(player["title"].is_null());
+        CHECK(player["artist"].is_null());
+    }
+
+    SUBCASE("a title with no artist") {
+        PlayerState started = playing();
+        started.title = kSongTitle;
+        store.publish(started);
+
+        const auto player = playerSection(server);
+        REQUIRE(player.contains("title"));
+        REQUIRE(player.contains("artist"));
+        CHECK(player["title"] == kSongTitle);
+        CHECK(player["artist"].is_null());
+    }
+
+    SUBCASE("an artist with no title") {
+        PlayerState started = playing();
+        started.artist = kSongArtist;
+        store.publish(started);
+
+        const auto player = playerSection(server);
+        REQUIRE(player.contains("title"));
+        REQUIRE(player.contains("artist"));
+        CHECK(player["artist"] == kSongArtist);
+        CHECK(player["title"].is_null());
+    }
 }
 
 // The spine is the component's own rather than something a client declared, so naming it in

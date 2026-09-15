@@ -667,6 +667,8 @@ const playerSectionOf = (state: FakeState) => {
 		playbackMode: jeanModeFor(
 			declaredOrders(state)[state.player.playbackMode] ?? "",
 		),
+		title: null,
+		artist: null,
 	};
 };
 

@@ -854,6 +854,8 @@ paths:
                       volume: -8.5
                       muted: false
                       playbackMode: inOrder
+                      title: Imaginary Track
+                      artist: Fictional Artist
                 building:
                   summary: The component is up and the first walk has not finished.
                   value:
@@ -868,6 +870,8 @@ paths:
                       volume: 0
                       muted: false
                       playbackMode: inOrder
+                      title: null
+                      artist: null
         "304": { $ref: "#/components/responses/NotModified" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/StatePolledTooFast" }
@@ -2264,7 +2268,8 @@ components:
         stopped player still answers this section, with `playback` `stopped` and `path` empty.
       type: object
       additionalProperties: false
-      required: [playback, path, subsong, position, duration, volume, muted, playbackMode]
+      required:
+        [playback, path, subsong, position, duration, volume, muted, playbackMode, title, artist]
       properties:
         playback:
           type: string
@@ -2295,6 +2300,14 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/PlaybackMode" }
             - type: "null"
+        title:
+          type: [string, "null"]
+          description: |
+            The playing track's title, computed by the player. Null when it has not computed one, so a client can tell that from an empty one.
+        artist:
+          type: [string, "null"]
+          description: |
+            The playing track's artist, computed by the player. Null when it has not computed one, so a client can tell that from an empty one.
 
     Position:
       description: |

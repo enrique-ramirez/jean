@@ -85,7 +85,9 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
                 {"volume", player.volume},
                 {"muted", player.muted},
                 {"playbackMode",
-                 player.playbackMode ? json(*player.playbackMode) : json(nullptr)}};
+                 player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
+                {"title", player.title ? json(*player.title) : json(nullptr)},
+                {"artist", player.artist ? json(*player.artist) : json(nullptr)}};
 }
 
 // The player's own listing order, kept: a sorted one would tell a client the modes came off a

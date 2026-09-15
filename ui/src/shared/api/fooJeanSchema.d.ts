@@ -1079,6 +1079,10 @@ export interface components {
             muted: boolean;
             /** @description Jean's name for the playback order the player is in right now, or `null` when this component has no name for the order the player reports. Always present and never omitted, so a client can tell "no name for this" from "too old to report". */
             playbackMode: components["schemas"]["PlaybackMode"] | null;
+            /** @description The playing track's title, computed by the player. Null when it has not computed one, so a client can tell that from an empty one. */
+            title: string | null;
+            /** @description The playing track's artist, computed by the player. Null when it has not computed one, so a client can tell that from an empty one. */
+            artist: string | null;
         };
         /**
          * @description Where playback was at the moment this component last looked, and how long ago that

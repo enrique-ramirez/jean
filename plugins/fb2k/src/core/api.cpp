@@ -76,6 +76,12 @@ json positionOf(const PositionMark& mark, std::chrono::steady_clock::time_point 
     return json{{"seconds", mark.seconds}, {"ageSeconds", age}};
 }
 
+json playingLocationOf(const std::optional<PlayingLocation>& location) {
+    if (!location)
+        return json(nullptr);
+    return json{{"playlistId", location->playlistId}, {"index", location->index}};
+}
+
 json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now) {
     return json{{"playback", playbackName(player.playback)},
                 {"path", player.path},
@@ -87,7 +93,8 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
                 {"playbackMode",
                  player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
                 {"title", player.title ? json(*player.title) : json(nullptr)},
-                {"artist", player.artist ? json(*player.artist) : json(nullptr)}};
+                {"artist", player.artist ? json(*player.artist) : json(nullptr)},
+                {"playingLocation", playingLocationOf(player.playingLocation)}};
 }
 
 // The player's own listing order, kept: a sorted one would tell a client the modes came off a

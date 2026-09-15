@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -42,6 +43,10 @@ TestServer serving(Library* library, const Player& player = {}) {
 
 TestServer serving(Library* library, PlayerStateStore* playerState) {
     return TestServer(servingSettings(), Player{}, library, countingMint(), playerState);
+}
+
+TestServer serving(Library* library, const Player& player, PlayerStateStore* playerState) {
+    return TestServer(servingSettings(), player, library, countingMint(), playerState);
 }
 
 httplib::Result getHolding(const TestServer& server, const std::string& path,
@@ -108,6 +113,40 @@ json playerSection(const TestServer& server) {
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body)["player"];
+}
+
+constexpr char kPlayingPlaylistId[] = "6f1c0b8a-2d4e-4f7a-9c31-0ab5e8d24f60";
+constexpr uint32_t kPlayingRow = 12;
+
+// beefweb's own id for the same playlist, which this component holds beside the GUID and which
+// is the one thing that may not cross: a client joining on it joins on the world being removed.
+constexpr char kBeefwebPlaylistId[] = "p37";
+
+Player listingThePlayingPlaylist() {
+    return TestServer::listing([] {
+        PlaylistAnnotation playlist;
+        playlist.id = kPlayingPlaylistId;
+        playlist.beefwebId = kBeefwebPlaylistId;
+        playlist.title = "Evening";
+        return PlaylistsResult{PlaylistOutcome::done, {playlist}};
+    });
+}
+
+PlayerState playingFromThePlaylist() {
+    PlayerState state = playing();
+    state.playingLocation = PlayingLocation{kPlayingPlaylistId, kPlayingRow};
+    return state;
+}
+
+bool mentions(const std::string& body, const std::string& text) {
+    return toLower(body).find(toLower(text)) != std::string::npos;
+}
+
+std::set<std::string> keysOf(const json& object) {
+    std::set<std::string> keys;
+    for (const auto& field : object.items())
+        keys.insert(field.key());
+    return keys;
 }
 
 uint64_t playOne(Library& library, const std::string& count) {
@@ -419,6 +458,69 @@ TEST_CASE("a name the player did not compute is null, never a missing key or an 
         CHECK(player["artist"] == kSongArtist);
         CHECK(player["title"].is_null());
     }
+}
+
+TEST_CASE("the poll document places the playing track by the GUID GET /api/playlists answers") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playingFromThePlaylist());
+    const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
+
+    const auto listed = get(server, "/api/playlists");
+    REQUIRE(listed);
+    REQUIRE(listed->status == 200);
+
+    const auto playlists = json::parse(listed->body)["playlists"];
+    REQUIRE(playlists.size() == 1);
+
+    const auto player = playerSection(server);
+    REQUIRE(player.contains("playingLocation"));
+
+    const auto location = player["playingLocation"];
+    REQUIRE(location.is_object());
+    CHECK(location["playlistId"] == playlists[0]["id"]);
+    CHECK(location["index"] == kPlayingRow);
+}
+
+TEST_CASE("no part of the poll document carries the beefweb id the same playlist is listed under") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playingFromThePlaylist());
+    const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
+
+    const auto response = get(server, "/api/state");
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    INFO("beefweb id: ", kBeefwebPlaylistId);
+    CHECK_FALSE(mentions(response->body, kBeefwebPlaylistId));
+    CHECK_FALSE(mentions(response->body, "beefweb"));
+
+    const auto location = json::parse(response->body)["player"]["playingLocation"];
+    REQUIRE(location.is_object());
+    CHECK(keysOf(location) == std::set<std::string>{"index", "playlistId"});
+}
+
+// The two states the "Playing from" line turns on. A place that is merely empty rather than
+// absent reads as the first row of a playlist nobody can name.
+TEST_CASE("a track playing from no playlist says so, rather than sitting at the first row of one") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playingFromThePlaylist());
+    const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
+
+    const auto fromAPlaylist = playerSection(server);
+
+    store.playingLocationChanged(std::nullopt);
+    const auto fromNowhere = playerSection(server);
+
+    REQUIRE(fromAPlaylist.contains("playingLocation"));
+    REQUIRE(fromNowhere.contains("playingLocation"));
+    CHECK(fromAPlaylist["playingLocation"]["playlistId"] == kPlayingPlaylistId);
+    CHECK(fromNowhere["playingLocation"].is_null());
 }
 
 // The spine is the component's own rather than something a client declared, so naming it in

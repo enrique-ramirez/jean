@@ -653,6 +653,7 @@ const playerSectionOf = (state: FakeState) => {
 	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
 	const track = playlist?.items[item.index];
 	const { seconds, takenAtMs } = state.positionMark;
+	const playlistIndex = playlist ? state.playlists.indexOf(playlist) : -1;
 	return {
 		playback: state.player.playbackState,
 		path: track ? String(evaluate(track, "%path%") ?? "") : "",
@@ -669,6 +670,10 @@ const playerSectionOf = (state: FakeState) => {
 		),
 		title: null,
 		artist: null,
+		playingLocation:
+			playlist && playlistIndex >= 0
+				? { playlistId: guidFor(playlistIndex), index: item.index }
+				: null,
 	};
 };
 

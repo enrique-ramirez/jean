@@ -1052,6 +1052,16 @@ export interface components {
              */
             columns: string[];
         };
+        /** @description Where the playing track sits: the playlist's GUID and the item's position within it. */
+        PlayingLocation: {
+            /**
+             * @description foobar2000's own playlist GUID, lower case and dashed, matching `PlaylistAnnotation.id` for the same playlist.
+             * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+             */
+            playlistId: string;
+            /** @description The playing item's position within that playlist, 0-based. */
+            index: number;
+        };
         /**
          * @description What rides under `player` in `GET /state`'s `200`. Always present and never null: a
          *     stopped player still answers this section, with `playback` `stopped` and `path` empty.
@@ -1083,6 +1093,8 @@ export interface components {
             title: string | null;
             /** @description The playing track's artist, computed by the player. Null when it has not computed one, so a client can tell that from an empty one. */
             artist: string | null;
+            /** @description Where the playing track sits, or `null` when it is not playing from a playlist this component can name. */
+            playingLocation: components["schemas"]["PlayingLocation"] | null;
         };
         /**
          * @description Where playback was at the moment this component last looked, and how long ago that

@@ -10,6 +10,7 @@ import {
 	VOLUME_SETTLE_MS,
 } from "../../src/domain/player/playerPoll.ts";
 import { volumePercent } from "../../src/domain/player/volumeScale.ts";
+import { readTrack } from "../../src/shared/api/beefweb.ts";
 import type {
 	FooJeanCapabilities,
 	StateDocument,
@@ -56,6 +57,9 @@ const stateDocument = (
 		volume: -6,
 		muted: false,
 		playbackMode: "inOrder",
+		title: null,
+		artist: null,
+		playingLocation: null,
 		...player,
 	},
 });
@@ -113,6 +117,9 @@ const CAPABILITIES = {
 } satisfies FooJeanCapabilities;
 
 const NOW_PLAYING = ["One", "Babasónicos", "Jessico"];
+
+const DISC_IMAGE = "/music/Artist/Album/Whole Disc.flac";
+const DISC_SUBSONG = 3;
 
 // beefweb's own update payload, which has no key for `jeanPlaybackMode` at all and
 // answers `permissions` from beefweb's configuration rather than the component's.
@@ -243,6 +250,31 @@ test("a tick writes what the component says the player is doing into the player 
 	await poll.ticks(1);
 
 	assert.equal(playbackIn(poll.client), "playing");
+});
+
+test("the playing path and subsong come from a tick, with no columns from beefweb to take them from", async (t) => {
+	const poll = harness(
+		t,
+		() =>
+			document200("playing", TAG, { path: DISC_IMAGE, subsong: DISC_SUBSONG }),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	await poll.ticks(1);
+
+	const player = playerIn(poll.client);
+
+	assert.ok(
+		!player?.activeItem.columns.includes(DISC_IMAGE),
+		"beefweb's columns carry the path as well, so nothing here says which source answered",
+	);
+
+	const track = readTrack(player);
+
+	assert.equal(track?.path, DISC_IMAGE);
+	// The other half of a track's identity for a cue sheet or a disc image. A
+	// subsong that never arrives reads as `0`, which is an ordinary whole file.
+	assert.equal(track?.subsong, DISC_SUBSONG);
 });
 
 test("a reader of the player key is fed by the poll and never refetches for itself", async (t) => {

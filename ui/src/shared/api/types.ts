@@ -27,9 +27,11 @@ export interface ActiveItem {
 	duration: number;
 	// -1 when stopped, and also what emptying a playlist leaves behind.
 	index: number;
+	path: string | null;
 	playlistId: string;
 	playlistIndex: number;
 	position: number;
+	subsong: number;
 }
 
 export interface PlayerInfo {

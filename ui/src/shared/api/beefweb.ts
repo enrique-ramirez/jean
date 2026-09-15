@@ -210,14 +210,14 @@ export const removePlaylistItems = (
 export function readTrack(
 	player: PlayerState | null | undefined,
 ): NowPlayingTrack | null {
-	const values = player?.activeItem?.columns;
-	if (!values?.length) return null;
-	const [artist, title, path, subsong] = values;
+	const path = player?.activeItem?.path;
+	if (!path) return null;
+	const [artist, title] = player?.activeItem?.columns ?? [];
 	return {
 		artist: artist || translate("track.unknownArtist"),
 		title: title || translate("track.unknownTitle"),
-		path: path || null,
-		subsong: Number(subsong) || 0,
+		path,
+		subsong: player?.activeItem?.subsong ?? 0,
 	};
 }
 

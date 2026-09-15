@@ -34,8 +34,8 @@ public:
 
 private:
     // now_playing_album_art_notify is never called for a track with no cover, for the reason
-    // ARCHITECTURE.md, *Facts about the player*, gives, so the store holds whatever it was
-    // last handed until the next one arrives.
+    // ARCHITECTURE.md, *Facts about the player*, gives, so this callback only ever hands the
+    // store a picture; PlaybackWatch::Callback::on_playback_new_track is what lets go of it.
     void on_album_art(album_art_data::ptr data) override;
 
     NowPlayingArtwork& store_;

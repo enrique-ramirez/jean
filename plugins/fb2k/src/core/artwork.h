@@ -50,6 +50,8 @@ public:
 
     void hold(std::string picture);
 
+    void clear();
+
     ArtworkSource current() const;
 
     NowPlayingArtwork(const NowPlayingArtwork&) = delete;

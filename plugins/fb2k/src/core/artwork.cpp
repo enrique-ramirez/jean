@@ -95,6 +95,11 @@ void NowPlayingArtwork::hold(std::string picture) {
     held_.picture = std::move(picture);
 }
 
+void NowPlayingArtwork::clear() {
+    const std::lock_guard<std::mutex> held(mutex_);
+    held_ = ArtworkSource{};
+}
+
 ArtworkSource NowPlayingArtwork::current() const {
     const std::lock_guard<std::mutex> held(mutex_);
     return held_;

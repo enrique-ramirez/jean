@@ -121,16 +121,17 @@ PlayerState initialStateOf(const OutputHold& outputHold, std::chrono::steady_clo
 }  // namespace
 
 struct PlaybackWatch::Callback : public play_callback_impl_base {
-    Callback(PlayerStateStore& store, OutputHold& outputHold, titleformat_object::ptr titleScript,
-             titleformat_object::ptr artistScript)
+    Callback(PlayerStateStore& store, OutputHold& outputHold, NowPlayingArtwork& artwork,
+             titleformat_object::ptr titleScript, titleformat_object::ptr artistScript)
         : play_callback_impl_base(flag_on_playback_new_track | flag_on_playback_pause |
                                    flag_on_playback_stop | flag_on_playback_seek |
                                    flag_on_playback_dynamic_info |
                                    flag_on_playback_dynamic_info_track | flag_on_volume_change),
-          store_(store), outputHold_(outputHold), titleScript_(std::move(titleScript)),
-          artistScript_(std::move(artistScript)) {}
+          store_(store), outputHold_(outputHold), artwork_(artwork),
+          titleScript_(std::move(titleScript)), artistScript_(std::move(artistScript)) {}
 
     void on_playback_new_track(metadb_handle_ptr track) override {
+        artwork_.clear();
         store_.started(trackOf(track), std::chrono::steady_clock::now());
         store_.playingLocationChanged(currentLocation());
         publishName(store_, titleScript_, artistScript_, track);
@@ -144,6 +145,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
             return;
 
         store_.stopped();
+        artwork_.clear();
     }
 
     void on_playback_seek(double time) override {
@@ -181,6 +183,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
 
     PlayerStateStore& store_;
     OutputHold& outputHold_;
+    NowPlayingArtwork& artwork_;
     titleformat_object::ptr titleScript_;
     titleformat_object::ptr artistScript_;
 };
@@ -246,7 +249,8 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
     PlayerStateStore& store_;
 };
 
-PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold) {
+PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold,
+                              NowPlayingArtwork& artwork) {
     // On the main thread, once: see the class comment and ARCHITECTURE.md, *Facts about the
     // player*, for why a shared titleformat_object still has to compile here rather than on
     // whichever thread first runs it.
@@ -258,7 +262,7 @@ PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold) {
     titleformat_object::ptr artistScript;
     compiler->compile_safe_ex(artistScript, kArtistScript, "");
 
-    callback_ = std::make_unique<Callback>(store, outputHold, titleScript, artistScript);
+    callback_ = std::make_unique<Callback>(store, outputHold, artwork, titleScript, artistScript);
     orderCallback_ = std::make_unique<OrderCallback>(store);
     locationCallback_ = std::make_unique<LocationCallback>(store);
 

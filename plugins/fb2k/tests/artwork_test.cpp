@@ -482,3 +482,57 @@ TEST_CASE("a cover held again keeps its validator, and a different cover moves i
 
     CHECK(log.asked.empty());
 }
+
+// The player pushes a cover only when there is one to show and says nothing about a track with
+// none (plugins/fb2k/ARCHITECTURE.md, *Facts about the player*), so a held picture would answer
+// for the next track indefinitely. Whatever watches playback lets it go on a track change.
+TEST_CASE("a cover let go is not answered for the track that follows it") {
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    playing.hold(kJpeg);
+    const TestServer server(servingPlaying(&playing, &log));
+
+    const auto first = get(server, kPlayingAddress);
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+    const auto tag = first->get_header_value("ETag");
+
+    playing.clear();
+
+    SUBCASE("a client is refused in the words a player showing nothing is refused in") {
+        const auto response = get(server, kPlayingAddress);
+
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body)["error"] == "no artwork for that track");
+        CHECK(response->get_header_value("ETag").empty());
+    }
+
+    SUBCASE("a client holding the old cover is told it is gone rather than that it still stands") {
+        const auto again = getHolding(server, kPlayingAddress, tag);
+
+        REQUIRE(again);
+        CHECK(again->status == 404);
+        CHECK(json::parse(again->body)["error"] == "no artwork for that track");
+    }
+
+    SUBCASE("the picture goes with the validator, so there is nothing left to answer with") {
+        const auto held = playing.current();
+
+        CHECK(held.picture.empty());
+        CHECK(held.tag.empty());
+    }
+
+    SUBCASE("the same cover held again validates the copy the client kept") {
+        playing.hold(kJpeg);
+
+        const auto again = getHolding(server, kPlayingAddress, tag);
+
+        REQUIRE(again);
+        CHECK(again->status == 304);
+        CHECK(again->body.empty());
+        CHECK(again->get_header_value("ETag") == artworkTag(kJpeg));
+    }
+
+    CHECK(log.asked.empty());
+}

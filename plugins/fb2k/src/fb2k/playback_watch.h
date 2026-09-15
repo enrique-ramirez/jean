@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/artwork.h"
 #include "core/player_state.h"
 
 #include <memory>
@@ -16,7 +17,7 @@ class OutputHold;
 // guarded against one: see ARCHITECTURE.md, *Facts about the player*.
 class PlaybackWatch {
 public:
-    PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold);
+    PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold, NowPlayingArtwork& artwork);
     ~PlaybackWatch();
 
     PlaybackWatch(const PlaybackWatch&) = delete;

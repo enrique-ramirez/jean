@@ -13,6 +13,16 @@ namespace jean {
 
 namespace {
 
+// The title reads as foobar2000's own filename fallback for a track with no title tag: "If
+// 'title' metadata field is missing, file name is used instead."
+constexpr char kTitleScript[] = "%title%";
+
+// %artist% checks artist, album artist, composer and performer in that order, and where none
+// of the four resolves the title-format engine answers the literal string "?" rather than an
+// empty one. Bracketing discards an unresolved field instead of the literal text, so a track
+// with none of the four reads as no artist rather than as an artist named "?".
+constexpr char kArtistScript[] = "[%artist%]";
+
 std::string displayPathOf(const metadb_handle_ptr& track) {
     if (!track.is_valid())
         return {};
@@ -36,6 +46,24 @@ PlayingTrack trackOf(const metadb_handle_ptr& track) {
     }
 
     return playing;
+}
+
+// `playback_format_title_ex` rather than a plain metadb query is what folds in a station's
+// own broadcast update, since that is a currently-playing concept `playback_control` resolves
+// rather than something the track's stored tags carry.
+void publishName(PlayerStateStore& store, const titleformat_object::ptr& titleScript,
+                  const titleformat_object::ptr& artistScript, const metadb_handle_ptr& track) {
+    const auto playback = playback_control::get();
+
+    pfc::string8 title;
+    playback->playback_format_title_ex(track, nullptr, title, titleScript, nullptr,
+                                        playback_control::display_level_titles);
+
+    pfc::string8 artist;
+    playback->playback_format_title_ex(track, nullptr, artist, artistScript, nullptr,
+                                        playback_control::display_level_titles);
+
+    store.nameChanged(toStd(title), toStd(artist));
 }
 
 // `output_hold`'s mute and the player's own look identical to foobar2000, since it has no
@@ -82,14 +110,18 @@ PlayerState initialStateOf(const OutputHold& outputHold, std::chrono::steady_clo
 }  // namespace
 
 struct PlaybackWatch::Callback : public play_callback_impl_base {
-    Callback(PlayerStateStore& store, OutputHold& outputHold)
+    Callback(PlayerStateStore& store, OutputHold& outputHold, titleformat_object::ptr titleScript,
+             titleformat_object::ptr artistScript)
         : play_callback_impl_base(flag_on_playback_new_track | flag_on_playback_pause |
                                    flag_on_playback_stop | flag_on_playback_seek |
-                                   flag_on_playback_dynamic_info | flag_on_volume_change),
-          store_(store), outputHold_(outputHold) {}
+                                   flag_on_playback_dynamic_info |
+                                   flag_on_playback_dynamic_info_track | flag_on_volume_change),
+          store_(store), outputHold_(outputHold), titleScript_(std::move(titleScript)),
+          artistScript_(std::move(artistScript)) {}
 
     void on_playback_new_track(metadb_handle_ptr track) override {
         store_.started(trackOf(track), std::chrono::steady_clock::now());
+        publishName(store_, titleScript_, artistScript_, track);
     }
 
     // foobar2000 raises stop_reason_starting_another as the outgoing track of a change
@@ -118,12 +150,27 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
         store_.durationChanged(info.get_length());
     }
 
+    // What an internet radio station announces its current song through: the track does not
+    // change, so no metadb query answers the new title. `file_info` carries the update, but
+    // `get_now_playing` rather than `info` is what `publishName` runs against, because the
+    // player's own dynamic-info override is resolved through `playback_control` rather than
+    // being a value this callback hands over directly. Both this callback and the one for a
+    // new track run on the main thread with nothing else able to change the playing track
+    // between them, so the handle read back here is the one the update is about.
+    void on_playback_dynamic_info_track(const file_info&) override {
+        metadb_handle_ptr track;
+        if (playback_control::get()->get_now_playing(track))
+            publishName(store_, titleScript_, artistScript_, track);
+    }
+
     void on_volume_change(float value) override {
         store_.volumeChanged(value, userMuted(value, outputHold_));
     }
 
     PlayerStateStore& store_;
     OutputHold& outputHold_;
+    titleformat_object::ptr titleScript_;
+    titleformat_object::ptr artistScript_;
 };
 
 // foobar2000 keeps the playback order on playlist_manager rather than on playback_control, so
@@ -140,10 +187,26 @@ struct PlaybackWatch::OrderCallback : public playlist_callback_impl_base {
     PlayerStateStore& store_;
 };
 
-PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold)
-    : callback_(std::make_unique<Callback>(store, outputHold)),
-      orderCallback_(std::make_unique<OrderCallback>(store)) {
+PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold) {
+    // On the main thread, once: see the class comment and ARCHITECTURE.md, *Facts about the
+    // player*, for why a shared titleformat_object still has to compile here rather than on
+    // whichever thread first runs it.
+    const auto compiler = titleformat_compiler::get();
+
+    titleformat_object::ptr titleScript;
+    compiler->compile_safe_ex(titleScript, kTitleScript, "");
+
+    titleformat_object::ptr artistScript;
+    compiler->compile_safe_ex(artistScript, kArtistScript, "");
+
+    callback_ = std::make_unique<Callback>(store, outputHold, titleScript, artistScript);
+    orderCallback_ = std::make_unique<OrderCallback>(store);
+
     store.publish(initialStateOf(outputHold, std::chrono::steady_clock::now()));
+
+    metadb_handle_ptr track;
+    if (playback_control::get()->get_now_playing(track))
+        publishName(store, titleScript, artistScript, track);
 }
 
 PlaybackWatch::~PlaybackWatch() = default;

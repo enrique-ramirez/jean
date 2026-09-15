@@ -18,8 +18,10 @@ import { coverKey, readValue } from "@/domain/track/fields";
 import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
 import { setRatingLayer } from "@/domain/track/ratingTarget";
 import { artworkUrl } from "@/shared/api/beefweb";
+import { isFooJeanReady, playingArtworkUrl } from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { usePresence } from "@/shared/hooks/usePresence";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -111,6 +113,7 @@ export function NowPlaying({
 	const { data: live } = usePlayer();
 	const { track, details } = useNowPlayingTrack();
 	const from = usePlayingFrom();
+	const { discovery } = useFooJean();
 
 	const playPause = usePlayPause();
 	const seek = useSeek();
@@ -152,8 +155,9 @@ export function NowPlaying({
 	const hasTrack = Boolean(item && item.index >= 0);
 	const isPlaying = player?.playbackState === "playing";
 
-	const artwork =
-		hasTrack && item ? artworkUrl(item.playlistId, item.index) : null;
+	const artwork = track
+		? playingArtworkUrl(isFooJeanReady(discovery) ? discovery.origin : null)
+		: null;
 	const artworkKey =
 		hasTrack && item ? `${item.playlistId}:${item.index}` : "idle";
 

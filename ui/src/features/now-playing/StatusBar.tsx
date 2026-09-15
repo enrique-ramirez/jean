@@ -9,8 +9,10 @@ import {
 	useTransport,
 } from "@/domain/player/usePlayer";
 import { coverKey } from "@/domain/track/fields";
-import { artworkUrl, readTrack } from "@/shared/api/beefweb";
+import { readTrack } from "@/shared/api/beefweb";
+import { isFooJeanReady, playingArtworkUrl } from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
@@ -68,6 +70,7 @@ export function StatusBar({
 	const t = useTranslate();
 	const { isPending, isError, error } = usePlayer();
 	const snapshot = useAudiblePlayer();
+	const { discovery } = useFooJean();
 	const isCompactViewport = useIsCompactViewport();
 	// iOS exposes no level to set, so the fader is dropped rather than drawn dead.
 	const {
@@ -102,6 +105,9 @@ export function StatusBar({
 	const item = player.activeItem;
 	const isPlaying = player.playbackState === "playing";
 	const hasTrack = Boolean(item && item.index >= 0);
+	const artwork = playingArtworkUrl(
+		isFooJeanReady(discovery) ? discovery.origin : null,
+	);
 
 	return (
 		<footer className={styles.statusbar}>
@@ -119,7 +125,7 @@ export function StatusBar({
 				>
 					<Artwork
 						key={hasTrack ? `${item.playlistId}:${item.index}` : "idle"}
-						src={hasTrack ? artworkUrl(item.playlistId, item.index) : null}
+						src={track ? artwork : null}
 						identity={
 							track ? coverKey(track.artist, track.title, "track") : undefined
 						}

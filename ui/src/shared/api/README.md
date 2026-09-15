@@ -195,7 +195,7 @@ Arbitrary JSON blob storage, keyed by id.
 
 ### Artwork
 
-Addressed by **playlist index**, so these answer for the playing surfaces and for a playlist Jean is showing, and for nothing else. A library row's cover comes from the component instead.
+Addressed by **playlist index**, so this answers for a playlist Jean is showing and for the cover wheel's neighbouring slots, and for nothing else. The status bar and the now-playing screen's centre cover read `foo_jean`'s `GET /artwork/playing` instead; see *What Jean does about artwork* below. A library row's cover comes from the component too.
 
 > **Every response carries a short `max-age` with `must-revalidate`**, from one filter that does not tell a sleeve from a status poll, so a browser refetches a cover it drew a moment ago. beefweb answers a conditional request correctly, so the header is the whole of the problem and it is the player's to change.
 
@@ -442,3 +442,7 @@ The component's clock, not beefweb's, is what a listener hears; the spec carries
 > **The ticket travels in the query string and the bearer token never does.** An `<audio>` element sends no headers, so `GET /stream?ticket=…&format=…` is a capability URL bounded by a short lifetime. It grants nothing but the audio already playing. Clients MUST NOT store, log, or otherwise place a ticket where a bearer token would not go.
 
 - `deviceId` is untrusted: it labels a row in somebody else's picker and nothing branches on it. Generate it at random, keep it, and never derive it from anything about the person.
+
+## What Jean does about artwork
+
+`libraryArtworkUrl()` and `playingArtworkUrl()` in `fooJean.ts` build the two client-side URLs; `GET /artwork` and `GET /artwork/playing` in the contract are the routes, and the contract's *Artwork* section is the reference for what each one answers. The status bar and the now-playing screen's centre cover read the playing route rather than beefweb's playlist-indexed one. The cover wheel's neighbouring slots stay on beefweb's route: they name a position ahead of and behind the current track, not the track itself, which the playing route cannot address.

@@ -633,6 +633,44 @@ TEST_CASE("the player moving invalidates what a client was holding") {
     CHECK(again->get_header_value("ETag") != tag);
 }
 
+TEST_CASE("a conditional poll is a 200 when the playing row moved, a 304 until it moves again") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playingFromThePlaylist());
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    const PlayingLocation oneRowUp{kPlayingPlaylistId, kPlayingRow - 1};
+    store.playingLocationChanged(oneRowUp);
+
+    const auto moved = getHolding(server, "/api/state", tag);
+    REQUIRE(moved);
+    CHECK(moved->status == 200);
+
+    const auto movedTag = moved->get_header_value("ETag");
+    REQUIRE_FALSE(movedTag.empty());
+    CHECK(movedTag != tag);
+
+    const auto held = getHolding(server, "/api/state", movedTag);
+    REQUIRE(held);
+    CHECK(held->status == 304);
+    CHECK(held->body.empty());
+
+    store.playingLocationChanged(oneRowUp);
+
+    const auto republished = getHolding(server, "/api/state", movedTag);
+    REQUIRE(republished);
+    CHECK(republished->status == 304);
+    CHECK(republished->get_header_value("ETag") == movedTag);
+}
+
 // The 304 is what the poll is for, and the position is what threatens it. The mark's age is
 // computed per request, so a validator taken from the document rather than from the two versions
 // makes every poll of a playing player a 200 carrying the whole library section again.

@@ -4,6 +4,7 @@
 
 #include "core/output_hold.h"
 #include "core/playback_modes.h"
+#include "fb2k/playlists.h"
 #include "fb2k/strings.h"
 
 #include <chrono>
@@ -79,6 +80,18 @@ std::optional<std::string> activePlaybackModeOf() {
     return jeanModeFor(std::string(name));
 }
 
+// `get_playing_item_location`, SDK/playlist.h:179, answers two integers rather than a walk:
+// absent when nothing is playing or the playing item has since been removed from the playlist
+// it was on when playback started.
+std::optional<PlayingLocation> currentLocation() {
+    t_size playlist = 0;
+    t_size index = 0;
+    if (!playlist_manager::get()->get_playing_item_location(&playlist, &index))
+        return std::nullopt;
+
+    return PlayingLocation{playlistId(playlist), static_cast<uint32_t>(index)};
+}
+
 // foobar2000's volume is dB against full scale, so a store left at its default reports the
 // fader at maximum until the next change. Seeding from the player at construction covers
 // whatever was already true before the first callback, and the playback order the same way: no
@@ -90,6 +103,7 @@ PlayerState initialStateOf(const OutputHold& outputHold, std::chrono::steady_clo
     state.volume = playback->get_volume();
     state.muted = userMuted(state.volume, outputHold);
     state.playbackMode = activePlaybackModeOf();
+    state.playingLocation = currentLocation();
 
     metadb_handle_ptr track;
     if (playback->get_now_playing(track)) {
@@ -121,6 +135,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
 
     void on_playback_new_track(metadb_handle_ptr track) override {
         store_.started(trackOf(track), std::chrono::steady_clock::now());
+        store_.playingLocationChanged(currentLocation());
         publishName(store_, titleScript_, artistScript_, track);
     }
 
@@ -187,6 +202,44 @@ struct PlaybackWatch::OrderCallback : public playlist_callback_impl_base {
     PlayerStateStore& store_;
 };
 
+// The SDK has no per-playlist subscription: every edit to every playlist reaches this, so
+// comparing against the playing playlist happens first, against nothing more than the two
+// integers `get_playing_item_location` answers. An edit to a playlist that is not playing
+// returns before the store is ever touched, which is what keeps the work constant and keeps
+// a library import into some other playlist from becoming a published change here.
+struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
+    explicit LocationCallback(PlayerStateStore& store)
+        : playlist_callback_impl_base(flag_on_items_added | flag_on_items_removed |
+                                       flag_on_items_reordered),
+          store_(store) {}
+
+    void on_items_added(t_size playlist, t_size, metadb_handle_list_cref,
+                         const bit_array&) override {
+        updateIfPlaying(playlist);
+    }
+
+    void on_items_removed(t_size playlist, const bit_array&, t_size, t_size) override {
+        updateIfPlaying(playlist);
+    }
+
+    void on_items_reordered(t_size playlist, const t_size*, t_size) override {
+        updateIfPlaying(playlist);
+    }
+
+    void updateIfPlaying(t_size playlist) {
+        t_size playingPlaylist = 0;
+        t_size index = 0;
+        if (!playlist_manager::get()->get_playing_item_location(&playingPlaylist, &index) ||
+            playingPlaylist != playlist)
+            return;
+
+        store_.playingLocationChanged(PlayingLocation{playlistId(playingPlaylist),
+                                                       static_cast<uint32_t>(index)});
+    }
+
+    PlayerStateStore& store_;
+};
+
 PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold) {
     // On the main thread, once: see the class comment and ARCHITECTURE.md, *Facts about the
     // player*, for why a shared titleformat_object still has to compile here rather than on
@@ -201,6 +254,7 @@ PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold) {
 
     callback_ = std::make_unique<Callback>(store, outputHold, titleScript, artistScript);
     orderCallback_ = std::make_unique<OrderCallback>(store);
+    locationCallback_ = std::make_unique<LocationCallback>(store);
 
     store.publish(initialStateOf(outputHold, std::chrono::steady_clock::now()));
 

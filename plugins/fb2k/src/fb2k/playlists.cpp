@@ -46,11 +46,6 @@ void writeProperty(size_t index, const GUID& property, const std::string& value)
                                                       fb2k::noAbort);
 }
 
-std::string playlistId(size_t index) {
-    const auto guid = playlist_manager_v5::get()->playlist_get_guid(index);
-    return toLower(pfc::print_guid(guid).get_ptr());
-}
-
 std::string playlistTitle(size_t index) {
     pfc::string8 title;
     playlist_manager::get()->playlist_get_name(index, title);
@@ -362,6 +357,11 @@ std::vector<size_t> playlistIndices() {
     std::vector<size_t> indices(playlist_manager::get()->get_playlist_count());
     std::iota(indices.begin(), indices.end(), size_t{0});
     return indices;
+}
+
+std::string playlistId(size_t index) {
+    const auto guid = playlist_manager_v5::get()->playlist_get_guid(index);
+    return toLower(pfc::print_guid(guid).get_ptr());
 }
 
 PlaylistLister makePlaylistLister(MainThreadQueue& mainThread) {

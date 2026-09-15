@@ -25,8 +25,10 @@ public:
 private:
     struct Callback;
     struct OrderCallback;
+    struct LocationCallback;
     std::unique_ptr<Callback> callback_;
     std::unique_ptr<OrderCallback> orderCallback_;
+    std::unique_ptr<LocationCallback> locationCallback_;
 };
 
 }  // namespace jean

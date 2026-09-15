@@ -5,12 +5,16 @@
 #include "fb2k/main_thread.h"
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 // The half of autoplaylists that involves foobar2000. Whether a request is acceptable was
 // decided in core/playlists.h before any of this runs; what is left only the player can
 // answer, including whether a query parses.
 namespace jean {
+
+// GUID, lowercased, dashed, no braces.
+std::string playlistId(size_t index);
 
 PlaylistLister makePlaylistLister(MainThreadQueue& mainThread);
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread, int maxAutoPlaylists);

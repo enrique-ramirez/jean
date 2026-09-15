@@ -89,4 +89,15 @@ std::string imageTypeOf(const std::string& bytes) {
     return isWebp(bytes) ? "image/webp" : std::string();
 }
 
+void NowPlayingArtwork::hold(std::string picture) {
+    const std::lock_guard<std::mutex> held(mutex_);
+    held_.tag = artworkTag(picture);
+    held_.picture = std::move(picture);
+}
+
+ArtworkSource NowPlayingArtwork::current() const {
+    const std::lock_guard<std::mutex> held(mutex_);
+    return held_;
+}
+
 }  // namespace jean

@@ -139,6 +139,14 @@ info:
 
     The body is `image/jpeg`, `image/png`, `image/gif`, `image/webp` or `image/bmp`, read from the bytes rather than from a filename. A picture in anything else is a `404`: a type nothing recognised is not one a client should be told to draw.
 
+    ### The playing cover
+
+    `GET /artwork/playing` is the front cover of whatever the player is playing right now, addressed by nothing: no path, no index, no handle. It answers what `GET /artwork` cannot, because there is no library-relative path to address a stream, a CD track or a file the library has never indexed by: the player's own now-playing loader resolves a picture embedded in the file's own tags exactly as readily as one sitting beside it on disk, and this route is a window onto that loader rather than onto the snapshot.
+
+    The picture is held rather than loaded per request: this component folds it once with the same validator `GET /artwork` computes, the moment the player's loader hands it over, and a conditional request that already holds the current cover costs a comparison of two strings and touches no file. The address does not move when the track does, so the next track of the same album revalidates to a `304`.
+
+    `GET /artwork` is unchanged by this. Everything that addresses a cover by library key keeps using it.
+
     ### Revalidating a cover
 
     `Cache-Control: no-cache, must-revalidate`, which is "ask every time, and use the copy you have when it has not changed" rather than "do not keep it". A client SHOULD keep the bytes and send the `ETag` back as `If-None-Match`.
@@ -191,7 +199,7 @@ tags:
       The player's media library, as one columnar snapshot and a stream of patches to it.
   - name: artwork
     description: |
-      Cover art for a track the media library holds.
+      Cover art: one route addressed by a track the media library holds, and one addressed by whatever is playing.
   - name: stream
     description: |
       Listening to the player's own output. foobar2000 decodes and sequences; this carries the result to a browser.
@@ -1062,6 +1070,36 @@ paths:
         "429": { $ref: "#/components/responses/ArtworkRequestedTooFast" }
         "503": { $ref: "#/components/responses/ArtworkUnavailable" }
 
+  /artwork/playing:
+    get:
+      tags: [artwork]
+      operationId: getPlayingArtwork
+      summary: The front cover of whatever is playing.
+      description: |
+        One picture, addressed by nothing. *The playing cover* above is the whole of it: why it exists beside `GET /artwork`, what it resolves that the snapshot cannot, and why revalidating it costs no file access.
+      responses:
+        "200":
+          description: |
+            The cover, in the format the player stored it in.
+          headers:
+            ETag:
+              schema: { type: string }
+              description: Strong, quoted and opaque. Send it back as `If-None-Match`.
+            Cache-Control:
+              schema: { type: string }
+              description: "`no-cache, must-revalidate`: keep the bytes, and ask before drawing them again."
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/bmp: { schema: { type: string, format: binary } }
+        "304": { $ref: "#/components/responses/ArtworkNotModified" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoPlayingArtwork" }
+        "413": { $ref: "#/components/responses/ArtworkTooLarge" }
+        "429": { $ref: "#/components/responses/ArtworkRequestedTooFast" }
+
   /stream/ticket:
     post:
       tags: [stream]
@@ -1568,6 +1606,20 @@ components:
         There is no picture to send. Either the snapshot holds no track at that address, which is what a client sees after tracks moved on disk, or the player has no front cover for the one it holds, or the cover is in a format this component does not publish.
 
         The `error` string tells them apart. All three are ordinary: an album without a sleeve is not a fault, and a client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            nothing:
+              value: { error: no artwork for that track }
+            unreadable:
+              value: { error: that artwork is not in a format this component sends }
+
+    NoPlayingArtwork:
+      description: |
+        There is no picture to send for whatever is playing: nothing is playing yet, the player has no front cover for what is, or the cover is in a format this component does not publish.
+
+        The `error` string is the same one `GET /artwork` answers with for the second and third of those, because from a reader's side it is the same fact. A client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

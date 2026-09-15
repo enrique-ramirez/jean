@@ -2,11 +2,13 @@
 
 #include <cstddef>
 #include <functional>
+#include <mutex>
 #include <string>
 
-// One cover, addressed by the library-relative path the snapshot published for a track.
-// Pure: this half decides what a client may ask for, what validates the copy it already
-// holds, and what type the bytes may be published as, and fb2k/ asks the player.
+// Two covers: one addressed by the library-relative path the snapshot published for a track,
+// and one addressed by nothing, held for whatever the player is showing right now. Pure: this
+// half decides what a client may ask for, what validates the copy it already holds, and what
+// type the bytes may be published as, and fb2k/ asks the player and feeds it.
 namespace jean {
 
 // A cover is a JPEG or a PNG of a few hundred kilobytes, and a scan of a gatefold is a few
@@ -37,5 +39,25 @@ struct ArtworkSource {
 };
 
 using ArtworkReader = std::function<ArtworkSource(const std::string& track)>;
+
+// The cover of whatever is playing, addressed by nothing: held rather than looked up, so a
+// route serving it never touches the reader above. `hold` folds the picture once, on whatever
+// thread the player's own now-playing loader calls back on; `current` is read from a connection
+// thread. `PlayerStateStore`'s own shape, for the same reason: a value several threads share.
+class NowPlayingArtwork {
+public:
+    NowPlayingArtwork() = default;
+
+    void hold(std::string picture);
+
+    ArtworkSource current() const;
+
+    NowPlayingArtwork(const NowPlayingArtwork&) = delete;
+    NowPlayingArtwork& operator=(const NowPlayingArtwork&) = delete;
+
+private:
+    mutable std::mutex mutex_;
+    ArtworkSource held_;
+};
 
 }  // namespace jean

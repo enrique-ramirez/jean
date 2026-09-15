@@ -8,6 +8,7 @@
 #include "core/player_state.h"
 #include "core/version.h"
 #include "fb2k/advertise.h"
+#include "fb2k/artwork.h"
 #include "fb2k/config_file.h"
 #include "fb2k/library.h"
 #include "fb2k/main_thread.h"
@@ -114,9 +115,11 @@ public:
           volumeWatch_(holdsOutput_ ? std::make_unique<PlayerVolumeWatch>(outputHold_) : nullptr),
           libraryFeed_(mainThread_, library_),
           playbackWatch_(playerState_, outputHold_),
+          nowPlayingArtworkWatch_(nowPlayingArtwork_),
           server_(settings_, audience_,
                   playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_),
-                  generateToken, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_),
+                  generateToken, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
+                  &nowPlayingArtwork_),
           status_(server_.start()) {
         if (status_.listening) {
             logInfo("listening on " + settings_.bindAddress + ":" + std::to_string(settings_.port));
@@ -161,6 +164,8 @@ private:
     LibraryFeed libraryFeed_;
     PlayerStateStore playerState_;
     PlaybackWatch playbackWatch_;
+    NowPlayingArtwork nowPlayingArtwork_;
+    NowPlayingArtworkWatch nowPlayingArtworkWatch_;
     HttpServer server_;
     const ListenerStatus status_;
 };

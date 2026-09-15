@@ -422,6 +422,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/artwork/playing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The front cover of whatever is playing.
+         * @description One picture, addressed by nothing. *The playing cover* above is the whole of it: why it exists beside `GET /artwork`, what it resolves that the snapshot cannot, and why revalidating it costs no file access.
+         */
+        get: operations["getPlayingArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stream/ticket": {
         parameters: {
             query?: never;
@@ -1523,6 +1543,19 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /**
+         * @description There is no picture to send for whatever is playing: nothing is playing yet, the player has no front cover for what is, or the cover is in a format this component does not publish.
+         *
+         *     The `error` string is the same one `GET /artwork` answers with for the second and third of those, because from a reader's side it is the same fact. A client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+         */
+        NoPlayingArtwork: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description The picture is larger than 16 MiB and this component will not send it. A ceiling on the *response*; `413` on a request body is a different limit and a different number. */
         ArtworkTooLarge: {
             headers: {
@@ -2244,6 +2277,39 @@ export interface operations {
             413: components["responses"]["ArtworkTooLarge"];
             429: components["responses"]["ArtworkRequestedTooFast"];
             503: components["responses"]["ArtworkUnavailable"];
+        };
+    };
+    getPlayingArtwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cover, in the format the player stored it in. */
+            200: {
+                headers: {
+                    /** @description Strong, quoted and opaque. Send it back as `If-None-Match`. */
+                    ETag?: string;
+                    /** @description `no-cache, must-revalidate`: keep the bytes, and ask before drawing them again. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/gif": string;
+                    "image/webp": string;
+                    "image/bmp": string;
+                };
+            };
+            304: components["responses"]["ArtworkNotModified"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoPlayingArtwork"];
+            413: components["responses"]["ArtworkTooLarge"];
+            429: components["responses"]["ArtworkRequestedTooFast"];
         };
     };
     issueStreamTicket: {

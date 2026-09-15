@@ -17,10 +17,11 @@ public:
     // Where a client dials, which is not where the server binds: bindAddress defaults to 0.0.0.0.
     static constexpr char kClientHost[] = "127.0.0.1";
 
-    // `library` and `playerState` must outlive the server.
+    // `library`, `playerState` and `nowPlayingArtwork` must outlive the server.
     explicit TestServer(Settings settings = servingSettings(), const Player& player = servingPlayer(),
                         Library* library = nullptr, const TicketMint& mint = countingMint(),
-                        PlayerStateStore* playerState = nullptr);
+                        PlayerStateStore* playerState = nullptr,
+                        NowPlayingArtwork* nowPlayingArtwork = nullptr);
 
     struct WriterLog {
         std::vector<TagWrite> calls;

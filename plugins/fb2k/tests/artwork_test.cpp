@@ -1,4 +1,5 @@
-// One cover over a real socket, and the pure half behind it.
+// Two covers over a real socket, and the pure half behind both: the one a client addresses by
+// track, and the one the player is showing, which a client addresses by nothing at all.
 
 #include "third_party/doctest.h"
 
@@ -23,6 +24,8 @@ namespace {
 
 constexpr char kTrack[] = "Artist/Album/01.flac";
 constexpr char kAddress[] = "/api/artwork?track=Artist%2FAlbum%2F01.flac";
+
+constexpr char kPlayingAddress[] = "/api/artwork/playing";
 
 constexpr char kJpeg[] =
     "\xFF\xD8\xFF"
@@ -60,6 +63,10 @@ httplib::Result getHolding(const TestServer& server, const std::string& path,
     auto headers = TestServer::bearer();
     headers.emplace("If-None-Match", tag);
     return server.client().Get(path, headers);
+}
+
+TestServer servingPlaying(NowPlayingArtwork* playing, ArtLog* log) {
+    return TestServer(servingSettings(), showing(log), nullptr, countingMint(), nullptr, playing);
 }
 
 }  // namespace
@@ -377,4 +384,101 @@ TEST_CASE("artwork answers no status contract/openapi.yaml does not document") {
                         artwork->statuses.end(), std::inserter(undocumented, undocumented.end()));
 
     CHECK(undocumented.empty());
+}
+
+// foobar2000's own now-playing loader takes no path, no index and no handle
+// (plugins/fb2k/ARCHITECTURE.md, *Facts about the player*), and this is the whole of what
+// separates this route from the one addressed by a track: a request with nothing in it is
+// answered, so a stream, a CD track and a file the media library has never seen all have a
+// cover. Where the picture came from, a folder beside the file or the file's own tags, is
+// the player's answer and never this component's.
+TEST_CASE("the cover of whatever is playing is answered to a request that addresses nothing") {
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    playing.hold(kJpeg);
+    const TestServer server(servingPlaying(&playing, &log));
+
+    const auto response = get(server, kPlayingAddress);
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(response->body == kJpeg);
+    CHECK(response->get_header_value("Content-Type") == "image/jpeg");
+    CHECK(response->get_header_value("ETag") == artworkTag(kJpeg));
+    CHECK(log.asked.empty());
+}
+
+TEST_CASE("a player showing no cover is refused in the words artwork already refuses with") {
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    const TestServer server(servingPlaying(&playing, &log));
+
+    const auto response = get(server, kPlayingAddress);
+
+    REQUIRE(response);
+    CHECK(response->status == 404);
+    CHECK(json::parse(response->body)["error"] == "no artwork for that track");
+    CHECK(response->get_header_value("ETag").empty());
+    CHECK(log.asked.empty());
+}
+
+// GET /api/artwork?track= loads the cover on every request including a conditional one, and
+// says so in its own description in contract/openapi.yaml. This is the route that does not:
+// the picture is held, so the client that already has it costs a comparison of two strings.
+TEST_CASE("a client already holding the playing cover is sent no picture and costs no file read") {
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    playing.hold(kJpeg);
+    const TestServer server(servingPlaying(&playing, &log));
+
+    const auto first = get(server, kPlayingAddress);
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto again = getHolding(server, kPlayingAddress, first->get_header_value("ETag"));
+
+    REQUIRE(again);
+    CHECK(again->status == 304);
+    CHECK(again->body.empty());
+    CHECK(again->get_header_value("ETag") == artworkTag(kJpeg));
+    CHECK(log.asked.empty());
+}
+
+// What the validator is folded from is what decides whether a second track of one album costs
+// anything: the picture, and nothing else. A validator carrying a track path, a counter or the
+// time the picture arrived answers every other case here correctly and still downloads the
+// same sleeve once per track.
+TEST_CASE("a cover held again keeps its validator, and a different cover moves it") {
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    playing.hold(kJpeg);
+    const TestServer server(servingPlaying(&playing, &log));
+
+    const auto first = get(server, kPlayingAddress);
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+    const auto tag = first->get_header_value("ETag");
+
+    SUBCASE("the next track of the same album") {
+        playing.hold(kJpeg);
+
+        const auto again = getHolding(server, kPlayingAddress, tag);
+
+        REQUIRE(again);
+        CHECK(again->status == 304);
+        CHECK(again->body.empty());
+    }
+
+    SUBCASE("the first track of the next album") {
+        playing.hold(kPng);
+
+        const auto again = getHolding(server, kPlayingAddress, tag);
+
+        REQUIRE(again);
+        CHECK(again->status == 200);
+        CHECK(again->body == kPng);
+        CHECK(again->get_header_value("ETag") == artworkTag(kPng));
+    }
+
+    CHECK(log.asked.empty());
 }

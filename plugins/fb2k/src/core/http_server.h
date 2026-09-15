@@ -119,13 +119,15 @@ struct Player {
 
 class HttpServer {
 public:
-    // `audience`, `library` and `playerState` outlive the server: a connection unwinds through
-    // the first as it closes, and reads the other two from a connection thread. A null
-    // `library` is how an install with the feature off says so, and every library route then
-    // answers 503. A null `playerState` is answered from a stopped default, because a player
-    // report is never optional: GET /state carries one on every 200 it gives.
+    // `audience`, `library`, `playerState` and `nowPlayingArtwork` outlive the server: a
+    // connection unwinds through the first as it closes, and reads the other three from a
+    // connection thread. A null `library` is how an install with the feature off says so, and
+    // every library route then answers 503. A null `playerState` is answered from a stopped
+    // default, because a player report is never optional: GET /state carries one on every 200
+    // it gives. A null `nowPlayingArtwork` is read the same as one holding nothing yet.
     HttpServer(Settings settings, Audience& audience, Player player = {}, TicketMint mint = {},
-               Library* library = nullptr, PlayerStateStore* playerState = nullptr);
+               Library* library = nullptr, PlayerStateStore* playerState = nullptr,
+               NowPlayingArtwork* nowPlayingArtwork = nullptr);
     ~HttpServer();
 
     // Call once.

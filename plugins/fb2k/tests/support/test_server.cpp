@@ -44,7 +44,8 @@ Player TestServer::streaming(StreamOpener openStream, std::vector<std::string> f
 }
 
 TestServer::TestServer(Settings settings, const Player& player, Library* library,
-                       const TicketMint& mint, PlayerStateStore* playerState)
+                       const TicketMint& mint, PlayerStateStore* playerState,
+                       NowPlayingArtwork* nowPlayingArtwork)
     : settings_(std::move(settings)),
       audience_(std::make_unique<Audience>(settings_.maxConcurrentStreams,
                                            std::chrono::seconds(kMuteLingerSeconds))) {
@@ -57,7 +58,7 @@ TestServer::TestServer(Settings settings, const Player& player, Library* library
     for (int attempt = 0; attempt < kAttempts; attempt++) {
         settings_.port = freePort();
         server_ = std::make_unique<HttpServer>(settings_, *audience_, player, mint, library,
-                                               playerState);
+                                               playerState, nowPlayingArtwork);
         status_ = server_->start();
 
         if (status_.listening || !status_.portInUse)

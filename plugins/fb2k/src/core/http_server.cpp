@@ -50,6 +50,7 @@ constexpr auto kPollRefill = std::chrono::milliseconds(100);
 
 constexpr char kPairPath[] = "/api/pair";
 constexpr char kArtworkPath[] = "/api/artwork";
+constexpr char kPlayingArtworkPath[] = "/api/artwork/playing";
 constexpr char kStatePath[] = "/api/state";
 constexpr char kLibraryExportPath[] = "/api/library/export";
 constexpr char kLibraryChangesPath[] = "/api/library/changes";
@@ -352,12 +353,13 @@ void reportFailuresWithoutLeaking(httplib::Server& server) {
 
 struct HttpServer::Impl {
     Impl(Settings s, Audience& a, Player p, TicketMint mint, Library* lib,
-        PlayerStateStore* state)
+        PlayerStateStore* state, NowPlayingArtwork* playing)
         : settings(std::move(s)),
           audience(a),
           player(std::move(p)),
           library(lib),
           playerState(state),
+          nowPlayingArtwork(playing),
           tickets(std::move(mint), std::chrono::seconds(settings.streamTicketTtlSeconds),
                   kMaxOutstandingTickets) {}
 
@@ -366,6 +368,7 @@ struct HttpServer::Impl {
     const Player player;
     Library* const library;
     PlayerStateStore* const playerState;
+    NowPlayingArtwork* const nowPlayingArtwork;
     httplib::Server server;
     std::thread thread;
     std::atomic<bool> stopping{false};
@@ -884,6 +887,25 @@ struct HttpServer::Impl {
         });
     }
 
+    // The picture is held rather than looked up, so a conditional request never reaches the
+    // player or a file: it costs a comparison of two strings.
+    void addPlayingArtworkRoute() {
+        server.Get(
+            kPlayingArtworkPath, [this](const httplib::Request& req, httplib::Response& res) {
+                if (fetchingArtworkTooFast(res))
+                    return;
+
+                const auto source =
+                    nowPlayingArtwork ? nowPlayingArtwork->current() : ArtworkSource{};
+                if (source.picture.empty()) {
+                    respond(res, 404, errorDocument(kNoArtworkForTrack));
+                    return;
+                }
+
+                sendArtwork(req, res, source);
+            });
+    }
+
     void addTagRoutes() {
         server.Post("/api/tags", [this](const httplib::Request& req, httplib::Response& res) {
             const auto request = parseTagWrite(req.body, settings);
@@ -1194,9 +1216,10 @@ struct HttpServer::Impl {
 };
 
 HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint,
-                       Library* library, PlayerStateStore* playerState)
+                       Library* library, PlayerStateStore* playerState,
+                       NowPlayingArtwork* nowPlayingArtwork)
     : impl_(std::make_unique<Impl>(std::move(settings), audience, std::move(player),
-                                   std::move(mint), library, playerState)) {}
+                                   std::move(mint), library, playerState, nowPlayingArtwork)) {}
 
 HttpServer::~HttpServer() {
     stop();
@@ -1240,6 +1263,7 @@ ListenerStatus HttpServer::start() {
     impl.addStreamRoutes();
     impl.addStateRoutes();
     impl.addArtworkRoute();
+    impl.addPlayingArtworkRoute();
     impl.addPairingRoute();
 
     if (impl.settings.authToken.empty())

@@ -59,4 +59,25 @@ ArtworkSource AlbumArt::of(const metadb_handle_ptr& item) const {
     }
 }
 
+NowPlayingArtworkWatch::NowPlayingArtworkWatch(NowPlayingArtwork& store)
+    : store_(store), manager_(now_playing_album_art_notify_manager::tryGet()) {
+    if (manager_.is_empty()) {
+        logError(
+            "this foobar2000 has no now-playing album art loader, so "
+            "GET /api/artwork/playing finds nothing");
+        return;
+    }
+
+    manager_->add(this);
+}
+
+NowPlayingArtworkWatch::~NowPlayingArtworkWatch() {
+    if (!manager_.is_empty())
+        manager_->remove(this);
+}
+
+void NowPlayingArtworkWatch::on_album_art(album_art_data::ptr data) {
+    store_.hold(bytesOf(data));
+}
+
 }  // namespace jean

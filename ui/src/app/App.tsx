@@ -26,6 +26,7 @@ import {
 	usePlayPause,
 	useSeekBy,
 } from "@/domain/player/usePlayer";
+import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
 import { type ArtistTab, artistRoute } from "@/domain/track/artistRoute";
@@ -135,6 +136,9 @@ function Shell() {
 	const { data: playlists = [], isSuccess: hasPlaylists } = usePlaylists();
 	const { data: playerState, isSuccess: hasPlayer } = usePlayer();
 	const activeItem = playerState?.player?.activeItem;
+	const playingPlaylistId = usePlayingPlaylist(
+		activeItem?.playlistGuid ?? null,
+	);
 	const isPlaying = useIsPlaying();
 	const playPause = usePlayPause();
 	const seekBy = useSeekBy();
@@ -314,9 +318,8 @@ function Shell() {
 
 	const playingRoute = playingFrom?.isPlaying
 		? playingFrom.route
-		: activeItem &&
-				browsable.some((entry) => entry.id === activeItem.playlistId)
-			? activeItem.playlistId
+		: browsable.some((entry) => entry.id === playingPlaylistId)
+			? playingPlaylistId
 			: null;
 	const routedId = browsable.some((entry) => entry.id === route) ? route : null;
 
@@ -563,11 +566,19 @@ function Shell() {
 
 		if (playingRoute) {
 			setOpenedFrom(playingRoute);
-			if (playingRoute === activeItem.playlistId)
+			if (playingRoute === playingPlaylistId)
 				lastPlaylistId.current = playingRoute;
 		}
 		navigate(`/${ROUTE.playing}`);
-	}, [route, hasPlayer, hasPlaylists, activeItem, playingRoute, navigate]);
+	}, [
+		route,
+		hasPlayer,
+		hasPlaylists,
+		activeItem,
+		playingRoute,
+		playingPlaylistId,
+		navigate,
+	]);
 
 	useEffect(() => {
 		if (settingsSeen || !hasPlaylists) return;

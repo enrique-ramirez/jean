@@ -2,11 +2,16 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	dropTheStream,
 	expect,
+	expectPlayingFrom,
 	expectSettlesAt,
 	globalControls,
+	nowPlayingScreen,
+	openAllMusic,
 	openLibrary,
+	openNowPlaying,
 	openSidebar,
 	requestsTo,
+	scratchOf,
 	sidebar,
 	statusBar,
 	test,
@@ -60,6 +65,10 @@ const TICKS_WATCHED = 4;
 // Track lengths, in seconds, off the captured library.
 const LOS_CALIENTES = "277";
 const FIZZ = "168";
+
+// Album artist, album, track is the order All music lands in, so this is its
+// first row rather than the captured library's first file.
+const FIRST_IN_ALL_MUSIC = "Rotten Apple";
 
 test("shows what the player is actually doing on the next tick after several were refused", async ({
 	page,
@@ -241,4 +250,63 @@ test("asks the component for state once an interval, and nobody asks for the rou
 	);
 
 	expect(askedForTheOldLibraryRoute(player)).toEqual([]);
+});
+
+// The two below only mean anything together. Jean names the set it is playing
+// from by joining the place on the tick to a playlist it holds, and the second
+// case is the join coming back with nothing. On its own it is satisfied by
+// drawing no name ever, so the first one is what says the join still works.
+test("names the set a track is playing from", async ({ page, player }) => {
+	await openAllMusic(page);
+	await trackRow(page, 0).dblclick();
+	await expect
+		.poll(() => scratchOf(player)?.title, { timeout: 10_000 })
+		.toBe("#Jean [all music]");
+
+	await expectPlayingFrom(page, "All music");
+
+	await openSidebar(page);
+	await expect(sidebar(page).getByLabel("Playing from here")).toHaveCount(1);
+});
+
+test('draws no "Playing from" where it cannot name the playlist, rather than an empty one', async ({
+	page,
+	player,
+}) => {
+	player.fooJean.knowsPlayingLocation = false;
+
+	await openAllMusic(page);
+	await trackRow(page, 0).dblclick();
+	await expect
+		.poll(() => scratchOf(player)?.title, { timeout: 10_000 })
+		.toBe("#Jean [all music]");
+	await expect(statusBar(page)).toContainText(FIRST_IN_ALL_MUSIC);
+
+	await openNowPlaying(page);
+	// The screen drew the track, so an absence below is an absence rather than a
+	// page that never arrived.
+	await expect(nowPlayingScreen(page)).toContainText(FIRST_IN_ALL_MUSIC);
+
+	// The element, never its text. A label shipped with nothing after it still
+	// reads "Playing from", so a text assertion passes against the exact failure
+	// this case is written against. Settled rather than read straight: a label
+	// that has not rendered yet is also a count of zero.
+	await expectSettlesAt(
+		player,
+		() =>
+			nowPlayingScreen(page)
+				.locator("header")
+				.getByText("Playing from", { exact: true })
+				.count(),
+		0,
+	);
+
+	await nowPlayingScreen(page)
+		.getByRole("button", { name: "Close now playing" })
+		.click();
+	await expect(nowPlayingScreen(page)).toBeHidden();
+
+	// And the equaliser has no row to sit on, so it draws nowhere.
+	await openSidebar(page);
+	await expect(sidebar(page).getByLabel("Playing from here")).toHaveCount(0);
 });

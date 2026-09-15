@@ -39,6 +39,13 @@ export interface FooJeanOptions {
 	// mid-test rather than one refused from the start.
 	failState?: number | null;
 
+	// Off, the component answers `playingLocation: null`: it is playing something
+	// and cannot say where from. Two installs reach that. One has no
+	// `playlist_manager_v5`, so no playlist has a GUID to report; in the other the
+	// playing item has been removed from the playlist it started in, which is when
+	// foobar2000 stops answering an index for it.
+	knowsPlayingLocation?: boolean;
+
 	canReadLibrary?: boolean;
 	libraryBuilds?: number;
 	libraryBusy?: number;
@@ -104,6 +111,7 @@ const DEFAULTS: FooJeanFake = {
 	allowedFields: ["rating"],
 	failWrites: null,
 	failState: null,
+	knowsPlayingLocation: true,
 	canStream: true,
 	streamFormats: ["opus", "aac"],
 	playableFormats: ["opus", "aac"],
@@ -660,7 +668,7 @@ const nameOf = (track: Track) => ({
 // What rides under `player` in `GET /api/state`'s `200`. Position comes from
 // `state.positionMark` rather than from `activeItem.position` directly, since
 // that is where the age the client interpolates from is kept.
-const playerSectionOf = (state: FakeState) => {
+const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 	const item = state.player.activeItem;
 	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
 	const track = playlist?.items[item.index];
@@ -682,7 +690,7 @@ const playerSectionOf = (state: FakeState) => {
 		),
 		...(track ? nameOf(track) : { title: null, artist: null }),
 		playingLocation:
-			playlist && playlistIndex >= 0
+			fake.knowsPlayingLocation && playlist && playlistIndex >= 0
 				? { playlistId: guidFor(playlistIndex), index: item.index }
 				: null,
 	};
@@ -787,7 +795,7 @@ async function handleState({
 	}
 	return json(response, {
 		library: libraryStateOf(state),
-		player: playerSectionOf(state),
+		player: playerSectionOf(state, fake),
 	});
 }
 

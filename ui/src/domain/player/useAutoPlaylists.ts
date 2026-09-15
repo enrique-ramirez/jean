@@ -1,13 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { fetchPlaylistAnnotations } from "@/shared/api/fooJean";
+import {
+	fetchPlaylistAnnotations,
+	type PlaylistAnnotation,
+} from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { usePlaylists } from "./usePlayer";
 
 const KEY = "fooJeanPlaylists";
 
-export function useAutoPlaylists(): ReadonlySet<string> {
+export function usePlaylistAnnotations(): PlaylistAnnotation[] {
 	const { discovery } = useFooJean();
 	const { origin, token } = discovery;
 	const { data: playlists } = usePlaylists();
@@ -22,10 +25,16 @@ export function useAutoPlaylists(): ReadonlySet<string> {
 		retry: false,
 	});
 
+	return data ?? [];
+}
+
+export function useAutoPlaylists(): ReadonlySet<string> {
+	const annotations = usePlaylistAnnotations();
+
 	return useMemo(() => {
 		const ids = new Set<string>();
-		for (const entry of data ?? [])
+		for (const entry of annotations)
 			if (entry.isAutoPlaylist && entry.beefwebId) ids.add(entry.beefwebId);
 		return ids;
-	}, [data]);
+	}, [annotations]);
 }

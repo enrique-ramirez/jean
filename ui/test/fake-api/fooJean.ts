@@ -40,10 +40,8 @@ export interface FooJeanOptions {
 	failState?: number | null;
 
 	// Off, the component answers `playingLocation: null`: it is playing something
-	// and cannot say where from. Two installs reach that. One has no
-	// `playlist_manager_v5`, so no playlist has a GUID to report; in the other the
-	// playing item has been removed from the playlist it started in, which is when
-	// foobar2000 stops answering an index for it.
+	// and cannot say where from. This is what foobar2000 does once the playing
+	// item has been removed from the playlist it started in.
 	knowsPlayingLocation?: boolean;
 
 	canReadLibrary?: boolean;

@@ -425,6 +425,33 @@ test.describe("clearing the search", () => {
 		expect(scratchOf(player)).toBeDefined();
 		expect(scratchOf(player)!.items).toHaveLength(QUERY.matches);
 	});
+
+	// The two cases above never make the guard tell scratch from anything else: stopped
+	// needs no comparison at all, and playing the scratch matches however the check is
+	// wired. A guard that just refuses whenever the player hasn't stopped, regardless of
+	// which playlist, would still pass both. Only moving off the scratch while playback
+	// continues forces a real one.
+	test("keeps the scratch while it is playing, then deletes it once the player has moved to another playlist", async ({
+		page,
+		player,
+	}) => {
+		const ELSEWHERE = { playlist: "p2", index: 0, title: "Tautou" };
+
+		await searchAndPlay(page, player);
+		const scratchId = scratchOf(player)!.id;
+
+		await page.getByRole("button", { name: "Clear search" }).click();
+		await expectSettlesAt(player, () => scratchOf(player)?.id, scratchId);
+
+		player.playItem(ELSEWHERE.playlist, ELSEWHERE.index);
+		await expect(statusBar(page)).toContainText(ELSEWHERE.title);
+
+		await searchFor(page, QUERY.text);
+		expect(scratchOf(player)?.id).toBe(scratchId);
+
+		await page.getByRole("button", { name: "Clear search" }).click();
+		await expect.poll(() => scratchOf(player)).toBeUndefined();
+	});
 });
 
 test.describe("saving results as a playlist", () => {

@@ -10,6 +10,7 @@ import {
 	usePermissions,
 	usePlayer,
 } from "@/domain/player/usePlayer";
+import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { type Album, albumIndex } from "@/domain/track/albums";
 import { type Artist, artistIndex } from "@/domain/track/artists";
 import { type Genre, genreIndex } from "@/domain/track/genres";
@@ -72,6 +73,10 @@ const entityOf = (suggestion: Suggestion) =>
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const permissions = usePermissions();
 	const { data: playerSnapshot } = usePlayer();
+	const player = playerSnapshot?.player;
+	const playingPlaylistId = usePlayingPlaylist(
+		player?.activeItem?.playlistGuid ?? null,
+	);
 	const [draft, setDraft] = useState("");
 	const [query, setQuery] = useState("");
 	const [isFocused, setIsFocused] = useState(false);
@@ -112,11 +117,17 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		const scratch = playlists.find((entry) => entry.id === pinned);
 		if (!isScratchPlaylist(scratch)) return;
 
-		if (scratch.id === playerSnapshot?.player?.activeItem?.playlistId) return;
+		const stillPlaying =
+			player !== undefined && player.playbackState !== "stopped";
+		if (
+			stillPlaying &&
+			(playingPlaylistId === null || scratch.id === playingPlaylistId)
+		)
+			return;
 
 		removePlaylist(scratch.id);
 		setPinnedScratch(null);
-	}, [playlists, canEdit, playerSnapshot, setPinnedScratch]);
+	}, [playlists, canEdit, player, playingPlaylistId, setPinnedScratch]);
 
 	const deferredDraft = useDeferredValue(draft);
 

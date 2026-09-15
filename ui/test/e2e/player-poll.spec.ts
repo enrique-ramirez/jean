@@ -15,6 +15,7 @@ import {
 	sidebar,
 	statusBar,
 	test,
+	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -76,7 +77,17 @@ const FIRST_IN_ALL_MUSIC = "Rotten Apple";
 const SECOND_IN_THE_ALBUM = { row: 1, title: "Nutshell" };
 const LATER_IN_THE_ALBUM = { row: 3, title: "No Excuses" };
 
+// The row All music turns over to the next album at. A track change has to swap
+// a picture for a different one before anybody can see that it swapped, and
+// every row above this one is the same sleeve.
+const ANOTHER_ALBUM = { row: 7, title: "Break Blossom" };
+
 const PLAYING_COVER = "/api/artwork/playing";
+
+// beefweb's positional address, at any row. The wheel's two neighbours are the
+// only thing left on it, so a slot that changed which of the two addresses it is
+// drawn from shows up as a count here and nowhere else.
+const POSITIONAL_COVER = /^\/api\/artwork\/[^/]+\/\d+$/;
 
 // beefweb's address for the cover of the row something is playing from. The
 // cover wheel still addresses the rows either side of it this way on purpose,
@@ -100,8 +111,69 @@ const playingCoverAnswers = (player: FakePlayer) =>
 			carriedThePicture: (one.answered?.bytes ?? 0) > 0,
 		}));
 
+// Every request that addresses a cover, at both of the addresses one is
+// reachable at. Watching a single address would miss a picture asked for again
+// under the other name, and that is the swap itself.
+const coversAskedFor = (player: FakePlayer) =>
+	player.requests
+		.map((one) => routeOf(one.path))
+		.filter((path) => path === PLAYING_COVER || POSITIONAL_COVER.test(path));
+
 const drawnCover = (within: Locator) =>
 	within.locator("[data-artwork='ok']").first();
+
+const wheel = (page: Page) =>
+	nowPlayingScreen(page).locator("[data-cover-wheel]");
+
+// The three slots in the order the wheel lays them out: the one a backwards
+// swipe turns onto, the one on screen, and the one a forwards swipe turns onto.
+const slots = (page: Page) => wheel(page).locator("[data-artwork]");
+
+const currentSlot = (page: Page) =>
+	wheel(page).locator("[data-current] [data-artwork]");
+
+// The cover on screen, which is a different component on each viewport rather
+// than a narrower one: a phone turns a wheel of three sleeves and a desktop
+// draws one. The phone's is found by which slot the wheel has turned to,
+// because the wheel gives the sleeve it turns onto no accessible name.
+const coverOnScreen = (page: Page, isMobile: boolean) =>
+	isMobile
+		? currentSlot(page)
+		: nowPlayingScreen(page).locator("[data-artwork]").first();
+
+// A fold of the pixels a slot is showing. The address the playing cover is drawn
+// from carries no track in it, so reading it back would answer with whatever is
+// playing now whether or not the slot ever swapped to it.
+const sleeveDrawn = (sleeve: Locator) =>
+	sleeve.evaluate(async (node) => {
+		const image = node as HTMLImageElement;
+		await image.decode();
+		const canvas = document.createElement("canvas");
+		canvas.width = 8;
+		canvas.height = 8;
+		const paper = canvas.getContext("2d");
+		if (!paper) throw new Error("no 2d context to read the sleeve through");
+		paper.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+		let fold = 0;
+		for (const level of paper.getImageData(0, 0, canvas.width, canvas.height)
+			.data)
+			fold = (fold * 31 + level) % 2_147_483_647;
+		return fold;
+	});
+
+// The gesture itself, driven through CDP the way the wheel's own spec drives it:
+// a finger dragged left to right across the sleeve is Previous, and what the
+// wheel does with a drag turns on the browser deciding the gesture is its.
+const swipeToThePrevious = async (page: Page) => {
+	const box = (await nowPlayingScreen(page).boundingBox())!;
+	const y = box.y + box.height * 0.4;
+	await touchDrag(
+		page,
+		{ x: box.x + box.width * 0.25, y },
+		{ x: box.x + box.width * 0.85, y },
+	);
+};
 
 test("shows what the player is actually doing on the next tick after several were refused", async ({
 	page,
@@ -414,4 +486,69 @@ test("a second track of the same album revalidates the cover rather than downloa
 		{ conditional: false, status: 200, carriedThePicture: true },
 		{ conditional: true, status: 304, carriedThePicture: false },
 	]);
+});
+
+test("a neighbour becoming the centre asks for no cover at all", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	test.skip(!isMobile, "the wheel is the phone's skip gesture");
+
+	await openAllMusic(page);
+	await trackRow(page, SECOND_IN_THE_ALBUM.row).dblclick();
+	await expect(statusBar(page)).toContainText(SECOND_IN_THE_ALBUM.title);
+	await openNowPlaying(page);
+
+	// The slot the swipe below turns onto, already showing its picture. The
+	// neighbours are not a prefetch: they are live sleeves, and what a swipe is
+	// meant to reveal is one that is decoded and composited already.
+	await expect(slots(page).first()).toHaveAttribute("data-artwork", "ok");
+	player.requests.length = 0;
+
+	await swipeToThePrevious(page);
+	await expect.poll(() => player.player.activeItem.index).toBe(0);
+	await expect(nowPlayingScreen(page)).toContainText(FIRST_IN_ALL_MUSIC);
+	await expect(currentSlot(page)).toHaveAttribute("data-artwork", "ok");
+
+	// The request log, never what is drawn. A slot asked for a second time
+	// answers with the bytes it was already showing, so it fills a frame later
+	// and looks exactly like one that was never asked for. Nothing else is owed
+	// a cover either: the row turned onto is the first and has no neighbour
+	// behind it.
+	await expectSettlesAt(player, () => coversAskedFor(player), []);
+});
+
+test("the sleeve swaps with the track, at an address that never moves", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	await openAllMusic(page);
+	await trackRow(page, 0).dblclick();
+	await expect(statusBar(page)).toContainText(FIRST_IN_ALL_MUSIC);
+	await openNowPlaying(page);
+
+	// Drawn before it can swap. The address takes no track, so a slot handed an
+	// empty sleeve has nothing to ask for again, and the screen keeps no cover
+	// at all.
+	const cover = coverOnScreen(page, isMobile);
+	await expect(cover).toHaveAttribute("data-artwork", "ok");
+	const wasShowing = await sleeveDrawn(cover.locator("img"));
+
+	// Another album rather than the next track, because the two rows either side
+	// of this one carry the same picture and a swap to one of those is a swap
+	// nobody can see.
+	player.playItem(player.player.activeItem.playlistId, ANOTHER_ALBUM.row);
+	await expect(nowPlayingScreen(page)).toContainText(ANOTHER_ALBUM.title);
+
+	// The picture rather than the words beside it. The address the sleeve is
+	// drawn from carries no track, and the title and the album arrive from
+	// somewhere else, so a screen naming the new album over the old album's
+	// sleeve is the failure this is written against.
+	await expect
+		.poll(() => sleeveDrawn(coverOnScreen(page, isMobile).locator("img")), {
+			message: "the sleeve on screen is still the album that stopped playing",
+		})
+		.not.toBe(wasShowing);
 });

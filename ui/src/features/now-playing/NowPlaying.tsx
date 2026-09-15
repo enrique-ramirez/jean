@@ -180,6 +180,9 @@ export function NowPlaying({
 				}
 			: { nextArtwork: null, previousArtwork: null };
 
+	const positionalArtwork =
+		hasTrack && item ? artworkUrl(item.playlistId, item.index) : null;
+
 	const liveItem = live?.player?.activeItem;
 
 	const wheel = useCoverWheel({
@@ -190,6 +193,7 @@ export function NowPlaying({
 				? `${liveItem.playlistId}:${liveItem.index}`
 				: null,
 		artwork,
+		positionalArtwork,
 		alt: album ? `${album} cover` : "",
 		...neighbours,
 		onSkip: sendSkip,

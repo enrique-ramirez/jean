@@ -29,6 +29,7 @@ export function useCoverWheel({
 	audibleCover,
 	playerTrackKey,
 	artwork,
+	positionalArtwork,
 	alt,
 	nextArtwork,
 	previousArtwork,
@@ -40,6 +41,9 @@ export function useCoverWheel({
 	audibleCover: string | null;
 	playerTrackKey: string | null;
 	artwork: string | null;
+	// The address a neighbour would have fetched this same track under. A slot already showing a
+	// sleeve from that address is showing the right picture and must be left alone.
+	positionalArtwork: string | null;
 	alt: string;
 	nextArtwork: string | null;
 	previousArtwork: string | null;
@@ -84,29 +88,45 @@ export function useCoverWheel({
 	);
 
 	const seen = useRef<string | null>(null);
+	const centre = useRef<number | null>(null);
 	useEffect(() => {
 		if (!audibleTrackKey || audibleTrackKey === seen.current) return;
 		const isFirst = seen.current === null;
 		seen.current = audibleTrackKey;
 
-		const sleeve = artwork
-			? { src: artwork, alt, identity: audibleCover }
-			: null;
 		const asked = unanswered.current;
 		const outside = takeSkipAsked();
+		const at = asked
+			? asked.to
+			: isFirst
+				? position
+				: position + (outside ?? 1);
+		centre.current = at;
 
 		if (asked) {
 			unanswered.current = null;
 			setIsAwaiting(false);
 			if (undo.current) clearTimeout(undo.current);
-			if (sleeve) setSleeves((held) => ({ ...held, [asked.to]: sleeve }));
-			return;
+		} else if (!isFirst) {
+			turnTo(at);
 		}
+	}, [audibleTrackKey, position, turnTo]);
 
-		const at = isFirst ? position : position + (outside ?? 1);
-		if (!isFirst) turnTo(at);
-		if (sleeve) setSleeves((held) => ({ ...held, [at]: sleeve }));
-	}, [audibleTrackKey, audibleCover, artwork, alt, position, turnTo]);
+	// Runs again on its own once `artwork` catches up: the poll that names the track lands a beat
+	// after the position it plays at, so the first pass here can find nothing to draw yet.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: audibleTrackKey re-fires this for the new centre, not a read
+	useEffect(() => {
+		const at = centre.current;
+		if (at === null) return;
+
+		setSleeves((held) => {
+			if (held[at]?.src === positionalArtwork) return held;
+			if (!artwork) return held;
+			if (held[at]?.src === artwork && held[at]?.identity === audibleCover)
+				return held;
+			return { ...held, [at]: { src: artwork, alt, identity: audibleCover } };
+		});
+	}, [audibleTrackKey, artwork, audibleCover, alt, positionalArtwork]);
 
 	const confirmed = useRef<string | null>(null);
 	useEffect(() => {

@@ -68,6 +68,7 @@ export const drives: Drive[] = [
 			query: { track: `contract check ${context.run}/no such track.flac` },
 		}),
 	},
+	{ id: "getPlayingArtwork", probe: () => ({}) },
 	{
 		id: "writeTags",
 		probe: (operation) => ({ body: example(operation, "setRating") }),

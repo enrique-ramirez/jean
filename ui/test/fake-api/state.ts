@@ -60,6 +60,10 @@ export interface RecordedRequest {
 	// carries.
 	// biome-ignore lint/suspicious/noExplicitAny: see above
 	body: Record<string, any> | null;
+	// How the fake answered, filled in by the routes where the method and the
+	// path cannot say: a cover sent again and a cover revalidated are one GET at
+	// one address, and only the answer tells them apart.
+	answered?: { conditional: boolean; status: number; bytes: number };
 }
 
 const LIBRARY = capturedLibrary as { albums: CapturedAlbum[] };
@@ -373,6 +377,15 @@ export function createState({
 
 	const byId = (id: string) =>
 		state.playlists.find((entry) => entry.id === id) ?? null;
+
+	const coverOf = (playlistId: string, index: number) => {
+		const track = index < 0 ? null : byId(playlistId)?.items[index];
+		if (!track) return null;
+		const album = LIBRARY.albums.find((entry) =>
+			entry.tracks.some((candidate) => candidate["%path%"] === track["%path%"]),
+		);
+		return album?.artwork ?? artworkOf?.(track) ?? null;
+	};
 
 	const consume = (playlist: FakePlaylist, index: number) => {
 		const at = state.playQueue.findIndex(
@@ -691,7 +704,9 @@ export function createState({
 		},
 
 		record(method: string, path: string, body: RecordedRequest["body"]) {
-			state.requests.push({ method, path, body });
+			const entry: RecordedRequest = { method, path, body };
+			state.requests.push(entry);
+			return entry;
 		},
 
 		playlistById: byId,
@@ -753,15 +768,15 @@ export function createState({
 			};
 		},
 
-		artworkFor(playlistId: string, index: number) {
-			const track = byId(playlistId)?.items[index];
-			if (!track) return null;
-			const album = LIBRARY.albums.find((entry) =>
-				entry.tracks.some(
-					(candidate) => candidate["%path%"] === track["%path%"],
-				),
-			);
-			return album?.artwork ?? artworkOf?.(track) ?? null;
+		artworkFor: coverOf,
+
+		// Resolved through the playing item rather than through the media library:
+		// foobar2000's own now-playing loader reads the file, so a track the
+		// library has never seen has a cover too. Two tracks of one album answer
+		// with one picture, which is what gives them one validator.
+		playingArtwork() {
+			const { playlistId, index } = state.player.activeItem;
+			return coverOf(playlistId, index);
 		},
 
 		playItem(playlistId: string, index: number) {

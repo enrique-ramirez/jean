@@ -197,6 +197,42 @@ const MAX_TRACK_ADDRESS = 4096;
 // Word for word what `kKeepAndRevalidate` in the component's `core/http_server.cpp` sends.
 const KEEP_AND_REVALIDATE = "no-cache, must-revalidate";
 
+// Both artwork routes answer 404 with this one string, as the component does:
+// from a reader's side "no cover for that track" and "no cover for whatever is
+// playing" are one fact.
+const NO_ARTWORK = { error: "no artwork for that track" };
+
+// The status and the body size go into the request log, because a cover sent
+// again and a cover revalidated are one GET at one address and a spec asserting
+// on paths alone cannot tell them apart.
+const reporting = (
+	response: Responder,
+	note: (answer: { status: number; bytes: number }) => void,
+): Responder => {
+	let status = 0;
+	let bytes = 0;
+	return {
+		writeHead(code, headers) {
+			status = code;
+			return response.writeHead(code, headers);
+		},
+		setHeader: (name, value) => response.setHeader(name, value),
+		write(chunk) {
+			bytes += chunk.length;
+			return response.write(chunk);
+		},
+		end(body) {
+			if (body) bytes += body.length;
+			note({ status, bytes });
+			return response.end(body);
+		},
+		on: (event, listener) => response.on(event, listener),
+		get writableEnded() {
+			return response.writableEnded;
+		},
+	};
+};
+
 const FAILURES: Record<number, unknown> = {
 	403: {
 		written: false,
@@ -897,7 +933,19 @@ export async function handleAgent({
 	const fake = state.fooJean;
 	const path = url.pathname;
 
-	state.record(method, path + url.search, body as never);
+	const recorded = state.record(method, path + url.search, body as never);
+
+	const sendCover = (file: string) => {
+		const conditional = Boolean(headers["if-none-match"]);
+		return artwork(
+			file,
+			headers,
+			reporting(response, (answer) => {
+				recorded.answered = { conditional, ...answer };
+			}),
+			KEEP_AND_REVALIDATE,
+		);
+	};
 
 	cors(headers, response);
 
@@ -1030,10 +1078,19 @@ export async function handleAgent({
 			return json(response, { error: "unacceptable track address" }, 400);
 
 		const file = state.libraryArtworkFor(track);
-		if (!file)
-			return json(response, { error: "no artwork for that track" }, 404);
+		if (!file) return json(response, NO_ARTWORK, 404);
 
-		return artwork(file, headers, response, KEEP_AND_REVALIDATE);
+		return sendCover(file);
+	}
+
+	// Addressed by nothing: no path, no index, no handle. Not gated on the media
+	// library either, which is why the contract gives this route no 503 where
+	// `GET /api/artwork` has one.
+	if (path === "/api/artwork/playing") {
+		const file = state.playingArtwork();
+		if (!file) return json(response, NO_ARTWORK, 404);
+
+		return sendCover(file);
 	}
 
 	if (path === "/api/playlists") {

@@ -133,6 +133,16 @@ void PlayerStateStore::playingLocationChanged(std::optional<PlayingLocation> loc
     applyLocked(std::move(next));
 }
 
+void PlayerStateStore::nameChanged(std::string title, std::string artist) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.title = title.empty() ? std::nullopt : std::optional(std::move(title));
+    next.artist = artist.empty() ? std::nullopt : std::optional(std::move(artist));
+
+    applyLocked(std::move(next));
+}
+
 void PlayerStateStore::applyLocked(PlayerState next) {
     if (next == state_)
         return;

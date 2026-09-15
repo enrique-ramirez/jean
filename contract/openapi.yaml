@@ -2321,11 +2321,11 @@ components:
         title:
           type: [string, "null"]
           description: |
-            The playing track's title, computed by the player. Null when it has not computed one, so a client can tell that from an empty one.
+            The playing track's title, computed by the player, or `null` when it has not computed one.
         artist:
           type: [string, "null"]
           description: |
-            The playing track's artist, computed by the player. Null when it has not computed one, so a client can tell that from an empty one.
+            The playing track's artist, computed by the player, or `null` when it has not computed one.
         playingLocation:
           description: |
             Where the playing track sits, or `null` when it is not playing from a playlist this component can name.

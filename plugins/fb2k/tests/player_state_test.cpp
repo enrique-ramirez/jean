@@ -46,6 +46,7 @@ constexpr uint32_t kPlayingRow = 7;
 constexpr int kEditsInABurst = 50;
 constexpr char kTitle[] = "Cirrus Minor";
 constexpr char kArtist[] = "Pink Floyd";
+constexpr char kSingleSpace[] = " ";
 
 PlayerState playingFrom(uint32_t row) {
     PlayerState state = playing();
@@ -396,4 +397,57 @@ TEST_CASE("a track change keeps the playing location, because the row change is 
     store.playingLocationChanged(PlayingLocation{kPlayingPlaylist, kPlayingRow + 1});
 
     CHECK(store.read().state.playingLocation->index == kPlayingRow + 1);
+}
+
+TEST_CASE("a name the player computed as empty reads back absent, one field at a time") {
+    PlayerStateStore store;
+    store.publish(namedAndPlaced());
+
+    store.nameChanged("", kArtist);
+
+    const auto untitled = store.read();
+    CHECK_FALSE(untitled.state.title.has_value());
+    REQUIRE(untitled.state.artist.has_value());
+    CHECK(*untitled.state.artist == kArtist);
+
+    store.nameChanged(kTitle, "");
+
+    const auto unattributed = store.read();
+    REQUIRE(unattributed.state.title.has_value());
+    CHECK(*unattributed.state.title == kTitle);
+    CHECK_FALSE(unattributed.state.artist.has_value());
+}
+
+// A name of one space is what a tag holding one gives, and trimming is a separate decision
+// nobody has taken. The store collapses what the title-format engine computed as nothing, and
+// nothing else.
+TEST_CASE("a name that is a single space is still a name") {
+    PlayerStateStore store;
+    store.publish(playing());
+
+    store.nameChanged(kSingleSpace, kSingleSpace);
+
+    const auto published = store.read();
+    REQUIRE(published.state.title.has_value());
+    CHECK(*published.state.title == kSingleSpace);
+    REQUIRE(published.state.artist.has_value());
+    CHECK(*published.state.artist == kSingleSpace);
+}
+
+// A broadcast announces its current song on every dynamic-info tick, so a station whose artist
+// never resolves hands over the same empty string all evening. Held as an empty string rather
+// than as absent, the first of those is a state change no client can perceive and every poll
+// after it carries a body.
+TEST_CASE("an empty name over a name already absent leaves the version alone") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().version;
+
+    for (int tick = 0; tick < kEditsInABurst; ++tick)
+        store.nameChanged("", "");
+
+    const auto published = store.read();
+    CHECK_FALSE(published.state.title.has_value());
+    CHECK_FALSE(published.state.artist.has_value());
+    CHECK(published.version == before);
 }

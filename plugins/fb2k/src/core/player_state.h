@@ -83,6 +83,8 @@ public:
     void playbackModeChanged(std::optional<std::string> mode);
     void playingLocationChanged(std::optional<PlayingLocation> location);
 
+    void nameChanged(std::string title, std::string artist);
+
     PlayerStateStore(const PlayerStateStore&) = delete;
     PlayerStateStore& operator=(const PlayerStateStore&) = delete;
 

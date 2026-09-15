@@ -645,6 +645,18 @@ const playbackModesOf = (state: FakeState): PlaybackMode[] =>
 		.map(jeanModeFor)
 		.filter((mode): mode is PlaybackMode => mode !== null);
 
+const fileNameOf = (path: string) => path.split(/[\\/]/).pop() ?? "";
+
+// Mirrors `kTitleScript` and `kArtistScript` in
+// `plugins/fb2k/src/fb2k/playback_watch.cpp`: only the title falls back to the filename.
+const nameOf = (track: Track) => ({
+	title:
+		String(track["%title%"] ?? "") ||
+		fileNameOf(String(track["%path%"] ?? "")) ||
+		null,
+	artist: String(track["%artist%"] ?? "") || null,
+});
+
 // What rides under `player` in `GET /api/state`'s `200`. Position comes from
 // `state.positionMark` rather than from `activeItem.position` directly, since
 // that is where the age the client interpolates from is kept.
@@ -668,8 +680,7 @@ const playerSectionOf = (state: FakeState) => {
 		playbackMode: jeanModeFor(
 			declaredOrders(state)[state.player.playbackMode] ?? "",
 		),
-		title: null,
-		artist: null,
+		...(track ? nameOf(track) : { title: null, artist: null }),
 		playingLocation:
 			playlist && playlistIndex >= 0
 				? { playlistId: guidFor(playlistIndex), index: item.index }

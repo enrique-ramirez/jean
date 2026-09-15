@@ -25,6 +25,7 @@ const EMPTY_ACTIVE_ITEM = {
 	columns: [],
 	index: -1,
 	path: null,
+	playlistGuid: null,
 	playlistId: "",
 	playlistIndex: -1,
 	subsong: 0,
@@ -65,8 +66,14 @@ function mergePlayer(
 		playbackState: doc.playback,
 		activeItem: {
 			...(previous?.activeItem ?? EMPTY_ACTIVE_ITEM),
+			columns:
+				doc.title != null || doc.artist != null
+					? [doc.artist ?? "", doc.title ?? ""]
+					: (previous?.activeItem.columns ?? EMPTY_ACTIVE_ITEM.columns),
 			duration: doc.duration,
+			index: doc.playingLocation?.index ?? -1,
 			path: doc.path || null,
+			playlistGuid: doc.playingLocation?.playlistId ?? null,
 			// A mark plus how long ago it was taken, per `Position` in the contract: the client adds
 			// them to get where playback is now.
 			position: doc.position.seconds + doc.position.ageSeconds,
@@ -83,10 +90,11 @@ function mergePlayer(
 }
 
 // `permissions` and `jeanPlaybackMode` have no equivalent in beefweb's own payload at all, and now
-// neither does the playing path: beefweb's `activeItem` carries `columns`, `duration`, `index`,
-// `playlistId`, `playlistIndex` and `position`, nothing the poll's `path` or `subsong` could come
-// from. A push from the subscription carries whatever it last had for all four, which is stale or
-// absent rather than current, so the poll's own values survive a push instead of being blanked by it.
+// neither does the playing path or `foo_jean`'s own playlist GUID: beefweb's `activeItem` carries
+// `columns`, `duration`, `index`, `playlistId`, `playlistIndex` and `position`, nothing the poll's
+// `path`, `subsong` or `playlistGuid` could come from. A push from the subscription carries whatever
+// it last had for those, which is stale or absent rather than current, so the poll's own values
+// survive a push instead of being blanked by it.
 export function keepPollOwned(
 	previous: PlayerState | undefined,
 	incoming: PlayerState,
@@ -97,6 +105,7 @@ export function keepPollOwned(
 		activeItem: {
 			...incoming.activeItem,
 			path: previous.activeItem.path,
+			playlistGuid: previous.activeItem.playlistGuid,
 			subsong: previous.activeItem.subsong,
 		},
 		permissions: previous.permissions,

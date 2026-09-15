@@ -121,6 +121,11 @@ const NOW_PLAYING = ["One", "Babasónicos", "Jessico"];
 const DISC_IMAGE = "/music/Artist/Album/Whole Disc.flac";
 const DISC_SUBSONG = 3;
 
+const PLAYING_FROM = {
+	playlistId: "45837d74-fa4f-415c-bba9-bf2db8f0dc04",
+	index: 5,
+};
+
 // beefweb's own update payload, which has no key for `jeanPlaybackMode` at all and
 // answers `permissions` from beefweb's configuration rather than the component's.
 const subscriptionPush = (over: Partial<PlayerState> = {}) =>
@@ -447,7 +452,7 @@ test("a subscription push still delivers the playing track, the transport and th
 	assert.equal(player?.volume.value, -6);
 });
 
-test("a tick leaves the playing track, the option list and beefweb's own fields alone", async (t) => {
+test("a tick writes what its document carries and leaves the fields it cannot feed", async (t) => {
 	const poll = harness(t, () => document200("playing"), CAPABILITIES);
 	await poll.settle();
 	await poll.ticks(1);
@@ -462,13 +467,48 @@ test("a tick leaves the playing track, the option list and beefweb's own fields 
 
 	assert.deepEqual(player?.activeItem.columns, NOW_PLAYING);
 	assert.equal(player?.activeItem.playlistId, "p7");
-	assert.equal(player?.activeItem.index, 3);
 	assert.equal(player?.info.title, "beefweb");
 	assert.deepEqual(player?.playbackModes, ["Default", "Shuffle (tracks)"]);
 	assert.equal(player?.options?.[0]?.id, "playbackOrder");
 
 	assert.equal(player?.playbackState, "paused");
 	assert.equal(player?.activeItem.position, 30);
+});
+
+test("a tick reporting no place drops the place, rather than leaving the last one standing", async (t) => {
+	// `foo_jean` publishes `playingLocation: null` once the playing item is gone from the
+	// playlist it started in. Carrying the previous location forward points the equaliser at
+	// whatever row slid into that index, under the name of a playlist the track has left.
+	const poll = harness(
+		t,
+		() => document200("playing", TAG, { playingLocation: PLAYING_FROM }),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	await poll.ticks(1);
+
+	const playing = playerIn(poll.client)?.activeItem;
+
+	assert.equal(playing?.index, PLAYING_FROM.index);
+	assert.equal(playing?.playlistGuid, PLAYING_FROM.playlistId);
+
+	pushFromSubscription(poll.client, subscriptionPush());
+
+	poll.answers(() => document200("playing", '"s1-r4-p8"'));
+	await poll.ticks(1);
+
+	const player = playerIn(poll.client);
+
+	assert.equal(
+		player?.activeItem.index,
+		-1,
+		"the poll kept an index for a row the track has left",
+	);
+	assert.equal(
+		player?.activeItem.playlistGuid,
+		null,
+		"the poll went on naming a playlist the track has left",
+	);
 });
 
 test("a push before any tick has landed is taken whole", async (t) => {

@@ -128,6 +128,26 @@ test("the status bar and the playing row follow a track change made at the playe
 	await expect(trackRow(page, 1)).toHaveAttribute("data-active", "true");
 });
 
+test("the status bar names the track with no columns from beefweb to name it from", async ({
+	page,
+	player,
+}) => {
+	// The case above passes whichever source the name came from, since beefweb's
+	// subscription is still live and still carries `activeItem.columns`. With the
+	// columns emptied the tick is the only place a name can arrive from, and the
+	// rest of the subscription, the playlist list and the play queue, is untouched.
+	player.answersTrackColumns = false;
+
+	await openLibrary(page);
+	await trackRow(page, 0).dblclick();
+	await expect(statusBar(page)).toContainText("Los Calientes");
+
+	player.playItem("p7", 1);
+
+	await expect(statusBar(page)).toContainText("Fizz");
+	await expect(statusBar(page)).toContainText("Babasónicos");
+});
+
 test("the sidebar follows a playlist renamed at the player", async ({
 	page,
 	player,

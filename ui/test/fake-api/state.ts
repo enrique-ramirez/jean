@@ -647,6 +647,11 @@ export function createState({
 			return playerVersion;
 		},
 		library: state.library,
+		// beefweb's only answer for what the playing track is called: the `trcolumns`
+		// a subscriber asked for, evaluated against the active item. A spec sets this
+		// false to take the name away from beefweb with the subscription otherwise
+		// live, which is the state Jean is heading for.
+		answersTrackColumns: true,
 		fooJean: fooJeanState(fooJean),
 		// Which `?format=` each stream was opened with, in order; `requests` records
 		// paths without their query.
@@ -720,7 +725,10 @@ export function createState({
 					: state.player.volume,
 				activeItem: {
 					...item,
-					columns: track ? columnsFor(track, trcolumns) : [],
+					columns:
+						track && this.answersTrackColumns
+							? columnsFor(track, trcolumns)
+							: [],
 				},
 			};
 		},

@@ -28,6 +28,9 @@ export interface ActiveItem {
 	// -1 when stopped, and also what emptying a playlist leaves behind.
 	index: number;
 	path: string | null;
+	// foobar2000's own playlist GUID, matching `PlaylistAnnotation.id`. Not beefweb's id, which stays
+	// on `playlistId`.
+	playlistGuid: string | null;
 	playlistId: string;
 	playlistIndex: number;
 	position: number;

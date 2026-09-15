@@ -7,11 +7,16 @@ namespace jean {
 using std::chrono::duration;
 using std::chrono::steady_clock;
 
+bool operator==(const PlayingLocation& a, const PlayingLocation& b) {
+    return a.playlistId == b.playlistId && a.index == b.index;
+}
+
 bool operator==(const PlayerState& a, const PlayerState& b) {
     return a.playback == b.playback && a.path == b.path && a.subsong == b.subsong &&
            a.position.seconds == b.position.seconds && a.position.taken == b.position.taken &&
            a.duration == b.duration && a.volume == b.volume && a.muted == b.muted &&
-           a.playbackMode == b.playbackMode;
+           a.playbackMode == b.playbackMode && a.title == b.title && a.artist == b.artist &&
+           a.playingLocation == b.playingLocation;
 }
 
 void PlayerStateStore::publish(PlayerState state) {
@@ -110,6 +115,15 @@ void PlayerStateStore::playbackModeChanged(std::optional<std::string> mode) {
 
     PlayerState next = state_;
     next.playbackMode = std::move(mode);
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::playingLocationChanged(std::optional<PlayingLocation> location) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.playingLocation = std::move(location);
 
     applyLocked(std::move(next));
 }

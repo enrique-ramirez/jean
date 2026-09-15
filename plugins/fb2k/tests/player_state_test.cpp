@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 
 using namespace jean;
 using namespace std::chrono;
@@ -38,6 +39,16 @@ PlayingTrack anotherTrack() {
     track.subsong = 2;
     track.duration = 185.0;
     return track;
+}
+
+constexpr char kPlayingPlaylist[] = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
+constexpr uint32_t kPlayingRow = 7;
+constexpr int kEditsInABurst = 50;
+
+PlayerState playingFrom(uint32_t row) {
+    PlayerState state = playing();
+    state.playingLocation = PlayingLocation{kPlayingPlaylist, row};
+    return state;
 }
 
 }  // namespace
@@ -286,4 +297,50 @@ TEST_CASE("a playback mode change reaches a client, and an order with no Jean na
     const auto published = store.read();
     CHECK_FALSE(published.state.playbackMode.has_value());
     CHECK(published.version > withRandom);
+}
+
+// foobar2000 fires the playlist item callbacks for an edit anywhere in the playlist, once per
+// operation rather than once per row, so appending below the playing track hands the store the
+// location it is already holding. A location carrying anything that moves on its own, a sequence
+// number or the moment it was read, makes each of those a new state and each poll a fresh body.
+TEST_CASE("a burst of edits that leaves the playing row where it is leaves the version alone") {
+    PlayerStateStore store;
+    store.publish(playingFrom(kPlayingRow));
+    const uint64_t before = store.read().version;
+
+    for (int edit = 0; edit < kEditsInABurst; ++edit)
+        store.playingLocationChanged(PlayingLocation{kPlayingPlaylist, kPlayingRow});
+
+    CHECK(store.read().version == before);
+}
+
+TEST_CASE("an edit that moves the playing row advances the version once") {
+    PlayerStateStore store;
+    store.publish(playingFrom(kPlayingRow));
+    const uint64_t before = store.read().version;
+
+    store.playingLocationChanged(PlayingLocation{kPlayingPlaylist, kPlayingRow - 1});
+    const uint64_t afterTheMove = store.read().version;
+
+    for (int edit = 0; edit < kEditsInABurst; ++edit)
+        store.playingLocationChanged(PlayingLocation{kPlayingPlaylist, kPlayingRow - 1});
+
+    CHECK(afterTheMove > before);
+    CHECK(store.read().version == afterTheMove);
+    CHECK(store.read().state.playingLocation->index == kPlayingRow - 1);
+}
+
+// The two states the "Playing from" line turns on. A place that is merely empty rather than
+// absent reads as the first row of a playlist nobody can name.
+TEST_CASE("playing from nowhere is distinguishable from playing at the first row of a playlist") {
+    PlayerStateStore store;
+    store.publish(playingFrom(0));
+    const auto atTheFirstRow = store.read();
+
+    store.playingLocationChanged(std::nullopt);
+
+    const auto fromNowhere = store.read();
+    CHECK(atTheFirstRow.state.playingLocation.has_value());
+    CHECK_FALSE(fromNowhere.state.playingLocation.has_value());
+    CHECK(fromNowhere.version > atTheFirstRow.version);
 }

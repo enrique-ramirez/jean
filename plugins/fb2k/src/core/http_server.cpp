@@ -731,7 +731,7 @@ struct HttpServer::Impl {
         return true;
     }
 
-    void addLibraryRoutes() {
+    void addStateRoutes() {
         server.Get(kStatePath, [this](const httplib::Request& req, httplib::Response& res) {
             // cpp-httplib gives one pooled thread the whole life of a socket, not just one
             // request on it, so a poller left on keep-alive would hold that thread idle
@@ -1238,7 +1238,7 @@ ListenerStatus HttpServer::start() {
     impl.addTagRoutes();
     impl.addPlaylistRoutes();
     impl.addStreamRoutes();
-    impl.addLibraryRoutes();
+    impl.addStateRoutes();
     impl.addArtworkRoute();
     impl.addPairingRoute();
 

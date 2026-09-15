@@ -2,7 +2,7 @@
 
 Two HTTP APIs sit under Jean. **beefweb** does playback, playlists and the queue, and answers artwork for a row that is in a playlist. **`foo_jean`** listens on a port of its own and answers everything else: the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
 
-Verified against foobar2000 with the beefweb plugin. Where behaviour differs by plugin version it says so: **0.10** is the current release, **0.11** adds the media library API. DeaDBeeF differences are called out per endpoint.
+Verified against foobar2000 with the beefweb plugin. Where behaviour differs by plugin version it says so: **0.10** is the current release, **0.11** adds the media library API.
 
 ---
 
@@ -70,7 +70,7 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 | `POST /player` | `{ position }` / `{ relativePosition }` | seek, in seconds |
 | `POST /player` | `{ volume }` / `{ relativeVolume }` / `{ isMuted }` | volume is **decibels**; read `volume.min`/`max` |
 | `POST /player` | `{ options: [{ id, value }] }` | the supported way to set playback order |
-| `POST /player` | `{ playbackMode }` | deprecated, and the only form DeaDBeeF accepts |
+| `POST /player` | `{ playbackMode }` | deprecated ordinal write |
 | `POST /player/play` · `/play/{playlistId}/{index}` · `/play/random` | — | |
 | `POST /player/next` · `/previous` | `{ by }` optional | `by` takes an expression, so "next album" is possible |
 | `POST /player/stop` · `/pause` · `/pause/toggle` · `/play-pause` | — | |
@@ -140,9 +140,9 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 }
 ```
 
-- **`info.name` is what distinguishes foobar2000 from DeaDBeeF** and is the field to branch on. `info.title` is a display name.
-- **Volume is decibels, not a percentage,** and `volume.type` says so. The range is the player's, `-100..0` on foobar2000 and `-50..0` on DeaDBeeF, so read `min` and `max`. A linear slider over that range feels wrong; map it.
-- **Nothing may address a playback mode by index.** The two `playbackModes` lists differ in wording *and* order between the players.
+- **`info.name` identifies the player** and is the field to branch on. `info.title` is a display name.
+- **Volume is decibels, not a percentage,** and `volume.type` says so. The range is the player's, `-100..0` on foobar2000, so read `min` and `max`. A linear slider over that range feels wrong; map it.
+- **Nothing may address a playback mode by index.** The `playbackModes` list differs in wording and order by install.
 
 ### `playlists`
 
@@ -216,7 +216,6 @@ Addressed by **playlist index**, so these answer for the playing surfaces and fo
 **A field that does not exist answers `?`. A field that exists but is empty answers `''`, `0` or `N/A`.** That difference is the whole of the capability probe: ask for a column set against sample tracks on connect, and enable whatever resolves.
 
 - **`$meta(x)` cannot be feature-detected.** It answers `''` for a field that does not exist, where `%x%` answers `?`. Probe with `%x%`.
-- **DeaDBeeF has no such sentinel.** There an unknown field answers `''`, exactly as an empty one does, so **every optional field reads as supported** and its column arrives empty rather than staying hidden. Detection is the thing that cannot work there, and it errs on the side of showing too much.
 - **Sparse fields defeat sampling.** A field only some tracks carry can be missed entirely by a fixed sample. Detect per track where a field is sparse, as the Details panel does.
 - **Which fields resolve is a fact about the install, not about a set of rows.** A playlist of untagged rips answers `?` for `%year%` while the library resolves it, so sample the library and let every view read that one answer. `src/domain/track/fieldAvailability.ts`.
 
@@ -261,7 +260,6 @@ Which of these resolve varies by install, by component and by how the library wa
 - **Emptying or deleting the playing playlist does not stop playback.** The current track keeps playing but is orphaned: `activeItem.playlistId` goes to `""` and `index` to `-1`. Emptying is harmless if a play follows immediately. Deleting is not: at the end of the track the player falls back to another playlist and carries on.
 - **A manual skip pushes an empty `activeItem` before it pushes the next track**, and goes on reporting `playbackState: "playing"` across the gap. Every field is cleared at once, so a client that draws each field as it arrives shows no cover, no title and `0:00` for the width of the gap. Three things make it a trap: it is **only manual skips**, so the flash looks intermittent; it is **not the stopped item**, which reports `duration` and `position` as `-1`; and **emptiness has to be read off `columns`, not off `index`**, since the orphan above is a lasting `index: -1` behind a track that is still audible. `holdThroughGap` in `src/domain/player/usePlayer.ts` holds the last item, with its `syncedAt`, until the next real one lands.
 - **Renaming a playlist while it is playing is seamless**: same track, same position, uninterrupted. That turns "save these results as a playlist" into a rename rather than a copy.
-- **`playbackOrder` is a foobar2000 option and DeaDBeeF has none.** DeaDBeeF splits the order into `shuffle` and `repeat` and answers `400 invalid option id`, accepting only the deprecated top-level `playbackMode`, which beefweb translates back into its own pair. The deprecated form is the fallback rather than a mistake.
 - **There is no tag-writing endpoint.** Every POST route is playback, playlists, queue, outputs or clientconfig. Ratings and lyrics can be *read* through title formatting and cannot be written back through beefweb at all.
 - **There is no way to reach another component.** `/api/commands`, `/api/command`, `/api/mainmenu`, `/api/contextmenu`, `/api/plugins` and `/api/components` all 404.
 
@@ -277,7 +275,7 @@ Which of these resolve varies by install, by component and by how the library wa
 
 ## The media library API
 
-**foobar2000 only, and only on beefweb 0.11+.** On DeaDBeeF every endpoint here is **501**; on 0.10 they are **404**. **Jean does not read the library through any of it.** `foo_jean` answers the library, and these routes are only what a fill, a queue or a tag write acts *through* once a row has been chosen.
+**foobar2000 only, and only on beefweb 0.11+.** On 0.10 every endpoint here is **404**. **Jean does not read the library through any of it.** `foo_jean` answers the library, and these routes are only what a fill, a queue or a tag write acts *through* once a row has been chosen.
 
 ### `GET /library/info`
 

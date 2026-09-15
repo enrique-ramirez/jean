@@ -13,7 +13,7 @@ export type PlaybackMode =
 	| "shuffleFolders";
 
 // Decibels rather than a percentage, and `type` is what says so. The range is the player's:
-// -100..0 on foobar2000, -50..0 on DeaDBeeF, so read `min` and `max`.
+// -100..0 on foobar2000, so read `min` and `max` rather than assuming it.
 export interface Volume {
 	type: string;
 	min: number;

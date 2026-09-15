@@ -1,6 +1,7 @@
-// The media library routes over a real socket. library_test.cpp covers the snapshot, the
-// deltas and the wire format; what these add is which status a client sees, that a refused
-// request never reaches the snapshot or the player, and that a re-poll costs nothing.
+// GET /api/state and the three /api/library/* routes over a real socket. library_test.cpp
+// covers the snapshot, the deltas and the wire format; what these add is which status a
+// client sees, that a refused request never reaches the snapshot or the player, and that a
+// re-poll costs nothing.
 
 #include "third_party/doctest.h"
 

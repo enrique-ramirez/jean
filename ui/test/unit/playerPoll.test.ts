@@ -4,17 +4,27 @@ import test, { mock, type TestContext } from "node:test";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
 import {
+	keepPollOwned,
 	POLL_MS,
 	startPlayerPoll,
 	VOLUME_SETTLE_MS,
 } from "../../src/domain/player/playerPoll.ts";
-import type { StateDocument } from "../../src/shared/api/fooJean.ts";
-import type { PlayerSnapshot } from "../../src/shared/api/types.ts";
+import { volumePercent } from "../../src/domain/player/volumeScale.ts";
+import type {
+	FooJeanCapabilities,
+	StateDocument,
+} from "../../src/shared/api/fooJean.ts";
+import type {
+	PlayerSnapshot,
+	PlayerState,
+} from "../../src/shared/api/types.ts";
 
 // `player-poll.spec.ts` drives the status bar against the fake, which is the
 // user-visible half. What stays here is the request the browser cannot be asked
 // about: how many go out, what validator they carry, and whether a tab nobody is
-// looking at keeps asking.
+// looking at keeps asking. So is the order the two writers of the player key land
+// in, since no browser can be asked for a subscription push at a chosen moment
+// after a tick.
 
 const ORIGIN = "http://player.invalid:8881";
 const TOKEN = "token";
@@ -23,9 +33,13 @@ const PLAYER_KEY = ["player"];
 
 const TAG = '"s1-r4-p7"';
 
-type Playback = StateDocument["player"]["playback"];
+type PlayerSection = StateDocument["player"];
+type Playback = PlayerSection["playback"];
 
-const stateDocument = (playback: Playback): StateDocument => ({
+const stateDocument = (
+	playback: Playback,
+	player: Partial<PlayerSection> = {},
+): StateDocument => ({
 	library: {
 		ready: true,
 		structure: 1,
@@ -41,13 +55,18 @@ const stateDocument = (playback: Playback): StateDocument => ({
 		duration: 180,
 		volume: -6,
 		muted: false,
-		playbackOrder: 0,
+		playbackMode: "inOrder",
+		...player,
 	},
 });
 
-const document200 = (playback: Playback, tag: string | null = TAG) =>
+const document200 = (
+	playback: Playback,
+	tag: string | null = TAG,
+	player: Partial<PlayerSection> = {},
+) =>
 	Promise.resolve(
-		new Response(JSON.stringify(stateDocument(playback)), {
+		new Response(JSON.stringify(stateDocument(playback, player)), {
 			headers: tag
 				? { "Content-Type": "application/json", ETag: tag }
 				: { "Content-Type": "application/json" },
@@ -67,11 +86,82 @@ type Answer = (ifNoneMatch: string | null) => Promise<Response>;
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-const playbackIn = (client: QueryClient) =>
-	client.getQueryData<PlayerSnapshot>(PLAYER_KEY)?.player?.playbackState ??
-	null;
+const playerIn = (client: QueryClient) =>
+	client.getQueryData<PlayerSnapshot>(PLAYER_KEY)?.player ?? null;
 
-const harness = (t: TestContext, first: Answer) => {
+const playbackIn = (client: QueryClient) =>
+	playerIn(client)?.playbackState ?? null;
+
+const CAPABILITIES = {
+	apiVersion: 1,
+	allowedFields: ["rating"],
+	canWrite: true,
+	canWritePlaylists: false,
+	canChangeOutput: false,
+	maxAutoPlaylists: 100,
+	canCreateAutoPlaylists: false,
+	canStream: false,
+	streamFormats: [],
+	canMuteWhileStreaming: false,
+	canReadLibrary: true,
+	playerName: "foobar2000",
+	playerVersion: "2.24.5",
+	volumeMin: -100,
+	volumeMax: 0,
+	volumeUnit: "db",
+	playbackModes: ["inOrder", "shuffleTracks"],
+} satisfies FooJeanCapabilities;
+
+const NOW_PLAYING = ["One", "Babasónicos", "Jessico"];
+
+// beefweb's own update payload, which has no key for `jeanPlaybackMode` at all and
+// answers `permissions` from beefweb's configuration rather than the component's.
+const subscriptionPush = (over: Partial<PlayerState> = {}) =>
+	({
+		activeItem: {
+			columns: NOW_PLAYING,
+			duration: 214,
+			index: 3,
+			playlistId: "p7",
+			playlistIndex: 1,
+			position: 12,
+		},
+		info: {
+			name: "foobar2000",
+			title: "beefweb",
+			version: "2.24.5",
+			pluginVersion: "0.10",
+		},
+		options: [
+			{ id: "playbackOrder", name: "Playback order", type: "enum", value: 0 },
+		],
+		permissions: {
+			changePlaylists: true,
+			changeOutput: true,
+			changeClientConfig: true,
+		},
+		playbackMode: 0,
+		playbackModes: ["Default", "Shuffle (tracks)"],
+		playbackState: "playing",
+		volume: { type: "db", min: -100, max: 0, value: -6, isMuted: false },
+		...over,
+	}) as PlayerState;
+
+// What `usePlayerStream` does with a message's `player` section. The rest of it is an
+// `EventSource` inside a React effect, and neither of those runs under `node`.
+const pushFromSubscription = (client: QueryClient, player: PlayerState) => {
+	const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
+	client.setQueryData<PlayerSnapshot>(PLAYER_KEY, {
+		player: keepPollOwned(previous?.player, player),
+		syncedAt: performance.now(),
+	});
+};
+
+const harness = (
+	t: TestContext,
+	first: Answer,
+	capabilities?: FooJeanCapabilities,
+) => {
 	const realFetch = globalThis.fetch;
 	const realDocument = globalThis.document;
 
@@ -109,7 +199,7 @@ const harness = (t: TestContext, first: Answer) => {
 	} as unknown as Document;
 
 	const client = new QueryClient();
-	const stop = startPlayerPoll(client, ORIGIN, TOKEN);
+	const stop = startPlayerPoll(client, ORIGIN, TOKEN, capabilities);
 
 	t.after(() => {
 		stop();
@@ -245,4 +335,152 @@ test("a hidden tab stops asking, and asks again when it comes back", async (t) =
 		poll.stateCalls().length > askedWhileVisible,
 		"coming back to the tab did not resume the poll",
 	);
+});
+
+test("a tick draws the player's name, the fader's range and what the install permits from capabilities", async (t) => {
+	const poll = harness(
+		t,
+		() => document200("playing", TAG, { volume: -6 }),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	await poll.ticks(1);
+
+	const player = playerIn(poll.client);
+
+	assert.deepEqual(player?.volume, {
+		type: "db",
+		min: -100,
+		max: 0,
+		value: -6,
+		isMuted: false,
+	});
+	assert.deepEqual(player?.permissions, {
+		changePlaylists: false,
+		changeOutput: false,
+		changeClientConfig: true,
+	});
+	assert.equal(player?.info.name, "foobar2000");
+	assert.equal(player?.info.version, "2.24.5");
+});
+
+test("a subscription push leaves the permissions and the playback order the poll wrote", async (t) => {
+	const poll = harness(
+		t,
+		() => document200("playing", TAG, { playbackMode: "shuffleTracks" }),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	await poll.ticks(1);
+
+	pushFromSubscription(poll.client, subscriptionPush());
+
+	const player = playerIn(poll.client);
+
+	assert.equal(
+		player?.jeanPlaybackMode,
+		"shuffleTracks",
+		"the push blanked the playback order",
+	);
+	assert.equal(
+		player?.permissions.changePlaylists,
+		false,
+		"the push blanked what the component said about writing playlists",
+	);
+	assert.equal(
+		player?.permissions.changeOutput,
+		false,
+		"the push blanked what the component said about the output",
+	);
+});
+
+test("a subscription push still delivers the playing track, the transport and the level", async (t) => {
+	const poll = harness(
+		t,
+		() => document200("paused", TAG, { volume: -40 }),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	await poll.ticks(1);
+
+	assert.deepEqual(playerIn(poll.client)?.activeItem.columns, []);
+
+	pushFromSubscription(poll.client, subscriptionPush());
+
+	const player = playerIn(poll.client);
+
+	assert.deepEqual(player?.activeItem.columns, NOW_PLAYING);
+	assert.equal(player?.activeItem.playlistId, "p7");
+	assert.equal(player?.playbackState, "playing");
+	assert.equal(player?.volume.value, -6);
+});
+
+test("a tick leaves the playing track, the option list and beefweb's own fields alone", async (t) => {
+	const poll = harness(t, () => document200("playing"), CAPABILITIES);
+	await poll.settle();
+	await poll.ticks(1);
+	pushFromSubscription(poll.client, subscriptionPush());
+
+	poll.answers(() =>
+		document200("paused", TAG, { position: { seconds: 30, ageSeconds: 0 } }),
+	);
+	await poll.ticks(1);
+
+	const player = playerIn(poll.client);
+
+	assert.deepEqual(player?.activeItem.columns, NOW_PLAYING);
+	assert.equal(player?.activeItem.playlistId, "p7");
+	assert.equal(player?.activeItem.index, 3);
+	assert.equal(player?.info.title, "beefweb");
+	assert.deepEqual(player?.playbackModes, ["Default", "Shuffle (tracks)"]);
+	assert.equal(player?.options?.[0]?.id, "playbackOrder");
+
+	assert.equal(player?.playbackState, "paused");
+	assert.equal(player?.activeItem.position, 30);
+});
+
+test("a push before any tick has landed is taken whole", async (t) => {
+	const poll = harness(t, never, CAPABILITIES);
+	await poll.settle();
+	assert.equal(playerIn(poll.client), null);
+
+	pushFromSubscription(
+		poll.client,
+		subscriptionPush({
+			permissions: {
+				changePlaylists: false,
+				changeOutput: true,
+				changeClientConfig: true,
+			},
+		}),
+	);
+
+	const player = playerIn(poll.client);
+
+	assert.deepEqual(player?.activeItem.columns, NOW_PLAYING);
+	assert.equal(player?.playbackState, "playing");
+	assert.deepEqual(player?.permissions, {
+		changePlaylists: false,
+		changeOutput: true,
+		changeClientConfig: true,
+	});
+});
+
+test("a tick before capabilities have landed reports the level with no range to draw it in", async (t) => {
+	// `GET /api/capabilities` is read once and the poll may tick first. A guessed range
+	// puts the thumb in the wrong place along the fader's whole length, and a guessed
+	// permission greys out a control this install may well allow.
+	const poll = harness(t, () => document200("playing", TAG, { volume: -6 }));
+	await poll.settle();
+	await poll.ticks(1);
+
+	const player = playerIn(poll.client);
+
+	assert.equal(player?.volume.value, -6);
+	assert.equal(volumePercent(player?.volume), 0);
+	assert.deepEqual(player?.permissions, {
+		changePlaylists: true,
+		changeOutput: true,
+		changeClientConfig: true,
+	});
 });

@@ -9,7 +9,7 @@ Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./C
 ```mermaid
 flowchart TB
   subgraph machine["The player's machine"]
-    fb["foobar2000 / DeaDBeeF"]
+    fb["foobar2000"]
     bw["foo_beefweb :8880"]
     fj["foo_jean :8881<br/>required"]
     stats["playback statistics<br/>component, optional"]
@@ -108,7 +108,7 @@ Chunking is a playlist read's problem: it is almost all round trip, so the first
 
 The player evaluates title-formatting expressions and answers them positionally, which makes the reachable surface far wider than beefweb's own schema. Jean declares a column set once, as name-and-expression pairs, and `fieldTable()` in `src/shared/api/fieldTable.ts` derives both the list sent to the player and the index each name landed at. Written out separately, the day somebody inserts an expression in the middle is the day a row reports its genre as its artist.
 
-The sentinel the player answers with, what `$meta()` cannot do, and why none of this can work on DeaDBeeF are in [src/shared/api/README.md](src/shared/api/README.md), *Capability detection*. What the architecture adds is where the answer lives: `readValue` maps both an absent and an empty field to `null` so rows draw correctly either way, while `resolvesAnywhere` asks a column whether any of its values resolved.
+The sentinel the player answers with and what `$meta()` cannot do are in [src/shared/api/README.md](src/shared/api/README.md), *Capability detection*. What the architecture adds is where the answer lives: `readValue` maps both an absent and an empty field to `null` so rows draw correctly either way, while `resolvesAnywhere` asks a column whether any of its values resolved.
 
 **The answer is one per install and it comes from the library, so every route loads the library.** `domain/track/fieldAvailability.ts` holds it and the library snapshot is the only thing that writes to it, so no view can compute a different one from the rows it happens to be showing. Landing on a playlist draws the same columns as landing on a shelf. Nothing is ruled out until the library has answered, so no view opens with a column missing, and a column is hidden only where the player cannot produce that field at all.
 

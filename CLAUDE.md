@@ -1,6 +1,6 @@
 # Jean
 
-A replacement web UI for the [beefweb](https://github.com/hyperblast/beefweb) plugin, controlling foobar2000 (and, best-effort, DeaDBeeF) over HTTP.
+A replacement web UI for the [beefweb](https://github.com/hyperblast/beefweb) plugin, controlling foobar2000 over HTTP.
 
 This file is what an agent cannot read off the code: project-wide rules, external constraints, and decisions somebody would otherwise undo. The four documents it points at do not overlap with it or with each other, and the only rule repeated here is the one about comments, because it applies to every line an agent writes. [ui/CONTRIBUTING.md](./ui/CONTRIBUTING.md) is how to write the code, [ui/ARCHITECTURE.md](./ui/ARCHITECTURE.md) is how the parts fit and why the boundaries sit where they do, [ui/src/shared/api/README.md](ui/src/shared/api/README.md) is what the player answers, [ui/test/README.md](./ui/test/README.md) is the suite and the fake player. Read `ui/CONTRIBUTING.md` before writing anything; its *Design*, *Comments* and *Documentation* sections are the three that get ignored first, and two of its rules are enforced rather than trusted. `.claude/hooks/check-style.sh` fails an edit that reintroduces personal detail, history, hard-wrapped prose, a recorded measurement, an em dash or an assistant's phrasing, and it fires on a shell command that wrote a file as well as on the edit tools. Two agents review changed code for the rest: `style-reviewer` for design and structure, then `comment-reaper` for comments and prose. All three come from the `ai-engineering` kit; `.claude/review-profile.md` is the only part of that setup that is Jean's.
 
@@ -65,11 +65,11 @@ Writing a custom foobar component to feed Jean is a last resort. Do not design t
 
 ## Capability detection
 
-`ui/src/shared/api/README.md` has what the player answers: the `?` sentinel, what `$meta()` cannot do, and why detection cannot work on DeaDBeeF at all. `ui/ARCHITECTURE.md` has where Jean puts the answer. Three rules on top of both:
+`ui/src/shared/api/README.md` has what the player answers: the `?` sentinel and what `$meta()` cannot do. `ui/ARCHITECTURE.md` has where Jean puts the answer. Three rules on top of both:
 
 - **Detection is a guess and Settings overrides it.** A feature enabled by a probe MUST have a switch.
 - **Detect per track wherever a field is sparse.** What one install resolves is not a rule.
-- **`player.info.name` distinguishes foobar2000 from DeaDBeeF.** Support DeaDBeeF best-effort. Do not invest in a second title-format dialect without a real report.
+- **foobar2000 is the only player.** `player.info.name` is what a client reads to know which one answered, and a second player is designed for rather than inherited: its own measurement, its own title-format dialect, and a decision to take it on.
 
 ## `foo_jean`
 
@@ -93,7 +93,6 @@ Things that vary between installs and MUST never be assumed:
 | `pathSeparator` | From `/api/browser/roots`. `\` on Windows, `/` elsewhere, but library paths are `/`-separated everywhere, so do not build one with it |
 | Library size | Anywhere from empty to very large. Nothing may be linear in it on the main thread |
 | Components | Detect, never require |
-| Player | foobar2000 or DeaDBeeF |
 | Keyboard layout | A binding written as an unshifted key is not unshifted everywhere. See `ui/src/shared/keyboard/CLAUDE.md` |
 
 CORS is off in beefweb by default, so Jean MUST be served same-origin, by beefweb or through the dev proxy.

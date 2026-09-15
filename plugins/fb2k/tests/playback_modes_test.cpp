@@ -1,5 +1,5 @@
 // The playback-mode vocabulary: the name a client is handed for the order the player is in, and
-// the way back from that name to the order it stands for. tests/library_route_test.cpp covers the
+// the way back from that name to the order it stands for. tests/state_route_test.cpp covers the
 // rest of the polled document; what this adds is that no part of foobar2000's own naming reaches
 // a client, and that an order with no Jean name is reported as nothing rather than as a guess.
 

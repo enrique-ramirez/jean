@@ -75,7 +75,7 @@ The fake serves the beefweb 0.11+ library API: `/library/info`, `/library/items`
 
 The library is **derived from the captured tracks rather than invented**: the capture's absolute `%path%` values give a deepest shared directory, which is treated as the media library folder, and what is left is the library-relative, forward-slashed path the real API returns.
 
-- `test.use({ library: { supported: false } })` is **DeaDBeeF**: `/library/info` still answers, since that is how a client discovers it has no library, and everything else is **501**.
+- `test.use({ library: { supported: false } })` models an install with no library API at all: `/library/info` still answers, since that is how a client discovers it has none, and everything else is **501**.
 - `{ enabled: false }` is foobar2000 with no media library configured: supported, empty, a different problem with a different fix.
 - The two **must not collapse into one state**.
 
@@ -117,9 +117,9 @@ The routes model the declaration the contract describes rather than answering fr
 | | |
 |---|---|
 | `canReadLibrary: false` | the component loaded without the feature: the three `/api/library/*` routes are a `503`, and `GET /api/state` answers `200` regardless, with a zero `library` and a populated `player`, since a player with no library is still a player |
-| `libraryBuilds: n` | polls of `GET /library` answered before a declared set finishes building, so the export is a `202` first |
+| `libraryBuilds: n` | polls of `GET /api/state` answered before a declared set finishes building, so the export is a `202` first |
 | `libraryBusy: n` | exports answered `429` before the rate limiter lets one through |
-| `libraryRebuilds: n` | structure rebuilds, one performed at the next poll of `GET /library` each. This is the `409` and the re-export behind it |
+| `libraryRebuilds: n` | structure rebuilds, one performed at the next poll of `GET /api/state` each. This is the `409` and the re-export behind it |
 
 `GET /api/state`'s `player` section reads off `state.player` and `state.positionMark`, the position and the wall-clock time it was last set: a track change, a pause, a resume, a stop or a seek re-takes the mark, and a volume-only write does not, so a client interpolating `seconds + ageSeconds` never loses time it already counted. Its `ETag` folds a player version on top of the two library generations, so driving the player alone still moves the validator. **`failState`, set through `fooJean` or through `POST /__control/state { failState: n }`, refuses the route with status `n`** until cleared with `{ failState: null }`, shaped like `failWrites` but switchable mid-test, since the case it exists for is a poll cut off partway through a spec rather than one refused from the start.
 
@@ -131,7 +131,7 @@ The routes model the declaration the contract describes rather than answering fr
 
 **gzip is real here.** The route compresses through `CompressionStream` when the request offers it, sets `Content-Encoding`, `Vary` and an `ETag` that names the coding. A browser decodes it before anything in the app sees it, so what this actually covers is the negotiation and the headers.
 
-**`Access-Control-Expose-Headers` names `ETag` and `Retry-After` on every answer**, as the contract says the component does. Without it a browser hands script neither, and the conditional poll behind `GET /library` and the documented `429` backoff both fail silently against a cross-origin reader.
+**`Access-Control-Expose-Headers` names `ETag` and `Retry-After` on every answer**, as the contract says the component does. Without it a browser hands script neither, and the conditional poll behind `GET /api/state` and the documented `429` backoff both fail silently against a cross-origin reader.
 
 ### What the fake gets wrong on purpose
 
@@ -181,20 +181,6 @@ LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='C:\Music' pnpm test:live
 **Nothing here may assume what is in the library.** Counts, titles, which row carries a rating and whether any artist is accented are all read off the player first and asserted against; a spec that cannot be satisfied skips itself and says why. That is why the suite is short: an assertion that survives an unknown library has to be about a relationship rather than a value.
 
 **`LIVE_LIBRARY_ROOT` is required and has no default.** These specs play tracks, write the play queue and can write rating tags, so the worker fixture reads the whole library first and refuses to start if one track sits outside the named folder. The check runs before any page is opened, so a wrong answer costs nothing.
-
-### DeaDBeeF
-
-beefweb supports a second player, and `test/live/deadbeef/` is how that one gets tested. It is a container since **the released beefweb plugin for DeaDBeeF is a Linux x86-64 `.so`**, and no release has ever carried a Windows or macOS build, so the pairing cannot be installed on a foobar2000 machine or on a mac at all. The image downloads both the player and the plugin at build time, so nothing binary is committed here.
-
-```sh
-docker build --platform linux/amd64 -t jean-deadbeef test/live/deadbeef
-docker run -d --name jean-ddb --platform linux/amd64 -p 8890:8880 \
-  -v /path/to/music:/music:ro -v "$PWD/dist:/jean:ro" jean-deadbeef
-```
-
-The entrypoint writes beefweb's `config.json` with `musicDirs` and a `/jean` url mapping, which is what makes those two mounts work. **`foo_jean` is a foobar2000 component and there is no DeaDBeeF build of it**, so a container has no library for Jean to read; what it covers is the player state, the playlists and the transport.
-
-Three things about the container are load-bearing and none of them is obvious. It runs the bundled **`nullout`** output plugin, which needs no sound device and is what leaves a playback state to assert on. It needs **an X server anyway**, since DeaDBeeF exits 1 when its GTK ui cannot open a display, started directly rather than through `xvfb-run`, whose wait-for-display loop does not return under emulation and leaves the player unlaunched with nothing saying so. And it sets a **UTF-8 locale**, without which beefweb's artwork route fails `iconv` on any non-ascii path, which is most of a real library.
 
 ## Writing a spec
 

@@ -33,9 +33,6 @@ const EMPTY_ACTIVE_ITEM = {
 	subsong: 0,
 } satisfies Omit<ActiveItem, "duration" | "position">;
 
-// `info.title` and `info.pluginVersion` are beefweb's own, with no `foo_jean` equivalent and no
-// document field to read them from, so a client carries forward whatever it last had, empty for
-// the life of a tab that has never seen a full player.
 function mergePlayer(
 	previous: PlayerState | undefined,
 	doc: StateDocument["player"],
@@ -44,11 +41,8 @@ function mergePlayer(
 	return {
 		info: {
 			name: capabilities?.playerName ?? previous?.info.name ?? "",
-			title: previous?.info.title,
 			version: capabilities?.playerVersion ?? previous?.info.version ?? "",
-			pluginVersion: previous?.info.pluginVersion ?? "",
 		},
-		options: previous?.options,
 		permissions: {
 			changePlaylists:
 				capabilities?.canWritePlaylists ??
@@ -60,10 +54,6 @@ function mergePlayer(
 				true,
 			changeClientConfig: previous?.permissions.changeClientConfig ?? true,
 		},
-		// beefweb's own deprecated pair, left to whatever the subscription last wrote: the poll's
-		// document carries no numeric ordinal to feed it.
-		playbackMode: previous?.playbackMode ?? 0,
-		playbackModes: previous?.playbackModes ?? [],
 		jeanPlaybackMode: doc.playbackMode,
 		playbackState: doc.playback,
 		activeItem: {

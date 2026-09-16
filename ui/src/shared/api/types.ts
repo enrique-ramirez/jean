@@ -39,17 +39,7 @@ export interface ActiveItem {
 
 export interface PlayerInfo {
 	name: string;
-	title?: string;
 	version: string;
-	pluginVersion: string;
-}
-
-export interface PlayerOption {
-	id: string;
-	name?: string;
-	type: "enum" | "bool";
-	value: number | boolean;
-	enumNames?: string[];
 }
 
 export interface Permissions {
@@ -61,10 +51,7 @@ export interface Permissions {
 export interface PlayerState {
 	activeItem: ActiveItem;
 	info: PlayerInfo;
-	options?: PlayerOption[];
 	permissions: Permissions;
-	playbackMode: number;
-	playbackModes: string[];
 	jeanPlaybackMode: PlaybackMode | null;
 	playbackState: PlaybackState;
 	volume: Volume;

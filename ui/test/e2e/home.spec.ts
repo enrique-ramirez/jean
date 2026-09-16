@@ -1,10 +1,11 @@
-import type { PlayerOption } from "../../src/shared/api/types.ts";
+import type { FakePlayerOption } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
 	inSequence,
+	OFFERS_NO_SHUFFLE,
 	openSidebar,
 	playedFrom,
 	requestsTo,
@@ -188,8 +189,8 @@ test.describe("starting the library from the front door", () => {
 	const orderRequests = (player: FakePlayer) =>
 		requestsTo(player, "/api/player").flatMap((entry) =>
 			(entry.body?.options ?? [])
-				.filter((option: PlayerOption) => option.id === "playbackOrder")
-				.map((option: PlayerOption) => option.value),
+				.filter((option: FakePlayerOption) => option.id === "playbackOrder")
+				.map((option: FakePlayerOption) => option.value),
 		);
 
 	test("Play opens All music and starts at the beginning", async ({
@@ -259,20 +260,7 @@ test.describe("starting the library from the front door", () => {
 });
 
 test.describe("a front door on a player that offers no shuffle", () => {
-	test.use({
-		playerState: {
-			playbackModes: ["Default", "Repeat (playlist)"],
-			options: [
-				{
-					id: "playbackOrder",
-					name: "Playback order",
-					type: "enum",
-					value: 0,
-					enumNames: ["Default", "Repeat (playlist)"],
-				},
-			],
-		},
-	});
+	test.use({ playerState: OFFERS_NO_SHUFFLE });
 
 	test("Shuffle goes and Play stays", async ({ page }) => {
 		await page.goto("/");

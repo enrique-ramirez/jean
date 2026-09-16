@@ -1,10 +1,11 @@
-import type { PlayerOption } from "../../src/shared/api/types.ts";
+import type { FakePlayerOption } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
 	globalControls,
 	nowPlayingScreen,
+	OFFERS_NO_SHUFFLE,
 	openNowPlaying,
 	playedFrom,
 	requestsTo,
@@ -41,8 +42,8 @@ const modeShuffle = async (page: Page, isMobile: boolean) => {
 const orderRequests = (player: FakePlayer) =>
 	requestsTo(player, "/api/player").flatMap((entry) =>
 		(entry.body?.options ?? [])
-			.filter((option: PlayerOption) => option.id === "playbackOrder")
-			.map((option: PlayerOption) => option.value),
+			.filter((option: FakePlayerOption) => option.id === "playbackOrder")
+			.map((option: FakePlayerOption) => option.value),
 	);
 
 test.describe("the header shuffle starts a shuffled run", () => {
@@ -339,20 +340,7 @@ test.describe("shuffle remembers the order it interrupted", () => {
 });
 
 test.describe("a player that offers no shuffle", () => {
-	test.use({
-		playerState: {
-			playbackModes: ["Default", "Repeat (playlist)"],
-			options: [
-				{
-					id: "playbackOrder",
-					name: "Playback order",
-					type: "enum",
-					value: 0,
-					enumNames: ["Default", "Repeat (playlist)"],
-				},
-			],
-		},
-	});
+	test.use({ playerState: OFFERS_NO_SHUFFLE });
 
 	test("both shuffles are disabled rather than lying", async ({
 		page,

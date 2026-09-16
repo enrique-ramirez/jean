@@ -146,16 +146,9 @@ export const setMuted = (isMuted: boolean) => post("/api/player", { isMuted });
 export const volumeUp = () => post("/api/player/volume/up");
 export const volumeDown = () => post("/api/player/volume/down");
 
-// foobar2000 carries the order as an option named `playbackOrder`. DeaDBeeF splits it into `shuffle`
-// and `repeat` and answers `400 invalid option id` for that name, so there the only write that lands
-// is the deprecated top-level field, which both players still accept.
-export const setPlaybackOrder = (value: number, hasOrderOption: boolean) =>
-	post(
-		"/api/player",
-		hasOrderOption
-			? { options: [{ id: "playbackOrder", value }] }
-			: { playbackMode: value },
-	);
+// foobar2000 carries the order as an option named `playbackOrder`.
+export const setPlaybackOrder = (value: number) =>
+	post("/api/player", { options: [{ id: "playbackOrder", value }] });
 
 export async function createPlaylist(title: string): Promise<PlaylistInfo> {
 	const response = await post(

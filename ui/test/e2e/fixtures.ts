@@ -3,13 +3,14 @@ import { fileURLToPath } from "node:url";
 
 import type { CDPSession, Locator, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
-import type { LibraryInfo, PlayerState } from "../../src/shared/api/types.ts";
+import type { LibraryInfo } from "../../src/shared/api/types.ts";
 import { inSequence } from "../../src/shared/lib/sequence.ts";
 import type { FooJeanOptions } from "../fake-api/fooJean.ts";
 import { createServer, type FakeServer } from "../fake-api/server.ts";
 import {
 	createState,
 	DEFAULT_PLAYLISTS,
+	type FakePlayerState,
 	libraryOfShape,
 	type Track,
 } from "../fake-api/state.ts";
@@ -33,7 +34,7 @@ interface JeanFixtures {
 	countsPlays: boolean;
 	fooJean: FooJeanOptions | null;
 	fooJeanToken: string | null;
-	playerState: Partial<PlayerState> | null;
+	playerState: Partial<FakePlayerState> | null;
 	player: FakePlayer;
 	settings: Record<string, unknown>;
 	firstRun: boolean;
@@ -183,6 +184,18 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 
 export type { Locator, Page } from "@playwright/test";
 export { expect };
+
+export const OFFERS_NO_SHUFFLE: Partial<FakePlayerState> = {
+	options: [
+		{
+			id: "playbackOrder",
+			name: "Playback order",
+			type: "enum",
+			value: 0,
+			enumNames: ["Default", "Repeat (playlist)"],
+		},
+	],
+};
 
 // ---- finding things on screen ----------------------------------------------
 

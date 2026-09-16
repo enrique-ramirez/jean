@@ -16,7 +16,7 @@ import { Equalizer } from "@/shared/ui/Equalizer";
 import styles from "./ListenHere.module.css";
 import { VolumeGlyph, VolumeSlider } from "./Volume";
 
-export const playerNameOf = (info: PlayerInfo) => info.title ?? info.name;
+export const playerNameOf = (info: PlayerInfo) => info.name;
 
 function explain(phase: ListenPhase, t: Translate): string | null {
 	switch (phase.kind) {

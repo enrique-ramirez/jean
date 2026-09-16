@@ -144,20 +144,13 @@ const held = (over: Partial<PlayerState> = {}): PlayerState => ({
 	},
 	info: {
 		name: "another player",
-		title: "beefweb",
 		version: "0.0",
-		pluginVersion: "0.10",
 	},
-	options: [
-		{ id: "playbackOrder", name: "Playback order", type: "enum", value: 0 },
-	],
 	permissions: {
 		changePlaylists: true,
 		changeOutput: true,
 		changeClientConfig: true,
 	},
-	playbackMode: 0,
-	playbackModes: ["Default", "Shuffle (tracks)"],
 	jeanPlaybackMode: "repeatOne",
 	playbackState: "stopped",
 	volume: { type: "linear", min: 0, max: 100, value: 80, isMuted: true },
@@ -465,9 +458,6 @@ test("a tick writes what its document carries and leaves the rest of the snapsho
 		"Another song",
 	]);
 	assert.equal(player?.activeItem.playlistId, "p7");
-	assert.equal(player?.info.title, "beefweb");
-	assert.deepEqual(player?.playbackModes, ["Default", "Shuffle (tracks)"]);
-	assert.equal(player?.options?.[0]?.id, "playbackOrder");
 
 	assert.equal(player?.playbackState, "paused");
 	assert.equal(player?.activeItem.position, 30);

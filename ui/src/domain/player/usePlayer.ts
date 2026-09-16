@@ -299,8 +299,8 @@ export const useSeekBy = () =>
 	});
 
 // `foo_jean`'s own vocabulary, in the fixed order that matches foobar2000's stock `playbackOrder`
-// enum. The deprecated numeric write still needs an ordinal to send beefweb, and this correspondence
-// is the only one left once the live enum stopped riding the wire.
+// enum. `usePlaybackOrder` reads it both ways: a mode's index is the ordinal `setPlaybackOrder`
+// sends beefweb, and the ordinal it echoes back indexes into this array for the optimistic patch.
 const JEAN_ORDER: PlaybackMode[] = [
 	"inOrder",
 	"repeatAll",
@@ -338,18 +338,13 @@ export function usePlaybackOrder() {
 	const { discovery } = useFooJean();
 
 	const player = data?.player;
-	const option = player?.options?.find((entry) => entry.id === "playbackOrder");
 
 	const capabilities =
 		discovery.state.kind === "ready" ? discovery.state.capabilities : null;
 
 	const mode = player?.jeanPlaybackMode ?? null;
 	const modeOrdinal = mode !== null ? JEAN_ORDER.indexOf(mode) : -1;
-
-	const value =
-		(modeOrdinal >= 0 ? modeOrdinal : undefined) ??
-		(typeof option?.value === "number" ? option.value : player?.playbackMode) ??
-		0;
+	const value = modeOrdinal >= 0 ? modeOrdinal : 0;
 
 	const offeredModes = capabilities?.playbackModes ?? [];
 	const shuffleMode = useMemo(
@@ -358,24 +353,14 @@ export function usePlaybackOrder() {
 	);
 	const isShuffle = shuffleMode !== null && mode === shuffleMode;
 
-	const isInOrder = mode === null ? value === 0 : mode === "inOrder";
+	const isInOrder = mode === "inOrder";
 
 	const previousOrder = useRef(0);
 	if (!isShuffle && value !== previousOrder.current)
 		previousOrder.current = value;
 
-	const hasOrderOption = capabilities !== null;
-	const write = useCallback(
-		(next: number) => setPlaybackOrder(next, hasOrderOption),
-		[hasOrderOption],
-	);
-
-	const mutation = usePlayerPatch(write, (player, next: number) => ({
-		playbackMode: next,
+	const mutation = usePlayerPatch(setPlaybackOrder, (player, next: number) => ({
 		jeanPlaybackMode: JEAN_ORDER[next] ?? player.jeanPlaybackMode,
-		options: player.options?.map((entry) =>
-			entry.id === "playbackOrder" ? { ...entry, value: next } : entry,
-		),
 	}));
 
 	const { mutate } = mutation;

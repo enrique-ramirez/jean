@@ -30,6 +30,7 @@ const NARROWER = {
 	matches: 1,
 	title: "#Jean [search: delectrico]",
 };
+const SHUFFLE_TRACKS = 4;
 
 const search = async (page: Page, text: string) => {
 	await page.goto("/#/search");
@@ -197,8 +198,7 @@ test.describe("playing from search results", () => {
 		await expect
 			.poll(() => playedFrom(player)?.plref)
 			.toBe(scratchOf(player)!.id);
-		// 4 is the player's shuffle-by-tracks order.
-		await expect.poll(() => player.player.playbackMode).toBe(4);
+		await expect.poll(() => player.player.playbackMode).toBe(SHUFFLE_TRACKS);
 		expect(playedFrom(player)!.index).toBeLessThan(QUERY.matches);
 	});
 

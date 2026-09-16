@@ -4,10 +4,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type {
-	PlayerState,
 	PlaylistInfo,
 	PlaylistItemsResponse,
 } from "../../src/shared/api/types.ts";
+import type { FakePlayerState } from "./state.ts";
 
 interface CapturedTrack {
 	index: number;
@@ -143,7 +143,7 @@ const dir = out ?? HERE;
 async function main() {
 	const library = await findLibrary();
 	const info = (await (await get("/api/player")).json()) as {
-		player: PlayerState;
+		player: FakePlayerState;
 	};
 	console.log(
 		`capturing from ${info.player.info.title} ${info.player.info.version}, playlist ${library.title} (${library.itemCount})`,
@@ -244,7 +244,7 @@ async function main() {
 			await get(
 				`/api/query?player=true&trcolumns=${encodeURIComponent("%artist%,%title%")}`,
 			)
-		).json()) as { player: PlayerState };
+		).json()) as { player: FakePlayerState };
 		await writeFile(
 			join(dir, "player.json"),
 			`${JSON.stringify(player, null, 2)}\n`,

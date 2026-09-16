@@ -1,7 +1,10 @@
 import type {
+	ActiveItem,
 	LibraryInfo,
-	PlayerState,
+	Permissions,
+	PlaybackState,
 	PlaylistInfo,
+	Volume,
 } from "../../src/shared/api/types.ts";
 import { type FooJeanOptions, fooJeanState } from "./fooJean.ts";
 import {
@@ -53,6 +56,30 @@ interface Changed {
 	playQueue?: boolean;
 }
 
+export interface FakePlayerOption {
+	id: string;
+	name?: string;
+	type: "enum" | "bool";
+	value: number | boolean;
+	enumNames?: string[];
+}
+
+export interface FakePlayerState {
+	activeItem: ActiveItem;
+	info: {
+		name: string;
+		title?: string;
+		version: string;
+		pluginVersion: string;
+	};
+	options?: FakePlayerOption[];
+	permissions: Permissions;
+	playbackMode: number;
+	playbackModes: string[];
+	playbackState: PlaybackState;
+	volume: Volume;
+}
+
 export interface RecordedRequest {
 	method: string;
 	path: string;
@@ -67,7 +94,7 @@ export interface RecordedRequest {
 }
 
 const LIBRARY = capturedLibrary as { albums: CapturedAlbum[] };
-const CAPTURED_PLAYER = capturedPlayer as unknown as PlayerState;
+const CAPTURED_PLAYER = capturedPlayer as unknown as FakePlayerState;
 
 const IDLE_ITEM = {
 	columns: [],
@@ -277,7 +304,7 @@ export function createState({
 	playlists?: FakePlaylist[];
 	// Null as well as absent, because the Playwright fixtures default every
 	// option to null rather than leaving it out.
-	player?: Partial<PlayerState> | null;
+	player?: Partial<FakePlayerState> | null;
 	librarySize?: number | null;
 	mediaLibrarySize?: number | null;
 	mediaLibrary?: Track[] | null;
@@ -483,7 +510,7 @@ export function createState({
 	const setActive = (
 		playlist: FakePlaylist,
 		index: number,
-		playbackState: PlayerState["playbackState"],
+		playbackState: PlaybackState,
 	) => {
 		const track = playlist.items[index];
 		if (!track) return;
@@ -917,7 +944,7 @@ export function createState({
 				relativePosition?: number;
 				volume?: number;
 				isMuted?: boolean;
-				playbackState?: PlayerState["playbackState"];
+				playbackState?: PlaybackState;
 				options?: { id: string; value: number | boolean }[];
 			} = {},
 		) {

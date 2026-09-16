@@ -40,7 +40,7 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **Silencing the player is the component's job and Jean never does it itself.** The mute is reference counted over the whole audience rather than over one connection, because the component is the only place that can see the listeners to count. **Jean sends no mute and must not grow one**; it *reads* one. The component's rule is the one to design against: **a hold it sees undone is not taken again until everybody stops.**
 
-**foobar2000 has no mute flag**, so this is not a hidden state Jean has to be told about: mute is the volume at its floor, and beefweb reports it like any other volume. That is why the player's row can be drawn from the volume alone, and why a client still needs telling whether a listener is what silenced the player.
+**foobar2000 has no mute flag**, so this is not a hidden state Jean has to be told about: mute is the volume at its floor, and the component computes it from that floor and publishes the result as `muted` beside the volume. That is why the player's row can be drawn from the volume alone, and why a client still needs telling whether a listener is what silenced the player.
 
 **A reconnect is not a departure, and only the client can tell them apart.** Both close the socket, so the component waits out a linger before unmuting; posting a leave collapses it, which is what makes pressing the player's row give the sound back at once rather than seconds later. Best effort: a closed tab says nothing and is noticed a moment later anyway.
 
@@ -60,7 +60,7 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **`error.code` cannot separate "cannot play this" from a refused ticket.** The component answers 401 identically for a missing, unknown and expired ticket on purpose, and that reaches the element as the same error. So when every format is exhausted the message must say the stream could not be played and offer Try again, rather than naming a cause it is guessing at.
 
-**A stalled live stream does not fire `error`.** It fires `stalled` and `waiting`, or nothing at all. So a watchdog notices that `currentTime` has stopped advancing while the element believes it is playing, and then asks beefweb which of the two it is: **a stopped player and a broken stream are identical from the stream**: container headers, then silence, no error and no timeout, and those are different sentences.
+**A stalled live stream does not fire `error`.** It fires `stalled` and `waiting`, or nothing at all. So a watchdog notices that `currentTime` has stopped advancing while the element believes it is playing, and then reads the poll's own `playbackState` to tell the two apart: **a stopped player and a broken stream are identical from the stream**: container headers, then silence, no error and no timeout, and those are different sentences.
 
 **A stream that has not started is not a stream that has stalled**, and the two want opposite responses: reconnecting restarts the very buffering a slow start is waiting on, so a browser needing longer than the stall window to reach its first sample would loop and never play. A longer deadline applies until the first sample; the *stopped* check still runs on the shorter one.
 
@@ -114,7 +114,7 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 ### The audible clock
 
-**The screen reads what is audible, in one branch in one place.** A device listening to the stream is behind the player, and it is the *track* that runs ahead, not just the position: beefweb names the next one while the last is still coming out of the speaker, so title, artwork, lyrics and row highlight would all change a beat early.
+**The screen reads what is audible, in one branch in one place.** A device listening to the stream is behind the player, and it is the *track* that runs ahead, not just the position: the poll names the next one while the last is still coming out of the speaker, so title, artwork, lyrics and row highlight would all change a beat early.
 
 `audible.ts` is that seam, and it returns the live snapshot **by object identity** whenever nothing is listening, so an install without the component is untouched. The audible track is pushed only when it changes; the *position* is read per animation frame rather than pushed, since `currentTime` advances continuously and a store notifying on it would repaint the app on every frame.
 
@@ -141,7 +141,7 @@ Three facts this rests on, all properties of the component rather than of one ne
 
 **A seek holds where it was put.** The audio it asks for is a lag away, so the bar and the lyric would otherwise snap back to what is still audible, run on from the old position, and jump. `beginSeek` freezes the display at the target until the audio arrives. **Held, not advanced**: ticking on from the target would put the display ahead of the sound and have to step back. Both entry points announce it: Jean's own seeks from the optimistic patch, and a seek from the desktop read off the position disagreeing with the interpolation.
 
-**A mark's path joins beefweb's `%path%` on equality, and the component is what makes that true.** It resolves the display path, so a mark spells it exactly as beefweb does; unresolved it would answer foobar2000's own canonical form, against which an equality test can never be true.
+**A mark's path joins the poll's own `player.path` on equality, and the component is what makes that true.** It resolves the display path, so a mark spells it exactly as the poll does; unresolved it would answer foobar2000's own canonical form, against which an equality test can never be true.
 
 **A failed path match reads as *cannot say*, which is the trap.** Every correction downstream turns itself off while the anchor, the lag and the phase all stay healthy, on screen indistinguishable from the feature never having been built. **If a join here quietly stops working, print the two strings before anything else.** The fake cannot catch it and MUST not be trusted to: both halves of its fixtures come from one string, so it compares a path with itself.
 

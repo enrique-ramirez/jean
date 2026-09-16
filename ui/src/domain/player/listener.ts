@@ -69,8 +69,6 @@ export const anchorOf = (streamTimeAtConnect: number, bufferedStart: number) =>
 export const bufferedStart = (audio: HTMLAudioElement) =>
 	audio.buffered.length > 0 ? audio.buffered.start(0) : null;
 
-// One path arrives through beefweb and the other through the component, so separator and case are
-// compared leniently.
 export const samePlayerPath = (
 	left: string | null | undefined,
 	right: string | null | undefined,

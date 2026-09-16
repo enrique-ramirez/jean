@@ -1,6 +1,6 @@
 # API reference
 
-Two HTTP APIs sit under Jean. **beefweb** does playback, playlists and the queue, and answers artwork for a row that is in a playlist. **`foo_jean`** listens on a port of its own and answers everything else: the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
+Two HTTP APIs sit under Jean. **beefweb** does playlists and the queue, takes the playback commands, and answers artwork for a row that is in a playlist. **`foo_jean`** listens on a port of its own and answers the player's own state as well as everything else: the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
 
 Verified against foobar2000 with the beefweb plugin. Where behaviour differs by plugin version it says so: **0.10** is the current release, **0.11** adds the media library API.
 

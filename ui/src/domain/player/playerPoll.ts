@@ -63,6 +63,7 @@ function mergePlayer(
 					? [doc.artist ?? "", doc.title ?? ""]
 					: (previous?.activeItem.columns ?? EMPTY_ACTIVE_ITEM.columns),
 			duration: doc.duration,
+			// The same -1 whether stopped or merely unplaceable; see the field's own comment in types.ts.
 			index: doc.playingLocation?.index ?? -1,
 			path: doc.path || null,
 			playlistGuid: doc.playingLocation?.playlistId ?? null,

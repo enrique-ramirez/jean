@@ -25,7 +25,9 @@ export interface Volume {
 export interface ActiveItem {
 	columns: string[];
 	duration: number;
-	// -1 when stopped, and also what emptying a playlist leaves behind.
+	// -1 when stopped, and also when a track keeps playing but its row has been pulled from the
+	// playlist it started in, so `foo_jean` has nothing to name. The two are not the same fact: a
+	// reader asking whether something is playing wants `path` or `playbackState`, never this.
 	index: number;
 	path: string | null;
 	// foobar2000's own playlist GUID, matching `PlaylistAnnotation.id`. Not beefweb's id, which stays

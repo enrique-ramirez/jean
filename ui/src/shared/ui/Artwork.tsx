@@ -40,8 +40,9 @@ export function Artwork({
 	className?: string;
 	onSettled?: (outcome: ArtworkOutcome) => void;
 }) {
-	const key = identity === null ? null : (identity ?? src ?? null);
 	const access = useContext(AccessContext);
+	const addressNeedsAuth = Boolean(access && src?.startsWith(access.origin));
+	const key = identity === null ? null : (identity ?? src ?? null);
 	const [state, setState] = useState<ArtworkState>(
 		() => knownState(key) ?? "waiting",
 	);
@@ -94,7 +95,7 @@ export function Artwork({
 		const read = async () => {
 			const response = await fetch(src, {
 				signal: abort.signal,
-				headers: access && src.startsWith(access.origin) ? access.headers : {},
+				headers: addressNeedsAuth && access ? access.headers : {},
 			});
 			if (!response.ok) {
 				if (response.status === 404) settled = "failed";
@@ -144,7 +145,7 @@ export function Artwork({
 			release.current?.();
 			release.current = null;
 		};
-	}, [src, key, access]);
+	}, [src, key, access, addressNeedsAuth]);
 
 	const settle = (outcome: ArtworkOutcome) => {
 		release.current?.(outcome);

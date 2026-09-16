@@ -227,6 +227,12 @@ const DROPPED_INTO = "p1";
 // the same one again.
 const PLAYING_ROW = { row: 3, title: "Soy Rock" };
 
+// A different album from `PLAYING_ROW`'s, in the same playlist. `PLAYING_COVER`
+// addresses no track, so this is what tells a cover that swapped from one that
+// merely stayed drawn. Found by title rather than by row: the row above it is
+// pulled out of the same playlist first, which would shift a fixed index.
+const A_DIFFERENT_ALBUM = { title: "Tautou" };
+
 const UNRESOLVED = "?";
 
 const ratingStars = (page: Page) =>
@@ -461,6 +467,67 @@ test("the equaliser follows the playing row through an edit above it, and ignore
 		() => moved.getByLabel("Now playing").count(),
 		1,
 	);
+});
+
+test("a cover survives the playing row being pulled from its own playlist", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	test.skip(!isMobile, "the wheel is the surface an absent location reaches");
+
+	await openLibrary(page);
+	await trackRow(page, PLAYING_ROW.row).dblclick();
+	await openNowPlaying(page);
+	await expect(nowPlayingScreen(page)).toContainText(PLAYING_ROW.title);
+	await expect(currentSlot(page)).toHaveAttribute("data-artwork", "ok");
+
+	player.requests.length = 0;
+
+	// The same edit the equaliser case above drives, on the row that is actually
+	// playing: foobar2000 carries on and `playingLocation` goes absent, per T6a.
+	expect(player.removeItems("p7", [PLAYING_ROW.row])).toBe(true);
+	expect(player.player.activeItem.index).toBe(-1);
+
+	// The client only learns of this through the poll, so the assertions below have
+	// to outlast a tick or they would pass on a screen that never heard about it.
+	await expect.poll(() => ticksTaken(player)).toBeGreaterThanOrEqual(2);
+
+	await expect(nowPlayingScreen(page)).toContainText(PLAYING_ROW.title);
+	await expect(currentSlot(page)).toHaveAttribute("data-artwork", "ok");
+
+	// The request, never what is drawn: a picture the browser already holds and a
+	// picture a bare `<img src>` failed to fetch both look drawn a moment later,
+	// and only the log says whether either one carried a bearer token.
+	await expectSettlesAt(
+		player,
+		() =>
+			requestsTo(player, PLAYING_COVER).filter(
+				(one) => one.method === "GET" && !one.answered,
+			),
+		[],
+	);
+
+	// The pixels rather than the request log: a cover cached under this fixed
+	// address rather than under the track would still read "ok" and answer
+	// every header check, and only a track that plays after the pull shows
+	// whether the sleeve is still following it.
+	const wasShowing = await sleeveDrawn(currentSlot(page).locator("img"));
+
+	const library = player.playlistById("p7");
+	const at = library?.items.findIndex(
+		(one) => one["%title%"] === A_DIFFERENT_ALBUM.title,
+	);
+	if (at === undefined || at < 0)
+		throw new Error(`${A_DIFFERENT_ALBUM.title} is no longer in p7`);
+	player.playItem("p7", at);
+	await expect(nowPlayingScreen(page)).toContainText(A_DIFFERENT_ALBUM.title);
+
+	await expect
+		.poll(() => sleeveDrawn(currentSlot(page).locator("img")), {
+			message: "the sleeve on screen is still the pulled row's",
+		})
+		.not.toBe(wasShowing);
 });
 
 test("the sidebar follows a playlist renamed at the player", async ({

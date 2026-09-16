@@ -194,7 +194,9 @@ export function NowPlaying({
 
 	const wheel = useCoverWheel({
 		audibleTrackKey: artworkKey,
-		audibleCover: hasTrack ? playingCover : null,
+		// Not `hasTrack`: a track kept playing after its row was pulled out from under it is still a
+		// track, and `playingCover` already answers null exactly where there is none.
+		audibleCover: playingCover,
 		playerTrackKey:
 			liveItem && liveItem.index >= 0 && livePlaylistId !== undefined
 				? `${livePlaylistId}:${liveItem.index}`

@@ -227,10 +227,8 @@ const DROPPED_INTO = "p1";
 // the same one again.
 const PLAYING_ROW = { row: 3, title: "Soy Rock" };
 
-// A different album from `PLAYING_ROW`'s, in the same playlist. `PLAYING_COVER`
-// addresses no track, so this is what tells a cover that swapped from one that
-// merely stayed drawn. Found by title rather than by row: the row above it is
-// pulled out of the same playlist first, which would shift a fixed index.
+// A different album from `PLAYING_ROW`'s, so a swapped cover reads differently
+// from one that merely stayed drawn.
 const A_DIFFERENT_ALBUM = { title: "Tautou" };
 
 const UNRESOLVED = "?";
@@ -485,7 +483,7 @@ test("a cover survives the playing row being pulled from its own playlist", asyn
 	player.requests.length = 0;
 
 	// The same edit the equaliser case above drives, on the row that is actually
-	// playing: foobar2000 carries on and `playingLocation` goes absent, per T6a.
+	// playing: foobar2000 carries on and `playingLocation` goes absent.
 	expect(player.removeItems("p7", [PLAYING_ROW.row])).toBe(true);
 	expect(player.player.activeItem.index).toBe(-1);
 

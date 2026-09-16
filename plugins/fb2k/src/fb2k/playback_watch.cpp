@@ -132,12 +132,11 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
           mainThread_(mainThread), store_(store), outputHold_(outputHold), artwork_(artwork),
           titleScript_(std::move(titleScript)), artistScript_(std::move(artistScript)) {}
 
-    // `get_playing_item_location` has not caught up with the new track yet: see
-    // ARCHITECTURE.md, *Facts about the player*. `started()` leaves `playingLocation` standing
-    // on purpose (see player_state.cpp), so the row from before the change is what a poll reads
-    // until `queueLocationRead` corrects it once the player has. Artwork has no such fallback,
-    // since nothing corrects a stale cover the way `queueLocationRead` corrects the row, so it
-    // clears rather than stand on the outgoing track's picture.
+    // Reading the location inline here would race the player: see ARCHITECTURE.md, *Facts about
+    // the player*. `started()` leaves `playingLocation` standing on purpose (player_state.cpp),
+    // so a poll between this call and `queueLocationRead`'s sees the outgoing track's row rather
+    // than nothing. Artwork has nothing downstream to correct it the way `queueLocationRead`
+    // corrects the row, so it clears here instead of standing on that same outgoing picture.
     void on_playback_new_track(metadb_handle_ptr track) override {
         artwork_.clear();
         store_.started(trackOf(track), std::chrono::steady_clock::now());
@@ -189,11 +188,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
         store_.volumeChanged(value, userMuted(value, outputHold_));
     }
 
-    // The deferral is the fix for the race the comment on `on_playback_new_track` describes.
-    // `mainThread_` outliving this `Callback` is what makes it safe with no liveness guard of
-    // its own: component.cpp declares it before `playbackWatch_` and closes it first on the
-    // way down, so a read still pending at shutdown is abandoned rather than run against a
-    // `store_` that may already be gone.
+    // Deferred for the race ARCHITECTURE.md, *Facts about the player*, describes.
     void queueLocationRead() {
         mainThread_.enqueue([&store = store_] { store.playingLocationChanged(currentLocation()); },
                              [] {});

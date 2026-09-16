@@ -12,6 +12,7 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
+import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { albumHref } from "@/domain/track/albumRoute";
 import { coverKey, readValue } from "@/domain/track/fields";
@@ -154,14 +155,14 @@ export function NowPlaying({
 
 	const player = snapshot?.player;
 	const item = player?.activeItem;
+	const playlistId = usePlayingPlaylist(item?.playlistGuid ?? null);
 	const hasTrack = Boolean(item && item.index >= 0);
 	const isPlaying = player?.playbackState === "playing";
 
 	const artwork = track
 		? playingArtworkUrl(isFooJeanReady(discovery) ? discovery.origin : null)
 		: null;
-	const artworkKey =
-		hasTrack && item ? `${item.playlistId}:${item.index}` : "idle";
+	const artworkKey = hasTrack && item ? `${playlistId}:${item.index}` : "idle";
 
 	// Keyed on the track rather than the album: the album arrives a request later than the cover is
 	// wanted, and an identity every track briefly shared would be worse than not sharing one.
@@ -174,25 +175,26 @@ export function NowPlaying({
 	const albumArtist = readValue(details?.row[NOW_PLAYING_FIELD.albumArtist]);
 
 	const neighbours =
-		order.isInOrder && hasTrack && item
+		order.isInOrder && hasTrack && item && playlistId
 			? {
-					nextArtwork: artworkUrl(item.playlistId, item.index + 1),
+					nextArtwork: artworkUrl(playlistId, item.index + 1),
 					previousArtwork:
-						item.index > 0 ? artworkUrl(item.playlistId, item.index - 1) : null,
+						item.index > 0 ? artworkUrl(playlistId, item.index - 1) : null,
 				}
 			: { nextArtwork: null, previousArtwork: null };
 
 	const positionalArtwork =
-		hasTrack && item ? artworkUrl(item.playlistId, item.index) : null;
+		hasTrack && item && playlistId ? artworkUrl(playlistId, item.index) : null;
 
 	const liveItem = live?.player?.activeItem;
+	const livePlaylistId = usePlayingPlaylist(liveItem?.playlistGuid ?? null);
 
 	const wheel = useCoverWheel({
 		audibleTrackKey: hasTrack ? artworkKey : null,
 		audibleCover: hasTrack ? playingCover : null,
 		playerTrackKey:
 			liveItem && liveItem.index >= 0
-				? `${liveItem.playlistId}:${liveItem.index}`
+				? `${livePlaylistId}:${liveItem.index}`
 				: null,
 		artwork,
 		positionalArtwork,

@@ -8,6 +8,7 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
+import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { coverKey } from "@/domain/track/fields";
 import { readTrack } from "@/shared/api/beefweb";
 import { isFooJeanReady, playingArtworkUrl } from "@/shared/api/fooJean";
@@ -87,6 +88,9 @@ export function StatusBar({
 	const seek = useSeek();
 	const transport = useTransport();
 	const order = usePlaybackOrder();
+	const playlistId = usePlayingPlaylist(
+		snapshot?.player?.activeItem?.playlistGuid ?? null,
+	);
 
 	if (isPending || isError || !snapshot) {
 		return (
@@ -124,7 +128,7 @@ export function StatusBar({
 					onClick={onOpenNowPlaying}
 				>
 					<Artwork
-						key={hasTrack ? `${item.playlistId}:${item.index}` : "idle"}
+						key={hasTrack ? `${playlistId}:${item.index}` : "idle"}
 						src={track ? artwork : null}
 						identity={
 							track ? coverKey(track.artist, track.title, "track") : undefined

@@ -786,6 +786,9 @@ test.describe("a control that follows the finger keeps the gesture", () => {
 		const playing = player.player.activeItem.index;
 
 		const bar = screen.getByRole("slider", { name: "Playback position" });
+		// The bar is drawn before the track's length arrives, and until it does
+		// there is nothing to seek within, so a scrub commits nothing at all.
+		await expect(bar).toHaveAttribute("aria-valuemax", /^[1-9][0-9]*$/);
 		const box = (await bar.boundingBox())!;
 		const y = box.y + box.height / 2;
 		await touchDrag(
@@ -855,6 +858,12 @@ test.describe("skipping with a flick", () => {
 test.describe("the gap a skip leaves", () => {
 	// See ../../src/shared/api/README.md for what foobar2000 does during a skip and why.
 
+	// Wider than the poll the screen learns the player from, so the gap is open
+	// across at least one tick: a narrower one can pass without ever having been
+	// looked at. `player-poll.spec.ts` states the interval and why a spec
+	// restates it rather than importing it.
+	const GAP_MS = 1500;
+
 	const watchTitles = (page: Page) =>
 		page.evaluate(() => {
 			const screen = document.querySelector("[data-now-playing]");
@@ -883,13 +892,20 @@ test.describe("the gap a skip leaves", () => {
 		player,
 	}) => {
 		await playRow(page, 0);
-		await page.request.post("/__control/skipGap", { data: { ms: 300 } });
+
+		const heading = nowPlayingScreen(page).locator("h1");
+		await expect(heading).not.toHaveText("Nothing playing");
+		const held = (await heading.textContent()) ?? "";
+
+		await page.request.post("/__control/skipGap", { data: { ms: GAP_MS } });
 		await watchTitles(page);
 
 		// The skip is asked of the player rather than pressed: the transport is on the screen on a phone and in the
 		// status bar on a desktop, and the gap is the same push either way.
 		player.next();
-		await expect.poll(() => player.player.activeItem.index).toBe(1);
+		// The screen rather than the player: what it drew while the next track was
+		// opening is the whole of the case, and it learns of the skip a poll later.
+		await expect(heading).not.toHaveText(held);
 
 		const titles = await titlesSeen(page);
 		expect(titles).not.toContain("Nothing playing");
@@ -921,7 +937,7 @@ test.describe("the gap a skip leaves", () => {
 		const header = nowPlayingScreen(page).locator("header");
 		await expect(header).toContainText("Playing from");
 
-		await page.request.post("/__control/skipGap", { data: { ms: 300 } });
+		await page.request.post("/__control/skipGap", { data: { ms: GAP_MS } });
 		await watchTitles(page);
 		player.next();
 

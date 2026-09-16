@@ -122,7 +122,12 @@ export function ListenHere({ playerName }: { playerName: string }) {
 
 	const playerAudible = !playerMuted;
 
-	const canHandBack = isOn && others.length === 0 && !playerAudible;
+	// `playerMuted` reads `player.volume.isMuted` off the poll, which can lag up to a second behind
+	// `foo_jean` muting the player the instant this device's stream connects. `isOn` tracks this
+	// device's own connection at once, with one exception: a stream gone silently dead still reads as
+	// connected until the stall watchdog notices, up to `STALL_MS` later. Short of that, once this
+	// device is the only listener it is itself the sign that the player is muted.
+	const canHandBack = isOn && others.length === 0;
 
 	let playerNote: string | null = null;
 	if (playerAudible) playerNote = isOn ? drift(audience.lagSeconds, t) : null;

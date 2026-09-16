@@ -1,6 +1,6 @@
 import { useCallback } from "react";
+import { usePlayItem } from "@/domain/player/usePlayer";
 import type { Refs } from "@/domain/track/project";
-import { playItem } from "@/shared/api/beefweb";
 import { isFooJeanReady } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -20,6 +20,7 @@ export function usePlaySet({
 		playlists,
 		canEdit: canPlaySets,
 	});
+	const playItem = usePlayItem();
 
 	const play = useCallback(
 		async ({
@@ -40,7 +41,9 @@ export function usePlaySet({
 					refs,
 					source: library.source,
 				});
-				return id ? playItem(id, position) : null;
+				return id
+					? playItem.mutateAsync({ playlistId: id, index: position })
+					: null;
 			} catch {
 				// foo_jean answers a fill it refuses or cannot attempt with a non-2xx status, most often
 				// a 409 for a structure that moved under it, rather than an empty result: there is
@@ -48,7 +51,7 @@ export function usePlaySet({
 				return null;
 			}
 		},
-		[scratch, library.source],
+		[scratch, library.source, playItem.mutateAsync],
 	);
 
 	return { play, scratch, canPlaySets };

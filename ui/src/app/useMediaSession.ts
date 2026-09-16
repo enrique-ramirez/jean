@@ -7,6 +7,7 @@ import {
 	useSeekBy,
 	useTransport,
 } from "@/domain/player/usePlayer";
+import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { value } from "@/domain/track/fields";
 import { NOW_PLAYING_FIELD } from "@/features/now-playing/nowPlayingFields";
 import { useNowPlayingTrack } from "@/features/now-playing/useNowPlayingTrack";
@@ -86,11 +87,12 @@ export function useMediaSession(
 	const { details } = useNowPlayingTrack({ enabled: live });
 
 	const item = snapshot?.player?.activeItem;
+	const playlistId = usePlayingPlaylist(item?.playlistGuid ?? null);
 	const isPlaying = snapshot?.player?.playbackState === "playing";
 	const album = details ? value(details.row, NOW_PLAYING_FIELD.album) : null;
 	const artwork =
-		live && item && item.index >= 0
-			? artworkUrl(item.playlistId, item.index)
+		live && item && item.index >= 0 && playlistId
+			? artworkUrl(playlistId, item.index)
 			: null;
 
 	useEffect(() => {

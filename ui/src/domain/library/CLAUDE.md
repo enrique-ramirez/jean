@@ -31,7 +31,7 @@ Shapes and costs for every route are in [../../shared/api/README.md](../../share
 
 - **Search filters client-side, always**, and an add is then addressed by explicit path and subsong. Mixing the two filters is the trap `../../shared/api/README.md` names.
 - **Row order is the snapshot's own**, which `contract/openapi.yaml` defines and bounds. A ref is an ordinal in it, and `positionOf` bisects on a set of refs ascending. **Never re-sort by a tag instead:** that is exact-string lexicographic, which splits an album whose artist is spelled two ways, the drift `sameTagValue()` exists to absorb but cannot fix once the order is wrong. A badly-foldered library gets more, smaller album groups; that is a degradation, not a requirement.
-- **`%path%` and `%subsong%` are in the update stream's `TRACK_COLUMNS` for identity, not display**: one string per player update, not per row. They are matched against a library row by suffix, for the reason `../../shared/api/README.md`, *Paths*, gives.
+- **`%path%` and `%subsong%` come off the poll's own document, for identity rather than display.** They are matched against a library row by suffix, for the reason `../../shared/api/README.md`, *Paths*, gives.
 
 ### Filling a playlist from the library
 

@@ -10,15 +10,8 @@ import type {
 	TrackRows,
 } from "./types";
 
-// The player splits this list on commas before it evaluates anything, so a title-format function
-// taking more than one argument is unusable -- $if(a,b,c) arrives as three columns. Single-argument
-// functions do nest.
-const TRACK_COLUMNS = ["%artist%", "%title%", "%path%", "%subsong%"];
-
 const encode = (expressions: readonly string[]) =>
 	encodeURIComponent(expressions.join(","));
-
-const nowPlayingColumns = encode(TRACK_COLUMNS);
 
 const QUEUE_COLUMNS = ["%artist%", "%title%", "%length_seconds%"];
 
@@ -26,7 +19,7 @@ export const QUEUE_FIELD = { artist: 0, title: 1, duration: 2 };
 
 const queueColumns = encode(QUEUE_COLUMNS);
 
-export const UPDATES_URL = `/api/query/updates?player=true&playlists=true&playQueue=true&trcolumns=${nowPlayingColumns}&qcolumns=${queueColumns}`;
+export const UPDATES_URL = `/api/query/updates?playlists=true&playQueue=true&qcolumns=${queueColumns}`;
 
 const id = encodeURIComponent;
 
@@ -45,15 +38,6 @@ const post = (path: string, body?: unknown) =>
 		headers: body ? { "Content-Type": "application/json" } : undefined,
 		body: body ? JSON.stringify(body) : undefined,
 	});
-
-// `GET /api/player` ignores `trcolumns` and answers with an empty columns array.
-export async function fetchPlayer(): Promise<PlayerState> {
-	const response = await request(
-		`/api/query?player=true&trcolumns=${nowPlayingColumns}`,
-	);
-	const { player } = (await response.json()) as { player: PlayerState };
-	return player;
-}
 
 export async function fetchPlaylists(): Promise<PlaylistInfo[]> {
 	const response = await request("/api/playlists");

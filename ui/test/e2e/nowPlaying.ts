@@ -54,17 +54,9 @@ export const TAGGED = {
 	},
 };
 
-// The fake builds every state from one set of captured track objects, so a tag
-// written onto a row in place would outlive the test and leave Soy Rock
-// carrying a lyric for everything the worker runs afterwards. A copy in the
-// playlist's slot keeps the write inside this test.
 export const writeLyric = (player: FakePlayer, lyric: string) => {
-	const item = player.player.activeItem;
-	const playlist = player.playlistById(item.playlistId);
-	const track = playlist?.items[item.index];
-	if (!playlist || !track)
-		throw new Error("nothing is playing to write a lyric onto");
-	playlist.items[item.index] = { ...track, "$meta(unsynced lyrics)": lyric };
+	const written = player.retagPlaying({ "$meta(unsynced lyrics)": lyric });
+	if (!written) throw new Error("nothing is playing to write a lyric onto");
 };
 
 export const playRow = async (page: Page, row: number) => {

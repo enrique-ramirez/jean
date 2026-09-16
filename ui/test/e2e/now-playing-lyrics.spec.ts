@@ -202,6 +202,15 @@ test.describe("full-screen lyrics", () => {
 	const fullScreen = (page: Page) =>
 		page.getByRole("region", { name: "Lyrics" });
 
+	// The expand control is what says the track's details have arrived, and `F`
+	// answers the same condition it does. A press that lands before them is
+	// delivered, dropped, and never repeated, so every press meant to open the
+	// screen goes through here.
+	const pressF = async (page: Page) => {
+		await expect(expand(page)).toBeVisible();
+		await page.keyboard.press("f");
+	};
+
 	test("it is offered on the Lyrics tab and nowhere else", async ({ page }) => {
 		await playRow(page, 0);
 		const panel = nowPlayingScreen(page);
@@ -231,10 +240,9 @@ test.describe("full-screen lyrics", () => {
 	}) => {
 		await playRow(page, 0);
 		await panelTab(nowPlayingScreen(page), "Lyrics").click();
-		await expect(expand(page)).toBeVisible();
 		await expect(fullScreen(page)).toHaveCount(0);
 
-		await page.keyboard.press("f");
+		await pressF(page);
 
 		await expect(fullScreen(page)).toBeVisible();
 		await expect(close(page)).toBeVisible();
@@ -243,6 +251,8 @@ test.describe("full-screen lyrics", () => {
 	// `F` and the expand control answer one condition: the Lyrics tab open, with a
 	// lyric to show. These are its terms failing one at a time, a case each rather
 	// than three presses in one, so a red one names the term that stopped holding.
+	// Each gives up its one term from a state where the other two hold, or the
+	// press would do nothing for a reason the case is not about.
 	//
 	// Each then reaches the state where `F` is meant to work and presses it again.
 	// Without that second press a case would pass just as well for a keystroke
@@ -256,6 +266,8 @@ test.describe("full-screen lyrics", () => {
 			state: "with the Details tab open",
 			reach: async (page) => {
 				await playRow(page, 0);
+				await panelTab(nowPlayingScreen(page), "Lyrics").click();
+				await expect(expand(page)).toBeVisible();
 				await panelTab(nowPlayingScreen(page), "Details").click();
 				await expectPanelOpen(nowPlayingScreen(page), "Details");
 			},
@@ -265,6 +277,8 @@ test.describe("full-screen lyrics", () => {
 			state: "with the Artist tab open",
 			reach: async (page) => {
 				await playRow(page, 0);
+				await panelTab(nowPlayingScreen(page), "Lyrics").click();
+				await expect(expand(page)).toBeVisible();
 				await panelTab(nowPlayingScreen(page), "Artist").click();
 				await expectPanelOpen(nowPlayingScreen(page), "Artist");
 			},
@@ -278,6 +292,14 @@ test.describe("full-screen lyrics", () => {
 				await expect(nowPlayingScreen(page)).toContainText("No lyrics found");
 			},
 			satisfy: async (page) => {
+				// Out of the screen and wait for it to go, before playing anything
+				// else: `playRow` opens the screen only where there is not one
+				// already, and one still sliding out answers that there is.
+				await nowPlayingScreen(page)
+					.getByRole("button", { name: "Close now playing" })
+					.click();
+				await expect(nowPlayingScreen(page)).toHaveCount(0);
+
 				await playRow(page, 0);
 				await panelTab(nowPlayingScreen(page), "Lyrics").click();
 			},
@@ -292,7 +314,7 @@ test.describe("full-screen lyrics", () => {
 			await expect(fullScreen(page)).toHaveCount(0);
 
 			await satisfy(page);
-			await page.keyboard.press("f");
+			await pressF(page);
 			await expect(fullScreen(page)).toBeVisible();
 		});
 	}
@@ -448,7 +470,7 @@ test.describe("full-screen lyrics", () => {
 		await panelTab(nowPlayingScreen(page), "Lyrics").click();
 		await openTheQueue(page);
 
-		await page.keyboard.press("f");
+		await pressF(page);
 		await expect(close(page)).toBeVisible();
 
 		await page.keyboard.press("Escape");

@@ -413,19 +413,35 @@ export function createState({
 		];
 	};
 
-	let playingItem: Track | null = null;
+	// What the component's own store holds, which is not beefweb's `activeItem`:
+	// the playing file, where it sits and how long it is. `PlayerStateStore` in
+	// `plugins/fb2k/src/core/player_state.cpp` clears it on a stop and on
+	// nothing else.
+	let playing: {
+		track: Track;
+		playlistId: string;
+		index: number;
+		duration: number;
+	} | null = null;
 	let announced: Track | null = null;
+	// beefweb empties `activeItem` while the player opens the next file and the
+	// component leaves its own state standing: `on_playback_stop` in
+	// `plugins/fb2k/src/fb2k/playback_watch.cpp` returns early for the outgoing
+	// track of a change. See GAP_ITEM.
+	let gap = false;
 
+	const named = (track: Track | null) =>
+		track && announced ? { ...track, ...announced } : track;
+
+	// beefweb's answer for the playing track, empty across a manual skip.
 	const activeTrack = () => {
+		if (gap) return null;
 		const item = state.player.activeItem;
-		return playingItem ?? byId(item.playlistId)?.items[item.index] ?? null;
+		return playing?.track ?? byId(item.playlistId)?.items[item.index] ?? null;
 	};
 
-	const playingTrack = () => {
-		const track = activeTrack();
-		if (!track) return null;
-		return announced ? { ...track, ...announced } : track;
-	};
+	// The component's, held across one.
+	const playingTrack = () => named(playing?.track ?? null);
 
 	// An edit to the playlist the player is playing from moves the playing row
 	// under it, and no playback callback fires:
@@ -436,16 +452,16 @@ export function createState({
 	// the track carries on playing with nowhere to point at.
 	const editItems = (playlist: FakePlaylist, edit: () => void) => {
 		const item = state.player.activeItem;
-		const playing = item.playlistId === playlist.id ? activeTrack() : null;
+		const held = playing?.playlistId === playlist.id ? playing : null;
 		edit();
-		if (!playing) return;
-		playingItem = playing;
-		const at = playlist.items.indexOf(playing);
+		if (!held) return;
+		const at = playlist.items.indexOf(held.track);
 		// An unmoved row publishes nothing and the next poll is a 304, which is
 		// what `applyLocked` in `plugins/fb2k/src/core/player_state.cpp` gives the
 		// component by returning early on an unchanged value.
-		if (at === item.index) return;
-		item.index = at;
+		if (at === held.index) return;
+		held.index = at;
+		if (item.playlistId === playlist.id) item.index = at;
 		notify({ player: true });
 	};
 
@@ -477,11 +493,12 @@ export function createState({
 
 		mark(track, 0);
 		const dequeued = consume(playlist, index);
-		playingItem = track;
+		const duration = Number(evaluate(track, "%length_seconds%")) || 0;
+		playing = { track, playlistId: playlist.id, index, duration };
 		announced = null;
 		state.player.activeItem = {
 			columns: [],
-			duration: Number(evaluate(track, "%length_seconds%")) || 0,
+			duration,
 			index,
 			playlistId: playlist.id,
 			playlistIndex: state.playlists.indexOf(playlist),
@@ -494,15 +511,16 @@ export function createState({
 		notify({ player: true, playlists: true, playQueue: dequeued });
 	};
 
-	// See GAP_ITEM.
+	// beefweb's gap alone: see the comment on `gap` above, and GAP_ITEM.
 	const withSkipGap = (play: () => void) => {
 		if (state.skipGapMs <= 0) return play();
-		playingItem = null;
-		announced = null;
+		gap = true;
 		state.player.activeItem = { ...GAP_ITEM };
-		markPosition(0);
 		notify({ player: true });
-		setTimeout(play, state.skipGapMs);
+		setTimeout(() => {
+			gap = false;
+			play();
+		}, state.skipGapMs);
 	};
 
 	const step = (delta: number) => {
@@ -739,6 +757,28 @@ export function createState({
 		playingTrack,
 		editItems,
 
+		// What the component holds a handle on, for the routes that answer from
+		// it rather than from beefweb's `activeItem`.
+		get playingItem() {
+			return playing;
+		},
+
+		// A tag written at the player, which the playing track sees: a
+		// `metadb_handle` resolves through foobar2000's metadb, so the playlist
+		// row and the handle the component holds are one record. The row's object
+		// is replaced rather than written through, since every state the fake
+		// builds comes off one set of captured tracks and a write in place would
+		// outlive the test that made it.
+		retagPlaying(fields: Track) {
+			if (!playing) return null;
+			const retagged = { ...playing.track, ...fields };
+			const playlist = byId(playing.playlistId);
+			const at = playlist?.items.indexOf(playing.track) ?? -1;
+			if (playlist && at >= 0) playlist.items[at] = retagged;
+			playing = { ...playing, track: retagged };
+			return retagged;
+		},
+
 		// An internet radio station announcing the song it is playing now: the
 		// name moves and the track does not, which is what
 		// `flag_on_playback_dynamic_info_track` in
@@ -789,7 +829,7 @@ export function createState({
 
 		playerPayload(trcolumns: string[] = []) {
 			const item = state.player.activeItem;
-			const track = playingTrack();
+			const track = named(activeTrack());
 			return {
 				...state.player,
 				volume: this.playerHeld
@@ -861,7 +901,7 @@ export function createState({
 
 		stop() {
 			state.player.playbackState = "stopped";
-			playingItem = null;
+			playing = null;
 			announced = null;
 			state.player.activeItem = { ...IDLE_ITEM };
 			markPosition(0);

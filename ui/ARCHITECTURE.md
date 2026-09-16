@@ -59,14 +59,14 @@ Two mechanisms, and the split is not arbitrary.
 
 | Key | Holds | Written by |
 |---|---|---|
-| `["player"]` | player state and `activeItem` | `startPlayerPoll` and beefweb's subscription, reconciled field by field |
+| `["player"]` | player state and `activeItem` | `startPlayerPoll` |
 | `["playlists"]` | the playlist list | SSE |
 | `["playQueue"]` | the whole queue | SSE |
 | `["fooJean", token]` | the discovery result | backoff while retryable, focus otherwise |
 | `["fooJeanPlaylists", …]` | which playlists the player fills itself | when beefweb's playlist list changes |
 | `["artistInfo", artist]` | MusicBrainz and Wikipedia | never; off unless switched on in Settings |
 
-**`["player"]` has two writers, and neither blanks the other's fields.** `startPlayerPoll` in `domain/player/playerPoll.ts` reads `GET /api/state` once a second and writes `permissions`, `jeanPlaybackMode` and `activeItem`'s `path` and `subsong`; `usePlayerStream`'s `EventSource` against `/api/query/updates` writes everything else the key holds, the rest of `activeItem` included. `mergePlayer` and `keepPollOwned`, both in `playerPoll.ts`, keep the split honest: beefweb's own `activeItem` has no `path` or `subsong` field to push, only `columns`, `duration`, `index`, `playlistId`, `playlistIndex` and `position`, so a push from the subscription carries whatever it last had for the poll's four fields, stale or absent rather than current, and those four survive a push instead of being overwritten by it. Every view reads `["player"]` through the cache and none of them knows which of the two wrote a given field.
+**`["player"]` has one writer now: `startPlayerPoll`.** It reads `GET /api/state` once a second and builds the whole snapshot from that document, through `mergePlayer` in `playerPoll.ts`. A field the document does not speak for, `info.title`, the deprecated `playbackMode`/`playbackModes`/`options` trio, `permissions.changeClientConfig`, carries forward from the previous tick rather than from a second source, since there is no second source left to carry it from. Everything else is overwritten on every tick, whoever wrote it last: `watch()` in `domain/player/listenerStore.ts` reads `playbackState` off this same write through `notePlaybackState`, which is what lets it skip a direct call to beefweb.
 
 **A poll's playlist is `foo_jean`'s own GUID, and every other view still wants beefweb's id**, since the playlist list itself is still beefweb's. `usePlayingPlaylist` is the one place that joins the two: `["fooJeanPlaylists", …]`'s `beefwebId` against the guid the poll answers, falling back to `index` per the component's own contract. It goes away once the playlist list itself moves off beefweb.
 

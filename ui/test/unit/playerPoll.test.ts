@@ -4,7 +4,6 @@ import test, { mock, type TestContext } from "node:test";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
 import {
-	keepPollOwned,
 	POLL_MS,
 	startPlayerPoll,
 	VOLUME_SETTLE_MS,
@@ -23,9 +22,9 @@ import type {
 // `player-poll.spec.ts` drives the status bar against the fake, which is the
 // user-visible half. What stays here is the request the browser cannot be asked
 // about: how many go out, what validator they carry, and whether a tab nobody is
-// looking at keeps asking. So is the order the two writers of the player key land
-// in, since no browser can be asked for a subscription push at a chosen moment
-// after a tick.
+// looking at keeps asking. So is what a tick does to a key that already holds
+// something, since no browser can be asked to put a value there at a chosen
+// moment before one.
 
 const ORIGIN = "http://player.invalid:8881";
 const TOKEN = "token";
@@ -33,6 +32,7 @@ const STATE_PATH = "/api/state";
 const PLAYER_KEY = ["player"];
 
 const TAG = '"s1-r4-p7"';
+const LATER_TAG = '"s1-r4-p8"';
 
 type PlayerSection = StateDocument["player"];
 type Playback = PlayerSection["playback"];
@@ -116,7 +116,7 @@ const CAPABILITIES = {
 	playbackModes: ["inOrder", "shuffleTracks"],
 } satisfies FooJeanCapabilities;
 
-const NOW_PLAYING = ["One", "Babasónicos", "Jessico"];
+const NAME = { artist: "Babasónicos", title: "One" };
 
 const DISC_IMAGE = "/music/Artist/Album/Whole Disc.flac";
 const DISC_SUBSONG = 3;
@@ -126,48 +126,49 @@ const PLAYING_FROM = {
 	index: 5,
 };
 
-// beefweb's own update payload, which has no key for `jeanPlaybackMode` at all and
-// answers `permissions` from beefweb's configuration rather than the component's.
-const subscriptionPush = (over: Partial<PlayerState> = {}) =>
-	({
-		activeItem: {
-			columns: NOW_PLAYING,
-			duration: 214,
-			index: 3,
-			playlistId: "p7",
-			playlistIndex: 1,
-			position: 12,
-		},
-		info: {
-			name: "foobar2000",
-			title: "beefweb",
-			version: "2.24.5",
-			pluginVersion: "0.10",
-		},
-		options: [
-			{ id: "playbackOrder", name: "Playback order", type: "enum", value: 0 },
-		],
-		permissions: {
-			changePlaylists: true,
-			changeOutput: true,
-			changeClientConfig: true,
-		},
-		playbackMode: 0,
-		playbackModes: ["Default", "Shuffle (tracks)"],
-		playbackState: "playing",
-		volume: { type: "db", min: -100, max: 0, value: -6, isMuted: false },
-		...over,
-	}) as PlayerState;
+// Whatever the key holds when a tick lands: an optimistic patch Jean wrote for a
+// press it has not seen confirmed, or the tick before this one. Every field
+// disagrees with the documents below, so an assertion cannot pass on this by
+// accident.
+const held = (over: Partial<PlayerState> = {}): PlayerState => ({
+	activeItem: {
+		columns: ["Someone else", "Another song"],
+		duration: 214,
+		index: 3,
+		path: "/music/Other/Album/03 Three.flac",
+		playlistGuid: "8c4b4a3e-6f1e-4d2a-9d55-5f6d5b0a1c22",
+		playlistId: "p7",
+		playlistIndex: 1,
+		position: 99,
+		subsong: 2,
+	},
+	info: {
+		name: "another player",
+		title: "beefweb",
+		version: "0.0",
+		pluginVersion: "0.10",
+	},
+	options: [
+		{ id: "playbackOrder", name: "Playback order", type: "enum", value: 0 },
+	],
+	permissions: {
+		changePlaylists: true,
+		changeOutput: true,
+		changeClientConfig: true,
+	},
+	playbackMode: 0,
+	playbackModes: ["Default", "Shuffle (tracks)"],
+	jeanPlaybackMode: "repeatOne",
+	playbackState: "stopped",
+	volume: { type: "linear", min: 0, max: 100, value: 80, isMuted: true },
+	...over,
+});
 
-// What `usePlayerStream` does with a message's `player` section. The rest of it is an
-// `EventSource` inside a React effect, and neither of those runs under `node`.
-const pushFromSubscription = (client: QueryClient, player: PlayerState) => {
-	const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
+const putInKey = (client: QueryClient, player: PlayerState) =>
 	client.setQueryData<PlayerSnapshot>(PLAYER_KEY, {
-		player: keepPollOwned(previous?.player, player),
+		player,
 		syncedAt: performance.now(),
 	});
-};
 
 const harness = (
 	t: TestContext,
@@ -251,31 +252,30 @@ test("a tick writes what the component says the player is doing into the player 
 
 	assert.equal(playbackIn(poll.client), "paused");
 
-	poll.answers(() => document200("playing", '"s1-r4-p8"'));
+	poll.answers(() => document200("playing", LATER_TAG));
 	await poll.ticks(1);
 
 	assert.equal(playbackIn(poll.client), "playing");
 });
 
-test("the playing path and subsong come from a tick, with no columns from beefweb to take them from", async (t) => {
+test("the playing track's name, path and subsong all come from the tick's document", async (t) => {
 	const poll = harness(
 		t,
 		() =>
-			document200("playing", TAG, { path: DISC_IMAGE, subsong: DISC_SUBSONG }),
+			document200("playing", TAG, {
+				...NAME,
+				path: DISC_IMAGE,
+				subsong: DISC_SUBSONG,
+			}),
 		CAPABILITIES,
 	);
 	await poll.settle();
 	await poll.ticks(1);
 
-	const player = playerIn(poll.client);
+	const track = readTrack(playerIn(poll.client));
 
-	assert.ok(
-		!player?.activeItem.columns.includes(DISC_IMAGE),
-		"beefweb's columns carry the path as well, so nothing here says which source answered",
-	);
-
-	const track = readTrack(player);
-
+	assert.equal(track?.artist, NAME.artist);
+	assert.equal(track?.title, NAME.title);
 	assert.equal(track?.path, DISC_IMAGE);
 	// The other half of a track's identity for a cue sheet or a disc image. A
 	// subsong that never arrives reads as `0`, which is an ordinary whole file.
@@ -303,7 +303,7 @@ test("a reader of the player key is fed by the poll and never refetches for itse
 	});
 	t.after(unsubscribe);
 
-	poll.answers(() => document200("playing", '"s1-r4-p8"'));
+	poll.answers(() => document200("playing", LATER_TAG));
 	await poll.ticks(3);
 
 	assert.equal(readerFetched, 0);
@@ -401,62 +401,57 @@ test("a tick draws the player's name, the fader's range and what the install per
 	assert.equal(player?.info.version, "2.24.5");
 });
 
-test("a subscription push leaves the permissions and the playback order the poll wrote", async (t) => {
-	const poll = harness(
-		t,
-		() => document200("playing", TAG, { playbackMode: "shuffleTracks" }),
-		CAPABILITIES,
-	);
+test("a tick overwrites everything its document speaks for, whoever put the previous value there", async (t) => {
+	// The player key has one writer besides Jean's own optimistic patches, so a
+	// value in it that no document fed is a guess the next tick settles. A field
+	// that outlives a tick is a second writer's, and reconciling two of them is
+	// what this poll stopped doing.
+	const poll = harness(t, () => document200("stopped"), CAPABILITIES);
 	await poll.settle();
-	await poll.ticks(1);
 
-	pushFromSubscription(poll.client, subscriptionPush());
+	putInKey(poll.client, held());
+
+	poll.answers(() =>
+		document200("playing", LATER_TAG, {
+			...NAME,
+			path: DISC_IMAGE,
+			subsong: DISC_SUBSONG,
+			position: { seconds: 12, ageSeconds: 1 },
+			playbackMode: "shuffleTracks",
+			playingLocation: PLAYING_FROM,
+		}),
+	);
+	await poll.ticks(1);
 
 	const player = playerIn(poll.client);
 
-	assert.equal(
-		player?.jeanPlaybackMode,
-		"shuffleTracks",
-		"the push blanked the playback order",
-	);
-	assert.equal(
-		player?.permissions.changePlaylists,
-		false,
-		"the push blanked what the component said about writing playlists",
-	);
-	assert.equal(
-		player?.permissions.changeOutput,
-		false,
-		"the push blanked what the component said about the output",
-	);
-});
-
-test("a subscription push still delivers the playing track, the transport and the level", async (t) => {
-	const poll = harness(
-		t,
-		() => document200("paused", TAG, { volume: -40 }),
-		CAPABILITIES,
-	);
-	await poll.settle();
-	await poll.ticks(1);
-
-	assert.deepEqual(playerIn(poll.client)?.activeItem.columns, []);
-
-	pushFromSubscription(poll.client, subscriptionPush());
-
-	const player = playerIn(poll.client);
-
-	assert.deepEqual(player?.activeItem.columns, NOW_PLAYING);
-	assert.equal(player?.activeItem.playlistId, "p7");
 	assert.equal(player?.playbackState, "playing");
-	assert.equal(player?.volume.value, -6);
+	assert.equal(player?.jeanPlaybackMode, "shuffleTracks");
+	assert.deepEqual(player?.activeItem.columns, [NAME.artist, NAME.title]);
+	assert.equal(player?.activeItem.path, DISC_IMAGE);
+	assert.equal(player?.activeItem.subsong, DISC_SUBSONG);
+	assert.equal(player?.activeItem.duration, 180);
+	assert.equal(player?.activeItem.position, 13);
+	assert.equal(player?.activeItem.index, PLAYING_FROM.index);
+	assert.equal(player?.activeItem.playlistGuid, PLAYING_FROM.playlistId);
+	assert.deepEqual(player?.volume, {
+		type: "db",
+		min: -100,
+		max: 0,
+		value: -6,
+		isMuted: false,
+	});
+	assert.deepEqual(player?.permissions, {
+		changePlaylists: false,
+		changeOutput: false,
+		changeClientConfig: true,
+	});
 });
 
-test("a tick writes what its document carries and leaves the fields it cannot feed", async (t) => {
+test("a tick writes what its document carries and leaves the rest of the snapshot standing", async (t) => {
 	const poll = harness(t, () => document200("playing"), CAPABILITIES);
 	await poll.settle();
-	await poll.ticks(1);
-	pushFromSubscription(poll.client, subscriptionPush());
+	putInKey(poll.client, held());
 
 	poll.answers(() =>
 		document200("paused", TAG, { position: { seconds: 30, ageSeconds: 0 } }),
@@ -465,7 +460,10 @@ test("a tick writes what its document carries and leaves the fields it cannot fe
 
 	const player = playerIn(poll.client);
 
-	assert.deepEqual(player?.activeItem.columns, NOW_PLAYING);
+	assert.deepEqual(player?.activeItem.columns, [
+		"Someone else",
+		"Another song",
+	]);
 	assert.equal(player?.activeItem.playlistId, "p7");
 	assert.equal(player?.info.title, "beefweb");
 	assert.deepEqual(player?.playbackModes, ["Default", "Shuffle (tracks)"]);
@@ -492,9 +490,7 @@ test("a tick reporting no place drops the place, rather than leaving the last on
 	assert.equal(playing?.index, PLAYING_FROM.index);
 	assert.equal(playing?.playlistGuid, PLAYING_FROM.playlistId);
 
-	pushFromSubscription(poll.client, subscriptionPush());
-
-	poll.answers(() => document200("playing", '"s1-r4-p8"'));
+	poll.answers(() => document200("playing", LATER_TAG));
 	await poll.ticks(1);
 
 	const player = playerIn(poll.client);
@@ -509,33 +505,6 @@ test("a tick reporting no place drops the place, rather than leaving the last on
 		null,
 		"the poll went on naming a playlist the track has left",
 	);
-});
-
-test("a push before any tick has landed is taken whole", async (t) => {
-	const poll = harness(t, never, CAPABILITIES);
-	await poll.settle();
-	assert.equal(playerIn(poll.client), null);
-
-	pushFromSubscription(
-		poll.client,
-		subscriptionPush({
-			permissions: {
-				changePlaylists: false,
-				changeOutput: true,
-				changeClientConfig: true,
-			},
-		}),
-	);
-
-	const player = playerIn(poll.client);
-
-	assert.deepEqual(player?.activeItem.columns, NOW_PLAYING);
-	assert.equal(player?.playbackState, "playing");
-	assert.deepEqual(player?.permissions, {
-		changePlaylists: false,
-		changeOutput: true,
-		changeClientConfig: true,
-	});
 });
 
 test("a tick before capabilities have landed reports the level with no range to draw it in", async (t) => {

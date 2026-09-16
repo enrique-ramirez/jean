@@ -12,6 +12,7 @@ import {
 	fetchPlaylists,
 	movePlaylist,
 	nextTrack,
+	playItem,
 	playPause,
 	previousTrack,
 	removePlaylist,
@@ -41,9 +42,9 @@ import type { Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 import { clamp } from "@/shared/lib/math";
 import { refusal } from "@/shared/lib/refusal";
-import { rememberSnapshot, useAudibleSnapshot } from "./audible";
+import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
-import { keepPollOwned, PLAYER_KEY, VOLUME_SETTLE_MS } from "./playerPoll";
+import { PLAYER_KEY, VOLUME_SETTLE_MS } from "./playerPoll";
 import { positionAt } from "./position";
 import {
 	dequeuePlaylist,
@@ -51,37 +52,9 @@ import {
 	isQueueStreamHeld,
 	QUEUE_KEY,
 } from "./queue";
+import { usePlayingPlaylist } from "./usePlayingPlaylist";
 
 export const PLAYLISTS_KEY = ["playlists"];
-
-let held: { item: ActiveItem; syncedAt: number } | null = null;
-
-// foobar2000 empties `activeItem` for as long as a skip takes to open the next file. See
-// ../../shared/api/README.md, "the gap a skip leaves".
-const holdThroughGap = (player: PlayerState, syncedAt: number) => {
-	if (player.playbackState === "stopped") {
-		held = null;
-		return { player, syncedAt };
-	}
-
-	const item = player.activeItem;
-	if (item?.columns?.length) {
-		held = { item, syncedAt };
-		return { player, syncedAt };
-	}
-
-	if (!held) return { player, syncedAt };
-	return {
-		player: { ...player, activeItem: held.item },
-		syncedAt: held.syncedAt,
-	};
-};
-
-const snapshot = (player: PlayerState): PlayerSnapshot => {
-	const next = holdThroughGap(player, performance.now());
-	rememberSnapshot(next);
-	return next;
-};
 
 export function usePlayerStream() {
 	const queryClient = useQueryClient();
@@ -90,16 +63,7 @@ export function usePlayerStream() {
 		const source = new EventSource(UPDATES_URL);
 
 		source.onmessage = (event) => {
-			const { player, playlists, playQueue } = JSON.parse(
-				event.data,
-			) as UpdateMessage;
-			if (player) {
-				const previous = queryClient.getQueryData<PlayerSnapshot>(PLAYER_KEY);
-				queryClient.setQueryData(
-					PLAYER_KEY,
-					snapshot(keepPollOwned(previous?.player, player)),
-				);
-			}
+			const { playlists, playQueue } = JSON.parse(event.data) as UpdateMessage;
 			if (playlists) queryClient.setQueryData(PLAYLISTS_KEY, playlists);
 			if (playQueue && !isQueueStreamHeld())
 				queryClient.setQueryData(QUEUE_KEY, playQueue);
@@ -289,9 +253,19 @@ export function useActiveItem(
 ): ActiveItem | null {
 	const { data } = usePlayer();
 	const item = data?.player?.activeItem;
-	if (!item || item.index < 0 || item.playlistId !== playlistId) return null;
+	const playingId = usePlayingPlaylist(item?.playlistGuid ?? null);
+	if (!item || item.index < 0 || playingId !== playlistId) return null;
 	return item;
 }
+
+// The poll can lag a bare `playItem` post by up to `POLL_MS`, and `usePlaySet.ts` and
+// `PlaylistView.tsx` both need the flip to "playing" to be visible at once.
+export const usePlayItem = () =>
+	usePlayerPatch(
+		({ playlistId, index }: { playlistId: string; index: number }) =>
+			playItem(playlistId, index),
+		() => ({ playbackState: "playing" }),
+	);
 
 export const usePlayPause = () =>
 	usePlayerPatch<void>(playPause, (player, _input, previous) => ({

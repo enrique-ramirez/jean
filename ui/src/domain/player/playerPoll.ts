@@ -12,6 +12,8 @@ import type {
 	PlayerSnapshot,
 	PlayerState,
 } from "@/shared/api/types";
+import { rememberSnapshot } from "./audible";
+import { notePlaybackState } from "./listenerStore";
 
 export const PLAYER_KEY = ["player"];
 
@@ -31,9 +33,9 @@ const EMPTY_ACTIVE_ITEM = {
 	subsong: 0,
 } satisfies Omit<ActiveItem, "duration" | "position">;
 
-// `info.title` and `info.pluginVersion` are beefweb's own, with no `foo_jean` equivalent, so a client
-// that has never seen a full player yet has no better answer than an empty one; the beefweb
-// subscription fills them in as soon as it arrives.
+// `info.title` and `info.pluginVersion` are beefweb's own, with no `foo_jean` equivalent and no
+// document field to read them from, so a client carries forward whatever it last had, empty for
+// the life of a tab that has never seen a full player.
 function mergePlayer(
 	previous: PlayerState | undefined,
 	doc: StateDocument["player"],
@@ -89,30 +91,6 @@ function mergePlayer(
 	};
 }
 
-// `permissions` and `jeanPlaybackMode` have no equivalent in beefweb's own payload at all, and now
-// neither does the playing path or `foo_jean`'s own playlist GUID: beefweb's `activeItem` carries
-// `columns`, `duration`, `index`, `playlistId`, `playlistIndex` and `position`, nothing the poll's
-// `path`, `subsong` or `playlistGuid` could come from. A push from the subscription carries whatever
-// it last had for those, which is stale or absent rather than current, so the poll's own values
-// survive a push instead of being blanked by it.
-export function keepPollOwned(
-	previous: PlayerState | undefined,
-	incoming: PlayerState,
-): PlayerState {
-	if (!previous) return incoming;
-	return {
-		...incoming,
-		activeItem: {
-			...incoming.activeItem,
-			path: previous.activeItem.path,
-			playlistGuid: previous.activeItem.playlistGuid,
-			subsong: previous.activeItem.subsong,
-		},
-		permissions: previous.permissions,
-		jeanPlaybackMode: previous.jeanPlaybackMode,
-	};
-}
-
 export function startPlayerPoll(
 	client: QueryClient,
 	origin: string,
@@ -132,14 +110,17 @@ export function startPlayerPoll(
 
 			tag = result.tag;
 			const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
-			client.setQueryData<PlayerSnapshot>(PLAYER_KEY, {
+			const snapshot: PlayerSnapshot = {
 				player: mergePlayer(
 					previous?.player,
 					result.state.player,
 					capabilities,
 				),
 				syncedAt: performance.now(),
-			});
+			};
+			client.setQueryData<PlayerSnapshot>(PLAYER_KEY, snapshot);
+			rememberSnapshot(snapshot);
+			notePlaybackState(snapshot.player.playbackState);
 			void recheckComponentLibrary(origin, token, result.state.library);
 		} finally {
 			inFlight = false;

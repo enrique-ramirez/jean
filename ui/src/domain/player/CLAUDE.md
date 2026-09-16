@@ -149,9 +149,9 @@ Three facts this rests on, all properties of the component rather than of one ne
 
 ## The gap a skip leaves
 
-**A skip empties `activeItem` until the player has opened the next file**, so a client that draws each field as it arrives shows every empty state it has at once, for as long as the skip takes. `holdThroughGap` holds the last item until a real one lands, and `../../shared/api/README.md` has the shape, the three things that make it a trap, and why `columns` rather than `index` is what says "empty".
+**That gap is beefweb's, and `foo_jean`'s own state never had it.** `on_playback_stop` in `plugins/fb2k/src/fb2k/playback_watch.cpp` returns early for the outgoing track of a change, so the identity the poll answers, title, path, artwork, stands until the next track's `on_playback_new_track` replaces it, with nothing empty in between. `../../shared/api/README.md` has beefweb's own version of the trap, which is still real for anything that reads beefweb's `activeItem` directly.
 
-**It sits at the stream bridge rather than on the screen**, which is what makes it one hold instead of four, and what stops a mark being laid against a gap. The held timestamp travels with the item it anchors, for the same reason it does in `audible.ts`: paired with a fresh one, the seek bar rewinds by the width of the gap.
+**`fetchActiveItemColumns` still does, since it still asks beefweb.** The per-track fetch behind the lyric and the details panel can answer with an empty row for the width of a manual skip even while the poll's own identity holds steady; `useNowPlayingTrack` treats that as no answer yet rather than as the track having changed.
 
 ## Position
 

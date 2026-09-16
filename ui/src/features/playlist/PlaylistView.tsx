@@ -1,5 +1,9 @@
 import { type RefObject, useMemo, useRef } from "react";
-import { useActiveItem, useIsPlaying } from "@/domain/player/usePlayer";
+import {
+	useActiveItem,
+	useIsPlaying,
+	usePlayItem,
+} from "@/domain/player/usePlayer";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { librarySourceOf } from "@/domain/track/librarySource";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
@@ -11,7 +15,6 @@ import { TrackBrowser } from "@/domain/track/TrackBrowser";
 import { useFinder } from "@/domain/track/useFinder";
 import { usePlaylistItems } from "@/domain/track/usePlaylistItems";
 import { ViewHeader } from "@/domain/track/ViewHeader";
-import { playItem } from "@/shared/api/beefweb";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./PlaylistView.module.css";
@@ -48,6 +51,7 @@ export function PlaylistView({
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const isPlaying = useIsPlaying();
 	const activeItem = useActiveItem(playlist?.id);
+	const playItem = usePlayItem();
 	const { hasPlayCounts } = useAvailableFields();
 
 	const finder = useFinder({
@@ -93,7 +97,7 @@ export function PlaylistView({
 			isCompactViewport={isCompactViewport}
 			keysEnabled={!finder.isFinding}
 			canFollowPlayback
-			onPlay={(index) => playItem(playlist.id, index)}
+			onPlay={(index) => playItem.mutate({ playlistId: playlist.id, index })}
 			onOpenFinder={finder.open}
 			emptyNotice={t("playlist.empty")}
 			header={

@@ -36,16 +36,28 @@ const ticksTaken = (player: FakePlayer) =>
 
 const SUBSCRIPTION = "/api/query/updates";
 
+// The four columns the playing track's name and identity arrive in. The
+// now-playing panel's per-track read is addressed the same way, `player=true`
+// with `trcolumns`, and this bundle keeps it: it is told apart by asking for the
+// tags it draws rather than for all four of these.
+const NAMES_THE_PLAYING_TRACK = ["%artist%", "%title%", "%path%", "%subsong%"];
+
 // `player=true` is what asks beefweb for player state and `trcolumns` is the
-// parameter the active item's columns come back in. Scoped to the subscription:
-// the on-demand read behind the now-playing details carries both as well, and
-// that one is a read rather than a live dependency.
-const subscriptionsCarryingPlayerState = (player: FakePlayer) =>
-	requestsTo(player, SUBSCRIPTION)
-		.filter(
-			(one) =>
-				one.path.includes("player=true") || one.path.includes("trcolumns"),
-		)
+// parameter the active item's columns come back in.
+const asksForPlayerState = (path: string) => {
+	const columns = new URLSearchParams(path.split("?")[1]).get("trcolumns");
+	if (columns === null) return path.includes("player=true");
+	const asked = columns.split(",");
+	return NAMES_THE_PLAYING_TRACK.every((one) => asked.includes(one));
+};
+
+// Every beefweb request rather than the subscription alone: the now-playing
+// panel's per-track read (`fetchActiveItemColumns` in `shared/api/beefweb.ts`)
+// is the same `GET /api/query?player=true&trcolumns=…`, one-shot rather than
+// pushed, and a watch scoped to the subscription cannot see that one.
+const beefwebReadsOfPlayerState = (player: FakePlayer) =>
+	player.requests
+		.filter((one) => asksForPlayerState(one.path))
 		.map((one) => one.path);
 
 const routeOf = (path: string) => path.split("?")[0];
@@ -497,22 +509,13 @@ test("never subscribes to beefweb for player state", async ({
 	page,
 	player,
 }) => {
-	test.fixme(
-		true,
-		"UPDATES_URL in shared/api/beefweb.ts still asks for player=true and trcolumns, since the title and columns readTrack() resolves still have no source but that subscription; narrowing it moved to _todo/04-remaining-endpoints.md, which pairs it with restoring track identity",
-	);
-
 	await openLibrary(page);
 	await trackRow(page, 0).dblclick();
 	await expect(statusBar(page)).toContainText("Los Calientes");
 	player.playItem("p7", 1);
 	await expect(statusBar(page)).toContainText("Fizz");
 
-	await expectSettlesAt(
-		player,
-		() => subscriptionsCarryingPlayerState(player),
-		[],
-	);
+	await expectSettlesAt(player, () => beefwebReadsOfPlayerState(player), []);
 
 	// A subscription deleted rather than narrowed satisfies the absence above and
 	// takes the playlist list and the queue panel's columns with it, so what it

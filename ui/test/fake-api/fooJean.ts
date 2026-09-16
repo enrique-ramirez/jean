@@ -706,8 +706,9 @@ const nameOf = (track: Track) => ({
 // `state.positionMark` rather than from `activeItem.position` directly, since
 // that is where the age the client interpolates from is kept.
 const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
-	const item = state.player.activeItem;
-	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
+	const item = state.playingItem;
+	const playlist =
+		item && item.index >= 0 ? state.playlistById(item.playlistId) : null;
 	const track = state.playingTrack();
 	const { seconds, takenAtMs } = state.positionMark;
 	const playlistIndex = playlist ? state.playlists.indexOf(playlist) : -1;
@@ -719,7 +720,7 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 			seconds: Math.max(seconds, 0),
 			ageSeconds: Math.max((Date.now() - takenAtMs) / 1000, 0),
 		},
-		duration: Math.max(item.duration, 0),
+		duration: Math.max(item?.duration ?? 0, 0),
 		volume: state.playerHeld ? -100 : state.player.volume.value,
 		muted: state.playerHeld ? true : state.player.volume.isMuted,
 		playbackMode: jeanModeFor(
@@ -727,7 +728,7 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 		),
 		...(track ? nameOf(track) : { title: null, artist: null }),
 		playingLocation:
-			fake.knowsPlayingLocation && playlist && playlistIndex >= 0
+			fake.knowsPlayingLocation && item && playlist && playlistIndex >= 0
 				? { playlistId: guidFor(playlistIndex), index: item.index }
 				: null,
 	};

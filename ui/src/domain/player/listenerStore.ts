@@ -1,4 +1,3 @@
-import { fetchPlayer } from "@/shared/api/beefweb";
 import {
 	fetchStreamTimeline,
 	issueStreamTicket,
@@ -6,6 +5,7 @@ import {
 	type StreamMark,
 	streamUrl,
 } from "@/shared/api/fooJean";
+import type { PlaybackState } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
 import { subscribers } from "@/shared/lib/store";
 import { deviceId, deviceIdentity } from "./device";
@@ -97,6 +97,7 @@ let pendingAt = 0;
 let lastTime = 0;
 let lastAdvance = 0;
 let hasRendered = false;
+let knownPlaybackState: PlaybackState | null = null;
 // Bumps on every connect, so a ticket or timeline settling after its connection was torn down is
 // discarded.
 let generation = 0;
@@ -132,6 +133,12 @@ function readStoredVolume() {
 export const subscribeListening = listeners.subscribe;
 export const listeningSnapshot = () => snapshot;
 export const listeningServerSnapshot = () => snapshot;
+
+// Fed by the poll; see ../../ARCHITECTURE.md, `["player"]`, for why the stall check below reads
+// this rather than asking beefweb itself.
+export const notePlaybackState = (state: PlaybackState) => {
+	knownPlaybackState = state;
+};
 
 export const isListening = (at: ListenPhase) =>
 	at.kind !== "off" && at.kind !== "failed";
@@ -435,7 +442,7 @@ function startWatchdog() {
 	timelineTimer = setInterval(() => void refreshTimeline(), TIMELINE_POLL_MS);
 }
 
-async function watch() {
+function watch() {
 	const audio = element;
 	if (!audio || !isListening(phase)) return;
 	if (phase.kind === "blocked" || phase.kind === "busy") return;
@@ -456,12 +463,7 @@ async function watch() {
 	if (audio.paused) return;
 	if (performance.now() - lastAdvance < STALL_MS) return;
 
-	const stopped = await fetchPlayer()
-		.then((player) => player.playbackState !== "playing")
-		.catch(() => false);
-
-	if (!isListening(phase)) return;
-	if (stopped) {
+	if (knownPlaybackState !== null && knownPlaybackState !== "playing") {
 		setPhase({ kind: "silent" });
 		lastAdvance = performance.now();
 		return;
@@ -561,7 +563,7 @@ export function listeningLagSeconds(): number | null {
 	return liveNow - (anchor + audio.currentTime);
 }
 
-if (import.meta.env.DEV) {
+if (import.meta.env?.DEV) {
 	(globalThis as unknown as Record<string, unknown>).__jeanStream = () => {
 		const audio = element;
 		const ranges = audio?.buffered;

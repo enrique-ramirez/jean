@@ -1,4 +1,5 @@
 import { en } from "../../src/shared/i18n/en.ts";
+import { evaluate, type Track } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	dropTheStream,
@@ -186,30 +187,62 @@ const DRAGGED_IN = {
 	"%length_seconds%": "212",
 };
 
+// An internet radio station, added to a playlist the way a person adds one, by
+// its address rather than a file: there is nothing here for a rating to belong to.
+const RADIO_STATION = {
+	"%path%": "http://stream.example.org:8000/night-shift",
+	"%title%": "Weightless",
+	"%artist%": "Halo Choir",
+	"%codec%": "MP3",
+	"%bitrate%": "128",
+};
+
 // Short enough that the dropped file's row needs no scrolling to reach.
 const DROPPED_INTO = "p1";
+
+const UNRESOLVED = "?";
 
 const ratingStars = (page: Page) =>
 	nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ });
 
+// Either control, because what is asserted is absence. `Stars` is an `img` and
+// `StarsInput` is a `group`, so a query for one alone passes against an inert
+// row of stars, which is the thing a person must not be shown.
+const anyRating = (page: Page) =>
+	nowPlayingScreen(page)
+		.getByRole("img", { name: /stars|Unrated/ })
+		.or(nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ }));
+
 const tagWrites = (player: FakePlayer) =>
 	requestsTo(player, "/api/tags").filter((one) => one.method === "POST");
 
-const playTheDroppedFile = async (page: Page, player: FakePlayer) => {
-	const playlist = player.playlistById(DROPPED_INTO);
-	if (!playlist)
-		throw new Error(`no playlist ${DROPPED_INTO} to drop a file in`);
-	playlist.items.push(DRAGGED_IN);
+const playingTrack = (player: FakePlayer) => {
+	const { playlistId, index } = player.player.activeItem;
+	const track = player.playlistById(playlistId)?.items[index];
+	if (!track) throw new Error("nothing is playing to read a tag off");
+	return track;
+};
 
+// Added at the player and played off the row it landed on, which is how anything
+// the media library does not hold comes to be playing at all.
+const addAndPlay = async (page: Page, player: FakePlayer, track: Track) => {
+	const playlist = player.playlistById(DROPPED_INTO);
+	if (!playlist) throw new Error(`no playlist ${DROPPED_INTO} to add to`);
+	playlist.items.push(track);
+
+	await page.goto(`/#/${DROPPED_INTO}`);
+	await rowByTitle(page, track["%title%"]).dblclick();
+	await expect(statusBar(page)).toContainText(track["%title%"]);
+	await openNowPlaying(page);
+};
+
+const playTheDroppedFile = async (page: Page, player: FakePlayer) => {
 	expect(
 		player.libraryTracks.map((track) => track["%path%"]),
 		"the media library holds the track these cases are about",
 	).not.toContain(DRAGGED_IN["%path%"]);
 
-	await page.goto(`/#/${DROPPED_INTO}`);
-	await rowByTitle(page, DRAGGED_IN["%title%"]).dblclick();
-	await expect(statusBar(page)).toContainText(DRAGGED_IN["%title%"]);
-	await openNowPlaying(page);
+	await addAndPlay(page, player, DRAGGED_IN);
 };
 
 // The gesture itself, driven through CDP the way the wheel's own spec drives it:
@@ -654,4 +687,60 @@ test("a track outside the media library can be rated, and the rating lands on th
 	await page.reload();
 	await expect(nowPlayingScreen(page)).toBeVisible();
 	await expect(ratingStars(page)).toHaveAccessibleName("4 of 5 stars");
+});
+
+// The three below only pass together, and the third is what holds the other two
+// honest. A station and an unrated file both answer `?` for `%rating%`, so a
+// condition written against that sentinel hides the station and takes the file's
+// stars with it, and rating an unrated track is the whole point of the control.
+// The path is the only thing that tells the two apart.
+test("a track with no local file draws no rating control at all", async ({
+	page,
+	player,
+}) => {
+	await addAndPlay(page, player, RADIO_STATION);
+
+	// The screen drew the track, so an absence below is an absence rather than a
+	// screen that never arrived.
+	await expect(nowPlayingScreen(page)).toContainText(RADIO_STATION["%title%"]);
+
+	// Settled rather than read straight: a control that has not rendered yet is
+	// also a count of zero.
+	await expectSettlesAt(player, () => anyRating(page).count(), 0);
+});
+
+test("the track actions offer no rating for a track with no local file", async ({
+	page,
+	player,
+}) => {
+	await addAndPlay(page, player, RADIO_STATION);
+	await page.getByRole("button", { name: "Track actions" }).click();
+
+	// The menu is the second way to reach the same write, and it asks the screen's
+	// own hook whether to offer one. A fix made in the component that draws the
+	// stars leaves this offering a rating the player would refuse.
+	await expect(
+		page.getByRole("menuitem", { name: "Add to queue" }),
+	).toBeVisible();
+	await expect(page.getByRole("menuitem", { name: "Rating" })).toHaveCount(0);
+});
+
+test("a local file with no rating tag keeps its interactive stars", async ({
+	page,
+	player,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, 0).dblclick();
+	await expect(statusBar(page)).toContainText("Los Calientes");
+	await openNowPlaying(page);
+
+	expect(
+		evaluate(playingTrack(player), "%rating%"),
+		"this file now carries a rating, so the case no longer covers an unrated one",
+	).toBe(UNRESOLVED);
+
+	await expect(ratingStars(page)).toHaveAccessibleName("Unrated");
+	await expect(
+		ratingStars(page).getByRole("button", { name: "Rate 4 of 5" }),
+	).toBeVisible();
 });

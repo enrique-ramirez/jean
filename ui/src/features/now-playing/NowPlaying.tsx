@@ -62,16 +62,18 @@ function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 }
 
 function Rating() {
-	const { raw, canWrite, write } = useNowPlayingRating();
-
-	const rating = starsOf(raw);
-	const stars = rating === null ? 0 : toStars(rating);
-	const label = rating === null ? "Unrated" : `${stars} of ${MAX_STARS} stars`;
+	const { raw, isLocalFile, canWrite, write } = useNowPlayingRating();
 
 	useEffect(() => {
 		setRatingLayer(write);
 		return () => setRatingLayer(null);
 	}, [write]);
+
+	if (!isLocalFile) return null;
+
+	const rating = starsOf(raw);
+	const stars = rating === null ? 0 : toStars(rating);
+	const label = rating === null ? "Unrated" : `${stars} of ${MAX_STARS} stars`;
 
 	if (!canWrite) return <Stars value={stars} label={label} />;
 

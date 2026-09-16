@@ -138,6 +138,8 @@ MusicBrainz's `ws/2` and Wikipedia's REST summary both answer `Access-Control-Al
 
 **A refused write puts the value back**, and the undo travels with the write rather than being reconstructed after it. **A 504 is the exception**: the player may still be finishing the write, so the value stands and the message says it may not have been saved. The read-only rule is asked per track; see `src/domain/track/CLAUDE.md`.
 
+**A track with no local file draws no rating control at all: absent, not inert.** `isLocalFile` gates ahead of `canWrite`, and the two must stay separate: `!canWrite` is a local file whose rating cannot be written for some other reason, and still gets the read-only stars every other refusal gets; a stream has no file for a rating to belong to. Reaching for that same fallback here is the natural-looking fix and the wrong one. `%rating%` cannot stand in for the path check either: a stream and an unrated local file answer it with the same `?`, so the path is what tells them apart. `src/domain/track/CLAUDE.md` has what `foo_jean` requires of it.
+
 ## Sizing
 
 **The artwork always fits.** The player is the one region that should never scroll, so the stage is height-capped and a window narrower than it is tall gives a short wide box rather than an overflowing square one. And **`Artwork` is called with no `size`** there: given one it writes `width`/`height` inline, which beats the class working the box out and stretches a square cover into that oblong.

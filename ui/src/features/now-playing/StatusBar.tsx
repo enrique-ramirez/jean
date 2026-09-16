@@ -128,7 +128,11 @@ export function StatusBar({
 					onClick={onOpenNowPlaying}
 				>
 					<Artwork
-						key={hasTrack ? `${playlistId}:${item.index}` : "idle"}
+						key={
+							hasTrack && playlistId !== undefined
+								? `${playlistId}:${item.index}`
+								: "idle"
+						}
 						src={track ? artwork : null}
 						identity={
 							track ? coverKey(track.artist, track.title, "track") : undefined

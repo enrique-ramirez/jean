@@ -22,9 +22,6 @@ struct PlayingLocation {
 };
 
 bool operator==(const PlayingLocation& a, const PlayingLocation& b);
-inline bool operator!=(const PlayingLocation& a, const PlayingLocation& b) {
-    return !(a == b);
-}
 
 struct PlayerState {
     PlaybackState playback = PlaybackState::stopped;

@@ -5,18 +5,21 @@ import { useMemo } from "react";
 import { usePlaylistAnnotations } from "./useAutoPlaylists";
 import { usePlaylists } from "./usePlayer";
 
-export function usePlayingPlaylist(guid: string | null): string | null {
+export function usePlayingPlaylist(
+	guid: string | null,
+): string | null | undefined {
 	const { data: playlists = [] } = usePlaylists();
-	const annotations = usePlaylistAnnotations();
+	const { entries, isKnown } = usePlaylistAnnotations();
 
 	return useMemo(() => {
 		if (!guid) return null;
-		const entry = annotations.find((annotation) => annotation.id === guid);
+		if (!isKnown) return undefined;
+		const entry = entries.find((annotation) => annotation.id === guid);
 		if (!entry) return null;
 		return (
 			entry.beefwebId ??
 			playlists.find((playlist) => playlist.index === entry.index)?.id ??
 			null
 		);
-	}, [annotations, playlists, guid]);
+	}, [entries, isKnown, playlists, guid]);
 }

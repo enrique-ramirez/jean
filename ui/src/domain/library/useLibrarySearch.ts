@@ -74,9 +74,8 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const permissions = usePermissions();
 	const { data: playerSnapshot } = usePlayer();
 	const player = playerSnapshot?.player;
-	const playingPlaylistId = usePlayingPlaylist(
-		player?.activeItem?.playlistGuid ?? null,
-	);
+	const playingPlaylistId =
+		usePlayingPlaylist(player?.activeItem?.playlistGuid ?? null) ?? null;
 	const [draft, setDraft] = useState("");
 	const [query, setQuery] = useState("");
 	const [isFocused, setIsFocused] = useState(false);

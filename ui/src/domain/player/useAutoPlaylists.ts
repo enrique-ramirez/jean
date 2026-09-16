@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
 	fetchPlaylistAnnotations,
@@ -10,13 +10,18 @@ import { usePlaylists } from "./usePlayer";
 
 const KEY = "fooJeanPlaylists";
 
-export function usePlaylistAnnotations(): PlaylistAnnotation[] {
+export interface PlaylistAnnotations {
+	entries: PlaylistAnnotation[];
+	isKnown: boolean;
+}
+
+export function usePlaylistAnnotations(): PlaylistAnnotations {
 	const { discovery } = useFooJean();
 	const { origin, token } = discovery;
 	const { data: playlists } = usePlaylists();
 
-	const { data } = useQuery({
-		queryKey: [KEY, origin, token, playlists?.length ?? 0],
+	const { data, status, refetch } = useQuery({
+		queryKey: [KEY, origin, token],
 		queryFn: () =>
 			origin && token ? fetchPlaylistAnnotations(origin, token) : null,
 		enabled: Boolean(origin && token && playlists),
@@ -25,16 +30,24 @@ export function usePlaylistAnnotations(): PlaylistAnnotation[] {
 		retry: false,
 	});
 
-	return data ?? [];
+	const playlistCount = playlists?.length ?? 0;
+	const lastCount = useRef(playlistCount);
+	useEffect(() => {
+		if (lastCount.current === playlistCount) return;
+		lastCount.current = playlistCount;
+		if (origin && token && playlists) void refetch();
+	}, [playlistCount, origin, token, playlists, refetch]);
+
+	return { entries: data ?? [], isKnown: status !== "pending" };
 }
 
 export function useAutoPlaylists(): ReadonlySet<string> {
-	const annotations = usePlaylistAnnotations();
+	const { entries } = usePlaylistAnnotations();
 
 	return useMemo(() => {
 		const ids = new Set<string>();
-		for (const entry of annotations)
+		for (const entry of entries)
 			if (entry.isAutoPlaylist && entry.beefwebId) ids.add(entry.beefwebId);
 		return ids;
-	}, [annotations]);
+	}, [entries]);
 }

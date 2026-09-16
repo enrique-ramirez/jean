@@ -25,7 +25,8 @@ export function useActivePosition({
 	// Read by value: a player message arrives for every volume nudge, each carrying a new `activeItem` object, and the memo below sweeps every ref in the view.
 	const path = playing?.path ?? null;
 	const subsong = playing?.subsong ?? 0;
-	const playlistId = usePlayingPlaylist(activeItem?.playlistGuid ?? null);
+	const playlistId =
+		usePlayingPlaylist(activeItem?.playlistGuid ?? null) ?? null;
 	const index = activeItem?.index ?? -1;
 	const scratchId = scratch.playlist?.id ?? null;
 

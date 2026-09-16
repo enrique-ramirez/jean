@@ -561,6 +561,7 @@ function Shell() {
 	const resumed = useRef(false);
 	useEffect(() => {
 		if (resumed.current || !hasPlayer || !hasPlaylists) return;
+		if (activeItem?.playlistGuid && playingPlaylistId === undefined) return;
 		resumed.current = true;
 		if (route !== "" || !activeItem || activeItem.index < 0) return;
 

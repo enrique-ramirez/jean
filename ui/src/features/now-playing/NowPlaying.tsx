@@ -162,7 +162,10 @@ export function NowPlaying({
 	const artwork = track
 		? playingArtworkUrl(isFooJeanReady(discovery) ? discovery.origin : null)
 		: null;
-	const artworkKey = hasTrack && item ? `${playlistId}:${item.index}` : "idle";
+	const artworkKey =
+		hasTrack && item && playlistId !== undefined
+			? `${playlistId}:${item.index}`
+			: null;
 
 	// Keyed on the track rather than the album: the album arrives a request later than the cover is
 	// wanted, and an identity every track briefly shared would be worse than not sharing one.
@@ -190,10 +193,10 @@ export function NowPlaying({
 	const livePlaylistId = usePlayingPlaylist(liveItem?.playlistGuid ?? null);
 
 	const wheel = useCoverWheel({
-		audibleTrackKey: hasTrack ? artworkKey : null,
+		audibleTrackKey: artworkKey,
 		audibleCover: hasTrack ? playingCover : null,
 		playerTrackKey:
-			liveItem && liveItem.index >= 0
+			liveItem && liveItem.index >= 0 && livePlaylistId !== undefined
 				? `${livePlaylistId}:${liveItem.index}`
 				: null,
 		artwork,

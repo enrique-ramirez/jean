@@ -29,12 +29,11 @@ One composite read. Any combination in one request.
 
 | Parameter | Effect |
 |---|---|
-| `player=true` | player state, including `activeItem` |
 | `playlists=true` | the playlist list |
 | `playQueue=true` | the whole play queue |
 | `outputs=true` | active output, types and devices |
 | `playlistItems=true` | items, with `plref` and `plrange` |
-| `trcolumns=` | columns for the active track |
+| `trcolumns=` | columns for the active track. Needs `player=true` alongside it, and nothing else here reads what `player=true` returns on its own |
 | `qcolumns=` | columns for play queue items |
 | `plcolumns=` | columns for playlist items |
 | `plref=` | which playlist `playlistItems` reads. Singular |
@@ -66,15 +65,16 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 
 | Route | Body | Notes |
 |---|---|---|
-| `GET /player` | — | **ignores `trcolumns`** and answers `"columns": []`. Use `/query?player=true&trcolumns=…` |
 | `POST /player` | `{ position }` / `{ relativePosition }` | seek, in seconds |
-| `POST /player` | `{ volume }` / `{ relativeVolume }` / `{ isMuted }` | volume is **decibels**; read `volume.min`/`max` |
+| `POST /player` | `{ volume }` / `{ relativeVolume }` / `{ isMuted }` | volume is **decibels**; read `volumeMin`/`volumeMax` off `foo_jean`'s `GET /api/capabilities` |
 | `POST /player` | `{ options: [{ id, value }] }` | the supported way to set playback order |
 | `POST /player` | `{ playbackMode }` | deprecated ordinal write |
 | `POST /player/play` · `/play/{playlistId}/{index}` · `/play/random` | — | |
 | `POST /player/next` · `/previous` | `{ by }` optional | `by` takes an expression, so "next album" is possible |
 | `POST /player/stop` · `/pause` · `/pause/toggle` · `/play-pause` | — | |
 | `POST /player/volume/up` · `/down` | — | one player-defined step |
+
+> **Nothing may address a playback mode by index.** The ordinal in `{ playbackMode }`, and in `options`' `playbackOrder` value, means whatever this install's enum says it means: order and wording both vary. `foo_jean` maps it to its own names instead, `contract/openapi.yaml`'s `PlaybackMode`.
 
 ### Playlists
 
@@ -113,36 +113,6 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 | `GET\|POST /clientconfig/{id}` · `POST /clientconfig/remove/{id}` | arbitrary server-side JSON blob storage |
 
 ## Shapes
-
-### `player`
-
-```jsonc
-{
-  "activeItem": {
-    "columns": ["Artist", "Title"],  // the requested columns, positionally
-    "duration": 225.61,              // seconds, float
-    "index": 73,                     // index within the playlist, -1 when stopped
-    "playlistId": "p2",
-    "playlistIndex": 1,
-    "position": 7.37                 // seconds, at the moment this message was produced
-  },
-  "info": { "name": "foobar2000", "title": "foobar2000", "version": "…", "pluginVersion": "0.10" },
-  "options": [
-    { "id": "playbackOrder", "name": "Playback order", "type": "enum", "value": 4, "enumNames": ["…"] },
-    { "id": "stopAfterCurrentTrack", "type": "bool", "value": false }
-  ],
-  "permissions": { "changePlaylists": true, "changeOutput": true, "changeClientConfig": true },
-  "playbackMode": 4,
-  "playbackModes": ["Default", "Repeat (playlist)", "Repeat (track)", "Random",
-                    "Shuffle (tracks)", "Shuffle (albums)", "Shuffle (folders)"],
-  "playbackState": "playing",        // "playing" | "paused" | "stopped"
-  "volume": { "type": "db", "min": -100.0, "max": 0.0, "value": -4.0, "isMuted": false }
-}
-```
-
-- **`info.name` identifies the player** and is the field to branch on. `info.title` is a display name.
-- **Volume is decibels, not a percentage,** and `volume.type` says so. The range is the player's, `-100..0` on foobar2000, so read `min` and `max`. A linear slider over that range feels wrong; map it.
-- **Nothing may address a playback mode by index.** The `playbackModes` list differs in wording and order by install.
 
 ### `playlists`
 

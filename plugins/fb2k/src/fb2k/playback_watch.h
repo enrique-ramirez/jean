@@ -7,6 +7,7 @@
 
 namespace jean {
 
+class MainThreadQueue;
 class OutputHold;
 
 // Registering a callback touches the player, so this is constructed and destroyed on the
@@ -17,7 +18,8 @@ class OutputHold;
 // guarded against one: see ARCHITECTURE.md, *Facts about the player*.
 class PlaybackWatch {
 public:
-    PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold, NowPlayingArtwork& artwork);
+    PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& store, OutputHold& outputHold,
+                  NowPlayingArtwork& artwork);
     ~PlaybackWatch();
 
     PlaybackWatch(const PlaybackWatch&) = delete;

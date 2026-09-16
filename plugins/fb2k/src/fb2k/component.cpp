@@ -114,7 +114,7 @@ public:
           outputHold_(audience_, playerMuteVia(mainThread_), holdsOutput_),
           volumeWatch_(holdsOutput_ ? std::make_unique<PlayerVolumeWatch>(outputHold_) : nullptr),
           libraryFeed_(mainThread_, library_),
-          playbackWatch_(playerState_, outputHold_, nowPlayingArtwork_),
+          playbackWatch_(mainThread_, playerState_, outputHold_, nowPlayingArtwork_),
           nowPlayingArtworkWatch_(nowPlayingArtwork_),
           server_(settings_, audience_,
                   playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_),

@@ -4,6 +4,7 @@
 
 #include "core/output_hold.h"
 #include "core/playback_modes.h"
+#include "fb2k/main_thread.h"
 #include "fb2k/playlists.h"
 #include "fb2k/strings.h"
 
@@ -121,20 +122,27 @@ PlayerState initialStateOf(const OutputHold& outputHold, std::chrono::steady_clo
 }  // namespace
 
 struct PlaybackWatch::Callback : public play_callback_impl_base {
-    Callback(PlayerStateStore& store, OutputHold& outputHold, NowPlayingArtwork& artwork,
-             titleformat_object::ptr titleScript, titleformat_object::ptr artistScript)
+    Callback(MainThreadQueue& mainThread, PlayerStateStore& store, OutputHold& outputHold,
+             NowPlayingArtwork& artwork, titleformat_object::ptr titleScript,
+             titleformat_object::ptr artistScript)
         : play_callback_impl_base(flag_on_playback_new_track | flag_on_playback_pause |
                                    flag_on_playback_stop | flag_on_playback_seek |
                                    flag_on_playback_dynamic_info |
                                    flag_on_playback_dynamic_info_track | flag_on_volume_change),
-          store_(store), outputHold_(outputHold), artwork_(artwork),
+          mainThread_(mainThread), store_(store), outputHold_(outputHold), artwork_(artwork),
           titleScript_(std::move(titleScript)), artistScript_(std::move(artistScript)) {}
 
+    // `get_playing_item_location` has not caught up with the new track yet: see
+    // ARCHITECTURE.md, *Facts about the player*. `started()` leaves `playingLocation` standing
+    // on purpose (see player_state.cpp), so the row from before the change is what a poll reads
+    // until `queueLocationRead` corrects it once the player has. Artwork has no such fallback,
+    // since nothing corrects a stale cover the way `queueLocationRead` corrects the row, so it
+    // clears rather than stand on the outgoing track's picture.
     void on_playback_new_track(metadb_handle_ptr track) override {
         artwork_.clear();
         store_.started(trackOf(track), std::chrono::steady_clock::now());
-        store_.playingLocationChanged(currentLocation());
         publishName(store_, titleScript_, artistScript_, track);
+        queueLocationRead();
     }
 
     // foobar2000 raises stop_reason_starting_another as the outgoing track of a change
@@ -181,6 +189,17 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
         store_.volumeChanged(value, userMuted(value, outputHold_));
     }
 
+    // The deferral is the fix for the race the comment on `on_playback_new_track` describes.
+    // `mainThread_` outliving this `Callback` is what makes it safe with no liveness guard of
+    // its own: component.cpp declares it before `playbackWatch_` and closes it first on the
+    // way down, so a read still pending at shutdown is abandoned rather than run against a
+    // `store_` that may already be gone.
+    void queueLocationRead() {
+        mainThread_.enqueue([&store = store_] { store.playingLocationChanged(currentLocation()); },
+                             [] {});
+    }
+
+    MainThreadQueue& mainThread_;
     PlayerStateStore& store_;
     OutputHold& outputHold_;
     NowPlayingArtwork& artwork_;
@@ -249,8 +268,8 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
     PlayerStateStore& store_;
 };
 
-PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold,
-                              NowPlayingArtwork& artwork) {
+PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& store,
+                              OutputHold& outputHold, NowPlayingArtwork& artwork) {
     // On the main thread, once: see the class comment and ARCHITECTURE.md, *Facts about the
     // player*, for why a shared titleformat_object still has to compile here rather than on
     // whichever thread first runs it.
@@ -262,7 +281,8 @@ PlaybackWatch::PlaybackWatch(PlayerStateStore& store, OutputHold& outputHold,
     titleformat_object::ptr artistScript;
     compiler->compile_safe_ex(artistScript, kArtistScript, "");
 
-    callback_ = std::make_unique<Callback>(store, outputHold, artwork, titleScript, artistScript);
+    callback_ = std::make_unique<Callback>(mainThread, store, outputHold, artwork, titleScript,
+                                            artistScript);
     orderCallback_ = std::make_unique<OrderCallback>(store);
     locationCallback_ = std::make_unique<LocationCallback>(store);
 

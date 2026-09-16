@@ -133,6 +133,14 @@ The routes model the declaration the contract describes rather than answering fr
 
 **`Access-Control-Expose-Headers` names `ETag` and `Retry-After` on every answer**, as the contract says the component does. Without it a browser hands script neither, and the conditional poll behind `GET /api/state` and the documented `429` backoff both fail silently against a cross-origin reader.
 
+### What is playing, and what moves it
+
+**The playing item is held by identity, not by row number**, so an edit to the playlist under it moves the row and the same track carries on. `removeItems`, `copyItems`, `sortItems` and a fill of the component's own scratch all go through that. An edit to a playlist that is not playing moves nothing at all, and one that leaves the playing row where it was moves no validator either, so the next poll is a `304`. Where the playing item is removed outright, `playingLocation` goes `null` and `GET /api/state` still names the track, which is what the component publishes once `get_playing_item_location` stops answering for it.
+
+**`player.announceSong({ title, artist })` is a radio station announcing its current song.** The name moves and the path does not. Without that, a status bar names a stream once and then lies for the rest of the hour. A field left out still reads off the playlist entry, an empty one crosses the wire as `null`, and the next track clears the announcement. One announcement replaces the last outright rather than merging onto it: the component holds no memory of a previous field, so a second announcement that leaves the artist unset does not keep the one named before.
+
+**`player.answersTrackColumns = false` takes the name away from beefweb** with the rest of the subscription live. `activeItem.columns` is the only place beefweb can name a track from, so a spec that empties it leaves the poll as the sole source.
+
 ### What the fake gets wrong on purpose
 
 A fake kinder than the player it stands in for makes the suite agree with itself and disagree with reality.
@@ -147,6 +155,8 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 - **`streamPrime` decides whether this fake has a lag at all**, and the default removes it. A spec about the lag asks for a smaller prime and waits while Chromium accumulates the rest at real time. **`12 - prime`** is the arithmetic; size a margin against a loaded machine, never against the nominal figure.
 
 **One place the fake is deliberately kinder.** The stream serves WAV rather than Ogg Opus, since there is no encoder in a Node fake, and in Chromium a non-seekable WAV does not fire `loadedmetadata` until a substantial amount of *content* has arrived. Not bytes: the same byte rate with a longer primed burst starts playing far sooner. That is a property of PCM in a container never meant to be streamed. So the healthy stream hands over a burst up front and then feeds at 1x, which starts sooner than a real one would; what that could hide, a long gap between asking and hearing, is covered by `quiet` instead.
+
+**Two places it is poorer than the component, and both are about the playing cover.** The fake resolves a sleeve by matching the playing path against the captured albums, so a track it has never seen answers `404`; the component reads the file through foobar2000's own now-playing loader, and an off-library track with embedded art does get a cover. And the fake has no loader, so it resolves a new cover in the same tick: the component clears the held picture on a track change and answers `404` until the core pushes the next one, which is a gap no spec here can see. Modelling that second one would put a timing race into the assertion that a track change within an album revalidates rather than downloads.
 
 **One place it is kinder by accident.** `POST /api/autoplaylists` answers with `beefwebId` already filled in, because the fake made the playlist itself a line earlier. Real beefweb assigns its playlist ids lazily and answers `null` there until its own playlists are next read; `contract/openapi.yaml` has the join and the fallback to `index`. A spec that takes the id straight off the create response passes here and fails against a real install.
 
@@ -237,7 +247,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |
 | `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
-| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failState: 503 }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
+| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failState: 503 }`, `{ knowsPlayingLocation: false }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
 | `fooJeanToken` | seeds the credential. `FOO_JEAN_TOKEN` by default; `null` is a device that has never paired |
 | `motion` | reduced by default, since Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work. It is accepted and silently ignored, so the fixture calls `page.emulateMedia()` |
 

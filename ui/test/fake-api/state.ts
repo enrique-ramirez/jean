@@ -378,13 +378,16 @@ export function createState({
 	const byId = (id: string) =>
 		state.playlists.find((entry) => entry.id === id) ?? null;
 
-	const coverOf = (playlistId: string, index: number) => {
-		const track = index < 0 ? null : byId(playlistId)?.items[index];
-		if (!track) return null;
+	const coverOfTrack = (track: Track) => {
 		const album = LIBRARY.albums.find((entry) =>
 			entry.tracks.some((candidate) => candidate["%path%"] === track["%path%"]),
 		);
 		return album?.artwork ?? artworkOf?.(track) ?? null;
+	};
+
+	const coverOf = (playlistId: string, index: number) => {
+		const track = index < 0 ? null : byId(playlistId)?.items[index];
+		return track ? coverOfTrack(track) : null;
 	};
 
 	const consume = (playlist: FakePlaylist, index: number) => {
@@ -410,9 +413,40 @@ export function createState({
 		];
 	};
 
+	let playingItem: Track | null = null;
+	let announced: Track | null = null;
+
 	const activeTrack = () => {
 		const item = state.player.activeItem;
-		return byId(item.playlistId)?.items[item.index] ?? null;
+		return playingItem ?? byId(item.playlistId)?.items[item.index] ?? null;
+	};
+
+	const playingTrack = () => {
+		const track = activeTrack();
+		if (!track) return null;
+		return announced ? { ...track, ...announced } : track;
+	};
+
+	// An edit to the playlist the player is playing from moves the playing row
+	// under it, and no playback callback fires:
+	// `plugins/fb2k/src/fb2k/playback_watch.cpp`'s LocationCallback republishes
+	// the row the item landed on, and an edit to any other playlist returns
+	// before it touches the store. Where the item is gone from the playlist
+	// altogether the row is `-1`, which is that callback's absent location, and
+	// the track carries on playing with nowhere to point at.
+	const editItems = (playlist: FakePlaylist, edit: () => void) => {
+		const item = state.player.activeItem;
+		const playing = item.playlistId === playlist.id ? activeTrack() : null;
+		edit();
+		if (!playing) return;
+		playingItem = playing;
+		const at = playlist.items.indexOf(playing);
+		// An unmoved row publishes nothing and the next poll is a 304, which is
+		// what `applyLocked` in `plugins/fb2k/src/core/player_state.cpp` gives the
+		// component by returning early on an unchanged value.
+		if (at === item.index) return;
+		item.index = at;
+		notify({ player: true });
 	};
 
 	// What `GET /api/state`'s `player.position` reports: the position as of the
@@ -443,6 +477,8 @@ export function createState({
 
 		mark(track, 0);
 		const dequeued = consume(playlist, index);
+		playingItem = track;
+		announced = null;
 		state.player.activeItem = {
 			columns: [],
 			duration: Number(evaluate(track, "%length_seconds%")) || 0,
@@ -461,6 +497,8 @@ export function createState({
 	// See GAP_ITEM.
 	const withSkipGap = (play: () => void) => {
 		if (state.skipGapMs <= 0) return play();
+		playingItem = null;
+		announced = null;
 		state.player.activeItem = { ...GAP_ITEM };
 		markPosition(0);
 		notify({ player: true });
@@ -698,6 +736,26 @@ export function createState({
 			notify({ player: true });
 		},
 
+		playingTrack,
+		editItems,
+
+		// An internet radio station announcing the song it is playing now: the
+		// name moves and the track does not, which is what
+		// `flag_on_playback_dynamic_info_track` in
+		// `plugins/fb2k/src/fb2k/playback_watch.cpp` follows. A field left out here
+		// still reads off the playlist entry, and an empty one crosses
+		// `GET /api/state` as `null`. One announcement settles both fields and
+		// nothing survives from the one before: that callback reads the handle back
+		// and runs both title-format scripts fresh, so the component holds no
+		// memory of a field at all.
+		announceSong({ title, artist }: { title?: string; artist?: string }) {
+			announced = {
+				...(title === undefined ? null : { "%title%": title }),
+				...(artist === undefined ? null : { "%artist%": artist }),
+			};
+			notify({ player: true });
+		},
+
 		subscribe(listener: (message: Changed) => void) {
 			listeners.add(listener);
 			return () => listeners.delete(listener);
@@ -731,8 +789,7 @@ export function createState({
 
 		playerPayload(trcolumns: string[] = []) {
 			const item = state.player.activeItem;
-			const playlist = item.index >= 0 ? byId(item.playlistId) : null;
-			const track = playlist?.items[item.index];
+			const track = playingTrack();
 			return {
 				...state.player,
 				volume: this.playerHeld
@@ -775,8 +832,8 @@ export function createState({
 		// library has never seen has a cover too. Two tracks of one album answer
 		// with one picture, which is what gives them one validator.
 		playingArtwork() {
-			const { playlistId, index } = state.player.activeItem;
-			return coverOf(playlistId, index);
+			const track = playingTrack();
+			return track ? coverOfTrack(track) : null;
 		},
 
 		playItem(playlistId: string, index: number) {
@@ -804,6 +861,8 @@ export function createState({
 
 		stop() {
 			state.player.playbackState = "stopped";
+			playingItem = null;
+			announced = null;
 			state.player.activeItem = { ...IDLE_ITEM };
 			markPosition(0);
 			notify({ player: true });
@@ -940,9 +999,11 @@ export function createState({
 			// caller's, because that is what the player does. `add-from-library` too, so it
 			// is a property of the player rather than of one endpoint.
 			const ordered = [...indices].sort((a, b) => a - b);
-			target.items.push(
-				...ordered.map((index) => source.items[index]).filter(Boolean),
-			);
+			editItems(target, () => {
+				target.items.push(
+					...ordered.map((index) => source.items[index]).filter(Boolean),
+				);
+			});
 			notify({ player: true });
 			return true;
 		},
@@ -951,7 +1012,9 @@ export function createState({
 			const playlist = byId(playlistId);
 			if (!playlist) return false;
 			const drop = new Set(indices);
-			playlist.items = playlist.items.filter((_, index) => !drop.has(index));
+			editItems(playlist, () => {
+				playlist.items = playlist.items.filter((_, index) => !drop.has(index));
+			});
 			notify({ player: true, playQueue: true });
 			return true;
 		},
@@ -1136,12 +1199,16 @@ export function createState({
 				.sort((a, b) => browseOrder(a.track, b.track))
 				.map((entry) => entry.track);
 
-			if (replace) playlist.items = [];
 			const at =
 				index !== undefined && Number.isInteger(index)
 					? index
-					: playlist.items.length;
-			playlist.items.splice(at, 0, ...chosen);
+					: replace
+						? 0
+						: playlist.items.length;
+			editItems(playlist, () => {
+				if (replace) playlist.items = [];
+				playlist.items.splice(at, 0, ...chosen);
+			});
 
 			notify({ playlists: true });
 			if (play && chosen.length > 0) setActive(playlist, at, "playing");
@@ -1155,14 +1222,16 @@ export function createState({
 			const playlist = byId(playlistId);
 			if (!playlist) return false;
 
-			if (random) {
-				playlist.items = [...playlist.items].sort(() => 0);
-			} else {
+			editItems(playlist, () => {
+				if (random) {
+					playlist.items = [...playlist.items].sort(() => 0);
+					return;
+				}
 				playlist.items = [...playlist.items].sort((a, b) =>
 					compareText(pathKey(evaluate(a, by)), pathKey(evaluate(b, by))),
 				);
 				if (desc) playlist.items.reverse();
-			}
+			});
 
 			notify({ playlists: true });
 			return true;

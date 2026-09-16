@@ -197,8 +197,23 @@ const RADIO_STATION = {
 	"%bitrate%": "128",
 };
 
+// The song that station moves to a few minutes later, with the same address
+// still playing. Neither field matches the playlist entry, so a status bar
+// naming the entry's own tags names neither of them.
+const ANNOUNCED = { title: "Ocean Floor", artist: "Gravity Wave" };
+
+// The song after that one, announced as a bare title. Nothing was said about an
+// artist, so the artist is the station's own tag again rather than either of the
+// two above.
+const ANNOUNCED_ALONE = { title: "Low Tide" };
+
 // Short enough that the dropped file's row needs no scrolling to reach.
 const DROPPED_INTO = "p1";
+
+// A playing row with a different track directly above and below it, so an
+// equaliser that lands one row out reads as a different title rather than as
+// the same one again.
+const PLAYING_ROW = { row: 3, title: "Soy Rock" };
 
 const UNRESOLVED = "?";
 
@@ -216,7 +231,7 @@ const anyRating = (page: Page) =>
 const tagWrites = (player: FakePlayer) =>
 	requestsTo(player, "/api/tags").filter((one) => one.method === "POST");
 
-const playingTrack = (player: FakePlayer) => {
+const rawPlayingTrack = (player: FakePlayer) => {
 	const { playlistId, index } = player.player.activeItem;
 	const track = player.playlistById(playlistId)?.items[index];
 	if (!track) throw new Error("nothing is playing to read a tag off");
@@ -233,7 +248,6 @@ const addAndPlay = async (page: Page, player: FakePlayer, track: Track) => {
 	await page.goto(`/#/${DROPPED_INTO}`);
 	await rowByTitle(page, track["%title%"]).dblclick();
 	await expect(statusBar(page)).toContainText(track["%title%"]);
-	await openNowPlaying(page);
 };
 
 const playTheDroppedFile = async (page: Page, player: FakePlayer) => {
@@ -243,6 +257,7 @@ const playTheDroppedFile = async (page: Page, player: FakePlayer) => {
 	).not.toContain(DRAGGED_IN["%path%"]);
 
 	await addAndPlay(page, player, DRAGGED_IN);
+	await openNowPlaying(page);
 };
 
 // The gesture itself, driven through CDP the way the wheel's own spec drives it:
@@ -343,6 +358,97 @@ test("the status bar names the track with no columns from beefweb to name it fro
 
 	await expect(statusBar(page)).toContainText("Fizz");
 	await expect(statusBar(page)).toContainText("Babasónicos");
+});
+
+test("the status bar follows a song a station announces, with the track never changing", async ({
+	page,
+	player,
+}) => {
+	// Emptied for the reason the case above gives, and for a second one: beefweb
+	// evaluates its columns against whatever is playing, announcement included, so
+	// a subscription left carrying them names the new song whether or not the poll
+	// ever learns of it.
+	player.answersTrackColumns = false;
+
+	await addAndPlay(page, player, RADIO_STATION);
+
+	player.announceSong(ANNOUNCED);
+
+	await expect(statusBar(page)).toContainText(ANNOUNCED.title);
+	await expect(statusBar(page)).toContainText(ANNOUNCED.artist);
+
+	// The station is still the thing playing, at the row it was playing from. A
+	// fake that swapped the track under the announcement would move the status
+	// bar as well, and the assertions above would pass against the one thing this
+	// case exists to rule out.
+	expect(evaluate(rawPlayingTrack(player), "%path%")).toBe(
+		RADIO_STATION["%path%"],
+	);
+	await expect(rowByTitle(page, RADIO_STATION["%title%"])).toHaveAttribute(
+		"data-active",
+		"true",
+	);
+});
+
+test("a station announcing a title alone drops the artist it announced before", async ({
+	page,
+	player,
+}) => {
+	player.answersTrackColumns = false;
+
+	await addAndPlay(page, player, RADIO_STATION);
+	player.announceSong(ANNOUNCED);
+	await expect(statusBar(page)).toContainText(ANNOUNCED.artist);
+
+	// `publishName` in `plugins/fb2k/src/fb2k/playback_watch.cpp` runs both
+	// title-format scripts on every announcement, so the second one settles the
+	// artist as much as the title. There is no per-field memory to carry
+	// "Gravity Wave" across, at the player or here.
+	player.announceSong(ANNOUNCED_ALONE);
+
+	await expect(statusBar(page)).toContainText(ANNOUNCED_ALONE.title);
+	await expect(statusBar(page)).toContainText(RADIO_STATION["%artist%"]);
+});
+
+test("the equaliser follows the playing row through an edit above it, and ignores an edit elsewhere", async ({
+	page,
+	player,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, PLAYING_ROW.row).dblclick();
+	await expect(
+		trackRow(page, PLAYING_ROW.row).getByLabel("Now playing"),
+	).toBeVisible();
+
+	// Removed at the desktop, above the playing row, so the row moves under
+	// playback with no playback callback to report it. Item changes are not
+	// pushed by a real player, so the shorter playlist has to be announced the
+	// way a landing chunk announces itself. See state.ts.
+	expect(player.removeItems("p7", [0])).toBe(true);
+	player.notifyPlaylists();
+
+	const moved = trackRow(page, PLAYING_ROW.row - 1);
+	await expect(moved).toContainText(PLAYING_ROW.title);
+	await expect(moved.getByLabel("Now playing")).toBeVisible();
+
+	// And not on whatever slid up into the row it left, which is what a position
+	// that stopped following looks like to somebody reading the list.
+	await expect(
+		trackRow(page, PLAYING_ROW.row).getByLabel("Now playing"),
+	).toHaveCount(0);
+
+	// An edit to a playlist that is not playing reaches nothing. The narrowing is
+	// done by hand, and p2 holds neither the playing track nor the playing row, so
+	// a callback that ran everywhere would look the item up in here, fail to find
+	// it, and leave the equaliser no row to sit on.
+	expect(player.removeItems("p2", [0])).toBe(true);
+	player.notifyPlaylists();
+
+	await expectSettlesAt(
+		player,
+		() => moved.getByLabel("Now playing").count(),
+		1,
+	);
 });
 
 test("the sidebar follows a playlist renamed at the player", async ({
@@ -699,6 +805,7 @@ test("a track with no local file draws no rating control at all", async ({
 	player,
 }) => {
 	await addAndPlay(page, player, RADIO_STATION);
+	await openNowPlaying(page);
 
 	// The screen drew the track, so an absence below is an absence rather than a
 	// screen that never arrived.
@@ -714,6 +821,7 @@ test("the track actions offer no rating for a track with no local file", async (
 	player,
 }) => {
 	await addAndPlay(page, player, RADIO_STATION);
+	await openNowPlaying(page);
 	await page.getByRole("button", { name: "Track actions" }).click();
 
 	// The menu is the second way to reach the same write, and it asks the screen's
@@ -735,7 +843,7 @@ test("a local file with no rating tag keeps its interactive stars", async ({
 	await openNowPlaying(page);
 
 	expect(
-		evaluate(playingTrack(player), "%rating%"),
+		evaluate(rawPlayingTrack(player), "%rating%"),
 		"this file now carries a rating, so the case no longer covers an unrated one",
 	).toBe(UNRESOLVED);
 

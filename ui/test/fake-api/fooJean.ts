@@ -636,13 +636,16 @@ function resolveOwnPlaylist(
 }
 
 function insertTracks(
+	state: FakeState,
 	playlist: FakePlaylist,
 	tracks: Track[],
 	{ replace }: { replace: boolean },
 ): number[] {
-	if (replace) playlist.items = [];
-	const start = playlist.items.length;
-	playlist.items.push(...tracks);
+	const start = replace ? 0 : playlist.items.length;
+	state.editItems(playlist, () => {
+		if (replace) playlist.items = [];
+		playlist.items.push(...tracks);
+	});
 	return tracks.map((_, at) => start + at);
 }
 
@@ -705,7 +708,7 @@ const nameOf = (track: Track) => ({
 const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 	const item = state.player.activeItem;
 	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
-	const track = playlist?.items[item.index];
+	const track = state.playingTrack();
 	const { seconds, takenAtMs } = state.positionMark;
 	const playlistIndex = playlist ? state.playlists.indexOf(playlist) : -1;
 	return {
@@ -1149,6 +1152,7 @@ export async function handleAgent({
 
 		const tracks = state.ordinalOrder();
 		const positions = insertTracks(
+			state,
 			playlist,
 			parsed.ordinals.map((ordinal) => tracks[ordinal].track),
 			{ replace: role === "scratch" },
@@ -1225,6 +1229,7 @@ export async function handleAgent({
 
 		const tracks = state.ordinalOrder();
 		const positions = insertTracks(
+			state,
 			playlist,
 			parsed.ordinals.map((ordinal) => tracks[ordinal].track),
 			{ replace: false },

@@ -1,3 +1,4 @@
+import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	dropTheStream,
@@ -11,6 +12,7 @@ import {
 	openNowPlaying,
 	openSidebar,
 	requestsTo,
+	rowByTitle,
 	scratchOf,
 	sidebar,
 	statusBar,
@@ -18,6 +20,7 @@ import {
 	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
+import { openPanels, panelTab } from "./nowPlaying.ts";
 
 const playToggle = (page: Page, name: "Play" | "Pause") =>
 	statusBar(page).getByRole("button", { name, exact: true });
@@ -161,6 +164,53 @@ const sleeveDrawn = (sleeve: Locator) =>
 			fold = (fold * 31 + level) % 2_147_483_647;
 		return fold;
 	});
+
+// A file dragged into foobar2000 from a folder the media library does not scan,
+// which is how a track outside the library comes to be playing at all. Every tag
+// is its own, so a panel that filled from the library rather than from whatever
+// is playing would have nothing to fill with.
+const DRAGGED_IN = {
+	"%path%": "D:\\Incoming\\Night Sessions\\01 Fourth Wall.flac",
+	"%title%": "Fourth Wall",
+	"%artist%": "The Dry Season",
+	"%album%": "Night Sessions",
+	"%album artist%": "The Dry Season",
+	"%tracknumber%": "01",
+	"%genre%": "Slowcore",
+	"%year%": "2019",
+	"%codec%": "FLAC",
+	"%bitrate%": "918",
+	"%samplerate%": "44100",
+	"%channels%": "stereo",
+	"%length%": "3:32",
+	"%length_seconds%": "212",
+};
+
+// Short enough that the dropped file's row needs no scrolling to reach.
+const DROPPED_INTO = "p1";
+
+const ratingStars = (page: Page) =>
+	nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ });
+
+const tagWrites = (player: FakePlayer) =>
+	requestsTo(player, "/api/tags").filter((one) => one.method === "POST");
+
+const playTheDroppedFile = async (page: Page, player: FakePlayer) => {
+	const playlist = player.playlistById(DROPPED_INTO);
+	if (!playlist)
+		throw new Error(`no playlist ${DROPPED_INTO} to drop a file in`);
+	playlist.items.push(DRAGGED_IN);
+
+	expect(
+		player.libraryTracks.map((track) => track["%path%"]),
+		"the media library holds the track these cases are about",
+	).not.toContain(DRAGGED_IN["%path%"]);
+
+	await page.goto(`/#/${DROPPED_INTO}`);
+	await rowByTitle(page, DRAGGED_IN["%title%"]).dblclick();
+	await expect(statusBar(page)).toContainText(DRAGGED_IN["%title%"]);
+	await openNowPlaying(page);
+};
 
 // The gesture itself, driven through CDP the way the wheel's own spec drives it:
 // a finger dragged left to right across the sleeve is Previous, and what the
@@ -551,4 +601,57 @@ test("the sleeve swaps with the track, at an address that never moves", async ({
 			message: "the sleeve on screen is still the album that stopped playing",
 		})
 		.not.toBe(wasShowing);
+});
+
+// The two below are one promise in two halves: a track the media library does
+// not hold is read and written exactly as one it does. Neither half is addressed
+// by the library, so both are owed nothing beyond what already works, and a
+// panel that started branching on membership is what they are written against.
+test("a track outside the media library fills the same panel, down to the lyrics empty state", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	await playTheDroppedFile(page, player);
+
+	const panel = await openPanels(page, isMobile);
+	await panelTab(panel, "Details").click();
+
+	await expect(panel).toContainText("Genre");
+	await expect(panel).toContainText("Slowcore");
+	await expect(panel).toContainText("Format");
+	await expect(panel).toContainText("FLAC");
+	await expect(panel).toContainText("918 kbps");
+
+	await panelTab(panel, "Lyrics").click();
+
+	// The catalogue's own phrase rather than a copy of it, so a copy edit to the
+	// string does not also have to land here. The five assertions above it stay
+	// hardcoded; this is the one that would drift from them.
+	await expect(panel).toContainText(en["lyrics.none"]);
+});
+
+test("a track outside the media library can be rated, and the rating lands on the player", async ({
+	page,
+	player,
+}) => {
+	await playTheDroppedFile(page, player);
+
+	// The interactive control, not the inert one beside it: `Stars` is an `img`
+	// and `StarsInput` is a `group`, so the role is the whole assertion.
+	await expect(ratingStars(page)).toHaveAccessibleName("Unrated");
+	await ratingStars(page).getByRole("button", { name: "Rate 4 of 5" }).click();
+
+	await expectSettlesAt(player, () => tagWrites(player).length, 1);
+	expect(tagWrites(player)[0].body).toMatchObject({
+		path: DRAGGED_IN["%path%"],
+		fields: { rating: "4" },
+	});
+
+	// Read back off the player rather than out of Jean's own optimism. A refused
+	// write rolls itself back already; what only a reload catches is a write
+	// that answers `ok: true` without landing on the player's copy of the file.
+	await page.reload();
+	await expect(nowPlayingScreen(page)).toBeVisible();
+	await expect(ratingStars(page)).toHaveAccessibleName("4 of 5 stars");
 });

@@ -424,8 +424,8 @@ TEST_CASE("a queued position is answered as the playlist's GUID and the row") {
     CHECK(askedFor == std::vector<size_t>{2});
 }
 
-// foobar2000 keeps a queued entry whose row or whole playlist has gone and marks the lost index
-// infinite. Looking that index up is how beefweb's queue reader took the player down.
+// The infinite sentinel is a real value foobar2000 produces, not a hypothetical one: see
+// ARCHITECTURE.md, *Facts about the player*.
 TEST_CASE("a stale queued position is answered as no position, and no playlist is looked up") {
     const std::vector<std::pair<size_t, size_t>> stale{
         {kInfinite, 17}, {2, kInfinite}, {kInfinite, kInfinite}};

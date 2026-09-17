@@ -1,3 +1,4 @@
+import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -9,7 +10,6 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
-import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { coverKey } from "@/domain/track/fields";
 import { readTrack } from "@/shared/api/beefweb";
 import { isFooJeanReady, playingArtworkUrl } from "@/shared/api/fooJean";

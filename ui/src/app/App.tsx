@@ -15,6 +15,7 @@ import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { usePlaySet } from "@/domain/library/usePlaySet";
 import { usePlayerPoll } from "@/domain/player/playerPoll";
+import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -27,7 +28,6 @@ import {
 	usePrevious,
 	useSeekBy,
 } from "@/domain/player/usePlayer";
-import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
 import { type ArtistTab, artistRoute } from "@/domain/track/artistRoute";

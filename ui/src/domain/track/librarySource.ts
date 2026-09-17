@@ -1,3 +1,4 @@
+import { guidOf } from "@/domain/player/playlistJoin";
 import type { QueueTarget } from "@/domain/player/queue";
 import {
 	artworkUrl,
@@ -109,9 +110,6 @@ const fillScratch =
 		return result.beefwebId;
 	};
 
-// A user's playlist is addressed by foobar2000's own GUID, from `PlaylistAnnotation.id`, which is
-// not the beefweb id this seam is handed. The target already exists and beefweb already knows it, so
-// the join is a plain lookup rather than the lazy-id wait `fetchPlaylistAnnotations` warns about.
 const addToPlaylist =
 	(
 		paths: PathTable,
@@ -123,9 +121,7 @@ const addToPlaylist =
 		if (!origin || !token) throw new Error("foo_jean is not reachable");
 
 		const annotations = await fetchPlaylistAnnotations(origin, token);
-		const guid = annotations?.find((entry) => entry.beefwebId === targetId)?.id;
-		if (!guid)
-			throw new Error(`no foo_jean playlist for beefweb id ${targetId}`);
+		const guid = guidOf(targetId, annotations);
 
 		const request: FillPlaylistRequest = encodeFill(refs, {
 			structure,

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
+import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
-import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import { readTrack } from "@/shared/api/beefweb";

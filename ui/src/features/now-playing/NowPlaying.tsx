@@ -2,6 +2,7 @@ import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
+import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -13,7 +14,6 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
-import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { albumHref } from "@/domain/track/albumRoute";
 import { coverKey, readValue } from "@/domain/track/fields";

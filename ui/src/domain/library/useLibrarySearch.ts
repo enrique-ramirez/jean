@@ -5,12 +5,12 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import {
 	canChangePlaylists,
 	usePermissions,
 	usePlayer,
 } from "@/domain/player/usePlayer";
-import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { type Album, albumIndex } from "@/domain/track/albums";
 import { type Artist, artistIndex } from "@/domain/track/artists";
 import { type Genre, genreIndex } from "@/domain/track/genres";

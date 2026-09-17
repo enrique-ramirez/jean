@@ -45,6 +45,7 @@ import { refusal } from "@/shared/lib/refusal";
 import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
+import { usePlayingPlaylist } from "./playlistJoin";
 import { audibleAt, positionAt } from "./position";
 import {
 	dequeuePlaylist,
@@ -52,7 +53,6 @@ import {
 	isQueueStreamHeld,
 	QUEUE_KEY,
 } from "./queue";
-import { usePlayingPlaylist } from "./usePlayingPlaylist";
 
 export const PLAYLISTS_KEY = ["playlists"];
 

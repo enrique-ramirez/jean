@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { audibleAt } from "@/domain/player/position";
 import { useListener } from "@/domain/player/useListener";
 import {
@@ -8,7 +9,6 @@ import {
 	useSeekBy,
 	useTransport,
 } from "@/domain/player/usePlayer";
-import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import { value } from "@/domain/track/fields";
 import { NOW_PLAYING_FIELD } from "@/features/now-playing/nowPlayingFields";
 import { useNowPlayingTrack } from "@/features/now-playing/useNowPlayingTrack";

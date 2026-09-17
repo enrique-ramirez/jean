@@ -1,6 +1,6 @@
 import { useMemo } from "react";
+import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
-import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
 import {
 	isScratchPlaylist,
 	scratchContentsOf,

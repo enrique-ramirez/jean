@@ -23,6 +23,11 @@ export interface Drive {
 	learns?: (body: unknown, context: Context) => void;
 }
 
+// Comfortably past anything a freshly started component or a long-running one will have
+// reached, so a move or a remove naming it is refused for a stale revision without knowing
+// what the real one is.
+const kUnreachableRevision = 4_294_967_295;
+
 const example = (operation: Operation, name: string): unknown => {
 	const offered = operation.examples[name];
 	if (offered === undefined)
@@ -44,6 +49,27 @@ export const drives: Drive[] = [
 		// names a structure no real library will be sitting on, so this queues nothing.
 		id: "queueTracks",
 		probe: (operation) => ({ body: example(operation, "libraryTracks") }),
+	},
+	{
+		// A revision no real queue holds -- an implementation starts counting from a low
+		// one -- so this is refused before the player is ever asked to move anything.
+		id: "moveQueueEntry",
+		probe: () => ({ body: { from: 0, to: 0, revision: kUnreachableRevision } }),
+	},
+	{
+		// Same refusal, and for the same reason: nothing is removed.
+		id: "removeQueueEntry",
+		probe: () => ({
+			pathParams: { index: "0" },
+			query: { revision: String(kUnreachableRevision) },
+		}),
+	},
+	{
+		// Unlike every other probe here, this empties whatever the queue actually holds:
+		// clearing carries no revision to refuse it against, so there is no shape of this
+		// request that both reaches the player and mutates nothing.
+		id: "clearQueue",
+		probe: () => ({}),
 	},
 	{
 		id: "getState",

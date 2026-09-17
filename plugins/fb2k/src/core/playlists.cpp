@@ -236,6 +236,8 @@ std::string describe(PlaylistOutcome outcome) {
             return "this install's autoplaylist limit is reached";
         case PlaylistOutcome::structureMoved:
             return describe(DeltaOutcome::structureChanged);
+        case PlaylistOutcome::queueMoved:
+            return "the queue changed since that revision; read it again";
         case PlaylistOutcome::playerRefused:
             return "the player could not do that";
         case PlaylistOutcome::timedOut:

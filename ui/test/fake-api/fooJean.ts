@@ -786,6 +786,85 @@ function parseQueueTracks(
 	};
 }
 
+const QUEUE_MOVED = {
+	error: "the queue changed since that revision; read it again",
+	detail: "",
+};
+
+// A query parameter and a URL segment both arrive as untyped text rather than a JSON number.
+const isDecimal = (text: string): boolean => /^\d+$/.test(text);
+
+type ParsedMoveQueue =
+	| { ok: true; from: number; to: number; revision: number }
+	| ({ ok: false } & FillFailure);
+
+// Mirrors core/api.cpp's parseMoveQueue.
+function parseMoveQueue(body: unknown): ParsedMoveQueue {
+	if (typeof body !== "object" || body === null)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"malformed request",
+				"the body did not parse as JSON",
+			),
+		};
+
+	const record = body as Record<string, unknown>;
+
+	if (!isNonNegInt(record.from))
+		return {
+			ok: false,
+			...fillFailure(400, "unacceptable ordinal set", "'from' is required"),
+		};
+	if (!isNonNegInt(record.to))
+		return {
+			ok: false,
+			...fillFailure(400, "unacceptable ordinal set", "'to' is required"),
+		};
+	if (!isNonNegInt(record.revision))
+		return {
+			ok: false,
+			...fillFailure(400, "unacceptable ordinal set", "'revision' is required"),
+		};
+
+	return {
+		ok: true,
+		from: record.from,
+		to: record.to,
+		revision: record.revision,
+	};
+}
+
+type ParsedRemoveQueue =
+	| { ok: true; index: number; revision: number }
+	| ({ ok: false } & FillFailure);
+
+// Mirrors core/api.cpp's parseRemoveQueue: the index arrives as a URL segment and the
+// revision as a query parameter, so neither ever throws on a client's typo.
+function parseRemoveQueue(
+	indexText: string,
+	revisionText: string | null,
+): ParsedRemoveQueue {
+	if (!isDecimal(indexText))
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"unacceptable ordinal set",
+				"the queue index must be a whole number",
+			),
+		};
+
+	if (revisionText === null || !isDecimal(revisionText))
+		return {
+			ok: false,
+			...fillFailure(400, "unacceptable ordinal set", "'revision' is required"),
+		};
+
+	return { ok: true, index: Number(indexText), revision: Number(revisionText) };
+}
+
 type QueueSource = "rows" | "tracks" | "invalid";
 
 // Mirrors core/api.cpp's queueSourceOf.
@@ -1348,7 +1427,42 @@ export async function handleAgent({
 			return empty(response);
 		}
 
+		if (method === "DELETE") {
+			if (state.latency > 0) await delay(state.latency);
+			return empty(response);
+		}
+
 		return json(response, { error: "not found" }, 404);
+	}
+
+	if (path === "/api/queue/move" && method === "POST") {
+		const parsed = parseMoveQueue(body);
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
+
+		if (parsed.revision !== 0) return json(response, QUEUE_MOVED, 409);
+
+		return json(
+			response,
+			{ error: "that position is past the end", detail: "" },
+			400,
+		);
+	}
+
+	const queueEntryMatch = /^\/api\/queue\/([^/]+)$/.exec(path);
+	if (method === "DELETE" && queueEntryMatch) {
+		const parsed = parseRemoveQueue(
+			queueEntryMatch[1],
+			url.searchParams.get("revision"),
+		);
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
+
+		if (parsed.revision !== 0) return json(response, QUEUE_MOVED, 409);
+
+		return json(
+			response,
+			{ error: "that position is past the end", detail: "" },
+			400,
+		);
 	}
 
 	if (path.startsWith("/api/library/"))

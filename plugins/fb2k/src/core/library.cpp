@@ -115,28 +115,6 @@ LibraryRequest refuse(LibraryRefusal refusal, std::string detail) {
     return request;
 }
 
-bool readRevision(const std::string& text, uint64_t& revision) {
-    constexpr size_t kMaxDigits = 20;
-
-    if (text.empty() || text.size() > kMaxDigits)
-        return false;
-
-    uint64_t value = 0;
-    for (const char digit : text) {
-        if (digit < '0' || digit > '9')
-            return false;
-
-        const auto step = static_cast<uint64_t>(digit - '0');
-        if (value > (UINT64_MAX - step) / 10)
-            return false;
-
-        value = (value * 10) + step;
-    }
-
-    revision = value;
-    return true;
-}
-
 }  // namespace
 
 IdWidth widthFor(size_t distinctValues) {
@@ -487,7 +465,7 @@ LibraryRequest parseLibraryRequest(const std::vector<std::string>& columns,
     LibraryRequest request;
     request.columns = columns;
 
-    if (!since.empty() && !readRevision(since, request.since))
+    if (!since.empty() && !readDecimal(since, request.since))
         return refuse(LibraryRefusal::badSince, "'since' must be a whole number");
 
     return request;

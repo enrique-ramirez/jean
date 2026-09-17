@@ -2,6 +2,7 @@
 
 #include "core/json.h"
 #include "core/playback_modes.h"
+#include "core/text.h"
 #include "core/version.h"
 #include "third_party/json.hpp"
 
@@ -135,6 +136,18 @@ QueueRowsRequest refuseQueueRows(PlaylistRefusal refusal) {
 
 QueueTracksRequest refuseQueueTracks(PlaylistRefusal refusal) {
     QueueTracksRequest request;
+    request.refusal = refusal;
+    return request;
+}
+
+MoveQueueRequest refuseMoveQueue(PlaylistRefusal refusal) {
+    MoveQueueRequest request;
+    request.refusal = refusal;
+    return request;
+}
+
+RemoveQueueRequest refuseRemoveQueue(PlaylistRefusal refusal) {
+    RemoveQueueRequest request;
     request.refusal = refusal;
     return request;
 }
@@ -584,6 +597,47 @@ QueueTracksRequest parseQueueTracks(const std::string& body, size_t trackCount,
     return request;
 }
 
+MoveQueueRequest parseMoveQueue(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseMoveQueue(PlaylistRefusal::malformedBody);
+
+    const auto& root = document.value;
+
+    const auto from = root.find("from");
+    if (from == root.end() || !from->is_number_unsigned() || !fitsUint32(from->get<uint64_t>()))
+        return refuseMoveQueue(PlaylistRefusal::badOrdinals);
+
+    const auto to = root.find("to");
+    if (to == root.end() || !to->is_number_unsigned() || !fitsUint32(to->get<uint64_t>()))
+        return refuseMoveQueue(PlaylistRefusal::badOrdinals);
+
+    const auto revision = root.find("revision");
+    if (revision == root.end() || !revision->is_number_unsigned())
+        return refuseMoveQueue(PlaylistRefusal::badOrdinals);
+
+    MoveQueueRequest request;
+    request.from = static_cast<uint32_t>(from->get<uint64_t>());
+    request.to = static_cast<uint32_t>(to->get<uint64_t>());
+    request.revision = revision->get<uint64_t>();
+    return request;
+}
+
+RemoveQueueRequest parseRemoveQueue(const std::string& indexText, const std::string& revisionText) {
+    uint64_t index = 0;
+    if (!readDecimal(indexText, index) || !fitsUint32(index))
+        return refuseRemoveQueue(PlaylistRefusal::badOrdinals);
+
+    uint64_t revision = 0;
+    if (!readDecimal(revisionText, revision))
+        return refuseRemoveQueue(PlaylistRefusal::badOrdinals);
+
+    RemoveQueueRequest request;
+    request.index = static_cast<uint32_t>(index);
+    request.revision = revision;
+    return request;
+}
+
 QueueSource queueSourceOf(const std::string& body) {
     const auto document = parseJsonObject(body);
     const auto& root = document.value;
@@ -639,6 +693,7 @@ int httpStatusFor(PlaylistOutcome outcome) {
         case PlaylistOutcome::keyInUse:
         case PlaylistOutcome::tooMany:
         case PlaylistOutcome::structureMoved:
+        case PlaylistOutcome::queueMoved:
             return 409;
         case PlaylistOutcome::playerRefused:
             return 500;

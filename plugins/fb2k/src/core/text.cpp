@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <limits>
 #include <numeric>
 
 namespace jean {
@@ -65,6 +66,28 @@ bool secureEquals(const std::string& a, const std::string& b) {
                            });
 
     return differences == 0;
+}
+
+bool readDecimal(const std::string& text, uint64_t& value) {
+    constexpr size_t kMaxDigits = 20;
+
+    if (text.empty() || text.size() > kMaxDigits)
+        return false;
+
+    uint64_t result = 0;
+    for (const char digit : text) {
+        if (digit < '0' || digit > '9')
+            return false;
+
+        const auto step = static_cast<uint64_t>(digit - '0');
+        if (result > (std::numeric_limits<uint64_t>::max() - step) / 10)
+            return false;
+
+        result = (result * 10) + step;
+    }
+
+    value = result;
+    return true;
 }
 
 }  // namespace jean

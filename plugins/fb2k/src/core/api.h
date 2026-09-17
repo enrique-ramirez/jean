@@ -144,6 +144,30 @@ enum class QueueSource { invalid, playlistRows, libraryTracks };
 
 QueueSource queueSourceOf(const std::string& body);
 
+struct MoveQueueRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    uint32_t from = 0;
+    uint32_t to = 0;
+    uint64_t revision = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// Never throws: a malformed body is routine for the HTTP handler that calls this.
+MoveQueueRequest parseMoveQueue(const std::string& body);
+
+struct RemoveQueueRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    uint32_t index = 0;
+    uint64_t revision = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// Never throws: the index arrives as a URL segment and the revision as a query parameter, so
+// a client's typo is routine here rather than a 404 or an unhandled exception.
+RemoveQueueRequest parseRemoveQueue(const std::string& indexText, const std::string& revisionText);
+
 // The library ordinals a fill inserts, decoded from whichever one of the three wire forms
 // the request body carried; see contract/openapi.yaml, `FillPlaylistRequest`. `ordinals`
 // is already in the order the fill must insert at: as given for the `ordinals` form,

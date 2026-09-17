@@ -101,6 +101,23 @@ QueuedTrack formatted(const CopiedQueueItem& item, const Scripts& scripts,
     return track;
 }
 
+// See ARCHITECTURE.md, *Threads, and what may block*, for the race this closes only half of.
+bool queueHasMoved(PlayerStateStore& store, uint64_t revision) {
+    return store.read().queueRevision != revision;
+}
+
+// See ARCHITECTURE.md, *Facts about the player*, for why a dead entry is re-added by handle
+// rather than by position.
+void readdEntries(playlist_manager_v5::ptr manager, const pfc::list_t<t_playback_queue_item>& entries) {
+    for (t_size item = 0; item < entries.get_count(); ++item) {
+        const auto& entry = entries[item];
+        if (queuedLocationOf(entry))
+            manager->queue_add_item_playlist(entry.m_playlist, entry.m_item);
+        else
+            manager->queue_add_item(entry.m_handle);
+    }
+}
+
 // See ARCHITECTURE.md, *Facts about the player*, for why an `at` drains the queue and
 // replays the tail.
 void queueAt(playlist_manager_v5::ptr manager, std::optional<QueuePosition> at,
@@ -121,18 +138,15 @@ void queueAt(playlist_manager_v5::ptr manager, std::optional<QueuePosition> at,
 
     addNewEntries(manager);
 
-    for (t_size item = 0; item < tail.get_count(); ++item) {
-        const auto& entry = tail[item];
-        if (queuedLocationOf(entry))
-            manager->queue_add_item_playlist(entry.m_playlist, entry.m_item);
-        else
-            manager->queue_add_item(entry.m_handle);
-    }
+    readdEntries(manager, tail);
 }
 
 PlaylistOutcome beginQueueRows(const std::string& playlistId,
                                const std::vector<uint32_t>& positions,
-                               std::optional<QueuePosition> at) {
+                               std::optional<QueuePosition> at, PlayerStateStore& store) {
+    if (at && queueHasMoved(store, at->revision))
+        return PlaylistOutcome::queueMoved;
+
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size)
         return PlaylistOutcome::noSuchPlaylist;
@@ -162,7 +176,10 @@ PlaylistOutcome beginQueueRows(const std::string& playlistId,
 // rebuild landing between the route's own check and this job cannot be read as a match.
 PlaylistOutcome beginQueueTracks(uint64_t structure, const std::vector<uint32_t>& ordinals,
                                  std::optional<QueuePosition> at,
-                                 const OrdinalResolver& resolveOrdinals) {
+                                 const OrdinalResolver& resolveOrdinals, PlayerStateStore& store) {
+    if (at && queueHasMoved(store, at->revision))
+        return PlaylistOutcome::queueMoved;
+
     const auto resolved = resolveOrdinals(structure, ordinals);
     if (!resolved.structureMatched)
         return PlaylistOutcome::structureMoved;
@@ -178,6 +195,54 @@ PlaylistOutcome beginQueueTracks(uint64_t structure, const std::vector<uint32_t>
             manager->queue_add_item(resolved.items[item]);
     });
 
+    return PlaylistOutcome::done;
+}
+
+// `to` is the entry's index once `from` has been taken out, so both name a position in the
+// same, unchanged-length queue. Rebuilding from `min(from, to)` rather than just the affected
+// span reuses queueAt's own re-add loop instead of a second one for the shorter range.
+PlaylistOutcome beginMoveQueueEntry(uint32_t from, uint32_t to, uint64_t revision,
+                                    PlayerStateStore& store) {
+    if (queueHasMoved(store, revision))
+        return PlaylistOutcome::queueMoved;
+
+    auto manager = playlist_manager_v5::get();
+
+    pfc::list_t<t_playback_queue_item> contents;
+    manager->queue_get_contents(contents);
+
+    const auto count = contents.get_count();
+    if (from >= count || to >= count)
+        return PlaylistOutcome::positionPastEnd;
+
+    const auto entry = contents.remove_by_idx(from);
+    contents.insert_item(entry, to);
+
+    const t_size start = std::min<t_size>(from, to);
+    pfc::list_t<t_playback_queue_item> tail;
+    for (t_size item = start; item < contents.get_count(); ++item)
+        tail.add_item(contents[item]);
+
+    manager->queue_remove_mask(bit_array_range(start, tail.get_count(), true));
+    readdEntries(manager, tail);
+
+    return PlaylistOutcome::done;
+}
+
+PlaylistOutcome beginRemoveQueueEntry(uint32_t index, uint64_t revision, PlayerStateStore& store) {
+    if (queueHasMoved(store, revision))
+        return PlaylistOutcome::queueMoved;
+
+    auto manager = playlist_manager_v5::get();
+    if (index >= manager->queue_get_count())
+        return PlaylistOutcome::positionPastEnd;
+
+    manager->queue_remove_mask(bit_array_one(index));
+    return PlaylistOutcome::done;
+}
+
+PlaylistOutcome beginClearQueue() {
+    playlist_manager_v5::get()->queue_flush();
     return PlaylistOutcome::done;
 }
 
@@ -208,27 +273,59 @@ QueueReader makeQueueReader(MainThreadQueue& mainThread, PlayerStateStore& store
     };
 }
 
-PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread) {
-    return [&mainThread](const std::string& playlistId, const std::vector<uint32_t>& positions,
-                         std::optional<QueuePosition> at) {
+PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread, PlayerStateStore& store) {
+    return [&mainThread, &store](const std::string& playlistId, const std::vector<uint32_t>& positions,
+                                 std::optional<QueuePosition> at) {
         return askPlayer<PlaylistOutcome>(
             mainThread, "queueing playlist rows",
-            [playlistId, positions, at](const AnswerPtr<PlaylistOutcome>& answer) {
-                answer->set(beginQueueRows(playlistId, positions, at));
+            [playlistId, positions, at, &store](const AnswerPtr<PlaylistOutcome>& answer) {
+                answer->set(beginQueueRows(playlistId, positions, at, store));
             },
             PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
     };
 }
 
 LibraryTrackQueuer makeLibraryTrackQueuer(MainThreadQueue& mainThread,
-                                          OrdinalResolver resolveOrdinals) {
-    return [&mainThread, resolveOrdinals](uint64_t structure, const std::vector<uint32_t>& ordinals,
-                                          std::optional<QueuePosition> at) {
+                                          OrdinalResolver resolveOrdinals, PlayerStateStore& store) {
+    return [&mainThread, resolveOrdinals, &store](uint64_t structure,
+                                                  const std::vector<uint32_t>& ordinals,
+                                                  std::optional<QueuePosition> at) {
         return askPlayer<PlaylistOutcome>(
             mainThread, "queueing library tracks",
-            [structure, ordinals, at, resolveOrdinals](const AnswerPtr<PlaylistOutcome>& answer) {
-                answer->set(beginQueueTracks(structure, ordinals, at, resolveOrdinals));
+            [structure, ordinals, at, resolveOrdinals, &store](const AnswerPtr<PlaylistOutcome>& answer) {
+                answer->set(beginQueueTracks(structure, ordinals, at, resolveOrdinals, store));
             },
+            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+    };
+}
+
+MoveQueueEntry makeMoveQueueEntry(MainThreadQueue& mainThread, PlayerStateStore& store) {
+    return [&mainThread, &store](uint32_t from, uint32_t to, uint64_t revision) {
+        return askPlayer<PlaylistOutcome>(
+            mainThread, "moving a queue entry",
+            [from, to, revision, &store](const AnswerPtr<PlaylistOutcome>& answer) {
+                answer->set(beginMoveQueueEntry(from, to, revision, store));
+            },
+            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+    };
+}
+
+RemoveQueueEntry makeRemoveQueueEntry(MainThreadQueue& mainThread, PlayerStateStore& store) {
+    return [&mainThread, &store](uint32_t index, uint64_t revision) {
+        return askPlayer<PlaylistOutcome>(
+            mainThread, "removing a queue entry",
+            [index, revision, &store](const AnswerPtr<PlaylistOutcome>& answer) {
+                answer->set(beginRemoveQueueEntry(index, revision, store));
+            },
+            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+    };
+}
+
+ClearQueue makeClearQueue(MainThreadQueue& mainThread) {
+    return [&mainThread] {
+        return askPlayer<PlaylistOutcome>(
+            mainThread, "clearing the queue",
+            [](const AnswerPtr<PlaylistOutcome>& answer) { answer->set(beginClearQueue()); },
             PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
     };
 }

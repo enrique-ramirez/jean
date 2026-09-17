@@ -344,7 +344,54 @@ export interface paths {
          *     Whether `playlistId` names a playlist, and whether a row or `at` names a position past what it addresses -- a row past the playlist's end, `at` past the queue's end -- are answered by the player rather than judged here: only it knows which playlists exist and how many rows or queue entries each holds. A `structure` that has moved is a `409`, the same as a fill's.
          */
         post: operations["queueTracks"];
+        /**
+         * Empty the queue.
+         * @description Removes every entry. Emptying the queue means the same thing against any view of it, so this carries no revision and is never refused for one that has moved.
+         */
+        delete: operations["clearQueue"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queue/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move one queue entry.
+         * @description Takes the entry out at `from` and puts it back at `to`, its index once the queue is that one entry shorter -- the same plan Jean's queue panel makes for a drag. `revision` is the queue revision the move was planned against, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`, and is required: unlike `POST /queue`'s `at`, a move has no "the end" to fall back to that needs no revision.
+         */
+        post: operations["moveQueueEntry"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queue/{index}": {
+        parameters: {
+            query: {
+                /** @description The queue revision `index` was read at, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`. */
+                revision: number;
+            };
+            header?: never;
+            path: {
+                /** @description The entry's position in the queue, `0` being the head. */
+                index: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove one queue entry. */
+        delete: operations["removeQueueEntry"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1061,7 +1108,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them";
+            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
@@ -1229,6 +1276,23 @@ export interface components {
              * @example 9
              */
             revision?: number;
+        };
+        MoveQueueRequest: {
+            /**
+             * @description The entry's position in the queue before the move.
+             * @example 3
+             */
+            from: number;
+            /**
+             * @description The entry's position once it has moved: taken out at `from`, then put back at `to` in the queue without it. Both name a position in the same, unchanged-length queue.
+             * @example 0
+             */
+            to: number;
+            /**
+             * @description The queue revision this move was planned against, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`. Required, unlike `QueuePlaylistRowsRequest.revision`: a move has no "the end" to fall back to that needs no plan.
+             * @example 9
+             */
+            revision: number;
         };
         /** @description The JSON header inside a snapshot or a delta, between the four-byte magic number and the blob. It is not served on its own by any route; it is documented here so a client can be generated for it. *The media library*, at the top of this document, has the framing and how to read a column. */
         LibraryHeader: {
@@ -2294,7 +2358,15 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoSuchPlaylist"];
-            409: components["responses"]["StructureMoved"];
+            /** @description Either the `structure` a library-tracks request named has moved -- tracks were added to or removed from the library, so every ordinal it carries has shifted -- or `at` was sent with a `revision` the queue has moved past or never reached. `error` tells the two apart: re-read `GET /state`'s `library.structure` and export again for the first, or re-read `GET /queue` and try again for the second. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
             429: components["responses"]["TooManyRequests"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
@@ -2306,6 +2378,175 @@ export interface operations {
                 };
             };
             /** @description The queue is not available in this build, or, for a library-tracks request, the media library is not available or its first snapshot has not been built yet. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The player did not finish within 30 seconds. A client MUST re-read `GET /queue`. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+        };
+    };
+    clearQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description The queue is not available in this build. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    moveQueueEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveQueueRequest"];
+            };
+        };
+        responses: {
+            /** @description Moved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The component judged the request for itself before the player was involved -- a body that is not JSON, or a missing or unusable `from`, `to` or `revision` -- or the player found `from` or `to` past the end of the queue. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description `revision` is not the queue's current one: it has moved past what a client planned this against, or has not reached it yet. Re-read `GET /queue` and try again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            /** @description The queue is not available in this build. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The player did not finish within 30 seconds. A client MUST re-read `GET /queue`. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+        };
+    };
+    removeQueueEntry: {
+        parameters: {
+            query: {
+                /** @description The queue revision `index` was read at, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`. */
+                revision: number;
+            };
+            header?: never;
+            path: {
+                /** @description The entry's position in the queue, `0` being the head. */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `index` or `revision` is not a whole number, or the player found `index` past the end of the queue. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description `revision` is not the queue's current one: it has moved past what a client planned this against, or has not reached it yet. Re-read `GET /queue` and try again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            /** @description The queue is not available in this build. */
             503: {
                 headers: {
                     [name: string]: unknown;

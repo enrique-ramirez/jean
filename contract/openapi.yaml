@@ -199,7 +199,7 @@ tags:
       The player's media library, as one columnar snapshot and a stream of patches to it.
   - name: queue
     description: |
-      The play queue, read whole and refetched on its own revision.
+      The play queue: read whole, refetched on its own revision, added to, reordered, trimmed one entry at a time, or emptied outright.
   - name: artwork
     description: |
       Cover art: one route addressed by a track the media library holds, and one addressed by whatever is playing.
@@ -990,7 +990,12 @@ paths:
                   - $ref: "#/components/schemas/PlaylistFailed"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
-        "409": { $ref: "#/components/responses/StructureMoved" }
+        "409":
+          description: |
+            Either the `structure` a library-tracks request named has moved -- tracks were added to or removed from the library, so every ordinal it carries has shifted -- or `at` was sent with a `revision` the queue has moved past or never reached. `error` tells the two apart: re-read `GET /state`'s `library.structure` and export again for the first, or re-read `GET /queue` and try again for the second.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500":
           description: The player refused. No reason is given, because error text leaks filesystem paths.
@@ -1000,6 +1005,127 @@ paths:
         "503":
           description: |
             The queue is not available in this build, or, for a library-tracks request, the media library is not available or its first snapshot has not been built yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "504":
+          description: The player did not finish within 30 seconds. A client MUST re-read `GET /queue`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+    delete:
+      tags: [queue]
+      operationId: clearQueue
+      summary: Empty the queue.
+      description: |
+        Removes every entry. Emptying the queue means the same thing against any view of it, so this carries no revision and is never refused for one that has moved.
+      responses:
+        "204":
+          description: Cleared.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: The queue is not available in this build.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /queue/move:
+    post:
+      tags: [queue]
+      operationId: moveQueueEntry
+      summary: Move one queue entry.
+      description: |
+        Takes the entry out at `from` and puts it back at `to`, its index once the queue is that one entry shorter -- the same plan Jean's queue panel makes for a drag. `revision` is the queue revision the move was planned against, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`, and is required: unlike `POST /queue`'s `at`, a move has no "the end" to fall back to that needs no revision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MoveQueueRequest" }
+            examples:
+              default:
+                summary: The fourth entry, moved to the head.
+                value: { from: 3, to: 0, revision: 9 }
+      responses:
+        "204":
+          description: Moved.
+        "400":
+          description: |
+            The component judged the request for itself before the player was involved -- a body that is not JSON, or a missing or unusable `from`, `to` or `revision` -- or the player found `from` or `to` past the end of the queue.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: |
+            `revision` is not the queue's current one: it has moved past what a client planned this against, or has not reached it yet. Re-read `GET /queue` and try again.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500":
+          description: The player refused. No reason is given, because error text leaks filesystem paths.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "503":
+          description: The queue is not available in this build.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "504":
+          description: The player did not finish within 30 seconds. A client MUST re-read `GET /queue`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
+  /queue/{index}:
+    parameters:
+      - name: index
+        in: path
+        required: true
+        schema: { type: integer, minimum: 0 }
+        description: The entry's position in the queue, `0` being the head.
+      - name: revision
+        in: query
+        required: true
+        schema: { type: integer }
+        description: |
+          The queue revision `index` was read at, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`.
+    delete:
+      tags: [queue]
+      operationId: removeQueueEntry
+      summary: Remove one queue entry.
+      responses:
+        "204":
+          description: Removed.
+        "400":
+          description: |
+            `index` or `revision` is not a whole number, or the player found `index` past the end of the queue.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: |
+            `revision` is not the queue's current one: it has moved past what a client planned this against, or has not reached it yet. Re-read `GET /queue` and try again.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500":
+          description: The player refused. No reason is given, because error text leaks filesystem paths.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "503":
+          description: The queue is not available in this build.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2386,6 +2512,7 @@ components:
             - another playlist already has that key
             - this install's autoplaylist limit is reached
             - tracks were added or removed; export the library again
+            - the queue changed since that revision; read it again
             - the player could not do that
             - the player did not answer in time
             - autoplaylists are not available
@@ -2627,6 +2754,28 @@ components:
           type: integer
           description: |
             The queue revision `at` was chosen against, from `GET /state`'s `queueRevision`. Required whenever `at` is sent.
+          examples: [9]
+
+    MoveQueueRequest:
+      type: object
+      additionalProperties: false
+      required: [from, to, revision]
+      properties:
+        from:
+          type: integer
+          minimum: 0
+          description: The entry's position in the queue before the move.
+          examples: [3]
+        to:
+          type: integer
+          minimum: 0
+          description: |
+            The entry's position once it has moved: taken out at `from`, then put back at `to` in the queue without it. Both name a position in the same, unchanged-length queue.
+          examples: [0]
+        revision:
+          type: integer
+          description: |
+            The queue revision this move was planned against, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`. Required, unlike `QueuePlaylistRowsRequest.revision`: a move has no "the end" to fall back to that needs no plan.
           examples: [9]
 
     LibraryHeader:

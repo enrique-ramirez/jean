@@ -81,6 +81,12 @@ enum class PlaylistOutcome {
     tooMany,
     // Means what GET /api/library/changes already means by 409: export again, then ask again.
     structureMoved,
+    // The revision a move, a remove or a positioned queue named is not the queue's current
+    // one, checked at the route and answered again from inside the job for the same reason
+    // structureMoved is: a change can land between the two. Distinct from structureMoved so a
+    // client with both remedies at hand -- re-read the queue, or export the library again --
+    // knows which one applies.
+    queueMoved,
     playerRefused,
     timedOut,
     unavailable,

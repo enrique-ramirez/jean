@@ -1,7 +1,8 @@
 // The queue routes over a real socket. What these pin is what a client drawing the queue panel
 // reads: each entry in the player's order, its fixed fields, where it sits in the library and in
-// a playlist when it sits anywhere, and nothing past that. And what a client queueing rows asks
-// of the player, and what it hears back, including that a refused request never reaches it.
+// a playlist when it sits anywhere, and nothing past that. And what a client queueing, moving or
+// clearing asks of the player, and what it hears back, including that a refused request never
+// reaches it.
 
 #include "third_party/doctest.h"
 
@@ -11,7 +12,10 @@
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <iterator>
 #include <optional>
 #include <set>
 #include <string>
@@ -84,6 +88,23 @@ const std::set<std::string> kEntryKeys = {"title",       "artist",      "duratio
                                           "albumArtist", "libraryPath", "location"};
 
 constexpr uint32_t kQueueLimit = 1000;
+
+// The store moves its revision only when the queue it is handed differs, so each change is a
+// different queue.
+void changeTheQueueUntil(PlayerStateStore& store, uint64_t revision) {
+    for (uint64_t change = 0; store.read().queueRevision < revision && change < revision;
+         ++change) {
+        QueueEntry entry;
+        entry.path = "Fictional Artist/Imaginary Album/" + std::to_string(change) + ".flac";
+        store.queueChanged({entry});
+    }
+    REQUIRE(store.read().queueRevision == revision);
+}
+
+TestServer servingQueue(const Player& player, PlayerStateStore* store,
+                        Library* library = nullptr) {
+    return TestServer(servingSettings(), player, library, countingMint(), store);
+}
 
 }  // namespace
 
@@ -281,8 +302,10 @@ TEST_CASE("queueing playlist rows at a queue position hands the player that posi
           "queue revision the client planned it against") {
     for (const uint32_t at : {uint32_t{0}, uint32_t{2}}) {
         INFO("at: ", at);
+        PlayerStateStore store;
+        changeTheQueueUntil(store, 9);
         RowQueueLog log;
-        const TestServer server(servingSettings(), queueingRows(&log));
+        const TestServer server = servingQueue(queueingRows(&log), &store);
 
         auto body = json::parse(rowsOf(kPlaylistId, {4}));
         body["at"] = at;
@@ -476,9 +499,11 @@ TEST_CASE("queueing library tracks at a queue position hands the player that pos
 
     for (const uint32_t at : {uint32_t{0}, uint32_t{2}}) {
         INFO("at: ", at);
+        PlayerStateStore store;
+        changeTheQueueUntil(store, 9);
         RowQueueLog rows;
         TrackQueueLog tracks;
-        const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+        const TestServer server = servingQueue(queueingEither(&rows, &tracks), &store, &library);
 
         auto body = tracksOf(structure, "ordinals", {4});
         body["at"] = at;
@@ -714,4 +739,559 @@ TEST_CASE("an ordinal repeated in the request is queued twice") {
     CHECK(response->status == 204);
     REQUIRE(tracks.calls == 1);
     CHECK(tracks.ordinals == std::vector<uint32_t>{3, 3});
+}
+
+namespace {
+
+constexpr char kMoveEntry[] = "/api/queue/move";
+constexpr char kNoQueue[] = "the queue is not available";
+
+// Two changes, so a revision one behind the store is still not zero, which is what a parse
+// reading a missing field would also produce.
+void changeTheQueueTwice(PlayerStateStore& store) {
+    changeTheQueueUntil(store, 2);
+}
+
+json atPosition(json body, uint32_t at, uint64_t revision) {
+    body["at"] = at;
+    body["revision"] = revision;
+    return body;
+}
+
+struct MoveLog {
+    int calls = 0;
+    uint32_t from = 0;
+    uint32_t to = 0;
+    uint64_t revision = 0;
+    PlaylistOutcome answer = PlaylistOutcome::done;
+};
+
+Player moving(MoveLog* log) {
+    Player player = servingPlayer();
+    player.moveQueueEntry = [log](uint32_t from, uint32_t to, uint64_t revision) {
+        log->calls++;
+        log->from = from;
+        log->to = to;
+        log->revision = revision;
+        return log->answer;
+    };
+    return player;
+}
+
+json moveOf(const json& from, const json& to, const json& revision) {
+    return json{{"from", from}, {"to", to}, {"revision", revision}};
+}
+
+struct ClearLog {
+    int calls = 0;
+    PlaylistOutcome answer = PlaylistOutcome::done;
+};
+
+Player clearing(ClearLog* log) {
+    Player player = servingPlayer();
+    player.clearQueue = [log] {
+        log->calls++;
+        return log->answer;
+    };
+    return player;
+}
+
+struct RemoveLog {
+    int calls = 0;
+    uint32_t index = 0;
+    uint64_t revision = 0;
+    PlaylistOutcome answer = PlaylistOutcome::done;
+};
+
+Player removing(RemoveLog* log) {
+    Player player = servingPlayer();
+    player.removeQueueEntry = [log](uint32_t index, uint64_t revision) {
+        log->calls++;
+        log->index = index;
+        log->revision = revision;
+        return log->answer;
+    };
+    return player;
+}
+
+httplib::Result removeEntry(const TestServer& server, const std::string& index,
+                            const std::string& query) {
+    return server.client().Delete(std::string(kQueueRows) + "/" + index + query,
+                                  TestServer::bearer());
+}
+
+httplib::Result removeEntry(const TestServer& server, uint32_t index, uint64_t revision) {
+    return removeEntry(server, std::to_string(index), "?revision=" + std::to_string(revision));
+}
+
+constexpr int kAttempts = 60;
+
+httplib::Result clearTheQueue(const TestServer& server) {
+    return server.client().Delete(kQueueRows, TestServer::bearer());
+}
+
+}  // namespace
+
+// A position is only a position in the queue it was read from. A revision ahead of the store is
+// what a client holds across a component restart, which counts from the start again.
+TEST_CASE("queueing at a queue position against a revision the queue has moved past, or never "
+          "reached, is a 409 and reaches neither queue") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+    REQUIRE(current >= 2);
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server = servingQueue(queueingEither(&rows, &tracks), &store, &library);
+
+    for (const uint64_t named : {current - 1, current + 1}) {
+        for (const auto& body : {atPosition(json::parse(rowsOf(kPlaylistId, {4})), 1, named),
+                                 atPosition(tracksOf(structure, "ordinals", {4}), 1, named)}) {
+            INFO("body: ", body.dump());
+            const auto response = post(server, kQueueRows, body.dump());
+
+            REQUIRE(response);
+            CHECK(response->status == 409);
+            if (response->status != 409)
+                continue;
+
+            const auto error = json::parse(response->body)["error"];
+            REQUIRE(error.is_string());
+            // A library request can be a 409 for either reason, and the remedies differ: export
+            // again, or read the queue again.
+            CHECK(error != describe(DeltaOutcome::structureChanged));
+        }
+    }
+
+    CHECK(rows.calls == 0);
+    CHECK(tracks.calls == 0);
+}
+
+TEST_CASE("queueing at a queue position against the queue's current revision reaches the player "
+          "with that revision") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server = servingQueue(queueingEither(&rows, &tracks), &store, &library);
+
+    const auto rowsBody = atPosition(json::parse(rowsOf(kPlaylistId, {4})), 1, current);
+    const auto tracksBody = atPosition(tracksOf(structure, "ordinals", {4}), 1, current);
+
+    const auto rowsResponse = post(server, kQueueRows, rowsBody.dump());
+    const auto tracksResponse = post(server, kQueueRows, tracksBody.dump());
+
+    REQUIRE(rowsResponse);
+    REQUIRE(tracksResponse);
+    CHECK(rowsResponse->status == 204);
+    CHECK(tracksResponse->status == 204);
+
+    REQUIRE(rows.calls == 1);
+    REQUIRE(rows.at.has_value());
+    CHECK(rows.at->revision == current);
+
+    REQUIRE(tracks.calls == 1);
+    REQUIRE(tracks.at.has_value());
+    CHECK(tracks.at->revision == current);
+}
+
+// The end of the queue is the end whatever it holds, so a client queueing there has no view to be
+// stale against, and a queue other clients are busy changing must not refuse it.
+TEST_CASE("queueing at the end of a queue that has moved on is never refused for it") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server = servingQueue(queueingEither(&rows, &tracks), &store, &library);
+
+    const auto rowsResponse = post(server, kQueueRows, rowsOf(kPlaylistId, {4}));
+    const auto tracksResponse =
+        post(server, kQueueRows, tracksOf(structure, "ordinals", {4}).dump());
+
+    REQUIRE(rowsResponse);
+    REQUIRE(tracksResponse);
+    CHECK(rowsResponse->status == 204);
+    CHECK(tracksResponse->status == 204);
+    CHECK(rows.calls == 1);
+    CHECK(tracks.calls == 1);
+}
+
+// `to` is the entry's index once it has moved: taken out at `from`, then put back at `to` in the
+// queue without it, as Jean's queue panel plans a move. Zero both ways, since a parse reading a
+// missing field as zero would get one of the two right, and a move to where the entry already is
+// goes to the player like any other.
+TEST_CASE("moving a queue entry hands the player where it is, where it goes and the revision the "
+          "client planned it against, once") {
+    struct Move {
+        uint32_t from;
+        uint32_t to;
+    };
+
+    for (const auto& move : {Move{3, 0}, Move{0, 3}, Move{2, 2}}) {
+        INFO("from ", move.from, " to ", move.to);
+        PlayerStateStore store;
+        changeTheQueueTwice(store);
+        const uint64_t current = store.read().queueRevision;
+
+        MoveLog log;
+        const TestServer server = servingQueue(moving(&log), &store);
+
+        const auto response = post(server, kMoveEntry, moveOf(move.from, move.to, current).dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 204);
+
+        REQUIRE(log.calls == 1);
+        CHECK(log.from == move.from);
+        CHECK(log.to == move.to);
+        CHECK(log.revision == current);
+    }
+}
+
+TEST_CASE("moving a queue entry against a revision the queue has moved past, or never reached, is "
+          "a 409 and never reaches the player") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+    REQUIRE(current >= 2);
+
+    MoveLog log;
+    const TestServer server = servingQueue(moving(&log), &store);
+
+    for (const uint64_t named : {current - 1, current + 1}) {
+        INFO("revision: ", named);
+        const auto response = post(server, kMoveEntry, moveOf(2, 0, named).dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(log.calls == 0);
+}
+
+TEST_CASE("a move the component can judge for itself is a 400 and never reaches the player") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+
+    MoveLog log;
+    const TestServer server = servingQueue(moving(&log), &store);
+
+    const std::vector<std::string> bodies = {
+        "not json",
+        json::object().dump(),
+        json{{"to", 0}, {"revision", current}}.dump(),
+        json{{"from", 2}, {"revision", current}}.dump(),
+        json{{"from", 2}, {"to", 0}}.dump(),
+        moveOf(-1, 0, current).dump(),
+        moveOf(2, -1, current).dump(),
+        moveOf(1.5, 0, current).dump(),
+        moveOf("2", 0, current).dump(),
+        moveOf(2, nullptr, current).dump(),
+        moveOf(2, 0, -1).dump(),
+        moveOf(2, 0, std::to_string(current)).dump(),
+    };
+
+    for (const auto& body : bodies) {
+        INFO("body: ", body);
+        const auto response = post(server, kMoveEntry, body);
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(log.calls == 0);
+}
+
+// Only the player knows how long the queue is, so this is answered from inside the job, the same
+// way a row past a playlist's end is.
+TEST_CASE("moving an entry from or to past the end of the queue is a 400") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+
+    MoveLog log;
+    log.answer = PlaylistOutcome::positionPastEnd;
+    const TestServer server = servingQueue(moving(&log), &store);
+
+    const auto response = post(server, kMoveEntry, moveOf(9, 0, current).dump());
+
+    REQUIRE(response);
+    CHECK(response->status == 400);
+    CHECK(json::parse(response->body)["error"].is_string());
+    CHECK(log.calls == 1);
+}
+
+// See ARCHITECTURE.md, *Threads, and what may block*, for the race between the route's own
+// check and the job's. The job answers the same 409 a stale revision gets at the route, so a
+// client has one remedy for either.
+TEST_CASE("a queue that moves before the player's job runs is the same 409 the route answers for "
+          "a stale revision") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    MoveLog moves;
+    rows.answer = PlaylistOutcome::queueMoved;
+    tracks.answer = PlaylistOutcome::queueMoved;
+    moves.answer = PlaylistOutcome::queueMoved;
+
+    Player player = queueingEither(&rows, &tracks);
+    player.moveQueueEntry = moving(&moves).moveQueueEntry;
+    const TestServer server = servingQueue(player, &store, &library);
+
+    const auto staleAtTheRoute = post(server, kMoveEntry, moveOf(2, 0, current - 1).dump());
+    REQUIRE(staleAtTheRoute);
+    REQUIRE(staleAtTheRoute->status == 409);
+    const auto routeError = json::parse(staleAtTheRoute->body)["error"];
+
+    struct Request {
+        const char* path;
+        json body;
+    };
+
+    for (const auto& request :
+         {Request{kQueueRows, atPosition(json::parse(rowsOf(kPlaylistId, {4})), 1, current)},
+          Request{kQueueRows, atPosition(tracksOf(structure, "ordinals", {4}), 1, current)},
+          Request{kMoveEntry, moveOf(2, 0, current)}}) {
+        INFO("body: ", request.body.dump());
+        const auto response = post(server, request.path, request.body.dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(json::parse(response->body)["error"] == routeError);
+    }
+
+    CHECK(rows.calls == 1);
+    CHECK(tracks.calls == 1);
+    CHECK(moves.calls == 1);
+}
+
+// Zero is the head of the queue, and the index a parse reading a missing segment as zero would
+// also produce.
+TEST_CASE("removing a queue entry hands the player its index and the revision the client read it "
+          "at, once") {
+    for (const uint32_t index : {uint32_t{0}, uint32_t{3}}) {
+        INFO("index: ", index);
+        PlayerStateStore store;
+        changeTheQueueTwice(store);
+        const uint64_t current = store.read().queueRevision;
+
+        RemoveLog log;
+        const TestServer server = servingQueue(removing(&log), &store);
+
+        const auto response = removeEntry(server, index, current);
+
+        REQUIRE(response);
+        CHECK(response->status == 204);
+
+        REQUIRE(log.calls == 1);
+        CHECK(log.index == index);
+        CHECK(log.revision == current);
+    }
+}
+
+// An index read from an older queue names whichever entry has since slid into that place.
+TEST_CASE("removing a queue entry against a revision the queue has moved past, or never reached, "
+          "is a 409 and never reaches the player") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+    REQUIRE(current >= 2);
+
+    RemoveLog log;
+    const TestServer server = servingQueue(removing(&log), &store);
+
+    for (const uint64_t named : {current - 1, current + 1}) {
+        INFO("revision: ", named);
+        const auto response = removeEntry(server, 2, named);
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(log.calls == 0);
+}
+
+TEST_CASE("a remove the component can judge for itself is a 400 and never reaches the player") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const std::string revision = "?revision=" + std::to_string(store.read().queueRevision);
+
+    RemoveLog log;
+    const TestServer server = servingQueue(removing(&log), &store);
+
+    struct Request {
+        const char* index;
+        std::string query;
+    };
+
+    for (const auto& request : {
+             Request{"2", ""},
+             Request{"2", "?revision="},
+             Request{"2", "?revision=-1"},
+             Request{"2", "?revision=1.5"},
+             Request{"2", "?revision=nine"},
+             Request{"-1", revision},
+             Request{"1.5", revision},
+             Request{"two", revision},
+         }) {
+        INFO("index: ", request.index, " query: ", request.query);
+        const auto response = removeEntry(server, request.index, request.query);
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        if (response->status == 400)
+            CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(log.calls == 0);
+}
+
+// Only the player knows how long the queue is, so a past-the-end index is answered from inside
+// the job; a queue that moves before the job runs (ARCHITECTURE.md, *Threads, and what may
+// block*) is answered from there too, with the route's own 409.
+TEST_CASE("removing past the end of the queue is a 400, and a queue that moves before the player's "
+          "job runs is the 409 a stale revision gets") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+
+    RemoveLog log;
+    const TestServer server = servingQueue(removing(&log), &store);
+
+    const auto staleAtTheRoute = removeEntry(server, 2, current - 1);
+    REQUIRE(staleAtTheRoute);
+    REQUIRE(staleAtTheRoute->status == 409);
+    const auto routeError = json::parse(staleAtTheRoute->body)["error"];
+
+    log.answer = PlaylistOutcome::positionPastEnd;
+    const auto pastTheEnd = removeEntry(server, 9, current);
+    REQUIRE(pastTheEnd);
+    CHECK(pastTheEnd->status == 400);
+    CHECK(json::parse(pastTheEnd->body)["error"].is_string());
+
+    log.answer = PlaylistOutcome::queueMoved;
+    const auto moved = removeEntry(server, 2, current);
+    REQUIRE(moved);
+    CHECK(moved->status == 409);
+    CHECK(json::parse(moved->body)["error"] == routeError);
+
+    CHECK(log.calls == 2);
+}
+
+// Emptying the queue means the same thing against any view of it, so a clear carries no revision
+// and is not refused for a queue that moved.
+TEST_CASE("clearing the queue asks the player once, whatever revision the client last read") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+
+    ClearLog log;
+    const TestServer server = servingQueue(clearing(&log), &store);
+
+    const auto response = clearTheQueue(server);
+
+    REQUIRE(response);
+    CHECK(response->status == 204);
+    CHECK(log.calls == 1);
+}
+
+// A client that gave up waiting has to re-read the queue to learn whether it emptied.
+TEST_CASE("a clear the player does not finish in time is a 504") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+
+    ClearLog log;
+    log.answer = PlaylistOutcome::timedOut;
+    const TestServer server = servingQueue(clearing(&log), &store);
+
+    const auto response = clearTheQueue(server);
+
+    REQUIRE(response);
+    CHECK(response->status == 504);
+    CHECK(json::parse(response->body)["error"].is_string());
+    CHECK(log.calls == 1);
+}
+
+TEST_CASE("moving, removing or clearing on an install with no queue is a 503 naming the queue") {
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+
+    const TestServer server = servingQueue(servingPlayer(), &store);
+
+    const auto moved = post(server, kMoveEntry, moveOf(2, 0, current).dump());
+    const auto removed = removeEntry(server, 2, current);
+    const auto cleared = clearTheQueue(server);
+
+    for (const httplib::Result* response : {&moved, &removed, &cleared}) {
+        REQUIRE(*response);
+        CHECK((*response)->status == 503);
+        CHECK(json::parse((*response)->body)["error"] == kNoQueue);
+    }
+}
+
+TEST_CASE("a client moving, removing or clearing in a loop is slowed down rather than obeyed") {
+    const auto slowedDown = [](const std::function<httplib::Result()>& send, const int& calls) {
+        std::vector<httplib::Result> replies;
+        std::generate_n(std::back_inserter(replies), kAttempts, send);
+
+        CHECK(std::all_of(replies.begin(), replies.end(),
+                          [](const httplib::Result& r) { return static_cast<bool>(r); }));
+
+        const auto first429 =
+            std::find_if(replies.begin(), replies.end(),
+                         [](const httplib::Result& r) { return r && r->status == 429; });
+        REQUIRE(first429 != replies.end());
+        CHECK((*first429)->get_header_value("Retry-After") == "1");
+        CHECK(json::parse((*first429)->body)["error"].is_string());
+        CHECK(calls < kAttempts);
+    };
+
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+
+    SUBCASE("moving") {
+        MoveLog log;
+        const TestServer server = servingQueue(moving(&log), &store);
+        const auto move = moveOf(2, 0, current).dump();
+        slowedDown([&server, &move] { return post(server, kMoveEntry, move); }, log.calls);
+    }
+
+    SUBCASE("removing") {
+        RemoveLog log;
+        const TestServer server = servingQueue(removing(&log), &store);
+        slowedDown([&server, current] { return removeEntry(server, 2, current); }, log.calls);
+    }
+
+    SUBCASE("clearing") {
+        ClearLog log;
+        const TestServer server = servingQueue(clearing(&log), &store);
+        slowedDown([&server] { return clearTheQueue(server); }, log.calls);
+    }
 }

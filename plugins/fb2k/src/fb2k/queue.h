@@ -11,9 +11,15 @@ namespace jean {
 
 QueueReader makeQueueReader(MainThreadQueue& mainThread, PlayerStateStore& store);
 
-PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread);
+PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread, PlayerStateStore& store);
 
 LibraryTrackQueuer makeLibraryTrackQueuer(MainThreadQueue& mainThread,
-                                          OrdinalResolver resolveOrdinals);
+                                          OrdinalResolver resolveOrdinals, PlayerStateStore& store);
+
+MoveQueueEntry makeMoveQueueEntry(MainThreadQueue& mainThread, PlayerStateStore& store);
+
+RemoveQueueEntry makeRemoveQueueEntry(MainThreadQueue& mainThread, PlayerStateStore& store);
+
+ClearQueue makeClearQueue(MainThreadQueue& mainThread);
 
 }  // namespace jean

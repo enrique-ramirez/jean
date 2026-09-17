@@ -1248,6 +1248,94 @@ struct HttpServer::Impl {
                     return;
             }
         });
+
+        server.Delete(kQueuePath, [this](const httplib::Request&, httplib::Response& res) {
+            if (changingTooFast()) {
+                res.set_header("Retry-After", "1");
+                respond(res, httpStatusFor(PlaylistRefusal::tooFast),
+                        fillRefusedDocument(PlaylistRefusal::tooFast));
+                return;
+            }
+
+            if (!player.clearQueue) {
+                respond(res, 503, errorDocument(kNoQueue));
+                return;
+            }
+
+            const auto outcome = player.clearQueue();
+            if (outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(outcome),
+                        playlistFailedDocument(playlistFailure(outcome)));
+                return;
+            }
+
+            res.status = 204;
+        });
+
+        constexpr char kMoveQueuePath[] = "/api/queue/move";
+
+        server.Post(kMoveQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
+            auto request = refuseMoveQueueChange(parseMoveQueue(req.body));
+            if (!request.ok()) {
+                if (request.refusal == PlaylistRefusal::tooFast)
+                    res.set_header("Retry-After", "1");
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            if (queueHasMoved(request.revision)) {
+                respondQueueMoved(res);
+                return;
+            }
+
+            if (!player.moveQueueEntry) {
+                respond(res, 503, errorDocument(kNoQueue));
+                return;
+            }
+
+            const auto outcome = player.moveQueueEntry(request.from, request.to, request.revision);
+            if (outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(outcome),
+                        playlistFailedDocument(playlistFailure(outcome)));
+                return;
+            }
+
+            res.status = 204;
+        });
+
+        // Matched loosely, on purpose: a non-numeric segment must reach parseRemoveQueue's own
+        // 400 rather than fall through to a generic 404.
+        constexpr char kQueueEntryPath[] = R"(/api/queue/([^/]+))";
+
+        server.Delete(kQueueEntryPath, [this](const httplib::Request& req, httplib::Response& res) {
+            auto request = refuseRemoveQueueChange(
+                parseRemoveQueue(req.matches[1].str(), req.get_param_value("revision")));
+            if (!request.ok()) {
+                if (request.refusal == PlaylistRefusal::tooFast)
+                    res.set_header("Retry-After", "1");
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            if (queueHasMoved(request.revision)) {
+                respondQueueMoved(res);
+                return;
+            }
+
+            if (!player.removeQueueEntry) {
+                respond(res, 503, errorDocument(kNoQueue));
+                return;
+            }
+
+            const auto outcome = player.removeQueueEntry(request.index, request.revision);
+            if (outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(outcome),
+                        playlistFailedDocument(playlistFailure(outcome)));
+                return;
+            }
+
+            res.status = 204;
+        });
     }
 
     void postQueuePlaylistRows(const httplib::Request& req, httplib::Response& res) {
@@ -1256,6 +1344,11 @@ struct HttpServer::Impl {
             if (request.refusal == PlaylistRefusal::tooFast)
                 res.set_header("Retry-After", "1");
             respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+            return;
+        }
+
+        if (request.at && queueHasMoved(request.at->revision)) {
+            respondQueueMoved(res);
             return;
         }
 
@@ -1300,6 +1393,11 @@ struct HttpServer::Impl {
             return;
         }
 
+        if (request.at && queueHasMoved(request.at->revision)) {
+            respondQueueMoved(res);
+            return;
+        }
+
         if (!player.queueLibraryTracks) {
             respond(res, 503, errorDocument(kNoQueue));
             return;
@@ -1325,6 +1423,31 @@ struct HttpServer::Impl {
         if (request.ok() && changingTooFast())
             request.refusal = PlaylistRefusal::tooFast;
         return request;
+    }
+
+    MoveQueueRequest refuseMoveQueueChange(MoveQueueRequest request) {
+        if (request.ok() && changingTooFast())
+            request.refusal = PlaylistRefusal::tooFast;
+        return request;
+    }
+
+    RemoveQueueRequest refuseRemoveQueueChange(RemoveQueueRequest request) {
+        if (request.ok() && changingTooFast())
+            request.refusal = PlaylistRefusal::tooFast;
+        return request;
+    }
+
+    // A revision only a route reading it ahead of the player can judge: the store, not the
+    // job, is what a client's own next poll will see. A null store -- no install runs with
+    // one, but a test may -- reads as revision 0, same as a fresh queue with nothing to name.
+    bool queueHasMoved(uint64_t revision) {
+        const auto current = playerState ? playerState->read().queueRevision : uint64_t{0};
+        return current != revision;
+    }
+
+    void respondQueueMoved(httplib::Response& res) {
+        respond(res, httpStatusFor(PlaylistOutcome::queueMoved),
+                playlistFailedDocument(playlistFailure(PlaylistOutcome::queueMoved)));
     }
 };
 

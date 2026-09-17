@@ -502,6 +502,22 @@ TEST_CASE("a moved generation is refused with the 409 GET /library/changes alrea
     CHECK(std::count(published.begin(), published.end(), moved) == 1);
 }
 
+// Distinct from the structure-moved 409 above: a client naming a stale revision to a move, a
+// remove or a positioned queue has a different remedy, re-reading the queue rather than
+// exporting the library again, and needs a string of its own to tell the two apart.
+TEST_CASE("a stale queue revision is refused with a 409 distinct from a moved structure") {
+    const auto moved = describe(PlaylistOutcome::queueMoved);
+
+    CHECK(moved != describe(DeltaOutcome::structureChanged));
+
+    INFO("add an enumerator to PlaylistOutcome in core/playlists.h whose describe() is ", moved);
+    CHECK(statusAnswered(moved) == 409);
+
+    INFO("and publish that string as a PlaylistFailed.error in contract/openapi.yaml");
+    const auto published = publishedEnum("PlaylistFailed", "error");
+    CHECK(std::count(published.begin(), published.end(), moved) == 1);
+}
+
 TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer with") {
     INFO(kUpdateSpec);
 

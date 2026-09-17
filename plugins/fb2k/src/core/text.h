@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -22,5 +23,9 @@ bool isPrintable(const std::string& text);
 
 // No early exit: == leaks how much of a guess was right.
 bool secureEquals(const std::string& a, const std::string& b);
+
+// For text that arrives outside JSON's own number type, from a URL segment or a query
+// parameter, where nothing upstream has already ruled out a sign, a fraction or an overflow.
+bool readDecimal(const std::string& text, uint64_t& value);
 
 }  // namespace jean

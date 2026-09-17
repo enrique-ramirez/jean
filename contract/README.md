@@ -27,6 +27,7 @@ What one run does to the player, which is little but not nothing:
 - **It creates one autoplaylist and deletes it again.** The title and the key carry a token generated for the run, so neither can collide with a playlist somebody else made. A run that dies between the two leaves the playlist behind, named so it is obvious what it was.
 - **It declares a column set of its own and takes the library.** One column, so the snapshot a client is using is the other of the two an implementation keeps rather than the one evicted. The refresh that follows rebuilds that one-column set, not the client's.
 - **It asks for one cover and expects not to get it.** The address it sends names a track no player holds, because the snapshot is binary and the suite decodes none of it, so what the answer pins is the refusal rather than a picture.
+- **It empties the play queue.** `DELETE /queue` carries no revision to refuse it against, so nothing scopes the clear to what the run added; point `CONTRACT_URL` at an install whose queue is nobody's to lose. The move and remove probes beside it name a revision no queue holds, so those two change nothing.
 - **It opens the stream and hangs up at once**, mints a ticket, asks for the output hold to be released, and leaves.
 - **It calls the pairing route, last.** With no pairing window open that is a refusal. With one open it spends the grant, closing the window, so open one at the player only when that is what you want tested, and only once the rest of the run has nothing left to drive.
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/http_server.h"
+#include "core/playlists.h"
 #include "fb2k/library.h"
 #include "fb2k/main_thread.h"
 
@@ -17,10 +18,6 @@ namespace jean {
 // GUID, lowercased, dashed, no braces.
 std::string playlistId(size_t index);
 
-// The core keeps a queued entry whose row or whole playlist is gone rather than dropping it,
-// and marks the position pfc_infinite in whichever field no longer names anything: see
-// ARCHITECTURE.md, *Facts about the player*. Read as an index, either would name a playlist
-// or a row that does not exist.
 std::optional<PlayingLocation> queuedLocationOf(const t_playback_queue_item& item);
 
 PlaylistLister makePlaylistLister(MainThreadQueue& mainThread);

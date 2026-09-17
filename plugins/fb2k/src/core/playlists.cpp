@@ -5,6 +5,7 @@
 #include "core/text.h"
 
 #include <algorithm>
+#include <limits>
 
 using nlohmann::json;
 
@@ -73,6 +74,16 @@ bool isPlaylistId(const std::string& id) {
 bool looksLikeBeefwebId(const std::string& id) {
     return !id.empty() && id.size() <= 32 && id.front() == 'p' &&
            std::all_of(id.begin() + 1, id.end(), [](char c) { return c >= '0' && c <= '9'; });
+}
+
+std::optional<PlayingLocation> queuedLocation(
+    size_t playlist, size_t item, const std::function<std::string(size_t)>& playlistIdAt) {
+    constexpr size_t kInfinite = std::numeric_limits<size_t>::max();
+
+    if (playlist == kInfinite || item == kInfinite)
+        return std::nullopt;
+
+    return PlayingLocation{playlistIdAt(playlist), static_cast<uint32_t>(item)};
 }
 
 bool keyTaken(const std::vector<PlaylistAnnotation>& playlists, const std::string& key,

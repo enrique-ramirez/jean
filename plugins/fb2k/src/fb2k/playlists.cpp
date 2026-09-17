@@ -365,10 +365,7 @@ std::string playlistId(size_t index) {
 }
 
 std::optional<PlayingLocation> queuedLocationOf(const t_playback_queue_item& item) {
-    if (item.m_playlist == pfc_infinite || item.m_item == pfc_infinite)
-        return std::nullopt;
-
-    return PlayingLocation{playlistId(item.m_playlist), static_cast<uint32_t>(item.m_item)};
+    return queuedLocation(item.m_playlist, item.m_item, playlistId);
 }
 
 PlaylistLister makePlaylistLister(MainThreadQueue& mainThread) {

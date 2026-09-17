@@ -1,7 +1,9 @@
 #pragma once
 
 #include "core/json.h"
+#include "core/player_state.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -155,6 +157,14 @@ bool isPlaylistId(const std::string& id);
 // beefweb's own ids are "p" and a number; anything else was written by something other
 // than the beefweb this reads, and is reported absent rather than passed on.
 bool looksLikeBeefwebId(const std::string& id);
+
+// foobar2000 keeps a queued entry whose row or whole playlist is gone rather than dropping
+// it, and marks the position infinite (std::numeric_limits<size_t>::max(), what pfc_infinite
+// becomes once it meets a size_t) in whichever field no longer names anything: see
+// ARCHITECTURE.md, *Facts about the player*. Read as an index, either would name a playlist
+// or a row that does not exist, which is how beefweb's own queue reader crashes the player.
+std::optional<PlayingLocation> queuedLocation(
+    size_t playlist, size_t item, const std::function<std::string(size_t)>& playlistIdAt);
 
 bool keyTaken(const std::vector<PlaylistAnnotation>& playlists, const std::string& key,
               const std::string& exceptId);

@@ -855,6 +855,43 @@ test.describe("skipping with a flick", () => {
 	});
 });
 
+test.describe("Previous", () => {
+	const previous = (page: Page) =>
+		page.getByRole("button", { name: "Previous track" });
+
+	const at = (page: Page) =>
+		page
+			.getByRole("slider", { name: "Playback position" })
+			.getAttribute("aria-valuenow")
+			.then(Number);
+
+	test("restarts a track that has been playing a while", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 1);
+		player.patchPlayer({ position: 60 });
+		await expect.poll(() => at(page)).toBeGreaterThanOrEqual(60);
+
+		await previous(page).click();
+
+		await expect.poll(() => at(page)).toBeLessThan(5);
+		expect(player.player.activeItem.index).toBe(1);
+		expect(requestsTo(player, "/player/previous")).toHaveLength(0);
+	});
+
+	test("steps back from a track that has only just started", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 1);
+
+		await previous(page).click();
+
+		await expect.poll(() => player.player.activeItem.index).toBe(0);
+	});
+});
+
 test.describe("the gap a skip leaves", () => {
 	// See ../../src/shared/api/README.md for what foobar2000 does during a skip and why.
 

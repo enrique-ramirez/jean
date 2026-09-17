@@ -45,7 +45,7 @@ import { refusal } from "@/shared/lib/refusal";
 import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
-import { positionAt } from "./position";
+import { audibleAt, positionAt } from "./position";
 import {
 	dequeuePlaylist,
 	holdQueue,
@@ -449,6 +449,23 @@ export function useVolume() {
 		up: nudgeUp.mutate,
 		down: nudgeDown.mutate,
 	};
+}
+
+const RESTART_AFTER_SECONDS = 5;
+
+export function usePrevious() {
+	const queryClient = useQueryClient();
+	const seek = useSeek().mutate;
+	const skip = useMutation({ mutationFn: previousTrack }).mutate;
+
+	return useCallback(
+		(stepBack: () => void = () => skip()) => {
+			const snapshot = queryClient.getQueryData<PlayerSnapshot>(PLAYER_KEY);
+			if (audibleAt(snapshot) > RESTART_AFTER_SECONDS) seek(0);
+			else stepBack();
+		},
+		[queryClient, seek, skip],
+	);
 }
 
 export const useTransport = () => ({

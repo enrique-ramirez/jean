@@ -24,6 +24,7 @@ import {
 	usePlayerStream,
 	usePlaylists,
 	usePlayPause,
+	usePrevious,
 	useSeekBy,
 } from "@/domain/player/usePlayer";
 import { usePlayingPlaylist } from "@/domain/player/usePlayingPlaylist";
@@ -69,7 +70,7 @@ import {
 	SETTINGS_KEYBOARD,
 	SettingsDialog,
 } from "@/features/settings/SettingsDialog";
-import { nextTrack, previousTrack, stop } from "@/shared/api/beefweb";
+import { nextTrack, stop } from "@/shared/api/beefweb";
 import { bearer } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
@@ -142,6 +143,7 @@ function Shell() {
 	const isPlaying = useIsPlaying();
 	const playPause = usePlayPause();
 	const seekBy = useSeekBy();
+	const previous = usePrevious();
 	const volume = useAudibleVolume();
 	const { theme, toggle: toggleTheme } = useTheme();
 	const isCompactViewport = useIsCompactViewport();
@@ -619,7 +621,7 @@ function Shell() {
 	useKeymap(SCOPE.global, {
 		playPause: () => playPause.mutate(),
 		nextTrack: () => nextTrack(),
-		previousTrack: () => previousTrack(),
+		previousTrack: () => previous(),
 		stop: () => stop(),
 		seekBack: () => seekBy.mutate(-SEEK_STEP),
 		seekForward: () => seekBy.mutate(SEEK_STEP),

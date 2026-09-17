@@ -9,6 +9,7 @@ import {
 	usePlaybackOrder,
 	usePlayer,
 	usePlayPause,
+	usePrevious,
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
@@ -121,6 +122,7 @@ export function NowPlaying({
 	const playPause = usePlayPause();
 	const seek = useSeek();
 	const transport = useTransport();
+	const previous = usePrevious();
 	const order = usePlaybackOrder();
 	const { isHere, volume, setValue, hasFader } = useAudibleVolume();
 	const menu = useNowPlayingMenu();
@@ -383,7 +385,7 @@ export function NowPlaying({
 									type="button"
 									className={styles.skip}
 									aria-label={t("shortcut.previousTrack")}
-									onClick={() => wheel.skip(-1)}
+									onClick={() => previous(() => wheel.skip(-1))}
 								>
 									<SkipBackIcon size={22} />
 								</button>

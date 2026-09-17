@@ -3,6 +3,7 @@ import { audibleAt } from "@/domain/player/position";
 import { useListener } from "@/domain/player/useListener";
 import {
 	usePlayPause,
+	usePrevious,
 	useSeek,
 	useSeekBy,
 	useTransport,
@@ -74,11 +75,11 @@ export function useMediaSession(
 	const listener = useListener();
 	const playPause = usePlayPause().mutate;
 	const transport = useTransport();
+	const previous = usePrevious();
 	const seek = useSeek().mutate;
 	const seekBy = useSeekBy().mutate;
 
 	const next = transport.next.mutate;
-	const previous = transport.previous.mutate;
 	const stopPlayer = transport.stop.mutate;
 	const { disconnect } = listener;
 

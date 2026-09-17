@@ -5,6 +5,7 @@ import {
 	usePlaybackOrder,
 	usePlayer,
 	usePlayPause,
+	usePrevious,
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
@@ -87,6 +88,7 @@ export function StatusBar({
 	const playPause = usePlayPause();
 	const seek = useSeek();
 	const transport = useTransport();
+	const previous = usePrevious();
 	const order = usePlaybackOrder();
 	const playlistId = usePlayingPlaylist(
 		snapshot?.player?.activeItem?.playlistGuid ?? null,
@@ -158,7 +160,7 @@ export function StatusBar({
 								type="button"
 								className={styles.skip}
 								aria-label={t("shortcut.previousTrack")}
-								onClick={() => transport.previous.mutate()}
+								onClick={() => previous()}
 							>
 								<SkipBackIcon size={18} />
 							</button>

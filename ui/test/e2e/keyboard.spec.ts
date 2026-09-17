@@ -77,6 +77,33 @@ test.describe("playback", () => {
 		await expect.poll(() => paths(player, "/player/previous")).toHaveLength(1);
 	});
 
+	test("Mod+ArrowLeft restarts a track that has been playing a while", async ({
+		page,
+		player,
+	}) => {
+		await trackRow(page, 1).dblclick();
+		player.patchPlayer({ position: 60 });
+		await expect
+			.poll(() =>
+				page
+					.getByRole("slider", { name: "Playback position" })
+					.getAttribute("aria-valuenow")
+					.then(Number),
+			)
+			.toBeGreaterThanOrEqual(60);
+
+		await page.keyboard.press("ControlOrMeta+ArrowLeft");
+
+		await expect
+			.poll(() =>
+				requestsTo(player, "/api/player").filter(
+					(entry) => entry.body?.position === 0,
+				),
+			)
+			.toHaveLength(1);
+		expect(paths(player, "/player/previous")).toHaveLength(0);
+	});
+
 	test("Mod+. stops", async ({ page, player }) => {
 		await page.keyboard.press("ControlOrMeta+.");
 		await expect.poll(() => paths(player, "/player/stop")).toHaveLength(1);

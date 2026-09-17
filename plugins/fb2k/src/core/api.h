@@ -125,6 +125,25 @@ struct QueueRowsRequest {
 // Never throws: a malformed body is routine for the HTTP handler that calls this.
 QueueRowsRequest parseQueueRows(const std::string& body);
 
+struct QueueTracksRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+    std::optional<QueuePosition> at;
+
+    bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlaylistOutcome::done; }
+};
+
+// Never throws.
+QueueTracksRequest parseQueueTracks(const std::string& body, size_t trackCount,
+                                    std::optional<uint64_t> expectedStructure);
+
+enum class QueueSource { invalid, playlistRows, libraryTracks };
+
+QueueSource queueSourceOf(const std::string& body);
+
 // The library ordinals a fill inserts, decoded from whichever one of the three wire forms
 // the request body carried; see contract/openapi.yaml, `FillPlaylistRequest`. `ordinals`
 // is already in the order the fill must insert at: as given for the `ordinals` form,

@@ -471,59 +471,14 @@ const isRunPair = (value: unknown): value is [number, number] =>
 	isNonNegInt(value[0]) &&
 	isNonNegInt(value[1]);
 
-type ParsedFill =
-	| { ok: true; title?: string; structure: number; ordinals: number[] }
+type DecodedSelection =
+	| { ok: true; ordinals: number[] }
 	| ({ ok: false } & FillFailure);
 
-function parseFill(
-	body: unknown,
-	{ requireTitle, trackCount }: { requireTitle: boolean; trackCount: number },
-): ParsedFill {
-	if (typeof body !== "object" || body === null)
-		return {
-			ok: false,
-			...fillFailure(
-				400,
-				"malformed request",
-				"the body did not parse as JSON",
-			),
-		};
-
-	const record = body as Record<string, unknown>;
-	const allowed = new Set([
-		"structure",
-		"runs",
-		"bitset",
-		"ordinals",
-		...(requireTitle ? ["title"] : []),
-	]);
-	const stray = Object.keys(record).find((key) => !allowed.has(key));
-	if (stray)
-		return {
-			ok: false,
-			...fillFailure(
-				400,
-				"malformed request",
-				`'${stray}' is not a field this route accepts`,
-			),
-		};
-
-	let title: string | undefined;
-	if (requireTitle) {
-		if (typeof record.title !== "string" || record.title.length === 0)
-			return {
-				ok: false,
-				...fillFailure(400, "unacceptable title", "'title' is required"),
-			};
-		title = record.title;
-	}
-
-	if (!Number.isInteger(record.structure))
-		return {
-			ok: false,
-			...fillFailure(400, "malformed request", "'structure' is required"),
-		};
-
+function decodeSelection(
+	record: Record<string, unknown>,
+	trackCount: number,
+): DecodedSelection {
 	const forms = (["runs", "bitset", "ordinals"] as const).filter(
 		(key) => record[key] !== undefined,
 	);
@@ -611,7 +566,102 @@ function parseFill(
 			),
 		};
 
-	return { ok: true, title, structure: record.structure as number, ordinals };
+	return { ok: true, ordinals };
+}
+
+type ParsedFill =
+	| { ok: true; title?: string; structure: number; ordinals: number[] }
+	| ({ ok: false } & FillFailure);
+
+function parseFill(
+	body: unknown,
+	{ requireTitle, trackCount }: { requireTitle: boolean; trackCount: number },
+): ParsedFill {
+	if (typeof body !== "object" || body === null)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"malformed request",
+				"the body did not parse as JSON",
+			),
+		};
+
+	const record = body as Record<string, unknown>;
+	const allowed = new Set([
+		"structure",
+		"runs",
+		"bitset",
+		"ordinals",
+		...(requireTitle ? ["title"] : []),
+	]);
+	const stray = Object.keys(record).find((key) => !allowed.has(key));
+	if (stray)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"malformed request",
+				`'${stray}' is not a field this route accepts`,
+			),
+		};
+
+	let title: string | undefined;
+	if (requireTitle) {
+		if (typeof record.title !== "string" || record.title.length === 0)
+			return {
+				ok: false,
+				...fillFailure(400, "unacceptable title", "'title' is required"),
+			};
+		title = record.title;
+	}
+
+	if (!Number.isInteger(record.structure))
+		return {
+			ok: false,
+			...fillFailure(400, "malformed request", "'structure' is required"),
+		};
+
+	const selection = decodeSelection(record, trackCount);
+	if (!selection.ok) return selection;
+
+	return {
+		ok: true,
+		title,
+		structure: record.structure as number,
+		ordinals: selection.ordinals,
+	};
+}
+
+type ParsedQueuePosition =
+	| { ok: true; at?: { index: number; revision: number } }
+	| ({ ok: false } & FillFailure);
+
+function parseQueuePosition(
+	record: Record<string, unknown>,
+): ParsedQueuePosition {
+	if (record.at === undefined) return { ok: true, at: undefined };
+
+	if (!isNonNegInt(record.at))
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"unacceptable ordinal set",
+				"'at' must be a non-negative integer",
+			),
+		};
+	if (!isNonNegInt(record.revision))
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"unacceptable ordinal set",
+				"'at' requires 'revision'",
+			),
+		};
+
+	return { ok: true, at: { index: record.at, revision: record.revision } };
 }
 
 type ParsedQueueRows =
@@ -666,30 +716,93 @@ function parseQueueRows(body: unknown): ParsedQueueRows {
 			),
 		};
 
-	let at: { index: number; revision: number } | undefined;
-	if (record.at !== undefined) {
-		if (!isNonNegInt(record.at))
-			return {
-				ok: false,
-				...fillFailure(
-					400,
-					"unacceptable ordinal set",
-					"'at' must be a non-negative integer",
-				),
-			};
-		if (!isNonNegInt(record.revision))
-			return {
-				ok: false,
-				...fillFailure(
-					400,
-					"unacceptable ordinal set",
-					"'at' requires 'revision'",
-				),
-			};
-		at = { index: record.at, revision: record.revision };
-	}
+	const position = parseQueuePosition(record);
+	if (!position.ok) return position;
 
-	return { ok: true, playlistId: record.playlistId, positions, at };
+	return {
+		ok: true,
+		playlistId: record.playlistId,
+		positions,
+		at: position.at,
+	};
+}
+
+type ParsedQueueTracks =
+	| {
+			ok: true;
+			structure: number;
+			ordinals: number[];
+			at?: { index: number; revision: number };
+	  }
+	| ({ ok: false } & FillFailure);
+
+// Mirrors core/api.cpp's parseQueueTracks.
+function parseQueueTracks(
+	body: unknown,
+	trackCount: number,
+	expectedStructure: number,
+): ParsedQueueTracks {
+	if (typeof body !== "object" || body === null)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"malformed request",
+				"the body did not parse as JSON",
+			),
+		};
+
+	const record = body as Record<string, unknown>;
+
+	if (!Number.isInteger(record.structure))
+		return {
+			ok: false,
+			...fillFailure(400, "malformed request", "'structure' is required"),
+		};
+
+	if (record.structure !== expectedStructure)
+		return { ok: false, status: 409, body: STRUCTURE_MOVED };
+
+	const selection = decodeSelection(record, trackCount);
+	if (!selection.ok) return selection;
+	if (selection.ordinals.length === 0)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"unacceptable ordinal set",
+				"the selection must not be empty",
+			),
+		};
+
+	const position = parseQueuePosition(record);
+	if (!position.ok) return position;
+
+	return {
+		ok: true,
+		structure: record.structure as number,
+		ordinals: selection.ordinals,
+		at: position.at,
+	};
+}
+
+type QueueSource = "rows" | "tracks" | "invalid";
+
+// Mirrors core/api.cpp's queueSourceOf.
+function queueSourceOf(body: unknown): QueueSource {
+	if (typeof body !== "object" || body === null) return "invalid";
+
+	const record = body as Record<string, unknown>;
+	const namesRows =
+		record.playlistId !== undefined || record.positions !== undefined;
+	const namesTracks =
+		record.structure !== undefined ||
+		record.ordinals !== undefined ||
+		record.runs !== undefined ||
+		record.bitset !== undefined;
+
+	if (namesRows === namesTracks) return "invalid";
+	return namesRows ? "rows" : "tracks";
 }
 
 const requirePlaylist = (state: FakeState, id: string): FakePlaylist => {
@@ -1166,24 +1279,66 @@ export async function handleAgent({
 		}
 
 		if (method === "POST") {
-			const parsed = parseQueueRows(body);
+			const source = queueSourceOf(body);
+			if (source === "invalid")
+				return json(
+					response,
+					{
+						error: "malformed request",
+						detail:
+							"the body must name exactly one of a playlist's rows or the library's tracks",
+					},
+					400,
+				);
+
+			if (source === "rows") {
+				const parsed = parseQueueRows(body);
+				if (!parsed.ok) return json(response, parsed.body, parsed.status);
+
+				const index = state.playlists.findIndex(
+					(_, at) => guidFor(at) === parsed.playlistId,
+				);
+				if (index < 0)
+					return json(response, { error: "no such playlist", detail: "" }, 404);
+				const playlist = state.playlists[index];
+
+				const pastEnd = parsed.positions.find(
+					(position) => position >= playlist.items.length,
+				);
+				// No store behind the queue yet: GET /api/queue keeps answering empty
+				// until a later phase gives this fake one, so any `at` past the head is
+				// past the end of it.
+				const queueEnd = parsed.at !== undefined && parsed.at.index > 0;
+				if (pastEnd !== undefined || queueEnd)
+					return json(
+						response,
+						{ error: "that position is past the end", detail: "" },
+						400,
+					);
+
+				return empty(response);
+			}
+
+			if (!fake.canReadLibrary)
+				return json(
+					response,
+					{ error: "the media library is not available" },
+					503,
+				);
+			if (state.libraryFeed.columns.length === 0)
+				return json(response, NOT_BUILT, 503);
+
+			const parsed = parseQueueTracks(
+				body,
+				state.libraryTracks.length,
+				state.libraryFeed.structure,
+			);
 			if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
-			const index = state.playlists.findIndex(
-				(_, at) => guidFor(at) === parsed.playlistId,
-			);
-			if (index < 0)
-				return json(response, { error: "no such playlist", detail: "" }, 404);
-			const playlist = state.playlists[index];
-
-			const pastEnd = parsed.positions.find(
-				(position) => position >= playlist.items.length,
-			);
-			// No store behind the queue yet: GET /api/queue keeps answering empty
-			// until a later phase gives this fake one, so any `at` past the head is
-			// past the end of it.
+			// Same convention as the rows form above: nothing here backs a real
+			// queue yet, so any `at` past the head is past the end of it.
 			const queueEnd = parsed.at !== undefined && parsed.at.index > 0;
-			if (pastEnd !== undefined || queueEnd)
+			if (queueEnd)
 				return json(
 					response,
 					{ error: "that position is past the end", detail: "" },

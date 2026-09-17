@@ -133,8 +133,38 @@ QueueRowsRequest refuseQueueRows(PlaylistRefusal refusal) {
     return request;
 }
 
+QueueTracksRequest refuseQueueTracks(PlaylistRefusal refusal) {
+    QueueTracksRequest request;
+    request.refusal = refusal;
+    return request;
+}
+
 bool fitsUint32(uint64_t value) {
     return value <= std::numeric_limits<uint32_t>::max();
+}
+
+struct QueuePositionField {
+    std::optional<QueuePosition> at;
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+QueuePositionField readQueuePosition(const json& root) {
+    const auto at = root.find("at");
+    if (at == root.end())
+        return {};
+
+    if (!at->is_number_unsigned() || !fitsUint32(at->get<uint64_t>()))
+        return {std::nullopt, PlaylistRefusal::badOrdinals};
+
+    const auto revision = root.find("revision");
+    if (revision == root.end() || !revision->is_number_unsigned())
+        return {std::nullopt, PlaylistRefusal::badOrdinals};
+
+    QueuePositionField field;
+    field.at = QueuePosition{static_cast<uint32_t>(at->get<uint64_t>()), revision->get<uint64_t>()};
+    return field;
 }
 
 FillRequest malformedFill() {
@@ -217,6 +247,102 @@ Base64Bytes decodeBase64(const std::string& text) {
     }
 
     result.ok = true;
+    return result;
+}
+
+bool namesOneSelectionForm(const json& root) {
+    const int forms = (root.contains("runs") ? 1 : 0) + (root.contains("bitset") ? 1 : 0) +
+                      (root.contains("ordinals") ? 1 : 0);
+    return forms == 1;
+}
+
+struct SelectionResult {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    std::vector<uint32_t> ordinals;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// `runs` and `bitset` are sorted ascending because neither can encode any other order;
+// `ordinals` keeps the order given, since only it can carry one.
+SelectionResult decodeSelection(const json& root, size_t trackCount) {
+    const auto inRange = [trackCount](uint64_t ordinal) { return ordinal < trackCount; };
+
+    SelectionResult result;
+
+    const auto ordinals = root.find("ordinals");
+    if (ordinals != root.end()) {
+        if (!ordinals->is_array())
+            return {PlaylistRefusal::badOrdinals, {}};
+
+        for (const auto& entry : *ordinals) {
+            if (!entry.is_number_unsigned())
+                return {PlaylistRefusal::badOrdinals, {}};
+
+            const auto value = entry.get<uint64_t>();
+            if (!inRange(value))
+                return {PlaylistRefusal::badOrdinals, {}};
+
+            result.ordinals.push_back(static_cast<uint32_t>(value));
+        }
+
+        return result;
+    }
+
+    const auto runs = root.find("runs");
+    if (runs != root.end()) {
+        if (!runs->is_array())
+            return {PlaylistRefusal::badOrdinals, {}};
+
+        uint64_t total = 0;
+        for (const auto& run : *runs) {
+            if (!run.is_array() || run.size() != 2 || !run[0].is_number_unsigned() ||
+                !run[1].is_number_unsigned())
+                return {PlaylistRefusal::badOrdinals, {}};
+
+            total += run[1].get<uint64_t>();
+            if (total > trackCount)
+                return {PlaylistRefusal::badOrdinals, {}};
+        }
+
+        for (const auto& run : *runs) {
+            const auto start = run[0].get<uint64_t>();
+            const auto count = run[1].get<uint64_t>();
+
+            for (uint64_t at = 0; at < count; ++at) {
+                const uint64_t ordinal = start + at;
+                if (!inRange(ordinal))
+                    return {PlaylistRefusal::badOrdinals, {}};
+
+                result.ordinals.push_back(static_cast<uint32_t>(ordinal));
+            }
+        }
+
+        std::sort(result.ordinals.begin(), result.ordinals.end());
+        return result;
+    }
+
+    const auto bitset = root.find("bitset");
+    if (bitset == root.end() || !bitset->is_string())
+        return {PlaylistRefusal::badOrdinals, {}};
+
+    const auto decoded = decodeBase64(bitset->get<std::string>());
+    if (!decoded.ok)
+        return {PlaylistRefusal::badOrdinals, {}};
+
+    for (size_t byteIndex = 0; byteIndex < decoded.bytes.size(); ++byteIndex) {
+        for (int bit = 0; bit < 8; ++bit) {
+            if (!(decoded.bytes[byteIndex] & (1u << bit)))
+                continue;
+
+            const uint64_t ordinal = byteIndex * 8 + static_cast<uint64_t>(bit);
+            if (!inRange(ordinal))
+                return {PlaylistRefusal::badOrdinals, {}};
+
+            result.ordinals.push_back(static_cast<uint32_t>(ordinal));
+        }
+    }
+
     return result;
 }
 
@@ -413,20 +539,63 @@ QueueRowsRequest parseQueueRows(const std::string& body) {
         request.positions.push_back(static_cast<uint32_t>(value));
     }
 
-    const auto at = root.find("at");
-    if (at != root.end()) {
-        if (!at->is_number_unsigned() || !fitsUint32(at->get<uint64_t>()))
-            return refuseQueueRows(PlaylistRefusal::badOrdinals);
-
-        const auto revision = root.find("revision");
-        if (revision == root.end() || !revision->is_number_unsigned())
-            return refuseQueueRows(PlaylistRefusal::badOrdinals);
-
-        request.at = QueuePosition{static_cast<uint32_t>(at->get<uint64_t>()),
-                                   revision->get<uint64_t>()};
-    }
+    const auto position = readQueuePosition(root);
+    if (!position.ok())
+        return refuseQueueRows(position.refusal);
+    request.at = position.at;
 
     return request;
+}
+
+QueueTracksRequest parseQueueTracks(const std::string& body, size_t trackCount,
+                                    std::optional<uint64_t> expectedStructure) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseQueueTracks(PlaylistRefusal::malformedBody);
+
+    const auto& root = document.value;
+
+    const auto structure = root.find("structure");
+    if (structure == root.end() || !structure->is_number_unsigned())
+        return refuseQueueTracks(PlaylistRefusal::malformedBody);
+
+    if (!namesOneSelectionForm(root))
+        return refuseQueueTracks(PlaylistRefusal::badOrdinals);
+
+    QueueTracksRequest request;
+    request.structure = structure->get<uint64_t>();
+
+    if (expectedStructure && request.structure != *expectedStructure) {
+        request.outcome = PlaylistOutcome::structureMoved;
+        return request;
+    }
+
+    const auto selection = decodeSelection(root, trackCount);
+    if (!selection.ok() || selection.ordinals.empty())
+        return refuseQueueTracks(PlaylistRefusal::badOrdinals);
+
+    request.ordinals = selection.ordinals;
+
+    const auto position = readQueuePosition(root);
+    if (!position.ok())
+        return refuseQueueTracks(position.refusal);
+    request.at = position.at;
+
+    return request;
+}
+
+QueueSource queueSourceOf(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    const auto& root = document.value;
+
+    const bool namesRows = root.contains("playlistId") || root.contains("positions");
+    const bool namesTracks = root.contains("structure") || root.contains("ordinals") ||
+                             root.contains("runs") || root.contains("bitset");
+
+    if (namesRows == namesTracks)
+        return QueueSource::invalid;
+
+    return namesRows ? QueueSource::playlistRows : QueueSource::libraryTracks;
 }
 
 std::string queryPreviewDocument(const PreviewResult& preview) {
@@ -498,15 +667,7 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
     if (structure == root.end() || !structure->is_number_unsigned())
         return malformedFill();
 
-    const auto runs = root.find("runs");
-    const auto bitset = root.find("bitset");
-    const auto ordinals = root.find("ordinals");
-
-    const bool hasRuns = runs != root.end();
-    const bool hasBitset = bitset != root.end();
-    const bool hasOrdinals = ordinals != root.end();
-
-    if (hasRuns + hasBitset + hasOrdinals != 1)
+    if (!namesOneSelectionForm(root))
         return refuseFill();
 
     FillRequest request;
@@ -517,78 +678,11 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
         return request;
     }
 
-    const auto inRange = [trackCount](uint64_t ordinal) { return ordinal < trackCount; };
-
-    if (hasOrdinals) {
-        if (!ordinals->is_array())
-            return refuseFill();
-
-        for (const auto& entry : *ordinals) {
-            if (!entry.is_number_unsigned())
-                return refuseFill();
-
-            const auto value = entry.get<uint64_t>();
-            if (!inRange(value))
-                return refuseFill();
-
-            request.ordinals.push_back(static_cast<uint32_t>(value));
-        }
-
-        return request;
-    }
-
-    if (hasRuns) {
-        if (!runs->is_array())
-            return refuseFill();
-
-        uint64_t total = 0;
-        for (const auto& run : *runs) {
-            if (!run.is_array() || run.size() != 2 || !run[0].is_number_unsigned() ||
-                !run[1].is_number_unsigned())
-                return refuseFill();
-
-            total += run[1].get<uint64_t>();
-            if (total > trackCount)
-                return refuseFill();
-        }
-
-        for (const auto& run : *runs) {
-            const auto start = run[0].get<uint64_t>();
-            const auto count = run[1].get<uint64_t>();
-
-            for (uint64_t at = 0; at < count; ++at) {
-                const uint64_t ordinal = start + at;
-                if (!inRange(ordinal))
-                    return refuseFill();
-
-                request.ordinals.push_back(static_cast<uint32_t>(ordinal));
-            }
-        }
-
-        std::sort(request.ordinals.begin(), request.ordinals.end());
-        return request;
-    }
-
-    if (!bitset->is_string())
+    const auto selection = decodeSelection(root, trackCount);
+    if (!selection.ok())
         return refuseFill();
 
-    const auto decoded = decodeBase64(bitset->get<std::string>());
-    if (!decoded.ok)
-        return refuseFill();
-
-    for (size_t byteIndex = 0; byteIndex < decoded.bytes.size(); ++byteIndex) {
-        for (int bit = 0; bit < 8; ++bit) {
-            if (!(decoded.bytes[byteIndex] & (1u << bit)))
-                continue;
-
-            const uint64_t ordinal = byteIndex * 8 + static_cast<uint64_t>(bit);
-            if (!inRange(ordinal))
-                return refuseFill();
-
-            request.ordinals.push_back(static_cast<uint32_t>(ordinal));
-        }
-    }
-
+    request.ordinals = selection.ordinals;
     return request;
 }
 

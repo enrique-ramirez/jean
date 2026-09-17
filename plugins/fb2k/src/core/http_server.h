@@ -36,6 +36,8 @@ using QueueReader = std::function<QueueRead()>;
 using PlaylistRowQueuer = std::function<PlaylistOutcome(
     const std::string& playlistId, const std::vector<uint32_t>& positions,
     std::optional<QueuePosition> at)>;
+using LibraryTrackQueuer = std::function<PlaylistOutcome(
+    uint64_t structure, const std::vector<uint32_t>& ordinals, std::optional<QueuePosition> at)>;
 using AutoPlaylistCreator = std::function<PlaylistResult(const AutoPlaylistSpec&)>;
 using AutoPlaylistUpdater =
     std::function<PlaylistResult(const std::string& id, const AutoPlaylistSpec&)>;
@@ -85,6 +87,7 @@ struct Player {
     PlaylistLister listPlaylists;
     QueueReader readQueue;
     PlaylistRowQueuer queuePlaylistRows;
+    LibraryTrackQueuer queueLibraryTracks;
     AutoPlaylistCreator createAutoPlaylist;
     AutoPlaylistUpdater updateAutoPlaylist;
     AutoPlaylistRemover removeAutoPlaylist;

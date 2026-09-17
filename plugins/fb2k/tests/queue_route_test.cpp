@@ -6,6 +6,7 @@
 #include "third_party/doctest.h"
 
 #include "core/http_server.h"
+#include "core/library.h"
 #include "core/player_state.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
@@ -365,4 +366,352 @@ TEST_CASE("queueing from a playlist the player does not have is a 404, and a pos
         CHECK(json::parse(response->body)["error"].is_string());
         CHECK(log.calls == 1);
     }
+}
+
+namespace {
+
+struct TrackQueueLog {
+    int calls = 0;
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+    std::optional<QueuePosition> at;
+    PlaylistOutcome answer = PlaylistOutcome::done;
+};
+
+// Both sources recorded, so a body can be shown to reach the one it names and never the other.
+Player queueingEither(RowQueueLog* rows, TrackQueueLog* tracks) {
+    Player player = queueingRows(rows);
+    player.queueLibraryTracks = [tracks](uint64_t structure, const std::vector<uint32_t>& ordinals,
+                                         std::optional<QueuePosition> at) {
+        tracks->calls++;
+        tracks->structure = structure;
+        tracks->ordinals = ordinals;
+        tracks->at = at;
+        return tracks->answer;
+    };
+    return player;
+}
+
+constexpr size_t kLibraryTracks = 8;
+
+void buildLibrary(Library& library, size_t trackCount = kLibraryTracks) {
+    LibraryBuilder builder({"%title%"}, trackCount);
+    auto& sink = builder.sink();
+
+    for (size_t index = 0; index < trackCount; ++index) {
+        const auto ordinal = std::to_string(index);
+        sink.row(index, {"Artist/Album/", ordinal + ".flac", "0", "Track " + ordinal});
+    }
+
+    library.replace(builder.finish());
+}
+
+json tracksOf(uint64_t structure, const char* form, const json& selection) {
+    return json{{"structure", structure}, {form, selection}};
+}
+
+}  // namespace
+
+// A multi-select from the library is queued in the order it was clicked, which only the
+// `ordinals` form can carry.
+TEST_CASE("queueing library tracks by ordinals hands the player the structure and every ordinal "
+          "in the order given, once, at the end of the queue, and no playlist row") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+    const auto response =
+        post(server, kQueueRows, tracksOf(structure, "ordinals", {5, 0, 3}).dump());
+
+    REQUIRE(response);
+    CHECK(response->status == 204);
+
+    REQUIRE(tracks.calls == 1);
+    CHECK(tracks.structure == structure);
+    CHECK(tracks.ordinals == std::vector<uint32_t>{5, 0, 3});
+    CHECK_FALSE(tracks.at.has_value());
+    CHECK(rows.calls == 0);
+}
+
+// contract/openapi.yaml's `Runs` and `Bitset` are ascending by definition, for a queue as for a
+// fill. Runs listed out of order are the case that tells ascending apart from as-listed.
+TEST_CASE("library tracks queued as runs or as a bitset reach the player in ascending ordinal "
+          "order") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    struct Form {
+        const char* name;
+        json selection;
+    };
+
+    for (const auto& form : {Form{"runs", {{5, 2}, {0, 1}}}, Form{"bitset", "YQ=="}}) {
+        INFO("form: ", form.name);
+        RowQueueLog rows;
+        TrackQueueLog tracks;
+        const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+        const auto response =
+            post(server, kQueueRows, tracksOf(structure, form.name, form.selection).dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 204);
+
+        REQUIRE(tracks.calls == 1);
+        CHECK(tracks.ordinals == std::vector<uint32_t>{0, 5, 6});
+        CHECK(rows.calls == 0);
+    }
+}
+
+TEST_CASE("queueing library tracks at a queue position hands the player that position and the "
+          "queue revision the client planned it against") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    for (const uint32_t at : {uint32_t{0}, uint32_t{2}}) {
+        INFO("at: ", at);
+        RowQueueLog rows;
+        TrackQueueLog tracks;
+        const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+        auto body = tracksOf(structure, "ordinals", {4});
+        body["at"] = at;
+        body["revision"] = 9;
+
+        const auto response = post(server, kQueueRows, body.dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 204);
+
+        REQUIRE(tracks.calls == 1);
+        CHECK(tracks.ordinals == std::vector<uint32_t>{4});
+        REQUIRE(tracks.at.has_value());
+        CHECK(tracks.at->index == at);
+        CHECK(tracks.at->revision == 9);
+        CHECK(rows.calls == 0);
+    }
+}
+
+// A body naming both would be queued from whichever source the parse happened to read first,
+// and the client could not tell which.
+TEST_CASE("a queue request naming both a playlist and the library, or neither, is a 400 and "
+          "reaches neither queue") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+    const auto withRows = [](json body) {
+        body["playlistId"] = kPlaylistId;
+        body["positions"] = {1};
+        return body;
+    };
+
+    const std::vector<json> bodies = {
+        json::object(),
+        json{{"at", 0}, {"revision", 1}},
+        withRows(tracksOf(structure, "ordinals", {1})),
+        withRows(tracksOf(structure, "runs", {{0, 1}})),
+        withRows(tracksOf(structure, "bitset", "Ag==")),
+        json{{"playlistId", kPlaylistId}, {"structure", structure}, {"ordinals", {1}}},
+        json{{"positions", {1}}, {"structure", structure}, {"ordinals", {1}}},
+    };
+
+    for (const auto& body : bodies) {
+        INFO("body: ", body.dump());
+        const auto response = post(server, kQueueRows, body.dump());
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(rows.calls == 0);
+    CHECK(tracks.calls == 0);
+}
+
+TEST_CASE("a library selection the component can judge for itself is a 400 and never reaches the "
+          "player") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+    const auto positioned = [structure](const json& at, const json& revision) {
+        auto body = tracksOf(structure, "ordinals", {1});
+        body["at"] = at;
+        if (!revision.is_null())
+            body["revision"] = revision;
+        return body;
+    };
+
+    auto twoForms = tracksOf(structure, "ordinals", {1});
+    twoForms["runs"] = {{1, 1}};
+
+    const std::vector<json> bodies = {
+        json{{"structure", structure}},
+        json{{"ordinals", {1}}},
+        json{{"structure", std::to_string(structure)}, {"ordinals", {1}}},
+        twoForms,
+        tracksOf(structure, "ordinals", 1),
+        tracksOf(structure, "ordinals", {1.5}),
+        tracksOf(structure, "ordinals", {"3"}),
+        tracksOf(structure, "ordinals", {-1}),
+        tracksOf(structure, "ordinals", {nullptr}),
+        tracksOf(structure, "ordinals", {kLibraryTracks}),
+        tracksOf(structure, "runs", {{1}}),
+        tracksOf(structure, "runs", {{1, 2, 3}}),
+        tracksOf(structure, "runs", {{6, 4}}),
+        tracksOf(structure, "runs", "0,1"),
+        tracksOf(structure, "bitset", 7),
+        tracksOf(structure, "bitset", "not base64!"),
+        tracksOf(structure, "bitset", "AAE="),
+        positioned(-1, 9),
+        positioned("2", 9),
+        positioned(2, nullptr),
+    };
+
+    for (const auto& body : bodies) {
+        INFO("body: ", body.dump());
+        const auto response = post(server, kQueueRows, body.dump());
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(tracks.calls == 0);
+    CHECK(rows.calls == 0);
+}
+
+// An ordinal means a track only within the structure it was exported at. The shrunken library
+// makes one of these ordinals past the end, which is still a moved structure rather than a 400:
+// the client's remedy is to export again, not to fix the set.
+TEST_CASE("queueing library tracks against a structure the library has moved past is a 409 and "
+          "never reaches the player") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t exported = library.state().structure;
+
+    buildLibrary(library, kLibraryTracks - 6);
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+    for (const auto& body :
+         {tracksOf(exported, "ordinals", {1}), tracksOf(exported, "ordinals", {7})}) {
+        INFO("body: ", body.dump());
+        const auto response = post(server, kQueueRows, body.dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
+    }
+
+    CHECK(tracks.calls == 0);
+    CHECK(rows.calls == 0);
+}
+
+// The library can rebuild between the route's check and the job that resolves the ordinals on
+// the main thread, so the player answers the same 409 from inside the job.
+TEST_CASE("a structure the library moves past before the player's job runs is a 409") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    tracks.answer = PlaylistOutcome::structureMoved;
+    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+    const auto response = post(server, kQueueRows, tracksOf(structure, "ordinals", {2}).dump());
+
+    REQUIRE(response);
+    CHECK(response->status == 409);
+    CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
+    CHECK(tracks.calls == 1);
+}
+
+// A request that queues nothing is a client bug, the same reason an empty `positions` is
+// refused for a playlist row. An all-zero bitset is the same empty set in the third form.
+TEST_CASE("an empty library selection is a 400 and never reaches the player, whichever form "
+          "carries it") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+    for (const auto& body : {tracksOf(structure, "ordinals", json::array()),
+                             tracksOf(structure, "runs", json::array()),
+                             tracksOf(structure, "bitset", "AA==")}) {
+        INFO("body: ", body.dump());
+        const auto response = post(server, kQueueRows, body.dump());
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(tracks.calls == 0);
+    CHECK(rows.calls == 0);
+}
+
+// The ordinals are the client's own export, so the error has to name what is missing rather than
+// blame the set, or the client retries with a set that cannot land either.
+TEST_CASE("queueing library tracks with nothing to resolve them against is a 503 naming what is "
+          "missing") {
+    TrackQueueLog tracks;
+    Library unbuilt;
+
+    const auto refused = [&tracks](Library* library, const std::string& error) {
+        RowQueueLog rows;
+        const TestServer server(servingSettings(), queueingEither(&rows, &tracks), library);
+
+        const auto response = post(server, kQueueRows, tracksOf(1, "ordinals", {1}).dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 503);
+        CHECK(json::parse(response->body)["error"] == error);
+        CHECK(rows.calls == 0);
+    };
+
+    SUBCASE("an install that does not serve the library at all") {
+        refused(nullptr, "the media library is not available");
+    }
+
+    SUBCASE("a library whose first snapshot has not been built yet") {
+        refused(&unbuilt, describe(DeltaOutcome::notBuilt));
+    }
+
+    CHECK(tracks.calls == 0);
+}
+
+TEST_CASE("an ordinal repeated in the request is queued twice") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+    const auto response = post(server, kQueueRows, tracksOf(structure, "ordinals", {3, 3}).dump());
+
+    REQUIRE(response);
+    CHECK(response->status == 204);
+    REQUIRE(tracks.calls == 1);
+    CHECK(tracks.ordinals == std::vector<uint32_t>{3, 3});
 }

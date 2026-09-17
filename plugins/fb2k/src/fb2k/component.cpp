@@ -66,6 +66,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.listPlaylists = makePlaylistLister(mainThread);
     player.readQueue = makeQueueReader(mainThread, playerState);
     player.queuePlaylistRows = makePlaylistRowQueuer(mainThread);
+    player.queueLibraryTracks = makeLibraryTrackQueuer(mainThread, libraryFeed.ordinalResolver());
     player.createAutoPlaylist = makeAutoPlaylistCreator(mainThread, settings.maxAutoPlaylists);
     player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread);
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);

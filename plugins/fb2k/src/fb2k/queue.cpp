@@ -3,10 +3,13 @@
 #include "fb2k/queue.h"
 
 #include "fb2k/ask_player.h"
+#include "fb2k/library.h"
 #include "fb2k/playlists.h"
 #include "fb2k/strings.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -98,6 +101,86 @@ QueuedTrack formatted(const CopiedQueueItem& item, const Scripts& scripts,
     return track;
 }
 
+// See ARCHITECTURE.md, *Facts about the player*, for why an `at` drains the queue and
+// replays the tail.
+void queueAt(playlist_manager_v5::ptr manager, std::optional<QueuePosition> at,
+             const std::function<void(playlist_manager_v5::ptr)>& addNewEntries) {
+    pfc::list_t<t_playback_queue_item> tail;
+    if (at) {
+        const auto queueCount = manager->queue_get_count();
+        if (at->index < queueCount) {
+            pfc::list_t<t_playback_queue_item> contents;
+            manager->queue_get_contents(contents);
+
+            for (t_size item = at->index; item < contents.get_count(); ++item)
+                tail.add_item(contents[item]);
+
+            manager->queue_remove_mask(bit_array_range(at->index, tail.get_count(), true));
+        }
+    }
+
+    addNewEntries(manager);
+
+    for (t_size item = 0; item < tail.get_count(); ++item) {
+        const auto& entry = tail[item];
+        if (queuedLocationOf(entry))
+            manager->queue_add_item_playlist(entry.m_playlist, entry.m_item);
+        else
+            manager->queue_add_item(entry.m_handle);
+    }
+}
+
+PlaylistOutcome beginQueueRows(const std::string& playlistId,
+                               const std::vector<uint32_t>& positions,
+                               std::optional<QueuePosition> at) {
+    const auto index = findPlaylist(playlistId);
+    if (index == pfc::infinite_size)
+        return PlaylistOutcome::noSuchPlaylist;
+
+    auto manager = playlist_manager_v5::get();
+
+    const auto rowCount = manager->playlist_get_item_count(index);
+    const bool rowPastEnd = std::any_of(
+        positions.begin(), positions.end(),
+        [rowCount](uint32_t position) { return position >= rowCount; });
+    if (rowPastEnd)
+        return PlaylistOutcome::positionPastEnd;
+
+    const auto queueCount = manager->queue_get_count();
+    if (at && at->index > queueCount)
+        return PlaylistOutcome::positionPastEnd;
+
+    queueAt(manager, at, [&positions, index](playlist_manager_v5::ptr manager) {
+        for (const auto position : positions)
+            manager->queue_add_item_playlist(index, position);
+    });
+
+    return PlaylistOutcome::done;
+}
+
+// See beginFill: resolution and the structure check run together, in the one lock, so a
+// rebuild landing between the route's own check and this job cannot be read as a match.
+PlaylistOutcome beginQueueTracks(uint64_t structure, const std::vector<uint32_t>& ordinals,
+                                 std::optional<QueuePosition> at,
+                                 const OrdinalResolver& resolveOrdinals) {
+    const auto resolved = resolveOrdinals(structure, ordinals);
+    if (!resolved.structureMatched)
+        return PlaylistOutcome::structureMoved;
+
+    auto manager = playlist_manager_v5::get();
+
+    const auto queueCount = manager->queue_get_count();
+    if (at && at->index > queueCount)
+        return PlaylistOutcome::positionPastEnd;
+
+    queueAt(manager, at, [&resolved](playlist_manager_v5::ptr manager) {
+        for (t_size item = 0; item < resolved.items.get_count(); ++item)
+            manager->queue_add_item(resolved.items[item]);
+    });
+
+    return PlaylistOutcome::done;
+}
+
 }  // namespace
 
 QueueReader makeQueueReader(MainThreadQueue& mainThread, PlayerStateStore& store) {
@@ -122,6 +205,31 @@ QueueReader makeQueueReader(MainThreadQueue& mainThread, PlayerStateStore& store
         }
 
         return read;
+    };
+}
+
+PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread) {
+    return [&mainThread](const std::string& playlistId, const std::vector<uint32_t>& positions,
+                         std::optional<QueuePosition> at) {
+        return askPlayer<PlaylistOutcome>(
+            mainThread, "queueing playlist rows",
+            [playlistId, positions, at](const AnswerPtr<PlaylistOutcome>& answer) {
+                answer->set(beginQueueRows(playlistId, positions, at));
+            },
+            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+    };
+}
+
+LibraryTrackQueuer makeLibraryTrackQueuer(MainThreadQueue& mainThread,
+                                          OrdinalResolver resolveOrdinals) {
+    return [&mainThread, resolveOrdinals](uint64_t structure, const std::vector<uint32_t>& ordinals,
+                                          std::optional<QueuePosition> at) {
+        return askPlayer<PlaylistOutcome>(
+            mainThread, "queueing library tracks",
+            [structure, ordinals, at, resolveOrdinals](const AnswerPtr<PlaylistOutcome>& answer) {
+                answer->set(beginQueueTracks(structure, ordinals, at, resolveOrdinals));
+            },
+            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
     };
 }
 

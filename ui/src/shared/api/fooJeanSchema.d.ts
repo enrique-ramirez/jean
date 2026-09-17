@@ -334,14 +334,16 @@ export interface paths {
         get: operations["getQueue"];
         put?: never;
         /**
-         * Queue rows from a user's playlist, by position.
-         * @description Queues every position in `positions`, in the order given, once each: a position repeated in the request is queued twice, exactly as foobar2000's own *Add to playback queue* allows. One job, so a multi-select is never left half-queued.
+         * Queue playlist rows or library tracks.
+         * @description Takes exactly one of two bodies, named below: `QueuePlaylistRowsRequest` queues rows from a user's playlist, by position; `QueueLibraryTracksRequest` queues tracks from the media library, by handle, resolved against `structure` the same way `POST /playlists/{id}/items` resolves a fill. Naming fields from both, or from neither, is a `400`.
+         *
+         *     A position or an ordinal repeated in the request is queued twice, exactly as foobar2000's own *Add to playback queue* allows for a row. One job either way, so a multi-select is never left half-queued.
          *
          *     Omit `at` to queue at the end. Send it with `revision`, the queue revision it was chosen against from `GET /state`'s `queueRevision`, to queue at that position instead; `at` without `revision` is a `400`, decided here rather than by the player.
          *
-         *     Whether `playlistId` names a playlist, and whether a row or `at` names a position past what it addresses -- a row past the playlist's end, `at` past the queue's end -- are answered by the player rather than judged here: only it knows which playlists exist and how many rows or queue entries each holds.
+         *     Whether `playlistId` names a playlist, and whether a row or `at` names a position past what it addresses -- a row past the playlist's end, `at` past the queue's end -- are answered by the player rather than judged here: only it knows which playlists exist and how many rows or queue entries each holds. A `structure` that has moved is a `409`, the same as a fill's.
          */
-        post: operations["queuePlaylistRows"];
+        post: operations["queueTracks"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1197,6 +1199,26 @@ export interface components {
              *     ]
              */
             positions: number[];
+            /**
+             * @description Where in the queue to insert, `0` being the head. Omit it to queue at the end. Sent only together with `revision`; `at` without `revision` is a `400`.
+             * @example 1
+             */
+            at?: number;
+            /**
+             * @description The queue revision `at` was chosen against, from `GET /state`'s `queueRevision`. Required whenever `at` is sent.
+             * @example 9
+             */
+            revision?: number;
+        };
+        QueueLibraryTracksRequest: {
+            /**
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @example 41
+             */
+            structure: number;
+            runs?: components["schemas"]["Runs"];
+            bitset?: components["schemas"]["Bitset"];
+            ordinals?: components["schemas"]["Ordinals"];
             /**
              * @description Where in the queue to insert, `0` being the head. Omit it to queue at the end. Sent only together with `revision`; `at` without `revision` is a `400`.
              * @example 1
@@ -2241,7 +2263,7 @@ export interface operations {
             };
         };
     };
-    queuePlaylistRows: {
+    queueTracks: {
         parameters: {
             query?: never;
             header?: never;
@@ -2250,7 +2272,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["QueuePlaylistRowsRequest"];
+                "application/json": components["schemas"]["QueuePlaylistRowsRequest"] | components["schemas"]["QueueLibraryTracksRequest"];
             };
         };
         responses: {
@@ -2261,7 +2283,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Either the component judged the request for itself before the player was involved -- a body that is not JSON, a missing or unusable `playlistId`, an empty or unusable `positions`, or an `at` sent without a `revision` -- or the player found a row or `at` past the end of what it addresses. The two are told apart by which of the schemas below the body matches. */
+            /** @description The component judged the request for itself before the player was involved -- a body that is not JSON, a body naming both a playlist and the library or naming neither, a missing or unusable `playlistId`, an empty or unusable `positions`, an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals` or that is empty, an ordinal outside the library while its `structure` is still the current one, or an `at` sent without a `revision` -- or the player found a row or `at` past the end of what it addresses. The schemas below tell the two apart. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2272,6 +2294,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["StructureMoved"];
             429: components["responses"]["TooManyRequests"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
@@ -2282,7 +2305,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistFailed"];
                 };
             };
-            /** @description The queue is not available in this build. */
+            /** @description The queue is not available in this build, or, for a library-tracks request, the media library is not available or its first snapshot has not been built yet. */
             503: {
                 headers: {
                     [name: string]: unknown;

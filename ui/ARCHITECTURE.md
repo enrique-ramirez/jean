@@ -195,7 +195,7 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Anchored menu (`Menu`) | 25 |
 | Now-playing screen | 25 |
 | Queue panel scrim, compact | 29 |
-| Queue panel · volume popover · listen-here popover | 30 |
+| Queue panel · volume popover · listen-here popover · status bar, desktop | 30 |
 | Sidebar scrim, compact | 39 |
 | Sidebar drawer, compact | 40 |
 | Search dropdown | 42 |
@@ -205,7 +205,7 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Action menu and its scrim | 70 |
 | Drag ghost | 80 |
 
-The gaps are deliberate. Lyrics sit above the app chrome, the queue panel and the now-playing screen, and deliberately **under** toasts and menus, because a write that failed still has to be able to say so. The drag ghost is above everything, since a drag can start anywhere.
+The gaps are deliberate. Lyrics sit above the app chrome, the queue panel and the now-playing screen, and deliberately **under** toasts and menus, because a write that failed still has to be able to say so. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document; its popovers stack inside it and so still clear the queue panel.
 
 Values of `0`–`5` appear inside `AlbumCard`, `ShelfRow`, `GenreTile`, `TrackPanels`, `QueuePanel` rows, `ActionMenu` pages and the `Sidebar` row being dragged. Those are local to a stacking context their own component establishes and mean nothing outside it. Do not read them against this table.
 

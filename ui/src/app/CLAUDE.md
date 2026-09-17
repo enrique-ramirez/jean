@@ -71,4 +71,6 @@ The Android lock screen, macOS Now Playing and the media keys, iOS Control Centr
 
 Two traps worth keeping: Chrome throws a **`TypeError` on a position past the duration**, which a live stream's own clock will produce, and `setActionHandler` **throws for an action the browser does not know** rather than ignoring it. Both are caught: losing the scrubber is not worth losing the session.
 
+**The artwork is fetched by the browser and the OS, never by Jean, so it has to be same-origin.** `foo_jean`'s playing-cover route answers 401 without a bearer token and nothing here can attach one to a request it does not make, so the lock screen keeps beefweb's positional address and has no cover while the playing row's place is unknown.
+
 **The album is the one field on the lock screen the update stream does not carry, and it must not join it**, since the stream re-evaluates its `trcolumns` on every push. It comes from the same per-track query the now-playing screen uses, so the screen and the lock screen never ask twice.

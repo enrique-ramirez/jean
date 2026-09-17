@@ -245,7 +245,7 @@ Which of these resolve varies by install, by component and by how the library wa
 
 ## The media library API
 
-**foobar2000 only, and only on beefweb 0.11+.** On 0.10 every endpoint here is **404**. **Jean does not read the library through any of it.** `foo_jean` answers the library, and these routes are only what a fill, a queue or a tag write acts *through* once a row has been chosen.
+**foobar2000 only, and only on beefweb 0.11+.** On 0.10 every endpoint here is **404**. **`foo_jean` answers the library**, and these routes are what a fill, a queue or a tag write acts *through* once a row has been chosen. One read is the exception: `fetchLibraryNodes` asks `by-path` for a track's own folder to resolve that one track's columns, because nothing else here addresses a single track.
 
 ### `GET /library/info`
 

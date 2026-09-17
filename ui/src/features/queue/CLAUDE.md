@@ -38,6 +38,6 @@ The button is a drop target, and the only one outside the sidebar and the panel.
 
 **The rail segment is set inline and the sortable hook owns `transform` on the same element.** Compose the row's `style` *after* the spread; passing it before silently loses the segment.
 
-**An orphaned entry is drawn, not hidden.** Hiding it would leave a gap in a numbering the player still honours, so it is drawn as the fault it is with a button to be rid of it. **Branch on the index, never on the columns**, for the reason `../../shared/api/README.md` gives.
+**An entry with no position is an ordinary row.** That it still plays is `../../shared/api/README.md`'s fact to state, not this panel's.
 
 **The grip is for coarse pointers only.** A mouse drags the row itself, as the sortable hook does everywhere else. On touch the vertical axis already belongs to the scroller and the hold-then-drag gesture is spent on the context menu, so nothing but an explicit handle can claim it, and the remove button becomes permanent alongside it, since there is no hover to reveal either.

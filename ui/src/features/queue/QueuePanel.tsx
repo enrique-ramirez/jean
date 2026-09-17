@@ -143,34 +143,6 @@ const QueueRow = memo(function QueueRow({
 	itemProps: PropBag;
 }) {
 	const t = useTranslate();
-	if (entry.isOrphan) {
-		return (
-			<li
-				className={styles.row}
-				data-orphan="true"
-				data-drop-line={hasDropLine ? "true" : undefined}
-				{...itemProps}
-			>
-				<DropZones at={dropAt} />
-				<span className={styles.tick} aria-hidden="true" />
-				<span className={styles.names}>
-					<span className={styles.title}>{t("queue.orphan")}</span>
-					<span className={styles.artist}>{t("queue.orphanFix")}</span>
-				</span>
-				{canQueue ? (
-					<button
-						type="button"
-						className={styles.remove}
-						aria-label={t("queue.remove")}
-						onClick={onRemove}
-					>
-						<X size={15} strokeWidth={2.2} />
-					</button>
-				) : null}
-			</li>
-		);
-	}
-
 	const { style, ...merged } = mergeHandlers(itemProps, rowProps);
 
 	return (

@@ -28,7 +28,6 @@ export interface QueueEntry {
 	artist: string;
 	duration: number;
 	offset: number;
-	isOrphan: boolean;
 	libraryPath: string | null;
 	location: { playlistId: string; index: number } | null;
 }
@@ -44,9 +43,6 @@ export function readQueue(read: QueueRead | undefined): QueueEntry[] {
 			artist: entry.artist,
 			duration,
 			offset,
-			// A queued entry plays whether or not it still carries a `location`: see `../../shared/api/README.md`,
-			// "What Jean does about the queue".
-			isOrphan: false,
 			libraryPath: entry.libraryPath,
 			location: entry.location,
 		};

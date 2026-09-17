@@ -84,6 +84,16 @@ const queuedAtThePlayer = (player: FakePlayer) =>
 		artist: String(entry.track["%artist%"] ?? ""),
 	}));
 
+// Where each entry sits, as `GET /api/queue` reports it: a track queued by
+// handle and a row whose playlist position the player has lost both answer with
+// none. Read off the player to say the case is set up, never as the assertion.
+const queuePositions = (player: FakePlayer) =>
+	player
+		.queuedEntries()
+		.map((entry) =>
+			entry.playlistId && entry.index >= 0 ? entry.index : null,
+		);
+
 const componentRequests = (player: FakePlayer, method: string, route: string) =>
 	player.requests.filter(
 		(entry) => entry.method === method && entry.path.split("?")[0] === route,
@@ -1352,6 +1362,69 @@ test.describe("the queue is the component's", () => {
 
 		await expect(queueRows(page)).toHaveCount(3);
 		await expect(queueRows(page).first()).toContainText(queuedFirst);
+	});
+});
+
+// The player plays an entry it has no position for, whether the row it was
+// queued from was removed or its whole playlist went, so there is nothing for
+// the panel to warn anybody about: it is an ordinary row like the rest.
+test.describe("an entry the player has no position for", () => {
+	test("a track queued with no playlist row draws its own title and artist, and counts in the total", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await openQueue(page);
+
+		rowQueuedAtThePlayer(player, "p2", 0);
+		trackQueuedAtThePlayer(player, 5);
+
+		await expect(queueRows(page)).toHaveCount(2);
+		expect(
+			queuePositions(player),
+			"the second entry was queued with a position, so the case is not set up",
+		).toEqual([0, null]);
+
+		const answered = queuedAtThePlayer(player);
+		await expect(queueRows(page).nth(1)).toContainText(answered[1].title);
+		await expect(queueRows(page).nth(1)).toContainText(answered[1].artist);
+		await expect(queuePanel(page)).not.toContainText(/skipped/i);
+		await expect(queuePanel(page)).toContainText("2 tracks");
+	});
+
+	test("a queued row keeps its title and artist when the player loses its position, and still removes", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await openQueue(page);
+
+		rowQueuedAtThePlayer(player, "p2", 1);
+		await expect(queueRows(page)).toHaveCount(1);
+		const [answered] = queuedAtThePlayer(player);
+
+		// The desktop taking the row out from under an entry already in the queue.
+		player.removeItems("p2", [1]);
+		// Queued after the removal, so the read that draws this row is a read taken
+		// with the first entry's position already gone.
+		const marker = rowQueuedAtThePlayer(player, "p2", 0);
+		expect(queuePositions(player)).toEqual([null, 0]);
+
+		await expect(queueRows(page)).toHaveCount(2);
+		await expect(queueRows(page).nth(1)).toContainText(marker);
+		await expect(queueRows(page).first()).toContainText(answered.title);
+		await expect(queueRows(page).first()).toContainText(answered.artist);
+		await expect(queuePanel(page)).not.toContainText(/skipped/i);
+
+		await queueRows(page)
+			.first()
+			.getByRole("button", { name: /^Remove/ })
+			.click();
+
+		await expect
+			.poll(() => queuedAtThePlayer(player).map((entry) => entry.title))
+			.toEqual([marker]);
+		await expect(queueRows(page)).toHaveCount(1);
 	});
 });
 

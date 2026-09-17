@@ -327,21 +327,6 @@
 	cursor: grab;
 }
 
-.row[data-orphan="true"] {
-	cursor: default;
-}
-
-.row[data-orphan="true"] .title,
-.row[data-orphan="true"] .artist {
-	color: var(--faint);
-	font-style: italic;
-}
-
-.row[data-orphan="true"] .tick {
-	background: var(--surface-sunken);
-	box-shadow: 0 0 0 3px var(--surface);
-}
-
 @media (pointer: coarse) {
 	.row {
 		cursor: default;

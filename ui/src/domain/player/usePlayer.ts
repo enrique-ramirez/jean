@@ -44,7 +44,7 @@ import { clamp } from "@/shared/lib/math";
 import { refusal } from "@/shared/lib/refusal";
 import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
-import { PLAYER_KEY, VOLUME_SETTLE_MS } from "./playerPoll";
+import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
 import { positionAt } from "./position";
 import {
 	dequeuePlaylist,
@@ -260,12 +260,19 @@ export function useActiveItem(
 
 // The poll can lag a bare `playItem` post by up to `POLL_MS`, and `usePlaySet.ts` and
 // `PlaylistView.tsx` both need the flip to "playing" to be visible at once.
-export const usePlayItem = () =>
-	usePlayerPatch(
-		({ playlistId, index }: { playlistId: string; index: number }) =>
-			playItem(playlistId, index),
+export const usePlayItem = () => {
+	const queryClient = useQueryClient();
+	const { discovery } = useFooJean();
+
+	return usePlayerPatch(
+		async ({ playlistId, index }: { playlistId: string; index: number }) => {
+			await playItem(playlistId, index);
+			if (discovery.origin && discovery.token)
+				await pollPlayerNow(queryClient, discovery.origin, discovery.token);
+		},
 		() => ({ playbackState: "playing" }),
 	);
+};
 
 export const usePlayPause = () =>
 	usePlayerPatch<void>(playPause, (player, _input, previous) => ({

@@ -12,7 +12,8 @@ const KEY = "fooJeanPlaylists";
 
 export interface PlaylistAnnotations {
 	entries: PlaylistAnnotation[];
-	isKnown: boolean;
+	hasSettled: boolean;
+	isFetching: boolean;
 }
 
 export function usePlaylistAnnotations(): PlaylistAnnotations {
@@ -20,7 +21,7 @@ export function usePlaylistAnnotations(): PlaylistAnnotations {
 	const { origin, token } = discovery;
 	const { data: playlists } = usePlaylists();
 
-	const { data, status, refetch } = useQuery({
+	const { data, status, isFetching, refetch } = useQuery({
 		queryKey: [KEY, origin, token],
 		queryFn: () =>
 			origin && token ? fetchPlaylistAnnotations(origin, token) : null,
@@ -38,7 +39,11 @@ export function usePlaylistAnnotations(): PlaylistAnnotations {
 		if (origin && token && playlists) void refetch();
 	}, [playlistCount, origin, token, playlists, refetch]);
 
-	return { entries: data ?? [], isKnown: status !== "pending" };
+	return {
+		entries: data ?? [],
+		hasSettled: status !== "pending",
+		isFetching,
+	};
 }
 
 export function useAutoPlaylists(): ReadonlySet<string> {

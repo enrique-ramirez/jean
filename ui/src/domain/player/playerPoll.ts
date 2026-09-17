@@ -81,6 +81,36 @@ function mergePlayer(
 	};
 }
 
+async function applyPoll(
+	client: QueryClient,
+	origin: string,
+	token: string,
+	tag: string | null,
+	capabilities: FooJeanCapabilities | undefined,
+): Promise<string | null> {
+	const result = await fetchState(origin, token, tag);
+	if (!result.ok || result.kind === "unchanged") return tag;
+
+	const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
+	const snapshot: PlayerSnapshot = {
+		player: mergePlayer(previous?.player, result.state.player, capabilities),
+		syncedAt: performance.now(),
+	};
+	client.setQueryData<PlayerSnapshot>(PLAYER_KEY, snapshot);
+	rememberSnapshot(snapshot);
+	notePlaybackState(snapshot.player.playbackState);
+	void recheckComponentLibrary(origin, token, result.state.library);
+	return result.tag;
+}
+
+export async function pollPlayerNow(
+	client: QueryClient,
+	origin: string,
+	token: string,
+): Promise<void> {
+	await applyPoll(client, origin, token, null, undefined);
+}
+
 export function startPlayerPoll(
 	client: QueryClient,
 	origin: string,
@@ -95,23 +125,7 @@ export function startPlayerPoll(
 
 		inFlight = true;
 		try {
-			const result = await fetchState(origin, token, tag);
-			if (!result.ok || result.kind === "unchanged") return;
-
-			tag = result.tag;
-			const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
-			const snapshot: PlayerSnapshot = {
-				player: mergePlayer(
-					previous?.player,
-					result.state.player,
-					capabilities,
-				),
-				syncedAt: performance.now(),
-			};
-			client.setQueryData<PlayerSnapshot>(PLAYER_KEY, snapshot);
-			rememberSnapshot(snapshot);
-			notePlaybackState(snapshot.player.playbackState);
-			void recheckComponentLibrary(origin, token, result.state.library);
+			tag = await applyPoll(client, origin, token, tag, capabilities);
 		} finally {
 			inFlight = false;
 		}

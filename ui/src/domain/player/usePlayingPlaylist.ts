@@ -9,17 +9,17 @@ export function usePlayingPlaylist(
 	guid: string | null,
 ): string | null | undefined {
 	const { data: playlists = [] } = usePlaylists();
-	const { entries, isKnown } = usePlaylistAnnotations();
+	const { entries, hasSettled, isFetching } = usePlaylistAnnotations();
 
 	return useMemo(() => {
 		if (!guid) return null;
-		if (!isKnown) return undefined;
 		const entry = entries.find((annotation) => annotation.id === guid);
-		if (!entry) return null;
-		return (
-			entry.beefwebId ??
-			playlists.find((playlist) => playlist.index === entry.index)?.id ??
-			null
-		);
-	}, [entries, isKnown, playlists, guid]);
+		if (entry)
+			return (
+				entry.beefwebId ??
+				playlists.find((playlist) => playlist.index === entry.index)?.id ??
+				null
+			);
+		return hasSettled && !isFetching ? null : undefined;
+	}, [entries, hasSettled, isFetching, playlists, guid]);
 }

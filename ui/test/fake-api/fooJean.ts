@@ -44,6 +44,13 @@ export interface FooJeanOptions {
 	// item has been removed from the playlist it started in.
 	knowsPlayingLocation?: boolean;
 
+	// Off, `GET /api/playlists` leaves out the newest playlist, so a client joining
+	// the tick's playlist GUID to this list finds nothing for it. The component
+	// always lists every playlist it has; what lags is the copy a client holds,
+	// which is read once and again only when the playlist count moves, so a
+	// playlist created since is one the poll can name and the client cannot.
+	annotatesEveryPlaylist?: boolean;
+
 	canReadLibrary?: boolean;
 	libraryBuilds?: number;
 	libraryBusy?: number;
@@ -110,6 +117,7 @@ const DEFAULTS: FooJeanFake = {
 	failWrites: null,
 	failState: null,
 	knowsPlayingLocation: true,
+	annotatesEveryPlaylist: true,
 	canStream: true,
 	streamFormats: ["opus", "aac"],
 	playableFormats: ["opus", "aac"],
@@ -1098,15 +1106,25 @@ export async function handleAgent({
 	}
 
 	if (path === "/api/playlists") {
+		// The same latency switch the beefweb fake honours. Held after the request
+		// is recorded and before the list is built, so a spec can hold a refetch
+		// open across a playlist mutation the tick has already moved past.
+		if (state.latency > 0) await delay(state.latency);
+
+		const annotated = state.playlists.map((playlist, index) => ({
+			id: guidFor(index),
+			beefwebId: playlist.id,
+			index,
+			title: playlist.title,
+			isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
+			managed: null,
+		}));
+		// Dropped from the end rather than filtered, so every entry that is left
+		// keeps the id and the index the component would have given it.
 		return json(response, {
-			playlists: state.playlists.map((playlist, index) => ({
-				id: guidFor(index),
-				beefwebId: playlist.id,
-				index,
-				title: playlist.title,
-				isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
-				managed: null,
-			})),
+			playlists: fake.annotatesEveryPlaylist
+				? annotated
+				: annotated.slice(0, -1),
 		});
 	}
 

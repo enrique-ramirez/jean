@@ -1,5 +1,9 @@
 import { en } from "../../src/shared/i18n/en.ts";
-import { evaluate, type Track } from "../fake-api/state.ts";
+import {
+	evaluate,
+	type RecordedRequest,
+	type Track,
+} from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	dropTheStream,
@@ -36,29 +40,37 @@ const ticksTaken = (player: FakePlayer) =>
 
 const SUBSCRIPTION = "/api/query/updates";
 
-// The four columns the playing track's name and identity arrive in. The
-// now-playing panel's per-track read is addressed the same way, `player=true`
-// with `trcolumns`, and this bundle keeps it: it is told apart by asking for the
-// tags it draws rather than for all four of these.
-const NAMES_THE_PLAYING_TRACK = ["%artist%", "%title%", "%path%", "%subsong%"];
-
-// `player=true` is what asks beefweb for player state and `trcolumns` is the
-// parameter the active item's columns come back in.
-const asksForPlayerState = (path: string) => {
-	const columns = new URLSearchParams(path.split("?")[1]).get("trcolumns");
-	if (columns === null) return path.includes("player=true");
-	const asked = columns.split(",");
-	return NAMES_THE_PLAYING_TRACK.every((one) => asked.includes(one));
+// beefweb answers player state at two addresses and only one of them takes a
+// parameter: `player=true` on `/api/query` and on its subscription, and
+// `GET /api/player`, which asks by route alone. A POST under `/api/player` is a
+// transport command rather than a read of anything.
+const readsPlayerStateOffBeefweb = (one: RecordedRequest) => {
+	if (one.method !== "GET") return false;
+	const [route, query] = one.path.split("?");
+	return (
+		route.startsWith("/api/player") ||
+		new URLSearchParams(query).get("player") === "true"
+	);
 };
 
-// Every beefweb request rather than the subscription alone: the now-playing
-// panel's per-track read (`fetchActiveItemColumns` in `shared/api/beefweb.ts`)
-// is the same `GET /api/query?player=true&trcolumns=…`, one-shot rather than
-// pushed, and a watch scoped to the subscription cannot see that one.
-const beefwebReadsOfPlayerState = (player: FakePlayer) =>
-	player.requests
-		.filter((one) => asksForPlayerState(one.path))
-		.map((one) => one.path);
+// Every beefweb request rather than the subscription alone, and with nothing
+// excluded: one read survives, the now-playing panel's per-track columns
+// (`fetchActiveItemColumns` in `shared/api/beefweb.ts`), and it is told apart by
+// how many there are and by asking for a track's columns. A predicate naming the
+// columns it happens to ask for lets a read of one other field past, and goes
+// red the day somebody adds a field to the panel.
+const beefwebPlayerReads = (player: FakePlayer) =>
+	player.requests.filter(readsPlayerStateOffBeefweb).map((one) => one.path);
+
+// The panel's read is the only thing left that asks beefweb for a track's
+// columns, so anything else asking for player state shows up here.
+const withoutTrackColumns = (paths: string[]) =>
+	paths.filter((path) => !path.includes("trcolumns="));
+
+// Tracks played by the case those two are for, and so how many reads the panel
+// makes: it draws whatever is playing whether it is on screen or not, and holds
+// a track's columns for as long as that track plays.
+const TRACKS_PLAYED = 2;
 
 const routeOf = (path: string) => path.split("?")[0];
 
@@ -127,11 +139,14 @@ const playingCoverAnswers = (player: FakePlayer) =>
 			carriedThePicture: (one.answered?.bytes ?? 0) > 0,
 		}));
 
-// Every request that addresses a cover, at both of the addresses one is
-// reachable at. Watching a single address would miss a picture asked for again
-// under the other name, and that is the swap itself.
+// Every request that asks for a cover, at both of the addresses one is reachable
+// at. Watching a single address would miss a picture asked for again under the
+// other name, and that is the swap itself. GETs alone, as `playingCoverAnswers`
+// above: an `OPTIONS` preflight fetches no bytes and is not a picture being
+// asked for.
 const coversAskedFor = (player: FakePlayer) =>
 	player.requests
+		.filter((one) => one.method === "GET")
 		.map((one) => routeOf(one.path))
 		.filter((path) => path === PLAYING_COVER || POSITIONAL_COVER.test(path));
 
@@ -141,12 +156,24 @@ const drawnCover = (within: Locator) =>
 const wheel = (page: Page) =>
 	nowPlayingScreen(page).locator("[data-cover-wheel]");
 
-// The three slots in the order the wheel lays them out: the one a backwards
-// swipe turns onto, the one on screen, and the one a forwards swipe turns onto.
-const slots = (page: Page) => wheel(page).locator("[data-artwork]");
+// The slots with a picture on them, which at rest is all three: the one on
+// screen and the one a swipe either way turns onto.
+const drawnSlots = (page: Page) => wheel(page).locator("[data-artwork='ok']");
 
 const currentSlot = (page: Page) =>
 	wheel(page).locator("[data-current] [data-artwork]");
+
+// The wheel's own count of how far it has turned, independent of what a slot
+// is showing: `--turn` is `-position * --step`, so their ratio is `-position`
+// whichever sleeve is drawn.
+const detents = (page: Page) =>
+	wheel(page).evaluate((el) => {
+		const step = Number.parseFloat(
+			getComputedStyle(el).getPropertyValue("--step"),
+		);
+		const turn = Number.parseFloat(el.style.getPropertyValue("--turn"));
+		return Number.isFinite(turn) && step ? turn / step : null;
+	});
 
 // The cover on screen, which is a different component on each viewport rather
 // than a narrower one: a phone turns a wheel of three sleeves and a desktop
@@ -274,6 +301,46 @@ const playTheDroppedFile = async (page: Page, player: FakePlayer) => {
 
 	await addAndPlay(page, player, DRAGGED_IN);
 	await openNowPlaying(page);
+};
+
+// A set rather than a playlist row, because a set is what "Playing from" names.
+const playTheTopOfAllMusic = async (page: Page, player: FakePlayer) => {
+	await openAllMusic(page);
+	await trackRow(page, 0).dblclick();
+	await expect
+		.poll(() => scratchOf(player)?.title, { timeout: 10_000 })
+		.toBe("#Jean [all music]");
+	await expect(statusBar(page)).toContainText(FIRST_IN_ALL_MUSIC);
+};
+
+// Both surfaces a set's name reaches, and the element rather than its text: a
+// label shipped with nothing after it still reads "Playing from", which is the
+// failure to catch. Settled rather than read straight, since a label that has
+// not rendered yet is also a count of zero.
+const expectNoPlayingFrom = async (page: Page, player: FakePlayer) => {
+	await openNowPlaying(page);
+	// The screen drew the track, so an absence below is an absence rather than a
+	// page that never arrived.
+	await expect(nowPlayingScreen(page)).toContainText(FIRST_IN_ALL_MUSIC);
+
+	await expectSettlesAt(
+		player,
+		() =>
+			nowPlayingScreen(page)
+				.locator("header")
+				.getByText("Playing from", { exact: true })
+				.count(),
+		0,
+	);
+
+	await nowPlayingScreen(page)
+		.getByRole("button", { name: "Close now playing" })
+		.click();
+	await expect(nowPlayingScreen(page)).toBeHidden();
+
+	// And the equaliser has no row to sit on, so it draws nowhere.
+	await openSidebar(page);
+	await expect(sidebar(page).getByLabel("Playing from here")).toHaveCount(0);
 };
 
 // The gesture itself, driven through CDP the way the wheel's own spec drives it:
@@ -570,7 +637,7 @@ test("the queue panel follows a track queued at the player", async ({
 	await expect(row).toContainText("Babasónicos");
 });
 
-test("never subscribes to beefweb for player state", async ({
+test("takes no player state off beefweb beyond the now-playing panel's own columns", async ({
 	page,
 	player,
 }) => {
@@ -580,7 +647,22 @@ test("never subscribes to beefweb for player state", async ({
 	player.playItem("p7", 1);
 	await expect(statusBar(page)).toContainText("Fizz");
 
-	await expectSettlesAt(player, () => beefwebReadsOfPlayerState(player), []);
+	// A third read is a second source of player state whatever it asks for: a
+	// stall check wanting `playbackState` alone is one, and so is `GET /api/player`,
+	// which asks for nothing at all.
+	await expectSettlesAt(
+		player,
+		() => beefwebPlayerReads(player).length,
+		TRACKS_PLAYED,
+	);
+
+	// And each of the two is a read of a track's columns rather than of the
+	// player's own fields, which is the half of the promise a count cannot make.
+	await expectSettlesAt(
+		player,
+		() => withoutTrackColumns(beefwebPlayerReads(player)),
+		[],
+	);
 
 	// A subscription deleted rather than narrowed satisfies the absence above and
 	// takes the playlist list and the queue panel's columns with it, so what it
@@ -614,16 +696,14 @@ test("asks the component for state once an interval, and nobody asks for the rou
 	expect(askedForTheOldLibraryRoute(player)).toEqual([]);
 });
 
-// The two below only mean anything together. Jean names the set it is playing
-// from by joining the place on the tick to a playlist it holds, and the second
-// case is the join coming back with nothing. On its own it is satisfied by
-// drawing no name ever, so the first one is what says the join still works.
+// The three below only mean anything together. Jean names the set it is playing
+// from by joining the place on the tick to a playlist it holds, and the other
+// two are the two states it cannot name one in: the tick carries no place at
+// all, and the tick carries a place Jean holds no playlist for. Either on its
+// own is satisfied by drawing no name ever, so the first one is what says the
+// join still works.
 test("names the set a track is playing from", async ({ page, player }) => {
-	await openAllMusic(page);
-	await trackRow(page, 0).dblclick();
-	await expect
-		.poll(() => scratchOf(player)?.title, { timeout: 10_000 })
-		.toBe("#Jean [all music]");
+	await playTheTopOfAllMusic(page, player);
 
 	await expectPlayingFrom(page, "All music");
 
@@ -631,46 +711,123 @@ test("names the set a track is playing from", async ({ page, player }) => {
 	await expect(sidebar(page).getByLabel("Playing from here")).toHaveCount(1);
 });
 
-test('draws no "Playing from" where it cannot name the playlist, rather than an empty one', async ({
+test('draws no "Playing from" where the tick carries no place at all, rather than an empty one', async ({
 	page,
 	player,
 }) => {
 	player.fooJean.knowsPlayingLocation = false;
 
-	await openAllMusic(page);
-	await trackRow(page, 0).dblclick();
-	await expect
-		.poll(() => scratchOf(player)?.title, { timeout: 10_000 })
-		.toBe("#Jean [all music]");
-	await expect(statusBar(page)).toContainText(FIRST_IN_ALL_MUSIC);
+	await playTheTopOfAllMusic(page, player);
 
+	await expectNoPlayingFrom(page, player);
+});
+
+test('draws no "Playing from" where the tick names a playlist Jean holds none for, rather than an empty one', async ({
+	page,
+	player,
+}) => {
+	// The other state, and the one the join is written for: a place is reported
+	// but the list Jean joins it against has not caught up to it yet.
+	player.fooJean.annotatesEveryPlaylist = false;
+
+	await playTheTopOfAllMusic(page, player);
+
+	const { playlistId, index } = player.player.activeItem;
+	expect(
+		index,
+		"the player reports where it is playing from",
+	).toBeGreaterThanOrEqual(0);
+	expect(
+		playlistId,
+		"and it is playing from the playlist left out of the annotations",
+	).toBe(player.playlists.at(-1)?.id);
+
+	await expectNoPlayingFrom(page, player);
+});
+
+test("a playlist created and played from while the join is still catching up turns the wheel once, not twice", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	test.skip(!isMobile, "the wheel is the phone's skip gesture");
+
+	await openLibrary(page);
+	await trackRow(page, PLAYING_ROW.row).dblclick();
 	await openNowPlaying(page);
-	// The screen drew the track, so an absence below is an absence rather than a
-	// page that never arrived.
-	await expect(nowPlayingScreen(page)).toContainText(FIRST_IN_ALL_MUSIC);
+	await expect(currentSlot(page)).toHaveAttribute("data-artwork", "ok");
+	expect(await detents(page)).toBe(0);
 
-	// The element, never its text. A label shipped with nothing after it still
-	// reads "Playing from", so a text assertion passes against the exact failure
-	// this case is written against. Settled rather than read straight: a label
-	// that has not rendered yet is also a count of zero.
-	await expectSettlesAt(
-		player,
-		() =>
-			nowPlayingScreen(page)
-				.locator("header")
-				.getByText("Playing from", { exact: true })
-				.count(),
-		0,
-	);
+	// Driven at the desktop rather than through Jean's own "play a set", so the
+	// screen stays open and the wheel's own turn count survives: a fresh
+	// playlist, created and played from in the same beat, is what the join has
+	// to catch up on. `addPlaylist` is what moves the beefweb playlist count and
+	// so is what fires the annotations refetch.
+	const created = player.addPlaylist("Late arrival");
+	const playlist = player.playlistById(created.id);
+	if (!playlist) throw new Error(`${created.id} did not come back playable`);
+	const track = player.libraryTracks[10];
+	playlist.items.push(track);
 
-	await nowPlayingScreen(page)
-		.getByRole("button", { name: "Close now playing" })
-		.click();
+	// Held after the playlist exists, so the tick can already name it while the
+	// annotations list the join reads still predates it.
+	await page.request.post("/__control/latency", { data: { ms: 1500 } });
+	player.playItem(created.id, 0);
+
+	// The tick has already moved: the screen names the new track. The join has
+	// not, so the wheel must still be exactly where it was rather than having
+	// turned on a lookup that answered "resolved and absent".
+	await expect(nowPlayingScreen(page)).toContainText(String(track["%title%"]));
+	expect(await detents(page)).toBe(0);
+
+	// One track change, one turn, once the join catches up.
+	await expect
+		.poll(() => detents(page), { message: "one track change, one turn" })
+		.toBe(-1);
+
+	await page.request.post("/__control/latency", { data: { ms: 0 } });
+});
+
+test('a playlist created elsewhere does not blank "Playing from" for one already known', async ({
+	page,
+	player,
+}) => {
+	await playTheTopOfAllMusic(page, player);
+	await openNowPlaying(page);
+	const header = nowPlayingScreen(page).locator("header");
+	await expect(header).toContainText("Playing from");
+	await expect(header).toContainText("All music");
+
+	// Held after the request is recorded, so the refetch this playlist fires is
+	// still in flight when the assertion below runs. Unrelated to the playlist
+	// that is playing, which the join already had an answer for before this.
+	await page.request.post("/__control/latency", { data: { ms: 1500 } });
+	player.addPlaylist("Unrelated");
+
+	await page.waitForTimeout(500);
+	await expect(header).toContainText("Playing from");
+	await expect(header).toContainText("All music");
+
+	await page.request.post("/__control/latency", { data: { ms: 0 } });
+});
+
+test("the front door still opens once a slow playlist join settles", async ({
+	page,
+	player,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, PLAYING_ROW.row).dblclick();
+	await expect(statusBar(page)).toContainText(PLAYING_ROW.title);
+
+	await page.request.post("/__control/latency", { data: { ms: 1500 } });
+	await page.goto("/");
+
+	await page.waitForTimeout(500);
 	await expect(nowPlayingScreen(page)).toBeHidden();
 
-	// And the equaliser has no row to sit on, so it draws nowhere.
-	await openSidebar(page);
-	await expect(sidebar(page).getByLabel("Playing from here")).toHaveCount(0);
+	await expect(nowPlayingScreen(page)).toBeVisible({ timeout: 5_000 });
+
+	await page.request.post("/__control/latency", { data: { ms: 0 } });
 });
 
 // The three below are All music rather than a playlist view, because a playlist
@@ -757,10 +914,34 @@ test("a neighbour becoming the centre asks for no cover at all", async ({
 	await expect(statusBar(page)).toContainText(SECOND_IN_THE_ALBUM.title);
 	await openNowPlaying(page);
 
-	// The slot the swipe below turns onto, already showing its picture. The
-	// neighbours are not a prefetch: they are live sleeves, and what a swipe is
-	// meant to reveal is one that is decoded and composited already.
-	await expect(slots(page).first()).toHaveAttribute("data-artwork", "ok");
+	// All three slots showing their picture. The neighbours are not a prefetch:
+	// they are live sleeves, and what a swipe is meant to reveal is one that is
+	// decoded and composited already.
+	await expect(drawnSlots(page)).toHaveCount(3);
+
+	// Three addresses for three slots, asserted rather than assumed: the centre at
+	// the component's own and the two neighbours at beefweb's rows either side. Two
+	// addresses for one picture is the trap, so a wheel that never asked for the
+	// row below has not set it and an empty log after the swipe would say nothing.
+	//
+	// And it is the point the log may be thrown away at, which the centre decides
+	// rather than the neighbours. `expectSettlesAt` waits for the log to go quiet,
+	// and the centre's fetch is the one that lags: it goes through
+	// `shared/ui/artworkQueue.ts`'s settle gate, while a neighbour's, drawn with
+	// no identity, goes straight out. A reset taken on a neighbour's sleeve lands
+	// while the centre's first fetch is still out and counts it below as a second.
+	const { playlistId, index } = player.player.activeItem;
+	await expectSettlesAt(
+		player,
+		// Addresses rather than requests. How many times one address is asked for
+		// belongs to the revalidation case above.
+		() => [...new Set(coversAskedFor(player))].sort(),
+		[
+			PLAYING_COVER,
+			`/api/artwork/${playlistId}/${index - 1}`,
+			`/api/artwork/${playlistId}/${index + 1}`,
+		].sort(),
+	);
 	player.requests.length = 0;
 
 	await swipeToThePrevious(page);

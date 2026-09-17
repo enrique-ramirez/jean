@@ -6,8 +6,7 @@ import { pushToast } from "@/shared/ui/toastStore";
 import type { LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
-// The player takes one request per track and has no bulk form.
-export const QUEUE_LIMIT = 100;
+export const QUEUE_LIMIT = 1000;
 
 export function useQueueTracks() {
 	const { queue, canQueue } = useQueueActions();

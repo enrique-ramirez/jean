@@ -1,3 +1,4 @@
+import type { RecordedRequest } from "../fake-api/state.ts";
 import {
 	dragFrom,
 	expect,
@@ -32,6 +33,16 @@ const pagesAsked = (player: FakePlayer) =>
 
 const deltasAsked = (player: FakePlayer) =>
 	requestsTo(player, "/api/library/changes");
+
+// Ordered against the export that answered a structure move, because a delta asked before it names
+// a revision from the structure `foo_jean` has thrown away, which it answers with a 409. The deltas
+// after it are ordinary movement in the library Jean now holds.
+const deltasAskedBefore = (player: FakePlayer, request: RecordedRequest) => {
+	const at = player.requests.indexOf(request);
+	return deltasAsked(player).filter(
+		(entry) => player.requests.indexOf(entry) < at,
+	);
+};
 
 const playsOf = (page: Page, row: number) =>
 	trackRow(page, row).locator("[data-zero]");
@@ -248,7 +259,7 @@ test.describe("a library rebuilt under Jean", () => {
 
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
 		await expect(trackRow(page, 0)).toContainText("Rotten Apple");
-		expect(deltasAsked(player)).toHaveLength(0);
+		expect(deltasAskedBefore(player, exportsAsked(player)[1])).toHaveLength(0);
 	});
 });
 
@@ -533,10 +544,6 @@ test.describe("filing a library row into a playlist of your own", () => {
 			expect(titlesIn(player, FAVORITES)).toEqual(before);
 		});
 
-		// One setting, two answers, decided by whose playlist the fill names. The
-		// queue's holding playlist is the component's own plumbing and holds none of
-		// the user's music, so a setting that stopped a row reaching it would be the
-		// setting doing the wrong thing.
 		test("the same row still queues", async ({ page, player, isMobile }) => {
 			await openAllMusic(page);
 			await openTrackMenu(page, isMobile, 2);

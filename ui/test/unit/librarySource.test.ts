@@ -17,9 +17,9 @@ const REFS: Refs = Int32Array.of(0, 1, 2);
 // all of its own has still settled once this much clock has passed.
 const LONGEST_WAIT_MS = 120_000;
 
-// One per step a call takes before it reaches the component: `addTo` reads the
-// playlist annotations first, and the queue asks for its holding playlist.
-const AWAITED_STEPS = 6;
+// One per request the deepest call makes: `addTo` reads the playlist
+// annotations, then fills.
+const AWAITED_STEPS = 2;
 
 const librarySource = (): LibrarySource => {
 	const collector = pathCollector();
@@ -91,12 +91,7 @@ const CALLS: Call[] = [
 	},
 	{
 		name: "queueing library rows",
-		run: (source) =>
-			source.queueTargets(
-				REFS,
-				async () => ({ id: TARGET_PLAYLIST, itemCount: 0 }),
-				{ token: TOKEN },
-			),
+		run: (source) => source.queueTargets(REFS),
 	},
 	{
 		name: "adding library rows to a playlist",

@@ -1034,6 +1034,76 @@ test.describe("queueing a row that is in no playlist", () => {
 	});
 });
 
+// Written out rather than imported: a test that read the constant would agree
+// with whatever the constant was changed to. Grouping the thousand is the
+// formatter's business, so either spelling passes.
+const namesTheLimit = /1,?000/;
+
+// A selection this size takes Mod+A, so the limit is a desktop affair: a phone
+// queues a row at a time and never builds one that reaches it.
+const selectEveryTrack = async (page: Page) => {
+	await openAllMusic(page);
+	await page.keyboard.press("ControlOrMeta+a");
+};
+
+const queueMenuItem = async (page: Page) => {
+	await trackRow(page, 0).click({ button: "right" });
+	return page.getByRole("menuitem", { name: "Add to queue" });
+};
+
+test.describe("a selection of a thousand tracks", () => {
+	test.use({ mediaLibrarySize: 1000 });
+	test.skip(({ isMobile }) => isMobile, "no keyboard on the phone");
+
+	test("is queued whole, in one request", async ({ page, player }) => {
+		await selectEveryTrack(page);
+		await queueTracks(page, false);
+
+		await expect
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 30_000 })
+			.toBe(1000);
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "POST", "/api/queue").length,
+			1,
+		);
+	});
+});
+
+test.describe("a selection past a thousand tracks", () => {
+	test.use({ mediaLibrarySize: 1001 });
+	test.skip(({ isMobile }) => isMobile, "no keyboard on the phone");
+
+	test("is refused by the menu item, which names the limit in its own label", async ({
+		page,
+	}) => {
+		await selectEveryTrack(page);
+		const item = await queueMenuItem(page);
+
+		await expect(item).toBeDisabled();
+		await expect(item).toHaveAccessibleName(namesTheLimit);
+	});
+
+	test("dropped on the queue button, names the limit and queues nothing", async ({
+		page,
+		player,
+	}) => {
+		await selectEveryTrack(page);
+
+		await dragFrom(page, trackRow(page, 0), queueButton(page));
+		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
+		await page.mouse.up();
+
+		await expect(page.getByRole("status")).toContainText(namesTheLimit);
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "POST", "/api/queue").length,
+			0,
+		);
+		expect(queuedAtThePlayer(player)).toHaveLength(0);
+	});
+});
+
 const expectQueueTakesALibraryRow = async (
 	page: Page,
 	player: FakePlayer,

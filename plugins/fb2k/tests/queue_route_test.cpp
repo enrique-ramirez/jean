@@ -741,6 +741,56 @@ TEST_CASE("an ordinal repeated in the request is queued twice") {
     CHECK(tracks.ordinals == std::vector<uint32_t>{3, 3});
 }
 
+// A client refuses a selection past its own limit and the component holds none, so what has to
+// hold here is that a selection of that size is answered rather than refused for its size, and
+// that it fits in the body the server will read. Descending ordinals are the order only that form
+// can carry and the widest ordinals in the library; one run per track is the longest a selection
+// of that size can be written as runs.
+TEST_CASE("a selection of QUEUE_LIMIT library tracks reaches the player whole, in a body inside "
+          "kMaxBodyBytes") {
+    constexpr size_t kLibrarySize = size_t{kQueueLimit} * 2;
+
+    Library library;
+    buildLibrary(library, kLibrarySize);
+    const uint64_t structure = library.state().structure;
+
+    std::vector<uint32_t> clicked;
+    std::vector<uint32_t> everyOther;
+    json runs = json::array();
+    for (uint32_t index = 0; index < kQueueLimit; ++index) {
+        clicked.push_back(static_cast<uint32_t>(kLibrarySize) - 1 - index);
+        everyOther.push_back(index * 2);
+        runs.push_back({index * 2, 1});
+    }
+
+    struct Form {
+        const char* name;
+        json selection;
+        std::vector<uint32_t> queued;
+    };
+
+    for (const auto& form :
+         {Form{"ordinals", clicked, clicked}, Form{"runs", runs, everyOther}}) {
+        INFO("form: ", form.name);
+        RowQueueLog rows;
+        TrackQueueLog tracks;
+        const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+
+        const auto body = tracksOf(structure, form.name, form.selection).dump();
+        CHECK(body.size() < kMaxBodyBytes);
+
+        const auto response = post(server, kQueueRows, body);
+
+        REQUIRE(response);
+        CHECK(response->status == 204);
+
+        REQUIRE(tracks.calls == 1);
+        REQUIRE(tracks.ordinals.size() == kQueueLimit);
+        CHECK(tracks.ordinals == form.queued);
+        CHECK(rows.calls == 0);
+    }
+}
+
 namespace {
 
 constexpr char kMoveEntry[] = "/api/queue/move";

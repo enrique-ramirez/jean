@@ -414,7 +414,7 @@ export const en = {
 	"queue.summary": "{tracks} · {time}",
 	"queue.title": "Queue",
 	"queue.tooMany":
-		"The queue takes {limit} tracks at a time — the player has no way to add them in bulk. Make a playlist for a set this size.",
+		"The queue takes {limit} tracks at a time. Make a playlist for a set this size.",
 	"queue.withCount": {
 		one: "Queue, {count} track",
 		other: "Queue, {count} tracks",

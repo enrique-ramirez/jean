@@ -341,7 +341,7 @@
 	"queue.startsIn": "en {time}",
 	"queue.summary": "{tracks} · {time}",
 	"queue.title": "Cola",
-	"queue.tooMany": "La cola admite {limit} pistas cada vez — el reproductor no tiene forma de añadirlas en bloque. Haz una lista para un conjunto de este tamaño.",
+	"queue.tooMany": "La cola admite {limit} pistas cada vez. Haz una lista para un conjunto de este tamaño.",
 	"queue.withCount": {
 		"one": "Cola, {count} pista",
 		"other": "Cola, {count} pistas"

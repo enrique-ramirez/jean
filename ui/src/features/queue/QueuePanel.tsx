@@ -1,15 +1,19 @@
 import { GripVertical, X } from "lucide-react";
 import { type CSSProperties, memo, useMemo } from "react";
-
+import { beefwebIdOf } from "@/domain/player/playlistJoin";
 import { formatTime, positionAt } from "@/domain/player/position";
 import type { QueueEntry } from "@/domain/player/queue";
 import { queueDropAt, queuedSeconds, startsIn } from "@/domain/player/queue";
-import { usePlayer } from "@/domain/player/usePlayer";
+import { usePlaylistAnnotations } from "@/domain/player/useAutoPlaylists";
+import { usePlayer, usePlaylists } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { coverKey } from "@/domain/track/fields";
+import { artworkUrl } from "@/shared/api/beefweb";
+import { isFooJeanReady, libraryArtworkUrl } from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -121,6 +125,7 @@ function DropZones({ at }: { at: number | null }) {
 
 const QueueRow = memo(function QueueRow({
 	entry,
+	cover,
 	snapshot,
 	isPlaying,
 	canQueue,
@@ -132,6 +137,7 @@ const QueueRow = memo(function QueueRow({
 	itemProps,
 }: {
 	entry: QueueEntry;
+	cover: string | null | undefined;
 	snapshot: PlayerSnapshot | null | undefined;
 	isPlaying: boolean;
 	canQueue: boolean;
@@ -161,7 +167,7 @@ const QueueRow = memo(function QueueRow({
 
 			<Artwork
 				className={styles.tick}
-				src={null}
+				src={cover}
 				identity={coverKey(entry.artist, entry.title, "track")}
 				size={32}
 			/>
@@ -223,9 +229,38 @@ export function QueuePanel({
 	const { entries, count } = useQueue();
 	const { canQueue, remove, clear, move } = useQueueActions();
 
+	const { discovery } = useFooJean();
+	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
+	const { data: playlists = [] } = usePlaylists();
+	const {
+		entries: playlistAnnotations,
+		hasSettled,
+		isFetching,
+	} = usePlaylistAnnotations();
+	const joinSettled = hasSettled && !isFetching;
+
 	const isPlaying = snapshot?.player?.playbackState === "playing";
 
 	const keys = useMemo(() => rowKeys(entries), [entries]);
+
+	const covers = useMemo(
+		() =>
+			entries.map((entry): string | null | undefined => {
+				if (entry.libraryPath)
+					return libraryArtworkUrl(origin, entry.libraryPath);
+				if (!entry.location) return null;
+				const beefwebId = beefwebIdOf(
+					entry.location.playlistId,
+					playlistAnnotations,
+					playlists,
+					joinSettled,
+				);
+				return beefwebId
+					? artworkUrl(beefwebId, entry.location.index)
+					: beefwebId;
+			}),
+		[entries, origin, playlistAnnotations, playlists, joinSettled],
+	);
 
 	const { scrollRef, itemProps, dragProps, handleProps } = useSortableList({
 		keys,
@@ -332,6 +367,7 @@ export function QueuePanel({
 									<QueueRow
 										key={keys[index]}
 										entry={entry}
+										cover={covers[index]}
 										snapshot={snapshot}
 										isPlaying={isPlaying}
 										canQueue={canQueue}

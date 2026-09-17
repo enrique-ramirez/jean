@@ -125,6 +125,18 @@ const forgetRequests = (player: FakePlayer) => {
 	player.requests.length = 0;
 };
 
+const trackOfPlaylist = (
+	player: FakePlayer,
+	playlistId: string,
+	index: number,
+) => {
+	const playlist = player.playlists.find((entry) => entry.id === playlistId);
+	if (!playlist) throw new Error(`no playlist ${playlistId}`);
+	const track = playlist.items[index];
+	if (!track) throw new Error(`no row ${index} in ${playlistId}`);
+	return track;
+};
+
 // Somebody at the desktop pressing Add to playback queue: a playlist row, which
 // the player holds with the position it came from.
 const rowQueuedAtThePlayer = (
@@ -133,9 +145,7 @@ const rowQueuedAtThePlayer = (
 	index: number,
 	at?: number,
 ) => {
-	const playlist = player.playlists.find((entry) => entry.id === playlistId);
-	if (!playlist) throw new Error(`no playlist ${playlistId}`);
-	const track = playlist.items[index];
+	const track = trackOfPlaylist(player, playlistId, index);
 	player.queueInsert([{ playlistId, track }], at);
 	return String(track["%title%"] ?? "");
 };
@@ -1425,6 +1435,180 @@ test.describe("an entry the player has no position for", () => {
 			.poll(() => queuedAtThePlayer(player).map((entry) => entry.title))
 			.toEqual([marker]);
 		await expect(queueRows(page)).toHaveCount(1);
+	});
+});
+
+const coverOfRow = (page: Page, at: number) =>
+	queueRows(page).nth(at).locator("[data-artwork]");
+
+// beefweb addresses a cover by a playlist and a row, which is what the pattern
+// says and what keeps its other two artwork routes out. GETs alone, since a
+// preflight fetches no picture.
+const beefwebCovers = (player: FakePlayer) =>
+	player.requests
+		.filter((entry) => entry.method === "GET")
+		.map((entry) => entry.path)
+		.filter((path) => /^\/api\/artwork\/[^/?]+\/\d+$/.test(path));
+
+// A positional cover asked for at a playlist beefweb does not publish. A GUID,
+// an `undefined` or a playlist index standing in for an id all land here.
+const coversAtNoPlaylist = (player: FakePlayer) =>
+	beefwebCovers(player).filter(
+		(path) =>
+			!player.playlists.some((playlist) =>
+				path.startsWith(`/api/artwork/${playlist.id}/`),
+			),
+	);
+
+// The component addresses a cover by the track's library path, so this is the
+// track each request named.
+const componentCovers = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) =>
+				entry.method === "GET" && entry.path.startsWith("/api/artwork?"),
+		)
+		.map(
+			(entry) =>
+				new URLSearchParams(entry.path.slice(entry.path.indexOf("?"))).get(
+					"track",
+				) ?? "",
+		);
+
+const libraryPathOfQueued = (player: FakePlayer, at: number) => {
+	const entry = player.queuedEntries()[at];
+	if (!entry) throw new Error(`nothing queued at ${at}`);
+	return player.libraryPathFor(entry.track);
+};
+
+// One of two addresses, or none. A queued row outlives the playlist position it
+// was queued from, so the library path is the address that keeps working and it
+// is the one taken first.
+test.describe("the cover on a queued row", () => {
+	test("comes from the component, addressed by the track's library path", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await openQueue(page);
+
+		// Queued from a playlist other than the one on screen, so beefweb's
+		// positional address for this row is asked for by nothing else here.
+		rowQueuedAtThePlayer(player, "p2", 0);
+		await expect(queueRows(page)).toHaveCount(1);
+
+		const path = libraryPathOfQueued(player, 0);
+		expect(
+			path,
+			"the media library does not carry this track, so the case is not set up",
+		).toBeTruthy();
+		expect(
+			queuePositions(player),
+			"the entry carries no position, so it cannot show which address wins",
+		).toEqual([0]);
+
+		await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
+			timeout: 15_000,
+		});
+		expect(componentCovers(player)).toContain(path);
+		await expectSettlesAt(
+			player,
+			() =>
+				beefwebCovers(player).filter((asked) =>
+					asked.startsWith("/api/artwork/p2/"),
+				).length,
+			0,
+		);
+	});
+
+	// A file in a playlist that the media library has never seen: foobar2000
+	// queues it, the component has no library path to name it by, and beefweb's
+	// positional address is what is left.
+	test.describe("for a track the media library does not carry", () => {
+		test.use({ mediaLibrarySize: 12 });
+
+		test("comes from beefweb, at the beefweb id of the playlist it was queued from", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await openQueue(page);
+
+			rowQueuedAtThePlayer(player, "p2", 0);
+			await expect(queueRows(page)).toHaveCount(1);
+			expect(
+				libraryPathOfQueued(player, 0),
+				"the media library carries this track, so the case is not set up",
+			).toBeNull();
+
+			await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
+				timeout: 15_000,
+			});
+			expect(beefwebCovers(player)).toContain("/api/artwork/p2/0");
+			expect(coversAtNoPlaylist(player)).toEqual([]);
+		});
+
+		test("is a glyph where the player has neither a path nor a row for it", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await openQueue(page);
+
+			// The desktop queueing a file it has open and never added to the
+			// library: no library path, and no playlist row either.
+			const track = trackOfPlaylist(player, "p2", 0);
+			player.queueInsert([{ playlistId: null, track }]);
+
+			await expect(queueRows(page)).toHaveCount(1);
+			expect(queuePositions(player)).toEqual([null]);
+			expect(libraryPathOfQueued(player, 0)).toBeNull();
+
+			await expectSettlesAt(player, () => coversAtNoPlaylist(player).length, 0);
+			expect(componentCovers(player)).not.toContain("");
+			expect(componentCovers(player)).not.toContain(String(track["%path%"]));
+
+			await expect(coverOfRow(page, 0).locator("svg")).toBeVisible();
+			await expect(coverOfRow(page, 0).locator("img")).toHaveCount(0);
+		});
+
+		test("waits for the playlist join rather than asking at an address it cannot build yet", async ({
+			page,
+			player,
+			baseURL,
+		}) => {
+			// `GET /api/playlists` at the component is the join, and until it
+			// answers there is no beefweb id to address this row by. A row that
+			// guessed one would take a 404, which is the one refusal `Artwork`
+			// remembers, and the cover would stay blank for the rest of the session
+			// however well the join went afterwards.
+			let release = () => {};
+			const joined = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			await page.route("**/api/playlists", async (route) => {
+				if (route.request().url().startsWith(String(baseURL)))
+					return route.continue();
+				await joined;
+				await route.continue();
+			});
+
+			rowQueuedAtThePlayer(player, "p2", 0);
+			await openLibrary(page);
+			await openQueue(page);
+			await expect(queueRows(page)).toHaveCount(1);
+
+			await expectSettlesAt(player, () => coversAtNoPlaylist(player).length, 0);
+			expect(beefwebCovers(player)).not.toContain("/api/artwork/p2/0");
+
+			release();
+
+			await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
+				timeout: 15_000,
+			});
+			expect(beefwebCovers(player)).toContain("/api/artwork/p2/0");
+			expect(coversAtNoPlaylist(player)).toEqual([]);
+		});
 	});
 });
 

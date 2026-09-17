@@ -289,7 +289,10 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
         publishQueueTarget(&mainThread_, &store_);
     }
 
-    ~LocationCallback() override { publishQueueTarget(nullptr, nullptr); }
+    // locationCallback_ owns this as a LocationCallback, never as the base; see
+    // ARCHITECTURE.md, *Facts about the player*, for why that is what makes this destructor
+    // safe without `override`.
+    ~LocationCallback() { publishQueueTarget(nullptr, nullptr); }
 
     void on_items_added(t_size playlist, t_size, metadb_handle_list_cref,
                          const bit_array&) override {

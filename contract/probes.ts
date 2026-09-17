@@ -40,6 +40,12 @@ export const drives: Drive[] = [
 	{ id: "getPlaylists", probe: () => ({}) },
 	{ id: "getQueue", probe: () => ({}) },
 	{
+		// Same refusal shape as fillPlaylist: the id is one nobody issued, so this
+		// queues nothing, and a 404 is at least as likely as the player's own answer.
+		id: "queuePlaylistRows",
+		probe: (operation) => ({ body: example(operation, "atTheEnd") }),
+	},
+	{
 		id: "getState",
 		probe: () => ({}),
 		learns: (body, context) => {

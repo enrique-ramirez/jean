@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,10 @@ constexpr size_t kMaxLibraryBytes = size_t{64} * 1024 * 1024;
 using TagWriter = std::function<TagWriteOutcome(const TagWrite&)>;
 using PlaylistLister = std::function<PlaylistsResult()>;
 using QueueReader = std::function<QueueRead()>;
+
+using PlaylistRowQueuer = std::function<PlaylistOutcome(
+    const std::string& playlistId, const std::vector<uint32_t>& positions,
+    std::optional<QueuePosition> at)>;
 using AutoPlaylistCreator = std::function<PlaylistResult(const AutoPlaylistSpec&)>;
 using AutoPlaylistUpdater =
     std::function<PlaylistResult(const std::string& id, const AutoPlaylistSpec&)>;
@@ -79,6 +84,7 @@ struct Player {
     TagWriter writeTags;
     PlaylistLister listPlaylists;
     QueueReader readQueue;
+    PlaylistRowQueuer queuePlaylistRows;
     AutoPlaylistCreator createAutoPlaylist;
     AutoPlaylistUpdater updateAutoPlaylist;
     AutoPlaylistRemover removeAutoPlaylist;

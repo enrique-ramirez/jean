@@ -75,6 +75,7 @@ enum class PlaylistOutcome {
     // An outcome rather than a refusal because only foobar2000 can parse a query.
     queryInvalid,
     noSuchPlaylist,
+    positionPastEnd,
     notOurs,
     keyInUse,
     tooMany,

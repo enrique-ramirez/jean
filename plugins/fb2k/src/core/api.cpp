@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <limits>
 
 using nlohmann::json;
 
@@ -124,6 +125,16 @@ FillRequest refuseFill() {
     FillRequest request;
     request.refusal = PlaylistRefusal::badOrdinals;
     return request;
+}
+
+QueueRowsRequest refuseQueueRows(PlaylistRefusal refusal) {
+    QueueRowsRequest request;
+    request.refusal = refusal;
+    return request;
+}
+
+bool fitsUint32(uint64_t value) {
+    return value <= std::numeric_limits<uint32_t>::max();
 }
 
 FillRequest malformedFill() {
@@ -369,6 +380,55 @@ std::string queueDocument(const QueueRead& read) {
     return json{{"revision", read.revision}, {"entries", std::move(entries)}}.dump();
 }
 
+QueueRowsRequest parseQueueRows(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseQueueRows(PlaylistRefusal::malformedBody);
+
+    const auto& root = document.value;
+
+    const auto playlistId = root.find("playlistId");
+    if (playlistId == root.end() || !playlistId->is_string())
+        return refuseQueueRows(PlaylistRefusal::badId);
+
+    const auto id = playlistId->get<std::string>();
+    if (!isPlaylistId(id))
+        return refuseQueueRows(PlaylistRefusal::badId);
+
+    const auto positions = root.find("positions");
+    if (positions == root.end() || !positions->is_array() || positions->empty())
+        return refuseQueueRows(PlaylistRefusal::badOrdinals);
+
+    QueueRowsRequest request;
+    request.playlistId = id;
+
+    for (const auto& entry : *positions) {
+        if (!entry.is_number_unsigned())
+            return refuseQueueRows(PlaylistRefusal::badOrdinals);
+
+        const auto value = entry.get<uint64_t>();
+        if (!fitsUint32(value))
+            return refuseQueueRows(PlaylistRefusal::badOrdinals);
+
+        request.positions.push_back(static_cast<uint32_t>(value));
+    }
+
+    const auto at = root.find("at");
+    if (at != root.end()) {
+        if (!at->is_number_unsigned() || !fitsUint32(at->get<uint64_t>()))
+            return refuseQueueRows(PlaylistRefusal::badOrdinals);
+
+        const auto revision = root.find("revision");
+        if (revision == root.end() || !revision->is_number_unsigned())
+            return refuseQueueRows(PlaylistRefusal::badOrdinals);
+
+        request.at = QueuePosition{static_cast<uint32_t>(at->get<uint64_t>()),
+                                   revision->get<uint64_t>()};
+    }
+
+    return request;
+}
+
 std::string queryPreviewDocument(const PreviewResult& preview) {
     return json{{"valid", preview.valid},
                 {"error", preview.error},
@@ -400,6 +460,7 @@ int httpStatusFor(PlaylistOutcome outcome) {
         case PlaylistOutcome::done:
             return 200;
         case PlaylistOutcome::queryInvalid:
+        case PlaylistOutcome::positionPastEnd:
             return 400;
         case PlaylistOutcome::notOurs:
         case PlaylistOutcome::writesDisabled:

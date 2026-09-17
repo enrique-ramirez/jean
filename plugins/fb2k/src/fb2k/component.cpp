@@ -65,6 +65,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.writeTags = makeTagWriter(mainThread);
     player.listPlaylists = makePlaylistLister(mainThread);
     player.readQueue = makeQueueReader(mainThread, playerState);
+    player.queuePlaylistRows = makePlaylistRowQueuer(mainThread);
     player.createAutoPlaylist = makeAutoPlaylistCreator(mainThread, settings.maxAutoPlaylists);
     player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread);
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);

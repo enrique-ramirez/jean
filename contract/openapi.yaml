@@ -942,6 +942,62 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PlaylistFailed" }
+    post:
+      tags: [queue]
+      operationId: queuePlaylistRows
+      summary: Queue rows from a user's playlist, by position.
+      description: |
+        Queues every position in `positions`, in the order given, once each: a position repeated in the request is queued twice, exactly as foobar2000's own *Add to playback queue* allows. One job, so a multi-select is never left half-queued.
+
+        Omit `at` to queue at the end. Send it with `revision`, the queue revision it was chosen against from `GET /state`'s `queueRevision`, to queue at that position instead; `at` without `revision` is a `400`, decided here rather than by the player.
+
+        Whether `playlistId` names a playlist, and whether a row or `at` names a position past what it addresses -- a row past the playlist's end, `at` past the queue's end -- are answered by the player rather than judged here: only it knows which playlists exist and how many rows or queue entries each holds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QueuePlaylistRowsRequest" }
+            examples:
+              atTheEnd:
+                summary: Three rows, queued in the order clicked.
+                value: { playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04, positions: [7, 2, 5] }
+              atAPosition:
+                summary: One row, queued second in the queue.
+                value:
+                  playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                  positions: [4]
+                  at: 1
+                  revision: 9
+      responses:
+        "204":
+          description: Queued.
+        "400":
+          description: |
+            Either the component judged the request for itself before the player was involved -- a body that is not JSON, a missing or unusable `playlistId`, an empty or unusable `positions`, or an `at` sent without a `revision` -- or the player found a row or `at` past the end of what it addresses. The two are told apart by which of the schemas below the body matches.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500":
+          description: The player refused. No reason is given, because error text leaks filesystem paths.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "503":
+          description: The queue is not available in this build.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "504":
+          description: The player did not finish within 30 seconds. A client MUST re-read `GET /queue`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
 
   /library/export:
     get:
@@ -2315,6 +2371,7 @@ components:
           enum:
             - foobar2000 could not read that query
             - no such playlist
+            - that position is past the end
             - that playlist was not created by foo_jean
             - another playlist already has that key
             - this install's autoplaylist limit is reached
@@ -2506,6 +2563,36 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/PlayingLocation" }
             - type: "null"
+
+    QueuePlaylistRowsRequest:
+      type: object
+      additionalProperties: false
+      required: [playlistId, positions]
+      properties:
+        playlistId:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          description: |
+            The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+          examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
+        positions:
+          type: array
+          items: { type: integer, minimum: 0 }
+          minItems: 1
+          description: |
+            The rows to queue, by position in that playlist, in the order to queue them in -- the order a multi-select was clicked in, never sorted and never queued as a range.
+          examples: [[7, 2, 5]]
+        at:
+          type: integer
+          minimum: 0
+          description: |
+            Where in the queue to insert, `0` being the head. Omit it to queue at the end. Sent only together with `revision`; `at` without `revision` is a `400`.
+          examples: [1]
+        revision:
+          type: integer
+          description: |
+            The queue revision `at` was chosen against, from `GET /state`'s `queueRevision`. Required whenever `at` is sent.
+          examples: [9]
 
     LibraryHeader:
       description: |

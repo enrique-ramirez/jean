@@ -333,7 +333,15 @@ export interface paths {
          */
         get: operations["getQueue"];
         put?: never;
-        post?: never;
+        /**
+         * Queue rows from a user's playlist, by position.
+         * @description Queues every position in `positions`, in the order given, once each: a position repeated in the request is queued twice, exactly as foobar2000's own *Add to playback queue* allows. One job, so a multi-select is never left half-queued.
+         *
+         *     Omit `at` to queue at the end. Send it with `revision`, the queue revision it was chosen against from `GET /state`'s `queueRevision`, to queue at that position instead; `at` without `revision` is a `400`, decided here rather than by the player.
+         *
+         *     Whether `playlistId` names a playlist, and whether a row or `at` names a position past what it addresses -- a row past the playlist's end, `at` past the queue's end -- are answered by the player rather than judged here: only it knows which playlists exist and how many rows or queue entries each holds.
+         */
+        post: operations["queuePlaylistRows"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1051,7 +1059,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them";
+            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
@@ -1173,6 +1181,32 @@ export interface components {
             libraryPath: string | null;
             /** @description Where this entry sits in a playlist, or `null` for a library track queued by handle and for a playlist row whose position the player has lost. The core keeps such an entry rather than dropping it; read it through the handle it carries, never through a stale position. */
             location: components["schemas"]["PlayingLocation"] | null;
+        };
+        QueuePlaylistRowsRequest: {
+            /**
+             * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+             * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+             */
+            playlistId: string;
+            /**
+             * @description The rows to queue, by position in that playlist, in the order to queue them in -- the order a multi-select was clicked in, never sorted and never queued as a range.
+             * @example [
+             *       7,
+             *       2,
+             *       5
+             *     ]
+             */
+            positions: number[];
+            /**
+             * @description Where in the queue to insert, `0` being the head. Omit it to queue at the end. Sent only together with `revision`; `at` without `revision` is a `400`.
+             * @example 1
+             */
+            at?: number;
+            /**
+             * @description The queue revision `at` was chosen against, from `GET /state`'s `queueRevision`. Required whenever `at` is sent.
+             * @example 9
+             */
+            revision?: number;
         };
         /** @description The JSON header inside a snapshot or a delta, between the four-byte magic number and the blob. It is not served on its own by any route; it is documented here so a client can be generated for it. *The media library*, at the top of this document, has the framing and how to read a column. */
         LibraryHeader: {
@@ -2196,7 +2230,68 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description The player did not finish within 30 seconds. A client MUST re-read `GET /queue` rather than assume it did not. */
+            /** @description The player did not finish within 30 seconds. A client MUST re-read `GET /queue`. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+        };
+    };
+    queuePlaylistRows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueuePlaylistRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Queued. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Either the component judged the request for itself before the player was involved -- a body that is not JSON, a missing or unusable `playlistId`, an empty or unusable `positions`, or an `at` sent without a `revision` -- or the player found a row or `at` past the end of what it addresses. The two are told apart by which of the schemas below the body matches. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoSuchPlaylist"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            /** @description The queue is not available in this build. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The player did not finish within 30 seconds. A client MUST re-read `GET /queue`. */
             504: {
                 headers: {
                     [name: string]: unknown;

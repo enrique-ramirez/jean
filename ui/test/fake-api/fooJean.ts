@@ -614,6 +614,84 @@ function parseFill(
 	return { ok: true, title, structure: record.structure as number, ordinals };
 }
 
+type ParsedQueueRows =
+	| {
+			ok: true;
+			playlistId: string;
+			positions: number[];
+			at?: { index: number; revision: number };
+	  }
+	| ({ ok: false } & FillFailure);
+
+// Mirrors core/api.cpp's parseQueueRows: the same refusals, checked before the store is
+// touched, so a fake refusal never queues anything either.
+function parseQueueRows(body: unknown): ParsedQueueRows {
+	if (typeof body !== "object" || body === null)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"malformed request",
+				"the body did not parse as JSON",
+			),
+		};
+
+	const record = body as Record<string, unknown>;
+
+	if (
+		typeof record.playlistId !== "string" ||
+		!GUID_PATTERN.test(record.playlistId)
+	)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"unacceptable playlist id",
+				"'playlistId' must be a playlist id this component issued",
+			),
+		};
+
+	const positions = record.positions;
+	if (
+		!Array.isArray(positions) ||
+		positions.length === 0 ||
+		!positions.every(isNonNegInt)
+	)
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"unacceptable ordinal set",
+				"'positions' must be a non-empty list of non-negative integers",
+			),
+		};
+
+	let at: { index: number; revision: number } | undefined;
+	if (record.at !== undefined) {
+		if (!isNonNegInt(record.at))
+			return {
+				ok: false,
+				...fillFailure(
+					400,
+					"unacceptable ordinal set",
+					"'at' must be a non-negative integer",
+				),
+			};
+		if (!isNonNegInt(record.revision))
+			return {
+				ok: false,
+				...fillFailure(
+					400,
+					"unacceptable ordinal set",
+					"'at' requires 'revision'",
+				),
+			};
+		at = { index: record.at, revision: record.revision };
+	}
+
+	return { ok: true, playlistId: record.playlistId, positions, at };
+}
+
 const requirePlaylist = (state: FakeState, id: string): FakePlaylist => {
 	const playlist = state.playlistById(id);
 	if (!playlist)
@@ -1082,9 +1160,40 @@ export async function handleAgent({
 		return handleState({ state, fake, method, headers, response });
 
 	if (path === "/api/queue") {
-		if (method !== "GET") return json(response, { error: "not found" }, 404);
-		if (state.latency > 0) await delay(state.latency);
-		return json(response, { revision: 0, entries: [] });
+		if (method === "GET") {
+			if (state.latency > 0) await delay(state.latency);
+			return json(response, { revision: 0, entries: [] });
+		}
+
+		if (method === "POST") {
+			const parsed = parseQueueRows(body);
+			if (!parsed.ok) return json(response, parsed.body, parsed.status);
+
+			const index = state.playlists.findIndex(
+				(_, at) => guidFor(at) === parsed.playlistId,
+			);
+			if (index < 0)
+				return json(response, { error: "no such playlist", detail: "" }, 404);
+			const playlist = state.playlists[index];
+
+			const pastEnd = parsed.positions.find(
+				(position) => position >= playlist.items.length,
+			);
+			// No store behind the queue yet: GET /api/queue keeps answering empty
+			// until a later phase gives this fake one, so any `at` past the head is
+			// past the end of it.
+			const queueEnd = parsed.at !== undefined && parsed.at.index > 0;
+			if (pastEnd !== undefined || queueEnd)
+				return json(
+					response,
+					{ error: "that position is past the end", detail: "" },
+					400,
+				);
+
+			return empty(response);
+		}
+
+		return json(response, { error: "not found" }, 404);
 	}
 
 	if (path.startsWith("/api/library/"))

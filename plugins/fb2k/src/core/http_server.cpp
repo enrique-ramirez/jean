@@ -1234,6 +1234,36 @@ struct HttpServer::Impl {
 
             respond(res, 200, queueDocument(read));
         });
+
+        server.Post(kQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
+            auto request = refuseQueueRowsChange(parseQueueRows(req.body));
+            if (!request.ok()) {
+                if (request.refusal == PlaylistRefusal::tooFast)
+                    res.set_header("Retry-After", "1");
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            if (!player.queuePlaylistRows) {
+                respond(res, 503, errorDocument(kNoQueue));
+                return;
+            }
+
+            const auto outcome =
+                player.queuePlaylistRows(request.playlistId, request.positions, request.at);
+            if (outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(outcome), playlistFailedDocument(playlistFailure(outcome)));
+                return;
+            }
+
+            res.status = 204;
+        });
+    }
+
+    QueueRowsRequest refuseQueueRowsChange(QueueRowsRequest request) {
+        if (request.ok() && changingTooFast())
+            request.refusal = PlaylistRefusal::tooFast;
+        return request;
     }
 };
 

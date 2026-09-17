@@ -1,6 +1,7 @@
-// GET /api/queue over a real socket. What these pin is what a client drawing the queue panel
+// The queue routes over a real socket. What these pin is what a client drawing the queue panel
 // reads: each entry in the player's order, its fixed fields, where it sits in the library and in
-// a playlist when it sits anywhere, and nothing past that.
+// a playlist when it sits anywhere, and nothing past that. And what a client queueing rows asks
+// of the player, and what it hears back, including that a refused request never reaches it.
 
 #include "third_party/doctest.h"
 
@@ -10,6 +11,7 @@
 #include "third_party/json.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -214,5 +216,153 @@ TEST_CASE("a queue of QUEUE_LIMIT entries is answered whole and in order") {
         INFO("entry ", index);
         REQUIRE(entries[index]["title"] == "Track " + std::to_string(index));
         REQUIRE(entries[index]["location"]["index"] == index);
+    }
+}
+
+namespace {
+
+constexpr char kQueueRows[] = "/api/queue";
+
+struct RowQueueLog {
+    int calls = 0;
+    std::string playlistId;
+    std::vector<uint32_t> positions;
+    std::optional<QueuePosition> at;
+    PlaylistOutcome answer = PlaylistOutcome::done;
+};
+
+Player queueingRows(RowQueueLog* log) {
+    Player player = servingPlayer();
+    player.queuePlaylistRows = [log](const std::string& playlistId,
+                                     const std::vector<uint32_t>& positions,
+                                     std::optional<QueuePosition> at) {
+        log->calls++;
+        log->playlistId = playlistId;
+        log->positions = positions;
+        log->at = at;
+        return log->answer;
+    };
+    return player;
+}
+
+std::string rowsOf(const std::string& playlistId, const json& positions) {
+    return json{{"playlistId", playlistId}, {"positions", positions}}.dump();
+}
+
+bool accepted(const httplib::Result& response) {
+    constexpr int kRedirected = 300;
+    return response && response->status >= 200 && response->status < kRedirected;
+}
+
+}  // namespace
+
+// A multi-select is queued in the order it was clicked, so a route that sorted the positions, or
+// queued them as a range, would play them in an order nobody chose.
+TEST_CASE("queueing playlist rows hands the player the playlist and every position in the order "
+          "given, once, at the end of the queue") {
+    RowQueueLog log;
+    const TestServer server(servingSettings(), queueingRows(&log));
+
+    const auto response = post(server, kQueueRows, rowsOf(kPlaylistId, {7, 2, 5}));
+
+    REQUIRE(response);
+    CHECK(accepted(response));
+
+    REQUIRE(log.calls == 1);
+    CHECK(log.playlistId == kPlaylistId);
+    CHECK(log.positions == std::vector<uint32_t>{7, 2, 5});
+    CHECK_FALSE(log.at.has_value());
+}
+
+// Zero is the head of the queue, and the one position a parse reading a missing field as zero
+// would confuse with the end.
+TEST_CASE("queueing playlist rows at a queue position hands the player that position and the "
+          "queue revision the client planned it against") {
+    for (const uint32_t at : {uint32_t{0}, uint32_t{2}}) {
+        INFO("at: ", at);
+        RowQueueLog log;
+        const TestServer server(servingSettings(), queueingRows(&log));
+
+        auto body = json::parse(rowsOf(kPlaylistId, {4}));
+        body["at"] = at;
+        body["revision"] = 9;
+
+        const auto response = post(server, kQueueRows, body.dump());
+
+        REQUIRE(response);
+        CHECK(accepted(response));
+
+        REQUIRE(log.calls == 1);
+        CHECK(log.positions == std::vector<uint32_t>{4});
+        REQUIRE(log.at.has_value());
+        CHECK(log.at->index == at);
+        CHECK(log.at->revision == 9);
+    }
+}
+
+TEST_CASE("a queue request the component can judge for itself is a 400 and never reaches the "
+          "player") {
+    RowQueueLog log;
+    const TestServer server(servingSettings(), queueingRows(&log));
+
+    const auto positioned = [](const json& at, const json& revision) {
+        auto body = json::parse(rowsOf(kPlaylistId, {1}));
+        body["at"] = at;
+        if (!revision.is_null())
+            body["revision"] = revision;
+        return body.dump();
+    };
+
+    const std::vector<std::string> bodies = {
+        "not json",
+        json{{"positions", {1}}}.dump(),
+        rowsOf("nonsense", {1}),
+        rowsOf("45837D74-FA4F-415C-BBA9-BF2DB8F0DC04", {1}),
+        json{{"playlistId", kPlaylistId}}.dump(),
+        rowsOf(kPlaylistId, json::array()),
+        rowsOf(kPlaylistId, 1),
+        rowsOf(kPlaylistId, {1.5}),
+        rowsOf(kPlaylistId, {"3"}),
+        rowsOf(kPlaylistId, {-1}),
+        rowsOf(kPlaylistId, {nullptr}),
+        positioned(-1, 9),
+        positioned(1.5, 9),
+        positioned("2", 9),
+        positioned(2, nullptr),
+    };
+
+    for (const auto& body : bodies) {
+        INFO("body: ", body);
+        const auto response = post(server, kQueueRows, body);
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(log.calls == 0);
+}
+
+// Only the player knows which playlists exist and how many rows each holds, so these two are
+// answered from inside the job rather than judged at the route.
+TEST_CASE("queueing from a playlist the player does not have is a 404, and a position past that "
+          "playlist's end is a 400") {
+    struct Case {
+        PlaylistOutcome outcome;
+        int status;
+    };
+
+    for (const auto& expected : {Case{PlaylistOutcome::noSuchPlaylist, 404},
+                                 Case{PlaylistOutcome::positionPastEnd, 400}}) {
+        INFO("outcome: ", describe(expected.outcome));
+        RowQueueLog log;
+        log.answer = expected.outcome;
+        const TestServer server(servingSettings(), queueingRows(&log));
+
+        const auto response = post(server, kQueueRows, rowsOf(kPlaylistId, {3}));
+
+        REQUIRE(response);
+        CHECK(response->status == expected.status);
+        CHECK(json::parse(response->body)["error"].is_string());
+        CHECK(log.calls == 1);
     }
 }

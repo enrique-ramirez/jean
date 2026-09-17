@@ -28,6 +28,7 @@ OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread);
 OwnPlaylistEmptier makeOwnPlaylistEmptier(MainThreadQueue& mainThread);
 PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals);
 QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread);
+PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread);
 
 // Main thread only. The SDK offers a count and a getter rather than a range; this turns
 // that into something foldable.

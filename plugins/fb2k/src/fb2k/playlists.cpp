@@ -351,6 +351,53 @@ void beginPreview(const std::string& query, const AnswerPtr<PreviewResult>& answ
     answer->set(preview);
 }
 
+// See ARCHITECTURE.md, *Facts about the player*: the SDK has no queue insert, which is why
+// an `at` drains the queue from that point and replays the tail once the new rows are in.
+PlaylistOutcome beginQueueRows(const std::string& playlistId,
+                               const std::vector<uint32_t>& positions,
+                               std::optional<QueuePosition> at) {
+    const auto index = findPlaylist(playlistId);
+    if (index == pfc::infinite_size)
+        return PlaylistOutcome::noSuchPlaylist;
+
+    auto manager = playlist_manager_v5::get();
+
+    const auto rowCount = manager->playlist_get_item_count(index);
+    const bool rowPastEnd = std::any_of(
+        positions.begin(), positions.end(),
+        [rowCount](uint32_t position) { return position >= rowCount; });
+    if (rowPastEnd)
+        return PlaylistOutcome::positionPastEnd;
+
+    const auto queueCount = manager->queue_get_count();
+    if (at && at->index > queueCount)
+        return PlaylistOutcome::positionPastEnd;
+
+    pfc::list_t<t_playback_queue_item> tail;
+    if (at && at->index < queueCount) {
+        pfc::list_t<t_playback_queue_item> contents;
+        manager->queue_get_contents(contents);
+
+        for (t_size item = at->index; item < contents.get_count(); ++item)
+            tail.add_item(contents[item]);
+
+        manager->queue_remove_mask(bit_array_range(at->index, tail.get_count(), true));
+    }
+
+    for (const auto position : positions)
+        manager->queue_add_item_playlist(index, position);
+
+    for (t_size item = 0; item < tail.get_count(); ++item) {
+        const auto& entry = tail[item];
+        if (queuedLocationOf(entry))
+            manager->queue_add_item_playlist(entry.m_playlist, entry.m_item);
+        else
+            manager->queue_add_item(entry.m_handle);
+    }
+
+    return PlaylistOutcome::done;
+}
+
 }  // namespace
 
 std::vector<size_t> playlistIndices() {
@@ -461,6 +508,18 @@ QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread) {
             [query](const AnswerPtr<PreviewResult>& answer) { beginPreview(query, answer); },
             previewFailure(PlaylistOutcome::timedOut),
             previewFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread) {
+    return [&mainThread](const std::string& playlistId, const std::vector<uint32_t>& positions,
+                         std::optional<QueuePosition> at) {
+        return askPlayer<PlaylistOutcome>(
+            mainThread, "queueing playlist rows",
+            [playlistId, positions, at](const AnswerPtr<PlaylistOutcome>& answer) {
+                answer->set(beginQueueRows(playlistId, positions, at));
+            },
+            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
     };
 }
 

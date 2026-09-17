@@ -226,6 +226,8 @@ std::string describe(PlaylistOutcome outcome) {
             return "foobar2000 could not read that query";
         case PlaylistOutcome::noSuchPlaylist:
             return "no such playlist";
+        case PlaylistOutcome::positionPastEnd:
+            return "that position is past the end";
         case PlaylistOutcome::notOurs:
             return "that playlist was not created by foo_jean";
         case PlaylistOutcome::keyInUse:

@@ -82,6 +82,16 @@ json playingLocationOf(const std::optional<PlayingLocation>& location) {
     return json{{"playlistId", location->playlistId}, {"index", location->index}};
 }
 
+json queuedTrackOf(const QueuedTrack& track) {
+    return json{{"title", track.title},
+                {"artist", track.artist},
+                {"duration", track.duration},
+                {"album", track.album},
+                {"albumArtist", track.albumArtist},
+                {"libraryPath", track.libraryPath ? json(*track.libraryPath) : json(nullptr)},
+                {"location", playingLocationOf(track.location)}};
+}
+
 json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now,
                   uint64_t queueRevision) {
     return json{{"playback", playbackName(player.playback)},
@@ -349,6 +359,14 @@ std::string fillResultDocument(const std::string& playlistId, const std::string&
                 {"beefwebId", beefwebId.empty() ? json(nullptr) : json(beefwebId)},
                 {"positions", positions}}
         .dump();
+}
+
+std::string queueDocument(const QueueRead& read) {
+    json entries = json::array();
+    std::transform(read.entries.begin(), read.entries.end(), std::back_inserter(entries),
+                   queuedTrackOf);
+
+    return json{{"revision", read.revision}, {"entries", std::move(entries)}}.dump();
 }
 
 std::string queryPreviewDocument(const PreviewResult& preview) {

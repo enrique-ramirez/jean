@@ -55,8 +55,11 @@ constexpr char kStatePath[] = "/api/state";
 constexpr char kLibraryExportPath[] = "/api/library/export";
 constexpr char kLibraryChangesPath[] = "/api/library/changes";
 constexpr char kLibraryRefreshPath[] = "/api/library/refresh";
+constexpr char kQueuePath[] = "/api/queue";
 
 constexpr char kNoStreaming[] = "streaming is not available";
+
+constexpr char kNoQueue[] = "the queue is not available";
 
 constexpr char kNoLibrary[] = "the media library is not available";
 
@@ -1214,6 +1217,24 @@ struct HttpServer::Impl {
         }
         return request;
     }
+
+    void addQueueRoutes() {
+        server.Get(kQueuePath, [this](const httplib::Request&, httplib::Response& res) {
+            if (!player.readQueue) {
+                respond(res, 503, errorDocument(kNoQueue));
+                return;
+            }
+
+            const auto read = player.readQueue();
+            if (read.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(read.outcome),
+                        playlistFailedDocument(playlistFailure(read.outcome)));
+                return;
+            }
+
+            respond(res, 200, queueDocument(read));
+        });
+    }
 };
 
 HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint,
@@ -1261,6 +1282,7 @@ ListenerStatus HttpServer::start() {
 
     impl.addTagRoutes();
     impl.addPlaylistRoutes();
+    impl.addQueueRoutes();
     impl.addStreamRoutes();
     impl.addStateRoutes();
     impl.addArtworkRoute();

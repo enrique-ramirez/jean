@@ -91,16 +91,6 @@ std::optional<PlayingLocation> currentLocation() {
     return PlayingLocation{playlistId(playlist), static_cast<uint32_t>(index)};
 }
 
-// The core keeps a queued entry whose row or whole playlist is gone rather than dropping it,
-// and marks the position `pfc_infinite` in whichever field no longer names anything. Read as
-// an index, either one would name a playlist or a row that does not exist.
-std::optional<PlayingLocation> queuedLocationOf(const t_playback_queue_item& item) {
-    if (item.m_playlist == pfc_infinite || item.m_item == pfc_infinite)
-        return std::nullopt;
-
-    return PlayingLocation{playlistId(item.m_playlist), static_cast<uint32_t>(item.m_item)};
-}
-
 QueueEntry queueEntryOf(const t_playback_queue_item& item) {
     QueueEntry entry;
     entry.path = displayPathOf(item.m_handle);

@@ -16,6 +16,7 @@
 #include "fb2k/playback_watch.h"
 #include "fb2k/player_mute.h"
 #include "fb2k/playlists.h"
+#include "fb2k/queue.h"
 #include "fb2k/running_server.h"
 #include "fb2k/running_settings.h"
 #include "fb2k/streamer.h"
@@ -58,10 +59,12 @@ void explainPortCollision() {
 }
 
 Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const Streamer* streamer,
-                   OutputHold& outputHold, LibraryFeed& libraryFeed) {
+                   OutputHold& outputHold, LibraryFeed& libraryFeed,
+                   PlayerStateStore& playerState) {
     Player player;
     player.writeTags = makeTagWriter(mainThread);
     player.listPlaylists = makePlaylistLister(mainThread);
+    player.readQueue = makeQueueReader(mainThread, playerState);
     player.createAutoPlaylist = makeAutoPlaylistCreator(mainThread, settings.maxAutoPlaylists);
     player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread);
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);
@@ -117,7 +120,8 @@ public:
           playbackWatch_(mainThread_, playerState_, outputHold_, nowPlayingArtwork_),
           nowPlayingArtworkWatch_(nowPlayingArtwork_),
           server_(settings_, audience_,
-                  playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_),
+                  playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_,
+                              playerState_),
                   generateToken, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
                   &nowPlayingArtwork_),
           status_(server_.start()) {

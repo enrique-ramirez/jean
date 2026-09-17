@@ -197,6 +197,9 @@ tags:
   - name: library
     description: |
       The player's media library, as one columnar snapshot and a stream of patches to it.
+  - name: queue
+    description: |
+      The play queue, read whole and refetched on its own revision.
   - name: artwork
     description: |
       Cover art: one route addressed by a track the media library holds, and one addressed by whatever is playing.
@@ -888,6 +891,57 @@ paths:
         "304": { $ref: "#/components/responses/NotModified" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/StatePolledTooFast" }
+
+  /queue:
+    get:
+      tags: [queue]
+      operationId: getQueue
+      summary: The play queue, in the player's own order.
+      description: |
+        Every queued entry, in the order the player will play them, with the fields a client draws a row from and the revision they were read at. `revision` is `GET /state`'s `queueRevision` as of this read: refetch when the one a client holds has moved, and not otherwise.
+
+        A queued library track carries `libraryPath` and no `location`. A queued playlist row carries `location`, and `libraryPath` too where the media library also holds that track. Either may be missing on its own, and both are missing for a track queued from a playlist row or a whole playlist since removed: the core keeps such an entry rather than dropping it, so this reports it with `location: null` rather than a stale position.
+      responses:
+        "200":
+          description: The queue, read whole.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueRead" }
+              examples:
+                default:
+                  value:
+                    revision: 4
+                    entries:
+                      - title: Imaginary Track
+                        artist: Fictional Artist
+                        duration: 214.5
+                        album: Imaginary Album
+                        albumArtist: Various Fictional Artists
+                        libraryPath: "Fictional Artist/Imaginary Album/01 Track.flac"
+                        location: null
+                      - title: Another Track
+                        artist: Another Artist
+                        duration: 187.0
+                        album: Another Album
+                        albumArtist: Another Artist
+                        libraryPath: null
+                        location: { playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04, index: 7 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500":
+          description: The player refused. No reason is given, because error text leaks filesystem paths.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "503":
+          description: The queue is not available in this build.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "504":
+          description: The player did not finish within 30 seconds. A client MUST re-read `GET /queue`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
 
   /library/export:
     get:
@@ -2412,6 +2466,46 @@ components:
           description: |
             How long before this response was built the mark was taken, in seconds. `0` when
             no mark has ever been taken.
+
+    QueueRead:
+      description: |
+        `GET /queue`'s whole answer: every queued entry, in the player's own order, and the queue revision they were read at.
+      type: object
+      additionalProperties: false
+      required: [revision, entries]
+      properties:
+        revision:
+          type: integer
+          description: |
+            `GET /state`'s `queueRevision` as of this read. A client refetches when the one it holds has moved, and not otherwise.
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/QueuedTrack" }
+
+    QueuedTrack:
+      description: |
+        One entry in the play queue, as a client draws a row: the fixed fields a row shows, where the track sits in the media library, and where it sits in a playlist. A missing tag is an empty string, never `null` and never `"?"`.
+      type: object
+      additionalProperties: false
+      required: [title, artist, duration, album, albumArtist, libraryPath, location]
+      properties:
+        title: { type: string }
+        artist: { type: string }
+        duration:
+          type: number
+          description: Seconds.
+        album: { type: string }
+        albumArtist: { type: string }
+        libraryPath:
+          type: [string, "null"]
+          description: |
+            The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not.
+        location:
+          description: |
+            Where this entry sits in a playlist, or `null` for a library track queued by handle and for a playlist row whose position the player has lost. The core keeps such an entry rather than dropping it; read it through the handle it carries, never through a stale position.
+          oneOf:
+            - { $ref: "#/components/schemas/PlayingLocation" }
+            - type: "null"
 
     LibraryHeader:
       description: |

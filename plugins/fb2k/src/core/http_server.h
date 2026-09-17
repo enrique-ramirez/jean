@@ -30,6 +30,7 @@ constexpr size_t kMaxLibraryBytes = size_t{64} * 1024 * 1024;
 
 using TagWriter = std::function<TagWriteOutcome(const TagWrite&)>;
 using PlaylistLister = std::function<PlaylistsResult()>;
+using QueueReader = std::function<QueueRead()>;
 using AutoPlaylistCreator = std::function<PlaylistResult(const AutoPlaylistSpec&)>;
 using AutoPlaylistUpdater =
     std::function<PlaylistResult(const std::string& id, const AutoPlaylistSpec&)>;
@@ -77,6 +78,7 @@ using OwnPlaylistEmptier = std::function<PlaylistResult(OwnPlaylistRole role)>;
 struct Player {
     TagWriter writeTags;
     PlaylistLister listPlaylists;
+    QueueReader readQueue;
     AutoPlaylistCreator createAutoPlaylist;
     AutoPlaylistUpdater updateAutoPlaylist;
     AutoPlaylistRemover removeAutoPlaylist;

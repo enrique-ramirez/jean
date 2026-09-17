@@ -318,6 +318,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The play queue, in the player's own order.
+         * @description Every queued entry, in the order the player will play them, with the fields a client draws a row from and the revision they were read at. `revision` is `GET /state`'s `queueRevision` as of this read: refetch when the one a client holds has moved, and not otherwise.
+         *
+         *     A queued library track carries `libraryPath` and no `location`. A queued playlist row carries `location`, and `libraryPath` too where the media library also holds that track. Either may be missing on its own, and both are missing for a track queued from a playlist row or a whole playlist since removed: the core keeps such an entry rather than dropping it, so this reports it with `location: null` rather than a stale position.
+         */
+        get: operations["getQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library/export": {
         parameters: {
             query?: never;
@@ -1132,6 +1154,25 @@ export interface components {
              *     no mark has ever been taken.
              */
             ageSeconds: number;
+        };
+        /** @description `GET /queue`'s whole answer: every queued entry, in the player's own order, and the queue revision they were read at. */
+        QueueRead: {
+            /** @description `GET /state`'s `queueRevision` as of this read. A client refetches when the one it holds has moved, and not otherwise. */
+            revision: number;
+            entries: components["schemas"]["QueuedTrack"][];
+        };
+        /** @description One entry in the play queue, as a client draws a row: the fixed fields a row shows, where the track sits in the media library, and where it sits in a playlist. A missing tag is an empty string, never `null` and never `"?"`. */
+        QueuedTrack: {
+            title: string;
+            artist: string;
+            /** @description Seconds. */
+            duration: number;
+            album: string;
+            albumArtist: string;
+            /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
+            libraryPath: string | null;
+            /** @description Where this entry sits in a playlist, or `null` for a library track queued by handle and for a playlist row whose position the player has lost. The core keeps such an entry rather than dropping it; read it through the handle it carries, never through a stale position. */
+            location: components["schemas"]["PlayingLocation"] | null;
         };
         /** @description The JSON header inside a snapshot or a delta, between the four-byte magic number and the blob. It is not served on its own by any route; it is documented here so a client can be generated for it. *The media library*, at the top of this document, has the framing and how to read a column. */
         LibraryHeader: {
@@ -2116,6 +2157,54 @@ export interface operations {
             304: components["responses"]["NotModified"];
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["StatePolledTooFast"];
+        };
+    };
+    getQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue, read whole. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueRead"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            /** @description The queue is not available in this build. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The player did not finish within 30 seconds. A client MUST re-read `GET /queue` rather than assume it did not. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
         };
     };
     exportLibrary: {

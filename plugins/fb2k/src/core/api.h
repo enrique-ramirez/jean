@@ -85,6 +85,29 @@ int httpStatusFor(PlaylistOutcome outcome);
 std::string fillResultDocument(const std::string& playlistId, const std::string& beefwebId,
                                const std::vector<size_t>& positions);
 
+// One entry in the play queue, as a client draws a row: the fixed fields a row shows, the
+// library path GET /api/artwork?track= takes where the media library holds the track, and
+// where the track sits in a playlist where it still has a position. `location` is unset for a
+// library track queued by handle and for a playlist row whose position the player has lost.
+struct QueuedTrack {
+    std::string title;
+    std::string artist;
+    std::string album;
+    std::string albumArtist;
+    double duration = 0;
+
+    std::optional<std::string> libraryPath;
+    std::optional<PlayingLocation> location;
+};
+
+struct QueueRead {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    uint64_t revision = 0;
+    std::vector<QueuedTrack> entries;
+};
+
+std::string queueDocument(const QueueRead& read);
+
 // The library ordinals a fill inserts, decoded from whichever one of the three wire forms
 // the request body carried; see contract/openapi.yaml, `FillPlaylistRequest`. `ordinals`
 // is already in the order the fill must insert at: as given for the `ordinals` form,

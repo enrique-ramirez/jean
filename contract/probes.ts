@@ -38,6 +38,7 @@ export const drives: Drive[] = [
 	{ id: "getStatus", probe: () => ({}) },
 	{ id: "getCapabilities", probe: () => ({}) },
 	{ id: "getPlaylists", probe: () => ({}) },
+	{ id: "getQueue", probe: () => ({}) },
 	{
 		id: "getState",
 		probe: () => ({}),

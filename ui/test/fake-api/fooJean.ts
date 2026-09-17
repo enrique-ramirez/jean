@@ -1081,6 +1081,12 @@ export async function handleAgent({
 	if (path === "/api/state")
 		return handleState({ state, fake, method, headers, response });
 
+	if (path === "/api/queue") {
+		if (method !== "GET") return json(response, { error: "not found" }, 404);
+		if (state.latency > 0) await delay(state.latency);
+		return json(response, { revision: 0, entries: [] });
+	}
+
 	if (path.startsWith("/api/library/"))
 		return handleLibrary({ state, fake, method, path, url, headers, response });
 

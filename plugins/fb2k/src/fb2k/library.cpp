@@ -31,13 +31,6 @@ namespace {
 constexpr size_t kMaxPendingDirty = 4096;
 constexpr size_t kQuerySlice = 8192;
 
-// The separator library_manager::get_relative_path writes is undocumented and nothing in
-// the foobar2000 SDK inspects it.
-std::string forwardSlashed(std::string path) {
-    std::replace(path.begin(), path.end(), '\\', '/');
-    return path;
-}
-
 // Both halves are taken on the main thread: library_manager::get_all_items is main thread
 // only, and titleformat_compiler::compile off it is undocumented.
 struct Walk {

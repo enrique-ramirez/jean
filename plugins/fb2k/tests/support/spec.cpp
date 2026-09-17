@@ -184,4 +184,97 @@ std::vector<std::string> publishedEnum(const std::string& schema, const std::str
     return values;
 }
 
+// Scoped to `/state`'s own block first, the same way `publishedRoutes` scopes to `paths:`
+// before it reads anything, so an example of this name under a different route cannot be
+// mistaken for this one. It does not descend further, into `get`, `responses`, `"200"` and
+// `content`: `/state` publishes one operation, and its examples are the only ones the block
+// holds, so bracketing the block is enough to make the match unambiguous.
+std::set<std::string> publishedStatePlayerExample(const std::string& example) {
+    std::ifstream file(specPath());
+    REQUIRE_MESSAGE(file.is_open(), "cannot read contract/openapi.yaml");
+
+    constexpr size_t kPathIndent = 2;
+    constexpr size_t kExampleIndent = 16;
+    constexpr size_t kSectionIndent = 20;
+    constexpr size_t kFieldIndent = 22;
+
+    std::vector<std::string> lines;
+    for (std::string line; std::getline(file, line);) {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        lines.push_back(std::move(line));
+    }
+
+    size_t blockStart = lines.size();
+    size_t blockEnd = lines.size();
+    bool inPaths = false;
+
+    for (size_t at = 0; at < lines.size(); ++at) {
+        const std::string& line = lines[at];
+
+        if (line == "paths:") {
+            inPaths = true;
+            continue;
+        }
+        if (!inPaths || line.empty())
+            continue;
+        if (line.front() != ' ') {
+            if (blockStart < lines.size())
+                blockEnd = at;
+            break;
+        }
+
+        if (startsWith(line, std::string(kPathIndent, ' ') + '/') && line.back() == ':') {
+            if (blockStart < lines.size()) {
+                blockEnd = at;
+                break;
+            }
+            if (line.substr(kPathIndent, line.size() - kPathIndent - 1) == "/state")
+                blockStart = at;
+        }
+    }
+    REQUIRE_MESSAGE(blockStart < lines.size(), "contract/openapi.yaml has no /state path");
+
+    size_t start = blockEnd;
+    for (size_t at = blockStart; at < blockEnd; ++at) {
+        if (keyAt(lines[at], kExampleIndent, example + ":")) {
+            start = at;
+            break;
+        }
+    }
+    REQUIRE_MESSAGE(start < blockEnd, "contract/openapi.yaml's /state path names no example ",
+                    example);
+
+    size_t end = start + 1;
+    while (end < blockEnd) {
+        const auto indent = indentOf(lines[end]);
+        if (indent != std::string::npos && indent <= kExampleIndent)
+            break;
+        ++end;
+    }
+
+    std::set<std::string> keys;
+    bool inPlayer = false;
+    for (size_t at = start + 1; at < end; ++at) {
+        const auto indent = indentOf(lines[at]);
+        if (indent == std::string::npos)
+            continue;
+
+        if (indent == kSectionIndent) {
+            inPlayer = keyAt(lines[at], kSectionIndent, "player:");
+            continue;
+        }
+
+        if (inPlayer && indent == kFieldIndent) {
+            const auto colon = lines[at].find(':', kFieldIndent);
+            if (colon != std::string::npos)
+                keys.insert(lines[at].substr(kFieldIndent, colon - kFieldIndent));
+        }
+    }
+
+    REQUIRE_MESSAGE(!keys.empty(), "contract/openapi.yaml's ", example,
+                    " example has no player section");
+    return keys;
+}
+
 }  // namespace jean::testing

@@ -11,6 +11,7 @@ import {
 	expectPlayingFrom,
 	expectSettlesAt,
 	globalControls,
+	listenHere,
 	nowPlayingScreen,
 	openAllMusic,
 	openLibrary,
@@ -534,6 +535,16 @@ test("the equaliser follows the playing row through an edit above it, and ignore
 	);
 });
 
+// beefweb pushes no callback for a row pulled from under playback, so the client
+// only learns of it on the next poll; a caller's assertions have to outlast a tick
+// or they would pass against a screen that never heard about it.
+const pullPlayingRow = async (player: FakePlayer) => {
+	player.requests.length = 0;
+	expect(player.removeItems("p7", [PLAYING_ROW.row])).toBe(true);
+	expect(player.player.activeItem.index).toBe(-1);
+	await expect.poll(() => ticksTaken(player)).toBeGreaterThanOrEqual(2);
+};
+
 test("a cover survives the playing row being pulled from its own playlist", async ({
 	page,
 	player,
@@ -547,16 +558,9 @@ test("a cover survives the playing row being pulled from its own playlist", asyn
 	await expect(nowPlayingScreen(page)).toContainText(PLAYING_ROW.title);
 	await expect(currentSlot(page)).toHaveAttribute("data-artwork", "ok");
 
-	player.requests.length = 0;
-
-	// The same edit the equaliser case above drives, on the row that is actually
-	// playing: foobar2000 carries on and `playingLocation` goes absent.
-	expect(player.removeItems("p7", [PLAYING_ROW.row])).toBe(true);
-	expect(player.player.activeItem.index).toBe(-1);
-
-	// The client only learns of this through the poll, so the assertions below have
-	// to outlast a tick or they would pass on a screen that never heard about it.
-	await expect.poll(() => ticksTaken(player)).toBeGreaterThanOrEqual(2);
+	// The same edit the equaliser case above drives, but on the row that is
+	// actually playing.
+	await pullPlayingRow(player);
 
 	await expect(nowPlayingScreen(page)).toContainText(PLAYING_ROW.title);
 	await expect(currentSlot(page)).toHaveAttribute("data-artwork", "ok");
@@ -593,6 +597,111 @@ test("a cover survives the playing row being pulled from its own playlist", asyn
 			message: "the sleeve on screen is still the pulled row's",
 		})
 		.not.toBe(wasShowing);
+});
+
+// `navigator.mediaSession` rather than the DOM: `useMediaSession` writes to a
+// browser API with nothing on screen to read, and this is the whole of what a
+// spec can observe of it. Whether the browser or the OS goes on to fetch
+// `artwork[0].src` successfully is not: same-origin is as far as a spec can
+// stand as a proxy for "fetchable with no token of Jean's to attach".
+const session = (page: Page) =>
+	page.evaluate(() => {
+		const artwork = navigator.mediaSession.metadata?.artwork?.[0]?.src ?? null;
+		return {
+			title: navigator.mediaSession.metadata?.title ?? null,
+			artwork,
+			artworkSameOrigin: artwork
+				? new URL(artwork, document.baseURI).origin === location.origin
+				: null,
+		};
+	});
+
+const remainingLabel = (page: Page) =>
+	queuePanel(page).getByText(/left of this track$/);
+
+test("the tab keeps the track's name when the playing row is pulled from its own playlist", async ({
+	page,
+	player,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, PLAYING_ROW.row).dblclick();
+	await expect.poll(() => page.title()).toContain(PLAYING_ROW.title);
+
+	await pullPlayingRow(player);
+
+	await expect.poll(() => page.title()).toContain(PLAYING_ROW.title);
+});
+
+test("the queue countdown keeps counting when the playing row is pulled from its own playlist", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, PLAYING_ROW.row).dblclick();
+	const controls = await globalControls(page, isMobile);
+	await controls.getByRole("button", { name: /^Queue/ }).click();
+	await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+	await expect(remainingLabel(page)).toBeVisible();
+
+	await pullPlayingRow(player);
+
+	await expect(remainingLabel(page)).toBeVisible();
+	await expect(queuePanel(page)).not.toContainText(en["player.nothingPlaying"]);
+
+	// Present is not enough: the position `positionAt` interpolates from is what
+	// would freeze if it mistook the pulled row for nothing playing.
+	const before = await remainingLabel(page).textContent();
+	await page.waitForTimeout(2200);
+	await expect
+		.poll(() => remainingLabel(page).textContent(), {
+			message: "the countdown is frozen",
+		})
+		.not.toBe(before);
+});
+
+test("the now-playing menu keeps offering the track's actions when the playing row is pulled from its own playlist", async ({
+	page,
+	player,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, PLAYING_ROW.row).dblclick();
+	await openNowPlaying(page);
+	await expect(nowPlayingScreen(page)).toContainText(PLAYING_ROW.title);
+
+	await pullPlayingRow(player);
+
+	const more = nowPlayingScreen(page).getByRole("button", {
+		name: en["track.actions"],
+	});
+	await expect(more).toBeEnabled();
+	await more.click();
+	await expect(
+		page.getByRole("menuitem", { name: en["rating.title"] }),
+	).toBeVisible();
+});
+
+test("the media session keeps its title, not its artwork, when the playing row is pulled from its own playlist", async ({
+	page,
+	player,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, PLAYING_ROW.row).dblclick();
+	await listenHere(page);
+
+	await expect
+		.poll(() => session(page).then((live) => live.artwork))
+		.not.toBeNull();
+	expect((await session(page)).artworkSameOrigin).toBe(true);
+
+	await pullPlayingRow(player);
+
+	// The artwork is addressed by the row's place in the playlist, which is
+	// exactly what the pull took away. No place, no address: an absent cover
+	// rather than a stale or an unfetchable one.
+	const live = await session(page);
+	expect(live.title).toBe(PLAYING_ROW.title);
+	expect(live.artwork).toBeNull();
 });
 
 test("the sidebar follows a playlist renamed at the player", async ({

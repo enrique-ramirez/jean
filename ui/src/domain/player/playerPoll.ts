@@ -58,10 +58,7 @@ function mergePlayer(
 		playbackState: doc.playback,
 		activeItem: {
 			...(previous?.activeItem ?? EMPTY_ACTIVE_ITEM),
-			columns:
-				doc.title != null || doc.artist != null
-					? [doc.artist ?? "", doc.title ?? ""]
-					: (previous?.activeItem.columns ?? EMPTY_ACTIVE_ITEM.columns),
+			columns: [doc.artist ?? "", doc.title ?? ""],
 			duration: doc.duration,
 			index: doc.playingLocation?.index ?? -1,
 			path: doc.path || null,

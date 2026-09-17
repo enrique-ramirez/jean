@@ -314,6 +314,35 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
     CHECK(keysOf(libraryFailedDocument(DeltaOutcome::structureChanged)) == Keys{"error", "detail"});
 }
 
+// api_contract_test.cpp's other cases compare an emitted document with a key set written by
+// hand; this one is the check nothing else here makes, that the specification's own examples
+// agree with the schema they illustrate. `PlayerState` is `additionalProperties: false`, so
+// this same key set is both the whole of what MUST be present and the whole of what MAY be.
+TEST_CASE("GET /state's documented examples are the shape PlayerState declares") {
+    INFO(kUpdateSpec);
+
+    const auto required =
+        Keys{"playback", "path",  "subsong", "position",     "duration",       "volume",
+             "muted",    "title", "artist",  "playbackMode", "playingLocation"};
+
+    PlayerState playing;
+    playing.playback = PlaybackState::playing;
+    playing.path = R"(C:\Music\Fictional Artist\Imaginary Album\01 Track.flac)";
+    playing.position.seconds = 83.4;
+    playing.duration = 214.0;
+    playing.volume = -8.5;
+    playing.playbackMode = "inOrder";
+    playing.title = "Imaginary Track";
+    playing.artist = "Fictional Artist";
+    playing.playingLocation = PlayingLocation{"45837d74-fa4f-415c-bba9-bf2db8f0dc04", 3};
+
+    CHECK(keysOf(json::parse(stateDocument({}, playing, {}))["player"].dump()) == required);
+
+    INFO("contract/openapi.yaml's GET /state examples do not match PlayerState.required");
+    CHECK(publishedStatePlayerExample("built") == required);
+    CHECK(publishedStatePlayerExample("building") == required);
+}
+
 // The one document a client reads without JSON.parse. Everything a TypeScript client needs to
 // find the header at all is here: any of these three moving is a client reading garbage.
 TEST_CASE("the snapshot is framed the way contract/openapi.yaml describes") {

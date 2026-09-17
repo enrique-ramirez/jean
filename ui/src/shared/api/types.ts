@@ -135,7 +135,6 @@ export interface AddFromLibraryBody {
 }
 
 export interface UpdateMessage {
-	player?: PlayerState;
 	playlists?: PlaylistInfo[];
 	// Complete, unlike `playlists`: the whole queue arrives on every change to it.
 	playQueue?: PlayQueueItem[];

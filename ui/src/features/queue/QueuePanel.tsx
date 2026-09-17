@@ -43,7 +43,7 @@ const rowKeys = (entries: QueueEntry[]) => {
 
 function remainingOf(snapshot: PlayerSnapshot | null | undefined) {
 	const item = snapshot?.player?.activeItem;
-	if (!item || item.index < 0) return null;
+	if (!item?.path) return null;
 	return Math.max(
 		0,
 		(item.duration ?? 0) - positionAt(snapshot, performance.now()),

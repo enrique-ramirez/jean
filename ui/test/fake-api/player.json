@@ -45,15 +45,6 @@
     "changePlaylists": true
   },
   "playbackMode": 0,
-  "playbackModes": [
-    "Default",
-    "Repeat (playlist)",
-    "Repeat (track)",
-    "Random",
-    "Shuffle (tracks)",
-    "Shuffle (albums)",
-    "Shuffle (folders)"
-  ],
   "playbackState": "paused",
   "volume": {
     "isMuted": false,

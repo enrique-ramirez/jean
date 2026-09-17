@@ -75,7 +75,6 @@ export interface FakePlayerState {
 	options?: FakePlayerOption[];
 	permissions: Permissions;
 	playbackMode: number;
-	playbackModes: string[];
 	playbackState: PlaybackState;
 	volume: Volume;
 }

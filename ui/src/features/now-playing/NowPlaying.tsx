@@ -156,14 +156,14 @@ export function NowPlaying({
 	const player = snapshot?.player;
 	const item = player?.activeItem;
 	const playlistId = usePlayingPlaylist(item?.playlistGuid ?? null);
-	const hasTrack = Boolean(item && item.index >= 0);
+	const hasPosition = Boolean(item && item.index >= 0);
 	const isPlaying = player?.playbackState === "playing";
 
 	const artwork = track
 		? playingArtworkUrl(isFooJeanReady(discovery) ? discovery.origin : null)
 		: null;
 	const artworkKey =
-		hasTrack && item && playlistId !== undefined
+		hasPosition && item && playlistId !== undefined
 			? `${playlistId}:${item.index}`
 			: null;
 
@@ -178,7 +178,7 @@ export function NowPlaying({
 	const albumArtist = readValue(details?.row[NOW_PLAYING_FIELD.albumArtist]);
 
 	const neighbours =
-		order.isInOrder && hasTrack && item && playlistId
+		order.isInOrder && hasPosition && item && playlistId
 			? {
 					nextArtwork: artworkUrl(playlistId, item.index + 1),
 					previousArtwork:
@@ -187,7 +187,9 @@ export function NowPlaying({
 			: { nextArtwork: null, previousArtwork: null };
 
 	const positionalArtwork =
-		hasTrack && item && playlistId ? artworkUrl(playlistId, item.index) : null;
+		hasPosition && item && playlistId
+			? artworkUrl(playlistId, item.index)
+			: null;
 
 	const liveItem = live?.player?.activeItem;
 	const livePlaylistId = usePlayingPlaylist(liveItem?.playlistGuid ?? null);
@@ -278,7 +280,7 @@ export function NowPlaying({
 							className={styles.more}
 							aria-label={t("track.actions")}
 							aria-haspopup="menu"
-							disabled={!hasTrack}
+							disabled={!track}
 							onClick={menu.open}
 						>
 							<MoreHorizontal size={20} strokeWidth={2} />

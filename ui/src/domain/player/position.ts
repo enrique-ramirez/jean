@@ -7,7 +7,10 @@ export function positionAt(
 	now: number,
 ) {
 	const item = snapshot?.player?.activeItem;
-	if (!item || item.index < 0) return 0;
+	if (!item) return 0;
+	// TypeScript narrows `snapshot` from the `!item` check above; folding this into
+	// `!item?.path` loses that narrowing and `snapshot.player` below stops type-checking.
+	if (!item.path) return 0;
 
 	const base = item.position ?? 0;
 	if (snapshot.player.playbackState !== "playing") return base;

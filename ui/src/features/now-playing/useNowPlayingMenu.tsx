@@ -30,7 +30,7 @@ export function useNowPlayingMenu() {
 
 	const item = snapshot?.player?.activeItem;
 	const track = readTrack(snapshot?.player);
-	const hasTrack = Boolean(item && item.index >= 0);
+	const hasTrack = Boolean(track);
 	const playingPlaylistId = usePlayingPlaylist(item?.playlistGuid ?? null);
 
 	const source = useMemo(
@@ -42,7 +42,18 @@ export function useNowPlayingMenu() {
 	);
 
 	const actions = useMemo(() => {
-		if (!source || !hasTrack || !item) return [];
+		if (!hasTrack || !item) return [];
+
+		const rating = canWrite
+			? {
+					id: "rate",
+					label: t("rating.title"),
+					icon: Star,
+					items: ratingItems(starsOf(raw), write, t),
+				}
+			: null;
+
+		if (!source) return rating ? [rating] : [];
 
 		return trackActions({
 			count: 1,
@@ -55,14 +66,7 @@ export function useNowPlayingMenu() {
 			addTracks,
 			credit: track?.artist,
 			t,
-			rating: canWrite
-				? {
-						id: "rate",
-						label: t("rating.title"),
-						icon: Star,
-						items: ratingItems(starsOf(raw), write, t),
-					}
-				: null,
+			rating,
 		});
 	}, [
 		source,

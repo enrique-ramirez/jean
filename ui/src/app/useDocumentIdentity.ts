@@ -15,7 +15,7 @@ export function useDocumentIdentity() {
 
 	const player = snapshot?.player;
 	const track = readTrack(player);
-	const hasTrack = Boolean(track && (player?.activeItem?.index ?? -1) >= 0);
+	const hasTrack = Boolean(track);
 
 	const badge: PlaybackBadge = isError
 		? "offline"

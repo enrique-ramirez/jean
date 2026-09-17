@@ -28,4 +28,9 @@ std::vector<SpecRoute> publishedRoutes();
 
 std::vector<std::string> publishedEnum(const std::string& schema, const std::string& property);
 
+// The key set of the `player` object inside one of GET /state's named 200 examples, `built`
+// or `building`, scoped to the `/state` path's own block so an example of the same name
+// under a different route is never read by mistake.
+std::set<std::string> publishedStatePlayerExample(const std::string& example);
+
 }  // namespace jean::testing

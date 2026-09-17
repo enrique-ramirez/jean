@@ -864,6 +864,8 @@ paths:
                       playbackMode: inOrder
                       title: Imaginary Track
                       artist: Fictional Artist
+                      playingLocation:
+                        { playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04, index: 3 }
                 building:
                   summary: The component is up and the first walk has not finished.
                   value:
@@ -880,6 +882,7 @@ paths:
                       playbackMode: inOrder
                       title: null
                       artist: null
+                      playingLocation: null
         "304": { $ref: "#/components/responses/NotModified" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/StatePolledTooFast" }

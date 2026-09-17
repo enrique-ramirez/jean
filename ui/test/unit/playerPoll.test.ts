@@ -275,6 +275,34 @@ test("the playing track's name, path and subsong all come from the tick's docume
 	assert.equal(track?.subsong, DISC_SUBSONG);
 });
 
+test("a tick naming nothing does not draw the previous track's name on the new path", async (t) => {
+	// Criterion 24: a window where the path is the new track and the name is the old one is the
+	// same defect a tick wide. `title` and `artist` are on the document every tick, so a tick that
+	// answers `null` for both is the component saying this track has no computed name yet, not the
+	// component staying silent about the one it already gave.
+	const poll = harness(
+		t,
+		() => document200("playing", TAG, { ...NAME, path: DISC_IMAGE }),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	await poll.ticks(1);
+
+	assert.equal(readTrack(playerIn(poll.client))?.artist, NAME.artist);
+
+	poll.answers(() =>
+		document200("playing", LATER_TAG, {
+			path: "/music/Other/Album/03 Three.flac",
+		}),
+	);
+	await poll.ticks(1);
+
+	const track = readTrack(playerIn(poll.client));
+
+	assert.notEqual(track?.artist, NAME.artist);
+	assert.notEqual(track?.title, NAME.title);
+});
+
 test("a reader of the player key is fed by the poll and never refetches for itself", async (t) => {
 	const poll = harness(t, () => document200("paused"));
 	await poll.settle();
@@ -453,10 +481,10 @@ test("a tick writes what its document carries and leaves the rest of the snapsho
 
 	const player = playerIn(poll.client);
 
-	assert.deepEqual(player?.activeItem.columns, [
-		"Someone else",
-		"Another song",
-	]);
+	// The document carries `title` and `artist` on every tick, even when both are `null`, so the name
+	// is written rather than held: `playlistId` is the field this test is really about, since nothing
+	// in `mergePlayer` sets it from the document at all.
+	assert.deepEqual(player?.activeItem.columns, ["", ""]);
 	assert.equal(player?.activeItem.playlistId, "p7");
 
 	assert.equal(player?.playbackState, "paused");

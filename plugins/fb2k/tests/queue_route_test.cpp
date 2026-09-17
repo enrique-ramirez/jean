@@ -1020,6 +1020,62 @@ TEST_CASE("a move the component can judge for itself is a 400 and never reaches 
     CHECK(log.calls == 0);
 }
 
+TEST_CASE("a field no queue schema declares is refused, and nothing is queued or moved") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    PlayerStateStore store;
+    changeTheQueueTwice(store);
+    const uint64_t current = store.read().queueRevision;
+
+    RowQueueLog rows;
+    TrackQueueLog tracks;
+    MoveLog moves;
+
+    Player player = queueingEither(&rows, &tracks);
+    player.moveQueueEntry = moving(&moves).moveQueueEntry;
+    const TestServer server = servingQueue(player, &store, &library);
+
+    struct Target {
+        std::string name;
+        std::string path;
+        json body;
+    };
+
+    const std::vector<Target> targets = {
+        {"a playlist's rows", kQueueRows, json::parse(rowsOf(kPlaylistId, {4}))},
+        {"library tracks", kQueueRows, tracksOf(structure, "ordinals", {4})},
+        {"a move", kMoveEntry, moveOf(2, 0, current)}};
+
+    const std::vector<std::pair<std::string, json>> undeclared = {{"replace", true},
+                                                                  {"revison", current}};
+
+    for (const auto& target : targets) {
+        for (const auto& field : undeclared) {
+            INFO("target: ", target.name, ", field: ", field.first);
+
+            auto body = target.body;
+            body[field.first] = field.second;
+
+            const auto response = post(server, target.path, body.dump());
+
+            REQUIRE(response);
+            CHECK(response->status == 400);
+            if (response->status != 400)
+                continue;
+
+            // The envelope was wrong rather than the set, which is the other refusal a client
+            // switches on here: it would send a caller looking at positions it sent correctly.
+            CHECK(json::parse(response->body)["error"] == describe(PlaylistRefusal::malformedBody));
+        }
+    }
+
+    CHECK(rows.calls == 0);
+    CHECK(tracks.calls == 0);
+    CHECK(moves.calls == 0);
+}
+
 // Only the player knows how long the queue is, so this is answered from inside the job, the same
 // way a row past a playlist's end is.
 TEST_CASE("moving an entry from or to past the end of the queue is a 400") {

@@ -186,18 +186,23 @@ FillRequest malformedFill() {
     return request;
 }
 
-// The fields `FillPlaylistRequest` declares in contract/openapi.yaml; `declaredFillField`
-// adds `title` on top of these for `FillOwnPlaylistRequest`. See parseFill's `allowsTitle`.
+template <typename Fields>
+bool declaresOnly(const json& root, const Fields& fields) {
+    return std::all_of(root.items().begin(), root.items().end(), [&fields](const auto& item) {
+        return std::any_of(std::begin(fields), std::end(fields),
+                           [&item](const char* field) { return item.key() == field; });
+    });
+}
+
+// Exactly the fields contract/openapi.yaml declares for each request body below,
+// `additionalProperties: false` there; `declaresOnly` refuses anything else.
 constexpr std::array<const char*, 4> kFillFields{"structure", "runs", "bitset", "ordinals"};
 constexpr char kTitleField[] = "title";
 
-bool declaredFillField(const std::string& key, bool allowsTitle) {
-    if (allowsTitle && key == kTitleField)
-        return true;
-
-    return std::any_of(kFillFields.begin(), kFillFields.end(),
-                       [&key](const char* field) { return key == field; });
-}
+constexpr std::array<const char*, 4> kQueueRowsFields{"playlistId", "positions", "at", "revision"};
+constexpr std::array<const char*, 6> kQueueTracksFields{
+    "structure", "runs", "bitset", "ordinals", "at", "revision"};
+constexpr std::array<const char*, 3> kMoveQueueFields{"from", "to", "revision"};
 
 int base64Value(char c) {
     if (c >= 'A' && c <= 'Z')
@@ -526,6 +531,9 @@ QueueRowsRequest parseQueueRows(const std::string& body) {
 
     const auto& root = document.value;
 
+    if (!declaresOnly(root, kQueueRowsFields))
+        return refuseQueueRows(PlaylistRefusal::malformedBody);
+
     const auto playlistId = root.find("playlistId");
     if (playlistId == root.end() || !playlistId->is_string())
         return refuseQueueRows(PlaylistRefusal::badId);
@@ -568,6 +576,9 @@ QueueTracksRequest parseQueueTracks(const std::string& body, size_t trackCount,
 
     const auto& root = document.value;
 
+    if (!declaresOnly(root, kQueueTracksFields))
+        return refuseQueueTracks(PlaylistRefusal::malformedBody);
+
     const auto structure = root.find("structure");
     if (structure == root.end() || !structure->is_number_unsigned())
         return refuseQueueTracks(PlaylistRefusal::malformedBody);
@@ -603,6 +614,9 @@ MoveQueueRequest parseMoveQueue(const std::string& body) {
         return refuseMoveQueue(PlaylistRefusal::malformedBody);
 
     const auto& root = document.value;
+
+    if (!declaresOnly(root, kMoveQueueFields))
+        return refuseMoveQueue(PlaylistRefusal::malformedBody);
 
     const auto from = root.find("from");
     if (from == root.end() || !from->is_number_unsigned() || !fitsUint32(from->get<uint64_t>()))
@@ -713,10 +727,11 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
 
     const auto& root = document.value;
 
-    for (const auto& field : root.items()) {
-        if (!declaredFillField(field.key(), allowsTitle))
-            return malformedFill();
-    }
+    std::vector<const char*> fields(kFillFields.begin(), kFillFields.end());
+    if (allowsTitle)
+        fields.push_back(kTitleField);
+    if (!declaresOnly(root, fields))
+        return malformedFill();
 
     const auto structure = root.find("structure");
     if (structure == root.end() || !structure->is_number_unsigned())

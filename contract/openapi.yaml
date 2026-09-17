@@ -1024,11 +1024,21 @@ paths:
           description: Cleared.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500":
+          description: The player refused. No reason is given, because error text leaks filesystem paths.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
         "503":
           description: The queue is not available in this build.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "504":
+          description: The player did not finish within 30 seconds. A client MUST re-read `GET /queue`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
 
   /queue/move:
     post:
@@ -1656,9 +1666,9 @@ components:
 
     TooManyRequests:
       description: |
-        Playlist changes are arriving faster than this component will make them. The limit bounds how fast a client bug can fill the player with playlists; it is not a security control.
+        Playlist changes or queue changes are arriving faster than this component will make them. The limit bounds how fast a client bug can flood the player with playlists or queue entries; it is not a security control.
 
-        A burst of thirty is allowed, refilling at one a second, shared across creating, updating and deleting. Reading and previewing are not limited. `Retry-After` is sent in seconds.
+        A burst of thirty is allowed, refilling at one a second, one budget shared across creating, updating and deleting a playlist and across queueing, moving, removing and clearing the queue. Reading and previewing are not limited. `Retry-After` is sent in seconds.
       headers:
         Retry-After:
           schema: { type: string }

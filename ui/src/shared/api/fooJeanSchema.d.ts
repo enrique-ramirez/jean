@@ -1484,9 +1484,9 @@ export interface components {
             };
         };
         /**
-         * @description Playlist changes are arriving faster than this component will make them. The limit bounds how fast a client bug can fill the player with playlists; it is not a security control.
+         * @description Playlist changes or queue changes are arriving faster than this component will make them. The limit bounds how fast a client bug can flood the player with playlists or queue entries; it is not a security control.
          *
-         *     A burst of thirty is allowed, refilling at one a second, shared across creating, updating and deleting. Reading and previewing are not limited. `Retry-After` is sent in seconds.
+         *     A burst of thirty is allowed, refilling at one a second, one budget shared across creating, updating and deleting a playlist and across queueing, moving, removing and clearing the queue. Reading and previewing are not limited. `Retry-After` is sent in seconds.
          */
         TooManyRequests: {
             headers: {
@@ -2415,6 +2415,15 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
+            /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
             /** @description The queue is not available in this build. */
             503: {
                 headers: {
@@ -2422,6 +2431,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The player did not finish within 30 seconds. A client MUST re-read `GET /queue`. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
                 };
             };
         };

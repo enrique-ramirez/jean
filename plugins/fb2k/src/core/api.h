@@ -114,7 +114,8 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
 std::string libraryDocument(const Library::State& state);
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
-                          std::chrono::steady_clock::time_point now);
+                          std::chrono::steady_clock::time_point now,
+                          uint64_t queueRevision = 0);
 
 std::string libraryRefusedDocument(const LibraryRequest& request);
 std::string libraryFailedDocument(DeltaOutcome outcome);

@@ -11,6 +11,10 @@ bool operator==(const PlayingLocation& a, const PlayingLocation& b) {
     return a.playlistId == b.playlistId && a.index == b.index;
 }
 
+bool operator==(const QueueEntry& a, const QueueEntry& b) {
+    return a.path == b.path && a.subsong == b.subsong && a.location == b.location;
+}
+
 bool operator==(const PlayerState& a, const PlayerState& b) {
     return a.playback == b.playback && a.path == b.path && a.subsong == b.subsong &&
            a.position.seconds == b.position.seconds && a.position.taken == b.position.taken &&
@@ -26,7 +30,7 @@ void PlayerStateStore::publish(PlayerState state) {
 
 PlayerStateStore::Published PlayerStateStore::read() const {
     const std::lock_guard<std::mutex> held(mutex_);
-    return {version_, state_};
+    return {version_, queueRevision_, state_};
 }
 
 void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now) {
@@ -141,6 +145,17 @@ void PlayerStateStore::nameChanged(std::string title, std::string artist) {
     next.artist = artist.empty() ? std::nullopt : std::optional(std::move(artist));
 
     applyLocked(std::move(next));
+}
+
+void PlayerStateStore::queueChanged(std::vector<QueueEntry> entries) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    if (entries == queue_)
+        return;
+
+    queue_ = std::move(entries);
+    ++version_;
+    ++queueRevision_;
 }
 
 void PlayerStateStore::applyLocked(PlayerState next) {

@@ -5,6 +5,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace jean {
 
@@ -55,6 +56,16 @@ struct PlayingTrack {
     double duration = 0;
 };
 
+// One queued track. `location` is `std::nullopt` for a library track queued by handle, and for
+// a playlist row whose position the player has lost.
+struct QueueEntry {
+    std::string path;
+    uint32_t subsong = 0;
+    std::optional<PlayingLocation> location;
+};
+
+bool operator==(const QueueEntry& a, const QueueEntry& b);
+
 // `publish` replaces the whole state under one lock, and stays alongside the narrower
 // transitions below for `fb2k/playback_watch.cpp`'s construction-time seed, where there is
 // no prior state to transition from, and for the test suite's arranging one directly.
@@ -62,6 +73,7 @@ class PlayerStateStore {
 public:
     struct Published {
         uint64_t version = 0;
+        uint64_t queueRevision = 0;
         PlayerState state;
     };
 
@@ -82,6 +94,8 @@ public:
 
     void nameChanged(std::string title, std::string artist);
 
+    void queueChanged(std::vector<QueueEntry> entries);
+
     PlayerStateStore(const PlayerStateStore&) = delete;
     PlayerStateStore& operator=(const PlayerStateStore&) = delete;
 
@@ -90,7 +104,9 @@ private:
 
     mutable std::mutex mutex_;
     uint64_t version_ = 0;
+    uint64_t queueRevision_ = 0;
     PlayerState state_;
+    std::vector<QueueEntry> queue_;
 };
 
 }  // namespace jean

@@ -9,6 +9,7 @@
 #include "fb2k/strings.h"
 
 #include <chrono>
+#include <mutex>
 #include <utility>
 
 namespace jean {
@@ -90,6 +91,72 @@ std::optional<PlayingLocation> currentLocation() {
     return PlayingLocation{playlistId(playlist), static_cast<uint32_t>(index)};
 }
 
+// The core keeps a queued entry whose row or whole playlist is gone rather than dropping it,
+// and marks the position `pfc_infinite` in whichever field no longer names anything. Read as
+// an index, either one would name a playlist or a row that does not exist.
+std::optional<PlayingLocation> queuedLocationOf(const t_playback_queue_item& item) {
+    if (item.m_playlist == pfc_infinite || item.m_item == pfc_infinite)
+        return std::nullopt;
+
+    return PlayingLocation{playlistId(item.m_playlist), static_cast<uint32_t>(item.m_item)};
+}
+
+QueueEntry queueEntryOf(const t_playback_queue_item& item) {
+    QueueEntry entry;
+    entry.path = displayPathOf(item.m_handle);
+    entry.subsong = item.m_handle.is_valid() ? item.m_handle->get_subsong_index() : 0;
+    entry.location = queuedLocationOf(item);
+    return entry;
+}
+
+std::vector<QueueEntry> currentQueue() {
+    pfc::list_t<t_playback_queue_item> items;
+    playlist_manager::get()->queue_get_contents(items);
+
+    std::vector<QueueEntry> entries;
+    entries.reserve(items.get_count());
+    for (t_size at = 0; at < items.get_count(); ++at)
+        entries.push_back(queueEntryOf(items[at]));
+
+    return entries;
+}
+
+std::mutex g_queueTargetMutex;
+MainThreadQueue* g_queueTargetMainThread = nullptr;
+PlayerStateStore* g_queueTargetStore = nullptr;
+
+void publishQueueTarget(MainThreadQueue* mainThread, PlayerStateStore* store) {
+    const std::lock_guard<std::mutex> lock(g_queueTargetMutex);
+    g_queueTargetMainThread = mainThread;
+    g_queueTargetStore = store;
+}
+
+// Deferred for the reason `queueLocationRead` is: a playlist or queue notice runs before
+// `playlist_manager` has finished the edit it is reporting. Reads nothing when the component
+// isn't running, which covers both a `Plugin` construction that never got this far and one
+// already torn down.
+void deferQueueRead() {
+    MainThreadQueue* mainThread;
+    PlayerStateStore* store;
+    {
+        const std::lock_guard<std::mutex> lock(g_queueTargetMutex);
+        mainThread = g_queueTargetMainThread;
+        store = g_queueTargetStore;
+    }
+
+    if (mainThread == nullptr || store == nullptr)
+        return;
+
+    mainThread->enqueue([store] { store->queueChanged(currentQueue()); }, [] {});
+}
+
+// See ARCHITECTURE.md, *Facts about the player*, for how this wires itself up with no
+// register/unregister pair.
+class QueueServiceCallback : public playback_queue_callback {
+public:
+    void on_changed(t_change_origin) override { deferQueueRead(); }
+};
+
 // foobar2000's volume is dB against full scale, so a store left at its default reports the
 // fader at maximum until the next change. Seeding from the player at construction covers
 // whatever was already true before the first callback, and the playback order the same way: no
@@ -118,6 +185,8 @@ PlayerState initialStateOf(const OutputHold& outputHold, std::chrono::steady_clo
 
     return state;
 }
+
+service_factory_single_t<QueueServiceCallback> g_queueServiceCallback;
 
 }  // namespace
 
@@ -218,25 +287,37 @@ struct PlaybackWatch::OrderCallback : public playlist_callback_impl_base {
 
 // Every edit to every playlist reaches this, so comparing against the playing playlist happens
 // first and an edit elsewhere returns before the store is ever touched: see ARCHITECTURE.md,
-// *Facts about the player*.
+// *Facts about the player*. A queued row can sit in any playlist rather than only the playing
+// one, so the queue re-read below is unconditional. A whole playlist going away carries no
+// per-row callback of its own, only `on_playlists_removed`, so a queued row losing its position
+// that way needs the same re-read.
 struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
-    explicit LocationCallback(PlayerStateStore& store)
+    LocationCallback(MainThreadQueue& mainThread, PlayerStateStore& store)
         : playlist_callback_impl_base(flag_on_items_added | flag_on_items_removed |
-                                       flag_on_items_reordered),
-          store_(store) {}
+                                       flag_on_items_reordered | flag_on_playlists_removed),
+          mainThread_(mainThread), store_(store) {
+        publishQueueTarget(&mainThread_, &store_);
+    }
+
+    ~LocationCallback() override { publishQueueTarget(nullptr, nullptr); }
 
     void on_items_added(t_size playlist, t_size, metadb_handle_list_cref,
                          const bit_array&) override {
         updateIfPlaying(playlist);
+        deferQueueRead();
     }
 
     void on_items_removed(t_size playlist, const bit_array&, t_size, t_size) override {
         updateIfPlaying(playlist);
+        deferQueueRead();
     }
 
     void on_items_reordered(t_size playlist, const t_size*, t_size) override {
         updateIfPlaying(playlist);
+        deferQueueRead();
     }
+
+    void on_playlists_removed(const bit_array&, t_size, t_size) override { deferQueueRead(); }
 
     void updateIfPlaying(t_size playlist) {
         const auto playlists = playlist_manager::get();
@@ -260,6 +341,7 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
         store_.playingLocationChanged(std::nullopt);
     }
 
+    MainThreadQueue& mainThread_;
     PlayerStateStore& store_;
 };
 
@@ -279,9 +361,10 @@ PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& stor
     callback_ = std::make_unique<Callback>(mainThread, store, outputHold, artwork, titleScript,
                                             artistScript);
     orderCallback_ = std::make_unique<OrderCallback>(store);
-    locationCallback_ = std::make_unique<LocationCallback>(store);
+    locationCallback_ = std::make_unique<LocationCallback>(mainThread, store);
 
     store.publish(initialStateOf(outputHold, std::chrono::steady_clock::now()));
+    store.queueChanged(currentQueue());
 
     metadb_handle_ptr track;
     if (playback_control::get()->get_now_playing(track))

@@ -82,7 +82,8 @@ json playingLocationOf(const std::optional<PlayingLocation>& location) {
     return json{{"playlistId", location->playlistId}, {"index", location->index}};
 }
 
-json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now) {
+json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now,
+                  uint64_t queueRevision) {
     return json{{"playback", playbackName(player.playback)},
                 {"path", player.path},
                 {"subsong", player.subsong},
@@ -94,7 +95,8 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
                  player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
                 {"title", player.title ? json(*player.title) : json(nullptr)},
                 {"artist", player.artist ? json(*player.artist) : json(nullptr)},
-                {"playingLocation", playingLocationOf(player.playingLocation)}};
+                {"playingLocation", playingLocationOf(player.playingLocation)},
+                {"queueRevision", queueRevision}};
 }
 
 // The player's own listing order, kept: a sorted one would tell a client the modes came off a
@@ -516,8 +518,10 @@ std::string libraryDocument(const Library::State& state) {
 }
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
-                          std::chrono::steady_clock::time_point now) {
-    return json{{"library", libraryFields(state)}, {"player", playerFields(player, now)}}.dump();
+                          std::chrono::steady_clock::time_point now, uint64_t queueRevision) {
+    return json{{"library", libraryFields(state)},
+               {"player", playerFields(player, now, queueRevision)}}
+        .dump();
 }
 
 std::string libraryRefusedDocument(const LibraryRequest& request) {

@@ -322,8 +322,9 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     INFO(kUpdateSpec);
 
     const auto required =
-        Keys{"playback", "path",  "subsong", "position",     "duration",       "volume",
-             "muted",    "title", "artist",  "playbackMode", "playingLocation"};
+        Keys{"playback",  "path",  "subsong", "position",     "duration",   "volume",
+             "muted",     "title", "artist",  "playbackMode", "playingLocation",
+             "queueRevision"};
 
     PlayerState playing;
     playing.playback = PlaybackState::playing;
@@ -336,7 +337,7 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     playing.artist = "Fictional Artist";
     playing.playingLocation = PlayingLocation{"45837d74-fa4f-415c-bba9-bf2db8f0dc04", 3};
 
-    CHECK(keysOf(json::parse(stateDocument({}, playing, {}))["player"].dump()) == required);
+    CHECK(keysOf(json::parse(stateDocument({}, playing, {}, 4))["player"].dump()) == required);
 
     INFO("contract/openapi.yaml's GET /state examples do not match PlayerState.required");
     CHECK(publishedStatePlayerExample("built") == required);

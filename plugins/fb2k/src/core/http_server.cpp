@@ -750,7 +750,8 @@ struct HttpServer::Impl {
             sendIfChanged(req, res, generationsOf(state, published.version), "application/json",
                           [&state, &published] {
                               return stateDocument(state, published.state,
-                                                   std::chrono::steady_clock::now());
+                                                   std::chrono::steady_clock::now(),
+                                                   published.queueRevision);
                           });
         });
 

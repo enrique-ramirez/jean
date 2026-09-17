@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 using namespace jean;
 using namespace std::chrono;
@@ -59,6 +60,25 @@ PlayerState namedAndPlaced() {
     state.title = kTitle;
     state.artist = kArtist;
     return state;
+}
+
+constexpr uint32_t kQueuedRow = 3;
+
+QueueEntry queuedFromLibrary(const char* path) {
+    QueueEntry entry;
+    entry.path = path;
+    return entry;
+}
+
+QueueEntry queuedFromThePlaylist(uint32_t row) {
+    QueueEntry entry;
+    entry.path = R"(X:\music\c.flac)";
+    entry.location = PlayingLocation{kPlayingPlaylist, row};
+    return entry;
+}
+
+std::vector<QueueEntry> twoQueued() {
+    return {queuedFromLibrary(R"(X:\music\a.flac)"), queuedFromLibrary(R"(X:\music\b.flac)")};
 }
 
 }  // namespace
@@ -450,4 +470,140 @@ TEST_CASE("an empty name over a name already absent leaves the version alone") {
     CHECK_FALSE(published.state.title.has_value());
     CHECK_FALSE(published.state.artist.has_value());
     CHECK(published.version == before);
+}
+
+// A client refetches the queue whenever the revision moves, so a report that changed nothing and
+// moved it anyway costs every client a request, once per report.
+TEST_CASE("a queue change moves the version and the queue revision once, however often reported") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const auto before = store.read();
+
+    store.queueChanged(twoQueued());
+    const auto afterTheChange = store.read();
+
+    for (int edit = 0; edit < kEditsInABurst; ++edit)
+        store.queueChanged(twoQueued());
+
+    CHECK(afterTheChange.version > before.version);
+    CHECK(afterTheChange.queueRevision > before.queueRevision);
+    CHECK(store.read().version == afterTheChange.version);
+    CHECK(store.read().queueRevision == afterTheChange.queueRevision);
+}
+
+// The seed `fb2k/playback_watch.cpp` hands a store at construction, on a player whose queue is
+// empty, which is most of them.
+TEST_CASE("an empty queue reported to a store that has never held one moves nothing") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const auto before = store.read();
+
+    store.queueChanged({});
+
+    CHECK(store.read().version == before.version);
+    CHECK(store.read().queueRevision == before.queueRevision);
+}
+
+TEST_CASE("the queue revision moves when the queue's contents or order change") {
+    PlayerStateStore store;
+    store.publish(playing());
+
+    const QueueEntry first = queuedFromLibrary(R"(X:\music\a.flac)");
+    const QueueEntry second = queuedFromLibrary(R"(X:\music\b.flac)");
+    const QueueEntry positioned = queuedFromThePlaylist(kQueuedRow);
+    store.queueChanged({first, second, positioned});
+    const auto before = store.read();
+
+    std::vector<QueueEntry> changed;
+
+    SUBCASE("a track is queued at the end") {
+        changed = {first, second, positioned, queuedFromLibrary(R"(X:\music\d.flac)")};
+    }
+    SUBCASE("an entry is removed") {
+        changed = {first, positioned};
+    }
+    SUBCASE("the same entries in another order") {
+        changed = {second, first, positioned};
+    }
+    SUBCASE("the queue is cleared") {
+        changed = {};
+    }
+    SUBCASE("another subsong of a queued file takes its place") {
+        QueueEntry otherSubsong = second;
+        otherSubsong.subsong = 2;
+        changed = {first, otherSubsong, positioned};
+    }
+    // The position is part of what GET /api/queue answers for an entry, so a row that shifts
+    // or loses its place leaves a client drawing it where it no longer is.
+    SUBCASE("a queued row moves within its playlist") {
+        changed = {first, second, queuedFromThePlaylist(kQueuedRow - 1)};
+    }
+    SUBCASE("a queued row loses its position") {
+        QueueEntry stale = positioned;
+        stale.location.reset();
+        changed = {first, second, stale};
+    }
+
+    store.queueChanged(changed);
+
+    CHECK(store.read().queueRevision > before.queueRevision);
+    CHECK(store.read().version > before.version);
+}
+
+// foobar2000's queue holds the same track twice as happily as once. A comparison that asks which
+// tracks are queued rather than what the queue holds misses the second copy going.
+TEST_CASE("removing one of two copies of the same track is a queue change") {
+    PlayerStateStore store;
+    const QueueEntry track = queuedFromLibrary(R"(X:\music\a.flac)");
+    store.queueChanged({track, track});
+    const uint64_t before = store.read().queueRevision;
+
+    store.queueChanged({track});
+
+    CHECK(store.read().queueRevision > before);
+}
+
+// A client names the revision it holds when it moves an entry, and is refused when that revision
+// is stale. A revision that could return to a number it once had would let a queue changed and
+// changed back again pass as the one the client last read.
+TEST_CASE("a queue changed and changed back again has a revision no client has held") {
+    PlayerStateStore store;
+    store.queueChanged(twoQueued());
+    const uint64_t held = store.read().queueRevision;
+
+    store.queueChanged({});
+    store.queueChanged(twoQueued());
+
+    CHECK(store.read().queueRevision > held);
+}
+
+TEST_CASE("the queue revision stays where it is while everything else about the player moves") {
+    PlayerStateStore store;
+    store.publish(playingFrom(kPlayingRow));
+    store.queueChanged(twoQueued());
+    const auto before = store.read();
+
+    SUBCASE("a whole state is published") {
+        PlayerState paused = playingFrom(kPlayingRow);
+        paused.playback = PlaybackState::paused;
+        store.publish(paused);
+    }
+    SUBCASE("another track starts") {
+        store.started(anotherTrack(), kMarkedAt + minutes(1));
+    }
+    SUBCASE("somebody seeks") {
+        store.seeked(90.0, kMarkedAt + kRanOnFor);
+    }
+    SUBCASE("the volume moves") {
+        store.volumeChanged(-12.0, true);
+    }
+    SUBCASE("the playing row moves") {
+        store.playingLocationChanged(PlayingLocation{kPlayingPlaylist, kPlayingRow + 1});
+    }
+    SUBCASE("the player stops") {
+        store.stopped();
+    }
+
+    CHECK(store.read().version > before.version);
+    CHECK(store.read().queueRevision == before.queueRevision);
 }

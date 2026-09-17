@@ -1115,6 +1115,8 @@ export interface components {
             artist: string | null;
             /** @description Where the playing track sits, or `null` when it is not playing from a playlist this component can name. */
             playingLocation: components["schemas"]["PlayingLocation"] | null;
+            /** @description Moves when the queue's contents or order change, or when a queued entry's playlist position shifts or is lost. Never moves for anything else this section reports. */
+            queueRevision: number;
         };
         /**
          * @description Where playback was at the moment this component last looked, and how long ago that

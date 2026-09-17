@@ -138,6 +138,12 @@ PlayerState playingFromThePlaylist() {
     return state;
 }
 
+std::vector<QueueEntry> oneQueued() {
+    QueueEntry entry;
+    entry.path = R"(X:\music\two.flac)";
+    return {entry};
+}
+
 bool mentions(const std::string& body, const std::string& text) {
     return toLower(body).find(toLower(text)) != std::string::npos;
 }
@@ -693,6 +699,64 @@ TEST_CASE("an untouched player stays a 304, however old its position mark is") {
     REQUIRE(held);
     CHECK(held->status == 304);
     CHECK(held->body.empty());
+}
+
+// The number a client refetches the queue on. A revision carried by the player version would move
+// on every seek and send the client for a queue that had not changed.
+TEST_CASE("the poll document's queue revision moves with the queue and not with the player") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    const TestServer server = serving(&library, &store);
+
+    const auto before = playerSection(server);
+    REQUIRE(before.contains("queueRevision"));
+    REQUIRE(before["queueRevision"].is_number_unsigned());
+
+    store.seeked(90, std::chrono::steady_clock::now());
+    const auto afterTheSeek = playerSection(server);
+
+    store.queueChanged(oneQueued());
+    const auto afterTheQueue = playerSection(server);
+
+    REQUIRE(afterTheSeek.contains("queueRevision"));
+    REQUIRE(afterTheQueue.contains("queueRevision"));
+    CHECK(afterTheSeek["queueRevision"] == before["queueRevision"]);
+    CHECK(afterTheQueue["queueRevision"].get<uint64_t>() >
+          afterTheSeek["queueRevision"].get<uint64_t>());
+}
+
+TEST_CASE("a conditional poll is a 200 when the queue changed, and a 304 when it did not") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    store.queueChanged(oneQueued());
+
+    const auto queued = getHolding(server, "/api/state", tag);
+    REQUIRE(queued);
+    CHECK(queued->status == 200);
+
+    const auto queuedTag = queued->get_header_value("ETag");
+    REQUIRE_FALSE(queuedTag.empty());
+    CHECK(queuedTag != tag);
+
+    store.queueChanged(oneQueued());
+
+    const auto unchanged = getHolding(server, "/api/state", queuedTag);
+    REQUIRE(unchanged);
+    CHECK(unchanged->status == 304);
+    CHECK(unchanged->get_header_value("ETag") == queuedTag);
 }
 
 // One document carries both halves, so a validator that stopped reporting the library when the

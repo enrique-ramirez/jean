@@ -405,6 +405,14 @@ This is the one part of the component's surface the spec does not describe, beca
 - **`?`, `''` and `N/A` arrive exactly as the player produced them.** Nothing in the component parses, normalises or types a value, which is what keeps Jean's capability detection working. **Never coerce one to `null`**: `Number(null)` is `0` and every field would then read as available.
 - **The header answers capability detection exactly**, so a field that resolves on one track in ten thousand is detected rather than missed by a sample. Detection is still a guess a Settings switch overrules.
 
+## What Jean does about the queue
+
+`GET /api/queue` answers every entry in the player's own order plus the revision they were read at. `domain/player/queue.ts`'s `recheckQueue` only asks for it when `GET /api/state`'s `queueRevision` has moved from the one already cached, off the same one-second poll that already carries player state, so a client watching the queue costs nothing beyond the poll it already runs.
+
+Queueing, moving, removing and clearing each send exactly one request: `POST /queue`, `POST /queue/move`, `DELETE /queue/{index}` and `DELETE /queue`. Every one is optimistic against the cached read and reconciled by the next poll rather than trusted outright; a write against a queue that has since moved answers `409`, and Jean takes no local guess at the true order in that case; the next poll's `recheckQueue` holds it.
+
+**A queued entry plays whether or not it still carries a `location`.** `location` is `null` both for a library track queued by handle and for a playlist row whose position the player has lost, and measured against a real player both reach the head and play, `title`, `artist` and `duration` intact. Unlike beefweb's own queue, there is no garbage-column row to warn a person about.
+
 ## What Jean does about the stream
 
 The component's clock, not beefweb's, is what a listener hears; the spec carries the arithmetic that turns one into the other, and `src/domain/player/CLAUDE.md` is what Jean builds on it.

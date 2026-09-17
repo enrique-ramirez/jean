@@ -85,15 +85,6 @@ export interface TrackRows {
 	offset: number;
 }
 
-export interface PlayQueueItem {
-	playlistId: string;
-	playlistIndex: number;
-	// The queue holds a track handle rather than a position, so this is re-derived on every read. -1
-	// once the track is removed from its playlist, and that entry's columns are garbage, not empty.
-	itemIndex: number;
-	columns: TrackColumns;
-}
-
 export interface LibraryInfo {
 	supported: boolean;
 	enabled: boolean;
@@ -136,8 +127,6 @@ export interface AddFromLibraryBody {
 
 export interface UpdateMessage {
 	playlists?: PlaylistInfo[];
-	// Complete, unlike `playlists`: the whole queue arrives on every change to it.
-	playQueue?: PlayQueueItem[];
 }
 
 export interface PlayerSnapshot {

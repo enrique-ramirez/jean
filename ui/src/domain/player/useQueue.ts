@@ -1,153 +1,135 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 import {
-	addToPlayQueue,
-	clearPlayQueue,
-	fetchPlayQueue,
-	removeFromPlayQueue,
-} from "@/shared/api/beefweb";
-import { isFooJeanReady } from "@/shared/api/fooJean";
-import type { PlayQueueItem } from "@/shared/api/types";
+	fetchPlaylistAnnotations,
+	isFooJeanReady,
+	moveQueueEntry,
+	postQueue,
+	type QueueMutationResult,
+	type QueuePlaylistRowsRequest,
+	type QueueRead,
+	removeQueueEntry,
+	clearQueue as writeClearQueue,
+} from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
-import { inSequence } from "@/shared/lib/sequence";
 import { pushToast } from "@/shared/ui/toastStore";
-import {
-	holdQueue,
-	insertPlan,
-	movePlan,
-	QUEUE_KEY,
-	type QueueTarget,
-	readQueue,
-	sameQueue,
-} from "./queue";
+import { pollPlayerNow } from "./playerPoll";
+import { guidOf } from "./playlistJoin";
+import { QUEUE_KEY, type QueueTarget, readQueue } from "./queue";
 import { askToShowQueue } from "./showQueue";
 
 export function useQueue() {
-	const { data } = useQuery({
+	const { data } = useQuery<QueueRead>({
 		queryKey: QUEUE_KEY,
-		queryFn: fetchPlayQueue,
+		queryFn: skipToken,
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
 	});
 
-	const items = data;
-
 	return useMemo(() => {
-		const entries = readQueue(items);
+		const entries = readQueue(data);
 		return { entries, count: entries.length };
-	}, [items]);
+	}, [data]);
 }
 
 export function useQueueActions() {
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
 	const canQueue = isFooJeanReady(discovery);
+	const { origin, token } = discovery;
 
-	const underQueueHold = useCallback(
-		async (run: () => Promise<unknown>) => {
-			const release = holdQueue();
-			let ok = true;
-			try {
-				await run();
-			} catch {
-				ok = false;
-				pushToast({
-					tone: "error",
-					message: translate("queue.refused"),
-				});
-			}
-			// Inside the hold, so a push cannot interleave between read and write.
-			const truth = await fetchPlayQueue().catch(() => null);
-			if (truth) queryClient.setQueryData(QUEUE_KEY, truth);
-			release();
-			return ok;
-		},
-		[queryClient],
-	);
-
-	const patch = useCallback(
-		(next: (current: PlayQueueItem[]) => PlayQueueItem[]) =>
-			queryClient.setQueryData<PlayQueueItem[]>(QUEUE_KEY, (current) =>
-				next(current ?? []),
+	const patchEntries = useCallback(
+		(next: (entries: QueueRead["entries"]) => QueueRead["entries"]) =>
+			queryClient.setQueryData<QueueRead>(QUEUE_KEY, (current) =>
+				current ? { ...current, entries: next(current.entries) } : current,
 			),
 		[queryClient],
 	);
 
+	const settle = useCallback(
+		async (result: QueueMutationResult) => {
+			if (!result.ok)
+				pushToast({
+					tone: "error",
+					message: translate(
+						result.reason === "stale" ? "queue.movedUnderYou" : "queue.refused",
+					),
+				});
+			if (origin && token) await pollPlayerNow(queryClient, origin, token);
+			return result.ok;
+		},
+		[queryClient, origin, token],
+	);
+
 	const queue = useCallback(
 		async (pairs: QueueTarget[], at?: number) => {
-			if (!canQueue || pairs.length === 0) return;
+			if (!canQueue || pairs.length === 0 || !origin || !token) return;
 
 			askToShowQueue();
 
-			let removals: number[] = [];
-			let additions: QueueTarget[] = pairs;
-
-			const shown = queryClient.getQueryData<PlayQueueItem[]>(QUEUE_KEY);
-
-			if (at !== undefined && at < (shown?.length ?? 0)) {
-				const current = await fetchPlayQueue().catch(() => null);
-				if (!current || !sameQueue(current, shown)) {
-					pushToast({
-						tone: "error",
-						message: translate("queue.movedUnderYou"),
-					});
-					return;
-				}
-				({ removals, additions } = insertPlan(current, at, pairs));
+			const annotations = await fetchPlaylistAnnotations(origin, token);
+			let playlistId: string;
+			try {
+				playlistId = guidOf(pairs[0].playlistId, annotations);
+			} catch {
+				pushToast({ tone: "error", message: translate("queue.noSource") });
+				return;
 			}
 
-			await underQueueHold(async () => {
-				await inSequence(removals, removeFromPlayQueue);
-				await inSequence(additions, (item) =>
-					addToPlayQueue(item.playlistId, item.itemIndex),
-				);
-			});
+			const request: QueuePlaylistRowsRequest = {
+				playlistId,
+				positions: pairs.map((pair) => pair.itemIndex),
+				...(at !== undefined
+					? {
+							at,
+							revision:
+								queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision ?? 0,
+						}
+					: null),
+			};
+
+			await settle(await postQueue(origin, token, request));
 		},
-		[canQueue, queryClient, underQueueHold],
+		[canQueue, origin, token, queryClient, settle],
 	);
 
 	const remove = useCallback(
 		(at: number) => {
-			if (!canQueue) return Promise.resolve();
-			patch((current) => current.filter((_, index) => index !== at));
-			return underQueueHold(() => removeFromPlayQueue(at));
+			if (!canQueue || !origin || !token) return Promise.resolve(false);
+
+			patchEntries((entries) => entries.filter((_, index) => index !== at));
+			const revision =
+				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision ?? 0;
+			return removeQueueEntry(origin, token, at, revision).then(settle);
 		},
-		[canQueue, patch, underQueueHold],
+		[canQueue, origin, token, patchEntries, queryClient, settle],
 	);
 
 	const clear = useCallback(() => {
-		if (!canQueue) return Promise.resolve();
-		patch(() => []);
-		return underQueueHold(() => clearPlayQueue());
-	}, [canQueue, patch, underQueueHold]);
+		if (!canQueue || !origin || !token) return Promise.resolve(false);
+
+		patchEntries(() => []);
+		return writeClearQueue(origin, token).then(settle);
+	}, [canQueue, origin, token, patchEntries, settle]);
 
 	const move = useCallback(
-		async (from: number, to: number) => {
-			if (!canQueue || from === to) return;
+		(from: number, to: number) => {
+			if (!canQueue || from === to || !origin || !token)
+				return Promise.resolve(false);
 
-			const current = await fetchPlayQueue().catch(() => null);
-			const shown = queryClient.getQueryData<PlayQueueItem[]>(QUEUE_KEY);
-			if (!current || !sameQueue(current, shown)) {
-				pushToast({
-					tone: "error",
-					message: translate("queue.movedUnderYou"),
-				});
-				return;
-			}
-
-			const plan = movePlan(current, from, to);
-			patch(() => plan.next);
-
-			await underQueueHold(async () => {
-				await inSequence(plan.removals, removeFromPlayQueue);
-				await inSequence(plan.additions, (item) =>
-					addToPlayQueue(item.playlistId, item.itemIndex),
-				);
+			patchEntries((entries) => {
+				const next = [...entries];
+				const [item] = next.splice(from, 1);
+				next.splice(to, 0, item);
+				return next;
 			});
+			const revision =
+				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision ?? 0;
+			return moveQueueEntry(origin, token, { from, to, revision }).then(settle);
 		},
-		[canQueue, patch, queryClient, underQueueHold],
+		[canQueue, origin, token, patchEntries, queryClient, settle],
 	);
 
 	return { canQueue, queue, remove, clear, move };

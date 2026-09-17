@@ -27,6 +27,7 @@ import {
 	volumeDown,
 	volumeUp,
 } from "@/shared/api/beefweb";
+import { fetchPlaylistAnnotations } from "@/shared/api/fooJean";
 import type {
 	ActiveItem,
 	Permissions,
@@ -45,14 +46,9 @@ import { refusal } from "@/shared/lib/refusal";
 import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
-import { usePlayingPlaylist } from "./playlistJoin";
+import { guidOf, usePlayingPlaylist } from "./playlistJoin";
 import { audibleAt, positionAt } from "./position";
-import {
-	dequeuePlaylist,
-	holdQueue,
-	isQueueStreamHeld,
-	QUEUE_KEY,
-} from "./queue";
+import { dequeuePlaylist, QUEUE_KEY } from "./queue";
 
 export const PLAYLISTS_KEY = ["playlists"];
 
@@ -63,10 +59,8 @@ export function usePlayerStream() {
 		const source = new EventSource(UPDATES_URL);
 
 		source.onmessage = (event) => {
-			const { playlists, playQueue } = JSON.parse(event.data) as UpdateMessage;
+			const { playlists } = JSON.parse(event.data) as UpdateMessage;
 			if (playlists) queryClient.setQueryData(PLAYLISTS_KEY, playlists);
-			if (playQueue && !isQueueStreamHeld())
-				queryClient.setQueryData(QUEUE_KEY, playQueue);
 		};
 
 		return () => source.close();
@@ -171,6 +165,7 @@ const usePlaylistPatch = <TInput>(
 
 export function usePlaylistActions() {
 	const queryClient = useQueryClient();
+	const { discovery } = useFooJean();
 
 	const create = useMutation({
 		mutationFn: async (title: string) => {
@@ -196,13 +191,24 @@ export function usePlaylistActions() {
 
 		remove: usePlaylistPatch(
 			async (id: string) => {
-				const release = holdQueue();
 				try {
-					if (!(await dequeuePlaylist(id))) {
-						throw refusal(translate("playlist.deleteBlockedByQueue"));
+					const { origin, token } = discovery;
+					let dequeued = false;
+					if (origin && token) {
+						const annotations = await fetchPlaylistAnnotations(origin, token);
+						try {
+							dequeued = await dequeuePlaylist(
+								origin,
+								token,
+								guidOf(id, annotations),
+							);
+						} catch {
+							dequeued = false;
+						}
 					}
+					if (!dequeued)
+						throw refusal(translate("playlist.deleteBlockedByQueue"));
 				} finally {
-					release();
 					await queryClient.refetchQueries({ queryKey: QUEUE_KEY });
 				}
 				return removePlaylist(id);

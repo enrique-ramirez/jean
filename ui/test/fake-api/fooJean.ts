@@ -6,6 +6,8 @@ import { evaluate } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
+type QueuedRead = ReturnType<FakeState["queuedEntries"]>[number];
+
 type OwnPlaylistRole = "scratch" | "queue";
 
 export interface FooJeanOptions {
@@ -1009,6 +1011,31 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 			fake.knowsPlayingLocation && item && playlist && playlistIndex >= 0
 				? { playlistId: guidFor(playlistIndex), index: item.index }
 				: null,
+		queueRevision: state.queueRevision,
+	};
+};
+
+// One row of `GET /api/queue`, read through the entry's handle. A missing tag is
+// an empty string, and a position the player has lost is no position at all.
+const queuedTrackOf = (state: FakeState, entry: QueuedRead) => {
+	const playlist = entry.playlistId
+		? state.playlistById(entry.playlistId)
+		: null;
+	const value = (field: string) => String(entry.track[field] ?? "");
+	return {
+		title: value("%title%"),
+		artist: value("%artist%"),
+		duration: Number(entry.track["%length_seconds%"]) || 0,
+		album: value("%album%"),
+		albumArtist: value("%album artist%"),
+		libraryPath: state.libraryPathFor(entry.track),
+		location:
+			playlist && entry.index >= 0
+				? {
+						playlistId: guidFor(state.playlists.indexOf(playlist)),
+						index: entry.index,
+					}
+				: null,
 	};
 };
 
@@ -1354,7 +1381,12 @@ export async function handleAgent({
 	if (path === "/api/queue") {
 		if (method === "GET") {
 			if (state.latency > 0) await delay(state.latency);
-			return json(response, { revision: 0, entries: [] });
+			return json(response, {
+				revision: state.queueRevision,
+				entries: state
+					.queuedEntries()
+					.map((entry) => queuedTrackOf(state, entry)),
+			});
 		}
 
 		if (method === "POST") {
@@ -1374,6 +1406,11 @@ export async function handleAgent({
 				const parsed = parseQueueRows(body);
 				if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
+				// Judged by the route before the player is involved, which is why a
+				// stale revision outranks an unknown playlist.
+				if (parsed.at && parsed.at.revision !== state.queueRevision)
+					return json(response, QUEUE_MOVED, 409);
+
 				const index = state.playlists.findIndex(
 					(_, at) => guidFor(at) === parsed.playlistId,
 				);
@@ -1384,17 +1421,23 @@ export async function handleAgent({
 				const pastEnd = parsed.positions.find(
 					(position) => position >= playlist.items.length,
 				);
-				// No store behind the queue yet: GET /api/queue keeps answering empty
-				// until a later phase gives this fake one, so any `at` past the head is
-				// past the end of it.
-				const queueEnd = parsed.at !== undefined && parsed.at.index > 0;
-				if (pastEnd !== undefined || queueEnd)
+				if (
+					pastEnd !== undefined ||
+					(parsed.at && parsed.at.index > state.queuedEntries().length)
+				)
 					return json(
 						response,
 						{ error: "that position is past the end", detail: "" },
 						400,
 					);
 
+				state.queueInsert(
+					parsed.positions.map((position) => ({
+						playlistId: playlist.id,
+						track: playlist.items[position],
+					})),
+					parsed.at?.index,
+				);
 				return empty(response);
 			}
 
@@ -1414,21 +1457,30 @@ export async function handleAgent({
 			);
 			if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
-			// Same convention as the rows form above: nothing here backs a real
-			// queue yet, so any `at` past the head is past the end of it.
-			const queueEnd = parsed.at !== undefined && parsed.at.index > 0;
-			if (queueEnd)
+			if (parsed.at && parsed.at.revision !== state.queueRevision)
+				return json(response, QUEUE_MOVED, 409);
+
+			if (parsed.at && parsed.at.index > state.queuedEntries().length)
 				return json(
 					response,
 					{ error: "that position is past the end", detail: "" },
 					400,
 				);
 
+			const ordered = state.ordinalOrder();
+			state.queueInsert(
+				parsed.ordinals.map((ordinal) => ({
+					playlistId: null,
+					track: ordered[ordinal].track,
+				})),
+				parsed.at?.index,
+			);
 			return empty(response);
 		}
 
 		if (method === "DELETE") {
 			if (state.latency > 0) await delay(state.latency);
+			state.queueClear();
 			return empty(response);
 		}
 
@@ -1439,13 +1491,19 @@ export async function handleAgent({
 		const parsed = parseMoveQueue(body);
 		if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
-		if (parsed.revision !== 0) return json(response, QUEUE_MOVED, 409);
+		if (parsed.revision !== state.queueRevision)
+			return json(response, QUEUE_MOVED, 409);
 
-		return json(
-			response,
-			{ error: "that position is past the end", detail: "" },
-			400,
-		);
+		const length = state.queuedEntries().length;
+		if (parsed.from >= length || parsed.to >= length)
+			return json(
+				response,
+				{ error: "that position is past the end", detail: "" },
+				400,
+			);
+
+		state.queueMove(parsed.from, parsed.to);
+		return empty(response);
 	}
 
 	const queueEntryMatch = /^\/api\/queue\/([^/]+)$/.exec(path);
@@ -1456,13 +1514,18 @@ export async function handleAgent({
 		);
 		if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
-		if (parsed.revision !== 0) return json(response, QUEUE_MOVED, 409);
+		if (parsed.revision !== state.queueRevision)
+			return json(response, QUEUE_MOVED, 409);
 
-		return json(
-			response,
-			{ error: "that position is past the end", detail: "" },
-			400,
-		);
+		if (parsed.index >= state.queuedEntries().length)
+			return json(
+				response,
+				{ error: "that position is past the end", detail: "" },
+				400,
+			);
+
+		state.queueRemoveAt(parsed.index);
+		return empty(response);
 	}
 
 	if (path.startsWith("/api/library/"))

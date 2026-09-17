@@ -659,6 +659,91 @@ export async function pairWithAgent(
 	return { ok: false, reason: "unreachable", message };
 }
 
+export type QueueRead = Schema["QueueRead"];
+export type QueuedTrack = Schema["QueuedTrack"];
+export type QueuePlaylistRowsRequest = Schema["QueuePlaylistRowsRequest"];
+export type QueueLibraryTracksRequest = Schema["QueueLibraryTracksRequest"];
+export type MoveQueueRequest = Schema["MoveQueueRequest"];
+
+const deleteJson = async (
+	url: string,
+	token: string,
+	{ timeoutMs = WRITE_TIMEOUT_MS }: { timeoutMs?: number } = {},
+): Promise<Response | null> => {
+	try {
+		return await withTimeout(timeoutMs, (signal) =>
+			fetch(url, { method: "DELETE", headers: bearer(token), signal }),
+		);
+	} catch {
+		return null;
+	}
+};
+
+export type QueueMutationResult =
+	| { ok: true }
+	| { ok: false; reason: "stale" }
+	| { ok: false; reason: "failed"; message: string };
+
+const queueMutationResult = async (
+	response: Response | null,
+): Promise<QueueMutationResult> => {
+	if (!response) return { ok: false, reason: "failed", message: UNREACHABLE };
+	if (response.ok) return { ok: true };
+	if (response.status === 409) return { ok: false, reason: "stale" };
+	const { message } = await messageOf(response, `HTTP ${response.status}`);
+	return { ok: false, reason: "failed", message };
+};
+
+export const fetchQueue = (origin: string, token: string) =>
+	authedJson<QueueRead>(origin, token, "/api/queue");
+
+export async function postQueue(
+	origin: string,
+	token: string,
+	request: QueuePlaylistRowsRequest | QueueLibraryTracksRequest,
+): Promise<QueueMutationResult> {
+	return queueMutationResult(
+		await postJson(`${origin}/api/queue`, request, {
+			token,
+			timeoutMs: WRITE_TIMEOUT_MS,
+		}),
+	);
+}
+
+export async function clearQueue(
+	origin: string,
+	token: string,
+): Promise<QueueMutationResult> {
+	return queueMutationResult(await deleteJson(`${origin}/api/queue`, token));
+}
+
+export async function moveQueueEntry(
+	origin: string,
+	token: string,
+	request: MoveQueueRequest,
+): Promise<QueueMutationResult> {
+	return queueMutationResult(
+		await postJson(`${origin}/api/queue/move`, request, {
+			token,
+			timeoutMs: WRITE_TIMEOUT_MS,
+		}),
+	);
+}
+
+export async function removeQueueEntry(
+	origin: string,
+	token: string,
+	index: number,
+	revision: number,
+): Promise<QueueMutationResult> {
+	return queueMutationResult(
+		await deleteJson(
+			`${origin}/api/queue/${index}?revision=${revision}`,
+			token,
+		),
+	);
+}
+
 type Run = [start: number, count: number];
 
 type AscendingScan = { ascending: true; runs: Run[] } | { ascending: false };

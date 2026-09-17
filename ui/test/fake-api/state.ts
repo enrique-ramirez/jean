@@ -44,6 +44,14 @@ export interface LibraryEntry {
 	subsong: number;
 }
 
+// One entry in foobar2000's own play queue, which every client shares. The
+// handle is the entry; the playlist row it was queued from is where it has one,
+// and a track queued by handle never has one.
+export interface QueuedEntry {
+	playlistId: string | null;
+	track: Track;
+}
+
 interface CapturedAlbum {
 	slug: string;
 	artwork?: string;
@@ -365,7 +373,7 @@ export function createState({
 			activeItem: { ...IDLE_ITEM },
 			...player,
 		},
-		playQueue: [] as { playlistId: string; track: Track }[],
+		playQueue: [] as QueuedEntry[],
 		library: { supported: true, enabled: true, ...library },
 		latency: 0,
 		skipGapMs: 0,
@@ -403,6 +411,41 @@ export function createState({
 
 	const byId = (id: string) =>
 		state.playlists.find((entry) => entry.id === id) ?? null;
+
+	// Where each queued entry sits now, read through its handle: `-1` for a track
+	// queued by handle and for a row the player has lost the position of.
+	const queuedEntries = () =>
+		state.playQueue.map((entry) => ({
+			playlistId: entry.playlistId,
+			track: entry.track,
+			index: entry.playlistId
+				? (byId(entry.playlistId)?.items.indexOf(entry.track) ?? -1)
+				: -1,
+		}));
+
+	let queueRevision = 0;
+	let publishedQueue: ReturnType<typeof queuedEntries> = [];
+
+	// `PlayerStateStore::queueChanged` compares the whole queue and returns early
+	// when it matches, so the revision moves for the contents, the order and a
+	// position that shifted or was lost, and for nothing else. It bumps the
+	// player's own version alongside it, which is what carries a queue change
+	// into `GET /api/state`'s validator.
+	const syncQueueRevision = () => {
+		const now = queuedEntries();
+		const same =
+			now.length === publishedQueue.length &&
+			now.every(
+				(entry, at) =>
+					entry.track === publishedQueue[at].track &&
+					entry.playlistId === publishedQueue[at].playlistId &&
+					entry.index === publishedQueue[at].index,
+			);
+		if (same) return;
+		publishedQueue = now;
+		queueRevision += 1;
+		playerVersion += 1;
+	};
 
 	const coverOfTrack = (track: Track) => {
 		const album = LIBRARY.albums.find((entry) =>
@@ -553,7 +596,7 @@ export function createState({
 		// The queue outranks both playback order and the playlist.
 		const queued = delta > 0 ? state.playQueue[0] : null;
 		if (queued) {
-			const from = byId(queued.playlistId);
+			const from = queued.playlistId ? byId(queued.playlistId) : null;
 			const at = from?.items.indexOf(queued.track) ?? -1;
 			if (from && at >= 0) {
 				withSkipGap(() => setActive(from, at, "playing"));
@@ -707,11 +750,14 @@ export function createState({
 		};
 	}
 
+	// beefweb addresses a queue entry as a playlist and a position, so an entry
+	// queued by handle is one it has no way to name: `-1`, the same answer it
+	// gives for a row that has gone.
 	const queuePayload = (expressions: string[] = []) =>
 		state.playQueue.map((entry) => {
-			const playlist = byId(entry.playlistId);
+			const playlist = entry.playlistId ? byId(entry.playlistId) : null;
 			return {
-				playlistId: entry.playlistId,
+				playlistId: entry.playlistId ?? "",
 				playlistIndex: playlist ? state.playlists.indexOf(playlist) : -1,
 				itemIndex: playlist ? playlist.items.indexOf(entry.track) : -1,
 				columns: columnsFor(entry.track, expressions),
@@ -739,8 +785,14 @@ export function createState({
 			return positionMark;
 		},
 		get playerVersion() {
+			syncQueueRevision();
 			return playerVersion;
 		},
+		get queueRevision() {
+			syncQueueRevision();
+			return queueRevision;
+		},
+		queuedEntries,
 		library: state.library,
 		// beefweb's only answer for what the playing track is called: the `trcolumns`
 		// a subscriber asked for, evaluated against the active item. A spec sets this
@@ -1311,6 +1363,31 @@ export function createState({
 			const album = LIBRARY.albums.find((a) => a.tracks.includes(entry.track));
 			if (album) return `${album.slug}.jpg`;
 			return artworkOf?.(entry.track) ?? null;
+		},
+
+		libraryPathFor(track: Track) {
+			const entry = libraryItemsOf(libraryTracks).find(
+				(item) =>
+					item.track["%path%"] === track["%path%"] &&
+					item.subsong === (Number(track["%subsong%"]) || 0),
+			);
+			return entry?.path ?? null;
+		},
+
+		queueInsert(entries: QueuedEntry[], at?: number) {
+			state.playQueue.splice(at ?? state.playQueue.length, 0, ...entries);
+			notify({ playQueue: true });
+		},
+
+		queueMove(from: number, to: number) {
+			const [entry] = state.playQueue.splice(from, 1);
+			state.playQueue.splice(to, 0, entry);
+			notify({ playQueue: true });
+		},
+
+		queueRemoveAt(index: number) {
+			state.playQueue.splice(index, 1);
+			notify({ playQueue: true });
 		},
 
 		queueAdd(playlistId: string, itemIndex: number) {

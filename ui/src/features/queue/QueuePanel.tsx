@@ -7,7 +7,6 @@ import { queueDropAt, queuedSeconds, startsIn } from "@/domain/player/queue";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { coverKey } from "@/domain/track/fields";
-import { artworkUrl } from "@/shared/api/beefweb";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -31,10 +30,17 @@ const stretchOf = (seconds: number) =>
 		STRETCH_MAX_PX,
 	);
 
+const identityOf = (entry: QueueEntry) =>
+	entry.location
+		? `pos:${entry.location.playlistId}:${entry.location.index}`
+		: entry.libraryPath
+			? `lib:${entry.libraryPath}`
+			: `meta:${entry.artist}:${entry.title}`;
+
 const rowKeys = (entries: QueueEntry[]) => {
 	const seen = new Map<string, number>();
 	return entries.map((entry) => {
-		const id = `${entry.playlistId}:${entry.itemIndex}`;
+		const id = identityOf(entry);
 		const nth = seen.get(id) ?? 0;
 		seen.set(id, nth + 1);
 		return `${id}#${nth}`;
@@ -183,7 +189,7 @@ const QueueRow = memo(function QueueRow({
 
 			<Artwork
 				className={styles.tick}
-				src={artworkUrl(entry.playlistId, entry.itemIndex)}
+				src={null}
 				identity={coverKey(entry.artist, entry.title, "track")}
 				size={32}
 			/>

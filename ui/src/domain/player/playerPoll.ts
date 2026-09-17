@@ -14,6 +14,7 @@ import type {
 } from "@/shared/api/types";
 import { rememberSnapshot } from "./audible";
 import { notePlaybackState } from "./listenerStore";
+import { recheckQueue } from "./queue";
 
 export const PLAYER_KEY = ["player"];
 
@@ -97,6 +98,7 @@ async function applyPoll(
 	rememberSnapshot(snapshot);
 	notePlaybackState(snapshot.player.playbackState);
 	void recheckComponentLibrary(origin, token, result.state.library);
+	void recheckQueue(client, origin, token, result.state.player.queueRevision);
 	return result.tag;
 }
 

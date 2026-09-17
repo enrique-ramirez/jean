@@ -3,8 +3,8 @@ import { useCallback } from "react";
 
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { useQueueActions } from "@/domain/player/useQueue";
-import { fetchPlaylists, fetchPlayQueue } from "@/shared/api/beefweb";
-import { emptyOwnPlaylist } from "@/shared/api/fooJean";
+import { fetchPlaylists } from "@/shared/api/beefweb";
+import { emptyOwnPlaylist, fetchQueue } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
@@ -32,13 +32,13 @@ export function useQueueTracks() {
 		const held = findQueuePlaylist(cached);
 		if (!held) return null;
 
-		const queued = await fetchPlayQueue().catch(() => null);
+		const queued = origin && token ? await fetchQueue(origin, token) : null;
 
 		const playlists = await fetchPlaylists();
 		const itemCount =
 			playlists.find((entry) => entry.id === held.id)?.itemCount ?? 0;
 
-		if (queued?.length === 0 && itemCount > 0 && origin && token) {
+		if (queued?.entries.length === 0 && itemCount > 0 && origin && token) {
 			await emptyOwnPlaylist(origin, token, "queue");
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			return { id: held.id, itemCount: 0 };

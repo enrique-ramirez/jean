@@ -1,12 +1,12 @@
-import {
-	fetchPlayQueue,
-	QUEUE_FIELD,
-	removeFromPlayQueue,
-} from "@/shared/api/beefweb";
-import type { PlayQueueItem } from "@/shared/api/types";
-import { descending, inSequence } from "@/shared/lib/sequence";
+import type { QueryClient } from "@tanstack/react-query";
 
-export const QUEUE_KEY = ["playQueue"];
+import {
+	fetchQueue,
+	type QueueRead,
+	removeQueueEntry,
+} from "@/shared/api/fooJean";
+
+export const QUEUE_KEY = ["queue"];
 export const QUEUE_DROP_TARGET = "jean:queue";
 
 export interface QueueTarget {
@@ -22,56 +22,36 @@ export const queueDropIndex = (id: string) => {
 	return Number.isInteger(at) ? at : null;
 };
 
-let held = 0;
-
-export const isQueueStreamHeld = () => held > 0;
-
-export const holdQueue = () => {
-	held += 1;
-	let released = false;
-	return () => {
-		if (released) return;
-		released = true;
-		held -= 1;
-	};
-};
-
 export interface QueueEntry {
 	at: number;
-	playlistId: string;
-	itemIndex: number;
 	title: string;
 	artist: string;
 	duration: number;
 	offset: number;
 	isOrphan: boolean;
+	libraryPath: string | null;
+	location: { playlistId: string; index: number } | null;
 }
 
-const seconds = (raw: string | undefined) => {
-	const parsed = Number(raw);
-	return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-};
-
-export function readQueue(items: PlayQueueItem[] | undefined): QueueEntry[] {
+export function readQueue(read: QueueRead | undefined): QueueEntry[] {
 	let offset = 0;
 
-	return (items ?? []).map((item, at) => {
-		const isOrphan = item.itemIndex < 0;
-		const duration = isOrphan
-			? 0
-			: seconds(item.columns?.[QUEUE_FIELD.duration]);
-		const entry: QueueEntry = {
+	return (read?.entries ?? []).map((entry, at) => {
+		const duration = entry.duration > 0 ? entry.duration : 0;
+		const built: QueueEntry = {
 			at,
-			playlistId: item.playlistId,
-			itemIndex: item.itemIndex,
-			title: isOrphan ? "" : (item.columns?.[QUEUE_FIELD.title] ?? ""),
-			artist: isOrphan ? "" : (item.columns?.[QUEUE_FIELD.artist] ?? ""),
+			title: entry.title,
+			artist: entry.artist,
 			duration,
 			offset,
-			isOrphan,
+			// A queued entry plays whether or not it still carries a `location`: see `../../shared/api/README.md`,
+			// "What Jean does about the queue".
+			isOrphan: false,
+			libraryPath: entry.libraryPath,
+			location: entry.location,
 		};
 		offset += duration;
-		return entry;
+		return built;
 	});
 }
 
@@ -81,53 +61,37 @@ export const queuedSeconds = (entries: QueueEntry[]) =>
 export const startsIn = (entry: QueueEntry, remaining: number) =>
 	remaining + entry.offset;
 
-export function insertPlan(
-	current: PlayQueueItem[],
-	at: number,
-	added: QueueTarget[],
-) {
-	const from = Math.max(0, Math.min(at, current.length));
-	return {
-		removals: descending(current.length - 1, from),
-		additions: [...added, ...current.slice(from)],
-	};
+export async function recheckQueue(
+	client: QueryClient,
+	origin: string,
+	token: string,
+	revision: number,
+): Promise<void> {
+	const cached = client.getQueryData<QueueRead>(QUEUE_KEY);
+	if (cached?.revision === revision) return;
+
+	const read = await fetchQueue(origin, token);
+	if (read) client.setQueryData(QUEUE_KEY, read);
 }
 
-export function movePlan(current: PlayQueueItem[], from: number, to: number) {
-	const next = [...current];
-	const [item] = next.splice(from, 1);
-	next.splice(to, 0, item);
+const MAX_DEQUEUE_ATTEMPTS = 64;
 
-	const at = Math.min(from, to);
-	return {
-		next,
-		removals: descending(current.length - 1, at),
-		additions: next.slice(at),
-	};
-}
+export async function dequeuePlaylist(
+	origin: string,
+	token: string,
+	guid: string,
+): Promise<boolean> {
+	for (let attempt = 0; attempt < MAX_DEQUEUE_ATTEMPTS; attempt += 1) {
+		const read = await fetchQueue(origin, token);
+		if (!read) return false;
 
-export const sameQueue = (
-	a: PlayQueueItem[] | undefined,
-	b: PlayQueueItem[] | undefined,
-) =>
-	(a?.length ?? 0) === (b?.length ?? 0) &&
-	(a ?? []).every(
-		(item, at) =>
-			item.playlistId === b?.[at]?.playlistId &&
-			item.itemIndex === b?.[at]?.itemIndex,
-	);
+		const at = read.entries.findIndex(
+			(entry) => entry.location?.playlistId === guid,
+		);
+		if (at < 0) return true;
 
-export async function dequeuePlaylist(playlistId: string) {
-	const queued = await fetchPlayQueue().catch(() => null);
-	if (!queued) return false;
-
-	const at = queued
-		.map((item, index) => (item.playlistId === playlistId ? index : -1))
-		.filter((index) => index >= 0)
-		.reverse();
-
-	await inSequence(at, removeFromPlayQueue);
-
-	const after = await fetchPlayQueue().catch(() => null);
-	return Boolean(after?.every((item) => item.playlistId !== playlistId));
+		const removed = await removeQueueEntry(origin, token, at, read.revision);
+		if (!removed.ok && removed.reason === "failed") return false;
+	}
+	return false;
 }

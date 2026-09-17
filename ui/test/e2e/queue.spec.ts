@@ -77,6 +77,80 @@ const componentEmptiedTheQueueRole = (player: FakePlayer) =>
 			entry.path === "/api/playlists/own/queue/items",
 	);
 
+// What `GET /api/queue` answers, read off the player rather than off the panel.
+const queuedAtThePlayer = (player: FakePlayer) =>
+	player.queuedEntries().map((entry) => ({
+		title: String(entry.track["%title%"] ?? ""),
+		artist: String(entry.track["%artist%"] ?? ""),
+	}));
+
+const componentRequests = (player: FakePlayer, method: string, route: string) =>
+	player.requests.filter(
+		(entry) => entry.method === method && entry.path.split("?")[0] === route,
+	);
+
+// The one route addressed by a queue index rather than by a body.
+const componentRemovals = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "DELETE" && /^\/api\/queue\/\d+/.test(entry.path),
+	);
+
+// Either way the queue can be emptied of a playlist: entry by entry, or whole.
+const emptiesTheQueue = (entry: { method: string; path: string }) =>
+	entry.method === "DELETE" && /^\/api\/queue(\/\d+)?(\?|$)/.test(entry.path);
+
+// beefweb's own queue surface: the four routes it publishes and the read that
+// carries the queue on a query. The long-lived update subscription is a path of
+// its own and is not one of these.
+const beefwebQueueRequests = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.path.startsWith("/api/playqueue") ||
+			(entry.path.startsWith("/api/query?") &&
+				entry.path.includes("playQueue=true")),
+	);
+
+const forgetRequests = (player: FakePlayer) => {
+	player.requests.length = 0;
+};
+
+// Somebody at the desktop pressing Add to playback queue: a playlist row, which
+// the player holds with the position it came from.
+const rowQueuedAtThePlayer = (
+	player: FakePlayer,
+	playlistId: string,
+	index: number,
+	at?: number,
+) => {
+	const playlist = player.playlists.find((entry) => entry.id === playlistId);
+	if (!playlist) throw new Error(`no playlist ${playlistId}`);
+	const track = playlist.items[index];
+	player.queueInsert([{ playlistId, track }], at);
+	return String(track["%title%"] ?? "");
+};
+
+// The same press on a library track with no playlist open: the player holds the
+// handle alone, and there is no position for beefweb to name it by.
+const trackQueuedAtThePlayer = (player: FakePlayer, ordinal: number) => {
+	const { track } = player.ordinalOrder()[ordinal];
+	player.queueInsert([{ playlistId: null, track }]);
+	return String(track["%title%"] ?? "");
+};
+
+const dragRow = async (page: Page, from: number, to: number) => {
+	const start = (await queueRows(page).nth(from).boundingBox())!;
+	const end = (await queueRows(page).nth(to).boundingBox())!;
+	await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(
+		end.x + end.width / 2,
+		end.y + end.height * (to < from ? 0.25 : 0.75),
+		{ steps: 12 },
+	);
+	await page.mouse.up();
+};
+
 test.describe("putting things in the queue", () => {
 	test("a track queued from the list reaches the player", async ({
 		page,
@@ -90,12 +164,19 @@ test.describe("putting things in the queue", () => {
 		expect(player.playQueue[0].playlistId).toBe("p7");
 	});
 
-	test("queueing sends one request per track, and never a bulk one", async ({
+	// A selection queued row by row can be left half queued, and one queued as a
+	// range comes back in the player's order rather than the one clicked.
+	test("a whole selection is queued in one request, in the order chosen", async ({
 		page,
 		player,
 		isMobile,
 	}) => {
 		await openLibrary(page);
+
+		const chosen = player.playlists
+			.find((entry) => entry.id === "p7")
+			?.items.slice(0, 3)
+			.map((track) => String(track["%title%"] ?? ""));
 
 		if (isMobile) {
 			await queueTracks(page, isMobile, 0);
@@ -107,11 +188,19 @@ test.describe("putting things in the queue", () => {
 			await queueTracks(page, isMobile, 1);
 		}
 
-		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(3);
+		await expect
+			.poll(() => queuedAtThePlayer(player).map((entry) => entry.title), {
+				timeout: 5000,
+			})
+			.toEqual(chosen);
 
-		const adds = requestsTo(player, "/playqueue/add");
-		expect(adds).toHaveLength(3);
-		for (const add of adds) expect(typeof add.body?.itemIndex).toBe("number");
+		// One press, one request. A phone has no range to select, so it is three
+		// presses and three requests there.
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "POST", "/api/queue").length,
+			isMobile ? 3 : 1,
+		);
 	});
 
 	test("a track dropped on the queue button is queued", async ({
@@ -139,10 +228,14 @@ test.describe("putting things in the queue", () => {
 		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
-		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
-		expect(requestsTo(player, "/playqueue/add")).toHaveLength(1);
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 		await expect(queueRows(page)).toHaveCount(1);
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "POST", "/api/queue").length,
+			1,
+		);
+		expect(queuedAtThePlayer(player)).toHaveLength(1);
 	});
 
 	test("a track dropped into the panel lands where the line was", async ({
@@ -155,7 +248,7 @@ test.describe("putting things in the queue", () => {
 		await queueTracks(page, isMobile, 1);
 		await queueTracks(page, isMobile, 2);
 		await expect(queueRows(page)).toHaveCount(2);
-		const before = queuedTitles(player);
+		const before = queuedAtThePlayer(player).map((entry) => entry.title);
 
 		const source = await trackRow(page, 0).boundingBox();
 		// A row's id carries its index, but the drop line above a row and the
@@ -177,14 +270,19 @@ test.describe("putting things in the queue", () => {
 		);
 		await page.mouse.up();
 
-		// `queueIndex` on add is accepted and ignored, so an insert is the tail coming off and going back on with the new track ahead of it -- which is exactly what the two it was dropped above surviving in order proves.
 		await expect
-			.poll(() => queuedTitles(player).slice(1), { timeout: 10_000 })
+			.poll(
+				() =>
+					queuedAtThePlayer(player)
+						.map((entry) => entry.title)
+						.slice(1),
+				{ timeout: 10_000 },
+			)
 			.toEqual(before);
 		await expect(queueRows(page)).toHaveCount(3);
 	});
 
-	test("a drop below the last row appends without rebuilding", async ({
+	test("a drop below the last row appends, leaving what was queued where it was", async ({
 		page,
 		player,
 		isMobile,
@@ -193,6 +291,10 @@ test.describe("putting things in the queue", () => {
 		await openLibrary(page);
 		await queueTracks(page, isMobile, 1);
 		await expect(queueRows(page)).toHaveCount(1);
+
+		const rows = player.playlists.find((entry) => entry.id === "p7")?.items;
+		const held = String(rows?.[1]["%title%"] ?? "");
+		const dropped = String(rows?.[0]["%title%"] ?? "");
 
 		const source = await trackRow(page, 0).boundingBox();
 		const panel = (await queuePanel(page).boundingBox())!;
@@ -209,8 +311,14 @@ test.describe("putting things in the queue", () => {
 		);
 		await page.mouse.up();
 
-		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(2);
-		expect(requestsTo(player, "/playqueue/remove")).toHaveLength(0);
+		await expect
+			.poll(() => queuedAtThePlayer(player).map((entry) => entry.title), {
+				timeout: 5000,
+			})
+			.toEqual([held, dropped]);
+		// The end is the one place a queue change needs no plan, so nothing comes
+		// off to make room.
+		expect(componentRemovals(player)).toHaveLength(0);
 	});
 
 	test("the button announces itself only while a drag is in flight", async ({
@@ -686,7 +794,7 @@ test.describe("the panel", () => {
 		await openQueue(page);
 		await expect(queueRows(page)).toHaveCount(3);
 
-		const before = queuedTitles(player);
+		const before = queuedAtThePlayer(player).map((entry) => entry.title);
 		await queueRows(page)
 			.nth(1)
 			.getByRole("button", { name: /^Remove/ })
@@ -694,13 +802,16 @@ test.describe("the panel", () => {
 
 		await expect(queueRows(page)).toHaveCount(2);
 		await expect
-			.poll(() => queuedTitles(player), { timeout: 5000 })
+			.poll(() => queuedAtThePlayer(player).map((entry) => entry.title), {
+				timeout: 5000,
+			})
 			.toEqual([before[0], before[2]]);
 
-		// By queueIndex, which foobar2000 honours here -- unlike on add.
-		const removes = requestsTo(player, "/playqueue/remove");
-		expect(removes).toHaveLength(1);
-		expect(removes[0].body?.queueIndex).toBe(1);
+		// Addressed by the queue position the user pressed, which is the whole of
+		// what identifies an entry: the same track can be queued twice.
+		const removals = componentRemovals(player);
+		expect(removals).toHaveLength(1);
+		expect(removals[0].path.split("?")[0]).toBe("/api/queue/1");
 	});
 
 	test("Clear empties it in one request", async ({
@@ -716,8 +827,10 @@ test.describe("the panel", () => {
 		await queuePanel(page).getByRole("button", { name: "Clear" }).click();
 
 		await expect(queueRows(page)).toHaveCount(0);
-		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(0);
-		expect(requestsTo(player, "/playqueue/clear")).toHaveLength(1);
+		await expect
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 5000 })
+			.toBe(0);
+		expect(componentRequests(player, "DELETE", "/api/queue")).toHaveLength(1);
 	});
 });
 
@@ -801,19 +914,23 @@ test.describe("deleting a playlist the queue points into", () => {
 			.toBe(false);
 
 		// Deleting a playlist the queue points into crashes foo_beefweb and takes
-		// foobar2000 with it, so the order of these two is the assertion.
-		const order = player.requests
-			.map((entry, at) => ({ ...entry, at }))
-			.filter(
-				(entry) =>
-					entry.path.includes("/playqueue/remove") ||
-					entry.path.includes("/playlists/remove/p2"),
-			);
+		// foobar2000 with it, so the order of these two is the assertion. The
+		// queue is emptied of the playlist at the component; the delete itself is
+		// still beefweb's.
+		const order = player.requests.filter(
+			(entry) =>
+				emptiesTheQueue(entry) || entry.path.includes("/playlists/remove/p2"),
+		);
 
-		expect(order).toHaveLength(2);
-		expect(order[0].path).toContain("/playqueue/remove");
-		expect(order[1].path).toContain("/playlists/remove/p2");
-		expect(player.playQueue).toHaveLength(0);
+		expect(
+			order.length,
+			"the queue was never emptied of the playlist at the component",
+		).toBeGreaterThan(1);
+		expect(order.at(-1)?.path).toContain("/playlists/remove/p2");
+		expect(
+			order.slice(0, -1).every((entry) => entry.path.startsWith("/api/queue")),
+		).toBe(true);
+		expect(queuedAtThePlayer(player)).toHaveLength(0);
 	});
 });
 
@@ -1019,6 +1136,222 @@ test.describe("a player that will not let Jean make playlists", () => {
 		}) => {
 			await expectQueueTakesALibraryRow(page, player, isMobile);
 		});
+	});
+});
+
+test.describe("the queue is the component's", () => {
+	test("draws the entries the component answers, in its order, and reads none of it from beefweb", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 3);
+		await queueTracks(page, isMobile, 1);
+		await openQueue(page);
+
+		await expect(queueRows(page)).toHaveCount(2);
+
+		const answered = queuedAtThePlayer(player);
+		const shown = await queueRows(page).evaluateAll((rows) =>
+			rows.map((row) => row.textContent ?? ""),
+		);
+		expect(shown[0]).toContain(answered[0].title);
+		expect(shown[0]).toContain(answered[0].artist);
+		expect(shown[1]).toContain(answered[1].title);
+		expect(shown[1]).toContain(answered[1].artist);
+
+		expect(
+			componentRequests(player, "GET", "/api/queue").length,
+			"the panel drew a queue it never read from the component",
+		).toBeGreaterThan(0);
+		await expectSettlesAt(player, () => beefwebQueueRequests(player).length, 0);
+	});
+
+	test("picks up a track queued at the player, with no reload", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await openQueue(page);
+		await expect(queuePanel(page)).toContainText("The queue is empty");
+
+		const title = trackQueuedAtThePlayer(player, 7);
+
+		await expect(queueRows(page)).toHaveCount(1);
+		await expect(queueRows(page).first()).toContainText(title);
+	});
+
+	test("queues a track with one request to the component, and none to beefweb", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		forgetRequests(player);
+
+		await queueTracks(page, isMobile, 2);
+		await expect(queueRows(page)).toHaveCount(1);
+
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "POST", "/api/queue").length,
+			1,
+		);
+		expect(queuedAtThePlayer(player)).toHaveLength(1);
+		expect(beefwebQueueRequests(player)).toHaveLength(0);
+	});
+
+	test("moves an entry with one request to the component, and none to beefweb", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the grip is a separate gesture; see above");
+
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await queueTracks(page, isMobile, 2);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(3);
+
+		const before = queuedAtThePlayer(player);
+		forgetRequests(player);
+
+		await dragRow(page, 2, 0);
+
+		await expect
+			.poll(() => queuedAtThePlayer(player), { timeout: 10_000 })
+			.toEqual([before[2], before[0], before[1]]);
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "POST", "/api/queue/move").length,
+			1,
+		);
+		expect(beefwebQueueRequests(player)).toHaveLength(0);
+	});
+
+	test("removes an entry with one request to the component, and none to beefweb", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(2);
+
+		const before = queuedAtThePlayer(player);
+		forgetRequests(player);
+
+		await queueRows(page)
+			.first()
+			.getByRole("button", { name: /^Remove/ })
+			.click();
+
+		await expect
+			.poll(() => queuedAtThePlayer(player), { timeout: 10_000 })
+			.toEqual([before[1]]);
+		await expectSettlesAt(player, () => componentRemovals(player).length, 1);
+		expect(beefwebQueueRequests(player)).toHaveLength(0);
+	});
+
+	test("clears the queue with one request to the component, and none to beefweb", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(2);
+
+		forgetRequests(player);
+		await queuePanel(page).getByRole("button", { name: "Clear" }).click();
+
+		await expect(queueRows(page)).toHaveCount(0);
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "DELETE", "/api/queue").length,
+			1,
+		);
+		// The panel empties before the request goes out, so the count on its own
+		// would pass against a clear the player refused.
+		expect(queuedAtThePlayer(player)).toHaveLength(0);
+		expect(beefwebQueueRequests(player)).toHaveLength(0);
+	});
+
+	test("a move the component refuses leaves the panel on the player's own queue", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the grip is a separate gesture; see above");
+
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await queueTracks(page, isMobile, 2);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(3);
+		const before = queuedAtThePlayer(player);
+
+		// The poll is what carries a queue change back, so cutting it off is what
+		// leaves a drag planned against a queue the player has already moved past.
+		player.fooJean.failState = 503;
+		const queuedFirst = rowQueuedAtThePlayer(player, "p2", 0, 0);
+
+		await dragRow(page, 2, 0);
+
+		player.fooJean.failState = null;
+
+		await expectSettlesAt(player, () => queuedAtThePlayer(player).length, 4);
+		expect(queuedAtThePlayer(player).map((entry) => entry.title)).toEqual([
+			queuedFirst,
+			...before.map((entry) => entry.title),
+		]);
+
+		await expect(queueRows(page)).toHaveCount(4);
+		const shown = await queueRows(page).evaluateAll((rows) =>
+			rows.map((row) => row.textContent ?? ""),
+		);
+		expect(shown[0]).toContain(queuedFirst);
+		expect(shown[3]).toContain(before[2].title);
+	});
+
+	test("a remove the component refuses leaves the panel on the player's own queue", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(2);
+		const before = queuedAtThePlayer(player);
+
+		player.fooJean.failState = 503;
+		const queuedFirst = rowQueuedAtThePlayer(player, "p2", 0, 0);
+
+		await queueRows(page)
+			.first()
+			.getByRole("button", { name: /^Remove/ })
+			.click();
+
+		player.fooJean.failState = null;
+
+		await expectSettlesAt(player, () => queuedAtThePlayer(player).length, 3);
+		expect(queuedAtThePlayer(player).map((entry) => entry.title)).toEqual([
+			queuedFirst,
+			...before.map((entry) => entry.title),
+		]);
+
+		await expect(queueRows(page)).toHaveCount(3);
+		await expect(queueRows(page).first()).toContainText(queuedFirst);
 	});
 });
 

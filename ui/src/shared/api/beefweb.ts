@@ -5,7 +5,6 @@ import type {
 	PlayerState,
 	PlaylistInfo,
 	PlaylistItemsResponse,
-	PlayQueueItem,
 	TrackColumns,
 	TrackRows,
 } from "./types";
@@ -13,13 +12,7 @@ import type {
 const encode = (expressions: readonly string[]) =>
 	encodeURIComponent(expressions.join(","));
 
-const QUEUE_COLUMNS = ["%artist%", "%title%", "%length_seconds%"];
-
-export const QUEUE_FIELD = { artist: 0, title: 1, duration: 2 };
-
-const queueColumns = encode(QUEUE_COLUMNS);
-
-export const UPDATES_URL = `/api/query/updates?playlists=true&playQueue=true&qcolumns=${queueColumns}`;
+export const UPDATES_URL = "/api/query/updates?playlists=true";
 
 const id = encodeURIComponent;
 
@@ -46,28 +39,6 @@ export async function fetchPlaylists(): Promise<PlaylistInfo[]> {
 	};
 	return playlists;
 }
-
-// `GET /api/playqueue` takes a parameter named `columns`, ignores `qcolumns`, and answers
-// `"columns": []` rather than an error.
-export async function fetchPlayQueue(): Promise<PlayQueueItem[]> {
-	const response = await request(
-		`/api/query?playQueue=true&qcolumns=${queueColumns}`,
-	);
-	const { playQueue } = (await response.json()) as {
-		playQueue: PlayQueueItem[];
-	};
-	return playQueue;
-}
-
-// One item per request: a bulk `items` array is a 400. `queueIndex` is accepted and silently ignored
-// here, so this always appends.
-export const addToPlayQueue = (playlistId: string, itemIndex: number) =>
-	post("/api/playqueue/add", { plref: playlistId, itemIndex });
-
-export const removeFromPlayQueue = (queueIndex: number) =>
-	post("/api/playqueue/remove", { queueIndex });
-
-export const clearPlayQueue = () => post("/api/playqueue/clear");
 
 export async function fetchPlaylistItems(
 	playlistId: string,

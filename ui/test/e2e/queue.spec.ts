@@ -57,25 +57,18 @@ const queuedTitles = (player: FakePlayer) =>
 		return playlist?.items[entry.itemIndex]?.["%title%"] ?? "";
 	});
 
-// The component owns this playlist and answers to the `queue` role, so its title
-// is all a test outside has to find it by.
-const holdingOf = (player: FakePlayer) =>
-	player.playlists.find((entry) => entry.title === "#Jean Queue");
-
-const beefwebWritesNaming = (player: FakePlayer, playlistId: string) =>
+// The route the holding playlist was made, filled and emptied through, back when
+// a queue entry had to be a playlist and a row. The component has no such role
+// any more, so every verb on it is a 400 and nothing here may go near it.
+const askedForTheQueueRole = (player: FakePlayer) =>
 	player.requests.filter(
-		(entry) =>
-			entry.method === "POST" &&
-			entry.path.startsWith("/api/playlists/") &&
-			entry.path.split("/").includes(playlistId),
+		(entry) => entry.path === "/api/playlists/own/queue/items",
 	);
 
-const componentEmptiedTheQueueRole = (player: FakePlayer) =>
-	player.requests.filter(
-		(entry) =>
-			entry.method === "DELETE" &&
-			entry.path === "/api/playlists/own/queue/items",
-	);
+// Every title in foobar2000's own playlist tabs, which is where a playlist Jean
+// made for its own plumbing would show up.
+const playlistTitles = (player: FakePlayer) =>
+	player.playlists.map((entry) => entry.title);
 
 // What `GET /api/queue` answers, read off the player rather than off the panel.
 const queuedAtThePlayer = (player: FakePlayer) =>
@@ -954,100 +947,90 @@ test.describe("deleting a playlist the queue points into", () => {
 	});
 });
 
-const drainThePlayQueue = async (
-	page: Page,
-	player: FakePlayer,
-	isMobile: boolean,
-	row: number,
-) => {
-	await openAllMusic(page);
-	await queueTracks(page, isMobile, row);
-	await expect(queueRows(page)).toHaveCount(1);
-	expect(holdingOf(player)?.items).toHaveLength(1);
-
-	await queuePanel(page).getByRole("button", { name: "Clear" }).click();
-	await expect(queueRows(page)).toHaveCount(0);
-	await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(0);
-	expect(holdingOf(player)?.items).toHaveLength(1);
-};
-
 test.describe("queueing a row that is in no playlist", () => {
 	test.use({ mediaLibrarySize: 400 });
 
-	test("puts it in a holding playlist and queues the real position", async ({
+	test("queues it at the component alone, leaving the player no playlist to show for it", async ({
 		page,
 		player,
 		isMobile,
 	}) => {
-		await page.goto("/#/all");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "All music" }),
-		).toBeVisible();
-		await expect(trackRow(page, 0)).toBeAttached();
+		await openAllMusic(page);
+		const before = playlistTitles(player);
 
 		await queueTracks(page, isMobile, 2);
 		await expect
-			.poll(() => player.playQueue.length, { timeout: 10000 })
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 10_000 })
 			.toBe(1);
 
-		const holding = player.playlists.find(
-			(entry) => entry.title === "#Jean Queue",
-		);
-		expect(holding).toBeDefined();
+		const [queued] = queuedAtThePlayer(player);
+		expect(queued.title).toBeTruthy();
+		await expect(trackRow(page, 2)).toContainText(queued.title);
+		await expect(queueRows(page).first()).toContainText(queued.title);
 
-		const entry = player.playQueue[0];
-		expect(entry.playlistId).toBe(holding?.id);
-		expect(entry.itemIndex).toBeGreaterThanOrEqual(0);
-
-		const held = player.playlists.find((list) => list.id === entry.playlistId);
-		const queuedTitle = held?.items[entry.itemIndex]?.["%title%"] as string;
-		expect(queuedTitle).toBeTruthy();
-		await expect(trackRow(page, 2)).toContainText(queuedTitle);
+		expect(playlistTitles(player)).toEqual(before);
+		await expectSettlesAt(player, () => askedForTheQueueRole(player).length, 0);
 	});
 
-	test("appends rather than rebuilding, so an earlier entry is undisturbed", async ({
+	// The holding playlist was emptied on the next queue after the play queue had
+	// drained, never on the first, so a drain and a second queue is the one path
+	// the case above cannot reach.
+	test("queues again once the queue has drained, with no holding playlist to empty first", async ({
 		page,
 		player,
 		isMobile,
 	}) => {
-		await page.goto("/#/all");
-		await expect(trackRow(page, 0)).toBeAttached();
+		await openAllMusic(page);
+		const before = playlistTitles(player);
+
+		await queueTracks(page, isMobile, 1);
+		await expect(queueRows(page)).toHaveCount(1);
+
+		await queuePanel(page).getByRole("button", { name: "Clear" }).click();
+		await expect(queueRows(page)).toHaveCount(0);
+		await expect
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 5000 })
+			.toBe(0);
+
+		await queueTracks(page, isMobile, 4);
+		await expect
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 10_000 })
+			.toBe(1);
+
+		const [queued] = queuedAtThePlayer(player);
+		await expect(trackRow(page, 4)).toContainText(queued.title);
+
+		expect(playlistTitles(player)).toEqual(before);
+		await expectSettlesAt(player, () => askedForTheQueueRole(player).length, 0);
+	});
+
+	test("a second row lands behind the first rather than rebuilding the queue", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openAllMusic(page);
 
 		await queueTracks(page, isMobile, 1);
 		await expect
-			.poll(() => player.playQueue.length, { timeout: 10000 })
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 10_000 })
 			.toBe(1);
-		const first = { ...player.playQueue[0] };
+		const [first] = queuedAtThePlayer(player);
 
 		await queueTracks(page, isMobile, 4);
 		await expect
-			.poll(() => player.playQueue.length, { timeout: 10000 })
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 10_000 })
 			.toBe(2);
 
-		expect(player.playQueue[0]).toEqual(first);
+		expect(queuedAtThePlayer(player)[0]).toEqual(first);
+		await expect(trackRow(page, 4)).toContainText(
+			queuedAtThePlayer(player)[1].title,
+		);
 		await expectSettlesAt(
 			player,
-			() => requestsTo(player, "/playlists/remove/").length,
+			() => player.requests.filter(emptiesTheQueue).length,
 			0,
 		);
-	});
-
-	test("queues again once the play queue has drained, from a holding playlist emptied first", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
-		await drainThePlayQueue(page, player, isMobile, 1);
-
-		await queueTracks(page, isMobile, 4);
-		await expect
-			.poll(() => player.playQueue.length, { timeout: 10000 })
-			.toBe(1);
-
-		const [queued] = queuedTitles(player);
-		expect(queued).toBeTruthy();
-		await expect(trackRow(page, 4)).toContainText(queued);
-		expect(holdingOf(player)?.items).toHaveLength(1);
 	});
 });
 
@@ -1059,10 +1042,12 @@ const expectQueueTakesALibraryRow = async (
 	await openAllMusic(page);
 	await queueTracks(page, isMobile, 2);
 
-	await expect.poll(() => player.playQueue.length, { timeout: 10_000 }).toBe(1);
-	const [queued] = queuedTitles(player);
-	expect(queued).toBeTruthy();
-	await expect(trackRow(page, 2)).toContainText(queued);
+	await expect
+		.poll(() => queuedAtThePlayer(player).length, { timeout: 10_000 })
+		.toBe(1);
+	const [queued] = queuedAtThePlayer(player);
+	expect(queued.title).toBeTruthy();
+	await expect(trackRow(page, 2)).toContainText(queued.title);
 	await expect(queueRows(page)).toHaveCount(1);
 
 	// The fake honours no beefweb permission, so a queued track is not on its own
@@ -1110,45 +1095,19 @@ test.describe("a player that will not let Jean make playlists", () => {
 		await page.mouse.up();
 
 		await expect
-			.poll(() => player.playQueue.length, { timeout: 10_000 })
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 10_000 })
 			.toBe(1);
-		const [queued] = queuedTitles(player);
-		expect(queued).toBeTruthy();
-		await expect(trackRow(page, 2)).toContainText(queued);
+		const [queued] = queuedAtThePlayer(player);
+		expect(queued.title).toBeTruthy();
+		await expect(trackRow(page, 2)).toContainText(queued.title);
 		await expect(queueRows(page)).toHaveCount(1);
-	});
-
-	test("empties the holding playlist at the component, and asks beefweb for nothing", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
-		await drainThePlayQueue(page, player, isMobile, 1);
-		const held = holdingOf(player)?.id as string;
-
-		await queueTracks(page, isMobile, 4);
-		await expect
-			.poll(() => player.playQueue.length, { timeout: 10000 })
-			.toBe(1);
-
-		expect(componentEmptiedTheQueueRole(player)).toHaveLength(1);
-		expect(holdingOf(player)?.id).toBe(held);
-
-		// The fake honours no beefweb permission, so a queue that filled is not on
-		// its own proof that beefweb was never asked to empty or drop the playlist.
-		await expectSettlesAt(
-			player,
-			() => beefwebWritesNaming(player, held).length,
-			0,
-		);
 	});
 
 	test.describe("with the component's own playlist writes turned off too", () => {
 		test.use({ fooJean: { canWritePlaylists: false } });
 
-		// The setting protects the user's music, and the holding playlist holds
-		// none of it. A fill addressed by playlist id rather than by role would be
-		// refused here, which is what makes the exemption structural.
+		// Neither setting has anything to say about a queue: the row is queued by
+		// its handle, and no playlist of anybody's is written to on the way.
 		test("queues a library row all the same", async ({
 			page,
 			player,
@@ -1633,12 +1592,13 @@ test.describe("queueing several tracks that share one file", () => {
 		await queueTracks(page, isMobile, 1);
 
 		await expect
-			.poll(() => player.playQueue.length, { timeout: 10000 })
+			.poll(() => queuedAtThePlayer(player).length, { timeout: 10_000 })
 			.toBe(3);
 
-		expect(queuedTitles(player)).toEqual(["Track 1", "Track 2", "Track 3"]);
-		expect(new Set(player.playQueue.map((entry) => entry.itemIndex)).size).toBe(
-			3,
-		);
+		expect(queuedAtThePlayer(player).map((entry) => entry.title)).toEqual([
+			"Track 1",
+			"Track 2",
+			"Track 3",
+		]);
 	});
 });

@@ -60,13 +60,6 @@ export function queryOfScratchPlaylist(
 	return held && held.kind === SCRATCH_KIND.search ? held.label : null;
 }
 
-// Where library rows go so the queue has a (playlist, index) to address them by. Append-only and
-// emptied rather than deleted: deleting a playlist the play queue points into crashes the player.
-export const QUEUE_TITLE = `${PREFIX} Queue`;
-
-export const findQueuePlaylist = (playlists: PlaylistInfo[]) =>
-	playlists.find((entry) => entry.title === QUEUE_TITLE) ?? null;
-
 const isJeanPlaylist = (playlist: PlaylistInfo | null | undefined) =>
 	Boolean(playlist?.title?.startsWith(PREFIX));
 

@@ -23,9 +23,6 @@ const openTrackMenu = async (page: Page, isMobile: boolean, index: number) => {
 	await expect(menuItem(page, "Add to playlist")).toBeVisible();
 };
 
-const queuePanel = (page: Page) =>
-	page.getByRole("complementary", { name: "Queue" });
-
 const jeanTitles = (player: FakePlayer) =>
 	player.playlists
 		.map((entry) => entry.title)
@@ -35,22 +32,8 @@ const jeanTitles = (player: FakePlayer) =>
 const playlistNamed = (player: FakePlayer, title: string) =>
 	player.playlists.find((entry) => entry.title === title)!;
 
-const withBothJeanPlaylists = async (
-	page: Page,
-	player: FakePlayer,
-	isMobile: boolean,
-) => {
+const withBothJeanPlaylists = async (page: Page, player: FakePlayer) => {
 	await openAllMusic(page);
-
-	await openTrackMenu(page, isMobile, 1);
-	await menuItem(page, "Add to queue").click();
-	await expect.poll(() => player.playQueue.length, { timeout: 10_000 }).toBe(1);
-
-	// Queueing opens the panel, and on a phone it is over the list.
-	await queuePanel(page)
-		.getByRole("button", { name: "Close the queue" })
-		.click();
-	await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
 
 	await trackRow(page, 0).dblclick();
 	await expect
@@ -58,16 +41,12 @@ const withBothJeanPlaylists = async (
 		.toBe("#Jean [all music]");
 	await expectPlayingFrom(page, "All music");
 
-	expect(jeanTitles(player)).toEqual([
-		"#Jean Library",
-		"#Jean Queue",
-		"#Jean [all music]",
-	]);
+	expect(jeanTitles(player)).toEqual(["#Jean Library", "#Jean [all music]"]);
 };
 
 test.describe("the #Jean namespace", () => {
-	test("stays out of the sidebar", async ({ page, player, isMobile }) => {
-		await withBothJeanPlaylists(page, player, isMobile);
+	test("stays out of the sidebar", async ({ page, player }) => {
+		await withBothJeanPlaylists(page, player);
 
 		await openSidebar(page);
 		await expect(
@@ -82,7 +61,7 @@ test.describe("the #Jean namespace", () => {
 		isMobile,
 	}) => {
 		test.skip(isMobile, "the palette is opened and driven entirely by keys");
-		await withBothJeanPlaylists(page, player, isMobile);
+		await withBothJeanPlaylists(page, player);
 
 		await page.keyboard.press("g");
 		const palette = page.getByRole("dialog", { name: "Go to" });
@@ -95,16 +74,15 @@ test.describe("the #Jean namespace", () => {
 	test("is not where a route naming one of them lands", async ({
 		page,
 		player,
-		isMobile,
 	}) => {
-		await withBothJeanPlaylists(page, player, isMobile);
+		await withBothJeanPlaylists(page, player);
 		const heading = viewHeader(page).getByRole("heading", { level: 1 });
 
 		await page.goto("/#/p2");
 		await expect(heading).toHaveText("Favorites");
 
 		await inSequence(
-			[playlistNamed(player, "#Jean Queue"), scratchOf(player)!],
+			[playlistNamed(player, "#Jean Library"), scratchOf(player)!],
 			async (playlist) => {
 				await page.goto(`/#/${playlist.id}`);
 				await expect(heading).toBeVisible();
@@ -118,7 +96,7 @@ test.describe("the #Jean namespace", () => {
 		player,
 		isMobile,
 	}) => {
-		await withBothJeanPlaylists(page, player, isMobile);
+		await withBothJeanPlaylists(page, player);
 
 		await openTrackMenu(page, isMobile, 2);
 		await menuItem(page, "Add to playlist").click();

@@ -233,8 +233,6 @@ std::string roleId(OwnPlaylistRole role) {
     switch (role) {
         case OwnPlaylistRole::scratch:
             return "scratch";
-        case OwnPlaylistRole::queue:
-            return "queue";
     }
 
     return {};

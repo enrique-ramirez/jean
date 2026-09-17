@@ -335,7 +335,6 @@
 	"queue.movedUnderYou": "La cola cambió mientras arrastrabas, así que se dejó como estaba.",
 	"queue.noSource": "No se encontró desde dónde poner esas pistas en cola.",
 	"queue.nothingQueued": "Nada en cola",
-	"queue.partial": "Algunas de esas pistas no se pudieron poner en cola.",
 	"queue.refused": "El reproductor no quiso cambiar la cola.",
 	"queue.removeTrack": "Quitar {track} de la cola",
 	"queue.reorder": "Reordenar {track}",

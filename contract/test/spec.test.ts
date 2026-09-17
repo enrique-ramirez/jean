@@ -106,13 +106,16 @@ test("the contract carries a fill per owner, and refuses only the one addressing
 	);
 });
 
-test("the role a fill addresses is closed to scratch and queue", () => {
+// The queue was the second role, and the playlist behind it is gone: the play queue is the
+// component's own, addressed through /api/queue by handle and by position. A contract still
+// publishing the role is a client still filling a playlist nothing will ever queue from.
+test("the role a fill addresses is closed to the scratch alone", () => {
 	const role = parameter("fillOwnPlaylist", "role");
 
 	assert.equal(role.in, "path");
 	assert.deepEqual(
 		[...(role.schema?.enum ?? [])].sort(),
-		["queue", "scratch"],
+		["scratch"],
 		"a role the contract does not close is a role a client can invent",
 	);
 });

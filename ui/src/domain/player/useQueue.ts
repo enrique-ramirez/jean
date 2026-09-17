@@ -6,6 +6,7 @@ import {
 	isFooJeanReady,
 	moveQueueEntry,
 	postQueue,
+	type QueueLibraryTracksRequest,
 	type QueueMutationResult,
 	type QueuePlaylistRowsRequest,
 	type QueueRead,
@@ -17,7 +18,7 @@ import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
 import { pollPlayerNow } from "./playerPoll";
 import { guidOf } from "./playlistJoin";
-import { QUEUE_KEY, type QueueTarget, readQueue } from "./queue";
+import { QUEUE_KEY, type QueueSource, readQueue } from "./queue";
 import { askToShowQueue } from "./showQueue";
 
 export function useQueue() {
@@ -64,31 +65,40 @@ export function useQueueActions() {
 	);
 
 	const queue = useCallback(
-		async (pairs: QueueTarget[], at?: number) => {
-			if (!canQueue || pairs.length === 0 || !origin || !token) return;
+		async (source: QueueSource, at?: number) => {
+			if (!canQueue || !origin || !token) return;
+			if (source.kind === "rows" && source.targets.length === 0) return;
 
 			askToShowQueue();
 
-			const annotations = await fetchPlaylistAnnotations(origin, token);
-			let playlistId: string;
-			try {
-				playlistId = guidOf(pairs[0].playlistId, annotations);
-			} catch {
-				pushToast({ tone: "error", message: translate("queue.noSource") });
-				return;
-			}
-
-			const request: QueuePlaylistRowsRequest = {
-				playlistId,
-				positions: pairs.map((pair) => pair.itemIndex),
-				...(at !== undefined
+			const atFields =
+				at !== undefined
 					? {
 							at,
 							revision:
 								queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision ?? 0,
 						}
-					: null),
-			};
+					: null;
+
+			let request: QueuePlaylistRowsRequest | QueueLibraryTracksRequest;
+			if (source.kind === "rows") {
+				const annotations = await fetchPlaylistAnnotations(origin, token);
+				let playlistId: string;
+				try {
+					playlistId = guidOf(source.targets[0].playlistId, annotations);
+				} catch {
+					pushToast({ tone: "error", message: translate("queue.noSource") });
+					return;
+				}
+
+				request = {
+					playlistId,
+					positions: source.targets.map((pair) => pair.itemIndex),
+					...atFields,
+				};
+			} else {
+				request = { ...source.request, ...atFields };
+			}
 
 			await settle(await postQueue(origin, token, request));
 		},

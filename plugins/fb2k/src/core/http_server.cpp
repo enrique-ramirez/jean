@@ -196,8 +196,6 @@ std::string fillRefusedDocument(PlaylistRefusal refusal) {
 std::optional<OwnPlaylistRole> ownPlaylistRoleFor(const std::string& role) {
     if (role == "scratch")
         return OwnPlaylistRole::scratch;
-    if (role == "queue")
-        return OwnPlaylistRole::queue;
     return std::nullopt;
 }
 
@@ -971,7 +969,7 @@ struct HttpServer::Impl {
 
     // The read-only-playlists setting, checked ahead of everything else a write route does: a
     // client learns nothing about a request the setting was always going to refuse. Never called
-    // from a route addressing one of the component's own two playlists -- those stay writable in
+    // from a route addressing the component's own scratch playlist -- that stays writable in
     // both states.
     bool writesRefused(httplib::Response& res) {
         if (settings.writePlaylists)
@@ -1116,9 +1114,8 @@ struct HttpServer::Impl {
                 return;
             }
 
-            const auto filled =
-                player.fill(resolved.playlist.id, title.value, request.structure, request.ordinals,
-                            *role == OwnPlaylistRole::scratch);
+            const auto filled = player.fill(resolved.playlist.id, title.value, request.structure,
+                                            request.ordinals, true);
             if (filled.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(filled.outcome),
                         playlistFailedDocument(playlistFailure(filled.outcome)));

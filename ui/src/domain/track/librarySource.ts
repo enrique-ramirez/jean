@@ -1,11 +1,10 @@
 import { guidOf } from "@/domain/player/playlistJoin";
-import type { QueueTarget } from "@/domain/player/queue";
+import type { QueueSource } from "@/domain/player/queue";
 import {
 	artworkUrl,
 	copyPlaylistItems,
 	fetchLibraryNodes,
 	fetchPlaylistItems,
-	fetchPlaylists,
 	libraryPathMatcher,
 } from "@/shared/api/beefweb";
 import type {
@@ -26,7 +25,6 @@ import type {
 	TrackIdentity,
 } from "@/shared/api/types";
 import { FIELD, sameTagValue, value } from "./fields";
-import { QUEUE_TITLE } from "./jeanPlaylists";
 import { positionOf } from "./libraryIndex";
 import type { PathTable } from "./pathTable";
 import { componentLibraryKey, playlistSnapshot } from "./playlistStore";
@@ -35,11 +33,6 @@ import type { Refs } from "./project";
 export interface ResolvedTrack {
 	identity: TrackIdentity;
 	columns: string[];
-}
-
-export interface HoldingPlaylist {
-	id: string;
-	itemCount: number;
 }
 
 export interface LibrarySourceCommon {
@@ -54,12 +47,7 @@ export interface LibrarySourceCommon {
 		columns?: string[],
 	) => Promise<ResolvedTrack | null>;
 	addTo: (targetId: string, refs: Refs) => Promise<unknown>;
-	// Targets come back in the order asked for.
-	queueTargets: (
-		refs: Refs,
-		holding: () => Promise<HoldingPlaylist | null>,
-		options?: { token?: string },
-	) => Promise<QueueTarget[]>;
+	queueTargets: (refs: Refs) => Promise<QueueSource>;
 	playingPosition: (
 		refs: Refs,
 		track: TrackIdentity | null | undefined,
@@ -131,35 +119,12 @@ const addToPlaylist =
 		return fillPlaylist(origin, token, guid, request);
 	};
 
-const queueViaHolding =
-	(paths: PathTable, origin: string | null, structure: number) =>
-	async (
-		refs: Refs,
-		holding: () => Promise<HoldingPlaylist | null>,
-		{ token }: { token?: string } = {},
-	): Promise<QueueTarget[]> => {
-		if (!origin || !token || refs.length === 0) return [];
-
-		await holding();
-
-		const request: FillOwnPlaylistRequest = {
-			title: QUEUE_TITLE,
-			...encodeFill(refs, { structure, trackCount: paths.length }),
-		};
-
-		const result = await fillOwnPlaylist(origin, token, "queue", request);
-		const beefwebId =
-			result.beefwebId ??
-			(await fetchPlaylists()).find((entry) => entry.title === QUEUE_TITLE)
-				?.id ??
-			null;
-		if (!beefwebId) return [];
-
-		return Array.from(result.positions, (itemIndex) => ({
-			playlistId: beefwebId,
-			itemIndex,
-		}));
-	};
+const queueLibraryTracks =
+	(paths: PathTable, structure: number) =>
+	async (refs: Refs): Promise<QueueSource> => ({
+		kind: "tracks",
+		request: encodeFill(refs, { structure, trackCount: paths.length }),
+	});
 
 const fromMediaLibrary = ({
 	paths,
@@ -215,7 +180,7 @@ const fromMediaLibrary = ({
 		},
 
 		fill: fillScratch(paths, artworkOrigin, structure),
-		queueTargets: queueViaHolding(paths, artworkOrigin, structure),
+		queueTargets: queueLibraryTracks(paths, structure),
 
 		addTo: addToPlaylist(paths, artworkOrigin, structure, token),
 
@@ -258,8 +223,10 @@ const fromPlaylist = ({
 		};
 	},
 
-	queueTargets: async (refs: Refs) =>
-		Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
+	queueTargets: async (refs: Refs): Promise<QueueSource> => ({
+		kind: "rows",
+		targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
+	}),
 	addTo: (targetId: string, refs: Refs) =>
 		copyPlaylistItems(playlistId, targetId, refs),
 

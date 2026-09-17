@@ -21,7 +21,7 @@ export type FillPlaylistRequest = Schema["FillPlaylistRequest"];
 export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
 export type FillResult = Schema["FillResult"];
 
-export type OwnPlaylistRole = "scratch" | "queue";
+export type OwnPlaylistRole = "scratch";
 
 // Never moves to `/api/clientconfig`: beefweb serves that namespace unauthenticated. The root CLAUDE.md holds the rest of the exclusion list.
 export const TOKEN_KEY = "jean.fooJeanToken";
@@ -559,16 +559,6 @@ const postThrowing = async (
 	return response;
 };
 
-const deleteThrowing = async (url: string, token: string): Promise<void> => {
-	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
-		fetch(url, { method: "DELETE", headers: bearer(token), signal }),
-	);
-	if (!response.ok)
-		throw new Error(`DELETE ${url} failed: ${response.status}`, {
-			cause: response.status,
-		});
-};
-
 export async function fillOwnPlaylist(
 	origin: string,
 	token: string,
@@ -598,14 +588,6 @@ export async function fillPlaylist(
 		request,
 	);
 	return (await response.json()) as FillResult;
-}
-
-export async function emptyOwnPlaylist(
-	origin: string,
-	token: string,
-	role: OwnPlaylistRole,
-): Promise<void> {
-	await deleteThrowing(`${origin}/api/playlists/own/${role}/items`, token);
 }
 
 // Tells a deliberate stop from a dropped connection: both close the socket, and only this one gives

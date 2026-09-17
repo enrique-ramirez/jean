@@ -127,20 +127,21 @@ const std::vector<std::string> kOfferedModes = {"shuffleAlbums", "inOrder", "rep
 constexpr char kOrderAddedByAComponent[] = "Shuffle (artists)";
 
 constexpr char kScratchPlaylistId[] = "11111111-1111-1111-1111-111111111111";
-constexpr char kQueuePlaylistId[] = "22222222-2222-2222-2222-222222222222";
 
 constexpr char kScratchTitle[] = "#Jean Scratch";
-constexpr char kQueueTitle[] = "#Jean Queue";
 
 constexpr char kScratchFill[] = "/api/playlists/own/scratch/items";
+
+// The route the queue's holding playlist answered on, kept so that a client still sending it
+// can be driven at.
 constexpr char kQueueFill[] = "/api/playlists/own/queue/items";
 
 std::string userFill() {
     return std::string("/api/playlists/") + kPlaylistId + "/items";
 }
 
-std::string nameOf(OwnPlaylistRole role) {
-    return role == OwnPlaylistRole::scratch ? "scratch" : "queue";
+std::string nameOf(OwnPlaylistRole) {
+    return "scratch";
 }
 
 constexpr char kRemadePlaylistId[] = "33333333-3333-3333-3333-333333333333";
@@ -159,8 +160,7 @@ struct FillLog {
     uint64_t structure = 1;
     std::map<std::string, size_t> held;
     std::map<std::string, std::string> titles;
-    std::map<std::string, std::string> playlists{{"scratch", kScratchPlaylistId},
-                                                 {"queue", kQueuePlaylistId}};
+    std::map<std::string, std::string> playlists{{"scratch", kScratchPlaylistId}};
     std::string beefwebId = "p4";
     std::string listedTitle;
 
@@ -261,7 +261,7 @@ FillLog holding(uint64_t structure) {
     FillLog log;
     log.structure = structure;
 
-    for (const char* id : {kScratchPlaylistId, kQueuePlaylistId, kPlaylistId})
+    for (const char* id : {kScratchPlaylistId, kPlaylistId})
         log.held[id] = kHeldRows;
 
     return log;
@@ -304,20 +304,7 @@ std::vector<Target> targets(uint64_t structure) {
     return {
         {"the scratch role", kScratchFill, ownBody(kScratchTitle, structure), true,
          kScratchPlaylistId},
-        {"the queue role", kQueueFill, ownBody(kQueueTitle, structure), false, kQueuePlaylistId},
         {"a user's playlist", userFill(), userBody(structure), false, kPlaylistId}};
-}
-
-struct Own {
-    std::string name;
-    std::string path;
-    std::string title;
-    std::string id;
-};
-
-std::vector<Own> ownRoles() {
-    return {{"scratch", kScratchFill, kScratchTitle, kScratchPlaylistId},
-            {"queue", kQueueFill, kQueueTitle, kQueuePlaylistId}};
 }
 
 // Whether an empty answers a document like a fill does or a bare 204 like DELETE /stream/hold is
@@ -340,8 +327,8 @@ struct Write {
 
 // kPlaylistId is reported as an autoplaylist this component made, so the update and the delete
 // here are aimed at one of its own records rather than at a stranger's playlist. The setting
-// still refuses them: what it exempts is the scratch and the queue's holding playlist, which
-// hold no music of the user's, and an autoplaylist holds theirs.
+// still refuses them: what it exempts is the scratch, which holds no music of the user's, and an
+// autoplaylist holds theirs.
 std::vector<Write> playlistWrites(uint64_t structure) {
     return {
         {"creating an autoplaylist",
@@ -971,16 +958,6 @@ TEST_CASE("each fill operation addresses its own kind of playlist") {
         CHECK(log.inserted == std::vector<uint32_t>{3, 1});
     }
 
-    SUBCASE("the queue role fills the other one") {
-        const auto response = post(server, kQueueFill, ownBody(kQueueTitle, log.structure));
-
-        REQUIRE(response);
-        CHECK(response->status == 200);
-        CHECK(log.roles == std::vector<std::string>{"queue"});
-        CHECK(log.title == kQueueTitle);
-        CHECK(log.filled == kQueuePlaylistId);
-    }
-
     SUBCASE("a user's playlist is filled by the GUID it was asked for, resolving no role") {
         const auto response = post(server, userFill(), userBody(log.structure));
 
@@ -1012,6 +989,41 @@ TEST_CASE("a role the contract does not name is refused rather than made") {
 
     CHECK(log.roles.empty());
     CHECK(log.fills == 0);
+}
+
+// The play queue is this component's own, read and written through /api/queue, and the playlist
+// a client used to hold library tracks in went with the role that resolved it. A client still
+// sending the old fill is told the role is not one of ours, rather than left filling a playlist
+// that will never be queued from, emptied or deleted, and that shows up in foobar2000's own tabs
+// for as long as the install lasts.
+TEST_CASE("the queue role is gone, and neither verb on it reaches the player") {
+    Library library;
+    buildLibrary(library);
+
+    auto log = holding(library.state().structure);
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+    const auto filled = post(server, kQueueFill, ownBody(kScratchTitle, log.structure));
+    const auto emptied = server.client().Delete(kQueueFill, TestServer::bearer());
+    const auto invented =
+        post(server, "/api/playlists/own/library/items", ownBody(kScratchTitle, log.structure));
+
+    REQUIRE(filled);
+    REQUIRE(emptied);
+    REQUIRE(invented);
+
+    CHECK(filled->status == 400);
+    CHECK(emptied->status == 400);
+
+    // One mistake, one refusal: a client naming a role this component does not have. There is
+    // nothing more specific to say about `queue` than about any other word.
+    CHECK(json::parse(filled->body) == json::parse(invented->body));
+    CHECK(json::parse(emptied->body) == json::parse(invented->body));
+
+    CHECK(log.roles.empty());
+    CHECK(log.fills == 0);
+    CHECK(log.deletes == 0);
+    CHECK(log.held == holding(log.structure).held);
 }
 
 TEST_CASE("the scratch playlist is emptied before a fill and every other target is appended to") {
@@ -1072,7 +1084,7 @@ TEST_CASE("a field neither fill schema declares is refused, and nothing is inser
     CHECK(log.fills == 0);
 }
 
-TEST_CASE("a title is declared on the component's own playlists and undeclared on a user's") {
+TEST_CASE("a title is declared on the component's own playlist and undeclared on a user's") {
     Library library;
     buildLibrary(library);
 
@@ -1080,16 +1092,13 @@ TEST_CASE("a title is declared on the component's own playlists and undeclared o
     log.structure = library.state().structure;
     const TestServer server(servingSettings(), fillingPlayer(&log), &library);
 
-    SUBCASE("both of the component's own roles take one") {
+    SUBCASE("the component's own role takes one") {
         const auto scratch = post(server, kScratchFill, ownBody(kScratchTitle, log.structure));
         REQUIRE(scratch);
         CHECK(scratch->status == 200);
 
-        const auto queue = post(server, kQueueFill, ownBody(kQueueTitle, log.structure));
-        REQUIRE(queue);
-        CHECK(queue->status == 200);
-
-        CHECK(log.fills == 2);
+        CHECK(log.fills == 1);
+        CHECK(log.title == kScratchTitle);
     }
 
     SUBCASE("a user's playlist is refused rather than retitled") {
@@ -1179,10 +1188,10 @@ TEST_CASE("a fill answers the positions the rows landed at rather than the ordin
         const TestServer server(servingSettings(), fillingPlayer(&log), &library);
 
         const auto body =
-            naming(ownBody(kQueueTitle, structure),
+            naming(userBody(structure),
                    json{{"runs", json::array({json::array({0, 2}), json::array({5, 1})})}});
 
-        const auto response = post(server, kQueueFill, body);
+        const auto response = post(server, userFill(), body);
 
         REQUIRE(response);
         REQUIRE(response->status == 200);
@@ -1192,8 +1201,8 @@ TEST_CASE("a fill answers the positions the rows landed at rather than the ordin
 
 // One field, two sources. The `own` route answers the id the role resolved to, which the client
 // never named and has no other way to learn, and the `{id}` route answers the id the request
-// carried. A client addresses a queue entry as a playlist and an index, so the positions are
-// worth nothing beside the wrong playlist.
+// carried. A client addresses a row as a playlist and an index, so the positions are worth
+// nothing beside the wrong playlist.
 TEST_CASE("a fill answers the id of the playlist the rows landed in") {
     Library library;
     buildLibrary(library);
@@ -1223,7 +1232,7 @@ TEST_CASE("a fill answers beefweb's id for that playlist, or null where beefweb 
         log.beefwebId = "p7";
         const TestServer server(servingSettings(), fillingPlayer(&log), &library);
 
-        const auto response = post(server, kQueueFill, ownBody(kQueueTitle, structure));
+        const auto response = post(server, kScratchFill, ownBody(kScratchTitle, structure));
 
         REQUIRE(response);
         REQUIRE(response->status == 200);
@@ -1337,29 +1346,27 @@ TEST_CASE("a write refused by the setting and one refused for a playlist this co
     }
 }
 
-// The setting protects the user's music, and neither of these holds any: they are how Jean
-// plays a set and how it queues a track. A setting that stopped either is the setting doing the
-// wrong thing, so both roles are driven in both states rather than only in the one that shipped.
-TEST_CASE("the component's own two playlists fill whether writePlaylists is on or off") {
+// The setting protects the user's music, and the scratch holds none: it is how Jean plays a set.
+// A setting that stopped that is the setting doing the wrong thing, so the role is driven in
+// both states rather than only in the one that shipped.
+TEST_CASE("the component's own playlist fills whether writePlaylists is on or off") {
     Library library;
     buildLibrary(library);
 
     for (const bool writePlaylists : {true, false}) {
-        for (const auto& role : ownRoles()) {
-            INFO("writePlaylists: ", writePlaylists, ", role: ", role.name);
+        INFO("writePlaylists: ", writePlaylists);
 
-            FillLog fills;
-            fills.structure = library.state().structure;
-            const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
-                                    fillingPlayer(&fills), &library);
+        FillLog fills;
+        fills.structure = library.state().structure;
+        const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
+                                fillingPlayer(&fills), &library);
 
-            const auto response = post(server, role.path, ownBody(role.title, fills.structure));
+        const auto response = post(server, kScratchFill, ownBody(kScratchTitle, fills.structure));
 
-            REQUIRE(response);
-            CHECK(response->status == 200);
-            CHECK(fills.filled == role.id);
-            CHECK(fills.inserted == std::vector<uint32_t>{3, 1});
-        }
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(fills.filled == kScratchPlaylistId);
+        CHECK(fills.inserted == std::vector<uint32_t>{3, 1});
     }
 }
 
@@ -1412,36 +1419,28 @@ TEST_CASE("what refuses a fill is the setting and never the playlist's title") {
     }
 }
 
-// Deleting a playlist the play queue points into kills foobar2000, and the queue's holding
-// playlist is the one the play queue always points into. So "it holds nothing afterwards" is
-// half the promise: an empty that deleted the playlist and made another would satisfy that and
-// take the player down with it.
-TEST_CASE("emptying a role takes its playlist's rows and leaves the playlist itself standing") {
+// "It holds nothing afterwards" is half the promise: an empty that deleted the playlist and made
+// another would satisfy that, lose the playlist the player is playing from, and take foobar2000
+// down with it wherever the play queue pointed into the one it deleted.
+TEST_CASE("emptying the role takes its playlist's rows and leaves the playlist itself standing") {
     Library library;
     buildLibrary(library);
 
-    for (const auto& role : ownRoles()) {
-        INFO("role: ", role.name);
+    auto log = holding(library.state().structure);
+    const TestServer server(servingSettings(), fillingPlayer(&log), &library);
 
-        auto log = holding(library.state().structure);
-        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+    const auto response = server.client().Delete(kScratchFill, TestServer::bearer());
 
-        const auto response = server.client().Delete(role.path, TestServer::bearer());
+    REQUIRE(response);
+    INFO("status: ", response->status);
+    CHECK(accepted(response));
 
-        REQUIRE(response);
-        INFO("status: ", response->status);
-        CHECK(accepted(response));
+    CHECK(log.held[kScratchPlaylistId] == 0);
+    CHECK(log.playlists["scratch"] == kScratchPlaylistId);
+    CHECK(log.deletes == 0);
 
-        CHECK(log.held[role.id] == 0);
-        CHECK(log.playlists[role.name] == role.id);
-        CHECK(log.deletes == 0);
-
-        // The other role's rows are not this request's to take. Jean empties the queue's holding
-        // playlist the moment the play queue drains, and the scratch holds the view being played.
-        for (const auto& other : ownRoles())
-            if (other.name != role.name)
-                CHECK(log.held[other.id] == kHeldRows);
-    }
+    // A user's playlist is not this request's to take rows from either, whatever it holds.
+    CHECK(log.held[kPlaylistId] == kHeldRows);
 }
 
 // One 503, two subsystems behind it. A player that cannot reach the component's own playlists
@@ -1450,42 +1449,35 @@ TEST_CASE("emptying a role takes its playlist's rows and leaves the playlist its
 TEST_CASE("an empty the player cannot serve names its own playlists rather than autoplaylists") {
     const TestServer server;
 
-    for (const auto& role : ownRoles()) {
-        INFO("role: ", role.name);
+    const auto response = server.client().Delete(kScratchFill, TestServer::bearer());
 
-        const auto response = server.client().Delete(role.path, TestServer::bearer());
+    REQUIRE(response);
+    CHECK(response->status == 503);
 
-        REQUIRE(response);
-        CHECK(response->status == 503);
-
-        const std::string error = json::parse(response->body)["error"];
-        CHECK(error != describe(PlaylistOutcome::unavailable));
-        CHECK(error.find("autoplaylist") == std::string::npos);
-    }
+    const std::string error = json::parse(response->body)["error"];
+    CHECK(error != describe(PlaylistOutcome::unavailable));
+    CHECK(error.find("autoplaylist") == std::string::npos);
 }
 
-// Jean empties the queue's holding playlist whenever the play queue has drained, so a setting
-// that refused this would leave that playlist growing for the life of the install. It holds no
-// music of the user's: it is how Jean queues a track.
-TEST_CASE("the component's own two playlists empty whether writePlaylists is on or off") {
+// The scratch holds no music of the user's: it is how Jean plays a set, emptied and refilled for
+// every view. A setting meant to protect a user's playlists has nothing to say about it.
+TEST_CASE("the component's own playlist empties whether writePlaylists is on or off") {
     Library library;
     buildLibrary(library);
 
     for (const bool writePlaylists : {true, false}) {
-        for (const auto& role : ownRoles()) {
-            INFO("writePlaylists: ", writePlaylists, ", role: ", role.name);
+        INFO("writePlaylists: ", writePlaylists);
 
-            auto log = holding(library.state().structure);
-            const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
-                                    fillingPlayer(&log), &library);
+        auto log = holding(library.state().structure);
+        const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
+                                fillingPlayer(&log), &library);
 
-            const auto response = server.client().Delete(role.path, TestServer::bearer());
+        const auto response = server.client().Delete(kScratchFill, TestServer::bearer());
 
-            REQUIRE(response);
-            INFO("status: ", response->status);
-            CHECK(accepted(response));
-            CHECK(log.held[role.id] == 0);
-        }
+        REQUIRE(response);
+        INFO("status: ", response->status);
+        CHECK(accepted(response));
+        CHECK(log.held[kScratchPlaylistId] == 0);
     }
 }
 
@@ -1512,9 +1504,7 @@ TEST_CASE("a role the contract does not name is refused on an empty exactly as i
         CHECK(json::parse(emptied->body)["error"] == json::parse(filled->body)["error"]);
     }
 
-    for (const auto& role : ownRoles())
-        CHECK(log.held[role.id] == kHeldRows);
-
+    CHECK(log.held[kScratchPlaylistId] == kHeldRows);
     CHECK(log.roles.empty());
     CHECK(log.fills == 0);
 }

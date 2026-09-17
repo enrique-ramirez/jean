@@ -46,9 +46,9 @@ struct PlaylistAnnotation {
     std::optional<AutoPlaylistSpec> managed;
 };
 
-// One of the component's own playlists. Closed to these two so a request can never address
-// a third of its own invention, and so nothing resolves one by matching a title.
-enum class OwnPlaylistRole { scratch, queue };
+// One of the component's own playlists. Closed to this one so a request can never address
+// a second of its own invention, and so nothing resolves one by matching a title.
+enum class OwnPlaylistRole { scratch };
 
 enum class PlaylistRefusal {
     none,
@@ -135,8 +135,8 @@ PreviewResult previewFailure(PlaylistOutcome outcome);
 enum class Need { required, optional };
 
 // A limit every title on a playlist this component names shares: the autoplaylist's own and
-// the title a fill hands to one of the component's own two. One number, so the two routes
-// that both accept a title cannot drift apart on how long one may be.
+// the title a fill hands to the component's own scratch playlist. One number, so the two
+// routes that both accept a title cannot drift apart on how long one may be.
 constexpr size_t kMaxTitle = 256;
 
 // Whether `key`'s text field is present, printable and within `limit`, folding the presence

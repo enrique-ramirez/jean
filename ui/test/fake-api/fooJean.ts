@@ -8,7 +8,7 @@ type FakeState = ReturnType<typeof createState>;
 
 type QueuedRead = ReturnType<FakeState["queuedEntries"]>[number];
 
-type OwnPlaylistRole = "scratch" | "queue";
+type OwnPlaylistRole = "scratch";
 
 export interface FooJeanOptions {
 	listening?: boolean;
@@ -1583,7 +1583,7 @@ export async function handleAgent({
 		if (state.latency > 0) await delay(state.latency);
 
 		const role = ownFillMatch[1];
-		if (role !== "scratch" && role !== "queue")
+		if (role !== "scratch")
 			return json(
 				response,
 				{
@@ -1621,7 +1621,7 @@ export async function handleAgent({
 			state,
 			playlist,
 			parsed.ordinals.map((ordinal) => tracks[ordinal].track),
-			{ replace: role === "scratch" },
+			{ replace: true },
 		);
 		state.notifyPlaylists();
 
@@ -1634,7 +1634,7 @@ export async function handleAgent({
 
 	if (method === "DELETE" && ownFillMatch) {
 		const role = ownFillMatch[1];
-		if (role !== "scratch" && role !== "queue")
+		if (role !== "scratch")
 			return json(
 				response,
 				{

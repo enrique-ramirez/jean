@@ -87,7 +87,6 @@ Things that vary between installs and MUST never be assumed:
 | | |
 |---|---|
 | Which playlist is which | The library is not one of them: `foo_jean` answers it. Never read a role out of a title somebody chose, and never assume `p1`, which is scratch space |
-| Whether `#Jean Queue` exists | Jean's holding playlist for queueing library rows, created on demand. Nothing may assume it is there, and nothing may delete it while the play queue points into it |
 | `permissions` | `changePlaylists`, `changeOutput`, `changeClientConfig` come from the player. Gate the UI on them: a read-only instance gets a read-only Jean, not buttons that 403 |
 | `authRequired` | May be on. Support Basic auth and a credentials prompt |
 | `pathSeparator` | From `/api/browser/roots`. `\` on Windows, `/` elsewhere, but library paths are `/`-separated everywhere, so do not build one with it |

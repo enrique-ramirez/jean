@@ -407,7 +407,6 @@ export const en = {
 		"The queue changed while you were dragging, so it was left alone.",
 	"queue.noSource": "Could not find somewhere to queue those tracks from.",
 	"queue.nothingQueued": "Nothing queued",
-	"queue.partial": "Some of those tracks could not be queued.",
 	"queue.refused": "The player would not change the queue.",
 	"queue.removeTrack": "Remove {track} from the queue",
 	"queue.reorder": "Reorder {track}",

@@ -2,7 +2,7 @@
 
 For somebody about to build on this: how the pieces fit, which thread owns what, and why the boundaries sit where they do. [plugins/fb2k/README.md](README.md) is what the component is and how to run it, [plugins/fb2k/CONTRIBUTING.md](CONTRIBUTING.md) is how to write its code, and [src/README.md](src/README.md) is the source tree file by file.
 
-foo_jean is a DLL foobar2000 loads, an HTTP listener on a port of its own, a snapshot of the media library, and one live encode of the player's output. It runs alongside beefweb rather than replacing it: beefweb still owns playback, artwork, the filesystem, and creating, renaming, deleting and reordering a user's own playlist. foo_jean fills any playlist from library ordinals, owns creating and emptying its own two, and gates every playlist and autoplaylist write behind `writePlaylists`. A client talks to both.
+foo_jean is a DLL foobar2000 loads, an HTTP listener on a port of its own, a snapshot of the media library, and one live encode of the player's output. It runs alongside beefweb rather than replacing it: beefweb still owns playback, artwork, the filesystem, and creating, renaming, deleting and reordering a user's own playlist. foo_jean fills any playlist from library ordinals, owns creating and emptying its own scratch playlist, and gates every playlist and autoplaylist write behind `writePlaylists`. A client talks to both.
 
 ## The shape of it
 

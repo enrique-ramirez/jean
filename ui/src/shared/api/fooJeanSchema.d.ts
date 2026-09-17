@@ -151,7 +151,7 @@ export interface paths {
          *
          *     Existing playlists are never converted. There is no route that turns an existing playlist into an autoplaylist, because the core replaces the contents of a playlist when it takes one over.
          *
-         *     Refused with `403` under the read-only-playlists setting: every playlist this creates would hold the user's music, and the setting refuses every write but the component's own two.
+         *     Refused with `403` under the read-only-playlists setting: every playlist this creates would hold the user's music, and the setting refuses every write but the component's own scratch playlist.
          */
         post: operations["createAutoPlaylist"];
         delete?: never;
@@ -228,10 +228,10 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Which of the component's own playlists to fill. `scratch` is emptied first, so the insert leaves it holding only this request's rows; `queue` is never emptied, and the insert appends after whatever it already holds. Neither is reached by the read-only-playlists setting: both are how this component works, not the user's music. A `role` outside these two is a `400`.
+                 * @description Which of the component's own playlists to fill. `scratch` is the only one: it is emptied first, so the insert leaves it holding only this request's rows. Not reached by the read-only-playlists setting: this is how this component works, not the user's music. A `role` other than `scratch` is a `400`.
                  * @example scratch
                  */
-                role: "scratch" | "queue";
+                role: "scratch";
             };
             cookie?: never;
         };
@@ -252,7 +252,7 @@ export interface paths {
          *
          *     Idempotent: a role with no playlist yet is not made one just to answer this, and reports success regardless, exactly as `DELETE /stream/hold` reports success whether or not there was a hold to release.
          *
-         *     The read-only-playlists setting never refuses this operation, for the reason it never refuses a fill of either role: neither holds any of the user's music.
+         *     The read-only-playlists setting never refuses this operation, for the reason it never refuses a fill of `scratch`: it holds none of the user's music.
          */
         delete: operations["emptyOwnPlaylist"];
         options?: never;
@@ -722,7 +722,7 @@ export interface components {
             /**
              * @description Whether this install permits a write to a playlist or autoplaylist it did not create itself: create, add, edit, delete or reorder. `writePlaylists` in `config.json`, defaulting to `true`. A component predating this field reports nothing, and a client MUST read absence as writable.
              *
-             *     The component's own two playlists, its scratch space and the play queue's holding playlist, stay writable regardless: this governs the user's playlists, not the component's own plumbing.
+             *     The component's own scratch playlist stays writable regardless: this governs the user's playlists, not the component's own plumbing. The play queue is unaffected either way, since it is addressed through `/queue` rather than through a playlist.
              */
             canWritePlaylists: boolean;
             /** @description Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. Reported only: no route in this bundle reads it back or acts on it. */
@@ -1447,7 +1447,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /** @description This install has `writePlaylists` set to `false` in `config.json`. That is a player owner's own choice, made to keep every playlist but this component's own two read-only; setting it back to `true` is what grants the write. */
+        /** @description This install has `writePlaylists` set to `false` in `config.json`. That is a player owner's own choice, made to keep every playlist but this component's own scratch playlist read-only; setting it back to `true` is what grants the write. */
         WritesDisabled: {
             headers: {
                 [name: string]: unknown;
@@ -1547,7 +1547,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The component could not reach the playlist machinery its own scratch and queue playlists depend on. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`, and unrelated to the read-only-playlists setting, which never reaches this route. */
+        /** @description The component could not reach the playlist machinery its own scratch playlist depends on. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`, and unrelated to the read-only-playlists setting, which never reaches this route. */
         OwnPlaylistsUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -2148,10 +2148,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Which of the component's own playlists to fill. `scratch` is emptied first, so the insert leaves it holding only this request's rows; `queue` is never emptied, and the insert appends after whatever it already holds. Neither is reached by the read-only-playlists setting: both are how this component works, not the user's music. A `role` outside these two is a `400`.
+                 * @description Which of the component's own playlists to fill. `scratch` is the only one: it is emptied first, so the insert leaves it holding only this request's rows. Not reached by the read-only-playlists setting: this is how this component works, not the user's music. A `role` other than `scratch` is a `400`.
                  * @example scratch
                  */
-                role: "scratch" | "queue";
+                role: "scratch";
             };
             cookie?: never;
         };
@@ -2186,10 +2186,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Which of the component's own playlists to fill. `scratch` is emptied first, so the insert leaves it holding only this request's rows; `queue` is never emptied, and the insert appends after whatever it already holds. Neither is reached by the read-only-playlists setting: both are how this component works, not the user's music. A `role` outside these two is a `400`.
+                 * @description Which of the component's own playlists to fill. `scratch` is the only one: it is emptied first, so the insert leaves it holding only this request's rows. Not reached by the read-only-playlists setting: this is how this component works, not the user's music. A `role` other than `scratch` is a `400`.
                  * @example scratch
                  */
-                role: "scratch" | "queue";
+                role: "scratch";
             };
             cookie?: never;
         };

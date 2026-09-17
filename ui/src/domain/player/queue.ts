@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import {
+	type FillPlaylistRequest,
 	fetchQueue,
 	type QueueRead,
 	removeQueueEntry,
@@ -13,6 +14,12 @@ export interface QueueTarget {
 	playlistId: string;
 	itemIndex: number;
 }
+
+// What a source hands `useQueueActions.queue()`: a playlist's own rows, addressed by position,
+// or a set of library tracks, addressed by handle.
+export type QueueSource =
+	| { kind: "rows"; targets: QueueTarget[] }
+	| { kind: "tracks"; request: FillPlaylistRequest };
 
 export const queueDropAt = (at: number) => `${QUEUE_DROP_TARGET}@${at}`;
 

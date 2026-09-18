@@ -688,9 +688,6 @@ test.describe("the panel", () => {
 			.not.toBe(first);
 	});
 
-	// `movePlan` rebuilds the tail rather than inserting, because `queueIndex` on
-	// `/playqueue/add` is accepted and silently ignored. Nothing exercised it, and
-	// dragging a queued track up the list is an ordinary thing to want.
 	test("dragging a row up the list moves it on the player", async ({
 		page,
 		player,

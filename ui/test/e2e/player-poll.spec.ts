@@ -739,8 +739,8 @@ test("the queue panel follows a track queued at the player", async ({
 	// read the queue as it opened would pass this the other way round.
 	expect(player.queueAdd("p7", 3)).toBe(true);
 
-	// The artist beside the title is what `qcolumns` carries, and `qcolumns` is
-	// the parameter that has to survive the subscription being narrowed.
+	// Title and artist both come off `GET /api/queue`. The entry was queued at the
+	// desktop, so the panel holds nothing of its own to draw it from.
 	const row = queuePanel(page).getByRole("listitem").first();
 	await expect(row).toContainText("Soy Rock");
 	await expect(row).toContainText("Babasónicos");
@@ -774,13 +774,13 @@ test("takes no player state off beefweb beyond the now-playing panel's own colum
 	);
 
 	// A subscription deleted rather than narrowed satisfies the absence above and
-	// takes the playlist list and the queue panel's columns with it, so what it
-	// keeps is asserted beside what it drops.
+	// takes the playlist list with it, so what it keeps is asserted beside what it
+	// drops.
 	const subscribed = requestsTo(player, SUBSCRIPTION).at(-1)?.path ?? "";
 	expect(subscribed, "nothing subscribed to beefweb at all").not.toBe("");
 	expect(subscribed).toContain("playlists=true");
-	expect(subscribed).toContain("playQueue=true");
-	expect(subscribed).toContain("qcolumns=");
+	expect(subscribed).not.toContain("playQueue");
+	expect(subscribed).not.toContain("qcolumns");
 });
 
 test("asks the component for state once an interval, and nobody asks for the route it replaced", async ({

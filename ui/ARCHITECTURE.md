@@ -161,7 +161,7 @@ Read the record, prove the port with an unauthenticated call, and only then atta
 
 ## Sequencing
 
-Jean has more sequential work than a player client suggests. The player renumbers the play queue on every removal; only the first chunk of a library fill may `replace`; `Promise.all` arrives in whatever order the network settles on. `inSequence` in `src/shared/lib/sequence.ts` is the one way to express it.
+Jean has more sequential work than a player client suggests. Only the first chunk of a library fill may `replace`, and `Promise.all` arrives in whatever order the network settles on.
 
 > **The trap is `void`.** `done.then(() => void run(...))` calls each step in turn and hands `undefined` to `then`, so nothing waits for anything and the sequencing is silently gone. Return the promise.
 

@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import type { CDPSession, Locator, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
 import type { LibraryInfo } from "../../src/shared/api/types.ts";
-import { inSequence } from "../../src/shared/lib/sequence.ts";
 import type { FooJeanOptions } from "../fake-api/fooJean.ts";
 import { createServer, type FakeServer } from "../fake-api/server.ts";
 import {
@@ -635,7 +634,14 @@ export const scrollTo = (page: Page, offset: number) =>
 
 // ---- running steps one after the next ---------------------------------------
 
-export { inSequence };
+export const inSequence = <T>(
+	items: readonly T[],
+	run: (item: T, index: number) => unknown,
+): Promise<unknown> =>
+	items.reduce<Promise<unknown>>(
+		(done, item, index) => done.then(() => run(item, index)),
+		Promise.resolve(),
+	);
 
 export const times = (count: number, run: (index: number) => unknown) =>
 	inSequence(

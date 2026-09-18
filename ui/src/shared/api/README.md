@@ -95,6 +95,8 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 
 ### Play queue
 
+**Jean does not call any route on this page.** The queue is `foo_jean`'s own, *What Jean does about the queue* below; what follows is a fact about beefweb, real for any client that has no other queue to reach for.
+
 | Route | Body | Notes |
 |---|---|---|
 | `GET /playqueue?columns=` | — | the parameter is **`columns`** here and **`qcolumns`** only on `/query` |

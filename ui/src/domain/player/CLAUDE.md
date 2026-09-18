@@ -18,15 +18,11 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **Queueing opens the panel and raises no toast on success.** The row the track lands on is the undo; an undo carried on a toast would be a range built from the queue length before its own write, so with several on screen only the newest could still be applied. Errors do toast.
 
-**A reorder is a rebuild, because there is no insert**, so moving an entry means removing everything from the earlier of the two positions and adding it back in the new order. **Queueing a track into a position is the same rebuild with the track ahead of the tail; queueing onto the end is not one at all.** An append lands at the end whatever moved above it, so it neither re-reads nor refuses. Three things follow:
-
-- **Only the tail is rebuilt.** Everything above the earlier position is untouched, so a drag near the bottom is cheap and a drag from the top is not.
-- **The queue is re-read before the plan is built.** This is the one operation whose arithmetic cannot survive being stale, because a track ending mid-drag consumes the head and shifts every index under it, so a queue that moved is refused rather than half-applied.
-- **The stream is held for the length of a mutation.** The player passes through every intermediate state and pushes each one; drawn, the panel sheds its rows and grows them back. The hold lives in `queue.ts` with no React and no import of the player hook, since the hook that drops the pushes and the hook that takes the hold both need it.
+**Every queue change reaches `foo_jean` as one request, with no local copy to keep or reconcile.** `../../shared/api/README.md`, *What Jean does about the queue*, has the shape and what a stale revision answers.
 
 **The queue entries are cleared before a playlist is deleted, and the delete abandoned if they will not clear**, for the reason `../../shared/api/README.md` gives under its crash warning. That guard belongs to the *operation*, not to the sidebar, since the failure mode is the whole of foobar2000.
 
-**Queueing checks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits**, for the same reason playing a library set does: a queued library row goes through the component's own `/api/queue`, addressed by handle, rather than through beefweb's. The gate covers every queue action alike, including moving or removing an already-queued playlist row that needed no fill of its own.
+**Queueing checks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits.** Every queue mutation goes through the component rather than through beefweb, so one gate covers a library row, a playlist row, a move, a remove and a clear alike.
 
 ## The volume fader
 

@@ -28,7 +28,7 @@ The button is a drop target, and the only one outside the sidebar and the panel.
 **The panel names the gap rather than itself.** Each row carries two zones, its halves, and every zone is a *separate* drop target with the insertion index in its id: `dnd.ts` publishes which target is under the pointer and nothing finer, and a pointer position in that store would notify the app on every frame. Two things follow from the shape:
 
 - **The zones sit over the row's own children, and the scroller is the target of last resort.** Without the zones on top, a pointer on the artwork climbs to the scroller and the line jumps to the end of the queue while it is plainly on a row; without the scroller, a pointer in the space below the last row aims at nothing.
-- **A drop into the middle costs the tail, and a drop at the end costs nothing.** There is no insert, so it is the rebuild a reorder is. `../../domain/player/CLAUDE.md` has the plan and why only the insert re-reads the queue first.
+- **A drop anywhere costs the same one request**, whether it lands mid-rail or at the end: the component takes the position directly, so there is nothing to rebuild and nothing to re-read first. `../../domain/player/CLAUDE.md` has the shape.
 
 ## Things that will bite
 

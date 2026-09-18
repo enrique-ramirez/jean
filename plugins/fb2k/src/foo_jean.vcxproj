@@ -84,11 +84,15 @@
       -->
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);$(MSBuildThisFileDirectory)..;$(MSBuildThisFileDirectory)..\sdk;$(MSBuildThisFileDirectory)..\third_party\opus\include;$(MSBuildThisFileDirectory)..\third_party\ogg\include;$(MSBuildThisFileDirectory)..\third_party\zlib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <!--
-        Defined once for the whole project, never per file: third_party/README.md has why.
-        It makes cpp-httplib include <zlib.h>, which is what third_party\zlib is doing on
-        the include path above.
+        CPPHTTPLIB_ZLIB_SUPPORT is defined once for the whole project, never per file:
+        third_party/README.md has why. It makes cpp-httplib include <zlib.h>, which is what
+        third_party\zlib is doing on the include path above.
+
+        NOMINMAX drops the min and max macros <windows.h> defines. They arrive through the
+        foobar2000 SDK and turn a bare std::min(a, b) into a C2589 plus a C2660 naming a
+        line that is not the problem.
       -->
-      <PreprocessorDefinitions>CPPHTTPLIB_ZLIB_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>CPPHTTPLIB_ZLIB_SUPPORT;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <!-- 4715: not all control paths return a value. The SDK treats it as an error and so do we. -->
       <TreatSpecificWarningsAsErrors>4715</TreatSpecificWarningsAsErrors>
       <!--

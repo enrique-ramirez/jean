@@ -558,9 +558,9 @@ ChangedPositionsReader changedPositionsFrom(const PlaylistVersions& versions) {
 // The SDK has no per-playlist subscription, so every playlist's events arrive here and each
 // callback resolves the one it was handed: ARCHITECTURE.md, *Facts about the player*. The mask
 // is only valid for the length of the call, so it is walked here and the marks are published
-// from a main-thread callback of their own. A burst of events collapses onto one hop to the
-// main thread, but MainThreadQueue runs every queued read once it gets there rather than
-// deduplicating them, so the burst still pays for one everyMark() per event.
+// from a main-thread callback of their own. Both sides run on foobar2000's main thread:
+// ARCHITECTURE.md, *Facts about the player*. A publish already queued has not read anything
+// yet and will see whatever the rest of the burst leaves behind.
 struct PlaylistWatch::Callback : public playlist_callback_impl_base {
     Callback(MainThreadQueue& mainThread, PlaylistVersions& versions, PlayerStateStore& store)
         : playlist_callback_impl_base(flag_on_items_added | flag_on_items_removed |
@@ -599,9 +599,14 @@ struct PlaylistWatch::Callback : public playlist_callback_impl_base {
     void on_playlist_renamed(t_size, const char*, t_size) override { publishMarks(); }
 
     void publishMarks() {
+        if (publishQueued_)
+            return;
+
+        publishQueued_ = true;
         mainThread_.enqueue(
-            [&versions = versions_, &store = store_] {
-                store.playlistsChanged(everyMark(versions));
+            [this] {
+                publishQueued_ = false;
+                store_.playlistsChanged(everyMark(versions_));
             },
             [] {});
     }
@@ -614,6 +619,7 @@ struct PlaylistWatch::Callback : public playlist_callback_impl_base {
     MainThreadQueue& mainThread_;
     PlaylistVersions& versions_;
     PlayerStateStore& store_;
+    bool publishQueued_ = false;
 };
 
 PlaylistWatch::PlaylistWatch(MainThreadQueue& mainThread, PlaylistVersions& versions,

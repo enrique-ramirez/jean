@@ -16,10 +16,12 @@ export function useQueueTracks() {
 			source,
 			itemIndices,
 			at,
+			drag = false,
 		}: {
 			source: LibrarySource;
 			itemIndices: Refs;
 			at?: number;
+			drag?: boolean;
 		}) => {
 			if (!canQueue || itemIndices.length === 0) return;
 
@@ -42,7 +44,7 @@ export function useQueueTracks() {
 				return;
 			}
 
-			await queue(built, at);
+			await queue(built, at, drag);
 		},
 		[canQueue, queue],
 	);

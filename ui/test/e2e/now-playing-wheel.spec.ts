@@ -199,6 +199,10 @@ test.describe("the cover wheel", () => {
 		await openNowPlaying(page);
 		player.patchPlayer({ options: [{ id: "playbackOrder", value: 4 }] });
 
+		await expect(nowPlayingScreen(page).locator("h1")).not.toHaveText(
+			"Nothing playing",
+		);
+
 		await across(page, 0.85, 0.25);
 		await expect.poll(() => detents(page)).toBe(-1);
 

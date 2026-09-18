@@ -49,23 +49,41 @@ export function useQueueActions() {
 		[queryClient],
 	);
 
+	// A refusal that is not a stale revision leaves the player's queue exactly where it
+	// was, so the optimistic patch is wrong and nothing will ever correct it: the next
+	// poll reports the same revision the cache already holds. A stale revision means the
+	// opposite, that something else already moved the queue, so the poll's own revision
+	// differs and the panel corrects itself without help here.
 	const settle = useCallback(
-		async (result: QueueMutationResult) => {
-			if (!result.ok)
+		async (
+			result: QueueMutationResult,
+			{
+				previousEntries,
+				drag = false,
+			}: { previousEntries?: QueueRead["entries"]; drag?: boolean } = {},
+		) => {
+			if (!result.ok) {
+				if (result.reason === "failed" && previousEntries)
+					patchEntries(() => previousEntries);
 				pushToast({
 					tone: "error",
 					message: translate(
-						result.reason === "stale" ? "queue.movedUnderYou" : "queue.refused",
+						result.reason === "stale"
+							? drag
+								? "queue.movedUnderYou"
+								: "queue.staleRefused"
+							: "queue.refused",
 					),
 				});
+			}
 			if (origin && token) await pollPlayerNow(queryClient, origin, token);
 			return result.ok;
 		},
-		[queryClient, origin, token],
+		[queryClient, origin, token, patchEntries],
 	);
 
 	const queue = useCallback(
-		async (source: QueueSource, at?: number) => {
+		async (source: QueueSource, at?: number, drag = false) => {
 			if (!canQueue || !origin || !token) return;
 			if (source.kind === "rows" && source.targets.length === 0) return;
 
@@ -100,7 +118,7 @@ export function useQueueActions() {
 				request = { ...source.request, ...atFields };
 			}
 
-			await settle(await postQueue(origin, token, request));
+			await settle(await postQueue(origin, token, request), { drag });
 		},
 		[canQueue, origin, token, queryClient, settle],
 	);
@@ -109,10 +127,14 @@ export function useQueueActions() {
 		(at: number) => {
 			if (!canQueue || !origin || !token) return Promise.resolve(false);
 
+			const previousEntries =
+				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.entries;
 			patchEntries((entries) => entries.filter((_, index) => index !== at));
 			const revision =
 				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision ?? 0;
-			return removeQueueEntry(origin, token, at, revision).then(settle);
+			return removeQueueEntry(origin, token, at, revision).then((result) =>
+				settle(result, { previousEntries }),
+			);
 		},
 		[canQueue, origin, token, patchEntries, queryClient, settle],
 	);
@@ -120,15 +142,21 @@ export function useQueueActions() {
 	const clear = useCallback(() => {
 		if (!canQueue || !origin || !token) return Promise.resolve(false);
 
+		const previousEntries =
+			queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.entries;
 		patchEntries(() => []);
-		return writeClearQueue(origin, token).then(settle);
-	}, [canQueue, origin, token, patchEntries, settle]);
+		return writeClearQueue(origin, token).then((result) =>
+			settle(result, { previousEntries }),
+		);
+	}, [canQueue, origin, token, patchEntries, queryClient, settle]);
 
 	const move = useCallback(
 		(from: number, to: number) => {
 			if (!canQueue || from === to || !origin || !token)
 				return Promise.resolve(false);
 
+			const previousEntries =
+				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.entries;
 			patchEntries((entries) => {
 				const next = [...entries];
 				const [item] = next.splice(from, 1);
@@ -137,7 +165,9 @@ export function useQueueActions() {
 			});
 			const revision =
 				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision ?? 0;
-			return moveQueueEntry(origin, token, { from, to, revision }).then(settle);
+			return moveQueueEntry(origin, token, { from, to, revision }).then(
+				(result) => settle(result, { previousEntries, drag: true }),
+			);
 		},
 		[canQueue, origin, token, patchEntries, queryClient, settle],
 	);

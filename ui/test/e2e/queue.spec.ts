@@ -77,6 +77,29 @@ const queuedAtThePlayer = (player: FakePlayer) =>
 		artist: String(entry.track["%artist%"] ?? ""),
 	}));
 
+const queuedTitlesAtThePlayer = (player: FakePlayer) =>
+	queuedAtThePlayer(player).map((entry) => entry.title);
+
+// The rows the panel is drawing, in its own order, against the titles the player
+// holds. Row text rather than a count, since a panel that put back the wrong row
+// counts the same as one that put back the right one.
+const expectPanelShows = async (page: Page, titles: string[]) =>
+	await expect
+		.poll(() => queueRows(page).allTextContents())
+		.toEqual(titles.map((title) => expect.stringContaining(title)));
+
+// A refusal the user is told about, in the sentence written for a refusal. The
+// other one says the queue moved while they were dragging, which is a different
+// event: that one Jean can read the truth back from, and this one it cannot.
+const expectRefusalToast = async (page: Page) => {
+	await expect(page.getByRole("status")).toContainText(
+		"The player would not change the queue.",
+	);
+	await expect(page.getByRole("status")).not.toContainText(
+		"while you were dragging",
+	);
+};
+
 // Where each entry sits, as `GET /api/queue` reports it: a track queued by
 // handle and a row whose playlist position the player has lost both answer with
 // none. Read off the player to say the case is set up, never as the assertion.
@@ -143,12 +166,38 @@ const rowQueuedAtThePlayer = (
 	return String(track["%title%"] ?? "");
 };
 
+// The same press, repeated: what somebody who queued a large selection at the
+// desktop leaves behind. Rows repeat because the fixture's playlists are shorter
+// than the queue this needs, and an entry is an entry to the guard either way.
+const rowsQueuedAtThePlayer = (
+	player: FakePlayer,
+	playlistId: string,
+	indices: number[],
+) =>
+	player.queueInsert(
+		indices.map((index) => ({
+			playlistId,
+			track: trackOfPlaylist(player, playlistId, index),
+		})),
+	);
+
 // The same press on a library track with no playlist open: the player holds the
 // handle alone, and there is no position for beefweb to name it by.
 const trackQueuedAtThePlayer = (player: FakePlayer, ordinal: number) => {
 	const { track } = player.ordinalOrder()[ordinal];
 	player.queueInsert([{ playlistId: null, track }]);
 	return String(track["%title%"] ?? "");
+};
+
+// The sidebar's own delete, through the confirmation it puts behind it.
+const deletePlaylist = async (page: Page, isMobile: boolean, title: string) => {
+	await openSidebar(page);
+	const row = sidebar(page).locator("> div").filter({ hasText: title });
+	if (isMobile) await pressAndHold(page, row);
+	else await row.click({ button: "right" });
+
+	await page.getByRole("menuitem", { name: "Delete" }).click();
+	await page.getByRole("menuitem", { name: "Delete playlist" }).click();
 };
 
 const dragRow = async (page: Page, from: number, to: number) => {
@@ -907,15 +956,7 @@ test.describe("deleting a playlist the queue points into", () => {
 		await queueTracks(page, isMobile, 0);
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
 
-		await openSidebar(page);
-		const favorites = sidebar(page)
-			.locator("> div")
-			.filter({ hasText: "Favorites" });
-		if (isMobile) await pressAndHold(page, favorites);
-		else await favorites.click({ button: "right" });
-
-		await page.getByRole("menuitem", { name: "Delete" }).click();
-		await page.getByRole("menuitem", { name: "Delete playlist" }).click();
+		await deletePlaylist(page, isMobile, "Favorites");
 
 		await expect
 			.poll(() => player.playlists.some((entry) => entry.id === "p2"), {
@@ -941,6 +982,60 @@ test.describe("deleting a playlist the queue points into", () => {
 			order.slice(0, -1).every((entry) => entry.path.startsWith("/api/queue")),
 		).toBe(true);
 		expect(queuedAtThePlayer(player)).toHaveLength(0);
+	});
+
+	// `QUEUE_LIMIT` is a thousand and a selection that size is one press away, so
+	// a queue longer than any one pass through it is ordinary rather than
+	// pathological. Sixty-five is written out rather than read off the guard,
+	// since a test that took its number from the thing it is testing would agree
+	// with whatever that number was changed to. It costs a read and a removal per
+	// entry, which is the shape the component's routes have today.
+	test("clears all sixty-five of a playlist's queue entries before sending the delete", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		rowsQueuedAtThePlayer(
+			player,
+			"p2",
+			Array.from({ length: 65 }, (_, at) => at % 7),
+		);
+		expect(queuedAtThePlayer(player)).toHaveLength(65);
+
+		await page.goto("/");
+		await deletePlaylist(page, isMobile, "Favorites");
+
+		await expect
+			.poll(() => player.playlists.some((entry) => entry.id === "p2"), {
+				timeout: 10_000,
+			})
+			.toBe(false);
+		expect(queuedAtThePlayer(player)).toHaveLength(0);
+	});
+});
+
+// The delete is offered on beefweb's `changePlaylists` and on nothing about
+// `foo_jean`, so a playlist the component publishes no id for still reaches it.
+test.describe("deleting a playlist the component publishes no id for", () => {
+	test.use({ fooJean: { unannotatedPlaylists: ["p2"] } });
+
+	// Nothing has been queued here at all, so the queue reads and is empty and no
+	// entry points into this playlist, whether or not Jean can name it in the ids
+	// the component uses.
+	test("deletes it, since the queue holds nothing at all", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.goto("/");
+		await deletePlaylist(page, isMobile, "Favorites");
+
+		await expect
+			.poll(() => player.playlists.some((entry) => entry.id === "p2"), {
+				timeout: 5000,
+			})
+			.toBe(false);
+		await expect(page.getByRole("status")).toHaveCount(0);
 	});
 });
 
@@ -1398,6 +1493,104 @@ test.describe("the queue is the component's", () => {
 
 		await expect(queueRows(page)).toHaveCount(3);
 		await expect(queueRows(page).first()).toContainText(queuedFirst);
+	});
+
+	// The two above move the player's queue as they refuse, so the next poll
+	// carries a revision the panel has not seen and the read that corrects it goes
+	// out. These three refuse with the queue exactly where it was, which is what a
+	// 500, a 429 from the rate limiter and a dropped connection all look like, and
+	// no revision will ever move to say the optimistic panel was never true. The
+	// user's next remove then addresses a row that was never taken off.
+	test("a remove the component refuses with the queue unmoved puts the row back", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(2);
+
+		player.fooJean.failQueue = 500;
+		const queued = queuedTitlesAtThePlayer(player);
+
+		await queueRows(page)
+			.first()
+			.getByRole("button", { name: /^Remove/ })
+			.click();
+
+		await expectRefusalToast(page);
+		await expectSettlesAt(player, () => componentRemovals(player).length, 1);
+
+		expect(
+			queuedTitlesAtThePlayer(player),
+			"the player dropped the entry, so the case is not set up",
+		).toEqual(queued);
+		await expectPanelShows(page, queued);
+	});
+
+	test("a clear the component refuses with the queue unmoved leaves the rows on screen", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(2);
+
+		player.fooJean.failQueue = 500;
+		const queued = queuedTitlesAtThePlayer(player);
+
+		await queuePanel(page).getByRole("button", { name: "Clear" }).click();
+
+		await expectRefusalToast(page);
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "DELETE", "/api/queue").length,
+			1,
+		);
+
+		expect(
+			queuedTitlesAtThePlayer(player),
+			"the player emptied the queue, so the case is not set up",
+		).toEqual(queued);
+		await expectPanelShows(page, queued);
+	});
+
+	test("a move the component refuses with the queue unmoved puts the row back where it was", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the grip is a separate gesture; see above");
+
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await queueTracks(page, isMobile, 2);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(3);
+
+		player.fooJean.failQueue = 500;
+		const queued = queuedTitlesAtThePlayer(player);
+
+		await dragRow(page, 2, 0);
+
+		await expectRefusalToast(page);
+		await expectSettlesAt(
+			player,
+			() => componentRequests(player, "POST", "/api/queue/move").length,
+			1,
+		);
+
+		expect(
+			queuedTitlesAtThePlayer(player),
+			"the player reordered the queue, so the case is not set up",
+		).toEqual(queued);
+		await expectPanelShows(page, queued);
 	});
 });
 

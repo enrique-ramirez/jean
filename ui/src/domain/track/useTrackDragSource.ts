@@ -61,13 +61,13 @@ export function useTrackDragSource({
 
 		onDrop: (id, payload) => {
 			if (id === QUEUE_DROP_TARGET) {
-				queueTracks({ source, itemIndices: payload.items });
+				queueTracks({ source, itemIndices: payload.items, drag: true });
 				return;
 			}
 
 			const at = queueDropIndex(id);
 			if (at !== null) {
-				queueTracks({ source, itemIndices: payload.items, at });
+				queueTracks({ source, itemIndices: payload.items, at, drag: true });
 				return;
 			}
 

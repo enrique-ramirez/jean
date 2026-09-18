@@ -41,6 +41,13 @@ export interface FooJeanOptions {
 	// mid-test rather than one refused from the start.
 	failState?: number | null;
 
+	// Refuses every queue mutation with this status, leaving the queue itself
+	// where it was and both reads answering. A 500, a 429 from the rate limiter
+	// and a connection that died are one event to a client, so one status stands
+	// in for all three. The 409 a stale revision answers is the other kind: there
+	// the queue did move, and the next poll carries a revision that says so.
+	failQueue?: number | null;
+
 	// Off, the component answers `playingLocation: null`: it is playing something
 	// and cannot say where from. This is what foobar2000 does once the playing
 	// item has been removed from the playlist it started in.
@@ -52,6 +59,11 @@ export interface FooJeanOptions {
 	// which is read once and again only when the playlist count moves, so a
 	// playlist created since is one the poll can name and the client cannot.
 	annotatesEveryPlaylist?: boolean;
+
+	// beefweb ids `GET /api/playlists` carries no entry for, named rather than
+	// taken off the end. The same lag as above seen from a spec that cares which
+	// playlist is the one a client can find no GUID for.
+	unannotatedPlaylists?: string[];
 
 	canReadLibrary?: boolean;
 	libraryBuilds?: number;
@@ -118,8 +130,10 @@ const DEFAULTS: FooJeanFake = {
 	allowedFields: ["rating"],
 	failWrites: null,
 	failState: null,
+	failQueue: null,
 	knowsPlayingLocation: true,
 	annotatesEveryPlaylist: true,
+	unannotatedPlaylists: [],
 	canStream: true,
 	streamFormats: ["opus", "aac"],
 	playableFormats: ["opus", "aac"],
@@ -1378,6 +1392,15 @@ export async function handleAgent({
 	if (path === "/api/state")
 		return handleState({ state, fake, method, headers, response });
 
+	if (fake.failQueue && method !== "GET" && path.startsWith("/api/queue")) {
+		if (fake.failQueue === 429) response.setHeader("Retry-After", "1");
+		return json(
+			response,
+			{ error: "the queue could not be changed", detail: "" },
+			fake.failQueue,
+		);
+	}
+
 	if (path === "/api/queue") {
 		if (method === "GET") {
 			if (state.latency > 0) await delay(state.latency);
@@ -1558,14 +1581,16 @@ export async function handleAgent({
 		// open across a playlist mutation the tick has already moved past.
 		if (state.latency > 0) await delay(state.latency);
 
-		const annotated = state.playlists.map((playlist, index) => ({
-			id: guidFor(index),
-			beefwebId: playlist.id,
-			index,
-			title: playlist.title,
-			isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
-			managed: null,
-		}));
+		const annotated = state.playlists
+			.map((playlist, index) => ({
+				id: guidFor(index),
+				beefwebId: playlist.id,
+				index,
+				title: playlist.title,
+				isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
+				managed: null,
+			}))
+			.filter((entry) => !fake.unannotatedPlaylists.includes(entry.beefwebId));
 		// Dropped from the end rather than filtered, so every entry that is left
 		// keeps the id and the index the component would have given it.
 		return json(response, {

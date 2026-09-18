@@ -410,6 +410,8 @@ export const en = {
 	"queue.refused": "The player would not change the queue.",
 	"queue.removeTrack": "Remove {track} from the queue",
 	"queue.reorder": "Reorder {track}",
+	"queue.staleRefused":
+		"The queue changed before this could be applied, so it was left alone.",
 	"queue.startsIn": "in {time}",
 	"queue.summary": "{tracks} · {time}",
 	"queue.title": "Queue",

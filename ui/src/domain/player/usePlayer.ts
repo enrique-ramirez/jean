@@ -196,15 +196,17 @@ export function usePlaylistActions() {
 					let dequeued = false;
 					if (origin && token) {
 						const annotations = await fetchPlaylistAnnotations(origin, token);
+						// A playlist `foo_jean` holds no annotation for cannot be one a
+						// queue entry points into, since queueing a row needs that same
+						// lookup to name it. `dequeuePlaylist` reads the queue regardless
+						// and finds nothing to match.
+						let guid: string | null;
 						try {
-							dequeued = await dequeuePlaylist(
-								origin,
-								token,
-								guidOf(id, annotations),
-							);
+							guid = guidOf(id, annotations);
 						} catch {
-							dequeued = false;
+							guid = null;
 						}
+						dequeued = await dequeuePlaylist(origin, token, guid);
 					}
 					if (!dequeued)
 						throw refusal(translate("playlist.deleteBlockedByQueue"));

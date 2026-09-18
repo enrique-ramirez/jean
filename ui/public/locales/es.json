@@ -338,6 +338,7 @@
 	"queue.refused": "El reproductor no quiso cambiar la cola.",
 	"queue.removeTrack": "Quitar {track} de la cola",
 	"queue.reorder": "Reordenar {track}",
+	"queue.staleRefused": "La cola cambió antes de que esto pudiera aplicarse, así que se dejó como estaba.",
 	"queue.startsIn": "en {time}",
 	"queue.summary": "{tracks} · {time}",
 	"queue.title": "Cola",

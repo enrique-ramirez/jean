@@ -88,6 +88,7 @@ test.describe("the header shuffle starts a shuffled run", () => {
 			"no keyboard on the phone",
 		);
 
+		await expect(headerShuffle(page)).toBeEnabled();
 		await page.keyboard.press("s");
 
 		await expect.poll(() => trackPlayed(player)).not.toBeNull();

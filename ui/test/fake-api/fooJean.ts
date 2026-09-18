@@ -48,6 +48,13 @@ export interface FooJeanOptions {
 	// the queue did move, and the next poll carries a revision that says so.
 	failQueue?: number | null;
 
+	// The answer to a queue mutation, lost on the way back. The player carries the
+	// change out at once, nothing comes back for this many milliseconds, and then
+	// the client is told the change failed, which is what its own write timeout
+	// tells it when no answer ever arrives. Reads go on answering meanwhile, so a
+	// poll lands in the gap and carries back the queue the player has now.
+	loseQueueAnswer?: number | null;
+
 	// Off, the component answers `playingLocation: null`: it is playing something
 	// and cannot say where from. This is what foobar2000 does once the playing
 	// item has been removed from the playlist it started in.
@@ -131,6 +138,7 @@ const DEFAULTS: FooJeanFake = {
 	failWrites: null,
 	failState: null,
 	failQueue: null,
+	loseQueueAnswer: null,
 	knowsPlayingLocation: true,
 	annotatesEveryPlaylist: true,
 	unannotatedPlaylists: [],
@@ -1401,6 +1409,19 @@ export async function handleAgent({
 		);
 	}
 
+	// How a queue mutation the player has already carried out is answered: at once,
+	// or refused once `loseQueueAnswer` has passed, which is a client being told the
+	// change failed after the queue moved.
+	const queueChanged = async () => {
+		if (fake.loseQueueAnswer === null) return empty(response);
+		await delay(fake.loseQueueAnswer);
+		return json(
+			response,
+			{ error: "the queue changed and the answer went missing", detail: "" },
+			500,
+		);
+	};
+
 	if (path === "/api/queue") {
 		if (method === "GET") {
 			if (state.latency > 0) await delay(state.latency);
@@ -1461,7 +1482,7 @@ export async function handleAgent({
 					})),
 					parsed.at?.index,
 				);
-				return empty(response);
+				return queueChanged();
 			}
 
 			if (!fake.canReadLibrary)
@@ -1498,13 +1519,13 @@ export async function handleAgent({
 				})),
 				parsed.at?.index,
 			);
-			return empty(response);
+			return queueChanged();
 		}
 
 		if (method === "DELETE") {
 			if (state.latency > 0) await delay(state.latency);
 			state.queueClear();
-			return empty(response);
+			return queueChanged();
 		}
 
 		return json(response, { error: "not found" }, 404);
@@ -1526,7 +1547,7 @@ export async function handleAgent({
 			);
 
 		state.queueMove(parsed.from, parsed.to);
-		return empty(response);
+		return queueChanged();
 	}
 
 	const queueEntryMatch = /^\/api\/queue\/([^/]+)$/.exec(path);
@@ -1548,7 +1569,7 @@ export async function handleAgent({
 			);
 
 		state.queueRemoveAt(parsed.index);
-		return empty(response);
+		return queueChanged();
 	}
 
 	if (path.startsWith("/api/library/"))

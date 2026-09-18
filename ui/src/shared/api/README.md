@@ -414,6 +414,8 @@ This is the one part of the component's surface the spec does not describe, beca
 
 Queueing, moving, removing and clearing each send exactly one request: `POST /queue`, `POST /queue/move`, `DELETE /queue/{index}` and `DELETE /queue`. Every one is optimistic against the cached read and reconciled by the next poll rather than trusted outright; a write against a queue that has since moved answers `409`, and Jean takes no local guess at the true order in that case; the next poll's `recheckQueue` holds it. **The revision advances by exactly one per accepted mutation**, so a caller chaining several writes against one cached read can predict the next revision without a re-read between them; `dequeuePlaylist` in `domain/player/queue.ts` is built on that.
 
+**A write that comes back failed rather than stale answers nothing about the player's own queue.** The response can go missing after the write already landed, LAN link or not, so a client cannot read a refusal as proof the queue is still where it was. `useQueue.ts`'s `settle` only rolls an optimistic patch back while the cache still holds the revision it was taken against; once that has moved, a poll has already caught up and rolling back would undo it.
+
 **A queued entry plays whether or not it still carries a `location`.** `location` is `null` both for a library track queued by handle and for a playlist row whose position the player has lost, and measured against a real player both reach the head and play, `title`, `artist` and `duration` intact. Unlike beefweb's own queue, there is no garbage-column row to warn a person about.
 
 ## What Jean does about the stream

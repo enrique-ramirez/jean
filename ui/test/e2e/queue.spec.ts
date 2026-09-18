@@ -1592,6 +1592,51 @@ test.describe("the queue is the component's", () => {
 		).toEqual(queued);
 		await expectPanelShows(page, queued);
 	});
+
+	// How long the component sits on an answer it never sends. Long enough for the
+	// poll to land while the write is still out, short enough that this spec does
+	// not sit out the client's own write timeout, which is what ends the wait when
+	// an answer goes missing for real.
+	const LOST_ANSWER_MS = 3_000;
+
+	// An answer lost on the way back is a refusal the client cannot read anything
+	// into: the entry is gone at the player, and nothing says so until the write
+	// gives up. By then the poll has read the player's own queue, revision and all,
+	// so putting the removed row back on top of that read leaves the panel naming a
+	// queue the player does not have. The revision it kept is the player's own, so
+	// no later poll refetches to correct it.
+	test("a remove the player carried out but never answered leaves the panel on the player's queue", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await queueTracks(page, isMobile, 0);
+		await queueTracks(page, isMobile, 1);
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(2);
+		const [, second] = queuedTitlesAtThePlayer(player);
+
+		player.fooJean.loseQueueAnswer = LOST_ANSWER_MS;
+		await queueRows(page)
+			.first()
+			.getByRole("button", { name: /^Remove/ })
+			.click();
+
+		await expect
+			.poll(() => queuedTitlesAtThePlayer(player), {
+				message: "the player kept the entry, so the case is not set up",
+			})
+			.toEqual([second]);
+
+		// Somebody at the desktop queues a row while the client is still waiting,
+		// and the panel drawing it is what says the poll landed inside the window.
+		const queuedSince = rowQueuedAtThePlayer(player, "p2", 0);
+		await expectPanelShows(page, [second, queuedSince]);
+
+		await expectRefusalToast(page);
+		await expectPanelShows(page, [second, queuedSince]);
+	});
 });
 
 // The player plays an entry it has no position for, whether the row it was

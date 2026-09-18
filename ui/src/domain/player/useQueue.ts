@@ -42,29 +42,30 @@ export function useQueueActions() {
 	const { origin, token } = discovery;
 
 	const patchEntries = useCallback(
-		(next: (entries: QueueRead["entries"]) => QueueRead["entries"]) =>
-			queryClient.setQueryData<QueueRead>(QUEUE_KEY, (current) =>
-				current ? { ...current, entries: next(current.entries) } : current,
-			),
+		(next: (entries: QueueRead["entries"]) => QueueRead["entries"]) => {
+			let previous: QueueRead | undefined;
+			queryClient.setQueryData<QueueRead>(QUEUE_KEY, (current) => {
+				previous = current;
+				return current
+					? { ...current, entries: next(current.entries) }
+					: current;
+			});
+			return previous;
+		},
 		[queryClient],
 	);
 
-	// A refusal that is not a stale revision leaves the player's queue exactly where it
-	// was, so the optimistic patch is wrong and nothing will ever correct it: the next
-	// poll reports the same revision the cache already holds. A stale revision means the
-	// opposite, that something else already moved the queue, so the poll's own revision
-	// differs and the panel corrects itself without help here.
 	const settle = useCallback(
 		async (
 			result: QueueMutationResult,
-			{
-				previousEntries,
-				drag = false,
-			}: { previousEntries?: QueueRead["entries"]; drag?: boolean } = {},
+			{ previous, drag = false }: { previous?: QueueRead; drag?: boolean } = {},
 		) => {
 			if (!result.ok) {
-				if (result.reason === "failed" && previousEntries)
-					patchEntries(() => previousEntries);
+				if (result.reason === "failed" && previous) {
+					const current = queryClient.getQueryData<QueueRead>(QUEUE_KEY);
+					if (current?.revision === previous.revision)
+						patchEntries(() => previous.entries);
+				}
 				pushToast({
 					tone: "error",
 					message: translate(
@@ -127,49 +128,43 @@ export function useQueueActions() {
 		(at: number) => {
 			if (!canQueue || !origin || !token) return Promise.resolve(false);
 
-			const previousEntries =
-				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.entries;
-			patchEntries((entries) => entries.filter((_, index) => index !== at));
-			const revision =
-				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision ?? 0;
-			return removeQueueEntry(origin, token, at, revision).then((result) =>
-				settle(result, { previousEntries }),
+			const previous = patchEntries((entries) =>
+				entries.filter((_, index) => index !== at),
+			);
+			return removeQueueEntry(origin, token, at, previous?.revision ?? 0).then(
+				(result) => settle(result, { previous }),
 			);
 		},
-		[canQueue, origin, token, patchEntries, queryClient, settle],
+		[canQueue, origin, token, patchEntries, settle],
 	);
 
 	const clear = useCallback(() => {
 		if (!canQueue || !origin || !token) return Promise.resolve(false);
 
-		const previousEntries =
-			queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.entries;
-		patchEntries(() => []);
+		const previous = patchEntries(() => []);
 		return writeClearQueue(origin, token).then((result) =>
-			settle(result, { previousEntries }),
+			settle(result, { previous }),
 		);
-	}, [canQueue, origin, token, patchEntries, queryClient, settle]);
+	}, [canQueue, origin, token, patchEntries, settle]);
 
 	const move = useCallback(
 		(from: number, to: number) => {
 			if (!canQueue || from === to || !origin || !token)
 				return Promise.resolve(false);
 
-			const previousEntries =
-				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.entries;
-			patchEntries((entries) => {
+			const previous = patchEntries((entries) => {
 				const next = [...entries];
 				const [item] = next.splice(from, 1);
 				next.splice(to, 0, item);
 				return next;
 			});
-			const revision =
-				queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision ?? 0;
-			return moveQueueEntry(origin, token, { from, to, revision }).then(
-				(result) => settle(result, { previousEntries, drag: true }),
-			);
+			return moveQueueEntry(origin, token, {
+				from,
+				to,
+				revision: previous?.revision ?? 0,
+			}).then((result) => settle(result, { previous, drag: true }));
 		},
-		[canQueue, origin, token, patchEntries, queryClient, settle],
+		[canQueue, origin, token, patchEntries, settle],
 	);
 
 	return { canQueue, queue, remove, clear, move };

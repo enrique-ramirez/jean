@@ -85,6 +85,52 @@ int httpStatusFor(PlaylistOutcome outcome);
 std::string fillResultDocument(const std::string& playlistId, const std::string& beefwebId,
                                const std::vector<size_t>& positions);
 
+// One row of a playlist: the columns the client declared, evaluated against the row's own
+// handle in the order it declared them, and the library path GET /api/artwork?track= takes
+// where the media library holds the track.
+struct PlaylistRow {
+    std::vector<std::string> columns;
+    std::optional<std::string> libraryPath;
+};
+
+struct PlaylistRowsRead {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+
+    uint64_t structure = 0;
+    uint64_t revision = 0;
+    size_t totalCount = 0;
+
+    std::vector<PlaylistRow> rows;
+};
+
+std::string playlistRowsDocument(const PlaylistRowsRead& read);
+
+struct ChangedPlaylistRow {
+    uint32_t position = 0;
+    PlaylistRow row;
+};
+
+struct PlaylistChangesRead {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    DeltaOutcome catchUp = DeltaOutcome::ok;
+
+    uint64_t revision = 0;
+
+    std::vector<ChangedPlaylistRow> rows;
+};
+
+std::string playlistChangesDocument(const PlaylistChangesRead& read);
+
+struct PlaylistPageRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    uint32_t offset = 0;
+    uint32_t count = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+PlaylistPageRequest parsePlaylistPage(const std::string& offsetText, const std::string& countText);
+
 // One entry in the play queue, as a client draws a row: the fixed fields a row shows, the
 // library path GET /api/artwork?track= takes where the media library holds the track, and
 // where the track sits in a playlist where it still has a position. `location` is unset for a
@@ -198,7 +244,7 @@ std::string libraryDocument(const Library::State& state);
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
                           std::chrono::steady_clock::time_point now,
-                          uint64_t queueRevision = 0);
+                          uint64_t queueRevision = 0, uint64_t playlistsRevision = 0);
 
 std::string libraryRefusedDocument(const LibraryRequest& request);
 std::string libraryFailedDocument(DeltaOutcome outcome);

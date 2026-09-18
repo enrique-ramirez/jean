@@ -688,6 +688,25 @@ function parseQueuePosition(
 	return { ok: true, at: { index: record.at, revision: record.revision } };
 }
 
+// Exactly the fields contract/openapi.yaml declares for each request body below,
+// `additionalProperties: false` there; `declaresOnly` refuses anything else, mirroring
+// core/api.cpp's own `declaresOnly` and its three field lists.
+const QUEUE_ROWS_FIELDS = ["playlistId", "positions", "at", "revision"];
+const QUEUE_TRACKS_FIELDS = [
+	"structure",
+	"runs",
+	"bitset",
+	"ordinals",
+	"at",
+	"revision",
+];
+const MOVE_QUEUE_FIELDS = ["from", "to", "revision"];
+
+const declaresOnly = (
+	record: Record<string, unknown>,
+	fields: readonly string[],
+): boolean => Object.keys(record).every((key) => fields.includes(key));
+
 type ParsedQueueRows =
 	| {
 			ok: true;
@@ -711,6 +730,9 @@ function parseQueueRows(body: unknown): ParsedQueueRows {
 		};
 
 	const record = body as Record<string, unknown>;
+
+	if (!declaresOnly(record, QUEUE_ROWS_FIELDS))
+		return { ok: false, ...fillFailure(400, "malformed request") };
 
 	if (
 		typeof record.playlistId !== "string" ||
@@ -778,6 +800,9 @@ function parseQueueTracks(
 
 	const record = body as Record<string, unknown>;
 
+	if (!declaresOnly(record, QUEUE_TRACKS_FIELDS))
+		return { ok: false, ...fillFailure(400, "malformed request") };
+
 	if (!Number.isInteger(record.structure))
 		return {
 			ok: false,
@@ -835,6 +860,9 @@ function parseMoveQueue(body: unknown): ParsedMoveQueue {
 		};
 
 	const record = body as Record<string, unknown>;
+
+	if (!declaresOnly(record, MOVE_QUEUE_FIELDS))
+		return { ok: false, ...fillFailure(400, "malformed request") };
 
 	if (!isNonNegInt(record.from))
 		return {

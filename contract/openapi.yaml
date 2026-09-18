@@ -485,18 +485,18 @@ paths:
     get:
       tags: [playlists]
       operationId: getPlaylists
-      summary: Which playlists are autoplaylists, and which this component created.
+      summary: Every playlist the player holds.
       description: |
-        Not a playlist listing. beefweb answers that at `GET http://<player>:8880/api/playlists`, with titles, item counts, total time and which playlist is current. This route reports only what beefweb cannot, and repeats none of it.
+        One entry per playlist, in playlist order: the GUID every route here addresses a playlist by, its title, how many rows it holds, whether it is an autoplaylist, the role where this component keeps the playlist for a purpose of its own, and the two numbers that say whether rows a client already holds are still current.
 
-        One entry per playlist, in playlist order. Join it to beefweb's answer on `beefwebId`, falling back to `index`. `title` is for checking a join, not for display.
+        ### The two numbers
 
-        ### Ask beefweb first
+        `structure` moves when a playlist's rows are added, removed, reordered or replaced, so rows held against an older one sit at positions that have moved. `revision` moves when a row already in the playlist would answer differently, a tag, a rating or a play count, and the rows stay where they are.
 
-        beefweb assigns its playlist ids lazily, when it next rebuilds its map. A playlist this component has just created therefore reports `beefwebId: null` until beefweb looks again, and creating it is enough to make beefweb do so. A client MUST request beefweb's playlists before this route for the join to be complete.
+        Both are counters kept for as long as this component runs rather than anything the player stores, so neither repeats a value across a restart of it and a client holding numbers from an earlier run reads the playlist again.
       responses:
         "200":
-          description: One annotation per playlist.
+          description: One entry per playlist.
           content:
             application/json:
               schema:
@@ -773,6 +773,75 @@ paths:
           type: string
           pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
         example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+    get:
+      tags: [playlists]
+      operationId: getPlaylistItems
+      summary: A page of a playlist's rows, in the columns the client declares.
+      description: |
+        Every column is evaluated against the row's own handle, so a file dragged into a playlist from outside the media library draws like every other row. `libraryPath` is the library-relative path `GET /artwork?track=` takes, and it is `null` for exactly those rows the media library does not hold.
+
+        The answer carries the playlist's whole `totalCount` alongside the page, and the `structure` and `revision` it was read at. Rows held against an older `structure` sit at positions that have moved and MUST be read again; a moved `revision` alone means the rows are where they were and their content is what changed.
+
+        A `count` reaching past the end answers the rows that remain, and an `offset` at or past the end answers no rows at all. Both still carry `totalCount`, `structure` and `revision`, so a client wanting only those asks for a `count` of zero.
+      parameters:
+        - name: offset
+          in: query
+          required: true
+          description: The position of the first row to answer, counting from zero.
+          schema: { type: integer, minimum: 0, maximum: 4294967295 }
+          example: 0
+        - name: count
+          in: query
+          required: true
+          description: How many rows to answer at most. Zero answers the counts and no rows.
+          schema: { type: integer, minimum: 0, maximum: 4294967295 }
+          example: 100
+        - name: columns
+          in: query
+          required: true
+          description: |
+            The columns to evaluate, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. Each row answers one value per column, in the order declared.
+
+            Passed to foobar2000's title-formatting compiler untouched, under the same gate `GET /library/export` puts on a declaration: at most 64, each 1 to 1024 printable characters, and no repeats.
+          schema:
+            type: array
+            items: { type: string, minLength: 1, maxLength: 1024 }
+            minItems: 1
+            maxItems: 64
+          style: form
+          explode: true
+      responses:
+        "200":
+          description: The page, and the counts the whole playlist stands at.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistPage" }
+              examples:
+                default:
+                  summary: Two rows of a five-row playlist, the second of them outside the media library.
+                  value:
+                    structure: 12
+                    revision: 30
+                    totalCount: 5
+                    items:
+                      - columns: ["Imaginary Track", "Fictional Artist"]
+                        libraryPath: "Fictional Artist/Imaginary Album/01 Track.flac"
+                      - columns: ["Dragged in", "Somebody Else"]
+                        libraryPath: null
+        "400":
+          description: |
+            The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, or an `offset` or `count` that is missing, not a whole number or larger than 4294967295. The schemas below tell the column refusals from the other two.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/LibraryRefusal"
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
     post:
       tags: [playlists]
       operationId: fillPlaylist
@@ -813,6 +882,94 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/FillUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /playlists/{id}/items/changes:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+    get:
+      tags: [playlists]
+      operationId: getPlaylistItemChanges
+      summary: The rows of a playlist whose content moved since a revision.
+      description: |
+        The patch between the `revision` a client holds for one playlist and the current one. It carries only the rows whose content would answer differently, each at the position it sits at, in the same shape `GET /playlists/{id}/items` answers a row in, so a client patches what it holds rather than reading the page again.
+
+        Call this when `GET /state`'s `playlistsRevision` has moved and `GET /playlists` reports the same `structure` and a higher `revision` for this playlist. A different `structure` is a `409`: rows were added, removed or reordered, so every position the client holds names something else.
+
+        A revision nothing has changed since is a `200` carrying no rows, never an error.
+
+        The component keeps a bounded window of which positions changed at each revision and drops a playlist's window when its `structure` moves. Falling behind that window is a `410`. Both refusals have the same remedy, and it is this playlist's page rather than the library export `GET /library/changes` sends a client to.
+      parameters:
+        - name: structure
+          in: query
+          required: true
+          description: |
+            The `structure` generation the client's positions were read at, from the page or the delta it holds. Required rather than defaulted to the current one: a client patching by position always knows which generation its positions belong to, and a request that does not name one cannot be told from a stale one.
+          schema: { type: integer, minimum: 0 }
+          example: 12
+        - name: since
+          in: query
+          required: true
+          description: |
+            The `revision` the client currently holds for this playlist. A whole number.
+          schema: { type: integer, minimum: 0 }
+          example: 29
+        - name: columns
+          in: query
+          required: true
+          description: |
+            The columns to evaluate, on the same terms as `GET /playlists/{id}/items`: repeated once per column, never comma-separated, at most 64, each 1 to 1024 printable characters, and no repeats. Send the set the held page was read with, or the patched rows will carry different values from the rows around them.
+          schema:
+            type: array
+            items: { type: string, minLength: 1, maxLength: 1024 }
+            minItems: 1
+            maxItems: 64
+          style: form
+          explode: true
+      responses:
+        "200":
+          description: The rows that moved, and the revision they bring the client up to.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistChanges" }
+              examples:
+                default:
+                  summary: Two rows rated since revision 29, one of them outside the media library.
+                  value:
+                    revision: 30
+                    items:
+                      - position: 1
+                        columns: ["Imaginary Track", "Fictional Artist"]
+                        libraryPath: "Fictional Artist/Imaginary Album/02 Track.flac"
+                      - position: 2
+                        columns: ["Dragged in", "Somebody Else"]
+                        libraryPath: null
+                caughtUp:
+                  summary: Nothing has changed since the revision asked from.
+                  value: { revision: 30, items: [] }
+        "400":
+          description: |
+            The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all or a set the column gate refuses, a missing `since`, or a `structure` or `since` that is not a whole number. The schemas below tell the column and revision refusals from the other two.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/LibraryRefusal"
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "409": { $ref: "#/components/responses/PlaylistRowsMoved" }
+        "410": { $ref: "#/components/responses/PlaylistRevisionGone" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /state:
@@ -870,6 +1027,7 @@ paths:
                       playingLocation:
                         { playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04, index: 3 }
                       queueRevision: 4
+                      playlistsRevision: 7
                 building:
                   summary: The component is up and the first walk has not finished.
                   value:
@@ -888,6 +1046,7 @@ paths:
                       artist: null
                       playingLocation: null
                       queueRevision: 0
+                      playlistsRevision: 0
         "304": { $ref: "#/components/responses/NotModified" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/StatePolledTooFast" }
@@ -1722,6 +1881,40 @@ components:
             nothingYet:
               value: { error: the library snapshot has not been built yet, detail: "" }
 
+    PlaylistRowsMoved:
+      description: |
+        The `structure` the request named is no longer the playlist's current one: its rows were added, removed or reordered, so every position the client holds names a different track and patching one would draw the wrong row. Read the playlist's rows again, from the `structure` `GET /playlists` now reports.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            restructured:
+              value:
+                error: "the playlist's rows were added, removed or reordered; read them again"
+                detail: ""
+
+    PlaylistRevisionGone:
+      description: |
+        The revision asked to catch up from is outside the window this playlist retains, or it is ahead of the current one, which is what a client holding rows across a component restart sees. The remedy is the same as the `409`'s: read the playlist's rows again.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            gone:
+              value:
+                error: "that revision is older than the retained window; read the playlist's rows again"
+                detail: ""
+
+    PlaylistRowsUnavailable:
+      description: |
+        The component could not reach the part of the player a playlist's rows are read from. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: the playlist's rows are not available }
+
     OwnPlaylistsUnavailable:
       description: |
         The component could not reach the playlist machinery its own scratch playlist depends on. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`, and unrelated to the read-only-playlists setting, which never reaches this route.
@@ -2275,38 +2468,53 @@ components:
 
     PlaylistAnnotation:
       description: |
-        What this component knows about one playlist that beefweb does not report, and nothing else. Title, item count, total time and which playlist is current all come from beefweb.
+        One playlist, with everything a client draws its entry in a list from.
       type: object
       additionalProperties: false
-      required: [id, beefwebId, index, title, isAutoPlaylist, managed]
+      required: [id, index, title, itemCount, isAutoPlaylist, role, structure, revision, managed]
       properties:
         id:
           type: string
           description: |
             foobar2000's own playlist GUID, lower case and dashed. Stable across renames, reordering and restarts, and never reused. It is what the routes here address, and what a client SHOULD store to find a playlist again later.
           examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
-        beefwebId:
-          type: [string, "null"]
-          description: |
-            beefweb's id for the same playlist, read from the property beefweb keeps it in. This is the join key between the two APIs, and it is exact, unlike matching on a title foobar2000 permits duplicates of or on an index that changes under both.
-
-            `null` when beefweb has not assigned one yet, which is the case for a playlist just created here until beefweb next rebuilds its map. Request beefweb's playlists first and this is filled in.
-
-            Read, never written: it is another component's bookkeeping.
-          examples: ["p3"]
         index:
           type: integer
           minimum: 0
           description: |
-            Position in the player, and the fallback join key when `beefwebId` is null. Not identity: creating, deleting or reordering a playlist changes it.
+            Position in the player's own playlist list, counting from zero. Not identity: creating, deleting or reordering a playlist changes it.
         title:
           type: string
           description: |
-            For checking a join rather than for display. beefweb's answer is the one to show; this is a snapshot from a different request.
+            The playlist's title, as the player holds it. foobar2000 permits two playlists to share one, so it is for display rather than for identity.
+        itemCount:
+          type: integer
+          minimum: 0
+          description: |
+            How many rows the playlist holds.
         isAutoPlaylist:
           type: boolean
           description: |
-            Whether the playlist is an autoplaylist. This is the question beefweb cannot answer. True for any autoplaylist, including ones made in foobar2000 before this component was installed.
+            Whether the playlist is an autoplaylist, filled and kept filled by the player from a query. True for any autoplaylist, including ones made in foobar2000 before this component was installed.
+        role:
+          type: [string, "null"]
+          enum:
+            - scratch
+            - null
+          description: |
+            What this component keeps the playlist for, and `null` for every playlist it keeps for nothing of its own, which is all of them a user made. `scratch` is the playlist a fill puts a set of tracks in for the player to play, and a client SHOULD hide it from the playlist list it draws.
+
+            Read from a marker this component writes on the playlist rather than from the title, so a playlist renamed at the player keeps its role and a playlist somebody titles to look like this one never gains one.
+        structure:
+          type: integer
+          minimum: 0
+          description: |
+            Moves when the playlist's rows are added, removed, reordered or replaced. Rows a client read at an earlier value are at positions that have moved, and it MUST read them again.
+        revision:
+          type: integer
+          minimum: 0
+          description: |
+            Moves when a row already in the playlist would answer differently, a tag, a rating or a play count. The rows stay where they are.
         managed:
           description: |
             What this component stored when it created the playlist, or `null` for every playlist it did not create, including autoplaylists made in the player. This is how a client tells a folder it manages from an autoplaylist that was already there.
@@ -2523,6 +2731,8 @@ components:
             - this install's autoplaylist limit is reached
             - tracks were added or removed; export the library again
             - the queue changed since that revision; read it again
+            - the playlist's rows were added, removed or reordered; read them again
+            - that revision is older than the retained window; read the playlist's rows again
             - the player could not do that
             - the player did not answer in time
             - autoplaylists are not available
@@ -2602,7 +2812,7 @@ components:
       additionalProperties: false
       required:
         [playback, path, subsong, position, duration, volume, muted, playbackMode, title, artist,
-         playingLocation, queueRevision]
+         playingLocation, queueRevision, playlistsRevision]
       properties:
         playback:
           type: string
@@ -2651,6 +2861,10 @@ components:
           type: integer
           description: |
             Moves when the queue's contents or order change, or when a queued entry's playlist position shifts or is lost. Never moves for anything else this section reports.
+        playlistsRevision:
+          type: integer
+          description: |
+            Moves when a playlist is created, removed, moved in the list or retitled, and when any playlist's `structure` or `revision` moves. A client re-reads `GET /playlists` when the one it holds has moved, and not otherwise.
 
     Position:
       description: |
@@ -2670,6 +2884,91 @@ components:
           description: |
             How long before this response was built the mark was taken, in seconds. `0` when
             no mark has ever been taken.
+
+    PlaylistPage:
+      description: |
+        `GET /playlists/{id}/items`'s whole answer: the rows asked for, how many the playlist holds, and the two numbers they were read at.
+      type: object
+      additionalProperties: false
+      required: [structure, revision, totalCount, items]
+      properties:
+        structure:
+          type: integer
+          minimum: 0
+          description: |
+            The playlist's structure generation as of this read, the same number `GET /playlists` reports for it. Rows held against an older one sit at positions that have moved.
+        revision:
+          type: integer
+          minimum: 0
+          description: |
+            The playlist's content revision as of this read. A higher one with the same `structure` means a row already in the playlist would answer differently.
+        totalCount:
+          type: integer
+          minimum: 0
+          description: How many rows the whole playlist holds, not how many this page carries.
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PlaylistRow" }
+
+    PlaylistChanges:
+      description: |
+        `GET /playlists/{id}/items/changes`'s whole answer: the rows whose content moved, and the revision they bring the client up to. No `structure`, because the request named the only one this answer can be against.
+      type: object
+      additionalProperties: false
+      required: [revision, items]
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+          description: |
+            The playlist's content revision as of this read. A client that patches these rows in holds this revision and asks from it next time.
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ChangedPlaylistRow" }
+          description: |
+            Only the rows whose content moved, in no promised order. A client patches each into the page it holds by `position`.
+
+    ChangedPlaylistRow:
+      description: |
+        One row whose content moved, in the shape `PlaylistRow` carries plus the position it sits at.
+      type: object
+      additionalProperties: false
+      required: [position, columns, libraryPath]
+      properties:
+        position:
+          type: integer
+          minimum: 0
+          description: |
+            Where this row sits in the playlist, counting from zero, at the `structure` the request named.
+          examples: [1]
+        columns:
+          type: array
+          items: { type: string }
+          description: |
+            One value per declared column, in the order declared. A field the player cannot resolve is `?`, which is how a client tells an unresolved field from an empty one.
+          examples: [["Imaginary Track", "Fictional Artist"]]
+        libraryPath:
+          type: [string, "null"]
+          description: |
+            The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not.
+
+    PlaylistRow:
+      description: |
+        One row of a playlist, evaluated against the handle that row holds rather than against a media library record, so a track the library does not hold answers its columns like every other row.
+      type: object
+      additionalProperties: false
+      required: [columns, libraryPath]
+      properties:
+        columns:
+          type: array
+          items: { type: string }
+          description: |
+            One value per declared column, in the order declared. A field the player cannot resolve is `?`, which is how a client tells an unresolved field from an empty one.
+          examples: [["Imaginary Track", "Fictional Artist"]]
+        libraryPath:
+          type: [string, "null"]
+          description: |
+            The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not.
 
     QueueRead:
       description: |

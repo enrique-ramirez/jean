@@ -144,6 +144,10 @@ std::vector<QueueEntry> oneQueued() {
     return {entry};
 }
 
+std::vector<PlaylistMark> oneListed() {
+    return {PlaylistMark{kPlayingPlaylistId, "Evening", 1, 1}};
+}
+
 bool mentions(const std::string& body, const std::string& text) {
     return toLower(body).find(toLower(text)) != std::string::npos;
 }
@@ -757,6 +761,79 @@ TEST_CASE("a conditional poll is a 200 when the queue changed, and a 304 when it
     REQUIRE(unchanged);
     CHECK(unchanged->status == 304);
     CHECK(unchanged->get_header_value("ETag") == queuedTag);
+}
+
+TEST_CASE("the poll's playlists revision moves with the playlists and not with the player") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    const TestServer server = serving(&library, &store);
+
+    const auto before = playerSection(server);
+    REQUIRE(before.contains("playlistsRevision"));
+    REQUIRE(before["playlistsRevision"].is_number_unsigned());
+
+    store.seeked(90, std::chrono::steady_clock::now());
+    const auto afterTheSeek = playerSection(server);
+
+    store.playlistsChanged(oneListed());
+    const auto afterTheList = playerSection(server);
+
+    REQUIRE(afterTheSeek.contains("playlistsRevision"));
+    REQUIRE(afterTheList.contains("playlistsRevision"));
+    CHECK(afterTheSeek["playlistsRevision"] == before["playlistsRevision"]);
+    CHECK(afterTheList["playlistsRevision"].get<uint64_t>() >
+          afterTheSeek["playlistsRevision"].get<uint64_t>());
+}
+
+TEST_CASE("the player section names the playlists revision once and carries nothing else new") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playingFromThePlaylist());
+    store.playlistsChanged(oneListed());
+    const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
+
+    const std::set<std::string> published = {
+        "playback",        "path",          "subsong",           "position",
+        "duration",        "volume",        "muted",             "playbackMode",
+        "title",           "artist",        "playingLocation",   "queueRevision",
+        "playlistsRevision"};
+
+    CHECK(keysOf(playerSection(server)) == published);
+}
+
+TEST_CASE("a conditional poll is a 200 when the playlists changed, and a 304 when they did not") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    store.playlistsChanged(oneListed());
+
+    const auto listed = getHolding(server, "/api/state", tag);
+    REQUIRE(listed);
+    CHECK(listed->status == 200);
+
+    const auto listedTag = listed->get_header_value("ETag");
+    REQUIRE_FALSE(listedTag.empty());
+    CHECK(listedTag != tag);
+
+    store.playlistsChanged(oneListed());
+
+    const auto unchanged = getHolding(server, "/api/state", listedTag);
+    REQUIRE(unchanged);
+    CHECK(unchanged->status == 304);
+    CHECK(unchanged->get_header_value("ETag") == listedTag);
 }
 
 // One document carries both halves, so a validator that stopped reporting the library when the

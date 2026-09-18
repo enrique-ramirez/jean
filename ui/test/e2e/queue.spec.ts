@@ -1,8 +1,10 @@
+import type { APIRequestContext } from "@playwright/test";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	dragFrom,
 	expect,
 	expectSettlesAt,
+	FOO_JEAN_TOKEN,
 	nowPlayingScreen,
 	openAllMusic,
 	openLibrary,
@@ -1636,6 +1638,167 @@ test.describe("the queue is the component's", () => {
 
 		await expectRefusalToast(page);
 		await expectPanelShows(page, [second, queuedSince]);
+	});
+});
+
+const STRAY_FIELD = { title: "copied from a fill request" };
+
+// What the component answers a body it will not read, from
+// `PlaylistRefusal::malformedBody`: the refusal itself, with no detail to add.
+const MALFORMED_BODY = { error: "malformed request", detail: "" };
+
+const componentOrigin = async (request: APIRequestContext) => {
+	const { port } = await (
+		await request.get("/api/clientconfig/foo_jean")
+	).json();
+	return `http://localhost:${port}`;
+};
+
+const AS_A_CLIENT = { headers: { Authorization: `Bearer ${FOO_JEAN_TOKEN}` } };
+
+const postToComponent = (
+	request: APIRequestContext,
+	url: string,
+	body: Record<string, unknown>,
+) => request.post(url, { ...AS_A_CLIENT, data: body });
+
+const readFromComponent = async (request: APIRequestContext, url: string) =>
+	await (await request.get(url, AS_A_CLIENT)).json();
+
+// foobar2000's own id for a playlist beefweb calls `p7`, which is what a queue
+// request names a playlist by.
+const guidOfPlaylist = async (
+	request: APIRequestContext,
+	origin: string,
+	beefwebId: string,
+) => {
+	const { playlists } = await readFromComponent(
+		request,
+		`${origin}/api/playlists`,
+	);
+	const found = playlists.find(
+		(entry: { id: string; beefwebId: string }) => entry.beefwebId === beefwebId,
+	);
+	if (!found)
+		throw new Error(`the component annotated no playlist ${beefwebId}`);
+	return found.id as string;
+};
+
+// Nothing is exported until a client names a column set, and a queue by handle
+// against a library that was never built is a 503 before any body is read.
+const buildTheLibrary = async (request: APIRequestContext, origin: string) => {
+	const built = await request.get(
+		`${origin}/api/library/export?columns=${encodeURIComponent("%title%")}`,
+		AS_A_CLIENT,
+	);
+	expect(built.status()).toBe(200);
+	const { library } = await readFromComponent(request, `${origin}/api/state`);
+	return library.structure as number;
+};
+
+// The component refuses a body carrying any field the contract does not declare,
+// before anything is queued or moved: `additionalProperties: false` on each of
+// the three queue request schemas in contract/openapi.yaml. Asked of the fake
+// directly, because what is under test is the fake's own parsing, and Jean's
+// queue bodies are built from the generated types and carry no such field. One
+// test per schema, since a fake that closed one body and left the next open
+// would still let a client ship a request every real install answers 400.
+//
+// Each case sends the same body twice, once with the stray field and once
+// without, so the field is the only difference between a 400 and a 204.
+test.describe("a queue body carrying a field the contract does not declare", () => {
+	test("a playlist-rows body with a field no queue schema declares is refused, and nothing is queued", async ({
+		request,
+		player,
+	}) => {
+		const origin = await componentOrigin(request);
+		const body = {
+			playlistId: await guidOfPlaylist(request, origin, "p7"),
+			positions: [0],
+		};
+
+		const refused = await postToComponent(request, `${origin}/api/queue`, {
+			...body,
+			...STRAY_FIELD,
+		});
+
+		expect(refused.status()).toBe(400);
+		expect(await refused.json()).toEqual(MALFORMED_BODY);
+		expect(queuedTitlesAtThePlayer(player)).toEqual([]);
+
+		const accepted = await postToComponent(
+			request,
+			`${origin}/api/queue`,
+			body,
+		);
+
+		expect(accepted.status()).toBe(204);
+		expect(queuedTitlesAtThePlayer(player)).toHaveLength(1);
+	});
+
+	test("a library-tracks body with a field no queue schema declares is refused, and nothing is queued", async ({
+		request,
+		player,
+	}) => {
+		const origin = await componentOrigin(request);
+		const body = {
+			structure: await buildTheLibrary(request, origin),
+			ordinals: [0],
+		};
+
+		const refused = await postToComponent(request, `${origin}/api/queue`, {
+			...body,
+			...STRAY_FIELD,
+		});
+
+		expect(refused.status()).toBe(400);
+		expect(await refused.json()).toEqual(MALFORMED_BODY);
+		expect(queuedTitlesAtThePlayer(player)).toEqual([]);
+
+		const accepted = await postToComponent(
+			request,
+			`${origin}/api/queue`,
+			body,
+		);
+
+		expect(accepted.status()).toBe(204);
+		expect(queuedTitlesAtThePlayer(player)).toHaveLength(1);
+	});
+
+	test("a move body with a field no queue schema declares is refused, and the queue keeps its order", async ({
+		request,
+		player,
+	}) => {
+		const origin = await componentOrigin(request);
+		await postToComponent(request, `${origin}/api/queue`, {
+			playlistId: await guidOfPlaylist(request, origin, "p7"),
+			positions: [0, 1],
+		});
+		const { revision } = await readFromComponent(
+			request,
+			`${origin}/api/queue`,
+		);
+		const queued = queuedTitlesAtThePlayer(player);
+		expect(queued).toHaveLength(2);
+
+		const body = { from: 1, to: 0, revision };
+		const refused = await postToComponent(request, `${origin}/api/queue/move`, {
+			...body,
+			...STRAY_FIELD,
+		});
+
+		expect(refused.status()).toBe(400);
+		expect(await refused.json()).toEqual(MALFORMED_BODY);
+		expect(queuedTitlesAtThePlayer(player)).toEqual(queued);
+
+		const accepted = await postToComponent(
+			request,
+			`${origin}/api/queue/move`,
+			body,
+		);
+
+		expect(accepted.status()).toBe(204);
+		expect(queuedTitlesAtThePlayer(player)).toEqual([queued[1], queued[0]]);
 	});
 });
 

@@ -1,18 +1,20 @@
 #pragma once
 
 #include "core/json.h"
+#include "core/library.h"
 #include "core/player_state.h"
 
+#include <cstdint>
+#include <deque>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-// Autoplaylists, and the one question about playlists that beefweb cannot answer. Pure:
-// a request is understood and refused here, and the player is involved in fb2k/playlists.h.
-//
-// This does not list playlists. beefweb does that, and a second listing would be a second
-// source of truth about titles, item counts and order.
+// Playlists and autoplaylists. Pure: a request is understood and refused here, and the
+// player is involved in fb2k/playlists.h.
 namespace jean {
 
 // `query` and `sort` are foobar2000's own syntax, passed through untouched: only the
@@ -29,6 +31,15 @@ struct AutoPlaylistSpec {
     bool forceSort = false;
 };
 
+// One of the component's own playlists. Closed to this one so a request can never address
+// a second of its own invention, and so nothing resolves one by matching a title.
+enum class OwnPlaylistRole { scratch };
+
+// The name a role answers to. It is also the marker fb2k/playlists.cpp writes on the
+// playlist, which foobar2000 keeps across restarts, so changing a name here loses every
+// playlist already carrying the old one.
+std::string roleName(OwnPlaylistRole role);
+
 struct PlaylistAnnotation {
     // foobar2000's playlist GUID. Stable across renames, reordering and restarts, and
     // never reused.
@@ -38,17 +49,83 @@ struct PlaylistAnnotation {
 
     int index = 0;
 
-    // A snapshot from another request: for checking a join against, not for display.
     std::string title;
 
+    size_t itemCount = 0;
+
     bool isAutoPlaylist = false;
+
+    std::optional<OwnPlaylistRole> role;
+
+    uint64_t structure = 0;
+    uint64_t revision = 0;
 
     std::optional<AutoPlaylistSpec> managed;
 };
 
-// One of the component's own playlists. Closed to this one so a request can never address
-// a second of its own invention, and so nothing resolves one by matching a title.
-enum class OwnPlaylistRole { scratch };
+// ARCHITECTURE.md, *Two generations*, is the split these copy, one playlist at a time.
+struct PlaylistVersion {
+    uint64_t structure = 0;
+    uint64_t revision = 0;
+};
+
+enum class RowsChanged { added, removed, reordered, replaced };
+
+// The fields fb2k/playlists.h's ChangedPositions carries, in the order it copies them.
+struct ChangedSince {
+    DeltaOutcome catchUp = DeltaOutcome::ok;
+    uint64_t revision = 0;
+    std::vector<uint32_t> positions;
+};
+
+// Same figure as core/library.h's kRetainedRevisions, ARCHITECTURE.md *Two generations* is
+// why. Named separately because this window is kept per playlist rather than once per
+// install, so what it costs is multiplied by however many playlists have seen a change.
+constexpr size_t kRetainedPlaylistRevisions = kRetainedRevisions;
+
+class PlaylistVersions {
+public:
+    explicit PlaylistVersions(size_t retainedRevisions = kRetainedPlaylistRevisions);
+
+    void rowsChanged(const std::string& playlistId, RowsChanged how);
+
+    void contentChanged(const std::string& playlistId, const std::vector<uint32_t>& positions);
+
+    // Where the player says it is playing, or nothing. A play count reaches no callback on any
+    // install, so the row a track leaves is recorded on the way out whatever the player
+    // announced: ARCHITECTURE.md, *Facts about the player*.
+    void playingRowChanged(const std::optional<PlayingLocation>& nowPlaying);
+
+    PlaylistVersion of(const std::string& playlistId) const;
+
+    ChangedSince changedSince(const std::string& playlistId, uint64_t structure,
+                              uint64_t since) const;
+
+private:
+    struct Retained {
+        uint64_t revision = 0;
+        std::vector<uint32_t> positions;
+    };
+
+    struct Tracked {
+        explicit Tracked(uint64_t startOfRun)
+            : version{startOfRun, startOfRun}, structureBegan(startOfRun) {}
+
+        PlaylistVersion version;
+        uint64_t structureBegan;
+        std::deque<Retained> retained;
+    };
+
+    Tracked& trackedLocked(const std::string& playlistId);
+    void recordChangeLocked(const std::string& playlistId, std::vector<uint32_t> positions);
+
+    const size_t retainedRevisions_;
+    const Tracked untouched_;
+
+    mutable std::mutex mutex_;
+    std::unordered_map<std::string, Tracked> playlists_;
+    std::optional<PlayingLocation> playingRow_;
+};
 
 enum class PlaylistRefusal {
     none,
@@ -87,6 +164,8 @@ enum class PlaylistOutcome {
     // client with both remedies at hand -- re-read the queue, or export the library again --
     // knows which one applies.
     queueMoved,
+    rowsMoved,
+    rowsRevisionTooOld,
     playerRefused,
     timedOut,
     unavailable,

@@ -39,10 +39,13 @@ json timelineMark(const StreamMark& mark) {
 json annotation(const PlaylistAnnotation& playlist) {
     json body;
     body["id"] = playlist.id;
-    body["beefwebId"] = playlist.beefwebId.empty() ? json(nullptr) : json(playlist.beefwebId);
     body["index"] = playlist.index;
     body["title"] = playlist.title;
+    body["itemCount"] = playlist.itemCount;
     body["isAutoPlaylist"] = playlist.isAutoPlaylist;
+    body["role"] = playlist.role ? json(roleName(*playlist.role)) : json(nullptr);
+    body["structure"] = playlist.structure;
+    body["revision"] = playlist.revision;
     body["managed"] = playlist.managed ? json{{"key", playlist.managed->key},
                                               {"query", playlist.managed->query},
                                               {"sort", playlist.managed->sort},
@@ -84,6 +87,17 @@ json playingLocationOf(const std::optional<PlayingLocation>& location) {
     return json{{"playlistId", location->playlistId}, {"index", location->index}};
 }
 
+json playlistRowOf(const PlaylistRow& row) {
+    return json{{"columns", row.columns},
+                {"libraryPath", row.libraryPath ? json(*row.libraryPath) : json(nullptr)}};
+}
+
+json changedPlaylistRowOf(const ChangedPlaylistRow& changed) {
+    auto row = playlistRowOf(changed.row);
+    row["position"] = changed.position;
+    return row;
+}
+
 json queuedTrackOf(const QueuedTrack& track) {
     return json{{"title", track.title},
                 {"artist", track.artist},
@@ -95,7 +109,7 @@ json queuedTrackOf(const QueuedTrack& track) {
 }
 
 json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now,
-                  uint64_t queueRevision) {
+                  uint64_t queueRevision, uint64_t playlistsRevision) {
     return json{{"playback", playbackName(player.playback)},
                 {"path", player.path},
                 {"subsong", player.subsong},
@@ -108,7 +122,8 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
                 {"title", player.title ? json(*player.title) : json(nullptr)},
                 {"artist", player.artist ? json(*player.artist) : json(nullptr)},
                 {"playingLocation", playingLocationOf(player.playingLocation)},
-                {"queueRevision", queueRevision}};
+                {"queueRevision", queueRevision},
+                {"playlistsRevision", playlistsRevision}};
 }
 
 // The player's own listing order, kept: a sorted one would tell a client the modes came off a
@@ -148,6 +163,12 @@ MoveQueueRequest refuseMoveQueue(PlaylistRefusal refusal) {
 
 RemoveQueueRequest refuseRemoveQueue(PlaylistRefusal refusal) {
     RemoveQueueRequest request;
+    request.refusal = refusal;
+    return request;
+}
+
+PlaylistPageRequest refusePlaylistPage(PlaylistRefusal refusal) {
+    PlaylistPageRequest request;
     request.refusal = refusal;
     return request;
 }
@@ -516,6 +537,40 @@ std::string fillResultDocument(const std::string& playlistId, const std::string&
         .dump();
 }
 
+std::string playlistRowsDocument(const PlaylistRowsRead& read) {
+    json items = json::array();
+    std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(items), playlistRowOf);
+
+    return json{{"structure", read.structure},
+                {"revision", read.revision},
+                {"totalCount", read.totalCount},
+                {"items", std::move(items)}}
+        .dump();
+}
+
+std::string playlistChangesDocument(const PlaylistChangesRead& read) {
+    json items = json::array();
+    std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(items),
+                   changedPlaylistRowOf);
+
+    return json{{"revision", read.revision}, {"items", std::move(items)}}.dump();
+}
+
+PlaylistPageRequest parsePlaylistPage(const std::string& offsetText, const std::string& countText) {
+    uint64_t offset = 0;
+    if (!readDecimal(offsetText, offset) || !fitsUint32(offset))
+        return refusePlaylistPage(PlaylistRefusal::badOrdinals);
+
+    uint64_t count = 0;
+    if (!readDecimal(countText, count) || !fitsUint32(count))
+        return refusePlaylistPage(PlaylistRefusal::badOrdinals);
+
+    PlaylistPageRequest request;
+    request.offset = static_cast<uint32_t>(offset);
+    request.count = static_cast<uint32_t>(count);
+    return request;
+}
+
 std::string queueDocument(const QueueRead& read) {
     json entries = json::array();
     std::transform(read.entries.begin(), read.entries.end(), std::back_inserter(entries),
@@ -708,7 +763,10 @@ int httpStatusFor(PlaylistOutcome outcome) {
         case PlaylistOutcome::tooMany:
         case PlaylistOutcome::structureMoved:
         case PlaylistOutcome::queueMoved:
+        case PlaylistOutcome::rowsMoved:
             return 409;
+        case PlaylistOutcome::rowsRevisionTooOld:
+            return 410;
         case PlaylistOutcome::playerRefused:
             return 500;
         case PlaylistOutcome::timedOut:
@@ -761,9 +819,10 @@ std::string libraryDocument(const Library::State& state) {
 }
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
-                          std::chrono::steady_clock::time_point now, uint64_t queueRevision) {
+                          std::chrono::steady_clock::time_point now, uint64_t queueRevision,
+                          uint64_t playlistsRevision) {
     return json{{"library", libraryFields(state)},
-               {"player", playerFields(player, now, queueRevision)}}
+               {"player", playerFields(player, now, queueRevision, playlistsRevision)}}
         .dump();
 }
 

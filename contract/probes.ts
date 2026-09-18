@@ -10,6 +10,7 @@ export interface Context {
 	run: string;
 	deviceId: string;
 	playlistId: string | null;
+	playlistPage: { structure: number; revision: number } | null;
 	managed: unknown;
 	ticket: string | null;
 	revision: number | null;
@@ -124,6 +125,41 @@ export const drives: Drive[] = [
 			context.playlistId = made.id ?? null;
 			context.managed = made.managed ?? null;
 		},
+	},
+	{
+		// The autoplaylist the run just created rather than whatever playlist an install
+		// happens to hold, so what this pins is a page a conformant implementation answered
+		// and not a 404. An autoplaylist whose query matches nothing answers a page of no
+		// rows, which is the same shape.
+		id: "getPlaylistItems",
+		probe: (_, context) =>
+			context.playlistId === null
+				? null
+				: {
+						pathParams: { id: context.playlistId },
+						query: { offset: "0", count: "1", columns: "%title%" },
+					},
+		learns: (body, context) => {
+			const page = body as { structure?: number; revision?: number };
+			context.playlistPage =
+				page.structure === undefined || page.revision === undefined
+					? null
+					: { structure: page.structure, revision: page.revision };
+		},
+	},
+	{
+		id: "getPlaylistItemChanges",
+		probe: (_, context) =>
+			context.playlistId === null || context.playlistPage === null
+				? null
+				: {
+						pathParams: { id: context.playlistId },
+						query: {
+							structure: String(context.playlistPage.structure),
+							since: String(context.playlistPage.revision),
+							columns: "%title%",
+						},
+					},
 	},
 	{
 		id: "updateAutoPlaylist",

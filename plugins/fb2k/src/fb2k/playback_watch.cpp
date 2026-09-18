@@ -91,6 +91,15 @@ std::optional<PlayingLocation> currentLocation() {
     return PlayingLocation{playlistId(playlist), static_cast<uint32_t>(index)};
 }
 
+// Both halves of what knowing where playback is buys, in one place so that neither can be
+// moved without the other. PlaylistVersions treats the row being left as changed whatever the
+// player announced, which is how a play count reaches the playing playlist at all.
+void publishLocation(PlayerStateStore& store, PlaylistVersions& versions,
+                      const std::optional<PlayingLocation>& location) {
+    store.playingLocationChanged(location);
+    versions.playingRowChanged(location);
+}
+
 QueueEntry queueEntryOf(const t_playback_queue_item& item) {
     QueueEntry entry;
     entry.path = displayPathOf(item.m_handle);
@@ -181,15 +190,16 @@ service_factory_single_t<QueueServiceCallback> g_queueServiceCallback;
 }  // namespace
 
 struct PlaybackWatch::Callback : public play_callback_impl_base {
-    Callback(MainThreadQueue& mainThread, PlayerStateStore& store, OutputHold& outputHold,
-             NowPlayingArtwork& artwork, titleformat_object::ptr titleScript,
-             titleformat_object::ptr artistScript)
+    Callback(MainThreadQueue& mainThread, PlayerStateStore& store, PlaylistVersions& versions,
+             OutputHold& outputHold, NowPlayingArtwork& artwork,
+             titleformat_object::ptr titleScript, titleformat_object::ptr artistScript)
         : play_callback_impl_base(flag_on_playback_new_track | flag_on_playback_pause |
                                    flag_on_playback_stop | flag_on_playback_seek |
                                    flag_on_playback_dynamic_info |
                                    flag_on_playback_dynamic_info_track | flag_on_volume_change),
-          mainThread_(mainThread), store_(store), outputHold_(outputHold), artwork_(artwork),
-          titleScript_(std::move(titleScript)), artistScript_(std::move(artistScript)) {}
+          mainThread_(mainThread), store_(store), versions_(versions), outputHold_(outputHold),
+          artwork_(artwork), titleScript_(std::move(titleScript)),
+          artistScript_(std::move(artistScript)) {}
 
     // Reading the location inline here would race the player: see ARCHITECTURE.md, *Facts about
     // the player*. `started()` leaves `playingLocation` standing on purpose (player_state.cpp),
@@ -211,6 +221,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
             return;
 
         store_.stopped();
+        versions_.playingRowChanged(std::nullopt);
         artwork_.clear();
     }
 
@@ -249,12 +260,16 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
 
     // Deferred for the race ARCHITECTURE.md, *Facts about the player*, describes.
     void queueLocationRead() {
-        mainThread_.enqueue([&store = store_] { store.playingLocationChanged(currentLocation()); },
-                             [] {});
+        mainThread_.enqueue(
+            [&store = store_, &versions = versions_] {
+                publishLocation(store, versions, currentLocation());
+            },
+            [] {});
     }
 
     MainThreadQueue& mainThread_;
     PlayerStateStore& store_;
+    PlaylistVersions& versions_;
     OutputHold& outputHold_;
     NowPlayingArtwork& artwork_;
     titleformat_object::ptr titleScript_;
@@ -282,10 +297,11 @@ struct PlaybackWatch::OrderCallback : public playlist_callback_impl_base {
 // per-row callback of its own, only `on_playlists_removed`, so a queued row losing its position
 // that way needs the same re-read.
 struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
-    LocationCallback(MainThreadQueue& mainThread, PlayerStateStore& store)
+    LocationCallback(MainThreadQueue& mainThread, PlayerStateStore& store,
+                     PlaylistVersions& versions)
         : playlist_callback_impl_base(flag_on_items_added | flag_on_items_removed |
                                        flag_on_items_reordered | flag_on_playlists_removed),
-          mainThread_(mainThread), store_(store) {
+          mainThread_(mainThread), store_(store), versions_(versions) {
         publishQueueTarget(&mainThread_, &store_);
     }
 
@@ -321,7 +337,8 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
             if (playingPlaylist != playlist)
                 return;
 
-            store_.playingLocationChanged(
+            publishLocation(
+                store_, versions_,
                 PlayingLocation{playlistId(playingPlaylist), static_cast<uint32_t>(index)});
             return;
         }
@@ -331,15 +348,17 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
         if (playlists->get_playing_playlist() != playlist)
             return;
 
-        store_.playingLocationChanged(std::nullopt);
+        publishLocation(store_, versions_, std::nullopt);
     }
 
     MainThreadQueue& mainThread_;
     PlayerStateStore& store_;
+    PlaylistVersions& versions_;
 };
 
 PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& store,
-                              OutputHold& outputHold, NowPlayingArtwork& artwork) {
+                              PlaylistVersions& playlistVersions, OutputHold& outputHold,
+                              NowPlayingArtwork& artwork) {
     // On the main thread, once: see the class comment and ARCHITECTURE.md, *Facts about the
     // player*, for why a shared titleformat_object still has to compile here rather than on
     // whichever thread first runs it.
@@ -351,13 +370,14 @@ PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& stor
     titleformat_object::ptr artistScript;
     compiler->compile_safe_ex(artistScript, kArtistScript, "");
 
-    callback_ = std::make_unique<Callback>(mainThread, store, outputHold, artwork, titleScript,
-                                            artistScript);
+    callback_ = std::make_unique<Callback>(mainThread, store, playlistVersions, outputHold,
+                                            artwork, titleScript, artistScript);
     orderCallback_ = std::make_unique<OrderCallback>(store);
-    locationCallback_ = std::make_unique<LocationCallback>(mainThread, store);
+    locationCallback_ = std::make_unique<LocationCallback>(mainThread, store, playlistVersions);
 
     store.publish(initialStateOf(outputHold, std::chrono::steady_clock::now()));
     store.queueChanged(currentQueue());
+    publishLocation(store, playlistVersions, currentLocation());
 
     metadb_handle_ptr track;
     if (playback_control::get()->get_now_playing(track))

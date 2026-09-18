@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <limits>
+#include <random>
+#include <set>
 
 using nlohmann::json;
 
@@ -25,6 +27,13 @@ AutoPlaylistRequest refuse(PlaylistRefusal refusal, std::string detail) {
 
 bool isLowerHex(char c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+uint64_t randomStart() {
+    std::random_device entropy;
+    const uint64_t high = entropy();
+    const uint64_t low = entropy();
+    return (high << 32) | low;
 }
 
 }  // namespace
@@ -194,6 +203,97 @@ AutoPlaylistSpec parseStoredAutoPlaylist(const std::string& stored) {
     return spec;
 }
 
+std::string roleName(OwnPlaylistRole role) {
+    switch (role) {
+        case OwnPlaylistRole::scratch:
+            return "scratch";
+    }
+    return {};
+}
+
+PlaylistVersions::PlaylistVersions(size_t retainedRevisions)
+    : retainedRevisions_(retainedRevisions), untouched_(randomStart()) {}
+
+void PlaylistVersions::rowsChanged(const std::string& playlistId, RowsChanged) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    Tracked& tracked = trackedLocked(playlistId);
+    ++tracked.version.structure;
+    tracked.structureBegan = tracked.version.revision;
+    tracked.retained.clear();
+}
+
+void PlaylistVersions::contentChanged(const std::string& playlistId,
+                                      const std::vector<uint32_t>& positions) {
+    if (positions.empty())
+        return;
+
+    const std::lock_guard<std::mutex> held(mutex_);
+    recordChangeLocked(playlistId, positions);
+}
+
+void PlaylistVersions::playingRowChanged(const std::optional<PlayingLocation>& nowPlaying) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    if (nowPlaying == playingRow_)
+        return;
+
+    const std::optional<PlayingLocation> left = playingRow_;
+    playingRow_ = nowPlaying;
+
+    if (left)
+        recordChangeLocked(left->playlistId, {left->index});
+}
+
+PlaylistVersion PlaylistVersions::of(const std::string& playlistId) const {
+    const std::lock_guard<std::mutex> held(mutex_);
+    const auto found = playlists_.find(playlistId);
+    return found == playlists_.end() ? untouched_.version : found->second.version;
+}
+
+ChangedSince PlaylistVersions::changedSince(const std::string& playlistId, uint64_t structure,
+                                            uint64_t since) const {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    const auto found = playlists_.find(playlistId);
+    const Tracked& tracked = found == playlists_.end() ? untouched_ : found->second;
+
+    if (structure != tracked.version.structure || since < tracked.structureBegan)
+        return {DeltaOutcome::structureChanged, 0, {}};
+    if (since > tracked.version.revision)
+        return {DeltaOutcome::revisionUnknown, 0, {}};
+    if (!tracked.retained.empty() && tracked.retained.front().revision > since + 1)
+        return {DeltaOutcome::revisionTooOld, 0, {}};
+
+    std::set<uint32_t> moved;
+    for (const Retained& entry : tracked.retained) {
+        if (entry.revision > since)
+            moved.insert(entry.positions.begin(), entry.positions.end());
+    }
+
+    return {DeltaOutcome::ok, tracked.version.revision, {moved.begin(), moved.end()}};
+}
+
+PlaylistVersions::Tracked& PlaylistVersions::trackedLocked(const std::string& playlistId) {
+    return playlists_.try_emplace(playlistId, untouched_).first->second;
+}
+
+void PlaylistVersions::recordChangeLocked(const std::string& playlistId,
+                                          std::vector<uint32_t> positions) {
+    Tracked& tracked = trackedLocked(playlistId);
+
+    Retained entry;
+    entry.revision = ++tracked.version.revision;
+    entry.positions = std::move(positions);
+    std::sort(entry.positions.begin(), entry.positions.end());
+    entry.positions.erase(std::unique(entry.positions.begin(), entry.positions.end()),
+                          entry.positions.end());
+
+    tracked.retained.push_back(std::move(entry));
+    while (tracked.retained.size() > retainedRevisions_)
+        tracked.retained.pop_front();
+}
+
 std::string describe(PlaylistRefusal refusal) {
     switch (refusal) {
         case PlaylistRefusal::none:
@@ -238,6 +338,11 @@ std::string describe(PlaylistOutcome outcome) {
             return describe(DeltaOutcome::structureChanged);
         case PlaylistOutcome::queueMoved:
             return "the queue changed since that revision; read it again";
+        case PlaylistOutcome::rowsMoved:
+            return "the playlist's rows were added, removed or reordered; read them again";
+        case PlaylistOutcome::rowsRevisionTooOld:
+            return "that revision is older than the retained window; read the playlist's rows "
+                   "again";
         case PlaylistOutcome::playerRefused:
             return "the player could not do that";
         case PlaylistOutcome::timedOut:

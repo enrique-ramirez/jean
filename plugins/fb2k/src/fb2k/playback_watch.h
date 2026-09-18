@@ -9,6 +9,7 @@ namespace jean {
 
 class MainThreadQueue;
 class OutputHold;
+class PlaylistVersions;
 
 // Registering a callback touches the player, so this is constructed and destroyed on the
 // main thread. Construction also seeds the store with what the player is already doing, since
@@ -18,7 +19,8 @@ class OutputHold;
 // guarded against one: see ARCHITECTURE.md, *Facts about the player*.
 class PlaybackWatch {
 public:
-    PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& store, OutputHold& outputHold,
+    PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& store,
+                  PlaylistVersions& playlistVersions, OutputHold& outputHold,
                   NowPlayingArtwork& artwork);
     ~PlaybackWatch();
 

@@ -1,10 +1,12 @@
 #include "third_party/doctest.h"
 
 #include "core/player_state.h"
+#include "core/playlists.h"
 
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 using namespace jean;
@@ -79,6 +81,20 @@ QueueEntry queuedFromThePlaylist(uint32_t row) {
 
 std::vector<QueueEntry> twoQueued() {
     return {queuedFromLibrary(R"(X:\music\a.flac)"), queuedFromLibrary(R"(X:\music\b.flac)")};
+}
+
+constexpr char kAlbumsPlaylist[] = "0c2f9d91-6c8a-4f1c-9a7f-2d3b5e7c1a80";
+constexpr char kSinglesPlaylist[] = "b7e41a52-3c9d-4e08-8f16-5a2c7d0be934";
+constexpr char kLivePlaylist[] = "3d80f4c6-9b21-4a7e-8c05-6e1f2a9db473";
+
+PlaylistMark markOf(const PlaylistVersions& versions, const char* id, const char* title) {
+    const PlaylistVersion version = versions.of(id);
+    return PlaylistMark{id, title, version.structure, version.revision};
+}
+
+std::vector<PlaylistMark> twoPlaylists(const PlaylistVersions& versions) {
+    return {markOf(versions, kAlbumsPlaylist, "Albums"),
+            markOf(versions, kSinglesPlaylist, "Singles")};
 }
 
 }  // namespace
@@ -606,4 +622,105 @@ TEST_CASE("the queue revision stays where it is while everything else about the 
 
     CHECK(store.read().version > before.version);
     CHECK(store.read().queueRevision == before.queueRevision);
+}
+
+// Every way the list a client holds goes stale. A client re-reads GET /api/playlists when this
+// number moves and nothing else tells it to, so a trigger missed here leaves the sidebar, the
+// pickers and the playlist view wrong until something unrelated moves.
+TEST_CASE("the playlists revision moves for every change a client has to re-read the list for") {
+    PlaylistVersions versions;
+    PlayerStateStore store;
+    store.publish(playing());
+    store.playlistsChanged(twoPlaylists(versions));
+    const auto before = store.read();
+
+    std::vector<PlaylistMark> changed = twoPlaylists(versions);
+
+    // playlist_versions_test.cpp separates the four kinds of row change. All the store sees of
+    // any of them is a structure generation that moved, so they are one case here.
+    SUBCASE("a playlist's rows are added, removed, reordered or replaced") {
+        versions.rowsChanged(kAlbumsPlaylist, RowsChanged::added);
+        changed = twoPlaylists(versions);
+    }
+    SUBCASE("a row's tag, rating or play count changes") {
+        versions.contentChanged(kAlbumsPlaylist, {2});
+        changed = twoPlaylists(versions);
+    }
+    SUBCASE("a playlist is created") {
+        changed.push_back(markOf(versions, kLivePlaylist, "Live"));
+    }
+    SUBCASE("a playlist is removed") {
+        changed.erase(changed.begin());
+    }
+    SUBCASE("a playlist is moved in the list") {
+        std::swap(changed.front(), changed.back());
+    }
+    SUBCASE("a playlist is retitled") {
+        changed.front().title = "Albums and more";
+    }
+
+    store.playlistsChanged(changed);
+
+    CHECK(store.read().playlistsRevision > before.playlistsRevision);
+    CHECK(store.read().version > before.version);
+}
+
+TEST_CASE("the playlists revision stands still while everything else about the player moves") {
+    PlaylistVersions versions;
+    PlayerStateStore store;
+    store.publish(playingFrom(kPlayingRow));
+    store.playlistsChanged(twoPlaylists(versions));
+    const auto before = store.read();
+
+    SUBCASE("a whole state is published") {
+        PlayerState paused = playingFrom(kPlayingRow);
+        paused.playback = PlaybackState::paused;
+        store.publish(paused);
+    }
+    SUBCASE("another track starts") {
+        store.started(anotherTrack(), kMarkedAt + minutes(1));
+    }
+    SUBCASE("the player pauses") {
+        store.paused(kMarkedAt + kRanOnFor);
+    }
+    SUBCASE("somebody seeks") {
+        store.seeked(90.0, kMarkedAt + kRanOnFor);
+    }
+    SUBCASE("the volume moves") {
+        store.volumeChanged(-12.0, true);
+    }
+    SUBCASE("the playing row moves") {
+        store.playingLocationChanged(PlayingLocation{kPlayingPlaylist, kPlayingRow + 1});
+    }
+    SUBCASE("the queue changes") {
+        store.queueChanged(twoQueued());
+    }
+    SUBCASE("the player stops") {
+        store.stopped();
+    }
+
+    CHECK(store.read().version > before.version);
+    CHECK(store.read().playlistsRevision == before.playlistsRevision);
+}
+
+// foobar2000 raises a playlist callback per operation and several of them per edit, so a list
+// reported again unchanged is the ordinary case rather than the odd one. Moved anyway, it costs
+// every client a fetch of the list per report.
+TEST_CASE("a list reported again unchanged moves the playlists revision once") {
+    PlaylistVersions versions;
+    PlayerStateStore store;
+    store.publish(playing());
+    store.playlistsChanged(twoPlaylists(versions));
+    const auto before = store.read();
+
+    versions.rowsChanged(kAlbumsPlaylist, RowsChanged::added);
+    store.playlistsChanged(twoPlaylists(versions));
+    const auto afterTheChange = store.read();
+
+    for (int report = 0; report < kEditsInABurst; ++report)
+        store.playlistsChanged(twoPlaylists(versions));
+
+    CHECK(afterTheChange.playlistsRevision > before.playlistsRevision);
+    CHECK(store.read().playlistsRevision == afterTheChange.playlistsRevision);
+    CHECK(store.read().version == afterTheChange.version);
 }

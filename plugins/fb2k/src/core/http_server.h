@@ -31,6 +31,20 @@ constexpr size_t kMaxLibraryBytes = size_t{64} * 1024 * 1024;
 
 using TagWriter = std::function<TagWriteOutcome(const TagWrite&)>;
 using PlaylistLister = std::function<PlaylistsResult()>;
+
+// Reads at most `count` rows of `playlistId` from `offset`, with `columns` evaluated against
+// each row's own handle. The handles are copied on the main thread and formatted off it.
+using PlaylistRowReader =
+    std::function<PlaylistRowsRead(const std::string& playlistId, size_t offset, size_t count,
+                                   const std::vector<std::string>& columns)>;
+
+// Reads the rows of `playlistId` whose content moved after `since`, each with its position, with
+// `columns` evaluated against each row's own handle. `structure` is the generation the client's
+// positions were read at.
+using PlaylistChangeReader = std::function<PlaylistChangesRead(
+    const std::string& playlistId, uint64_t structure, uint64_t since,
+    const std::vector<std::string>& columns)>;
+
 using QueueReader = std::function<QueueRead()>;
 
 using PlaylistRowQueuer = std::function<PlaylistOutcome(
@@ -89,6 +103,8 @@ using OwnPlaylistEmptier = std::function<PlaylistResult(OwnPlaylistRole role)>;
 struct Player {
     TagWriter writeTags;
     PlaylistLister listPlaylists;
+    PlaylistRowReader readPlaylistRows;
+    PlaylistChangeReader readChangedPlaylistRows;
     QueueReader readQueue;
     PlaylistRowQueuer queuePlaylistRows;
     LibraryTrackQueuer queueLibraryTracks;

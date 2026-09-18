@@ -232,7 +232,8 @@ TEST_CASE("a playlist annotation is the shape contract/openapi.yaml publishes") 
     PlaylistAnnotation playlist;
     playlist.managed = AutoPlaylistSpec();
 
-    const auto keys = Keys{"id", "beefwebId", "index", "title", "isAutoPlaylist", "managed"};
+    const auto keys = Keys{"id",   "index",     "title",    "itemCount", "isAutoPlaylist",
+                           "role", "structure", "revision", "managed"};
     CHECK(keysOf(playlistDocument(playlist)) == keys);
 
     // Absence is expressed as null rather than omission, so a client reads one shape.
@@ -250,6 +251,33 @@ TEST_CASE("what foo_jean stored about a playlist is the shape contract/openapi.y
 
     const auto managed = json::parse(playlistDocument(playlist))["managed"];
     CHECK(keysOf(managed.dump()) == Keys{"key", "query", "sort", "forceSort"});
+}
+
+TEST_CASE("a page of playlist rows is the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    PlaylistRowsRead read;
+    read.rows.emplace_back();
+
+    CHECK(keysOf(playlistRowsDocument(read)) ==
+          Keys{"structure", "revision", "totalCount", "items"});
+
+    // A row the media library does not hold carries libraryPath as null rather than leaving it
+    // out, so a client reads one shape.
+    const auto row = json::parse(playlistRowsDocument(read))["items"][0];
+    CHECK(keysOf(row.dump()) == Keys{"columns", "libraryPath"});
+}
+
+TEST_CASE("a delta of playlist rows is the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    PlaylistChangesRead read;
+    read.rows.emplace_back();
+
+    CHECK(keysOf(playlistChangesDocument(read)) == Keys{"revision", "items"});
+
+    const auto row = json::parse(playlistChangesDocument(read))["items"][0];
+    CHECK(keysOf(row.dump()) == Keys{"position", "columns", "libraryPath"});
 }
 
 TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publishes") {
@@ -288,6 +316,8 @@ TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we
     CHECK(httpStatusFor(PlaylistOutcome::keyInUse) == 409);
     CHECK(httpStatusFor(PlaylistOutcome::tooMany) == 409);
     CHECK(httpStatusFor(PlaylistOutcome::structureMoved) == 409);
+    CHECK(httpStatusFor(PlaylistOutcome::rowsMoved) == 409);
+    CHECK(httpStatusFor(PlaylistOutcome::rowsRevisionTooOld) == 410);
     CHECK(httpStatusFor(PlaylistOutcome::playerRefused) == 500);
     CHECK(httpStatusFor(PlaylistOutcome::timedOut) == 504);
     CHECK(httpStatusFor(PlaylistOutcome::unavailable) == 503);
@@ -322,9 +352,10 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     INFO(kUpdateSpec);
 
     const auto required =
-        Keys{"playback",  "path",  "subsong", "position",     "duration",   "volume",
-             "muted",     "title", "artist",  "playbackMode", "playingLocation",
-             "queueRevision"};
+        Keys{"playback",         "path",         "subsong",         "position",
+             "duration",         "volume",       "muted",           "title",
+             "artist",           "playbackMode", "playingLocation", "queueRevision",
+             "playlistsRevision"};
 
     PlayerState playing;
     playing.playback = PlaybackState::playing;
@@ -458,6 +489,10 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(PlaylistOutcome::tooMany) == "this install's autoplaylist limit is reached");
     CHECK(describe(PlaylistOutcome::structureMoved) ==
           "tracks were added or removed; export the library again");
+    CHECK(describe(PlaylistOutcome::rowsMoved) ==
+          "the playlist's rows were added, removed or reordered; read them again");
+    CHECK(describe(PlaylistOutcome::rowsRevisionTooOld) ==
+          "that revision is older than the retained window; read the playlist's rows again");
     CHECK(describe(PlaylistOutcome::playerRefused) == "the player could not do that");
     CHECK(describe(PlaylistOutcome::timedOut) == "the player did not answer in time");
     CHECK(describe(PlaylistOutcome::unavailable) == "autoplaylists are not available");

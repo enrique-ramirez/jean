@@ -11,6 +11,7 @@ const settled: Context = {
 	run: "0f1e2d3c",
 	deviceId: "3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8",
 	playlistId: "45837d74-fa4f-415c-bba9-bf2db8f0dc04",
+	playlistPage: { structure: 12, revision: 30 },
 	managed: { key: "", query: "%genre% IS Rock", sort: "", forceSort: false },
 	ticket: "a-ticket",
 	revision: 903,
@@ -51,11 +52,14 @@ test("a probe with no answer to build on asks for nothing", () => {
 	const fresh: Context = {
 		...settled,
 		playlistId: null,
+		playlistPage: null,
 		ticket: null,
 		revision: null,
 	};
 
 	for (const id of [
+		"getPlaylistItems",
+		"getPlaylistItemChanges",
 		"updateAutoPlaylist",
 		"removeAutoPlaylist",
 		"openStream",

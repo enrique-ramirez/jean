@@ -6,6 +6,7 @@
 #include "core/log.h"
 #include "core/output_hold.h"
 #include "core/player_state.h"
+#include "core/playlists.h"
 #include "core/version.h"
 #include "fb2k/advertise.h"
 #include "fb2k/artwork.h"
@@ -60,10 +61,13 @@ void explainPortCollision() {
 
 Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const Streamer* streamer,
                    OutputHold& outputHold, LibraryFeed& libraryFeed,
-                   PlayerStateStore& playerState) {
+                   PlayerStateStore& playerState, const PlaylistVersions& playlistVersions) {
     Player player;
     player.writeTags = makeTagWriter(mainThread);
-    player.listPlaylists = makePlaylistLister(mainThread);
+    player.listPlaylists = makePlaylistLister(mainThread, playlistVersions);
+    player.readPlaylistRows = makePlaylistRowReader(mainThread, playlistVersions);
+    player.readChangedPlaylistRows =
+        makeChangedPlaylistRowReader(mainThread, changedPositionsFrom(playlistVersions));
     player.readQueue = makeQueueReader(mainThread, playerState);
     player.queuePlaylistRows = makePlaylistRowQueuer(mainThread, playerState);
     player.queueLibraryTracks =
@@ -71,12 +75,13 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.moveQueueEntry = makeMoveQueueEntry(mainThread, playerState);
     player.removeQueueEntry = makeRemoveQueueEntry(mainThread, playerState);
     player.clearQueue = makeClearQueue(mainThread);
-    player.createAutoPlaylist = makeAutoPlaylistCreator(mainThread, settings.maxAutoPlaylists);
-    player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread);
+    player.createAutoPlaylist =
+        makeAutoPlaylistCreator(mainThread, playlistVersions, settings.maxAutoPlaylists);
+    player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread, playlistVersions);
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);
-    player.ownPlaylist = makeOwnPlaylistResolver(mainThread);
-    player.emptyOwnPlaylist = makeOwnPlaylistEmptier(mainThread);
-    player.fill = makePlaylistFiller(mainThread, libraryFeed.ordinalResolver());
+    player.ownPlaylist = makeOwnPlaylistResolver(mainThread, playlistVersions);
+    player.emptyOwnPlaylist = makeOwnPlaylistEmptier(mainThread, playlistVersions);
+    player.fill = makePlaylistFiller(mainThread, playlistVersions, libraryFeed.ordinalResolver());
     player.previewQuery = makeQueryPreviewer(mainThread);
     player.refreshLibrary = libraryFeed.refresher();
     player.readArtwork = libraryFeed.artworkReader();
@@ -123,11 +128,13 @@ public:
           outputHold_(audience_, playerMuteVia(mainThread_), holdsOutput_),
           volumeWatch_(holdsOutput_ ? std::make_unique<PlayerVolumeWatch>(outputHold_) : nullptr),
           libraryFeed_(mainThread_, library_),
-          playbackWatch_(mainThread_, playerState_, outputHold_, nowPlayingArtwork_),
+          playbackWatch_(mainThread_, playerState_, playlistVersions_, outputHold_,
+                         nowPlayingArtwork_),
+          playlistWatch_(mainThread_, playlistVersions_, playerState_),
           nowPlayingArtworkWatch_(nowPlayingArtwork_),
           server_(settings_, audience_,
                   playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_,
-                              playerState_),
+                              playerState_, playlistVersions_),
                   generateToken, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
                   &nowPlayingArtwork_),
           status_(server_.start()) {
@@ -173,8 +180,10 @@ private:
     Library library_;
     LibraryFeed libraryFeed_;
     PlayerStateStore playerState_;
+    PlaylistVersions playlistVersions_;
     NowPlayingArtwork nowPlayingArtwork_;
     PlaybackWatch playbackWatch_;
+    PlaylistWatch playlistWatch_;
     NowPlayingArtworkWatch nowPlayingArtworkWatch_;
     HttpServer server_;
     const ListenerStatus status_;

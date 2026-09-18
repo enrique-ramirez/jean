@@ -17,9 +17,17 @@ const volume = (page: Page) => page.getByRole("slider", { name: "Volume" });
 const seekBar = (page: Page) =>
 	page.getByRole("slider", { name: "Playback position" });
 
+const volumeButton = (page: Page) =>
+	page.getByRole("button", { name: "Volume" });
+
+// The status bar is a notice with neither control in it until the player's first
+// snapshot lands, and the library it sits under is ready well before that. Read
+// too early, a desktop run finds no fader and clicks for the popover button the
+// wide layout never draws.
 const showVolume = async (page: Page) => {
+	await expect(volume(page).or(volumeButton(page)).first()).toBeVisible();
 	if (await volume(page).count()) return;
-	await page.getByRole("button", { name: "Volume" }).click();
+	await volumeButton(page).click();
 	await expect(volume(page)).toBeVisible();
 };
 

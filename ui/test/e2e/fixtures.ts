@@ -597,28 +597,83 @@ export const isRowOnScreen = (page: Page, index: number) =>
 		{ row: index, slack: EDGE_TOLERANCE_PX },
 	);
 
+// A step short of a screenful, so two consecutive steps overlap and no row can
+// fall between them.
+const SCREENFUL = 0.8;
+
+// Frames the list may keep moving for before it is read anyway. A list that
+// never comes to rest should fail on the assertion it was scrolled for, not on
+// the test's own timeout with nothing said about why.
+const STILLNESS_CAP_FRAMES = 90;
+
+// Consecutive unchanged frames required to call the list settled, rather than
+// one: a single match can be two samples either side of a change that is still
+// in flight.
+const STILL_FRAMES = 3;
+
+const listHoldsStill = (page: Page) =>
+	page.evaluate(
+		([cap, stillFrames]: [number, number]) =>
+			new Promise<void>((resolve) => {
+				const scroller = document.querySelector("main") as HTMLElement;
+				let last = "";
+				let still = 0;
+				let frames = 0;
+				const tick = () => {
+					const now = `${scroller.scrollTop}/${scroller.scrollHeight}`;
+					still = now === last ? still + 1 : 0;
+					last = now;
+					frames += 1;
+					if (still >= stillFrames || frames >= cap) resolve();
+					else requestAnimationFrame(tick);
+				};
+				requestAnimationFrame(tick);
+			}),
+		[STILLNESS_CAP_FRAMES, STILL_FRAMES] as [number, number],
+	);
+
+const scrollOneScreen = (page: Page) =>
+	page.evaluate((fraction: number) => {
+		const scroller = document.querySelector("main") as HTMLElement;
+		const from = scroller.scrollTop;
+		scroller.scrollBy(0, scroller.clientHeight * fraction);
+		return scroller.scrollTop > from;
+	}, SCREENFUL);
+
 // The virtualiser only mounts what is near the viewport, so a row further down a
 // playlist does not exist to be located until the list has been scrolled to it.
 // A screenful at a time rather than a jump: in album mode the total height is an
 // estimate until the groups have been measured, so any single jump is aimed at
 // the wrong place.
+//
+// Every read is taken from a list that has come to rest, and that is the part
+// that matters. While the groups are still estimated the list believes it is
+// short enough to mount all of them at once, so a row far down it is attached
+// for a moment and gone again once the measuring pass lands. A read taken
+// before the list has settled can see that row and lose it again before
+// anything acts on it.
+//
+// The loop is bounded by the list rather than by a clock. A step that moves
+// nothing means the scroller is out of room, and two of them in a row mean it is
+// really out of room: at an estimated bottom the first step can be refused and
+// the next one have somewhere to go, once the groups down there have been
+// measured and the total has grown.
 export const scrollUntilMounted = async (page: Page, locator: Locator) => {
-	// Wait for the view before scrolling it. Without this the poll below scrolls
-	// a container with nothing in it and spends its whole budget before the rows
-	// arrive, which shows up only in a full parallel run.
+	// Wait for the view before scrolling it. Without this the loop below scrolls
+	// a container with nothing in it, which shows up only in a full parallel run.
 	await expect(page.locator('[role="row"]').first()).toBeAttached();
 
-	await expect
-		.poll(async () => {
-			if (await locator.count()) return true;
-			await page.evaluate(() => {
-				const scroller = document.querySelector("main") as HTMLElement;
-				scroller.scrollBy(0, scroller.clientHeight * 0.8);
-			});
-			return false;
-		})
-		.toBe(true);
-	await expect(locator).toBeAttached();
+	let refusals = 0;
+	while (refusals < 2) {
+		await listHoldsStill(page);
+		if (await locator.count()) break;
+		refusals = (await scrollOneScreen(page)) ? 0 : refusals + 1;
+	}
+
+	await expect(
+		locator,
+		"the row never mounted, and the list ran out of room to scroll",
+	).toBeAttached();
 };
 
 export const scrollTop = (page: Page) =>

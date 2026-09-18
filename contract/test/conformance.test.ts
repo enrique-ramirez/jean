@@ -21,6 +21,7 @@ const context: Context = {
 	run: randomUUID().slice(0, 8),
 	deviceId: randomUUID(),
 	playlistId: null,
+	playlistPage: null,
 	managed: null,
 	ticket: null,
 	revision: null,

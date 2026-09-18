@@ -61,6 +61,8 @@ constexpr char kNoStreaming[] = "streaming is not available";
 
 constexpr char kNoQueue[] = "the queue is not available";
 
+constexpr char kNoPlaylistRows[] = "the playlist's rows are not available";
+
 constexpr char kNoLibrary[] = "the media library is not available";
 
 constexpr char kNoOwnPlaylists[] = "the component's own playlists are not available";
@@ -185,12 +187,36 @@ LibraryRequest missing(LibraryRefusal refusal, std::string detail) {
     return request;
 }
 
+LibraryRequest columnsDeclared(const httplib::Request& req) {
+    const auto asked = columnsAsked(req);
+    return asked.empty() ? missing(LibraryRefusal::badColumn, "'columns' is required")
+                         : parseLibraryRequest(asked, std::string());
+}
+
+// The same gate with the revision the client is catching up from, read the way
+// GET /api/library/changes reads it: required, and a present but empty one means zero.
+LibraryRequest columnsAndSinceDeclared(const httplib::Request& req) {
+    const auto asked = columnsAsked(req);
+    if (asked.empty())
+        return missing(LibraryRefusal::badColumn, "'columns' is required");
+
+    if (!req.has_param("since"))
+        return missing(LibraryRefusal::badSince, "'since' is required");
+
+    return parseLibraryRequest(asked, req.get_param_value("since"));
+}
+
 // FillRequest carries no detail: parseFill has nothing more specific to say than the refusal
 // itself, so this is what stands in for AutoPlaylistRequest's on a fill route's own refusals.
 std::string fillRefusedDocument(PlaylistRefusal refusal) {
     AutoPlaylistRequest request;
     request.refusal = refusal;
     return playlistRefusedDocument(request);
+}
+
+PlaylistOutcome rowsRefusal(DeltaOutcome catchUp) {
+    return catchUp == DeltaOutcome::structureChanged ? PlaylistOutcome::rowsMoved
+                                                     : PlaylistOutcome::rowsRevisionTooOld;
 }
 
 std::optional<OwnPlaylistRole> ownPlaylistRoleFor(const std::string& role) {
@@ -752,16 +778,13 @@ struct HttpServer::Impl {
                           [&state, &published] {
                               return stateDocument(state, published.state,
                                                    std::chrono::steady_clock::now(),
-                                                   published.queueRevision);
+                                                   published.queueRevision,
+                                                   published.playlistsRevision);
                           });
         });
 
         server.Get(kLibraryExportPath, [this](const httplib::Request& req, httplib::Response& res) {
-            const auto asked = columnsAsked(req);
-            const auto request = asked.empty()
-                                     ? missing(LibraryRefusal::badColumn, "'columns' is required")
-                                     : parseLibraryRequest(asked, std::string());
-
+            const auto request = columnsDeclared(req);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal), libraryRefusedDocument(request));
                 return;
@@ -1204,6 +1227,91 @@ struct HttpServer::Impl {
             }
 
             respond(res, 200, fillResultDocument(id, filled.beefwebId, filled.positions));
+        });
+
+        server.Get(kPlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto id = req.matches[1].str();
+            if (!isPlaylistId(id)) {
+                respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+                return;
+            }
+
+            const auto declared = columnsDeclared(req);
+            if (!declared.ok()) {
+                respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                return;
+            }
+
+            const auto page =
+                parsePlaylistPage(req.get_param_value("offset"), req.get_param_value("count"));
+            if (!page.ok()) {
+                respond(res, httpStatusFor(page.refusal), fillRefusedDocument(page.refusal));
+                return;
+            }
+
+            if (!player.readPlaylistRows) {
+                respond(res, 503, errorDocument(kNoPlaylistRows));
+                return;
+            }
+
+            const auto read =
+                player.readPlaylistRows(id, page.offset, page.count, declared.columns);
+
+            if (read.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(read.outcome),
+                        playlistFailedDocument(playlistFailure(read.outcome)));
+                return;
+            }
+
+            respond(res, 200, playlistRowsDocument(read));
+        });
+
+        constexpr char kPlaylistItemChanges[] =
+            R"(/api/playlists/([0-9a-f-]{36})/items/changes)";
+
+        server.Get(kPlaylistItemChanges, [this](const httplib::Request& req,
+                                                httplib::Response& res) {
+            const auto id = req.matches[1].str();
+            if (!isPlaylistId(id)) {
+                respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+                return;
+            }
+
+            const auto declared = columnsAndSinceDeclared(req);
+            if (!declared.ok()) {
+                respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                return;
+            }
+
+            uint64_t structure = 0;
+            if (!readDecimal(req.get_param_value("structure"), structure)) {
+                respond(res, httpStatusFor(PlaylistRefusal::badOrdinals),
+                        fillRefusedDocument(PlaylistRefusal::badOrdinals));
+                return;
+            }
+
+            if (!player.readChangedPlaylistRows) {
+                respond(res, 503, errorDocument(kNoPlaylistRows));
+                return;
+            }
+
+            const auto read =
+                player.readChangedPlaylistRows(id, structure, declared.since, declared.columns);
+
+            if (read.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(read.outcome),
+                        playlistFailedDocument(playlistFailure(read.outcome)));
+                return;
+            }
+
+            if (read.catchUp != DeltaOutcome::ok) {
+                const auto refusal = rowsRefusal(read.catchUp);
+                respond(res, httpStatusFor(refusal),
+                        playlistFailedDocument(playlistFailure(refusal)));
+                return;
+            }
+
+            respond(res, 200, playlistChangesDocument(read));
         });
     }
 

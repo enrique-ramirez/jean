@@ -66,6 +66,15 @@ struct QueueEntry {
 
 bool operator==(const QueueEntry& a, const QueueEntry& b);
 
+struct PlaylistMark {
+    std::string id;
+    std::string title;
+    uint64_t structure = 0;
+    uint64_t revision = 0;
+};
+
+bool operator==(const PlaylistMark& a, const PlaylistMark& b);
+
 // `publish` replaces the whole state under one lock, and stays alongside the narrower
 // transitions below for `fb2k/playback_watch.cpp`'s construction-time seed, where there is
 // no prior state to transition from, and for the test suite's arranging one directly.
@@ -74,6 +83,7 @@ public:
     struct Published {
         uint64_t version = 0;
         uint64_t queueRevision = 0;
+        uint64_t playlistsRevision = 0;
         PlayerState state;
     };
 
@@ -96,6 +106,8 @@ public:
 
     void queueChanged(std::vector<QueueEntry> entries);
 
+    void playlistsChanged(std::vector<PlaylistMark> playlists);
+
     PlayerStateStore(const PlayerStateStore&) = delete;
     PlayerStateStore& operator=(const PlayerStateStore&) = delete;
 
@@ -105,8 +117,10 @@ private:
     mutable std::mutex mutex_;
     uint64_t version_ = 0;
     uint64_t queueRevision_ = 0;
+    uint64_t playlistsRevision_ = 0;
     PlayerState state_;
     std::vector<QueueEntry> queue_;
+    std::vector<PlaylistMark> playlists_;
 };
 
 }  // namespace jean

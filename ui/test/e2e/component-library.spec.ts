@@ -11,8 +11,10 @@ import {
 	playedFrom,
 	pressAndHold,
 	requestsTo,
+	rowByTitle,
 	scratchFills,
 	scratchOf,
+	scrollUntilMounted,
 	sidebar,
 	test,
 	trackPlayed,
@@ -260,6 +262,95 @@ test.describe("a library rebuilt under Jean", () => {
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
 		await expect(trackRow(page, 0)).toContainText("Rotten Apple");
 		expect(deltasAskedBefore(player, exportsAsked(player)[1])).toHaveLength(0);
+	});
+});
+
+test.describe("a library rebuilt while Jean was reading the one before it", () => {
+	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+
+	const ADDED = "Late Arrival";
+
+	// A rescan that found one more file, in a folder the fixture already has: the
+	// library root stays where it was, so every other track keeps its ordinal and
+	// the added one is the whole difference between the two generations.
+	const rebuildWithOneMoreTrack = (player: FakePlayer) => {
+		const template = player.libraryTracks[0];
+		player.libraryTracks.push({
+			...template,
+			"%title%": ADDED,
+			"%tracknumber%": "99",
+			"%path%": template["%path%"].replace(/[^\\]+$/, `99 ${ADDED}.mp3`),
+		});
+		player.libraryFeed.building = [...player.libraryFeed.columns];
+		player.finishLibraryBuild();
+	};
+
+	// The component reads the snapshot off the library it holds at that moment, so a
+	// rescan that starts afterwards leaves what is on the wire a generation old.
+	// Fetched as soon as it is asked for and handed to the page only once the test
+	// says so, which is what puts the rebuild inside the read rather than before it.
+	const holdTheExport = async (page: Page) => {
+		let answered = () => {};
+		let release = () => {};
+		const onTheWire = new Promise<void>((resolve) => {
+			answered = resolve;
+		});
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+
+		await page.route(
+			"**/api/library/export**",
+			async (route) => {
+				const response = await route.fetch();
+				const body = await response.body();
+				answered();
+				await held;
+				await route.fulfill({ response, body });
+			},
+			{ times: 1 },
+		);
+
+		return { onTheWire, release: () => release() };
+	};
+
+	// `GET /api/state`'s ETag covers the structure and the revision, so this is the
+	// last 200 there will be until something else moves the player: every poll from
+	// here answers 304, and a notice dropped now is a notice gone for good.
+	const noticeOfTheRebuild = (page: Page, before: number) =>
+		page.waitForResponse(
+			async (response) =>
+				response.url().endsWith("/api/state") &&
+				response.status() === 200 &&
+				((await response.json()) as { library: { structure: number } }).library
+					.structure > before,
+		);
+
+	test("the track the rebuild added is on screen, and playing it is not refused", async ({
+		page,
+		player,
+	}) => {
+		const { onTheWire, release } = await holdTheExport(page);
+
+		await page.goto("/#/all");
+		await onTheWire;
+
+		const noticed = noticeOfTheRebuild(page, player.libraryFeed.structure);
+		rebuildWithOneMoreTrack(player);
+		await noticed;
+		release();
+
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			"55",
+			{ timeout: 20_000 },
+		);
+
+		const row = rowByTitle(page, ADDED);
+		await scrollUntilMounted(page, row);
+		await row.dblclick();
+
+		await expect.poll(() => trackPlayed(player)).toBe(ADDED);
 	});
 });
 

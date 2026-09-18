@@ -1,5 +1,5 @@
 import { fetchPlaylistItems } from "@/shared/api/beefweb";
-import type { StateDocument } from "@/shared/api/fooJean";
+import { fetchState, type StateDocument } from "@/shared/api/fooJean";
 import {
 	fetchLibrary,
 	fetchLibraryChanges,
@@ -48,6 +48,12 @@ interface Feed {
 	isChecking: boolean;
 }
 
+// README.md: a `{structure, revision}` pair compares for equality only, never order.
+type LibraryGeneration = Pick<
+	StateDocument["library"],
+	"structure" | "revision"
+>;
+
 interface Entry {
 	key: string;
 	listeners: Subscribers;
@@ -55,6 +61,7 @@ interface Entry {
 	controller: AbortController | null;
 	isStarted: boolean;
 	feed: Feed | null;
+	missedLibrary: LibraryGeneration | null;
 }
 
 const FIRST_CHUNK = 2500;
@@ -120,6 +127,7 @@ function entryFor(key: string): Entry {
 		controller: null,
 		isStarted: false,
 		feed: null,
+		missedLibrary: null,
 	};
 	entries.set(key, entry);
 	return entry;
@@ -303,6 +311,8 @@ async function loadSnapshot(entry: Entry, origin: string, token: string) {
 			error: null,
 			...deriveIntensity(columns),
 		});
+
+		await recheckMissed(entry, origin, token);
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") return;
 		entry.isStarted = false;
@@ -341,14 +351,37 @@ function applyDelta(entry: Entry, feed: Feed, delta: JlibDelta) {
 	return true;
 }
 
+async function recheckMissed(entry: Entry, origin: string, token: string) {
+	const missed = entry.missedLibrary;
+	if (!missed) return;
+	entry.missedLibrary = null;
+
+	const feed = entry.feed;
+	if (
+		feed &&
+		missed.structure === feed.structure &&
+		missed.revision === feed.revision
+	)
+		return;
+
+	const result = await fetchState(origin, token, null);
+	if (result.ok && result.kind === "state")
+		await recheckComponentLibrary(origin, token, result.state.library);
+}
+
 export async function recheckComponentLibrary(
 	origin: string,
 	token: string,
-	library: Pick<StateDocument["library"], "structure" | "revision">,
+	library: LibraryGeneration,
 ) {
 	const entry = entries.get(componentLibraryKey(origin));
-	const feed = entry?.feed;
-	if (!entry || !feed || feed.isChecking || entry.snapshot.isLoading) return;
+	if (!entry) return;
+
+	const feed = entry.feed;
+	if (!feed || feed.isChecking || entry.snapshot.isLoading) {
+		entry.missedLibrary = library;
+		return;
+	}
 
 	feed.isChecking = true;
 	try {
@@ -364,6 +397,7 @@ export async function recheckComponentLibrary(
 		await exportAgain(entry, origin, token);
 	} finally {
 		feed.isChecking = false;
+		await recheckMissed(entry, origin, token);
 	}
 }
 

@@ -404,6 +404,7 @@ This is the one part of the component's surface the spec does not describe, beca
 - **Jean sends `TRACK_EXPRESSIONS`, one `columns` parameter per expression, never comma-separated**: a title-formatting expression may contain a comma.
 - **`?`, `''` and `N/A` arrive exactly as the player produced them.** Nothing in the component parses, normalises or types a value, which is what keeps Jean's capability detection working. **Never coerce one to `null`**: `Number(null)` is `0` and every field would then read as available.
 - **The header answers capability detection exactly**, so a field that resolves on one track in ten thousand is detected rather than missed by a sample. Detection is still a guess a Settings switch overrules.
+- **A `{structure, revision}` pair compares for equality only, never for order.** `revision` counts within one `structure`, and `structure` itself resets when the component starts fresh, so a pair read after a restart can be lower than one already held without being older. `playlistStore.ts`'s `recheckMissed` holds the pair a poll answered while an entry was busy and, once idle, checks it against the one the entry landed on rather than trusting which sorts higher. A mismatch is worth a fresh, untagged `GET /api/state`: the route is `ETag`ged, so once the player settles every later poll answers `304`, and a generation seen mid-export would otherwise never surface again.
 
 ## What Jean does about the queue
 

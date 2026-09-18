@@ -6,8 +6,8 @@
 
 #include <algorithm>
 #include <limits>
+#include <numeric>
 #include <random>
-#include <set>
 
 using nlohmann::json;
 
@@ -253,25 +253,50 @@ PlaylistVersion PlaylistVersions::of(const std::string& playlistId) const {
 
 ChangedSince PlaylistVersions::changedSince(const std::string& playlistId, uint64_t structure,
                                             uint64_t since) const {
-    const std::lock_guard<std::mutex> held(mutex_);
+    uint64_t revision = 0;
+    std::vector<uint32_t> moved;
 
-    const auto found = playlists_.find(playlistId);
-    const Tracked& tracked = found == playlists_.end() ? untouched_ : found->second;
+    {
+        const std::lock_guard<std::mutex> held(mutex_);
 
-    if (structure != tracked.version.structure || since < tracked.structureBegan)
-        return {DeltaOutcome::structureChanged, 0, {}};
-    if (since > tracked.version.revision)
-        return {DeltaOutcome::revisionUnknown, 0, {}};
-    if (!tracked.retained.empty() && tracked.retained.front().revision > since + 1)
-        return {DeltaOutcome::revisionTooOld, 0, {}};
+        const auto found = playlists_.find(playlistId);
+        const Tracked& tracked = found == playlists_.end() ? untouched_ : found->second;
 
-    std::set<uint32_t> moved;
-    for (const Retained& entry : tracked.retained) {
-        if (entry.revision > since)
-            moved.insert(entry.positions.begin(), entry.positions.end());
+        if (structure != tracked.version.structure || since < tracked.structureBegan)
+            return {DeltaOutcome::structureChanged, 0, {}};
+        if (since > tracked.version.revision)
+            return {DeltaOutcome::revisionUnknown, 0, {}};
+        if (!tracked.retained.empty() && tracked.retained.front().revision > since + 1)
+            return {DeltaOutcome::revisionTooOld, 0, {}};
+
+        revision = tracked.version.revision;
+        moved = positionsAfterLocked(tracked.retained, since);
     }
 
-    return {DeltaOutcome::ok, tracked.version.revision, {moved.begin(), moved.end()}};
+    std::sort(moved.begin(), moved.end());
+    moved.erase(std::unique(moved.begin(), moved.end()), moved.end());
+
+    return {DeltaOutcome::ok, revision, std::move(moved)};
+}
+
+std::vector<uint32_t> PlaylistVersions::positionsAfterLocked(const std::deque<Retained>& retained,
+                                                             uint64_t since) {
+    const auto newer =
+        std::upper_bound(retained.begin(), retained.end(), since,
+                         [](uint64_t behind, const Retained& entry) {
+                             return behind < entry.revision;
+                         });
+
+    std::vector<uint32_t> positions;
+    positions.reserve(std::accumulate(newer, retained.end(), size_t{0},
+                                      [](size_t total, const Retained& entry) {
+                                          return total + entry.positions.size();
+                                      }));
+
+    for (auto entry = newer; entry != retained.end(); ++entry)
+        positions.insert(positions.end(), entry->positions.begin(), entry->positions.end());
+
+    return positions;
 }
 
 PlaylistVersions::Tracked& PlaylistVersions::trackedLocked(const std::string& playlistId) {

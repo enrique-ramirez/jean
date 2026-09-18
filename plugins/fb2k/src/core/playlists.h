@@ -116,6 +116,11 @@ private:
         std::deque<Retained> retained;
     };
 
+    // foobar2000 raises the callbacks that write this deque on its main thread, which may
+    // never block.
+    static std::vector<uint32_t> positionsAfterLocked(const std::deque<Retained>& retained,
+                                                      uint64_t since);
+
     Tracked& trackedLocked(const std::string& playlistId);
     void recordChangeLocked(const std::string& playlistId, std::vector<uint32_t> positions);
 

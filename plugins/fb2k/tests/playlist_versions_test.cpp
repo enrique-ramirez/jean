@@ -3,10 +3,14 @@
 #include "core/playlists.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jean;
@@ -53,6 +57,26 @@ bool shareAValue(const std::set<uint64_t>& left, const std::set<uint64_t>& right
     return std::any_of(left.begin(), left.end(),
                        [&right](uint64_t value) { return right.count(value) != 0; });
 }
+
+constexpr uint32_t kRowsEach = 1000;
+
+struct Watched {
+    std::string id;
+    uint32_t base;
+
+    bool holds(uint32_t position) const { return position >= base && position < base + kRowsEach; }
+};
+
+struct Wrote {
+    std::map<std::string, uint64_t> revisions;
+    std::map<std::string, uint64_t> structures;
+};
+
+struct Strange {
+    size_t positionsFromNowhere = 0;
+    size_t refusalsCarryingPositions = 0;
+    size_t numbersGoingBackwards = 0;
+};
 
 }  // namespace
 
@@ -288,4 +312,168 @@ TEST_CASE("a structural change to one playlist leaves another's window alone") {
     const ChangedSince changed = versions.changedSince(kAlbums, albums.structure, albums.revision);
     CHECK(changed.catchUp == DeltaOutcome::ok);
     CHECK(changed.positions == std::vector<uint32_t>{3});
+}
+
+// The two cases below are the only ones in this file that drive PlaylistVersions from more than
+// one thread. Without them, `--sanitize=thread` runs over an otherwise single-threaded suite and
+// has nothing of its own to catch.
+
+TEST_CASE("a client following a playlist while the player writes to it misses no changed row") {
+    constexpr uint32_t kChanges = 1000;
+
+    PlaylistVersions versions(kChanges + 1);
+    const PlaylistVersion start = versions.of(kAlbums);
+
+    std::atomic<bool> writing{true};
+    std::set<uint32_t> caught;
+    size_t refusals = 0;
+
+    std::thread player([&versions, &writing] {
+        for (uint32_t change = 0; change < kChanges; ++change) {
+            versions.contentChanged(kAlbums, {change});
+            versions.contentChanged(kSingles, {change});
+        }
+        writing.store(false);
+    });
+
+    std::thread connection([&versions, &writing, &caught, &refusals, start] {
+        uint64_t cursor = start.revision;
+
+        const auto catchUp = [&] {
+            const ChangedSince changed = versions.changedSince(kAlbums, start.structure, cursor);
+            if (changed.catchUp != DeltaOutcome::ok) {
+                ++refusals;
+                return;
+            }
+            caught.insert(changed.positions.begin(), changed.positions.end());
+            cursor = changed.revision;
+        };
+
+        while (writing.load())
+            catchUp();
+        catchUp();
+    });
+
+    player.join();
+    connection.join();
+
+    size_t missed = 0;
+    for (uint32_t change = 0; change < kChanges; ++change)
+        missed += caught.count(change) == 0 ? 1 : 0;
+
+    CHECK(refusals == 0);
+    CHECK(missed == 0);
+    CHECK(caught.size() == kChanges);
+}
+
+TEST_CASE("an answer given while the player is writing carries only rows that playlist recorded") {
+    constexpr uint32_t kChanges = 1000;
+    constexpr uint32_t kChangesPerReorder = 16;
+
+    const std::vector<Watched> watched{
+        {kAlbums, kRowsEach}, {kSingles, 2 * kRowsEach}, {kMixes, 3 * kRowsEach}};
+
+    PlaylistVersions versions;
+    const PlaylistVersion start = versions.of(kAlbums);
+
+    std::atomic<bool> writing{true};
+    Wrote wrote;
+    Strange strange;
+
+    std::thread player([&versions, &writing, &wrote, &watched] {
+        std::optional<PlayingLocation> playing;
+
+        for (uint32_t change = 0; change < kChanges; ++change) {
+            for (const Watched& playlist : watched) {
+                versions.contentChanged(playlist.id, {playlist.base + change % kRowsEach});
+                ++wrote.revisions[playlist.id];
+
+                if (change % kChangesPerReorder == 0) {
+                    versions.rowsChanged(playlist.id, RowsChanged::reordered);
+                    ++wrote.structures[playlist.id];
+                }
+            }
+
+            const PlayingLocation next{watched.front().id,
+                                       watched.front().base + change % kRowsEach};
+            if (playing)
+                ++wrote.revisions[playing->playlistId];
+            versions.playingRowChanged(next);
+            playing = next;
+        }
+
+        writing.store(false);
+    });
+
+    std::thread connection([&versions, &writing, &strange, &watched] {
+        struct Following {
+            uint64_t structure = 0;
+            uint64_t cursor = 0;
+            uint64_t seenStructure = 0;
+            uint64_t seenRevision = 0;
+        };
+
+        std::vector<Following> following;
+        following.reserve(watched.size());
+        for (const Watched& playlist : watched) {
+            const PlaylistVersion now = versions.of(playlist.id);
+            following.push_back({now.structure, now.revision, now.structure, now.revision});
+        }
+
+        const auto readOnce = [&](size_t index) {
+            const Watched& playlist = watched[index];
+            Following& state = following[index];
+
+            const PlaylistVersion now = versions.of(playlist.id);
+            if (now.structure < state.seenStructure || now.revision < state.seenRevision)
+                ++strange.numbersGoingBackwards;
+            state.seenStructure = now.structure;
+            state.seenRevision = now.revision;
+
+            const ChangedSince changed =
+                versions.changedSince(playlist.id, state.structure, state.cursor);
+
+            if (changed.catchUp != DeltaOutcome::ok) {
+                if (!changed.positions.empty())
+                    ++strange.refusalsCarryingPositions;
+
+                const PlaylistVersion afresh = versions.of(playlist.id);
+                state.structure = afresh.structure;
+                state.cursor = afresh.revision;
+                return;
+            }
+
+            if (changed.revision < state.cursor)
+                ++strange.numbersGoingBackwards;
+            strange.positionsFromNowhere +=
+                static_cast<size_t>(std::count_if(changed.positions.begin(),
+                                                  changed.positions.end(),
+                                                  [&playlist](uint32_t position) {
+                                                      return !playlist.holds(position);
+                                                  }));
+            state.cursor = changed.revision;
+        };
+
+        const auto everyPlaylist = [&] {
+            for (size_t index = 0; index < watched.size(); ++index)
+                readOnce(index);
+        };
+
+        while (writing.load())
+            everyPlaylist();
+        everyPlaylist();
+    });
+
+    player.join();
+    connection.join();
+
+    CHECK(strange.positionsFromNowhere == 0);
+    CHECK(strange.refusalsCarryingPositions == 0);
+    CHECK(strange.numbersGoingBackwards == 0);
+
+    for (const Watched& playlist : watched) {
+        const PlaylistVersion now = versions.of(playlist.id);
+        CHECK(now.revision == start.revision + wrote.revisions[playlist.id]);
+        CHECK(now.structure == start.structure + wrote.structures[playlist.id]);
+    }
 }

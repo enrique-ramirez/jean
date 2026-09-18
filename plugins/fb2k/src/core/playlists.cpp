@@ -341,8 +341,7 @@ std::string describe(PlaylistOutcome outcome) {
         case PlaylistOutcome::rowsMoved:
             return "the playlist's rows were added, removed or reordered; read them again";
         case PlaylistOutcome::rowsRevisionTooOld:
-            return "that revision is older than the retained window; read the playlist's rows "
-                   "again";
+            return "that revision is not one this playlist can catch up from; read its rows again";
         case PlaylistOutcome::playerRefused:
             return "the player could not do that";
         case PlaylistOutcome::timedOut:

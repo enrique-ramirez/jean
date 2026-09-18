@@ -1902,7 +1902,7 @@ components:
           examples:
             gone:
               value:
-                error: "that revision is older than the retained window; read the playlist's rows again"
+                error: "that revision is not one this playlist can catch up from; read its rows again"
                 detail: ""
 
     PlaylistRowsUnavailable:
@@ -2732,7 +2732,7 @@ components:
             - tracks were added or removed; export the library again
             - the queue changed since that revision; read it again
             - the playlist's rows were added, removed or reordered; read them again
-            - that revision is older than the retained window; read the playlist's rows again
+            - that revision is not one this playlist can catch up from; read its rows again
             - the player could not do that
             - the player did not answer in time
             - autoplaylists are not available

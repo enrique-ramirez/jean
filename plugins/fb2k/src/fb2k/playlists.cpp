@@ -418,8 +418,8 @@ void beginReadRows(const std::string& playlistId, size_t offset, size_t count,
 
     page.totalCount = playlist_manager::get()->playlist_get_item_count(index);
 
-    const auto from = std::min(offset, page.totalCount);
-    const auto taken = std::min(count, page.totalCount - from);
+    const auto from = std::min<size_t>(offset, page.totalCount);
+    const auto taken = std::min<size_t>(count, page.totalCount - from);
     playlist_manager::get()->playlist_get_items(index, page.handles,
                                                 bit_array_range(from, taken, true));
 

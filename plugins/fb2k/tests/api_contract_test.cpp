@@ -492,7 +492,7 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(PlaylistOutcome::rowsMoved) ==
           "the playlist's rows were added, removed or reordered; read them again");
     CHECK(describe(PlaylistOutcome::rowsRevisionTooOld) ==
-          "that revision is older than the retained window; read the playlist's rows again");
+          "that revision is not one this playlist can catch up from; read its rows again");
     CHECK(describe(PlaylistOutcome::playerRefused) == "the player could not do that");
     CHECK(describe(PlaylistOutcome::timedOut) == "the player did not answer in time");
     CHECK(describe(PlaylistOutcome::unavailable) == "autoplaylists are not available");

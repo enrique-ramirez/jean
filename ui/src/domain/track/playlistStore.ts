@@ -1,6 +1,8 @@
 import {
+	fetchPlaylistItemChanges,
 	fetchPlaylistRows,
 	fetchState,
+	type PlaylistChanges,
 	type StateDocument,
 } from "@/shared/api/fooJean";
 import {
@@ -9,7 +11,7 @@ import {
 	type LibraryFailure,
 	type LibraryFailureReason,
 } from "@/shared/api/fooJeanLibrary";
-import type { JlibDelta } from "@/shared/api/jlib";
+import { type JlibDelta, patchColumn } from "@/shared/api/jlib";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
@@ -46,6 +48,8 @@ interface Chunk {
 	// answers an out-of-range ref: nothing for `artworkUrl` to draw from.
 	paths: string[];
 	totalCount: number;
+	structure: number;
+	revision: number;
 }
 
 interface Feed {
@@ -94,13 +98,13 @@ export const EMPTY_PLAYLIST: PlaylistSnapshot = Object.freeze({
 	playedCount: 0,
 });
 
-export const playlistKey = (playlistId: string, itemCount: number) =>
-	`${playlistId}:${itemCount}`;
-
 export const componentLibraryKey = (origin: string) => `component:${origin}`;
 
 export const generationKey = (key: string, structure: number) =>
 	`${key}:s${structure}`;
+
+export const playlistKey = (playlistId: string, structure: number) =>
+	generationKey(playlistId, structure);
 
 const fetchChunk = async (
 	origin: string,
@@ -123,6 +127,8 @@ const fetchChunk = async (
 		rows: page.items.map((item) => item.columns),
 		paths: page.items.map((item) => item.libraryPath ?? ""),
 		totalCount: page.totalCount,
+		structure: page.structure,
+		revision: page.revision,
 	};
 };
 
@@ -154,8 +160,6 @@ function emit(entry: Entry, patch: Partial<PlaylistSnapshot>) {
 
 const prefixOf = (key: string) => key.slice(0, key.indexOf(":"));
 
-// A superseded entry -- same playlist, different item count -- always goes. The rest are merely
-// old, and insertion order is recency.
 function evictIdle(currentKey: string) {
 	const idle = [...entries.values()].filter(
 		(entry) => entry.key !== currentKey && entry.listeners.size === 0,
@@ -233,6 +237,11 @@ async function load(
 			signal,
 		);
 		addChunk(first);
+		entry.feed = {
+			structure: first.structure,
+			revision: first.revision,
+			isChecking: false,
+		};
 
 		const total = first.totalCount;
 		publish(total, collector.count() < total);
@@ -375,6 +384,81 @@ function exportAgain(entry: Entry, origin: string, token: string) {
 	return loadSnapshot(entry, origin, token);
 }
 
+function reloadPlaylist(
+	entry: Entry,
+	origin: string,
+	token: string,
+	playlistId: string,
+) {
+	entry.controller?.abort();
+	entry.controller = new AbortController();
+	entry.feed = null;
+	emit(entry, { isLoading: true, error: null });
+	return load(entry, origin, token, playlistId);
+}
+
+function patchedPlaylistColumns(
+	held: LibraryColumns,
+	items: PlaylistChanges["items"],
+): LibraryColumns | null {
+	const ordinals = Uint32Array.from(items, (row) => row.position);
+
+	const fields: LibraryColumns["fields"][number][] = [];
+	for (let index = 0; index < held.fields.length; index += 1) {
+		const field = held.fields[index];
+		const appended = items.map((row) => row.columns[index]);
+		const base = field.distinct;
+		const patched = patchColumn(field, {
+			ordinals,
+			ids: Uint32Array.from(appended, (_, at) => base + at),
+			base,
+			appended,
+			distinct: base + appended.length,
+			hasUnresolved: false,
+			allUnresolved: false,
+		});
+		if (!patched) return null;
+		fields.push(patched);
+	}
+
+	return { ...held, fields };
+}
+
+function fitsHeldPaths(
+	paths: PathTable | null,
+	items: PlaylistChanges["items"],
+): boolean {
+	return items.every(
+		(row) => (paths?.at(row.position) ?? "") === (row.libraryPath ?? ""),
+	);
+}
+
+function applyPlaylistChanges(
+	entry: Entry,
+	feed: Feed,
+	changes: PlaylistChanges,
+): boolean {
+	if (!fitsHeldPaths(entry.snapshot.paths, changes.items)) return false;
+
+	if (changes.items.length === 0) {
+		feed.revision = changes.revision;
+		return true;
+	}
+
+	const held = entry.snapshot.columns;
+	const columns = patchedPlaylistColumns(held, changes.items);
+	if (!columns) return false;
+
+	feed.revision = changes.revision;
+	emit(entry, {
+		columns,
+		...(someFieldMoved(INTENSITY_FIELDS, held, columns)
+			? deriveIntensity(columns)
+			: null),
+	});
+	return true;
+}
+
 function applyDelta(entry: Entry, feed: Feed, delta: JlibDelta) {
 	const held = entry.snapshot.columns;
 	const columns = patchedColumns(held, delta, TRACK_EXPRESSIONS);
@@ -445,11 +529,46 @@ export const loadPlaylist = (
 	origin: string,
 	token: string,
 	playlistId: string,
+	structure: number,
 	itemCount: number,
 ) =>
-	begin(playlistKey(playlistId, itemCount), itemCount, itemCount > 0, (entry) =>
+	begin(playlistKey(playlistId, structure), itemCount, itemCount > 0, (entry) =>
 		load(entry, origin, token, playlistId),
 	);
+
+export async function recheckPlaylist(
+	origin: string,
+	token: string,
+	playlistId: string,
+	generation: { structure: number; revision: number },
+) {
+	const entry = entries.get(playlistKey(playlistId, generation.structure));
+	const feed = entry?.feed;
+	if (!entry || !feed || feed.isChecking) return;
+	// The entry's own generation, read from the rows response rather than assumed from the key, can
+	// still be ahead of what the caller believes: a structural edit landing between the caller reading
+	// the list and this entry's own fetch completing. A fresh key for the new structure is what
+	// resolves that, not a patch here.
+	if (generation.structure !== feed.structure) return;
+	if (generation.revision <= feed.revision) return;
+
+	feed.isChecking = true;
+	try {
+		const result = await fetchPlaylistItemChanges(
+			origin,
+			token,
+			playlistId,
+			feed.structure,
+			feed.revision,
+			TRACK_EXPRESSIONS,
+		);
+
+		if (!result.ok || !applyPlaylistChanges(entry, feed, result.changes))
+			return void (await reloadPlaylist(entry, origin, token, playlistId));
+	} finally {
+		feed.isChecking = false;
+	}
+}
 
 export const loadComponentLibrary = (origin: string, token: string) =>
 	begin(componentLibraryKey(origin), 0, true, (entry) =>

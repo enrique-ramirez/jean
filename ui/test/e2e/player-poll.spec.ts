@@ -10,6 +10,7 @@ import {
 	expectPlayingFrom,
 	expectSettlesAt,
 	globalControls,
+	guidOfPlaylist,
 	listenHere,
 	nowPlayingScreen,
 	openAllMusic,
@@ -721,6 +722,190 @@ test("the sidebar follows a playlist renamed at the player", async ({
 	await expect(
 		sidebar(page).getByRole("button", { name: "Favorites" }),
 	).toHaveCount(0);
+});
+
+// The two ways a playlist's rows can reach the client, told apart by route
+// alone, because that is the whole of what the row cache promises: a changed
+// row costs a changed row, and reading the playlist again costs the playlist.
+const rowsRoute = (guid: string) => `/api/playlists/${guid}/items`;
+
+const readsOf = (player: FakePlayer, route: string) =>
+	player.requests
+		.filter((one) => one.method === "GET" && routeOf(one.path) === route)
+		.map((one) => one.path);
+
+const wholeRowReads = (player: FakePlayer, guid: string) =>
+	readsOf(player, rowsRoute(guid));
+
+const changeReads = (player: FakePlayer, guid: string) =>
+	readsOf(player, `${rowsRoute(guid)}/changes`);
+
+const rowReadsFor = (player: FakePlayer, guid: string) => [
+	...wholeRowReads(player, guid),
+	...changeReads(player, guid),
+];
+
+// A four-row playlist, short enough that every row is mounted.
+const WATCHED = { id: "p1", title: "Default Playlist", first: "Rotten Apple" };
+
+// A second playlist, read before the watched one and still held in the cache
+// behind it.
+const ALSO_HELD = { id: "p2", title: "Favorites" };
+
+// A retitle at the player: the row stays where it is and answers differently,
+// which is the one case the changes route exists for.
+const RETITLED = "Rotten Apple (2024 remaster)";
+
+// `WATCHED` sorted by title through the fake's own collator. A sort keeps every
+// row and the count with it, so the structure generation is the only thing that
+// says the rows moved.
+const SORTED_FIRST = "I Stay Away";
+const SORTED_LAST = "Rotten Apple";
+
+// A tag corrected at the player and the file moved to match, in one edit: the
+// row keeps its position, so the structure generation stays where it is and the
+// row's new library path arrives on the changes route. `%path%` is none of the
+// columns Jean reads, so that path reaches it as the changed row's `libraryPath`
+// and nowhere else. The record moves with the file because a cover is held by
+// the record it belongs to: a path that moves under an unchanged album asks for
+// nothing, since the picture is already in hand.
+const MOVED = {
+	album: "Jessico",
+	albumArtist: "Babasónicos",
+	path: "C:\\Music\\B\\Babasónicos\\(2001) Jessico\\01. Los Calientes.mp3",
+	cover: "B/Babasónicos/(2001) Jessico/01. Los Calientes.mp3",
+};
+
+// Where `WATCHED`'s first row is addressed before that edit.
+const MOVED_FROM =
+	"A/Alice in Chains/(1994) Jar Of Flies/01. Rotten Apple.flac";
+
+// Every cover Jean has asked the component for, by the address it asked at,
+// which is the library path it holds for the row. `/api/artwork/playing` is
+// addressed by nothing and never appears here.
+const coverAsks = (player: FakePlayer) =>
+	requestsTo(player, "/api/artwork?").map(
+		(one) => new URLSearchParams(one.path.split("?")[1]).get("track") ?? "",
+	);
+
+// A playlist reached by its GUID, which is what the route hash carries and what
+// every row read names it by.
+const openPlaylistView = async (
+	page: Page,
+	player: FakePlayer,
+	playlist: { id: string; title: string },
+) => {
+	await page.goto(`/#/${guidOfPlaylist(player, playlist.id)}`);
+	await expect(
+		page.getByRole("heading", { level: 1, name: playlist.title }),
+	).toBeVisible();
+	await expect(trackRow(page, 0)).toBeAttached();
+};
+
+// A tag written anywhere but Jean, landing on a row already on screen.
+// `retagPlaying` is the fake's only content change that leaves a row where it
+// is, so the row has to be the playing one; nothing the cache promises turns on
+// that. The request log is emptied last, so everything counted afterwards is
+// what this edit cost.
+const editTheFirstRow = async (
+	page: Page,
+	player: FakePlayer,
+	fields: Track,
+) => {
+	player.playItem(WATCHED.id, 0);
+	await expect(statusBar(page)).toContainText(WATCHED.first);
+
+	player.requests.length = 0;
+	player.retagPlaying(fields);
+};
+
+const retitleTheFirstRow = (page: Page, player: FakePlayer) =>
+	editTheFirstRow(page, player, { "%title%": RETITLED });
+
+test("patches a row changed at the player in, rather than reading the playlist's rows again", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	const guid = guidOfPlaylist(player, WATCHED.id);
+
+	await retitleTheFirstRow(page, player);
+
+	await expect(trackRow(page, 0)).toContainText(RETITLED);
+	await expect.poll(() => changeReads(player, guid).length).toBeGreaterThan(0);
+	await expectSettlesAt(player, () => wholeRowReads(player, guid), []);
+});
+
+test.describe("with each playlist's window of changed positions spent", () => {
+	test.use({ fooJean: { playlistChangeWindow: 0 } });
+
+	test("reads the whole playlist again when the changes route says the revision is gone", async ({
+		page,
+		player,
+	}) => {
+		await openPlaylistView(page, player, WATCHED);
+		const guid = guidOfPlaylist(player, WATCHED.id);
+
+		await retitleTheFirstRow(page, player);
+
+		await expect(trackRow(page, 0)).toContainText(RETITLED);
+		await expect
+			.poll(() => changeReads(player, guid).length)
+			.toBeGreaterThan(0);
+		await expect
+			.poll(() => wholeRowReads(player, guid).length)
+			.toBeGreaterThan(0);
+	});
+});
+
+test("reads the whole playlist again when its rows are reordered at the player, rather than patching", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	const guid = guidOfPlaylist(player, WATCHED.id);
+
+	player.requests.length = 0;
+	expect(player.sortItems(WATCHED.id, { by: "%title%" })).toBe(true);
+
+	await expect(trackRow(page, 0)).toContainText(SORTED_FIRST);
+	await expect(trackRow(page, 3)).toContainText(SORTED_LAST);
+	await expect
+		.poll(() => wholeRowReads(player, guid).length)
+		.toBeGreaterThan(0);
+	await expectSettlesAt(player, () => changeReads(player, guid), []);
+});
+
+test("asks nothing about a second playlist it still holds when one playlist's row changes", async ({
+	page,
+	player,
+}) => {
+	// Read first and left behind, so the cache holds its rows while another
+	// playlist is the one on screen.
+	await openPlaylistView(page, player, ALSO_HELD);
+	const idle = guidOfPlaylist(player, ALSO_HELD.id);
+	await openPlaylistView(page, player, WATCHED);
+
+	await retitleTheFirstRow(page, player);
+
+	await expect(trackRow(page, 0)).toContainText(RETITLED);
+	await expectSettlesAt(player, () => rowReadsFor(player, idle), []);
+});
+
+test("follows a row's cover address when its file moves at the player", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	await expect.poll(() => coverAsks(player)).toContain(MOVED_FROM);
+
+	await editTheFirstRow(page, player, {
+		"%album%": MOVED.album,
+		"%album artist%": MOVED.albumArtist,
+		"%path%": MOVED.path,
+	});
+
+	await expect.poll(() => coverAsks(player)).toContain(MOVED.cover);
 });
 
 test("the queue panel follows a track queued at the player", async ({

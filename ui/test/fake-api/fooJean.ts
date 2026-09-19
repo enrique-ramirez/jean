@@ -67,6 +67,8 @@ export interface FooJeanOptions {
 	// playlist created since is one the poll can name and the client cannot.
 	annotatesEveryPlaylist?: boolean;
 
+	playlistChangeWindow?: number;
+
 	canReadLibrary?: boolean;
 	libraryBuilds?: number;
 	libraryBusy?: number;
@@ -136,6 +138,7 @@ const DEFAULTS: FooJeanFake = {
 	loseQueueAnswer: null,
 	knowsPlayingLocation: true,
 	annotatesEveryPlaylist: true,
+	playlistChangeWindow: 32,
 	canStream: true,
 	streamFormats: ["opus", "aac"],
 	playableFormats: ["opus", "aac"],
@@ -463,6 +466,18 @@ const STRUCTURE_MOVED = {
 const WRITES_DISABLED = {
 	error:
 		"this install has playlist writes turned off; turn on writePlaylists in config.json to allow them",
+	detail: "",
+};
+
+const ROWS_MOVED = {
+	error:
+		"the playlist's rows were added, removed or reordered; read them again",
+	detail: "",
+};
+
+const REVISION_GONE = {
+	error:
+		"that revision is not one this playlist can catch up from; read its rows again",
 	detail: "",
 };
 
@@ -1766,6 +1781,54 @@ export async function handleAgent({
 				columns: columns.map((expression) => evaluate(track, expression)),
 				libraryPath: state.libraryPathFor(track),
 			})),
+		});
+	}
+
+	const changesMatch = /^\/api\/playlists\/([^/]+)\/items\/changes$/.exec(path);
+	if (method === "GET" && changesMatch) {
+		const guid = changesMatch[1];
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const columns = url.searchParams.getAll("columns");
+		if (columns.length === 0)
+			return json(
+				response,
+				{ error: "unacceptable column", detail: "'columns' is required" },
+				400,
+			);
+
+		const structure = Number(url.searchParams.get("structure"));
+		const since = Number(url.searchParams.get("since"));
+
+		if (structure !== playlist.structure)
+			return json(response, ROWS_MOVED, 409);
+
+		if (since === playlist.revision)
+			return json(response, { revision: playlist.revision, items: [] });
+
+		const at = playlist.changeHistory.findIndex(
+			(entry) => entry.revision === since,
+		);
+		if (at < 0) return json(response, REVISION_GONE, 410);
+
+		const positions = new Set<number>();
+		for (const entry of playlist.changeHistory.slice(at + 1))
+			for (const position of entry.positions) positions.add(position);
+
+		return json(response, {
+			revision: playlist.revision,
+			items: [...positions]
+				.sort((a, b) => a - b)
+				.map((position) => {
+					const track = playlist.items[position];
+					return {
+						position,
+						columns: columns.map((expression) => evaluate(track, expression)),
+						libraryPath: state.libraryPathFor(track),
+					};
+				}),
 		});
 	}
 

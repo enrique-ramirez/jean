@@ -42,7 +42,14 @@ export function PlaylistView({
 		heat,
 		patina,
 		playedCount,
-	} = usePlaylistItems(origin, token, playlist?.id, playlist?.itemCount);
+	} = usePlaylistItems(
+		origin,
+		token,
+		playlist?.id,
+		playlist?.structure,
+		playlist?.revision,
+		playlist?.itemCount,
+	);
 
 	const rows = useMemo(() => trackRows(columns), [columns]);
 

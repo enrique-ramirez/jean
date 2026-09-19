@@ -41,10 +41,8 @@ export interface FakePlaylist {
 	items: Track[];
 	isAuto?: boolean;
 	structure: number;
-	// Bumped alongside `structure` for now: the fake does not yet track a row's content
-	// changing in place independently of its position. `player-poll.spec.ts` is where that
-	// distinction is tested and owns closing the gap.
 	revision: number;
+	changeHistory: { revision: number; positions: number[] }[];
 }
 
 export interface LibraryEntry {
@@ -258,6 +256,7 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		isCurrent: false,
 		structure: 0,
 		revision: 0,
+		changeHistory: [{ revision: 0, positions: [] }],
 		items: tracksOf("jar-of-flies").slice(0, 4),
 	},
 	{
@@ -267,6 +266,7 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		isCurrent: true,
 		structure: 0,
 		revision: 0,
+		changeHistory: [{ revision: 0, positions: [] }],
 		items: allTracks(),
 	},
 	{
@@ -276,6 +276,7 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		isCurrent: false,
 		structure: 0,
 		revision: 0,
+		changeHistory: [{ revision: 0, positions: [] }],
 		items: [
 			...tracksOf("deja-entendu").slice(0, 3),
 			...tracksOf("jessico").slice(0, 2),
@@ -289,6 +290,7 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		isCurrent: false,
 		structure: 0,
 		revision: 0,
+		changeHistory: [{ revision: 0, positions: [] }],
 		items: tracksOf("jessico"),
 	},
 	{
@@ -298,6 +300,7 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		isCurrent: false,
 		structure: 0,
 		revision: 0,
+		changeHistory: [{ revision: 0, positions: [] }],
 		items: allTracks(),
 	},
 	{
@@ -308,6 +311,7 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		isAuto: true,
 		structure: 0,
 		revision: 0,
+		changeHistory: [{ revision: 0, positions: [] }],
 		items: tracksOf("jar-of-flies").slice(0, 5),
 	},
 ];
@@ -457,6 +461,8 @@ export function createState({
 		},
 	};
 
+	const fake = fooJeanState(fooJean);
+
 	let playerVersion = 0;
 	let playlistsRevision = 0;
 	let nextCreatedGuid = FIRST_CREATED_GUID;
@@ -602,6 +608,7 @@ export function createState({
 		edit();
 		playlist.structure += 1;
 		playlist.revision += 1;
+		playlist.changeHistory = [{ revision: playlist.revision, positions: [] }];
 		markPlaylistsChanged();
 		if (!held) return;
 		const at = playlist.items.indexOf(held.track);
@@ -882,7 +889,7 @@ export function createState({
 		// false to take the name away from beefweb with the subscription otherwise
 		// live, which is the state Jean is heading for.
 		answersTrackColumns: true,
-		fooJean: fooJeanState(fooJean),
+		fooJean: fake,
 		// Which `?format=` each stream was opened with, in order; `requests` records
 		// paths without their query.
 		streamFormats: [] as string[],
@@ -935,7 +942,17 @@ export function createState({
 			const retagged = { ...playing.track, ...fields };
 			const playlist = byId(playing.playlistId);
 			const at = playlist?.items.indexOf(playing.track) ?? -1;
-			if (playlist && at >= 0) playlist.items[at] = retagged;
+			if (playlist && at >= 0) {
+				playlist.items[at] = retagged;
+				playlist.revision += 1;
+				playlist.changeHistory = [
+					...playlist.changeHistory,
+					{ revision: playlist.revision, positions: [at] },
+				];
+				if (playlist.changeHistory.length > fake.playlistChangeWindow + 1)
+					playlist.changeHistory.shift();
+				markPlaylistsChanged();
+			}
 			playing = { ...playing, track: retagged };
 			return retagged;
 		},
@@ -1148,6 +1165,7 @@ export function createState({
 				isCurrent: false,
 				structure: 0,
 				revision: 0,
+				changeHistory: [{ revision: 0, positions: [] }],
 				items: [],
 			};
 			state.playlists.push(playlist);
@@ -1159,6 +1177,8 @@ export function createState({
 				itemCount: 0,
 				title: playlist.title,
 				totalTime: 0,
+				structure: playlist.structure,
+				revision: playlist.revision,
 			};
 		},
 

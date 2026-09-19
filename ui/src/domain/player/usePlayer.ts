@@ -65,6 +65,8 @@ export const playlistInfoOf = (
 	index: annotation.index,
 	title: annotation.title,
 	itemCount: annotation.itemCount,
+	structure: annotation.structure,
+	revision: annotation.revision,
 	...NOT_TRACKED,
 });
 

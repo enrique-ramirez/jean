@@ -68,6 +68,8 @@ export interface PlaylistInfo {
 	itemCount: number;
 	title: string;
 	totalTime: number;
+	structure: number;
+	revision: number;
 }
 
 export type TrackColumns = string[];

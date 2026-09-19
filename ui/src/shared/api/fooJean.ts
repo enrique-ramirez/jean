@@ -21,6 +21,7 @@ export type FillPlaylistRequest = Schema["FillPlaylistRequest"];
 export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
 export type FillResult = Schema["FillResult"];
 export type PlaylistPage = Schema["PlaylistPage"];
+export type PlaylistChanges = Schema["PlaylistChanges"];
 export type CreatePlaylistRequest = Schema["CreatePlaylistRequest"];
 export type CopyPlaylistRowsRequest = Schema["CopyPlaylistRowsRequest"];
 export type RemovePlaylistRowsRequest = Schema["RemovePlaylistRowsRequest"];
@@ -637,6 +638,38 @@ export async function fetchPlaylistRows(
 			cause: response.status,
 		});
 	return (await response.json()) as PlaylistPage;
+}
+
+export type PlaylistChangesResult =
+	| { ok: true; changes: PlaylistChanges }
+	| { ok: false; reason: "moved" }
+	| { ok: false; reason: "gone" };
+
+export async function fetchPlaylistItemChanges(
+	origin: string,
+	token: string,
+	id: string,
+	structure: number,
+	since: number,
+	columns: readonly string[],
+	{ signal }: { signal?: AbortSignal } = {},
+): Promise<PlaylistChangesResult> {
+	const response = await withTimeout(
+		WRITE_TIMEOUT_MS,
+		(inner) =>
+			fetch(
+				`${playlistUrl(origin, id)}/items/changes?structure=${structure}&since=${since}&${columnsQuery(columns)}`,
+				{ headers: bearer(token), signal: inner },
+			),
+		signal,
+	);
+	if (response.status === 409) return { ok: false, reason: "moved" };
+	if (response.status === 410) return { ok: false, reason: "gone" };
+	if (!response.ok)
+		throw new Error(`GET playlist item changes failed: ${response.status}`, {
+			cause: response.status,
+		});
+	return { ok: true, changes: (await response.json()) as PlaylistChanges };
 }
 
 export async function createPlaylist(

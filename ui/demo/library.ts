@@ -82,6 +82,7 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 			isCurrent: false,
 			structure: 0,
 			revision: 0,
+			changeHistory: [{ revision: 0, positions: [] }],
 			items: of("nirvana-nevermind").slice(0, 6),
 		},
 		{
@@ -91,6 +92,7 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 			isCurrent: true,
 			structure: 0,
 			revision: 0,
+			changeHistory: [{ revision: 0, positions: [] }],
 			items: of(
 				"radiohead-ok-computer",
 				"the-strokes-is-this-it",
@@ -104,6 +106,7 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 			isCurrent: false,
 			structure: 0,
 			revision: 0,
+			changeHistory: [{ revision: 0, positions: [] }],
 			items: [
 				...of("brand-new-deja-entendu").slice(0, 4),
 				...of("queen-a-night-at-the-opera").slice(0, 3),
@@ -118,6 +121,7 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 			isCurrent: false,
 			structure: 0,
 			revision: 0,
+			changeHistory: [{ revision: 0, positions: [] }],
 			items: of("metallica-metallica", "korn-issues"),
 		},
 		// An autoplaylist looks ordinary from the API, except that writes to it are
@@ -130,6 +134,7 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 			isAuto: true,
 			structure: 0,
 			revision: 0,
+			changeHistory: [{ revision: 0, positions: [] }],
 			items: of("bad-bunny-yhlqmdlg").slice(0, 8),
 		},
 	];

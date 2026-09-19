@@ -225,17 +225,17 @@ std::optional<OwnPlaylistRole> ownPlaylistRoleFor(const std::string& role) {
     return std::nullopt;
 }
 
-// parseFill decodes the ordinal set only: the title is the own-playlist route's own field,
-// read through the same check parseAutoPlaylist's title takes, since a value the contract
-// calls unusable here is unusable there for the same reason.
-struct OwnFillTitle {
+// parseFill and parseSourceRows decode a request's own set only: title is every writing
+// route's own field, read through the same check parseAutoPlaylist's title takes, since a
+// value the contract calls unusable here is unusable there for the same reason.
+struct RequiredTitle {
     PlaylistRefusal refusal = PlaylistRefusal::none;
     std::string value;
 
     bool ok() const { return refusal == PlaylistRefusal::none; }
 };
 
-OwnFillTitle ownFillTitle(const std::string& body) {
+RequiredTitle requiredTitle(const std::string& body) {
     const auto document = parseJsonObject(body);
     if (!document.ok())
         return {PlaylistRefusal::malformedBody, {}};
@@ -1003,6 +1003,75 @@ struct HttpServer::Impl {
         return true;
     }
 
+    static bool playlistIdRefused(const std::string& id, httplib::Response& res) {
+        if (isPlaylistId(id))
+            return false;
+
+        respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+        return true;
+    }
+
+    static void answerPlaylistEdit(httplib::Response& res, const PlaylistResult& result) {
+        if (result.outcome != PlaylistOutcome::done) {
+            respond(res, httpStatusFor(result.outcome), playlistFailedDocument(result));
+            return;
+        }
+
+        res.status = 204;
+    }
+
+    std::optional<NewPlaylistRows> newPlaylistRows(const httplib::Request& req,
+                                                   httplib::Response& res) {
+        NewPlaylistRows rows;
+
+        switch (newPlaylistSetOf(req.body)) {
+            case NewPlaylistSet::libraryTracks: {
+                if (!library) {
+                    respond(res, 503, errorDocument(kNoLibrary));
+                    return std::nullopt;
+                }
+
+                const auto state = library->state();
+                if (!state.ready) {
+                    respond(res, 503, libraryFailedDocument(DeltaOutcome::notBuilt));
+                    return std::nullopt;
+                }
+
+                const auto request = parseFill(req.body, state.trackCount, state.structure, true);
+                if (request.outcome != PlaylistOutcome::done) {
+                    respond(res, httpStatusFor(request.outcome),
+                            playlistFailedDocument(playlistFailure(request.outcome)));
+                    return std::nullopt;
+                }
+                if (!request.ok()) {
+                    respond(res, httpStatusFor(request.refusal),
+                            fillRefusedDocument(request.refusal));
+                    return std::nullopt;
+                }
+
+                rows.structure = request.structure;
+                rows.ordinals = request.ordinals;
+                break;
+            }
+            case NewPlaylistSet::playlistRows: {
+                const auto request = parseSourceRows(req.body, true);
+                if (!request.ok()) {
+                    respond(res, httpStatusFor(request.refusal),
+                            fillRefusedDocument(request.refusal));
+                    return std::nullopt;
+                }
+
+                rows.sourcePlaylistId = request.playlistId;
+                rows.positions = request.positions;
+                break;
+            }
+            case NewPlaylistSet::none:
+                break;
+        }
+
+        return rows;
+    }
+
     void addPlaylistRoutes() {
         server.Get("/api/playlists", [this](const httplib::Request&, httplib::Response& res) {
             const auto result = askIfAvailable(player.listPlaylists,
@@ -1015,6 +1084,87 @@ struct HttpServer::Impl {
             }
 
             respond(res, 200, playlistsDocument(result.playlists));
+        });
+
+        server.Post("/api/playlists", [this](const httplib::Request& req, httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
+            const auto title = requiredTitle(req.body);
+            if (!title.ok()) {
+                respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
+                return;
+            }
+
+            const auto rows = newPlaylistRows(req, res);
+            if (!rows)
+                return;
+
+            const auto made = askIfAvailable(player.createPlaylist,
+                                             playlistFailure(PlaylistOutcome::unavailable),
+                                             title.value, *rows);
+
+            if (made.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(made.outcome), playlistFailedDocument(made));
+                return;
+            }
+
+            respond(res, 200, playlistDocument(made.playlist));
+        });
+
+        constexpr char kPlaylistById[] = R"(/api/playlists/([0-9a-f-]{36}))";
+
+        server.Post(kPlaylistById, [this](const httplib::Request& req, httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
+            const auto id = req.matches[1].str();
+            if (playlistIdRefused(id, res))
+                return;
+
+            const auto title = requiredTitle(req.body);
+            if (!title.ok()) {
+                respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
+                return;
+            }
+
+            answerPlaylistEdit(res, askIfAvailable(player.renamePlaylist,
+                                                   playlistFailure(PlaylistOutcome::unavailable),
+                                                   id, title.value));
+        });
+
+        server.Delete(kPlaylistById, [this](const httplib::Request& req, httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
+            const auto id = req.matches[1].str();
+            if (playlistIdRefused(id, res))
+                return;
+
+            answerPlaylistEdit(res, askIfAvailable(player.removePlaylist,
+                                                   playlistFailure(PlaylistOutcome::unavailable),
+                                                   id));
+        });
+
+        constexpr char kMovePlaylist[] = R"(/api/playlists/([0-9a-f-]{36})/move)";
+
+        server.Post(kMovePlaylist, [this](const httplib::Request& req, httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
+            const auto id = req.matches[1].str();
+            if (playlistIdRefused(id, res))
+                return;
+
+            const auto request = parseMovePlaylist(req.body);
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            answerPlaylistEdit(res, askIfAvailable(player.movePlaylist,
+                                                   playlistFailure(PlaylistOutcome::unavailable),
+                                                   id, request.index));
         });
 
         server.Post("/api/autoplaylists/preview", [this](const httplib::Request& req,
@@ -1124,20 +1274,22 @@ struct HttpServer::Impl {
                 return;
             }
 
-            const auto title = ownFillTitle(req.body);
+            const auto title = requiredTitle(req.body);
             if (!title.ok()) {
                 respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
                 return;
             }
 
-            const auto resolved = player.ownPlaylist(*role, title.value);
+            const auto titled = ownPlaylistTitle(title.value);
+
+            const auto resolved = player.ownPlaylist(*role, titled);
             if (resolved.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(resolved.outcome),
                         playlistFailedDocument(playlistFailure(resolved.outcome)));
                 return;
             }
 
-            const auto filled = player.fill(resolved.playlist.id, title.value, request.structure,
+            const auto filled = player.fill(resolved.playlist.id, titled, request.structure,
                                             request.ordinals, true);
             if (filled.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(filled.outcome),
@@ -1312,6 +1464,95 @@ struct HttpServer::Impl {
             }
 
             respond(res, 200, playlistChangesDocument(read));
+        });
+
+        constexpr char kCopyPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/copy)";
+
+        server.Post(kCopyPlaylistItems, [this](const httplib::Request& req,
+                                               httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
+            const auto id = req.matches[1].str();
+            if (playlistIdRefused(id, res))
+                return;
+
+            const auto request = parseSourceRows(req.body);
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            if (!player.copyPlaylistRows) {
+                respond(res, 503, errorDocument(kNoPlaylistRows));
+                return;
+            }
+
+            const auto copied = player.copyPlaylistRows(id, request.playlistId, request.positions);
+            if (copied.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(copied.outcome),
+                        playlistFailedDocument(playlistFailure(copied.outcome)));
+                return;
+            }
+
+            respond(res, 200, copiedRowsDocument(copied.structure, copied.positions));
+        });
+
+        constexpr char kRemovePlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/remove)";
+
+        server.Post(kRemovePlaylistItems, [this](const httplib::Request& req,
+                                                 httplib::Response& res) {
+            if (writesRefused(res))
+                return;
+
+            const auto id = req.matches[1].str();
+            if (playlistIdRefused(id, res))
+                return;
+
+            const auto request = parseFill(req.body, kAnyRowPosition, std::nullopt);
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            if (!player.removePlaylistRows) {
+                respond(res, 503, errorDocument(kNoPlaylistRows));
+                return;
+            }
+
+            const auto removed = player.removePlaylistRows(id, request.structure, request.ordinals);
+            if (removed.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(removed.outcome),
+                        playlistFailedDocument(playlistFailure(removed.outcome)));
+                return;
+            }
+
+            respond(res, 200, removedRowsDocument(removed.structure));
+        });
+
+        constexpr char kPlayPlaylistRow[] =
+            R"(/api/playlists/([0-9a-f-]{36})/items/([^/]+)/play)";
+
+        server.Post(kPlayPlaylistRow, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto request = parsePlayRow(req.matches[1].str(), req.matches[2].str());
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            if (!player.playPlaylistRow) {
+                respond(res, 503, errorDocument(kNoPlaylistRows));
+                return;
+            }
+
+            const auto outcome = player.playPlaylistRow(request.playlistId, request.index);
+            if (outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(outcome),
+                        playlistFailedDocument(playlistFailure(outcome)));
+                return;
+            }
+
+            res.status = 204;
         });
     }
 

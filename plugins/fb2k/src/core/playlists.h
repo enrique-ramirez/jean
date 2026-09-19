@@ -40,6 +40,12 @@ enum class OwnPlaylistRole { scratch };
 // playlist already carrying the old one.
 std::string roleName(OwnPlaylistRole role);
 
+// foobar2000's own list of playlists shows a title and nothing else, so a title is the only
+// place a playlist this component made can say whose it is.
+constexpr char kOwnTitlePrefix[] = "#Jean";
+
+std::string ownPlaylistTitle(const std::string& asked);
+
 struct PlaylistAnnotation {
     // foobar2000's playlist GUID. Stable across renames, reordering and restarts, and
     // never reused.
@@ -178,6 +184,8 @@ enum class PlaylistOutcome {
     // anything. Distinct from notOurs, the structural refusal ourPlaylist() answers whatever
     // the setting says.
     writesDisabled,
+    playlistLocked,
+    ownPlaylist,
 };
 
 struct PlaylistResult {

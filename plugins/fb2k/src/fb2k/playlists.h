@@ -62,6 +62,7 @@ PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
                                         const PlaylistVersions& versions);
 PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
                                                   ChangedPositionsReader changedPositions);
+PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread);
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions,
                                             int maxAutoPlaylists);
@@ -71,6 +72,15 @@ AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread);
 OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions);
 OwnPlaylistEmptier makeOwnPlaylistEmptier(MainThreadQueue& mainThread,
+                                          const PlaylistVersions& versions);
+PlaylistCreator makePlaylistCreator(MainThreadQueue& mainThread, const PlaylistVersions& versions,
+                                    OrdinalResolver resolveOrdinals);
+PlaylistRenamer makePlaylistRenamer(MainThreadQueue& mainThread);
+PlaylistRemover makePlaylistRemover(MainThreadQueue& mainThread);
+PlaylistMover makePlaylistMover(MainThreadQueue& mainThread);
+PlaylistRowCopier makePlaylistRowCopier(MainThreadQueue& mainThread,
+                                        const PlaylistVersions& versions);
+PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
                                           const PlaylistVersions& versions);
 PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, const PlaylistVersions& versions,
                                   OrdinalResolver resolveOrdinals);

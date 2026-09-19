@@ -143,6 +143,18 @@ FillRequest refuseFill() {
     return request;
 }
 
+SourceRowsRequest refuseSourceRows(PlaylistRefusal refusal) {
+    SourceRowsRequest request;
+    request.refusal = refusal;
+    return request;
+}
+
+MovePlaylistRequest refuseMovePlaylist(PlaylistRefusal refusal) {
+    MovePlaylistRequest request;
+    request.refusal = refusal;
+    return request;
+}
+
 QueueRowsRequest refuseQueueRows(PlaylistRefusal refusal) {
     QueueRowsRequest request;
     request.refusal = refusal;
@@ -169,6 +181,12 @@ RemoveQueueRequest refuseRemoveQueue(PlaylistRefusal refusal) {
 
 PlaylistPageRequest refusePlaylistPage(PlaylistRefusal refusal) {
     PlaylistPageRequest request;
+    request.refusal = refusal;
+    return request;
+}
+
+PlayRowRequest refusePlayRow(PlaylistRefusal refusal) {
+    PlayRowRequest request;
     request.refusal = refusal;
     return request;
 }
@@ -219,6 +237,12 @@ bool declaresOnly(const json& root, const Fields& fields) {
 // `additionalProperties: false` there; `declaresOnly` refuses anything else.
 constexpr std::array<const char*, 4> kFillFields{"structure", "runs", "bitset", "ordinals"};
 constexpr char kTitleField[] = "title";
+
+constexpr char kSourceField[] = "source";
+constexpr std::array<const char*, 2> kSourceRowsFields{kSourceField, "runs"};
+
+constexpr char kIndexField[] = "index";
+constexpr std::array<const char*, 1> kMovePlaylistFields{kIndexField};
 
 constexpr std::array<const char*, 4> kQueueRowsFields{"playlistId", "positions", "at", "revision"};
 constexpr std::array<const char*, 6> kQueueTracksFields{
@@ -537,6 +561,14 @@ std::string fillResultDocument(const std::string& playlistId, const std::string&
         .dump();
 }
 
+std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions) {
+    return json{{"structure", structure}, {"positions", positions}}.dump();
+}
+
+std::string removedRowsDocument(uint64_t structure) {
+    return json{{"structure", structure}}.dump();
+}
+
 std::string playlistRowsDocument(const PlaylistRowsRead& read) {
     json items = json::array();
     std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(items), playlistRowOf);
@@ -568,6 +600,20 @@ PlaylistPageRequest parsePlaylistPage(const std::string& offsetText, const std::
     PlaylistPageRequest request;
     request.offset = static_cast<uint32_t>(offset);
     request.count = static_cast<uint32_t>(count);
+    return request;
+}
+
+PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText) {
+    if (!isPlaylistId(id))
+        return refusePlayRow(PlaylistRefusal::badId);
+
+    uint64_t index = 0;
+    if (!readDecimal(indexText, index) || !fitsUint32(index))
+        return refusePlayRow(PlaylistRefusal::badOrdinals);
+
+    PlayRowRequest request;
+    request.playlistId = id;
+    request.index = static_cast<uint32_t>(index);
     return request;
 }
 
@@ -756,6 +802,7 @@ int httpStatusFor(PlaylistOutcome outcome) {
             return 400;
         case PlaylistOutcome::notOurs:
         case PlaylistOutcome::writesDisabled:
+        case PlaylistOutcome::ownPlaylist:
             return 403;
         case PlaylistOutcome::noSuchPlaylist:
             return 404;
@@ -764,6 +811,7 @@ int httpStatusFor(PlaylistOutcome outcome) {
         case PlaylistOutcome::structureMoved:
         case PlaylistOutcome::queueMoved:
         case PlaylistOutcome::rowsMoved:
+        case PlaylistOutcome::playlistLocked:
             return 409;
         case PlaylistOutcome::rowsRevisionTooOld:
             return 410;
@@ -811,6 +859,66 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
         return refuseFill();
 
     request.ordinals = selection.ordinals;
+    return request;
+}
+
+NewPlaylistSet newPlaylistSetOf(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    const auto& root = document.value;
+
+    if (root.contains(kSourceField))
+        return NewPlaylistSet::playlistRows;
+
+    const bool namesTracks =
+        std::any_of(kFillFields.begin(), kFillFields.end(),
+                    [&root](const char* field) { return root.contains(field); });
+
+    return namesTracks ? NewPlaylistSet::libraryTracks : NewPlaylistSet::none;
+}
+
+SourceRowsRequest parseSourceRows(const std::string& body, bool allowsTitle) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseSourceRows(PlaylistRefusal::malformedBody);
+
+    const auto& root = document.value;
+
+    std::vector<const char*> fields(kSourceRowsFields.begin(), kSourceRowsFields.end());
+    if (allowsTitle)
+        fields.push_back(kTitleField);
+    if (!declaresOnly(root, fields))
+        return refuseSourceRows(PlaylistRefusal::malformedBody);
+
+    const auto source = root.find(kSourceField);
+    if (source == root.end() || !source->is_string() || !isPlaylistId(source->get<std::string>()))
+        return refuseSourceRows(PlaylistRefusal::badId);
+
+    const auto selection = decodeSelection(root, kAnyRowPosition);
+    if (!selection.ok())
+        return refuseSourceRows(PlaylistRefusal::badOrdinals);
+
+    SourceRowsRequest request;
+    request.playlistId = source->get<std::string>();
+    request.positions = selection.ordinals;
+    return request;
+}
+
+MovePlaylistRequest parseMovePlaylist(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseMovePlaylist(PlaylistRefusal::malformedBody);
+
+    const auto& root = document.value;
+
+    if (!declaresOnly(root, kMovePlaylistFields))
+        return refuseMovePlaylist(PlaylistRefusal::malformedBody);
+
+    const auto index = root.find(kIndexField);
+    if (index == root.end() || !index->is_number_unsigned() || !fitsUint32(index->get<uint64_t>()))
+        return refuseMovePlaylist(PlaylistRefusal::badOrdinals);
+
+    MovePlaylistRequest request;
+    request.index = static_cast<uint32_t>(index->get<uint64_t>());
     return request;
 }
 

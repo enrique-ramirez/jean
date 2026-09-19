@@ -45,6 +45,9 @@ using PlaylistChangeReader = std::function<PlaylistChangesRead(
     const std::string& playlistId, uint64_t structure, uint64_t since,
     const std::vector<std::string>& columns)>;
 
+using PlaylistRowPlayer =
+    std::function<PlaylistOutcome(const std::string& playlistId, uint32_t index)>;
+
 using QueueReader = std::function<QueueRead()>;
 
 using PlaylistRowQueuer = std::function<PlaylistOutcome(
@@ -93,10 +96,59 @@ using PlaylistFiller =
                              uint64_t structure, const std::vector<uint32_t>& ordinals,
                              bool replace)>;
 
+// The rows a new playlist is created holding, in the order they are inserted. A create with
+// no set carries neither pair: `ordinals` resolved against `structure` name media library
+// tracks, and `positions` name rows of `sourcePlaylistId`.
+struct NewPlaylistRows {
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+
+    std::string sourcePlaylistId;
+    std::vector<uint32_t> positions;
+};
+
+// Creates a playlist at the end of the player's list, titled `title` and holding `rows`, in
+// one main-thread work item so that no client ever sees it empty. Answers the annotation
+// GET /api/playlists reports for it.
+using PlaylistCreator =
+    std::function<PlaylistResult(const std::string& title, const NewPlaylistRows& rows)>;
+
 // Empties `role`'s own playlist and leaves the playlist itself standing. Takes no structure
 // and no ordinals: there is nothing here to resolve against the library, unlike a fill. A
 // role with no playlist yet is a quiet success rather than one made to answer this.
 using OwnPlaylistEmptier = std::function<PlaylistResult(OwnPlaylistRole role)>;
+
+using PlaylistRenamer =
+    std::function<PlaylistResult(const std::string& id, const std::string& title)>;
+
+// Removes `id` and leaves the play queue alone: foobar2000 keeps a queued entry whose whole
+// playlist is gone rather than dropping it, so there is nothing here to tidy. See
+// ARCHITECTURE.md, *Facts about the player*.
+using PlaylistRemover = std::function<PlaylistResult(const std::string& id)>;
+
+using PlaylistMover = std::function<PlaylistResult(const std::string& id, uint32_t index)>;
+
+// What a row edit left behind: the structure generation the playlist is at once the write has
+// landed, and where the rows an insert added sit, in the order they were inserted. `positions`
+// is empty for a removal, which lands nothing.
+struct RowsEdited {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    uint64_t structure = 0;
+    std::vector<size_t> positions;
+};
+
+// Appends the rows `positions` names in `sourcePlaylistId` to the end of `playlistId`. Takes no
+// structure generation: an append addresses no position in the target, so there is nothing for
+// one to protect, and the generation this answers is the one a client's undo names.
+using PlaylistRowCopier =
+    std::function<RowsEdited(const std::string& playlistId, const std::string& sourcePlaylistId,
+                             const std::vector<uint32_t>& positions)>;
+
+// Removes the rows `positions` names from `playlistId`, and answers `rowsMoved` having removed
+// nothing where `structure` is no longer the playlist's structure generation.
+using PlaylistRowRemover =
+    std::function<RowsEdited(const std::string& playlistId, uint64_t structure,
+                             const std::vector<uint32_t>& positions)>;
 
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.
@@ -105,6 +157,7 @@ struct Player {
     PlaylistLister listPlaylists;
     PlaylistRowReader readPlaylistRows;
     PlaylistChangeReader readChangedPlaylistRows;
+    PlaylistRowPlayer playPlaylistRow;
     QueueReader readQueue;
     PlaylistRowQueuer queuePlaylistRows;
     LibraryTrackQueuer queueLibraryTracks;
@@ -115,6 +168,12 @@ struct Player {
     AutoPlaylistUpdater updateAutoPlaylist;
     AutoPlaylistRemover removeAutoPlaylist;
     OwnPlaylistResolver ownPlaylist;
+    PlaylistCreator createPlaylist;
+    PlaylistRenamer renamePlaylist;
+    PlaylistRemover removePlaylist;
+    PlaylistMover movePlaylist;
+    PlaylistRowCopier copyPlaylistRows;
+    PlaylistRowRemover removePlaylistRows;
     PlaylistFiller fill;
     OwnPlaylistEmptier emptyOwnPlaylist;
     QueryPreviewer previewQuery;

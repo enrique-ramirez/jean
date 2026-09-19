@@ -64,6 +64,11 @@ std::optional<OwnPlaylistRole> roleOf(size_t index) {
     return std::nullopt;
 }
 
+// See ARCHITECTURE.md, *Facts about the player*, for what the mask covers and what it does not.
+bool lockRefuses(size_t index, uint32_t filter) {
+    return (playlist_manager::get()->playlist_lock_get_filter_mask(index) & filter) != 0;
+}
+
 // Main thread, which is also where the version callbacks run, so the counts and the two
 // numbers here are taken from one state of the player rather than from two.
 PlaylistAnnotation annotate(size_t index, const PlaylistVersions& versions) {
@@ -316,8 +321,9 @@ void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
     answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index, versions)});
 }
 
-// foobar2000 crashes if a playlist the play queue points into is deleted. Removing its items
-// rather than the playlist itself keeps the id, and the queue, intact.
+// Removing items rather than deleting and recreating the playlist keeps its id, and any
+// `kOwnPlaylist` role property, stable. foobar2000 itself tolerates a deleted playlist the
+// play queue still points into; see ARCHITECTURE.md, *Facts about the player*.
 void removeEveryItem(size_t index) {
     playlist_manager_v5::get()->playlist_remove_items(index, bit_array_true());
 }
@@ -368,6 +374,278 @@ void beginFill(const std::string& playlistId, const std::string& title, uint64_t
 
     answer->set(FillResult{PlaylistOutcome::done, std::move(positions),
                            annotate(index, versions).beefwebId});
+}
+
+struct CopiedRows {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    metadb_handle_list items;
+};
+
+CopiedRows rowsFailure(PlaylistOutcome outcome) {
+    CopiedRows rows;
+    rows.outcome = outcome;
+    return rows;
+}
+
+// No role check: this only ever reads, and both a copy's source and a create's source route
+// through here, so the scratch has to stay reachable by this call for *Add to playlist* and
+// *Save as playlist* to keep working over a set Jean played through it.
+CopiedRows rowsOfPlaylist(const std::string& playlistId, const std::vector<uint32_t>& positions) {
+    const auto index = findPlaylist(playlistId);
+    if (index == pfc::infinite_size)
+        return rowsFailure(PlaylistOutcome::noSuchPlaylist);
+
+    const auto manager = playlist_manager::get();
+    const auto rowCount = manager->playlist_get_item_count(index);
+
+    CopiedRows copied;
+    for (const uint32_t position : positions) {
+        if (position >= rowCount)
+            return rowsFailure(PlaylistOutcome::positionPastEnd);
+
+        metadb_handle_ptr handle;
+        if (!manager->playlist_get_item_handle(handle, index, position))
+            return rowsFailure(PlaylistOutcome::playerRefused);
+
+        copied.items.add_item(handle);
+    }
+
+    return copied;
+}
+
+CopiedRows rowsFor(const NewPlaylistRows& rows, const OrdinalResolver& resolveOrdinals) {
+    if (!rows.sourcePlaylistId.empty())
+        return rowsOfPlaylist(rows.sourcePlaylistId, rows.positions);
+
+    if (rows.ordinals.empty())
+        return {};
+
+    const auto resolved = resolveOrdinals(rows.structure, rows.ordinals);
+    if (!resolved.structureMatched)
+        return rowsFailure(PlaylistOutcome::structureMoved);
+
+    CopiedRows gathered;
+    gathered.items = resolved.items;
+    return gathered;
+}
+
+// Main thread, and one work item on purpose: a create and a fill taking one each would leave a
+// window in which a client reads a playlist nobody asked for, holding nothing.
+void beginCreatePlaylist(const std::string& title, const NewPlaylistRows& rows,
+                         const PlaylistVersions& versions, const OrdinalResolver& resolveOrdinals,
+                         const AnswerPtr<PlaylistResult>& answer) {
+    const auto gathered = rowsFor(rows, resolveOrdinals);
+    if (gathered.outcome != PlaylistOutcome::done) {
+        answer->set(playlistFailure(gathered.outcome));
+        return;
+    }
+
+    auto manager = playlist_manager_v5::get();
+    const auto index = manager->create_playlist(title.c_str(), title.size(), pfc::infinite_size);
+
+    if (index == pfc::infinite_size) {
+        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        return;
+    }
+
+    manager->playlist_insert_items(index, 0, gathered.items, bit_array_false());
+
+    logInfo("created playlist '" + title + "'");
+    answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index, versions)});
+}
+
+void beginRenamePlaylist(const std::string& id, const std::string& title,
+                         const AnswerPtr<PlaylistResult>& answer) {
+    const auto index = findPlaylist(id);
+    if (index == pfc::infinite_size) {
+        answer->set(playlistFailure(PlaylistOutcome::noSuchPlaylist));
+        return;
+    }
+
+    if (roleOf(index)) {
+        answer->set(playlistFailure(PlaylistOutcome::ownPlaylist));
+        return;
+    }
+
+    if (lockRefuses(index, playlist_lock::filter_rename)) {
+        answer->set(playlistFailure(PlaylistOutcome::playlistLocked));
+        return;
+    }
+
+    if (!playlist_manager::get()->playlist_rename(index, title.c_str(), title.size())) {
+        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        return;
+    }
+
+    answer->set(PlaylistResult{});
+}
+
+// The play queue is left alone on purpose. What foobar2000 does with a queued entry whose
+// whole playlist is gone is ARCHITECTURE.md, *Facts about the player*.
+void beginRemovePlaylist(const std::string& id, const AnswerPtr<PlaylistResult>& answer) {
+    const auto index = findPlaylist(id);
+    if (index == pfc::infinite_size) {
+        answer->set(playlistFailure(PlaylistOutcome::noSuchPlaylist));
+        return;
+    }
+
+    if (roleOf(index)) {
+        answer->set(playlistFailure(PlaylistOutcome::ownPlaylist));
+        return;
+    }
+
+    if (lockRefuses(index, playlist_lock::filter_remove_playlist)) {
+        answer->set(playlistFailure(PlaylistOutcome::playlistLocked));
+        return;
+    }
+
+    const auto title = playlistTitle(index);
+
+    if (!playlist_manager::get()->remove_playlist(index)) {
+        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        return;
+    }
+
+    logInfo("removed playlist '" + title + "'");
+    answer->set(PlaylistResult{});
+}
+
+// The permutation playlist_manager::reorder expects; see ARCHITECTURE.md, *Facts about the
+// player*.
+std::vector<t_size> listOrderMoving(size_t count, size_t from, size_t to) {
+    std::vector<t_size> order(count);
+    std::iota(order.begin(), order.end(), t_size{0});
+
+    const auto moved = order.begin() + static_cast<std::ptrdiff_t>(from);
+    const auto target = order.begin() + static_cast<std::ptrdiff_t>(to);
+
+    if (from < to)
+        std::rotate(moved, moved + 1, target + 1);
+    else
+        std::rotate(target, moved, moved + 1);
+
+    return order;
+}
+
+void beginMovePlaylist(const std::string& id, uint32_t index,
+                       const AnswerPtr<PlaylistResult>& answer) {
+    const auto from = findPlaylist(id);
+    if (from == pfc::infinite_size) {
+        answer->set(playlistFailure(PlaylistOutcome::noSuchPlaylist));
+        return;
+    }
+
+    if (roleOf(from)) {
+        answer->set(playlistFailure(PlaylistOutcome::ownPlaylist));
+        return;
+    }
+
+    auto manager = playlist_manager::get();
+    const auto count = manager->get_playlist_count();
+    if (index >= count) {
+        answer->set(playlistFailure(PlaylistOutcome::positionPastEnd));
+        return;
+    }
+
+    const auto order = listOrderMoving(count, from, index);
+    if (!manager->reorder(order.data(), order.size())) {
+        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        return;
+    }
+
+    answer->set(PlaylistResult{});
+}
+
+RowsEdited rowsEditFailure(PlaylistOutcome outcome) {
+    RowsEdited edited;
+    edited.outcome = outcome;
+    return edited;
+}
+
+// Main thread.
+void beginCopyRows(const std::string& playlistId, const std::string& sourcePlaylistId,
+                   const std::vector<uint32_t>& positions, const PlaylistVersions& versions,
+                   const AnswerPtr<RowsEdited>& answer) {
+    const auto index = findPlaylist(playlistId);
+    if (index == pfc::infinite_size) {
+        answer->set(rowsEditFailure(PlaylistOutcome::noSuchPlaylist));
+        return;
+    }
+
+    // The target only. A source is read rather than changed, so *Add to playlist* over results
+    // Jean played through the scratch keeps working.
+    if (roleOf(index)) {
+        answer->set(rowsEditFailure(PlaylistOutcome::ownPlaylist));
+        return;
+    }
+
+    if (lockRefuses(index, playlist_lock::filter_add)) {
+        answer->set(rowsEditFailure(PlaylistOutcome::playlistLocked));
+        return;
+    }
+
+    const auto gathered = rowsOfPlaylist(sourcePlaylistId, positions);
+    if (gathered.outcome != PlaylistOutcome::done) {
+        answer->set(rowsEditFailure(gathered.outcome));
+        return;
+    }
+
+    auto manager = playlist_manager_v5::get();
+    const auto base = manager->playlist_get_item_count(index);
+    manager->playlist_insert_items(index, base, gathered.items, bit_array_false());
+
+    RowsEdited copied;
+    copied.positions.resize(gathered.items.get_count());
+    std::iota(copied.positions.begin(), copied.positions.end(), base);
+    copied.structure = versions.of(playlistId).structure;
+
+    answer->set(std::move(copied));
+}
+
+// Main thread.
+void beginRemoveRows(const std::string& playlistId, uint64_t structure,
+                     const std::vector<uint32_t>& positions, const PlaylistVersions& versions,
+                     const AnswerPtr<RowsEdited>& answer) {
+    const auto index = findPlaylist(playlistId);
+    if (index == pfc::infinite_size) {
+        answer->set(rowsEditFailure(PlaylistOutcome::noSuchPlaylist));
+        return;
+    }
+
+    if (roleOf(index)) {
+        answer->set(rowsEditFailure(PlaylistOutcome::ownPlaylist));
+        return;
+    }
+
+    // Checked ahead of the structure below: a stale structure has a remedy a client reaches by
+    // reading the playlist again, and a lock has none, so a request that is both answers the one
+    // outcome a re-read cannot fix.
+    if (lockRefuses(index, playlist_lock::filter_remove)) {
+        answer->set(rowsEditFailure(PlaylistOutcome::playlistLocked));
+        return;
+    }
+
+    if (versions.of(playlistId).structure != structure) {
+        answer->set(rowsEditFailure(PlaylistOutcome::rowsMoved));
+        return;
+    }
+
+    auto manager = playlist_manager_v5::get();
+    const auto rowCount = manager->playlist_get_item_count(index);
+
+    if (std::any_of(positions.begin(), positions.end(),
+                    [rowCount](uint32_t position) { return position >= rowCount; })) {
+        answer->set(rowsEditFailure(PlaylistOutcome::positionPastEnd));
+        return;
+    }
+
+    bit_array_bittable mask(rowCount);
+    for (const uint32_t position : positions)
+        mask.set(position, true);
+
+    manager->playlist_remove_items(index, mask);
+
+    answer->set(RowsEdited{PlaylistOutcome::done, versions.of(playlistId).structure, {}});
 }
 
 // What the main thread hands over for a page of rows: the handles, the cheap half, and the
@@ -476,6 +754,21 @@ void beginReadChangedRows(const std::string& playlistId, uint64_t structure, uin
 
     copied.scripts = compiledColumns(columns);
     answer->set(std::move(copied));
+}
+
+// plugins/fb2k/ARCHITECTURE.md, "Facts about the player": why this ignores the bool
+// playlist_execute_default_action returns.
+PlaylistOutcome beginPlayRow(const std::string& playlistId, uint32_t index) {
+    const auto playlist = findPlaylist(playlistId);
+    if (playlist == pfc::infinite_size)
+        return PlaylistOutcome::noSuchPlaylist;
+
+    const auto manager = playlist_manager::get();
+    if (index >= manager->playlist_get_item_count(playlist))
+        return PlaylistOutcome::positionPastEnd;
+
+    manager->playlist_execute_default_action(playlist, index);
+    return PlaylistOutcome::done;
 }
 
 PlaylistRow formattedRow(const metadb_handle_ptr& handle,
@@ -708,6 +1001,17 @@ PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
     };
 }
 
+PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread) {
+    return [&mainThread](const std::string& playlistId, uint32_t index) {
+        return askPlayer<PlaylistOutcome>(
+            mainThread, "playing a playlist row",
+            [playlistId, index](const AnswerPtr<PlaylistOutcome>& answer) {
+                answer->set(beginPlayRow(playlistId, index));
+            },
+            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+    };
+}
+
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions,
                                             int maxAutoPlaylists) {
@@ -771,6 +1075,84 @@ OwnPlaylistEmptier makeOwnPlaylistEmptier(MainThreadQueue& mainThread,
             },
             playlistFailure(PlaylistOutcome::timedOut),
             playlistFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+PlaylistCreator makePlaylistCreator(MainThreadQueue& mainThread, const PlaylistVersions& versions,
+                                    OrdinalResolver resolveOrdinals) {
+    return [&mainThread, &versions, resolveOrdinals](const std::string& title,
+                                                     const NewPlaylistRows& rows) {
+        return askPlayer<PlaylistResult>(
+            mainThread, "creating a playlist",
+            [title, rows, &versions, resolveOrdinals](const AnswerPtr<PlaylistResult>& answer) {
+                beginCreatePlaylist(title, rows, versions, resolveOrdinals, answer);
+            },
+            playlistFailure(PlaylistOutcome::timedOut),
+            playlistFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+PlaylistRenamer makePlaylistRenamer(MainThreadQueue& mainThread) {
+    return [&mainThread](const std::string& id, const std::string& title) {
+        return askPlayer<PlaylistResult>(
+            mainThread, "renaming a playlist",
+            [id, title](const AnswerPtr<PlaylistResult>& answer) {
+                beginRenamePlaylist(id, title, answer);
+            },
+            playlistFailure(PlaylistOutcome::timedOut),
+            playlistFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+PlaylistRemover makePlaylistRemover(MainThreadQueue& mainThread) {
+    return [&mainThread](const std::string& id) {
+        return askPlayer<PlaylistResult>(
+            mainThread, "removing a playlist",
+            [id](const AnswerPtr<PlaylistResult>& answer) { beginRemovePlaylist(id, answer); },
+            playlistFailure(PlaylistOutcome::timedOut),
+            playlistFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+PlaylistMover makePlaylistMover(MainThreadQueue& mainThread) {
+    return [&mainThread](const std::string& id, uint32_t index) {
+        return askPlayer<PlaylistResult>(
+            mainThread, "moving a playlist",
+            [id, index](const AnswerPtr<PlaylistResult>& answer) {
+                beginMovePlaylist(id, index, answer);
+            },
+            playlistFailure(PlaylistOutcome::timedOut),
+            playlistFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+PlaylistRowCopier makePlaylistRowCopier(MainThreadQueue& mainThread,
+                                        const PlaylistVersions& versions) {
+    return [&mainThread, &versions](const std::string& playlistId,
+                                    const std::string& sourcePlaylistId,
+                                    const std::vector<uint32_t>& positions) {
+        return askPlayer<RowsEdited>(
+            mainThread, "copying rows into a playlist",
+            [playlistId, sourcePlaylistId, positions,
+             &versions](const AnswerPtr<RowsEdited>& answer) {
+                beginCopyRows(playlistId, sourcePlaylistId, positions, versions, answer);
+            },
+            rowsEditFailure(PlaylistOutcome::timedOut),
+            rowsEditFailure(PlaylistOutcome::playerRefused));
+    };
+}
+
+PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
+                                          const PlaylistVersions& versions) {
+    return [&mainThread, &versions](const std::string& playlistId, uint64_t structure,
+                                    const std::vector<uint32_t>& positions) {
+        return askPlayer<RowsEdited>(
+            mainThread, "removing rows from a playlist",
+            [playlistId, structure, positions, &versions](const AnswerPtr<RowsEdited>& answer) {
+                beginRemoveRows(playlistId, structure, positions, versions, answer);
+            },
+            rowsEditFailure(PlaylistOutcome::timedOut),
+            rowsEditFailure(PlaylistOutcome::playerRefused));
     };
 }
 

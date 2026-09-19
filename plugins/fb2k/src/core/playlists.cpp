@@ -211,6 +211,14 @@ std::string roleName(OwnPlaylistRole role) {
     return {};
 }
 
+std::string ownPlaylistTitle(const std::string& asked) {
+    const std::string prefix = kOwnTitlePrefix;
+    if (asked.compare(0, prefix.size(), prefix) == 0)
+        return asked;
+
+    return prefix + " " + asked;
+}
+
 PlaylistVersions::PlaylistVersions(size_t retainedRevisions)
     : retainedRevisions_(retainedRevisions), untouched_(randomStart()) {}
 
@@ -376,6 +384,10 @@ std::string describe(PlaylistOutcome outcome) {
         case PlaylistOutcome::writesDisabled:
             return "this install has playlist writes turned off; turn on writePlaylists in "
                    "config.json to allow them";
+        case PlaylistOutcome::playlistLocked:
+            return "another component has locked that playlist against that edit";
+        case PlaylistOutcome::ownPlaylist:
+            return "that playlist is foo_jean's own; address it by its role rather than by its id";
     }
     return "unknown";
 }

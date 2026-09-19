@@ -13,15 +13,15 @@ openapi: 3.1.0
 info:
   title: foo_jean
   version: 0.3.0
-  summary: Tag writing, autoplaylists and the media library for foobar2000, over HTTP, for clients that beefweb cannot serve.
+  summary: The media library, playlists, the queue, tag writing and a live stream of the player's output, for foobar2000, over HTTP.
   description: |
-    A foobar2000 component exposing what [beefweb](https://github.com/hyperblast/beefweb) does not: writing metadata tags, managing autoplaylists, reading the whole media library in one piece, and streaming the player's own output.
+    A foobar2000 component exposing over HTTP what a client cannot otherwise reach: writing metadata tags, the whole media library in one piece, every playlist and autoplaylist addressed by foobar2000's own GUID, the play queue, cover art, what the player is doing, and a live encode of its output.
 
     ## Relationship to beefweb
 
-    This component runs beside beefweb on its own port and replaces no beefweb endpoint. `GET /playlists` is an annotation, not a playlist listing: beefweb reports titles, item counts and order, and this reports only what beefweb cannot say — which playlists are autoplaylists — plus the ids needed to join the two answers.
+    Playlists are read and edited here and nowhere else. `GET /playlists` is the listing: every playlist the player holds, with its title, its item count, its position in the player's list, whether it is an autoplaylist, and the two generations that say what a client has to read again. There is no second answer to join it against. See `PlaylistAnnotation`.
 
-    A client MUST ask beefweb for its playlists and this component for the annotations, in that order. See `PlaylistAnnotation`.
+    What [beefweb](https://github.com/hyperblast/beefweb) is still for is the playback commands, pause, next, previous, stop, seek, volume and playback order, and serving a client its own page. Starting playback is here, because a row is addressed by playlist: `POST /playlists/{id}/items/{index}/play`. The discovery record a client finds this component through is beefweb's too; see `DiscoveryRecord`.
 
     ## Versioning
 
@@ -510,6 +510,71 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/PlaylistUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
+    post:
+      tags: [playlists]
+      operationId: createPlaylist
+      summary: Create a playlist at the end of the player's list, holding a set or nothing.
+      description: |
+        An ordinary playlist, not an autoplaylist: nothing keeps it filled and `POST /autoplaylists` is what makes one that does. It lands last in the player's own list and carries `title` exactly as somebody looking at foobar2000 will read it.
+
+        The set is optional and is the fill's own: `runs`, `bitset` or `ordinals` resolved against a `structure` for media library tracks, exactly as `POST /playlists/{id}/items` reads them, or `source` and `runs` for the rows of a playlist that already exists. A body naming neither creates the playlist holding nothing, and needs no media library to do it.
+
+        **The playlist is created and filled in one operation of the player's.** A client saving a set as a playlist sends this one request: there is no window in which the playlist exists empty, and nothing here has to be followed by a fill.
+
+        Refused with `403` under the read-only-playlists setting: the playlist it makes would hold the user's music.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePlaylistRequest" }
+            examples:
+              empty:
+                summary: A playlist holding nothing, which is what the sidebar's own *New playlist* sends.
+                value: { title: "Road trip" }
+              libraryRows:
+                summary: Ordinals 0, 1 and 9 of a 16-track library, as two runs.
+                value: { title: "Road trip", structure: 41, runs: [[0, 2], [9, 1]] }
+              playlistRows:
+                summary: Rows 1, 2 and 4 of a playlist that already exists.
+                value:
+                  title: "Road trip"
+                  source: "45837d74-fa4f-415c-bba9-bf2db8f0dc04"
+                  runs: [[1, 2], [4, 1]]
+      responses:
+        "200":
+          description: Created. The body is the annotation, as `GET /playlists` would report it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistAnnotation" }
+        "400":
+          description: |
+            The request was understood and declined: a body that is not JSON, a missing, empty, unprintable or over-long `title`, a `source` this component did not issue, a set that is not exactly one of `runs`, `bitset` and `ordinals`, one naming an ordinal outside the library while its `structure` is still the current one, or a `source` row past the end of that playlist. The schemas below tell the last of those from the rest.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/WritesDisabled" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "409": { $ref: "#/components/responses/StructureMoved" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503":
+          description: |
+            A set of media library tracks arrived and this install either does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or has built no snapshot yet to resolve it against. A create carrying no such set is answered `503` only where the component cannot reach the player's playlists at all.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                off:
+                  value: { error: the media library is not available }
+                nothingYet:
+                  value: { error: the library snapshot has not been built yet, detail: "" }
+                noPlaylists:
+                  value: { error: autoplaylists are not available, detail: "" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /autoplaylists:
     post:
@@ -670,7 +735,7 @@ paths:
       description: |
         Removes the playlist and the autoplaylist client with it.
 
-        Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself, whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first. A client that needs to delete an arbitrary playlist MUST ask beefweb, which will delete any playlist for any caller that can reach it.
+        Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself, whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first. Any other playlist is deleted through `DELETE /playlists/{id}`.
       responses:
         "200":
           description: Deleted.
@@ -747,7 +812,7 @@ paths:
       operationId: emptyOwnPlaylist
       summary: Take every row out of one of the component's own playlists, keeping the playlist.
       description: |
-        Removes every item rather than the playlist itself, the same guard a replacing fill of `scratch` already keeps: deleting a playlist the play queue points into kills foobar2000. The playlist keeps its id, its position and beefweb's id for it.
+        Removes every item rather than the playlist itself, the same choice a replacing fill of `scratch` makes: the playlist keeps its id, its position in the player's list and the marker that `role` resolves through, and deleting it would cost all three. The play queue plays no part in that and is not touched here; `DELETE /playlists/{id}` has what the player does with a queued entry whose playlist goes.
 
         Idempotent: a role with no playlist yet is not made one just to answer this, and reports success regardless, exactly as `DELETE /stream/hold` reports success whether or not there was a hold to release.
 
@@ -760,6 +825,133 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/OwnPlaylistsUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /playlists/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+    post:
+      tags: [playlists]
+      operationId: renamePlaylist
+      summary: Retitle a playlist.
+      description: |
+        Any playlist, not only one this component made: `title` ends up exactly as somebody looking at foobar2000's own tabs will read it. The playlist keeps its `id`, its position, its rows and both its version numbers, none of which a title bears on.
+
+        `title` is held to the same rule `POST /playlists` holds a new one to, because a title a client cannot create is one it cannot rename to either.
+
+        Nothing comes back. The list a client draws comes from `GET /playlists`, which `GET /state`'s `playlistsRevision` tells it to read again.
+
+        Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where the `id` is one of this component's own playlists, and with `409` where another component has locked the playlist against a rename.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RenamePlaylistRequest" }
+            examples:
+              renamed:
+                summary: What the sidebar sends when somebody finishes typing over a playlist's name.
+                value: { title: "Road trip" }
+      responses:
+        "204":
+          description: Renamed.
+        "400":
+          description: |
+            An id this component did not issue, a body that is not JSON, or a missing, empty, unprintable or over-long `title`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistRefusal" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "409": { $ref: "#/components/responses/PlaylistLocked" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+    delete:
+      tags: [playlists]
+      operationId: removePlaylist
+      summary: Delete a playlist.
+      description: |
+        Any playlist, unlike `DELETE /autoplaylists/{id}`, which touches only the records this component keeps. The rows go with it; the files do not.
+
+        **The play queue is not touched, and a client MUST NOT empty it first.** foobar2000 keeps a queued entry whose whole playlist is deleted rather than dropping it, and such an entry still plays when it reaches the head: plugins/fb2k/ARCHITECTURE.md, *Facts about the player*, has what the player does and what reading one carelessly costs. `GET /queue` answers those entries from their handles, so the queue a client draws afterwards is the queue the player will play.
+
+        Nothing comes back.
+
+        Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where the `id` is one of this component's own playlists, and with `409` where another component has locked the playlist against being deleted.
+      responses:
+        "204":
+          description: Deleted.
+        "400":
+          description: An id this component did not issue.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistRefusal" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "409": { $ref: "#/components/responses/PlaylistLocked" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /playlists/{id}/move:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+    post:
+      tags: [playlists]
+      operationId: movePlaylist
+      summary: Move a playlist to a position in the player's list.
+      description: |
+        `index` is where the playlist ends up, counting from zero, and every playlist it passes shifts by one to make room. It is a position in the list as it stands, so moving the first of three playlists to `2` puts it last; `3` is one past the end and a `400`.
+
+        Nothing comes back, and the `index` each playlist now carries is read from `GET /playlists`. Every playlist between the two positions has one it did not have before, so a client holding the list MUST read it again rather than patching the one entry it moved.
+
+        Refused with `403` under the read-only-playlists setting, and with `403` whatever that setting says where the `id` is one of this component's own playlists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MovePlaylistRequest" }
+            examples:
+              toTheTop:
+                summary: Make it the first playlist in the player's list.
+                value: { index: 0 }
+      responses:
+        "204":
+          description: Moved.
+        "400":
+          description: |
+            An id this component did not issue, a body that is not JSON, an `index` missing or not a whole number in range, or one the player found past the end of its list. The schemas below tell the last of those from the rest.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /playlists/{id}/items:
@@ -968,6 +1160,196 @@ paths:
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/PlaylistRowsMoved" }
         "410": { $ref: "#/components/responses/PlaylistRevisionGone" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /playlists/{id}/items/copy:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The playlist the rows are appended to, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+    post:
+      tags: [playlists]
+      operationId: copyPlaylistItems
+      summary: Append rows of one playlist to the end of another.
+      description: |
+        The rows are copied, so `source` keeps every row it lent, and they land at the end in ascending position order, which is the only order `runs` can carry. Sending the same playlist as `source` and as `id` appends a copy of those rows to itself.
+
+        **The request names no generation and answers one.** An append addresses no position in the target, so there is nothing for a generation to protect on the way in; what comes back is the `structure` the target stands at once the rows have landed, alongside where each one landed. Those two are what an undo removes exactly these rows against, through `POST /playlists/{id}/items/remove`, and they are why this answers a document rather than nothing.
+
+        One operation of the player's: nothing here reads an item count before or after the write.
+
+        `runs` naming no rows at all is accepted and appends nothing. A body naming no `source` is a `400` rather than a copy of the target onto itself.
+
+        Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where `id` is one of this component's own playlists, and with `409` where another component has locked the target against having rows added. The `source` is only read from, so neither a lock on it nor a `role` it carries bears on anything here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CopyPlaylistRowsRequest" }
+            examples:
+              rows:
+                summary: Rows 1, 2 and 4 of another playlist.
+                value:
+                  source: "45837d74-fa4f-415c-bba9-bf2db8f0dc04"
+                  runs: [[1, 2], [4, 1]]
+      responses:
+        "200":
+          description: Appended. `positions` names where each row landed, and `structure` the generation the target now stands at.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CopiedRows" }
+              examples:
+                default:
+                  summary: Three rows appended to a playlist that held four.
+                  value: { structure: 13, positions: [4, 5, 6] }
+        "400":
+          description: |
+            The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, or a `runs` entry naming a row past the end of the source playlist. A create from the same source is refused in the same words.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
+        "404":
+          description: |
+            Neither the target nor the source is a playlist the player holds. Which of the two is not said: either way the rows asked for are not there to copy.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "409": { $ref: "#/components/responses/PlaylistLocked" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /playlists/{id}/items/remove:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The playlist the rows are removed from, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+    post:
+      tags: [playlists]
+      operationId: removePlaylistItems
+      summary: Remove rows of a playlist, named by position.
+      description: |
+        The set is the fill's own, read here as row positions rather than library ordinals, and `structure` is the playlist's own generation rather than the library's: the one `GET /playlists` reports for it, or the one a page, a delta or a copy answered.
+
+        **A `structure` that is no longer the playlist's current one is a `409` and nothing is removed.** The check runs before a row is touched, so a client that asked for three rows never has three others go instead. Read the playlist's rows again from the generation `GET /playlists` now reports, and send the positions that names.
+
+        What comes back is the generation the rows left behind, so a client that holds the rows it just removed re-keys what it has rather than reading the playlist again.
+
+        Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where the `id` is one of this component's own playlists, and with the same `409` where another component has locked the playlist against having rows removed. The two share a status and carry different `error` strings, because one is answered by reading the playlist again and the other by releasing the lock at the player.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RemovePlaylistRowsRequest" }
+            examples:
+              runs:
+                summary: Rows 1 and 2 of a playlist read at generation 12.
+                value: { structure: 12, runs: [[1, 2]] }
+              ordinals:
+                summary: The same two rows as a plain list.
+                value: { structure: 12, ordinals: [1, 2] }
+      responses:
+        "200":
+          description: Removed. `structure` is the generation the playlist now stands at.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemovedRows" }
+              examples:
+                default:
+                  value: { structure: 13 }
+        "400":
+          description: |
+            The request was understood and declined before the player was asked: a body that is not JSON, a missing or non-numeric `structure`, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, or a position past the end of the playlist. A fill sent the same set is refused in the same words.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "409":
+          description: |
+            Either the `structure` the request named is no longer the playlist's current one, or another component has locked the playlist against having rows removed. The `error` string tells them apart; nothing is removed in either case.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistFailed" }
+              examples:
+                restructured:
+                  value:
+                    error: "the playlist's rows were added, removed or reordered; read them again"
+                    detail: ""
+                locked:
+                  value:
+                    error: "another component has locked that playlist against that edit"
+                    detail: ""
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
+
+  /playlists/{id}/items/{index}/play:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+      - name: index
+        in: path
+        required: true
+        description: The row's position in the playlist, `0` being the first, at the `structure` the client read it at.
+        schema: { type: integer, minimum: 0, maximum: 4294967295 }
+        example: 3
+    post:
+      tags: [playlists]
+      operationId: playPlaylistRow
+      summary: Start playback at one row of a playlist.
+      description: |
+        The one playback command here: every other one is addressed by the player rather than by a playlist. The row is named by position, so a client sending one it read at a `structure` the playlist has moved past plays whatever sits there now.
+
+        Nothing comes back. Where playback landed reaches a client through `GET /state`'s `playingLocation`, on the player's own report rather than on this answer, so a track started at the player and a track started here arrive the same way.
+
+        This writes nothing and the read-only-playlists setting does not refuse it.
+      responses:
+        "204":
+          description: Playing.
+        "400":
+          description: |
+            An id this component did not issue, an `index` that is not a whole number or is larger than 4294967295, or the player found `index` past the end of that playlist.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
@@ -1793,6 +2175,22 @@ components:
             default:
               value: { error: this install has playlist writes turned off; turn on writePlaylists in config.json to allow them, detail: "" }
 
+    OwnPlaylistAddressed:
+      description: |
+        The edit addresses one of this component's own playlists, found by the `role` a `PlaylistAnnotation` carries and never by its title. Jean plays a set through the scratch, so retitling, deleting, moving or changing the rows of one by `id` would take apart the playlist somebody is listening from. `POST /playlists/own/{role}/items` fills one and `DELETE /playlists/own/{role}/items` empties it; those two are the whole of what may change it, and `writePlaylists` being `true` buys nothing here.
+
+        Reading is not addressing. Such a playlist stays a legal `source` for `POST /playlists/{id}/items/copy` and for `POST /playlists`, and its rows are readable as any other playlist's, which is what lets *Add to playlist* and *Save as playlist* work over results Jean played through the scratch.
+
+        The same status also answers when `writePlaylists` is `false` in `config.json`, checked before the playlist is looked at. A client tells the two apart by `error`, which the examples below give both of.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            ownPlaylist:
+              value: { error: that playlist is foo_jean's own; address it by its role rather than by its id, detail: "" }
+            writesDisabled:
+              value: { error: this install has playlist writes turned off; turn on writePlaylists in config.json to allow them, detail: "" }
+
     NoSuchPlaylist:
       description: No playlist has that id. It may have been deleted in the player.
       content:
@@ -1891,6 +2289,18 @@ components:
             restructured:
               value:
                 error: "the playlist's rows were added, removed or reordered; read them again"
+                detail: ""
+
+    PlaylistLocked:
+      description: |
+        Some other component has locked the playlist against this edit, and foobar2000 refuses it on that component's behalf. Nothing a client sends changes that: the lock is released at the player, by whatever put it there. A playlist reports its locks per edit, so one that refuses a rename may still take rows.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            locked:
+              value:
+                error: "another component has locked that playlist against that edit"
                 detail: ""
 
     PlaylistRevisionGone:
@@ -2594,7 +3004,9 @@ components:
           minLength: 1
           maxLength: 256
           description: |
-            What to title the playlist, exactly as it will read in foobar2000's own tabs. Applied on every call, whether this one is what creates the playlist for `role` or finds one already there, so retitling it from one fill to the next is the same call that fills it, never a second one.
+            What to title the playlist. Applied on every call, whether this one is what creates the playlist for `role` or finds one already there, so retitling it from one fill to the next is the same call that fills it, never a second one.
+
+            A title beginning `#Jean` reaches foobar2000's own tab exactly as sent; one that does not is prefixed with `#Jean` before it gets there. These are the component's own playlists, and a title is all the player's own list of playlists shows about whose a playlist is. No title is refused for lacking the prefix.
 
             No control characters, which would be line breaks in a playlist tab.
         structure:
@@ -2620,12 +3032,90 @@ components:
         bitset: { $ref: "#/components/schemas/Bitset" }
         ordinals: { $ref: "#/components/schemas/Ordinals" }
 
+    CopyPlaylistRowsRequest:
+      type: object
+      additionalProperties: false
+      required: [source, runs]
+      properties:
+        source:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          description: |
+            The playlist to take rows from, by the `id` a `PlaylistAnnotation` carries. Rows are copied, so the source is left as it was. No generation is sent with it: the positions are read against the playlist as it stands when the player takes the job.
+          examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
+        runs: { $ref: "#/components/schemas/Runs" }
+
+    RemovePlaylistRowsRequest:
+      type: object
+      additionalProperties: false
+      required: [structure]
+      properties:
+        structure:
+          type: integer
+          description: |
+            The playlist's own `structure` generation, the one its positions were read at. Read it from `GET /playlists`, from a page, from a delta or from the answer a copy gave. A value other than the playlist's current one is a `409` and nothing is removed.
+          examples: [12]
+        runs: { $ref: "#/components/schemas/Runs" }
+        bitset: { $ref: "#/components/schemas/Bitset" }
+        ordinals: { $ref: "#/components/schemas/Ordinals" }
+
+    RenamePlaylistRequest:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: |
+            What to title the playlist, exactly as it will read in foobar2000's own tabs. No control characters, which would be line breaks in a playlist tab.
+
+    MovePlaylistRequest:
+      type: object
+      additionalProperties: false
+      required: [index]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+          description: |
+            Where the playlist ends up in the player's list, counting from zero. A value at or past the number of playlists is a `400`.
+          examples: [0]
+
+    CreatePlaylistRequest:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: |
+            What to title the playlist, exactly as it will read in foobar2000's own tabs. No control characters, which would be line breaks in a playlist tab.
+        structure:
+          type: integer
+          description: |
+            The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. Required with `runs`, `bitset` or `ordinals`, and refused with `source`, which names rows rather than library tracks. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+          examples: [41]
+        source:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          description: |
+            The playlist to take rows from, by the `id` a `PlaylistAnnotation` carries. Sent with `runs`, which then names row positions in that playlist rather than library ordinals, and never with `structure`, `bitset` or `ordinals`. Rows are copied, so the source is left as it was.
+          examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
+        runs: { $ref: "#/components/schemas/Runs" }
+        bitset: { $ref: "#/components/schemas/Bitset" }
+        ordinals: { $ref: "#/components/schemas/Ordinals" }
+
     Runs:
       type: array
       description: |
-        The set as ranges: each entry is `[start, count]`, a run of `count` consecutive ordinals beginning at `start`. Collapses a whole album, a whole folder or the whole library to a handful of pairs.
+        The set as ranges: each entry is `[start, count]`, a run of `count` consecutive positions beginning at `start`. A position is a library ordinal where a library `structure` is sent alongside the set, and a row position where the request names a playlist to read rows from instead, either through `source` or as the playlist in the path. Collapses a whole album, a whole folder or a whole playlist to a handful of pairs.
 
-        Inserted in ascending ordinal order, never in the order the pairs are listed — a run cannot carry any other order. A client holding a click-ordered set MUST send `ordinals` instead.
+        Read in ascending order, never in the order the pairs are listed: a run cannot carry any other. A client holding a click-ordered set MUST send `ordinals` instead.
       items:
         type: array
         items: { type: integer, minimum: 0 }
@@ -2636,16 +3126,16 @@ components:
     Bitset:
       type: string
       description: |
-        The set as a bitmap, one bit per ordinal of the `structure` sent alongside it, least-significant bit first within each byte: bit 0 of byte 0 is ordinal 0, bit 7 of byte 0 is ordinal 7, bit 0 of byte 1 is ordinal 8. Base64 of exactly `ceil(trackCount / 8)` bytes for that `structure`. Costs about one byte per eight ordinals in the library whatever the set, which is what makes it the form to reach for once a scattered set would cost more as `runs` than the library is wide.
+        The set as a bitmap, one bit per position of the kind `Runs` describes, least-significant bit first within each byte: bit 0 of byte 0 is position 0, bit 7 of byte 0 is position 7, bit 0 of byte 1 is position 8. Base64, and against the library exactly `ceil(trackCount / 8)` bytes for the `structure` sent alongside it. Costs about one byte per eight positions whatever the set holds, which is what makes it the form to reach for once a scattered set would cost more as `runs` than the range it names is wide.
 
-        Inserted in ascending ordinal order — a bitmap carries no other order to preserve.
+        Read in ascending order: a bitmap carries no other order to preserve.
       examples: ["AwI="]
 
     Ordinals:
       type: array
       items: { type: integer, minimum: 0 }
       description: |
-        The set as a plain list. The only one of the three forms inserted in the order it is given rather than ascending — the form a client holding a click-ordered set, such as a multi-select or a queue, MUST send. Sending the same set as `runs` or `bitset` inserts it in ascending order instead, silently.
+        The set as a plain list of the positions `Runs` describes. The only one of the three forms read in the order it is given rather than ascending, which makes it the form a client holding a click-ordered set, such as a multi-select or a queue, MUST send. Sending the same set as `runs` or `bitset` reads it in ascending order instead, silently.
       examples: [[9, 0, 1]]
 
     FillResult:
@@ -2661,7 +3151,7 @@ components:
         beefwebId:
           type: [string, "null"]
           description: |
-            beefweb's id for the same playlist, exactly as `PlaylistAnnotation.beefwebId` reports it. `null` until beefweb next rebuilds its map; a client that needs it MUST request beefweb's playlists again first.
+            beefweb's own id for the same playlist, read from the property beefweb keeps on it. `null` where beefweb has written none, which for a playlist this component has just made lasts until beefweb next rebuilds its map. No other route here reports it.
           examples: ["p3"]
         positions:
           type: array
@@ -2669,6 +3159,34 @@ components:
           description: |
             One position per row inserted, in the order the rows were inserted: request order for `ordinals`, ascending ordinal order for `runs` and `bitset`. `positions[i]` is where the *i*-th inserted row landed, 0-based.
           examples: [[0, 1, 2]]
+
+    CopiedRows:
+      type: object
+      additionalProperties: false
+      required: [structure, positions]
+      properties:
+        structure:
+          type: integer
+          description: |
+            The target playlist's `structure` generation once the rows have landed. An undo naming this one removes exactly the rows below and nothing else, and a rating changed in between moves the playlist's `revision` rather than this, so it does not block one.
+          examples: [13]
+        positions:
+          type: array
+          items: { type: integer, minimum: 0 }
+          description: |
+            One position per row appended, in ascending source order, 0-based in the target. Empty where `runs` named no rows.
+          examples: [[4, 5, 6]]
+
+    RemovedRows:
+      type: object
+      additionalProperties: false
+      required: [structure]
+      properties:
+        structure:
+          type: integer
+          description: |
+            The playlist's `structure` generation once the rows are gone. A client holding the rest of the rows re-keys them to this rather than reading the playlist again.
+          examples: [13]
 
     QueryPreview:
       type: object
@@ -2737,6 +3255,8 @@ components:
             - the player did not answer in time
             - autoplaylists are not available
             - this install has playlist writes turned off; turn on writePlaylists in config.json to allow them
+            - another component has locked that playlist against that edit
+            - that playlist is foo_jean's own; address it by its role rather than by its id
         detail:
           type: string
           description: |

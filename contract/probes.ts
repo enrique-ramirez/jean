@@ -29,6 +29,14 @@ export interface Drive {
 // what the real one is.
 const kUnreachableRevision = 4_294_967_295;
 
+// A well-formed id no implementation has handed out, so an operation driven at it is answered
+// `404` without anything of the player owner's being touched. The five playlist edits are
+// driven this way because none of them can be asked for real: a rename, a move and above all a
+// delete aimed at a playlist somebody owns would change or destroy it, a copy would leave rows
+// in it and a removal would take theirs out, and unlike the autoplaylist a run creates for
+// itself there is nothing here to aim any of them at.
+const kUnissuedPlaylistId = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
+
 const example = (operation: Operation, name: string): unknown => {
 	const offered = operation.examples[name];
 	if (offered === undefined)
@@ -162,6 +170,16 @@ export const drives: Drive[] = [
 					},
 	},
 	{
+		// A playlist nobody issued, because this is the one operation here whose successful
+		// answer is a sound coming out of somebody's speakers. A 404 is what a conformant
+		// implementation answers an id it never handed out, and driving the refusal is the
+		// only shape of this request that leaves the player playing what it was playing.
+		id: "playPlaylistRow",
+		probe: () => ({
+			pathParams: { id: "45837d74-fa4f-415c-bba9-bf2db8f0dc04", index: "0" },
+		}),
+	},
+	{
 		id: "updateAutoPlaylist",
 		// An update replaces the whole specification, so it sends back what the create
 		// answered. Omitting the title is what leaves the name alone.
@@ -198,6 +216,47 @@ export const drives: Drive[] = [
 		id: "fillPlaylist",
 		probe: (operation) => ({
 			pathParams: { id: "45837d74-fa4f-415c-bba9-bf2db8f0dc04" },
+			body: example(operation, "runs"),
+		}),
+	},
+	{
+		// Nothing here deletes a playlist, so a create that succeeded would leave one on the
+		// player for good: `createAutoPlaylist` can be driven for real only because
+		// `removeAutoPlaylist` follows it. The spec's own example names a `structure` no real
+		// library will be sitting on, so this is refused with `409` before the player is asked
+		// to make anything, the same low footprint the two fills take.
+		id: "createPlaylist",
+		probe: (operation) => ({ body: example(operation, "libraryRows") }),
+	},
+	{
+		id: "renamePlaylist",
+		probe: (operation) => ({
+			pathParams: { id: kUnissuedPlaylistId },
+			body: example(operation, "renamed"),
+		}),
+	},
+	{
+		id: "movePlaylist",
+		probe: (operation) => ({
+			pathParams: { id: kUnissuedPlaylistId },
+			body: example(operation, "toTheTop"),
+		}),
+	},
+	{
+		id: "removePlaylist",
+		probe: () => ({ pathParams: { id: kUnissuedPlaylistId } }),
+	},
+	{
+		id: "copyPlaylistItems",
+		probe: (operation) => ({
+			pathParams: { id: kUnissuedPlaylistId },
+			body: example(operation, "rows"),
+		}),
+	},
+	{
+		id: "removePlaylistItems",
+		probe: (operation) => ({
+			pathParams: { id: kUnissuedPlaylistId },
 			body: example(operation, "runs"),
 		}),
 	},

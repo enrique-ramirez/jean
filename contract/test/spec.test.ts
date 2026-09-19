@@ -110,6 +110,149 @@ test("the contract carries a fill per owner, and refuses only the one addressing
 	);
 });
 
+test("playing a row is not one of the writes the read-only-playlists setting refuses", () => {
+	const play = operation("playPlaylistRow");
+
+	assert.equal(
+		`${play.method} ${play.path}`,
+		"POST /playlists/{id}/items/{index}/play",
+	);
+	assert.ok(
+		!play.published.has(403),
+		"a read-only instance now refuses a playback command as though it were an edit",
+	);
+});
+
+// A create reading a set the fill route would refuse, or refusing one it would take, is a
+// second grammar for a client to learn. The contract holds the two together by declaring the
+// same fields, so a client that can fill a playlist can fill one it is creating.
+test("a create takes the fill's own set, and the setting refuses it", () => {
+	const create = operation("createPlaylist");
+
+	assert.equal(`${create.method} ${create.path}`, "POST /playlists");
+
+	for (const field of declaredKeys("fillPlaylist"))
+		assert.ok(
+			declaredKeys("createPlaylist").has(field),
+			`a create cannot be sent the ${field} a fill takes`,
+		);
+
+	assert.ok(
+		create.published.has(403),
+		"the read-only-playlists setting no longer refuses a create",
+	);
+});
+
+test("each of the three playlist edits is addressed by GUID and refused by the setting", () => {
+	const edits: Record<string, string> = {
+		renamePlaylist: "POST /playlists/{id}",
+		removePlaylist: "DELETE /playlists/{id}",
+		movePlaylist: "POST /playlists/{id}/move",
+	};
+
+	for (const [id, route] of Object.entries(edits)) {
+		const edit = operation(id);
+
+		assert.equal(`${edit.method} ${edit.path}`, route);
+		assert.ok(
+			edit.published.has(403),
+			`the read-only-playlists setting no longer refuses ${id}`,
+		);
+		assert.ok(
+			edit.published.has(404),
+			`${id} no longer says a playlist is gone, so a client cannot tell that from a refusal`,
+		);
+	}
+});
+
+test("the two row edits are addressed by GUID, and only the removal names a generation", () => {
+	const copy = operation("copyPlaylistItems");
+	const remove = operation("removePlaylistItems");
+
+	assert.equal(
+		`${copy.method} ${copy.path}`,
+		"POST /playlists/{id}/items/copy",
+	);
+	assert.equal(
+		`${remove.method} ${remove.path}`,
+		"POST /playlists/{id}/items/remove",
+	);
+
+	for (const edit of [copy, remove]) {
+		assert.ok(
+			edit.published.has(403),
+			`the read-only-playlists setting no longer refuses ${edit.id}`,
+		);
+		assert.ok(
+			edit.published.has(404),
+			`${edit.id} no longer says a playlist is gone, so a client cannot tell that from a refusal`,
+		);
+	}
+
+	assert.ok(
+		!declaredKeys("copyPlaylistItems").has("structure"),
+		"a copy now takes a generation it cannot protect anything with",
+	);
+	assert.ok(
+		declaredKeys("removePlaylistItems").has("structure"),
+		"a removal takes no generation, so a stale position can take the wrong row out",
+	);
+	assert.ok(
+		remove.published.has(409),
+		"a removal against a generation the playlist has moved past is no longer refused",
+	);
+
+	assert.ok(
+		!declaredKeys("copyPlaylistItems").has("title"),
+		"a copy takes a title it has no playlist to give one to",
+	);
+});
+
+test("a copy answers where its rows landed and what generation they landed at", () => {
+	const copied = operation("copyPlaylistItems").published.get(200);
+	assert.ok(copied, "a copy no longer answers a document");
+
+	assert.deepEqual(copied.required?.sort(), ["positions", "structure"]);
+
+	const removed = operation("removePlaylistItems").published.get(200);
+	assert.ok(removed, "a removal no longer answers a document");
+
+	assert.deepEqual(removed.required, ["structure"]);
+});
+
+test("the conformance run cannot edit the rows of a playlist the player holds", () => {
+	const held: Context = { ...settled, playlistId: "a-real-playlist" };
+
+	for (const id of ["copyPlaylistItems", "removePlaylistItems"]) {
+		const attempt = drive(id).probe(operation(id), held);
+
+		assert.ok(attempt, `${id} is no longer driven at all`);
+		assert.notEqual(
+			attempt.pathParams?.id,
+			held.playlistId,
+			`the ${id} probe now names a playlist the run found on the player`,
+		);
+	}
+});
+
+// A run that deleted a playlist somebody owns has destroyed it: there is no undo, and nothing
+// in contract/README.md's account of what one run costs would be true any more. The delete is
+// driven at an id no implementation issues, and this is what keeps it that way.
+test("the conformance run cannot delete a playlist the player holds", () => {
+	const held: Context = { ...settled, playlistId: "a-real-playlist" };
+	const attempt = drive("removePlaylist").probe(
+		operation("removePlaylist"),
+		held,
+	);
+
+	assert.ok(attempt, "the delete is no longer driven at all");
+	assert.notEqual(
+		attempt.pathParams?.id,
+		held.playlistId,
+		"the delete probe now names a playlist the run found on the player",
+	);
+});
+
 // The queue was the second role, and the playlist behind it is gone: the play queue is the
 // component's own, addressed through /api/queue by handle and by position. A contract still
 // publishing the role is a client still filling a playlist nothing will ever queue from.

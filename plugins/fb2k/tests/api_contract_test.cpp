@@ -322,6 +322,7 @@ TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we
     CHECK(httpStatusFor(PlaylistOutcome::timedOut) == 504);
     CHECK(httpStatusFor(PlaylistOutcome::unavailable) == 503);
     CHECK(httpStatusFor(PlaylistOutcome::writesDisabled) == 403);
+    CHECK(httpStatusFor(PlaylistOutcome::ownPlaylist) == 403);
 }
 
 TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") {
@@ -499,6 +500,8 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(PlaylistOutcome::writesDisabled) ==
           "this install has playlist writes turned off; turn on writePlaylists in config.json to "
           "allow them");
+    CHECK(describe(PlaylistOutcome::ownPlaylist) ==
+          "that playlist is foo_jean's own; address it by its role rather than by its id");
 
     CHECK(describe(LibraryRefusal::tooManyColumns) == "too many columns");
     CHECK(describe(LibraryRefusal::badColumn) == "unacceptable column");

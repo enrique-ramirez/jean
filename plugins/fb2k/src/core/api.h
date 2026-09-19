@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -85,6 +86,9 @@ int httpStatusFor(PlaylistOutcome outcome);
 std::string fillResultDocument(const std::string& playlistId, const std::string& beefwebId,
                                const std::vector<size_t>& positions);
 
+std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions);
+std::string removedRowsDocument(uint64_t structure);
+
 // One row of a playlist: the columns the client declared, evaluated against the row's own
 // handle in the order it declared them, and the library path GET /api/artwork?track= takes
 // where the media library holds the track.
@@ -130,6 +134,19 @@ struct PlaylistPageRequest {
 };
 
 PlaylistPageRequest parsePlaylistPage(const std::string& offsetText, const std::string& countText);
+
+struct PlayRowRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    std::string playlistId;
+    uint32_t index = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// Never throws: both halves of the address arrive as URL segments, so a client's typo is
+// routine here rather than a 404. How far the index sits past the end is the player's to
+// answer, since nothing in core/ knows how many rows a playlist holds.
+PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText);
 
 // One entry in the play queue, as a client draws a row: the fixed fields a row shows, the
 // library path GET /api/artwork?track= takes where the media library holds the track, and
@@ -239,6 +256,41 @@ struct FillRequest {
 // such as a test exercising the decode on its own.
 FillRequest parseFill(const std::string& body, size_t trackCount,
                       std::optional<uint64_t> expectedStructure, bool allowsTitle = false);
+
+constexpr size_t kAnyRowPosition = std::numeric_limits<uint32_t>::max();
+
+// Which of the two sets a create carries, or neither; see contract/openapi.yaml,
+// `CreatePlaylistRequest`. A body naming both is read as naming a source playlist, and the
+// library fields it also carries are then fields that form does not declare.
+enum class NewPlaylistSet { none, libraryTracks, playlistRows };
+
+NewPlaylistSet newPlaylistSetOf(const std::string& body);
+
+// The rows of another playlist a create copies, by position, ascending regardless of the
+// order `runs` named them in: decodeSelection sorts before returning.
+struct SourceRowsRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+
+    std::string playlistId;
+    std::vector<uint32_t> positions;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// Never throws. `allowsTitle` is `CreatePlaylistRequest`'s alone, on the same terms parseFill
+// takes it: a copy names a playlist that already has a title, so a body carrying one is
+// refused with any other field the schema does not declare.
+SourceRowsRequest parseSourceRows(const std::string& body, bool allowsTitle = false);
+
+struct MovePlaylistRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    uint32_t index = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// Never throws.
+MovePlaylistRequest parseMovePlaylist(const std::string& body);
 
 std::string libraryDocument(const Library::State& state);
 

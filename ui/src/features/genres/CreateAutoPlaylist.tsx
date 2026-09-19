@@ -5,7 +5,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { genreQuery } from "@/domain/library/genreQuery";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import { createAutoPlaylist, previewQuery } from "@/shared/api/fooJean";
+import {
+	createAutoPlaylist,
+	previewQuery,
+	requireFooJean,
+} from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
@@ -49,8 +53,8 @@ export function CreateAutoPlaylist({
 
 	const create = useMutation({
 		mutationFn: async () => {
-			if (!origin || !token) throw new Error("foo_jean is not reachable.");
-			const made = await createAutoPlaylist(origin, token, {
+			const required = requireFooJean(origin, token);
+			const made = await createAutoPlaylist(required.origin, required.token, {
 				title: title.trim(),
 				query,
 			});
@@ -61,7 +65,7 @@ export function CreateAutoPlaylist({
 		},
 		onSuccess: (playlist) => {
 			setIsOpen(false);
-			if (playlist.beefwebId) onOpenPlaylist(playlist.beefwebId);
+			onOpenPlaylist(playlist.id);
 		},
 	});
 

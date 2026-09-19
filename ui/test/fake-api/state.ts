@@ -32,10 +32,19 @@ const STREAM_MARKS = 6;
 
 export interface FakePlaylist {
 	id: string;
+	// foobar2000's own GUID, stable for the playlist's life: what every `foo_jean` route
+	// addresses it by, distinct from `id`, which is beefweb's own and stays for the routes
+	// still addressed that way.
+	guid: string;
 	title: string;
 	isCurrent: boolean;
 	items: Track[];
 	isAuto?: boolean;
+	structure: number;
+	// Bumped alongside `structure` for now: the fake does not yet track a row's content
+	// changing in place independently of its position. `player-poll.spec.ts` is where that
+	// distinction is tested and owns closing the gap.
+	revision: number;
 }
 
 export interface LibraryEntry {
@@ -233,18 +242,40 @@ export function libraryItemsOf(tracks: Track[]): LibraryEntry[] {
 	}));
 }
 
+// Fixed rather than derived from position, matching foobar2000's own GUID: stable across a
+// rename, a reorder or a restart, and never reused for another playlist. Exported for the demo
+// library, which seeds the same fixed set of playlists from its own captured tracks.
+export const guidOfDefault = (n: number) =>
+	`00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+const FIRST_CREATED_GUID = 1000;
+
 const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 	{
 		id: "p1",
+		guid: guidOfDefault(1),
 		title: "Default Playlist",
 		isCurrent: false,
+		structure: 0,
+		revision: 0,
 		items: tracksOf("jar-of-flies").slice(0, 4),
 	},
-	{ id: "p7", title: "Library", isCurrent: true, items: allTracks() },
+	{
+		id: "p7",
+		guid: guidOfDefault(7),
+		title: "Library",
+		isCurrent: true,
+		structure: 0,
+		revision: 0,
+		items: allTracks(),
+	},
 	{
 		id: "p2",
+		guid: guidOfDefault(2),
 		title: "Favorites",
 		isCurrent: false,
+		structure: 0,
+		revision: 0,
 		items: [
 			...tracksOf("deja-entendu").slice(0, 3),
 			...tracksOf("jessico").slice(0, 2),
@@ -253,16 +284,30 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 	},
 	{
 		id: "p5",
+		guid: guidOfDefault(5),
 		title: "Rock en Español",
 		isCurrent: false,
+		structure: 0,
+		revision: 0,
 		items: tracksOf("jessico"),
 	},
-	{ id: "p8", title: "#Jean Library", isCurrent: false, items: allTracks() },
+	{
+		id: "p8",
+		guid: guidOfDefault(8),
+		title: "#Jean Library",
+		isCurrent: false,
+		structure: 0,
+		revision: 0,
+		items: allTracks(),
+	},
 	{
 		id: "p9",
+		guid: guidOfDefault(9),
 		title: "Recently Added",
 		isCurrent: false,
 		isAuto: true,
+		structure: 0,
+		revision: 0,
 		items: tracksOf("jar-of-flies").slice(0, 5),
 	},
 ];
@@ -274,6 +319,9 @@ const columnsFor = (track: Track, expressions: string[]) =>
 	expressions.map((expression) => evaluate(track, expression));
 
 const pathKey = (value: unknown) => String(value).replace(/\\/g, "/");
+
+const trackKey = (track: Track) =>
+	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;
 
 // foobar2000 orders paths with Windows' `StrCmpLogicalW`: a run of digits compares as a number, case
 // does not count, and an accent folds to its base letter. The fake being self-consistent is not
@@ -348,19 +396,32 @@ export function createState({
 			playlist.items = playlist.items.map(strip);
 	}
 
+	const generatedForLibrarySize = librarySize
+		? generateTracks(librarySize)
+		: null;
+
 	const libraryTracks = (
 		mediaLibrary
 			? mediaLibrary
 			: mediaLibrarySize
 				? generateTracks(mediaLibrarySize)
-				: withoutFields.length > 0
-					? allTracks().map(strip)
-					: allTracks()
+				: generatedForLibrarySize
+					? generatedForLibrarySize
+					: withoutFields.length > 0
+						? allTracks().map(strip)
+						: allTracks()
 	).map(retag);
 
-	if (librarySize) {
+	const libraryPathByTrackKey = new Map(
+		libraryItemsOf(libraryTracks).map((entry) => [
+			trackKey(entry.track),
+			entry.path,
+		]),
+	);
+
+	if (generatedForLibrarySize) {
 		const library = playlists.find((entry) => entry.title === "Library");
-		if (library) library.items = generateTracks(librarySize);
+		if (library) library.items = generatedForLibrarySize;
 	}
 
 	const listeners = new Set<(message: Changed) => void>();
@@ -397,6 +458,16 @@ export function createState({
 	};
 
 	let playerVersion = 0;
+	let playlistsRevision = 0;
+	let nextCreatedGuid = FIRST_CREATED_GUID;
+
+	// Bumped for every event `GET /state`'s `playlistsRevision` moves on: a playlist created,
+	// removed, moved, retitled, or with its own structure or revision moved. Folded into
+	// `playerVersion` too, so the state poll's own validator moves with it -- see `stateTagOf`.
+	const markPlaylistsChanged = () => {
+		playlistsRevision += 1;
+		playerVersion += 1;
+	};
 
 	const notify = (changed: Changed) => {
 		const message: Changed = {};
@@ -404,13 +475,19 @@ export function createState({
 			message.player = true;
 			playerVersion += 1;
 		}
-		if (changed.playlists) message.playlists = true;
+		if (changed.playlists) {
+			message.playlists = true;
+			markPlaylistsChanged();
+		}
 		if (changed.playQueue) message.playQueue = true;
 		for (const listener of listeners) listener(message);
 	};
 
 	const byId = (id: string) =>
 		state.playlists.find((entry) => entry.id === id) ?? null;
+
+	const byGuid = (guid: string) =>
+		state.playlists.find((entry) => entry.guid === guid) ?? null;
 
 	// Where each queued entry sits now, read through its handle: `-1` for a track
 	// queued by handle and for a row the player has lost the position of.
@@ -523,6 +600,9 @@ export function createState({
 		const item = state.player.activeItem;
 		const held = playing?.playlistId === playlist.id ? playing : null;
 		edit();
+		playlist.structure += 1;
+		playlist.revision += 1;
+		markPlaylistsChanged();
 		if (!held) return;
 		const at = playlist.items.indexOf(held.track);
 		// An unmoved row publishes nothing and the next poll is a 304, which is
@@ -792,6 +872,9 @@ export function createState({
 			syncQueueRevision();
 			return queueRevision;
 		},
+		get playlistsRevision() {
+			return playlistsRevision;
+		},
 		queuedEntries,
 		library: state.library,
 		// beefweb's only answer for what the playing track is called: the `trcolumns`
@@ -886,6 +969,7 @@ export function createState({
 		},
 
 		playlistById: byId,
+		playlistByGuid: byGuid,
 
 		playlistsPayload: () =>
 			state.playlists.map((entry, index) => ({
@@ -1059,8 +1143,11 @@ export function createState({
 			const id = `p${Math.max(0, ...used) + 1}`;
 			const playlist: FakePlaylist = {
 				id,
+				guid: guidOfDefault(nextCreatedGuid++),
 				title: title || "New playlist",
 				isCurrent: false,
+				structure: 0,
+				revision: 0,
 				items: [],
 			};
 			state.playlists.push(playlist);
@@ -1366,12 +1453,7 @@ export function createState({
 		},
 
 		libraryPathFor(track: Track) {
-			const entry = libraryItemsOf(libraryTracks).find(
-				(item) =>
-					item.track["%path%"] === track["%path%"] &&
-					item.subsong === (Number(track["%subsong%"]) || 0),
-			);
-			return entry?.path ?? null;
+			return libraryPathByTrackKey.get(trackKey(track)) ?? null;
 		},
 
 		queueInsert(entries: QueuedEntry[], at?: number) {

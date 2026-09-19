@@ -1,23 +1,19 @@
-import { guidOf } from "@/domain/player/playlistJoin";
 import type { QueueSource } from "@/domain/player/queue";
-import {
-	artworkUrl,
-	copyPlaylistItems,
-	fetchLibraryNodes,
-	fetchPlaylistItems,
-	libraryPathMatcher,
-} from "@/shared/api/beefweb";
+import { fetchLibraryNodes, libraryPathMatcher } from "@/shared/api/beefweb";
 import type {
 	FillOwnPlaylistRequest,
 	FillPlaylistRequest,
 	FillResult,
 } from "@/shared/api/fooJean";
 import {
+	copyPlaylistRows,
 	encodeFill,
-	fetchPlaylistAnnotations,
+	fetchPlaylistRows,
 	fillOwnPlaylist,
 	fillPlaylist,
 	libraryArtworkUrl,
+	requireFooJean,
+	runsOf,
 } from "@/shared/api/fooJean";
 import type {
 	PlaybackPosition,
@@ -60,7 +56,7 @@ export type LibrarySource =
 			kind: "library";
 			// `target` is the title to give the scratch playlist: the component resolves and titles that
 			// playlist itself, in the same call that fills it, so there is no id to pass in ahead of the
-			// call. Answers the beefweb id the fill landed in, or null where the caller must resolve it
+			// call. Answers the GUID the fill landed in, or null where the caller must resolve it
 			// another way.
 			fill: (
 				target: string,
@@ -78,7 +74,15 @@ export type LibrarySourceOptions =
 			artworkOrigin: string | null;
 			token: string | null;
 	  }
-	| { kind: "playlist"; playlistId: string };
+	| {
+			kind: "playlist";
+			playlistId: string;
+			origin?: string | null;
+			token?: string | null;
+			// Null where the rows have not loaded, or have loaded with the empty string standing in
+			// for a row whose track the media library does not hold: neither answers a cover.
+			paths?: PathTable | null;
+	  };
 
 const fillScratch =
 	(paths: PathTable, origin: string | null, structure: number) =>
@@ -95,7 +99,7 @@ const fillScratch =
 		};
 
 		const result = await fillOwnPlaylist(origin, token, "scratch", request);
-		return result.beefwebId;
+		return result.playlistId;
 	};
 
 const addToPlaylist =
@@ -106,17 +110,14 @@ const addToPlaylist =
 		token: string | null,
 	) =>
 	async (targetId: string, refs: Refs): Promise<FillResult> => {
-		if (!origin || !token) throw new Error("foo_jean is not reachable");
-
-		const annotations = await fetchPlaylistAnnotations(origin, token);
-		const guid = guidOf(targetId, annotations);
+		const required = requireFooJean(origin, token);
 
 		const request: FillPlaylistRequest = encodeFill(refs, {
 			structure,
 			trackCount: paths.length,
 		});
 
-		return fillPlaylist(origin, token, guid, request);
+		return fillPlaylist(required.origin, required.token, targetId, request);
 	};
 
 const queueLibraryTracks =
@@ -199,22 +200,35 @@ const fromMediaLibrary = ({
 
 const fromPlaylist = ({
 	playlistId,
+	origin = null,
+	token = null,
+	paths = null,
 }: {
 	playlistId: string;
+	origin?: string | null;
+	token?: string | null;
+	paths?: PathTable | null;
 }): Extract<LibrarySource, { kind: "playlist" }> => ({
 	kind: "playlist",
 	playlistId,
 
-	artworkUrl: (ref: number) => artworkUrl(playlistId, ref),
+	artworkUrl: (ref: number) => {
+		const path = paths?.at(ref);
+		return path ? libraryArtworkUrl(origin, path) : null;
+	},
 
 	identify: async (ref: number, row: TrackColumns, columns: string[] = []) => {
-		const { rows } = await fetchPlaylistItems(playlistId, ref, 1, [
-			"%path%",
-			"%subsong%",
-			"%title%",
-			...columns,
-		]);
-		const found = rows[0];
+		if (!origin || !token) return null;
+
+		const { items } = await fetchPlaylistRows(
+			origin,
+			token,
+			playlistId,
+			ref,
+			1,
+			["%path%", "%subsong%", "%title%", ...columns],
+		);
+		const found = items[0]?.columns;
 		if (!found || !sameTagValue(found[2], value(row, FIELD.title))) return null;
 
 		return {
@@ -227,8 +241,13 @@ const fromPlaylist = ({
 		kind: "rows",
 		targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
 	}),
-	addTo: (targetId: string, refs: Refs) =>
-		copyPlaylistItems(playlistId, targetId, refs),
+	addTo: async (targetId: string, refs: Refs) => {
+		const required = requireFooJean(origin, token);
+		return copyPlaylistRows(required.origin, required.token, targetId, {
+			source: playlistId,
+			runs: runsOf(refs),
+		});
+	},
 
 	// Index is identity in a playlist, so this can only answer while the player is inside the playlist
 	// being browsed. Refs arrive ascending, so it bisects.

@@ -1,8 +1,12 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	AS_A_CLIENT,
+	componentOrigin,
 	expect,
 	FOO_JEAN_TOKEN,
+	guidOfPlaylist,
 	openAllMusic,
+	openLibrary,
 	requestsTo,
 	scrollTop,
 	test,
@@ -41,8 +45,9 @@ test.describe("artwork loading", () => {
 	test("a jump across the library asks for the covers it lands on, not the ones it passes", async ({
 		page,
 		player,
+		request,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
 		await expect
 			.poll(() => requestsTo(player, "artwork").length)
@@ -53,10 +58,10 @@ test.describe("artwork loading", () => {
 		// Playing the far track flies the list there rather than scrolling it,
 		// since native lazy loading would count every row mounted and unmounted
 		// along the way as visible.
-		await page.evaluate(
-			(index: number) =>
-				fetch(`/api/player/play/p7/${index}`, { method: "POST" }),
-			FAR,
+		const origin = await componentOrigin(request);
+		await request.post(
+			`${origin}/api/playlists/${guidOfPlaylist(player, "p7")}/items/${FAR}/play`,
+			AS_A_CLIENT,
 		);
 		await expect.poll(() => scrollTop(page)).toBeGreaterThan(1_000_000);
 
@@ -73,7 +78,7 @@ test.describe("artwork loading", () => {
 		page,
 		player,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
 		await expect
 			.poll(() => requestsTo(player, "artwork").length)
@@ -135,7 +140,7 @@ test.describe("one cover per album, not per track", () => {
 		page,
 		player,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
 		await walkTheList(page, player);
 
@@ -147,7 +152,7 @@ test.describe("one cover per album, not per track", () => {
 	});
 
 	test("the rows of one album point at one URL", async ({ page, player }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
 		await walkTheList(page, player);
 
@@ -190,7 +195,7 @@ test.describe("one cover per album, not per track", () => {
 			await route.continue();
 		});
 
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(page.locator('[role="row"]').first()).toBeAttached();
 
 		const scrollBy = (offset: number) =>
@@ -220,7 +225,7 @@ test.describe("one cover per album, not per track", () => {
 			() => (window as unknown as { __mintedArtwork: number }).__mintedArtwork,
 		);
 		const addresses = new Set(
-			requestsTo(player, "/artwork/").map((entry) => entry.path),
+			requestsTo(player, "artwork").map((entry) => entry.path),
 		).size;
 
 		expect(addresses).toBeGreaterThan(0);

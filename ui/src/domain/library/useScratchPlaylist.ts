@@ -5,10 +5,10 @@ import { isScratchPlaylist, scratchTitle } from "@/domain/track/jeanPlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import {
-	copyPlaylistItems,
+	copyPlaylistRows,
 	createPlaylist,
-	fetchPlaylists,
-} from "@/shared/api/beefweb";
+	fetchPlaylistAnnotations,
+} from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
@@ -37,7 +37,8 @@ export function useScratchPlaylist({
 		null,
 	);
 	const queryClient = useQueryClient();
-	const { token } = useFooJean();
+	const { token, discovery } = useFooJean();
+	const { origin, token: readyToken } = discovery;
 
 	const playlist = useMemo(() => {
 		const pinned = pinnedId
@@ -107,23 +108,22 @@ export function useScratchPlaylist({
 
 	const adopt = useCallback(
 		async (title: string) => {
-			if (!playlist) return null;
-			const [created, fresh] = await Promise.all([
-				createPlaylist(title),
-				fetchPlaylists(),
+			if (!playlist || !origin || !readyToken) return null;
+			const [created, annotations] = await Promise.all([
+				createPlaylist(origin, readyToken, { title }),
+				fetchPlaylistAnnotations(origin, readyToken),
 			]);
 			const count =
-				fresh.find((entry) => entry.id === playlist.id)?.itemCount ?? 0;
+				annotations?.find((entry) => entry.id === playlist.id)?.itemCount ?? 0;
 			if (count > 0) {
-				await copyPlaylistItems(
-					playlist.id,
-					created.id,
-					Array.from({ length: count }, (_, at) => at),
-				);
+				await copyPlaylistRows(origin, readyToken, created.id, {
+					source: playlist.id,
+					runs: [[0, count]],
+				});
 			}
 			return created.id;
 		},
-		[playlist],
+		[playlist, origin, readyToken],
 	);
 
 	return { playlist, holdsView, ensure, adopt };

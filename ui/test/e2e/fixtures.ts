@@ -1,7 +1,12 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { CDPSession, Locator, Page } from "@playwright/test";
+import type {
+	APIRequestContext,
+	CDPSession,
+	Locator,
+	Page,
+} from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
 import type { LibraryInfo } from "../../src/shared/api/types.ts";
 import type { FooJeanOptions } from "../fake-api/fooJean.ts";
@@ -43,6 +48,24 @@ interface JeanFixtures {
 const DIST = join(dirname(fileURLToPath(import.meta.url)), "../../dist");
 
 export const FOO_JEAN_TOKEN = "0123456789abcdef0123456789abcdef";
+
+export const AS_A_CLIENT = {
+	headers: { Authorization: `Bearer ${FOO_JEAN_TOKEN}` },
+};
+
+// The component listens on its own port, discovered the way Jean itself discovers it, for a spec
+// that talks to it directly rather than through the app.
+export const componentOrigin = async (request: APIRequestContext) => {
+	const { port } = await (
+		await request.get("/api/clientconfig/foo_jean")
+	).json();
+	return `http://localhost:${port}`;
+};
+
+// The fixture that seeded a page's fake player, for a helper that only takes a
+// `Page`. Set from the `page` fixture below, which already depends on `player`
+// to order the reset before navigation.
+const playerOf = new WeakMap<Page, FakePlayer>();
 
 const SEEDED_SETTINGS = {
 	"jean.heatIntroSeen": true,
@@ -162,7 +185,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 		{ page, settings, firstRun, player, motion, fooJeanToken },
 		use,
 	) => {
-		void player;
+		playerOf.set(page, player);
 		if (motion === "reduce")
 			await page.emulateMedia({ reducedMotion: "reduce" });
 		await page.addInitScript(
@@ -335,10 +358,20 @@ export const expectTheScreenIsStillOpen = async (page: Page) => {
 	await expect(nowPlayingScreen(page)).toBeVisible();
 };
 
+// foobar2000's own GUID for a playlist beefweb calls by its id, which is what
+// every `foo_jean` route, and the route hash, names a playlist by.
+export const guidOfPlaylist = (player: FakePlayer, beefwebId: string) => {
+	const found = player.playlists.find((entry) => entry.id === beefwebId);
+	if (!found) throw new Error(`no playlist ${beefwebId}`);
+	return found.guid;
+};
+
 // The captured `Library` playlist, which most specs use as a list long enough to
 // scroll. Not `#Jean Library`, which carries Jean's own prefix and stays hidden.
 export const openLibrary = async (page: Page) => {
-	await page.goto("/#/p7");
+	const player = playerOf.get(page);
+	if (!player) throw new Error("openLibrary needs the player fixture");
+	await page.goto(`/#/${guidOfPlaylist(player, "p7")}`);
 	await expect(
 		page.getByRole("heading", { level: 1, name: "Library" }),
 	).toBeVisible();
@@ -392,17 +425,6 @@ export const expectDisabledWithItsReason = async (control: Locator) => {
 	await expect(control).not.toHaveAccessibleName(READS_AS_A_LOGIN);
 };
 
-// ---- driving the player from outside ----------------------------------------
-
-// A wifi hiccup, a proxy timing out, a phone coming out of a pocket. Asserts on
-// the count the fake answers with, because a test that dropped nothing would be
-// asserting the app survived an event that never happened.
-export const dropTheStream = async (page: Page) => {
-	const answer = await page.request.post("/__control/dropStream");
-	const { dropped } = (await answer.json()) as { dropped: number };
-	expect(dropped, "no update stream was open to drop").toBeGreaterThan(0);
-};
-
 // ---- reading the player -----------------------------------------------------
 
 export const requestsTo = (player: FakePlayer, pattern: string) =>
@@ -449,13 +471,21 @@ export const scratchFills = (player: FakePlayer) =>
 			entry.path === "/api/playlists/own/scratch/items",
 	);
 
+const PLAY_ROUTE = /^\/api\/playlists\/([^/]+)\/items\/(\d+)\/play$/;
+
+// Every call to POST /api/playlists/{id}/items/{index}/play, in order.
+export const playRequests = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) => entry.method === "POST" && PLAY_ROUTE.test(entry.path),
+	);
+
 // The last thing the player was told to play, from
-// /api/player/play/{plref}/{index}.
+// POST /api/playlists/{id}/items/{index}/play.
 export const playedFrom = (player: FakePlayer) => {
-	const play = requestsTo(player, "/player/play/").at(-1);
+	const play = playRequests(player).at(-1);
 	if (!play) return null;
-	const [, , , , plref, index] = play.path.split("/");
-	return { plref, index: Number(index) };
+	const [, id, index] = PLAY_ROUTE.exec(play.path) as RegExpExecArray;
+	return { id, index: Number(index) };
 };
 
 // The track that request names, resolved through the playlist it names it in. A
@@ -464,7 +494,7 @@ export const playedFrom = (player: FakePlayer) => {
 export const trackPlayed = (player: FakePlayer) => {
 	const at = playedFrom(player);
 	if (!at) return null;
-	const playlist = player.playlists.find((entry) => entry.id === at.plref);
+	const playlist = player.playlists.find((entry) => entry.guid === at.id);
 	return playlist?.items[at.index]?.["%title%"] ?? null;
 };
 

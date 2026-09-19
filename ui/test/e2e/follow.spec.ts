@@ -3,7 +3,7 @@ import {
 	expect,
 	isRowOnScreen,
 	openLibrary,
-	requestsTo,
+	playRequests,
 	scrollTo,
 	scrollTop,
 	statusBar,
@@ -134,7 +134,7 @@ test.describe("following playback", () => {
 			"data-active",
 			"true",
 		);
-		expect(requestsTo(player, "/player/play/")).toEqual([]);
+		expect(playRequests(player)).toEqual([]);
 	});
 
 	test("a playlist growing under you does not drag the view back", async ({
@@ -250,7 +250,7 @@ test.describe("at library scale", () => {
 		player,
 	}) => {
 		// Scroll offsets here are arithmetic over a list 1.4 million pixels tall.
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect
 			.poll(() => page.getByRole("grid").getAttribute("aria-rowcount"), {
 				timeout: 30000,

@@ -22,7 +22,6 @@ import {
 	useIsPlaying,
 	usePlaybackOrder,
 	usePlayer,
-	usePlayerStream,
 	usePlaylists,
 	usePlayPause,
 	usePrevious,
@@ -131,7 +130,6 @@ export function App() {
 
 function Shell() {
 	const t = useTranslate();
-	usePlayerStream();
 	useDocumentIdentity();
 
 	const { data: playlists = [], isSuccess: hasPlaylists } = usePlaylists();
@@ -362,7 +360,9 @@ function Shell() {
 		(browsable.some((entry) => entry.id === lastPlaylistId.current)
 			? lastPlaylistId.current
 			: null) ??
-		browsable.find((entry) => entry.isCurrent)?.id ??
+		(browsable.some((entry) => entry.id === playingPlaylistId)
+			? playingPlaylistId
+			: null) ??
 		browsable[0]?.id;
 
 	const playlist = useMemo(
@@ -774,6 +774,7 @@ function Shell() {
 				>
 					<Sidebar
 						playlists={playlists}
+						playingPlaylistId={playingPlaylistId ?? null}
 						selectedId={isLibrary ? null : selectedId}
 						onSelect={openPlaylist}
 						search={search}

@@ -78,13 +78,14 @@ test.describe("the #Jean namespace", () => {
 		await withBothJeanPlaylists(page, player);
 		const heading = viewHeader(page).getByRole("heading", { level: 1 });
 
-		await page.goto("/#/p2");
+		const favoritesGuid = playlistNamed(player, "Favorites")!.guid;
+		await page.goto(`/#/${favoritesGuid}`);
 		await expect(heading).toHaveText("Favorites");
 
 		await inSequence(
 			[playlistNamed(player, "#Jean Library"), scratchOf(player)!],
 			async (playlist) => {
-				await page.goto(`/#/${playlist.id}`);
+				await page.goto(`/#/${playlist.guid}`);
 				await expect(heading).toBeVisible();
 				await expect(heading).not.toHaveText(/#Jean/);
 			},

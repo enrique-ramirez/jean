@@ -9,6 +9,7 @@ import {
 	openSidebar,
 	type Page,
 	playedFrom,
+	playRequests,
 	pressAndHold,
 	requestsTo,
 	rowByTitle,
@@ -50,8 +51,8 @@ const playsOf = (page: Page, row: number) =>
 	trackRow(page, row).locator("[data-zero]");
 
 const playsAsked = (player: FakePlayer) =>
-	requestsTo(player, "/player/play/").map((entry) =>
-		Number(entry.path.split("/").pop()),
+	playRequests(player).map((entry) =>
+		Number(/\/items\/(\d+)\/play$/.exec(entry.path)?.[1]),
 	);
 
 const playlistsMade = (player: FakePlayer) =>
@@ -412,8 +413,8 @@ test.describe("the order a library set plays in", () => {
 		await trackRow(page, 12).dblclick();
 
 		await expect
-			.poll(() => playedFrom(player)?.plref)
-			.toBe(scratchOf(player)?.id);
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)?.guid);
 		await expect(trackRow(page, 12)).toContainText(trackPlayed(player)!);
 
 		// One component decides the order and does the filling. Jean re-deriving it
@@ -520,9 +521,7 @@ test.describe("a view whose fill was refused because the library moved", () => {
 
 		await trackRow(page, ASKED_ROW).dblclick();
 
-		await expect
-			.poll(() => requestsTo(player, "/player/play/"))
-			.toHaveLength(2);
+		await expect.poll(() => playRequests(player)).toHaveLength(2);
 		await expect(trackRow(page, ASKED_ROW)).toContainText(
 			trackPlayed(player) as string,
 		);

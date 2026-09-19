@@ -8,6 +8,7 @@ import {
 	OFFERS_NO_SHUFFLE,
 	openSidebar,
 	playedFrom,
+	playRequests,
 	requestsTo,
 	scratchOf,
 	sidebar,
@@ -44,6 +45,12 @@ test.describe("the home screen", () => {
 	}) => {
 		await page.goto("/");
 		await openSidebar(page);
+
+		// The list arrives a poll after the static rows above it, so a read taken
+		// the instant the sidebar opens can still be missing it.
+		await expect(
+			sidebar(page).getByRole("button", { name: "Default Playlist" }),
+		).toBeVisible();
 
 		const labels = await sidebar(page).getByRole("button").allInnerTexts();
 		const home = labels.findIndex((entry) => entry.startsWith("Home"));
@@ -235,8 +242,8 @@ test.describe("starting the library from the front door", () => {
 
 		await expect.poll(() => orderRequests(player).length).toBeGreaterThan(0);
 		await expect
-			.poll(() => playedFrom(player)?.plref)
-			.toBe(scratchOf(player)!.id);
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)!.guid);
 	});
 
 	test("either one agrees with the sidebar and the status bar", async ({
@@ -323,11 +330,7 @@ test.describe("opening a shelf from its heading", () => {
 		).toBeVisible();
 
 		await expectSettlesAt(player, () => scratchOf(player), undefined);
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "/player/play/").length,
-			0,
-		);
+		await expectSettlesAt(player, () => playRequests(player).length, 0);
 		expect(player.player.playbackState).toBe("stopped");
 	});
 
@@ -402,7 +405,7 @@ test.describe("playing from a shelf", () => {
 			.toBeGreaterThan(12);
 		const scratch = scratchOf(player);
 		expect(scratch!.title).toBe("#Jean [shelf: Most played]");
-		await expect.poll(() => playedFrom(player)?.plref).toBe(scratch!.id);
+		await expect.poll(() => playedFrom(player)?.id).toBe(scratch!.guid);
 		expect(scratch!.items[playedFrom(player)!.index]["%title%"]).toBe(
 			"Los Calientes",
 		);
@@ -449,6 +452,7 @@ test.describe("where you are, in the sidebar", () => {
 
 	test("a library route does not also light up a playlist", async ({
 		page,
+		player,
 	}) => {
 		await page.goto("/");
 		await openSidebar(page);
@@ -460,7 +464,10 @@ test.describe("where you are, in the sidebar", () => {
 		await expect(current(page)).toHaveCount(1);
 		await expect(current(page)).toContainText("All music");
 
-		await page.goto("/#/p5");
+		const guid = player.playlists.find(
+			(entry) => entry.title === "Rock en Español",
+		)!.guid;
+		await page.goto(`/#/${guid}`);
 		await openSidebar(page);
 		await expect(current(page)).toHaveCount(1);
 		await expect(current(page)).toContainText("Rock en Español");
@@ -470,6 +477,7 @@ test.describe("where you are, in the sidebar", () => {
 test.describe("a shelf says it is playing", () => {
 	test("it appears in the sidebar and in the status bar, and survives leaving it", async ({
 		page,
+		player,
 	}) => {
 		await page.goto("/");
 		await expect(tab(page, "Most played")).toBeVisible();
@@ -489,7 +497,10 @@ test.describe("a shelf says it is playing", () => {
 		await expect(row).toBeVisible();
 		await expect(row.getByLabel("Playing from here")).toBeVisible();
 
-		await page.goto("/#/p5");
+		const guid = player.playlists.find(
+			(entry) => entry.title === "Rock en Español",
+		)!.guid;
+		await page.goto(`/#/${guid}`);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
 		).toBeVisible();

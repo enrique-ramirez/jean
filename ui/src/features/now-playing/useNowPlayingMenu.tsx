@@ -35,9 +35,14 @@ export function useNowPlayingMenu() {
 	const source = useMemo(
 		() =>
 			playingPlaylistId
-				? librarySourceOf({ kind: "playlist", playlistId: playingPlaylistId })
+				? librarySourceOf({
+						kind: "playlist",
+						playlistId: playingPlaylistId,
+						origin: discovery.origin,
+						token: discovery.token,
+					})
 				: null,
-		[playingPlaylistId],
+		[playingPlaylistId, discovery.origin, discovery.token],
 	);
 
 	const actions = useMemo(() => {

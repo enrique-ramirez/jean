@@ -1,5 +1,8 @@
-import { fetchPlaylistItems } from "@/shared/api/beefweb";
-import { fetchState, type StateDocument } from "@/shared/api/fooJean";
+import {
+	fetchPlaylistRows,
+	fetchState,
+	type StateDocument,
+} from "@/shared/api/fooJean";
 import {
 	fetchLibrary,
 	fetchLibraryChanges,
@@ -20,7 +23,7 @@ import {
 	someFieldMoved,
 } from "./libraryColumns";
 import { librarySnapshotOf, patchedColumns } from "./librarySnapshot";
-import type { PathTable } from "./pathTable";
+import { type PathTable, pathCollector } from "./pathTable";
 
 // Null rather than empty on a playlist, so reaching for them on the wrong source fails loudly.
 export interface PlaylistSnapshot {
@@ -39,6 +42,9 @@ export interface PlaylistSnapshot {
 
 interface Chunk {
 	rows: TrackColumns[];
+	// The empty string where the row's track is not in the library, matching how `PathTable` already
+	// answers an out-of-range ref: nothing for `artworkUrl` to draw from.
+	paths: string[];
 	totalCount: number;
 }
 
@@ -97,19 +103,27 @@ export const generationKey = (key: string, structure: number) =>
 	`${key}:s${structure}`;
 
 const fetchChunk = async (
+	origin: string,
+	token: string,
 	playlistId: string,
 	offset: number,
 	count: number,
 	signal: AbortSignal,
 ): Promise<Chunk> => {
-	const chunk = await fetchPlaylistItems(
+	const page = await fetchPlaylistRows(
+		origin,
+		token,
 		playlistId,
 		offset,
 		count,
 		TRACK_EXPRESSIONS,
 		{ signal },
 	);
-	return { rows: chunk.rows, totalCount: chunk.totalCount };
+	return {
+		rows: page.items.map((item) => item.columns),
+		paths: page.items.map((item) => item.libraryPath ?? ""),
+		totalCount: page.totalCount,
+	};
 };
 
 function entryFor(key: string): Entry {
@@ -161,13 +175,25 @@ function evictIdle(currentKey: string) {
 		});
 }
 
-async function load(entry: Entry, playlistId: string) {
+async function load(
+	entry: Entry,
+	origin: string,
+	token: string,
+	playlistId: string,
+) {
 	const collector = columnCollector(TRACK_EXPRESSIONS.length);
+	const paths = pathCollector();
+
+	const addChunk = (chunk: Chunk) => {
+		collector.add(chunk.rows);
+		for (const path of chunk.paths) paths.add(path);
+	};
 
 	const publish = (totalCount: number, isLoading: boolean) => {
 		const columns = collector.table();
 		emit(entry, {
 			columns,
+			paths: paths.table(),
 			loaded: columns.trackCount,
 			total: totalCount,
 			isLoading,
@@ -198,8 +224,15 @@ async function load(entry: Entry, playlistId: string) {
 
 	try {
 		const signal = (entry.controller as AbortController).signal;
-		const first = await fetchChunk(playlistId, 0, FIRST_CHUNK, signal);
-		collector.add(first.rows);
+		const first = await fetchChunk(
+			origin,
+			token,
+			playlistId,
+			0,
+			FIRST_CHUNK,
+			signal,
+		);
+		addChunk(first);
 
 		const total = first.totalCount;
 		publish(total, collector.count() < total);
@@ -217,7 +250,7 @@ async function load(entry: Entry, playlistId: string) {
 
 		const drainInOrder = () => {
 			while (appended < offsets.length && pending.has(offsets[appended])) {
-				collector.add((pending.get(offsets[appended]) as Chunk).rows);
+				addChunk(pending.get(offsets[appended]) as Chunk);
 				pending.delete(offsets[appended]);
 				appended += 1;
 			}
@@ -228,7 +261,14 @@ async function load(entry: Entry, playlistId: string) {
 				const offset = queue.shift() as number;
 				pending.set(
 					offset,
-					await fetchChunk(playlistId, offset, CHUNK_SIZE, signal),
+					await fetchChunk(
+						origin,
+						token,
+						playlistId,
+						offset,
+						CHUNK_SIZE,
+						signal,
+					),
 				);
 				drainInOrder();
 				publishSoon(total, collector.count() < total);
@@ -401,9 +441,14 @@ export async function recheckComponentLibrary(
 	}
 }
 
-export const loadPlaylist = (playlistId: string, itemCount: number) =>
+export const loadPlaylist = (
+	origin: string,
+	token: string,
+	playlistId: string,
+	itemCount: number,
+) =>
 	begin(playlistKey(playlistId, itemCount), itemCount, itemCount > 0, (entry) =>
-		load(entry, playlistId),
+		load(entry, origin, token, playlistId),
 	);
 
 export const loadComponentLibrary = (origin: string, token: string) =>

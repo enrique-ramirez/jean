@@ -1,4 +1,5 @@
 import {
+	type QueryClient,
 	type QueryKey,
 	skipToken,
 	useMutation,
@@ -8,26 +9,28 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-	createPlaylist,
-	fetchPlaylists,
-	movePlaylist,
 	nextTrack,
-	playItem,
 	playPause,
 	previousTrack,
-	removePlaylist,
-	renamePlaylist,
 	seekBy,
 	seekTo,
 	setMuted,
 	setPlaybackOrder,
 	setVolume,
 	stop,
-	UPDATES_URL,
 	volumeDown,
 	volumeUp,
 } from "@/shared/api/beefweb";
-import { fetchPlaylistAnnotations } from "@/shared/api/fooJean";
+import {
+	createPlaylist,
+	fetchPlaylistAnnotations,
+	movePlaylist,
+	type PlaylistAnnotation,
+	playPlaylistItem,
+	removePlaylist,
+	renamePlaylist,
+	requireFooJean,
+} from "@/shared/api/fooJean";
 import type {
 	ActiveItem,
 	Permissions,
@@ -35,7 +38,6 @@ import type {
 	PlayerSnapshot,
 	PlayerState,
 	PlaylistInfo,
-	UpdateMessage,
 } from "@/shared/api/types";
 import { useCoalescedWrite } from "@/shared/hooks/useCoalescedWrite";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -46,26 +48,25 @@ import { refusal } from "@/shared/lib/refusal";
 import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
-import { guidOf, usePlayingPlaylist } from "./playlistJoin";
+import { usePlayingPlaylist } from "./playlistJoin";
 import { audibleAt, positionAt } from "./position";
 import { dequeuePlaylist, QUEUE_KEY } from "./queue";
 
 export const PLAYLISTS_KEY = ["playlists"];
 
-export function usePlayerStream() {
-	const queryClient = useQueryClient();
+// PlaylistAnnotation-shaped placeholders: neither field is answered by the component and nothing
+// under `src/` reads either any more, but `PlaylistInfo` is a wider contract than this bundle owns.
+const NOT_TRACKED = { isCurrent: false, totalTime: 0 };
 
-	useEffect(() => {
-		const source = new EventSource(UPDATES_URL);
-
-		source.onmessage = (event) => {
-			const { playlists } = JSON.parse(event.data) as UpdateMessage;
-			if (playlists) queryClient.setQueryData(PLAYLISTS_KEY, playlists);
-		};
-
-		return () => source.close();
-	}, [queryClient]);
-}
+export const playlistInfoOf = (
+	annotation: PlaylistAnnotation,
+): PlaylistInfo => ({
+	id: annotation.id,
+	index: annotation.index,
+	title: annotation.title,
+	itemCount: annotation.itemCount,
+	...NOT_TRACKED,
+});
 
 export function usePlayer() {
 	return useQuery<PlayerSnapshot>({
@@ -81,12 +82,54 @@ export function useAudiblePlayer() {
 }
 
 export function usePlaylists() {
-	return useQuery({
+	return useQuery<PlaylistInfo[]>({
 		queryKey: PLAYLISTS_KEY,
-		queryFn: fetchPlaylists,
+		queryFn: skipToken,
 		staleTime: Infinity,
-		refetchOnWindowFocus: true,
+		refetchOnWindowFocus: false,
 	});
+}
+
+const PLAYLISTS_REVISION_KEY = ["playlistsRevision"];
+const PLAYLISTS_SEEN_REVISION_KEY = ["playlistsSeenRevision"];
+
+// `GET /playlists` carries no revision of its own, so the one from `GET /state`'s `player` is kept
+// beside the list to compare against: re-read only when it has moved, exactly as the queue does.
+// The seen revision is recorded before the refetch settles, so a reader comparing the two keys can
+// tell "the list has not been asked to catch up yet" from "it has been asked and has not yet".
+export async function recheckPlaylists(
+	client: QueryClient,
+	origin: string,
+	token: string,
+	revision: number,
+): Promise<void> {
+	client.setQueryData(PLAYLISTS_SEEN_REVISION_KEY, revision);
+	if (client.getQueryData<number>(PLAYLISTS_REVISION_KEY) === revision) return;
+
+	const annotations = await fetchPlaylistAnnotations(origin, token);
+	if (!annotations) return;
+
+	client.setQueryData(PLAYLISTS_KEY, annotations.map(playlistInfoOf));
+	client.setQueryData(PLAYLISTS_REVISION_KEY, revision);
+}
+
+// Whether the list has caught up with the revision the poll last announced, a property of the list
+// rather than of any one reader: "has ever fetched" stops answering that the moment a stale fetch
+// lands, which is why this compares the two revisions instead of reading a query's own status.
+export function usePlaylistsCaughtUp(): boolean {
+	const { data: seen } = useQuery<number>({
+		queryKey: PLAYLISTS_SEEN_REVISION_KEY,
+		queryFn: skipToken,
+		staleTime: Infinity,
+		refetchOnWindowFocus: false,
+	});
+	const { data: fetchedAt } = useQuery<number>({
+		queryKey: PLAYLISTS_REVISION_KEY,
+		queryFn: skipToken,
+		staleTime: Infinity,
+		refetchOnWindowFocus: false,
+	});
+	return seen !== undefined && seen === fetchedAt;
 }
 
 export function usePermissions(): Partial<Permissions> {
@@ -169,11 +212,15 @@ export function usePlaylistActions() {
 
 	const create = useMutation({
 		mutationFn: async (title: string) => {
-			const playlist = await createPlaylist(title);
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			const annotation = await createPlaylist(origin, token, { title });
 			// Refetched rather than invalidated: what follows resolves against this list, and a row not
 			// in it yet cannot be put into rename mode.
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
-			return playlist;
+			return playlistInfoOf(annotation);
 		},
 	});
 
@@ -181,8 +228,13 @@ export function usePlaylistActions() {
 		create,
 
 		rename: usePlaylistPatch(
-			({ id, title }: { id: string; title: string }) =>
-				renamePlaylist(id, title),
+			({ id, title }: { id: string; title: string }) => {
+				const { origin, token } = requireFooJean(
+					discovery.origin,
+					discovery.token,
+				);
+				return renamePlaylist(origin, token, id, title);
+			},
 			(playlists, { id, title }) =>
 				playlists.map((entry) =>
 					entry.id === id ? { ...entry, title } : entry,
@@ -191,35 +243,32 @@ export function usePlaylistActions() {
 
 		remove: usePlaylistPatch(
 			async (id: string) => {
+				const { origin, token } = requireFooJean(
+					discovery.origin,
+					discovery.token,
+				);
 				try {
-					const { origin, token } = discovery;
-					let dequeued = false;
-					if (origin && token) {
-						const annotations = await fetchPlaylistAnnotations(origin, token);
-						// A playlist `foo_jean` holds no annotation for cannot be one a
-						// queue entry points into, since queueing a row needs that same
-						// lookup to name it. `dequeuePlaylist` reads the queue regardless
-						// and finds nothing to match.
-						let guid: string | null;
-						try {
-							guid = guidOf(id, annotations);
-						} catch {
-							guid = null;
-						}
-						dequeued = await dequeuePlaylist(origin, token, guid);
-					}
+					// `id` is the same GUID `GET /playlists` carries, so there is nothing left to
+					// resolve here: `dequeuePlaylist` reads the queue directly against it.
+					const dequeued = await dequeuePlaylist(origin, token, id);
 					if (!dequeued)
 						throw refusal(translate("playlist.deleteBlockedByQueue"));
 				} finally {
 					await queryClient.refetchQueries({ queryKey: QUEUE_KEY });
 				}
-				return removePlaylist(id);
+				return removePlaylist(origin, token, id);
 			},
 			(playlists, id) => playlists.filter((entry) => entry.id !== id),
 		),
 
 		move: usePlaylistPatch(
-			({ id, index }: { id: string; index: number }) => movePlaylist(id, index),
+			({ id, index }: { id: string; index: number }) => {
+				const { origin, token } = requireFooJean(
+					discovery.origin,
+					discovery.token,
+				);
+				return movePlaylist(origin, token, id, index);
+			},
 			(playlists, { id, index }) => {
 				const from = playlists.findIndex((entry) => entry.id === id);
 				if (from < 0) return playlists;
@@ -274,9 +323,12 @@ export const usePlayItem = () => {
 
 	return usePlayerPatch(
 		async ({ playlistId, index }: { playlistId: string; index: number }) => {
-			await playItem(playlistId, index);
-			if (discovery.origin && discovery.token)
-				await pollPlayerNow(queryClient, discovery.origin, discovery.token);
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			await playPlaylistItem(origin, token, playlistId, index);
+			await pollPlayerNow(queryClient, origin, token);
 		},
 		() => ({ playbackState: "playing" }),
 	);

@@ -16,6 +16,7 @@ import { useFinder } from "@/domain/track/useFinder";
 import { usePlaylistItems } from "@/domain/track/usePlaylistItems";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./PlaylistView.module.css";
 
@@ -29,8 +30,11 @@ export function PlaylistView({
 	isCompactViewport: boolean;
 }) {
 	const t = useTranslate();
+	const { discovery } = useFooJean();
+	const { origin, token } = discovery;
 	const {
 		columns,
+		paths,
 		loaded,
 		total,
 		isLoading,
@@ -38,14 +42,20 @@ export function PlaylistView({
 		heat,
 		patina,
 		playedCount,
-	} = usePlaylistItems(playlist?.id, playlist?.itemCount);
+	} = usePlaylistItems(origin, token, playlist?.id, playlist?.itemCount);
 
 	const rows = useMemo(() => trackRows(columns), [columns]);
 
 	const source = useMemo(
 		() =>
-			librarySourceOf({ kind: "playlist", playlistId: playlist?.id as string }),
-		[playlist?.id],
+			librarySourceOf({
+				kind: "playlist",
+				playlistId: playlist?.id as string,
+				origin,
+				token,
+				paths,
+			}),
+		[playlist?.id, origin, token, paths],
 	);
 
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
@@ -102,9 +112,7 @@ export function PlaylistView({
 			emptyNotice={t("playlist.empty")}
 			header={
 				<ViewHeader
-					eyebrow={t(
-						playlist.isCurrent ? "playlist.playingFrom" : "playlist.eyebrow",
-					)}
+					eyebrow={t(activeItem ? "playlist.playingFrom" : "playlist.eyebrow")}
 					title={playlist.title}
 					stats={stats}
 					hasPlayCounts={hasPlayCounts}

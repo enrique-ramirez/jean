@@ -1,13 +1,18 @@
-import type { Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
 	openLibrary,
+	playedFrom,
+	playRequests,
 	requestsTo,
 	statusBar,
 	test,
 	times,
 } from "./fixtures.ts";
+
+const libraryGuid = (player: FakePlayer) =>
+	player.playlists.find((entry) => entry.title === "Library")!.guid;
 
 // Counts taken from the captured library. Jessico is twelve Babasónicos tracks
 // at the top of the list, Lafcadio eleven further down and entirely off screen.
@@ -229,11 +234,7 @@ const openFinder = async (page: Page) => {
 				);
 
 				// The preview is debounced, so give it time to be wrong.
-				await expectSettlesAt(
-					player,
-					() => requestsTo(player, "/player/play/"),
-					[],
-				);
+				await expectSettlesAt(player, () => playRequests(player), []);
 				await expect(statusBar(page)).toContainText("Nothing playing");
 
 				// It did move the list: the previewed block starts well below the fold
@@ -324,10 +325,8 @@ const openFinder = async (page: Page) => {
 				await page.keyboard.press("Enter");
 
 				await expect
-					.poll(() =>
-						requestsTo(player, "/player/play/").map((entry) => entry.path),
-					)
-					.toEqual([`/api/player/play/p7/${ONE_HIT.row}`]);
+					.poll(() => playedFrom(player))
+					.toEqual({ id: libraryGuid(player), index: ONE_HIT.row });
 				await expect(finder(page)).toHaveCount(0);
 				await expect(statusBar(page)).toContainText(ONE_HIT.title);
 			});
@@ -339,10 +338,8 @@ const openFinder = async (page: Page) => {
 				await results(page).first().click();
 
 				await expect
-					.poll(() =>
-						requestsTo(player, "/player/play/").map((entry) => entry.path),
-					)
-					.toEqual([`/api/player/play/p7/${ONE_HIT.row}`]);
+					.poll(() => playedFrom(player))
+					.toEqual({ id: libraryGuid(player), index: ONE_HIT.row });
 				await expect(statusBar(page)).toContainText(ONE_HIT.title);
 			});
 
@@ -358,11 +355,7 @@ const openFinder = async (page: Page) => {
 				await page.keyboard.press("Escape");
 
 				await expect(finder(page)).toHaveCount(0);
-				await expectSettlesAt(
-					player,
-					() => requestsTo(player, "/player/play/"),
-					[],
-				);
+				await expectSettlesAt(player, () => playRequests(player), []);
 				await expect(statusBar(page)).toContainText("Nothing playing");
 			});
 
@@ -389,7 +382,7 @@ const openFinder = async (page: Page) => {
 			test("marks every match but renders only a page of them", async ({
 				page,
 			}) => {
-				await page.goto("/#/p7");
+				await openLibrary(page);
 				await expect
 					.poll(() => page.getByRole("grid").getAttribute("aria-rowcount"), {
 						timeout: 30000,
@@ -455,7 +448,7 @@ test.describe("typing does not drag the list around", () => {
 		page.locator("main").evaluate((element: HTMLElement) => element.scrollTop);
 
 	test("narrowing a query leaves the view where it is", async ({ page }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect
 			.poll(() => page.getByRole("grid").getAttribute("aria-rowcount"), {
 				timeout: 30000,
@@ -618,10 +611,9 @@ test.describe("finding in the library views", () => {
 		const wanted = await first.innerText();
 		await first.click();
 
-		await expect.poll(() => requestsTo(player, "/player/play/").length).toBe(1);
-		const play = requestsTo(player, "/player/play/").at(-1);
-		const [, , , , plref, index] = play!.path.split("/");
-		const playlist = player.playlists.find((entry) => entry.id === plref)!;
-		expect(wanted).toContain(playlist.items[Number(index)]["%title%"]);
+		await expect.poll(() => playedFrom(player)).not.toBeNull();
+		const at = playedFrom(player)!;
+		const playlist = player.playlists.find((entry) => entry.guid === at.id)!;
+		expect(wanted).toContain(playlist.items[at.index]["%title%"]);
 	});
 });

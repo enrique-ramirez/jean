@@ -175,9 +175,12 @@ test.describe("the set it is playing from", () => {
 			await expect(nowPlayingScreen(page)).toBeHidden();
 		};
 
-		test("from another view", async ({ page }) => {
+		test("from another view", async ({ page, player }) => {
 			await playFarAndLeaveTheTop(page);
-			await page.goto("/#/p5");
+			const guid = player.playlists.find(
+				(entry) => entry.title === "Rock en Español",
+			)!.guid;
+			await page.goto(`/#/${guid}`);
 			await expect(page.getByRole("grid")).toBeVisible();
 
 			await openThePlayingSet(page);

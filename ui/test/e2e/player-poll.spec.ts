@@ -6,7 +6,6 @@ import {
 } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
-	dropTheStream,
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
@@ -371,16 +370,13 @@ test("shows what the player is actually doing on the next tick after several wer
 	// the validator it holds through the outage is a real one.
 	await expect.poll(() => ticksTaken(player)).toBeGreaterThanOrEqual(2);
 
-	// beefweb's subscription writes the same cache key as the poll for as long as
-	// both are live, so cutting the poll alone would leave the stream to do the
-	// recovering and this would pass with the poll doing nothing at all. The route
-	// is cut first so the reconnect has nothing to come back to.
-	await page.route("**/api/query**", (route) => route.abort());
-	await dropTheStream(page);
-
 	player.fooJean.failState = 503;
 	const refusedFrom = ticksTaken(player);
-	const beefwebAtDrop = requestsTo(player, "/api/query").length;
+	// The panel's per-track columns read is a beefweb call the track change below legitimately
+	// makes, whatever the component is doing; what stays flat is everything else.
+	const beefwebAtDrop = withoutTrackColumns(
+		requestsTo(player, "/api/query").map((one) => one.path),
+	).length;
 
 	// Driven at the desktop while the client is blind: a different track and a
 	// different transport state, so following one of the two cannot pass by luck.
@@ -398,11 +394,14 @@ test("shows what the player is actually doing on the next tick after several wer
 	await expect(playToggle(page, "Play")).toBeVisible();
 	await expect(seekBar(page)).toHaveAttribute("aria-valuemax", FIZZ);
 
-	// And the poll is what caught up: beefweb answered nothing at all between the
-	// stream going away and the status bar being right again.
+	// And the poll is what caught up: beefweb answered nothing but the panel's own columns between
+	// the outage and the status bar being right again.
 	await expectSettlesAt(
 		player,
-		() => requestsTo(player, "/api/query").length,
+		() =>
+			withoutTrackColumns(
+				requestsTo(player, "/api/query").map((one) => one.path),
+			).length,
 		beefwebAtDrop,
 	);
 });
@@ -773,14 +772,9 @@ test("takes no player state off beefweb beyond the now-playing panel's own colum
 		[],
 	);
 
-	// A subscription deleted rather than narrowed satisfies the absence above and
-	// takes the playlist list with it, so what it keeps is asserted beside what it
-	// drops.
-	const subscribed = requestsTo(player, SUBSCRIPTION).at(-1)?.path ?? "";
-	expect(subscribed, "nothing subscribed to beefweb at all").not.toBe("");
-	expect(subscribed).toContain("playlists=true");
-	expect(subscribed).not.toContain("playQueue");
-	expect(subscribed).not.toContain("qcolumns");
+	// The subscription is gone rather than narrowed, and takes the playlist list with it: nothing
+	// here reaches beefweb's stream at all.
+	expect(requestsTo(player, SUBSCRIPTION)).toEqual([]);
 });
 
 test("asks the component for state once an interval, and nobody asks for the route it replaced", async ({
@@ -854,7 +848,7 @@ test('draws no "Playing from" where the tick names a playlist Jean holds none fo
 	await expectNoPlayingFrom(page, player);
 });
 
-test("a playlist created and played from while the join is still catching up turns the wheel once, not twice", async ({
+test("a playlist created and played from before the client's list has caught up with the revision turns the wheel once, not twice", async ({
 	page,
 	player,
 	isMobile,
@@ -869,9 +863,9 @@ test("a playlist created and played from while the join is still catching up tur
 
 	// Driven at the desktop rather than through Jean's own "play a set", so the
 	// screen stays open and the wheel's own turn count survives: a fresh
-	// playlist, created and played from in the same beat, is what the join has
-	// to catch up on. `addPlaylist` is what moves the beefweb playlist count and
-	// so is what fires the annotations refetch.
+	// playlist, created and played from in the same beat, is what the client's
+	// list has to catch up on. `addPlaylist` is what moves the playlists
+	// revision and so is what fires the list's own refetch.
 	const created = player.addPlaylist("Late arrival");
 	const playlist = player.playlistById(created.id);
 	if (!playlist) throw new Error(`${created.id} did not come back playable`);
@@ -879,17 +873,17 @@ test("a playlist created and played from while the join is still catching up tur
 	playlist.items.push(track);
 
 	// Held after the playlist exists, so the tick can already name it while the
-	// annotations list the join reads still predates it.
+	// list the lookup reads still predates it.
 	await page.request.post("/__control/latency", { data: { ms: 1500 } });
 	player.playItem(created.id, 0);
 
-	// The tick has already moved: the screen names the new track. The join has
+	// The tick has already moved: the screen names the new track. The list has
 	// not, so the wheel must still be exactly where it was rather than having
 	// turned on a lookup that answered "resolved and absent".
 	await expect(nowPlayingScreen(page)).toContainText(String(track["%title%"]));
 	expect(await detents(page)).toBe(0);
 
-	// One track change, one turn, once the join catches up.
+	// One track change, one turn, once the list catches up.
 	await expect
 		.poll(() => detents(page), { message: "one track change, one turn" })
 		.toBe(-1);

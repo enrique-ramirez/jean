@@ -5,6 +5,7 @@ import {
 	expectDisabledWithItsReason,
 	expectPlayingFrom,
 	expectSettlesAt,
+	openLibrary,
 	openSidebar,
 	playedFrom,
 	requestsTo,
@@ -36,6 +37,17 @@ const search = async (page: Page, text: string) => {
 	await page.goto("/#/search");
 	await searchFor(page, text);
 	await expect(trackRow(page, 0)).toBeAttached();
+};
+
+// Rock en Español holds Los Calientes too, and is neither the library nor the scratch.
+const spanishGuid = (player: FakePlayer) =>
+	player.playlists.find((entry) => entry.title === "Rock en Español")!.guid;
+
+const openSpanish = async (page: Page, player: FakePlayer) => {
+	await page.goto(`/#/${spanishGuid(player)}`);
+	await expect(
+		page.getByRole("heading", { level: 1, name: "Rock en Español" }),
+	).toBeVisible();
 };
 
 const searchAndPlay = async (
@@ -96,7 +108,7 @@ test.describe("a query with a colon in it", () => {
 		// Reloaded rather than navigated: a hashchange keeps the query in memory,
 		// so only a fresh page reads it back out of the playlist's title -- which
 		// is the round trip the colon can break.
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await page.reload();
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
@@ -130,7 +142,7 @@ test.describe("playing from search results", () => {
 		const scratch = scratchOf(player);
 		expect(scratch!.title).toBe(QUERY.title);
 
-		await expect.poll(() => playedFrom(player)?.plref).toBe(scratch!.id);
+		await expect.poll(() => playedFrom(player)?.id).toBe(scratch!.guid);
 		expect(playedFrom(player)!.index).toBe(2);
 	});
 
@@ -196,8 +208,8 @@ test.describe("playing from search results", () => {
 			.poll(() => scratchOf(player)?.items.length)
 			.toBe(QUERY.matches);
 		await expect
-			.poll(() => playedFrom(player)?.plref)
-			.toBe(scratchOf(player)!.id);
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)!.guid);
 		await expect.poll(() => player.player.playbackMode).toBe(SHUFFLE_TRACKS);
 		expect(playedFrom(player)!.index).toBeLessThan(QUERY.matches);
 	});
@@ -208,10 +220,7 @@ test.describe("playing from search results", () => {
 	}) => {
 		await searchAndPlay(page, player);
 
-		await page.goto("/#/p5");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
-		).toBeVisible();
+		await openSpanish(page, player);
 
 		await openSidebar(page);
 		await expect(sidebar(page).getByText("Rock en Español")).toBeVisible();
@@ -224,10 +233,7 @@ test.describe("playing from search results", () => {
 	}) => {
 		await searchAndPlay(page, player);
 
-		await page.goto("/#/p5");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
-		).toBeVisible();
+		await openSpanish(page, player);
 
 		// The next search empties the scratch playlist, so anything filed there goes.
 		await trackRow(page, 0).click({ button: "right" });
@@ -288,9 +294,9 @@ test.describe("a search outlives the tab it was typed in", () => {
 
 		// Stands in for another device: local state cleared, landing off the search
 		// route.
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await page.evaluate(() => localStorage.clear());
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(statusBar(page)).toContainText("Los Calientes");
 
 		await openSidebar(page);
@@ -310,7 +316,7 @@ test.describe("a search outlives the tab it was typed in", () => {
 	test("and with no search behind it there is no shelf at all", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
@@ -342,7 +348,7 @@ test.describe("a scratch playlist under a name that is not the view it holds", (
 		// Away from the results and reloaded: the committed query is what the
 		// search route answers with while it is there, and it outranks both the
 		// title and anything Jean remembers.
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await page.reload();
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
@@ -389,10 +395,7 @@ test.describe("clearing the search", () => {
 		// Stop first: whether the scratch survives is decided from the app's copy of
 		// the player state, so clearing before the stop lands reads the old answer.
 		await statusBar(page).getByRole("button", { name: "Pause" }).click();
-		await page.goto("/#/p5");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
-		).toBeVisible();
+		await openSpanish(page, player);
 
 		// Playing is two requests -- build the playlist, then play from it -- and the
 		// poll above only waits for the first, so a stop between them is undone.
@@ -415,10 +418,7 @@ test.describe("clearing the search", () => {
 		// first, since the compact bar puts the field away with the search.
 		await revealSearch(page);
 		await expect(page.getByLabel("Search your library")).toHaveValue("");
-		await page.goto("/#/p5");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
-		).toBeVisible();
+		await openSpanish(page, player);
 
 		// Deleting the playing playlist does not stop playback: the player falls back
 		// to another playlist and keeps going.
@@ -494,10 +494,7 @@ test.describe("saving results as a playlist", () => {
 
 		// Ordered rather than timed: a navigation after the save says anything it
 		// sent has reached the player.
-		await page.goto("/#/p5");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
-		).toBeVisible();
+		await openSpanish(page, player);
 
 		const keepers = player.playlists.find((entry) => entry.title === "Keepers");
 		expect(keepers?.items).toHaveLength(QUERY.matches);
@@ -669,8 +666,8 @@ test.describe("a beefweb install that will not let Jean change playlists", () =>
 			.poll(() => scratchOf(player)?.items.length)
 			.toBe(QUERY.matches);
 		await expect
-			.poll(() => playedFrom(player)?.plref)
-			.toBe(scratchOf(player)!.id);
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)!.guid);
 		expect(playedFrom(player)!.index).toBe(2);
 
 		await expectSettlesAt(player, () => scratchFills(player).length, 1);
@@ -733,10 +730,7 @@ test.describe("marking the row that is playing", () => {
 	}) => {
 		// Rock en Español holds Los Calientes too, and is neither the library nor
 		// the scratch.
-		await page.goto("/#/p5");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
-		).toBeVisible();
+		await openSpanish(page, player);
 		await trackRow(page, 0).dblclick();
 		await expect(statusBar(page)).toContainText("Los Calientes");
 		expect(player.player.activeItem.playlistId).toBe("p5");

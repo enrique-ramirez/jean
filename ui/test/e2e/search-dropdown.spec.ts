@@ -1,3 +1,4 @@
+import type { FakePlayer } from "./fixtures.ts";
 import {
 	expect,
 	openLibrary,
@@ -42,6 +43,9 @@ const kinds = (page: Parameters<typeof openLibrary>[0]) =>
 const hash = (page: Parameters<typeof openLibrary>[0]) =>
 	page.evaluate(() => location.hash);
 
+const libraryHash = (player: FakePlayer) =>
+	`#/${player.playlists.find((entry) => entry.title === "Library")!.guid}`;
+
 const openWithSearch = async (page: Parameters<typeof openLibrary>[0]) => {
 	await openLibrary(page);
 	await revealSearch(page);
@@ -50,6 +54,7 @@ const openWithSearch = async (page: Parameters<typeof openLibrary>[0]) => {
 test.describe("previewing a search without leaving the page", () => {
 	test("typing draws results over the view rather than replacing it", async ({
 		page,
+		player,
 	}) => {
 		await openWithSearch(page);
 
@@ -57,7 +62,7 @@ test.describe("previewing a search without leaving the page", () => {
 		await expect(options(page).first()).toBeVisible();
 		await expect(tracks(page)).toHaveCount(PREVIEW_TRACKS);
 
-		expect(await hash(page)).toBe("#/p7");
+		expect(await hash(page)).toBe(libraryHash(player));
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
@@ -65,6 +70,7 @@ test.describe("previewing a search without leaving the page", () => {
 
 	test("emptying the field by hand leaves you exactly where Escape would", async ({
 		page,
+		player,
 	}) => {
 		await openWithSearch(page);
 
@@ -73,7 +79,7 @@ test.describe("previewing a search without leaving the page", () => {
 
 		await searchField(page).fill("");
 		await expect(options(page)).toHaveCount(0);
-		expect(await hash(page)).toBe("#/p7");
+		expect(await hash(page)).toBe(libraryHash(player));
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
@@ -81,6 +87,7 @@ test.describe("previewing a search without leaving the page", () => {
 
 	test("Escape closes the preview before it clears the query", async ({
 		page,
+		player,
 	}) => {
 		await openWithSearch(page);
 		await searchField(page).fill(QUERY);
@@ -92,7 +99,7 @@ test.describe("previewing a search without leaving the page", () => {
 
 		await searchField(page).press("Escape");
 		await expect(searchField(page)).toHaveValue("");
-		expect(await hash(page)).toBe("#/p7");
+		expect(await hash(page)).toBe(libraryHash(player));
 	});
 
 	test("clicking the field reopens what Escape shut", async ({ page }) => {
@@ -117,7 +124,10 @@ test.describe("previewing a search without leaving the page", () => {
 		await expect(options(page).first()).toBeVisible();
 	});
 
-	test("a space is a character, not a second Enter", async ({ page }) => {
+	test("a space is a character, not a second Enter", async ({
+		page,
+		player,
+	}) => {
 		await openWithSearch(page);
 		await searchField(page).fill("baba");
 		await searchField(page).press("ArrowDown");
@@ -128,7 +138,7 @@ test.describe("previewing a search without leaving the page", () => {
 
 		await searchField(page).press("Space");
 		await expect(searchField(page)).toHaveValue("baba ");
-		expect(await hash(page)).toBe("#/p7");
+		expect(await hash(page)).toBe(libraryHash(player));
 	});
 });
 
@@ -319,11 +329,11 @@ test.describe("committing to a result", () => {
 		// Through the scratch playlist, the same way the results page plays a row --
 		// the set has to exist for one of it to play at all.
 		await expect
-			.poll(() => playedFrom(player)?.plref)
-			.toBe(scratchOf(player)?.id);
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)?.guid);
 		expect(trackPlayed(player)).toBe(chosen);
 
-		expect(await hash(page)).toBe("#/p7");
+		expect(await hash(page)).toBe(libraryHash(player));
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
@@ -346,7 +356,7 @@ test.describe("committing to a result", () => {
 
 		await expect(options(page)).toHaveCount(0);
 		await expect.poll(() => trackPlayed(player)).toBe(chosen);
-		expect(await hash(page)).toBe("#/p7");
+		expect(await hash(page)).toBe(libraryHash(player));
 	});
 
 	test("playing a track makes the search real, so it can be got back to", async ({

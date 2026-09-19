@@ -1,5 +1,4 @@
 import {
-	dropTheStream,
 	expect,
 	globalControls,
 	openLibrary,
@@ -7,11 +6,9 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// What the player is doing arrives on the component's poll and recovers there.
-// beefweb's narrowed subscription carries the playlist list and the play queue,
-// and those two recover for free because EventSource reconnects by itself and
-// beefweb replays a full snapshot of whatever was subscribed to.
-test.describe("the update stream going away", () => {
+// What the player is doing arrives on the component's poll alone, so recovering from an outage is
+// the poll picking up where a failed tick left off.
+test.describe("a poll cut off mid-flight", () => {
 	test("a playlist changed while it was gone still shows up", async ({
 		page,
 		player,
@@ -19,10 +16,14 @@ test.describe("the update stream going away", () => {
 		await openLibrary(page);
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
 
-		await dropTheStream(page);
+		player.fooJean.failState = 503;
+		const droppedAt = player.requests.length;
+		await expect.poll(() => player.requests.length).toBeGreaterThan(droppedAt);
 
 		player.copyItems("p5", "p7", [0]);
 		player.notifyPlaylists();
+
+		player.fooJean.failState = null;
 
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "55");
 	});
@@ -39,10 +40,14 @@ test.describe("the update stream going away", () => {
 		});
 		await expect(queue).toHaveAccessibleName("Queue");
 
-		await dropTheStream(page);
+		player.fooJean.failState = 503;
+		const droppedAt = player.requests.length;
+		await expect.poll(() => player.requests.length).toBeGreaterThan(droppedAt);
 
 		// Queued at the desktop, so nothing Jean did can be what brings it back.
 		expect(player.queueAdd("p7", 3)).toBe(true);
+
+		player.fooJean.failState = null;
 
 		await expect(queue).toHaveAccessibleName("Queue, 1 track");
 	});

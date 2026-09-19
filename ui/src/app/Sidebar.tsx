@@ -105,6 +105,7 @@ function NavRow({
 
 export function Sidebar({
 	playlists,
+	playingPlaylistId,
 	selectedId,
 	onSelect,
 	search,
@@ -118,6 +119,7 @@ export function Sidebar({
 	onDismiss,
 }: {
 	playlists: PlaylistInfo[];
+	playingPlaylistId: string | null;
 	selectedId: string | null | undefined;
 	onSelect: (id: string) => void;
 	search: LibrarySearch;
@@ -386,6 +388,7 @@ export function Sidebar({
 					<PlaylistRow
 						key={playlist.id}
 						playlist={playlist}
+						isPlaying={playlist.id === playingPlaylistId}
 						isSelected={playlist.id === selectedId}
 						isRenaming={playlist.id === renamingId}
 						isAuto={autoPlaylists.has(playlist.id)}
@@ -452,6 +455,7 @@ export function Sidebar({
 
 function PlaylistRow({
 	playlist,
+	isPlaying,
 	isSelected,
 	isRenaming,
 	isAuto,
@@ -468,6 +472,7 @@ function PlaylistRow({
 	onRename,
 }: {
 	playlist: PlaylistInfo;
+	isPlaying: boolean;
 	isSelected: boolean;
 	isRenaming: boolean;
 	isAuto: boolean;
@@ -501,7 +506,7 @@ function PlaylistRow({
 			icon={isAuto ? WandSparkles : ListMusic}
 			label={playlist.title}
 			count={format.number(playlist.itemCount)}
-			isPlaying={playlist.isCurrent}
+			isPlaying={isPlaying}
 			isCurrent={isSelected}
 			onClick={onSelect}
 			itemProps={{ onFocus, onBlur }}

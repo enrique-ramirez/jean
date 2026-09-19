@@ -114,18 +114,28 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Which playlists are autoplaylists, and which this component created.
-         * @description Not a playlist listing. beefweb answers that at `GET http://<player>:8880/api/playlists`, with titles, item counts, total time and which playlist is current. This route reports only what beefweb cannot, and repeats none of it.
+         * Every playlist the player holds.
+         * @description One entry per playlist, in playlist order: the GUID every route here addresses a playlist by, its title, how many rows it holds, whether it is an autoplaylist, the role where this component keeps the playlist for a purpose of its own, and the two numbers that say whether rows a client already holds are still current.
          *
-         *     One entry per playlist, in playlist order. Join it to beefweb's answer on `beefwebId`, falling back to `index`. `title` is for checking a join, not for display.
+         *     ### The two numbers
          *
-         *     ### Ask beefweb first
+         *     `structure` moves when a playlist's rows are added, removed, reordered or replaced, so rows held against an older one sit at positions that have moved. `revision` moves when a row already in the playlist would answer differently, a tag, a rating or a play count, and the rows stay where they are.
          *
-         *     beefweb assigns its playlist ids lazily, when it next rebuilds its map. A playlist this component has just created therefore reports `beefwebId: null` until beefweb looks again, and creating it is enough to make beefweb do so. A client MUST request beefweb's playlists before this route for the join to be complete.
+         *     Both are counters kept for as long as this component runs rather than anything the player stores, so neither repeats a value across a restart of it and a client holding numbers from an earlier run reads the playlist again.
          */
         get: operations["getPlaylists"];
         put?: never;
-        post?: never;
+        /**
+         * Create a playlist at the end of the player's list, holding a set or nothing.
+         * @description An ordinary playlist, not an autoplaylist: nothing keeps it filled and `POST /autoplaylists` is what makes one that does. It lands last in the player's own list and carries `title` exactly as somebody looking at foobar2000 will read it.
+         *
+         *     The set is optional and is the fill's own: `runs`, `bitset` or `ordinals` resolved against a `structure` for media library tracks, exactly as `POST /playlists/{id}/items` reads them, or `source` and `runs` for the rows of a playlist that already exists. A body naming neither creates the playlist holding nothing, and needs no media library to do it.
+         *
+         *     **The playlist is created and filled in one operation of the player's.** A client saving a set as a playlist sends this one request: there is no window in which the playlist exists empty, and nothing here has to be followed by a fill.
+         *
+         *     Refused with `403` under the read-only-playlists setting: the playlist it makes would hold the user's music.
+         */
+        post: operations["createPlaylist"];
         delete?: never;
         options?: never;
         head?: never;
@@ -214,7 +224,7 @@ export interface paths {
          * Delete an autoplaylist this component created.
          * @description Removes the playlist and the autoplaylist client with it.
          *
-         *     Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself, whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first. A client that needs to delete an arbitrary playlist MUST ask beefweb, which will delete any playlist for any caller that can reach it.
+         *     Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself, whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first. Any other playlist is deleted through `DELETE /playlists/{id}`.
          */
         delete: operations["removeAutoPlaylist"];
         options?: never;
@@ -248,13 +258,85 @@ export interface paths {
         post: operations["fillOwnPlaylist"];
         /**
          * Take every row out of one of the component's own playlists, keeping the playlist.
-         * @description Removes every item rather than the playlist itself, the same guard a replacing fill of `scratch` already keeps: deleting a playlist the play queue points into kills foobar2000. The playlist keeps its id, its position and beefweb's id for it.
+         * @description Removes every item rather than the playlist itself, the same choice a replacing fill of `scratch` makes: the playlist keeps its id, its position in the player's list and the marker that `role` resolves through, and deleting it would cost all three. The play queue plays no part in that and is not touched here; `DELETE /playlists/{id}` has what the player does with a queued entry whose playlist goes.
          *
          *     Idempotent: a role with no playlist yet is not made one just to answer this, and reports success regardless, exactly as `DELETE /stream/hold` reports success whether or not there was a hold to release.
          *
          *     The read-only-playlists setting never refuses this operation, for the reason it never refuses a fill of `scratch`: it holds none of the user's music.
          */
         delete: operations["emptyOwnPlaylist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retitle a playlist.
+         * @description Any playlist, not only one this component made: `title` ends up exactly as somebody looking at foobar2000's own tabs will read it. The playlist keeps its `id`, its position, its rows and both its version numbers, none of which a title bears on.
+         *
+         *     `title` is held to the same rule `POST /playlists` holds a new one to, because a title a client cannot create is one it cannot rename to either.
+         *
+         *     Nothing comes back. The list a client draws comes from `GET /playlists`, which `GET /state`'s `playlistsRevision` tells it to read again.
+         *
+         *     Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where the `id` is one of this component's own playlists, and with `409` where another component has locked the playlist against a rename.
+         */
+        post: operations["renamePlaylist"];
+        /**
+         * Delete a playlist.
+         * @description Any playlist, unlike `DELETE /autoplaylists/{id}`, which touches only the records this component keeps. The rows go with it; the files do not.
+         *
+         *     **The play queue is not touched, and a client MUST NOT empty it first.** foobar2000 keeps a queued entry whose whole playlist is deleted rather than dropping it, and such an entry still plays when it reaches the head: plugins/fb2k/ARCHITECTURE.md, *Facts about the player*, has what the player does and what reading one carelessly costs. `GET /queue` answers those entries from their handles, so the queue a client draws afterwards is the queue the player will play.
+         *
+         *     Nothing comes back.
+         *
+         *     Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where the `id` is one of this component's own playlists, and with `409` where another component has locked the playlist against being deleted.
+         */
+        delete: operations["removePlaylist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a playlist to a position in the player's list.
+         * @description `index` is where the playlist ends up, counting from zero, and every playlist it passes shifts by one to make room. It is a position in the list as it stands, so moving the first of three playlists to `2` puts it last; `3` is one past the end and a `400`.
+         *
+         *     Nothing comes back, and the `index` each playlist now carries is read from `GET /playlists`. Every playlist between the two positions has one it did not have before, so a client holding the list MUST read it again rather than patching the one entry it moved.
+         *
+         *     Refused with `403` under the read-only-playlists setting, and with `403` whatever that setting says where the `id` is one of this component's own playlists.
+         */
+        post: operations["movePlaylist"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -273,7 +355,15 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /**
+         * A page of a playlist's rows, in the columns the client declares.
+         * @description Every column is evaluated against the row's own handle, so a file dragged into a playlist from outside the media library draws like every other row. `libraryPath` is the library-relative path `GET /artwork?track=` takes, and it is `null` for exactly those rows the media library does not hold.
+         *
+         *     The answer carries the playlist's whole `totalCount` alongside the page, and the `structure` and `revision` it was read at. Rows held against an older `structure` sit at positions that have moved and MUST be read again; a moved `revision` alone means the rows are where they were and their content is what changed.
+         *
+         *     A `count` reaching past the end answers the rows that remain, and an `offset` at or past the end answers no rows at all. Both still carry `totalCount`, `structure` and `revision`, so a client wanting only those asks for a `count` of zero.
+         */
+        get: operations["getPlaylistItems"];
         put?: never;
         /**
          * Insert library rows into a user's own playlist.
@@ -284,6 +374,139 @@ export interface paths {
          *     Refused with `403` under the read-only-playlists setting.
          */
         post: operations["fillPlaylist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/items/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The rows of a playlist whose content moved since a revision.
+         * @description The patch between the `revision` a client holds for one playlist and the current one. It carries only the rows whose content would answer differently, each at the position it sits at, in the same shape `GET /playlists/{id}/items` answers a row in, so a client patches what it holds rather than reading the page again.
+         *
+         *     Call this when `GET /state`'s `playlistsRevision` has moved and `GET /playlists` reports the same `structure` and a higher `revision` for this playlist. A different `structure` is a `409`: rows were added, removed or reordered, so every position the client holds names something else.
+         *
+         *     A revision nothing has changed since is a `200` carrying no rows, never an error.
+         *
+         *     The component keeps a bounded window of which positions changed at each revision and drops a playlist's window when its `structure` moves. Falling behind that window is a `410`. Both refusals have the same remedy, and it is this playlist's page rather than the library export `GET /library/changes` sends a client to.
+         */
+        get: operations["getPlaylistItemChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/items/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The playlist the rows are appended to, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Append rows of one playlist to the end of another.
+         * @description The rows are copied, so `source` keeps every row it lent, and they land at the end in ascending position order, which is the only order `runs` can carry. Sending the same playlist as `source` and as `id` appends a copy of those rows to itself.
+         *
+         *     **The request names no generation and answers one.** An append addresses no position in the target, so there is nothing for a generation to protect on the way in; what comes back is the `structure` the target stands at once the rows have landed, alongside where each one landed. Those two are what an undo removes exactly these rows against, through `POST /playlists/{id}/items/remove`, and they are why this answers a document rather than nothing.
+         *
+         *     One operation of the player's: nothing here reads an item count before or after the write.
+         *
+         *     `runs` naming no rows at all is accepted and appends nothing. A body naming no `source` is a `400` rather than a copy of the target onto itself.
+         *
+         *     Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where `id` is one of this component's own playlists, and with `409` where another component has locked the target against having rows added. The `source` is only read from, so neither a lock on it nor a `role` it carries bears on anything here.
+         */
+        post: operations["copyPlaylistItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/items/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The playlist the rows are removed from, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove rows of a playlist, named by position.
+         * @description The set is the fill's own, read here as row positions rather than library ordinals, and `structure` is the playlist's own generation rather than the library's: the one `GET /playlists` reports for it, or the one a page, a delta or a copy answered.
+         *
+         *     **A `structure` that is no longer the playlist's current one is a `409` and nothing is removed.** The check runs before a row is touched, so a client that asked for three rows never has three others go instead. Read the playlist's rows again from the generation `GET /playlists` now reports, and send the positions that names.
+         *
+         *     What comes back is the generation the rows left behind, so a client that holds the rows it just removed re-keys what it has rather than reading the playlist again.
+         *
+         *     Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where the `id` is one of this component's own playlists, and with the same `409` where another component has locked the playlist against having rows removed. The two share a status and carry different `error` strings, because one is answered by reading the playlist again and the other by releasing the lock at the player.
+         */
+        post: operations["removePlaylistItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/items/{index}/play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+                /**
+                 * @description The row's position in the playlist, `0` being the first, at the `structure` the client read it at.
+                 * @example 3
+                 */
+                index: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start playback at one row of a playlist.
+         * @description The one playback command here: every other one is addressed by the player rather than by a playlist. The row is named by position, so a client sending one it read at a `structure` the playlist has moved past plays whatever sits there now.
+         *
+         *     Nothing comes back. Where playback landed reaches a client through `GET /state`'s `playingLocation`, on the player's own report rather than on this answer, so a track started at the player and a track started here arrive the same way.
+         *
+         *     This writes nothing and the read-only-playlists setting does not refuse it.
+         */
+        post: operations["playPlaylistRow"];
         delete?: never;
         options?: never;
         head?: never;
@@ -941,28 +1164,32 @@ export interface components {
             /** @enum {string} */
             error: "foobar2000 does not know that track" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available";
         };
-        /** @description What this component knows about one playlist that beefweb does not report, and nothing else. Title, item count, total time and which playlist is current all come from beefweb. */
+        /** @description One playlist, with everything a client draws its entry in a list from. */
         PlaylistAnnotation: {
             /**
              * @description foobar2000's own playlist GUID, lower case and dashed. Stable across renames, reordering and restarts, and never reused. It is what the routes here address, and what a client SHOULD store to find a playlist again later.
              * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
              */
             id: string;
-            /**
-             * @description beefweb's id for the same playlist, read from the property beefweb keeps it in. This is the join key between the two APIs, and it is exact, unlike matching on a title foobar2000 permits duplicates of or on an index that changes under both.
-             *
-             *     `null` when beefweb has not assigned one yet, which is the case for a playlist just created here until beefweb next rebuilds its map. Request beefweb's playlists first and this is filled in.
-             *
-             *     Read, never written: it is another component's bookkeeping.
-             * @example p3
-             */
-            beefwebId: string | null;
-            /** @description Position in the player, and the fallback join key when `beefwebId` is null. Not identity: creating, deleting or reordering a playlist changes it. */
+            /** @description Position in the player's own playlist list, counting from zero. Not identity: creating, deleting or reordering a playlist changes it. */
             index: number;
-            /** @description For checking a join rather than for display. beefweb's answer is the one to show; this is a snapshot from a different request. */
+            /** @description The playlist's title, as the player holds it. foobar2000 permits two playlists to share one, so it is for display rather than for identity. */
             title: string;
-            /** @description Whether the playlist is an autoplaylist. This is the question beefweb cannot answer. True for any autoplaylist, including ones made in foobar2000 before this component was installed. */
+            /** @description How many rows the playlist holds. */
+            itemCount: number;
+            /** @description Whether the playlist is an autoplaylist, filled and kept filled by the player from a query. True for any autoplaylist, including ones made in foobar2000 before this component was installed. */
             isAutoPlaylist: boolean;
+            /**
+             * @description What this component keeps the playlist for, and `null` for every playlist it keeps for nothing of its own, which is all of them a user made. `scratch` is the playlist a fill puts a set of tracks in for the player to play, and a client SHOULD hide it from the playlist list it draws.
+             *
+             *     Read from a marker this component writes on the playlist rather than from the title, so a playlist renamed at the player keeps its role and a playlist somebody titles to look like this one never gains one.
+             * @enum {string|null}
+             */
+            role: "scratch" | null;
+            /** @description Moves when the playlist's rows are added, removed, reordered or replaced. Rows a client read at an earlier value are at positions that have moved, and it MUST read them again. */
+            structure: number;
+            /** @description Moves when a row already in the playlist would answer differently, a tag, a rating or a play count. The rows stay where they are. */
+            revision: number;
             /**
              * @description What this component stored when it created the playlist, or `null` for every playlist it did not create, including autoplaylists made in the player. This is how a client tells a folder it manages from an autoplaylist that was already there.
              *
@@ -1011,7 +1238,9 @@ export interface components {
         };
         FillOwnPlaylistRequest: {
             /**
-             * @description What to title the playlist, exactly as it will read in foobar2000's own tabs. Applied on every call, whether this one is what creates the playlist for `role` or finds one already there, so retitling it from one fill to the next is the same call that fills it, never a second one.
+             * @description What to title the playlist. Applied on every call, whether this one is what creates the playlist for `role` or finds one already there, so retitling it from one fill to the next is the same call that fills it, never a second one.
+             *
+             *     A title beginning `#Jean` reaches foobar2000's own tab exactly as sent; one that does not is prefixed with `#Jean` before it gets there. These are the component's own playlists, and a title is all the player's own list of playlists shows about whose a playlist is. No title is refused for lacking the prefix.
              *
              *     No control characters, which would be line breaks in a playlist tab.
              */
@@ -1035,10 +1264,56 @@ export interface components {
             bitset?: components["schemas"]["Bitset"];
             ordinals?: components["schemas"]["Ordinals"];
         };
+        CopyPlaylistRowsRequest: {
+            /**
+             * @description The playlist to take rows from, by the `id` a `PlaylistAnnotation` carries. Rows are copied, so the source is left as it was. No generation is sent with it: the positions are read against the playlist as it stands when the player takes the job.
+             * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+             */
+            source: string;
+            runs: components["schemas"]["Runs"];
+        };
+        RemovePlaylistRowsRequest: {
+            /**
+             * @description The playlist's own `structure` generation, the one its positions were read at. Read it from `GET /playlists`, from a page, from a delta or from the answer a copy gave. A value other than the playlist's current one is a `409` and nothing is removed.
+             * @example 12
+             */
+            structure: number;
+            runs?: components["schemas"]["Runs"];
+            bitset?: components["schemas"]["Bitset"];
+            ordinals?: components["schemas"]["Ordinals"];
+        };
+        RenamePlaylistRequest: {
+            /** @description What to title the playlist, exactly as it will read in foobar2000's own tabs. No control characters, which would be line breaks in a playlist tab. */
+            title: string;
+        };
+        MovePlaylistRequest: {
+            /**
+             * @description Where the playlist ends up in the player's list, counting from zero. A value at or past the number of playlists is a `400`.
+             * @example 0
+             */
+            index: number;
+        };
+        CreatePlaylistRequest: {
+            /** @description What to title the playlist, exactly as it will read in foobar2000's own tabs. No control characters, which would be line breaks in a playlist tab. */
+            title: string;
+            /**
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. Required with `runs`, `bitset` or `ordinals`, and refused with `source`, which names rows rather than library tracks. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @example 41
+             */
+            structure?: number;
+            /**
+             * @description The playlist to take rows from, by the `id` a `PlaylistAnnotation` carries. Sent with `runs`, which then names row positions in that playlist rather than library ordinals, and never with `structure`, `bitset` or `ordinals`. Rows are copied, so the source is left as it was.
+             * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+             */
+            source?: string;
+            runs?: components["schemas"]["Runs"];
+            bitset?: components["schemas"]["Bitset"];
+            ordinals?: components["schemas"]["Ordinals"];
+        };
         /**
-         * @description The set as ranges: each entry is `[start, count]`, a run of `count` consecutive ordinals beginning at `start`. Collapses a whole album, a whole folder or the whole library to a handful of pairs.
+         * @description The set as ranges: each entry is `[start, count]`, a run of `count` consecutive positions beginning at `start`. A position is a library ordinal where a library `structure` is sent alongside the set, and a row position where the request names a playlist to read rows from instead, either through `source` or as the playlist in the path. Collapses a whole album, a whole folder or a whole playlist to a handful of pairs.
          *
-         *     Inserted in ascending ordinal order, never in the order the pairs are listed — a run cannot carry any other order. A client holding a click-ordered set MUST send `ordinals` instead.
+         *     Read in ascending order, never in the order the pairs are listed: a run cannot carry any other. A client holding a click-ordered set MUST send `ordinals` instead.
          * @example [
          *       [
          *         0,
@@ -1052,14 +1327,14 @@ export interface components {
          */
         Runs: number[][];
         /**
-         * @description The set as a bitmap, one bit per ordinal of the `structure` sent alongside it, least-significant bit first within each byte: bit 0 of byte 0 is ordinal 0, bit 7 of byte 0 is ordinal 7, bit 0 of byte 1 is ordinal 8. Base64 of exactly `ceil(trackCount / 8)` bytes for that `structure`. Costs about one byte per eight ordinals in the library whatever the set, which is what makes it the form to reach for once a scattered set would cost more as `runs` than the library is wide.
+         * @description The set as a bitmap, one bit per position of the kind `Runs` describes, least-significant bit first within each byte: bit 0 of byte 0 is position 0, bit 7 of byte 0 is position 7, bit 0 of byte 1 is position 8. Base64, and against the library exactly `ceil(trackCount / 8)` bytes for the `structure` sent alongside it. Costs about one byte per eight positions whatever the set holds, which is what makes it the form to reach for once a scattered set would cost more as `runs` than the range it names is wide.
          *
-         *     Inserted in ascending ordinal order — a bitmap carries no other order to preserve.
+         *     Read in ascending order: a bitmap carries no other order to preserve.
          * @example AwI=
          */
         Bitset: string;
         /**
-         * @description The set as a plain list. The only one of the three forms inserted in the order it is given rather than ascending — the form a client holding a click-ordered set, such as a multi-select or a queue, MUST send. Sending the same set as `runs` or `bitset` inserts it in ascending order instead, silently.
+         * @description The set as a plain list of the positions `Runs` describes. The only one of the three forms read in the order it is given rather than ascending, which makes it the form a client holding a click-ordered set, such as a multi-select or a queue, MUST send. Sending the same set as `runs` or `bitset` reads it in ascending order instead, silently.
          * @example [
          *       9,
          *       0,
@@ -1074,7 +1349,7 @@ export interface components {
              */
             playlistId: string;
             /**
-             * @description beefweb's id for the same playlist, exactly as `PlaylistAnnotation.beefwebId` reports it. `null` until beefweb next rebuilds its map; a client that needs it MUST request beefweb's playlists again first.
+             * @description beefweb's own id for the same playlist, read from the property beefweb keeps on it. `null` where beefweb has written none, which for a playlist this component has just made lasts until beefweb next rebuilds its map. No other route here reports it.
              * @example p3
              */
             beefwebId: string | null;
@@ -1087,6 +1362,29 @@ export interface components {
              *     ]
              */
             positions: number[];
+        };
+        CopiedRows: {
+            /**
+             * @description The target playlist's `structure` generation once the rows have landed. An undo naming this one removes exactly the rows below and nothing else, and a rating changed in between moves the playlist's `revision` rather than this, so it does not block one.
+             * @example 13
+             */
+            structure: number;
+            /**
+             * @description One position per row appended, in ascending source order, 0-based in the target. Empty where `runs` named no rows.
+             * @example [
+             *       4,
+             *       5,
+             *       6
+             *     ]
+             */
+            positions: number[];
+        };
+        RemovedRows: {
+            /**
+             * @description The playlist's `structure` generation once the rows are gone. A client holding the rest of the rows re-keys them to this rather than reading the playlist again.
+             * @example 13
+             */
+            structure: number;
         };
         QueryPreview: {
             /** @description Whether foobar2000 could read the query. Check this before `matches`. */
@@ -1108,7 +1406,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them";
+            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
@@ -1196,6 +1494,8 @@ export interface components {
             playingLocation: components["schemas"]["PlayingLocation"] | null;
             /** @description Moves when the queue's contents or order change, or when a queued entry's playlist position shifts or is lost. Never moves for anything else this section reports. */
             queueRevision: number;
+            /** @description Moves when a playlist is created, removed, moved in the list or retitled, and when any playlist's `structure` or `revision` moves. A client re-reads `GET /playlists` when the one it holds has moved, and not otherwise. */
+            playlistsRevision: number;
         };
         /**
          * @description Where playback was at the moment this component last looked, and how long ago that
@@ -1211,6 +1511,54 @@ export interface components {
              *     no mark has ever been taken.
              */
             ageSeconds: number;
+        };
+        /** @description `GET /playlists/{id}/items`'s whole answer: the rows asked for, how many the playlist holds, and the two numbers they were read at. */
+        PlaylistPage: {
+            /** @description The playlist's structure generation as of this read, the same number `GET /playlists` reports for it. Rows held against an older one sit at positions that have moved. */
+            structure: number;
+            /** @description The playlist's content revision as of this read. A higher one with the same `structure` means a row already in the playlist would answer differently. */
+            revision: number;
+            /** @description How many rows the whole playlist holds, not how many this page carries. */
+            totalCount: number;
+            items: components["schemas"]["PlaylistRow"][];
+        };
+        /** @description `GET /playlists/{id}/items/changes`'s whole answer: the rows whose content moved, and the revision they bring the client up to. No `structure`, because the request named the only one this answer can be against. */
+        PlaylistChanges: {
+            /** @description The playlist's content revision as of this read. A client that patches these rows in holds this revision and asks from it next time. */
+            revision: number;
+            /** @description Only the rows whose content moved, in no promised order. A client patches each into the page it holds by `position`. */
+            items: components["schemas"]["ChangedPlaylistRow"][];
+        };
+        /** @description One row whose content moved, in the shape `PlaylistRow` carries plus the position it sits at. */
+        ChangedPlaylistRow: {
+            /**
+             * @description Where this row sits in the playlist, counting from zero, at the `structure` the request named.
+             * @example 1
+             */
+            position: number;
+            /**
+             * @description One value per declared column, in the order declared. A field the player cannot resolve is `?`, which is how a client tells an unresolved field from an empty one.
+             * @example [
+             *       "Imaginary Track",
+             *       "Fictional Artist"
+             *     ]
+             */
+            columns: string[];
+            /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
+            libraryPath: string | null;
+        };
+        /** @description One row of a playlist, evaluated against the handle that row holds rather than against a media library record, so a track the library does not hold answers its columns like every other row. */
+        PlaylistRow: {
+            /**
+             * @description One value per declared column, in the order declared. A field the player cannot resolve is `?`, which is how a client tells an unresolved field from an empty one.
+             * @example [
+             *       "Imaginary Track",
+             *       "Fictional Artist"
+             *     ]
+             */
+            columns: string[];
+            /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
+            libraryPath: string | null;
         };
         /** @description `GET /queue`'s whole answer: every queued entry, in the player's own order, and the queue revision they were read at. */
         QueueRead: {
@@ -1456,6 +1804,21 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
+        /**
+         * @description The edit addresses one of this component's own playlists, found by the `role` a `PlaylistAnnotation` carries and never by its title. Jean plays a set through the scratch, so retitling, deleting, moving or changing the rows of one by `id` would take apart the playlist somebody is listening from. `POST /playlists/own/{role}/items` fills one and `DELETE /playlists/own/{role}/items` empties it; those two are the whole of what may change it, and `writePlaylists` being `true` buys nothing here.
+         *
+         *     Reading is not addressing. Such a playlist stays a legal `source` for `POST /playlists/{id}/items/copy` and for `POST /playlists`, and its rows are readable as any other playlist's, which is what lets *Add to playlist* and *Save as playlist* work over results Jean played through the scratch.
+         *
+         *     The same status also answers when `writePlaylists` is `false` in `config.json`, checked before the playlist is looked at. A client tells the two apart by `error`, which the examples below give both of.
+         */
+        OwnPlaylistAddressed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
         /** @description No playlist has that id. It may have been deleted in the player. */
         NoSuchPlaylist: {
             headers: {
@@ -1540,6 +1903,42 @@ export interface components {
         };
         /** @description Either this install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or no snapshot has been built yet. Both mean there is nothing to resolve the set against. */
         FillUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The `structure` the request named is no longer the playlist's current one: its rows were added, removed or reordered, so every position the client holds names a different track and patching one would draw the wrong row. Read the playlist's rows again, from the `structure` `GET /playlists` now reports. */
+        PlaylistRowsMoved: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description Some other component has locked the playlist against this edit, and foobar2000 refuses it on that component's behalf. Nothing a client sends changes that: the lock is released at the player, by whatever put it there. A playlist reports its locks per edit, so one that refuses a rename may still take rows. */
+        PlaylistLocked: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description The revision asked to catch up from is outside the window this playlist retains, or it is ahead of the current one, which is what a client holding rows across a component restart sees. The remedy is the same as the `409`'s: read the playlist's rows again. */
+        PlaylistRevisionGone: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description The component could not reach the part of the player a playlist's rows are read from. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`. */
+        PlaylistRowsUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1978,7 +2377,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One annotation per playlist. */
+            /** @description One entry per playlist. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1991,6 +2390,55 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    createPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Created. The body is the annotation, as `GET /playlists` would report it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistAnnotation"];
+                };
+            };
+            /** @description The request was understood and declined: a body that is not JSON, a missing, empty, unprintable or over-long `title`, a `source` this component did not issue, a set that is not exactly one of `runs`, `bitset` and `ordinals`, one naming an ordinal outside the library while its `structure` is still the current one, or a `source` row past the end of that playlist. The schemas below tell the last of those from the rest. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["WritesDisabled"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["StructureMoved"];
+            413: components["responses"]["BodyTooLarge"];
+            500: components["responses"]["PlayerRefused"];
+            /** @description A set of media library tracks arrived and this install either does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or has built no snapshot yet to resolve it against. A create carrying no such set is answered `503` only where the component cannot reach the player's playlists at all. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             504: components["responses"]["PlayerTooSlow"];
         };
     };
@@ -2210,6 +2658,192 @@ export interface operations {
             504: components["responses"]["PlayerTooSlow"];
         };
     };
+    renamePlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenamePlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Renamed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An id this component did not issue, a body that is not JSON, or a missing, empty, unprintable or over-long `title`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["OwnPlaylistAddressed"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["PlaylistLocked"];
+            413: components["responses"]["BodyTooLarge"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    removePlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An id this component did not issue. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["OwnPlaylistAddressed"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["PlaylistLocked"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    movePlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovePlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Moved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An id this component did not issue, a body that is not JSON, an `index` missing or not a whole number in range, or one the player found past the end of its list. The schemas below tell the last of those from the rest. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["OwnPlaylistAddressed"];
+            404: components["responses"]["NoSuchPlaylist"];
+            413: components["responses"]["BodyTooLarge"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    getPlaylistItems: {
+        parameters: {
+            query: {
+                /**
+                 * @description The position of the first row to answer, counting from zero.
+                 * @example 0
+                 */
+                offset: number;
+                /**
+                 * @description How many rows to answer at most. Zero answers the counts and no rows.
+                 * @example 100
+                 */
+                count: number;
+                /**
+                 * @description The columns to evaluate, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. Each row answers one value per column, in the order declared.
+                 *
+                 *     Passed to foobar2000's title-formatting compiler untouched, under the same gate `GET /library/export` puts on a declaration: at most 64, each 1 to 1024 printable characters, and no repeats.
+                 */
+                columns: string[];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page, and the counts the whole playlist stands at. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistPage"];
+                };
+            };
+            /** @description The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, or an `offset` or `count` that is missing, not a whole number or larger than 4294967295. The schemas below tell the column refusals from the other two. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryRefusal"] | components["schemas"]["PlaylistRefusal"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoSuchPlaylist"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistRowsUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
     fillPlaylist: {
         parameters: {
             query?: never;
@@ -2247,6 +2881,214 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["FillUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    getPlaylistItemChanges: {
+        parameters: {
+            query: {
+                /**
+                 * @description The `structure` generation the client's positions were read at, from the page or the delta it holds. Required rather than defaulted to the current one: a client patching by position always knows which generation its positions belong to, and a request that does not name one cannot be told from a stale one.
+                 * @example 12
+                 */
+                structure: number;
+                /**
+                 * @description The `revision` the client currently holds for this playlist. A whole number.
+                 * @example 29
+                 */
+                since: number;
+                /** @description The columns to evaluate, on the same terms as `GET /playlists/{id}/items`: repeated once per column, never comma-separated, at most 64, each 1 to 1024 printable characters, and no repeats. Send the set the held page was read with, or the patched rows will carry different values from the rows around them. */
+                columns: string[];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rows that moved, and the revision they bring the client up to. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistChanges"];
+                };
+            };
+            /** @description The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all or a set the column gate refuses, a missing `since`, or a `structure` or `since` that is not a whole number. The schemas below tell the column and revision refusals from the other two. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryRefusal"] | components["schemas"]["PlaylistRefusal"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["PlaylistRowsMoved"];
+            410: components["responses"]["PlaylistRevisionGone"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistRowsUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    copyPlaylistItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The playlist the rows are appended to, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CopyPlaylistRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Appended. `positions` names where each row landed, and `structure` the generation the target now stands at. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopiedRows"];
+                };
+            };
+            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, or a `runs` entry naming a row past the end of the source playlist. A create from the same source is refused in the same words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["OwnPlaylistAddressed"];
+            /** @description Neither the target nor the source is a playlist the player holds. Which of the two is not said: either way the rows asked for are not there to copy. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            409: components["responses"]["PlaylistLocked"];
+            413: components["responses"]["BodyTooLarge"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistRowsUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    removePlaylistItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The playlist the rows are removed from, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemovePlaylistRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed. `structure` is the generation the playlist now stands at. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovedRows"];
+                };
+            };
+            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a missing or non-numeric `structure`, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, or a position past the end of the playlist. A fill sent the same set is refused in the same words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["OwnPlaylistAddressed"];
+            404: components["responses"]["NoSuchPlaylist"];
+            /** @description Either the `structure` the request named is no longer the playlist's current one, or another component has locked the playlist against having rows removed. The `error` string tells them apart; nothing is removed in either case. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
+            413: components["responses"]["BodyTooLarge"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistRowsUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    playPlaylistRow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+                /**
+                 * @description The row's position in the playlist, `0` being the first, at the `structure` the client read it at.
+                 * @example 3
+                 */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Playing. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An id this component did not issue, an `index` that is not a whole number or is larger than 4294967295, or the player found `index` past the end of that playlist. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoSuchPlaylist"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistRowsUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };

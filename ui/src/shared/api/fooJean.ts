@@ -20,6 +20,12 @@ export type QueryPreview = Schema["QueryPreview"];
 export type FillPlaylistRequest = Schema["FillPlaylistRequest"];
 export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
 export type FillResult = Schema["FillResult"];
+export type PlaylistPage = Schema["PlaylistPage"];
+export type CreatePlaylistRequest = Schema["CreatePlaylistRequest"];
+export type CopyPlaylistRowsRequest = Schema["CopyPlaylistRowsRequest"];
+export type RemovePlaylistRowsRequest = Schema["RemovePlaylistRowsRequest"];
+export type CopiedRows = Schema["CopiedRows"];
+export type RemovedRows = Schema["RemovedRows"];
 
 export type OwnPlaylistRole = "scratch";
 
@@ -360,6 +366,16 @@ export const permitsPlaylistWrites = (discovery: FooJeanDiscovery) =>
 export const isFooJeanReady = (discovery: FooJeanDiscovery) =>
 	discovery.state.kind === "ready";
 
+// A caller already inside a guarded control has `origin` and `token` as two nullable strings, from
+// `FooJeanDiscovery` or threaded down separately; this is the one throw both shapes share.
+export function requireFooJean(
+	origin: string | null,
+	token: string | null,
+): { origin: string; token: string } {
+	if (!origin || !token) throw new Error("foo_jean is not reachable");
+	return { origin, token };
+}
+
 export async function discoverFooJean(
 	token: string | null,
 ): Promise<FooJeanDiscovery> {
@@ -487,9 +503,6 @@ export const fetchStreamTimeline = (origin: string, token: string) =>
 export const fetchStreamListeners = (origin: string, token: string) =>
 	authedJson<StreamListeners>(origin, token, "/api/stream/listeners");
 
-// Joined on `beefwebId`, and beefweb must be asked first: it assigns those ids lazily, so a playlist
-// created a moment ago reports `beefwebId: null` until beefweb next rebuilds its map, and asking
-// beefweb is what makes it do so.
 export async function fetchPlaylistAnnotations(
 	origin: string,
 	token: string,
@@ -536,28 +549,36 @@ export async function createAutoPlaylist(
 	return { ok: false, message };
 }
 
-// Unlike `postJson` and `authedJson`, these throw rather than answer null: the two fill refusals a
-// caller cares about, `writePlaylists` off and a moved `structure`, ride the status on the error's
+// Unlike `postJson` and `authedJson`, these throw rather than answer null: the refusals a caller
+// cares about, such as `writePlaylists` off or a moved `structure`, ride the status on the error's
 // `cause`, and an answer of `null` would have nowhere to carry it.
-const postThrowing = async (
+const requestThrowing = async (
 	url: string,
 	token: string,
-	body: unknown,
+	method: string,
+	body?: unknown,
 ): Promise<Response> => {
 	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
 		fetch(url, {
-			method: "POST",
-			headers: { ...bearer(token), ...JSON_BODY },
-			body: JSON.stringify(body),
+			method,
+			headers:
+				body === undefined ? bearer(token) : { ...bearer(token), ...JSON_BODY },
+			body: body === undefined ? undefined : JSON.stringify(body),
 			signal,
 		}),
 	);
 	if (!response.ok)
-		throw new Error(`POST ${url} failed: ${response.status}`, {
+		throw new Error(`${method} ${url} failed: ${response.status}`, {
 			cause: response.status,
 		});
 	return response;
 };
+
+const postThrowing = (url: string, token: string, body: unknown) =>
+	requestThrowing(url, token, "POST", body);
+
+const playlistUrl = (origin: string, id: string) =>
+	`${origin}/api/playlists/${encodeURIComponent(id)}`;
 
 export async function fillOwnPlaylist(
 	origin: string,
@@ -588,6 +609,104 @@ export async function fillPlaylist(
 		request,
 	);
 	return (await response.json()) as FillResult;
+}
+
+const columnsQuery = (columns: readonly string[]) =>
+	columns.map((column) => `columns=${encodeURIComponent(column)}`).join("&");
+
+export async function fetchPlaylistRows(
+	origin: string,
+	token: string,
+	id: string,
+	offset: number,
+	count: number,
+	columns: readonly string[],
+	{ signal }: { signal?: AbortSignal } = {},
+): Promise<PlaylistPage> {
+	const response = await withTimeout(
+		WRITE_TIMEOUT_MS,
+		(inner) =>
+			fetch(
+				`${playlistUrl(origin, id)}/items?offset=${offset}&count=${count}&${columnsQuery(columns)}`,
+				{ headers: bearer(token), signal: inner },
+			),
+		signal,
+	);
+	if (!response.ok)
+		throw new Error(`GET playlist items failed: ${response.status}`, {
+			cause: response.status,
+		});
+	return (await response.json()) as PlaylistPage;
+}
+
+export async function createPlaylist(
+	origin: string,
+	token: string,
+	request: CreatePlaylistRequest,
+): Promise<PlaylistAnnotation> {
+	const response = await postThrowing(
+		`${origin}/api/playlists`,
+		token,
+		request,
+	);
+	return (await response.json()) as PlaylistAnnotation;
+}
+
+export const renamePlaylist = (
+	origin: string,
+	token: string,
+	id: string,
+	title: string,
+) => postThrowing(playlistUrl(origin, id), token, { title });
+
+export const removePlaylist = (origin: string, token: string, id: string) =>
+	requestThrowing(playlistUrl(origin, id), token, "DELETE");
+
+export const movePlaylist = (
+	origin: string,
+	token: string,
+	id: string,
+	index: number,
+) => postThrowing(`${playlistUrl(origin, id)}/move`, token, { index });
+
+export const playPlaylistItem = (
+	origin: string,
+	token: string,
+	id: string,
+	index: number,
+) =>
+	requestThrowing(
+		`${playlistUrl(origin, id)}/items/${index}/play`,
+		token,
+		"POST",
+	);
+
+export async function copyPlaylistRows(
+	origin: string,
+	token: string,
+	id: string,
+	request: CopyPlaylistRowsRequest,
+): Promise<CopiedRows> {
+	const response = await postThrowing(
+		`${playlistUrl(origin, id)}/items/copy`,
+		token,
+		request,
+	);
+	return (await response.json()) as CopiedRows;
+}
+
+export async function removePlaylistRows(
+	origin: string,
+	token: string,
+	id: string,
+	request: RemovePlaylistRowsRequest,
+): Promise<RemovedRows> {
+	const response = await postThrowing(
+		`${playlistUrl(origin, id)}/items/remove`,
+		token,
+		request,
+	);
+	return (await response.json()) as RemovedRows;
 }
 
 // Tells a deliberate stop from a dropped connection: both close the socket, and only this one gives
@@ -726,7 +845,23 @@ export async function removeQueueEntry(
 	);
 }
 
-type Run = [start: number, count: number];
+export type Run = [start: number, count: number];
+
+// A playlist copy and a playlist row removal both take `runs` and read them in ascending order
+// whatever order they arrive in, so a caller holding an arbitrary or click-ordered set collapses it
+// here rather than sending an order the route would silently ignore.
+export function runsOf(positions: ArrayLike<number>): Run[] {
+	const sorted = Array.from(new Set(Array.from(positions))).sort(
+		(a, b) => a - b,
+	);
+	const runs: Run[] = [];
+	for (const value of sorted) {
+		const last = runs[runs.length - 1];
+		if (last && value === last[0] + last[1]) last[1] += 1;
+		else runs.push([value, 1]);
+	}
+	return runs;
+}
 
 type AscendingScan = { ascending: true; runs: Run[] } | { ascending: false };
 

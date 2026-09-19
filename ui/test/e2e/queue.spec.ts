@@ -1,10 +1,12 @@
 import type { APIRequestContext } from "@playwright/test";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	AS_A_CLIENT,
+	componentOrigin,
 	dragFrom,
 	expect,
 	expectSettlesAt,
-	FOO_JEAN_TOKEN,
+	guidOfPlaylist,
 	nowPlayingScreen,
 	openAllMusic,
 	openLibrary,
@@ -949,7 +951,9 @@ test.describe("deleting a playlist the queue points into", () => {
 		player,
 		isMobile,
 	}) => {
-		await page.goto("/#/p2");
+		const guid = player.playlists.find((entry) => entry.id === "p2")!.guid;
+
+		await page.goto(`/#/${guid}`);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Favorites" }),
 		).toBeVisible();
@@ -967,19 +971,19 @@ test.describe("deleting a playlist the queue points into", () => {
 			.toBe(false);
 
 		// Deleting a playlist the queue points into crashes foo_beefweb and takes
-		// foobar2000 with it, so the order of these two is the assertion. The
-		// queue is emptied of the playlist at the component; the delete itself is
-		// still beefweb's.
+		// foobar2000 with it, so the order of these two is the assertion. Both the
+		// queue and the delete itself go through the component now.
 		const order = player.requests.filter(
 			(entry) =>
-				emptiesTheQueue(entry) || entry.path.includes("/playlists/remove/p2"),
+				emptiesTheQueue(entry) ||
+				(entry.method === "DELETE" && entry.path === `/api/playlists/${guid}`),
 		);
 
 		expect(
 			order.length,
 			"the queue was never emptied of the playlist at the component",
 		).toBeGreaterThan(1);
-		expect(order.at(-1)?.path).toContain("/playlists/remove/p2");
+		expect(order.at(-1)?.path).toBe(`/api/playlists/${guid}`);
 		expect(
 			order.slice(0, -1).every((entry) => entry.path.startsWith("/api/queue")),
 		).toBe(true);
@@ -1013,31 +1017,6 @@ test.describe("deleting a playlist the queue points into", () => {
 			})
 			.toBe(false);
 		expect(queuedAtThePlayer(player)).toHaveLength(0);
-	});
-});
-
-// The delete is offered on beefweb's `changePlaylists` and on nothing about
-// `foo_jean`, so a playlist the component publishes no id for still reaches it.
-test.describe("deleting a playlist the component publishes no id for", () => {
-	test.use({ fooJean: { unannotatedPlaylists: ["p2"] } });
-
-	// Nothing has been queued here at all, so the queue reads and is empty and no
-	// entry points into this playlist, whether or not Jean can name it in the ids
-	// the component uses.
-	test("deletes it, since the queue holds nothing at all", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
-		await page.goto("/");
-		await deletePlaylist(page, isMobile, "Favorites");
-
-		await expect
-			.poll(() => player.playlists.some((entry) => entry.id === "p2"), {
-				timeout: 5000,
-			})
-			.toBe(false);
-		await expect(page.getByRole("status")).toHaveCount(0);
 	});
 });
 
@@ -1647,15 +1626,6 @@ const STRAY_FIELD = { title: "copied from a fill request" };
 // `PlaylistRefusal::malformedBody`: the refusal itself, with no detail to add.
 const MALFORMED_BODY = { error: "malformed request", detail: "" };
 
-const componentOrigin = async (request: APIRequestContext) => {
-	const { port } = await (
-		await request.get("/api/clientconfig/foo_jean")
-	).json();
-	return `http://localhost:${port}`;
-};
-
-const AS_A_CLIENT = { headers: { Authorization: `Bearer ${FOO_JEAN_TOKEN}` } };
-
 const postToComponent = (
 	request: APIRequestContext,
 	url: string,
@@ -1664,25 +1634,6 @@ const postToComponent = (
 
 const readFromComponent = async (request: APIRequestContext, url: string) =>
 	await (await request.get(url, AS_A_CLIENT)).json();
-
-// foobar2000's own id for a playlist beefweb calls `p7`, which is what a queue
-// request names a playlist by.
-const guidOfPlaylist = async (
-	request: APIRequestContext,
-	origin: string,
-	beefwebId: string,
-) => {
-	const { playlists } = await readFromComponent(
-		request,
-		`${origin}/api/playlists`,
-	);
-	const found = playlists.find(
-		(entry: { id: string; beefwebId: string }) => entry.beefwebId === beefwebId,
-	);
-	if (!found)
-		throw new Error(`the component annotated no playlist ${beefwebId}`);
-	return found.id as string;
-};
 
 // Nothing is exported until a client names a column set, and a queue by handle
 // against a library that was never built is a 503 before any body is read.
@@ -1713,7 +1664,7 @@ test.describe("a queue body carrying a field the contract does not declare", () 
 	}) => {
 		const origin = await componentOrigin(request);
 		const body = {
-			playlistId: await guidOfPlaylist(request, origin, "p7"),
+			playlistId: guidOfPlaylist(player, "p7"),
 			positions: [0],
 		};
 
@@ -1771,7 +1722,7 @@ test.describe("a queue body carrying a field the contract does not declare", () 
 	}) => {
 		const origin = await componentOrigin(request);
 		await postToComponent(request, `${origin}/api/queue`, {
-			playlistId: await guidOfPlaylist(request, origin, "p7"),
+			playlistId: guidOfPlaylist(player, "p7"),
 			positions: [0, 1],
 		});
 		const { revision } = await readFromComponent(
@@ -1949,12 +1900,13 @@ test.describe("the cover on a queued row", () => {
 	});
 
 	// A file in a playlist that the media library has never seen: foobar2000
-	// queues it, the component has no library path to name it by, and beefweb's
-	// positional address is what is left.
+	// queues it and the component has no library path to name it by. Beefweb's
+	// positional address cannot resolve a playlist addressed by GUID, so the
+	// cover draws nothing.
 	test.describe("for a track the media library does not carry", () => {
 		test.use({ mediaLibrarySize: 12 });
 
-		test("comes from beefweb, at the beefweb id of the playlist it was queued from", async ({
+		test("draws no cover, since beefweb's positional address cannot resolve a GUID", async ({
 			page,
 			player,
 		}) => {
@@ -1968,11 +1920,12 @@ test.describe("the cover on a queued row", () => {
 				"the media library carries this track, so the case is not set up",
 			).toBeNull();
 
-			await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
-				timeout: 15_000,
-			});
-			expect(beefwebCovers(player)).toContain("/api/artwork/p2/0");
-			expect(coversAtNoPlaylist(player)).toEqual([]);
+			await expect(coverOfRow(page, 0)).toHaveAttribute(
+				"data-artwork",
+				"failed",
+				{ timeout: 15_000 },
+			);
+			expect(coversAtNoPlaylist(player)).toHaveLength(1);
 		});
 
 		test("is a glyph where the player has neither a path nor a row for it", async ({
@@ -1997,44 +1950,6 @@ test.describe("the cover on a queued row", () => {
 
 			await expect(coverOfRow(page, 0).locator("svg")).toBeVisible();
 			await expect(coverOfRow(page, 0).locator("img")).toHaveCount(0);
-		});
-
-		test("waits for the playlist join rather than asking at an address it cannot build yet", async ({
-			page,
-			player,
-			baseURL,
-		}) => {
-			// `GET /api/playlists` at the component is the join, and until it
-			// answers there is no beefweb id to address this row by. A row that
-			// guessed one would take a 404, which is the one refusal `Artwork`
-			// remembers, and the cover would stay blank for the rest of the session
-			// however well the join went afterwards.
-			let release = () => {};
-			const joined = new Promise<void>((resolve) => {
-				release = resolve;
-			});
-			await page.route("**/api/playlists", async (route) => {
-				if (route.request().url().startsWith(String(baseURL)))
-					return route.continue();
-				await joined;
-				await route.continue();
-			});
-
-			rowQueuedAtThePlayer(player, "p2", 0);
-			await openLibrary(page);
-			await openQueue(page);
-			await expect(queueRows(page)).toHaveCount(1);
-
-			await expectSettlesAt(player, () => coversAtNoPlaylist(player).length, 0);
-			expect(beefwebCovers(player)).not.toContain("/api/artwork/p2/0");
-
-			release();
-
-			await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
-				timeout: 15_000,
-			});
-			expect(beefwebCovers(player)).toContain("/api/artwork/p2/0");
-			expect(coversAtNoPlaylist(player)).toEqual([]);
 		});
 	});
 });

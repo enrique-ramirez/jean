@@ -40,10 +40,7 @@ const titlesInOrder = (player: FakePlayer) =>
 	player.playlists.map((entry) => entry.title);
 
 const openApp = async (page: Page) => {
-	await page.goto("/#/p7");
-	await expect(
-		page.getByRole("heading", { level: 1, name: LIBRARY }),
-	).toBeVisible();
+	await openLibrary(page);
 	await openSidebar(page);
 };
 
@@ -66,6 +63,99 @@ const menuFor = async (page: Page, title: string, isMobile: boolean) => {
 	else await target.click({ button: "right" });
 	await expect(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
 };
+
+// beefweb's playlist-update stream.
+const SUBSCRIPTION = "/api/query/updates";
+
+const GUID_ROUTE =
+	/#\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+// Polls watched with nothing moving at the player. One would not tell a client
+// that re-reads the list every tick from one that re-read it on the tick this
+// happened to sample.
+const TICKS_WATCHED = 3;
+
+const ticksTaken = (player: FakePlayer) =>
+	requestsTo(player, "/api/state").filter((one) => one.method === "GET").length;
+
+// Reads of the collection alone. A playlist's rows sit under the same prefix,
+// and a spec counting those would never see the list stand still.
+const listReads = (player: FakePlayer) =>
+	player.requests.filter(
+		(one) => one.method === "GET" && one.path === "/api/playlists",
+	).length;
+
+// The fake's own key for a playlist, which is how a spec drives the player from
+// outside the app. Found by title, since the address Jean uses is the question
+// here.
+const idOf = (player: FakePlayer, title: string) =>
+	player.playlists.find((entry) => entry.title === title)!.id;
+
+// From home rather than from a playlist route, because which address a playlist
+// answers at is what these three cases are about.
+const openHome = async (page: Page) => {
+	await page.goto("/");
+	await openSidebar(page);
+	await expect(link(page, FAVORITES)).toBeVisible();
+};
+
+test.describe("where the playlist list comes from", () => {
+	test("opens a playlist at a GUID rather than at beefweb's playlist id", async ({
+		page,
+	}) => {
+		await openHome(page);
+		await link(page, FAVORITES).click();
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: FAVORITES }),
+		).toBeVisible();
+		await expect(page).toHaveURL(GUID_ROUTE);
+
+		// The address somebody bookmarks. A route Jean can resolve only while it
+		// holds the list it was built from is not an address at all, so coming back
+		// to this one cold has to land on the same playlist.
+		await page.reload();
+		await expect(
+			page.getByRole("heading", { level: 1, name: FAVORITES }),
+		).toBeVisible();
+	});
+
+	test("opens no playlist subscription on beefweb", async ({
+		page,
+		player,
+	}) => {
+		await openHome(page);
+
+		// While that stream is open it writes the same list the component's answer
+		// does, so a client holding both draws whichever spoke last.
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, SUBSCRIPTION).length,
+			0,
+		);
+	});
+
+	test("re-reads the list when the playlists revision moves, and not on the polls between", async ({
+		page,
+		player,
+	}) => {
+		await openHome(page);
+		await expect.poll(() => ticksTaken(player)).toBeGreaterThanOrEqual(2);
+		player.requests.length = 0;
+
+		await expect
+			.poll(() => ticksTaken(player))
+			.toBeGreaterThanOrEqual(TICKS_WATCHED);
+		await expectSettlesAt(player, () => listReads(player), 0);
+
+		// Renamed at the player, with nothing done in Jean: the revision on the
+		// poll is the only thing that says the list is worth reading again.
+		player.renamePlaylist(idOf(player, FAVORITES), "Bangers");
+
+		await expect(link(page, "Bangers")).toBeVisible();
+		await expectSettlesAt(player, () => listReads(player), 1);
+	});
+});
 
 test.describe("creating a playlist", () => {
 	test("the + makes one and drops it straight into rename", async ({
@@ -181,7 +271,10 @@ test.describe("deleting a playlist", () => {
 		await expect(link(page, FAVORITES)).toBeVisible();
 		await expectSettlesAt(
 			player,
-			() => requestsTo(player, "/playlists/remove/").length,
+			() =>
+				requestsTo(player, "/api/playlists/").filter(
+					(entry) => entry.method === "DELETE",
+				).length,
 			0,
 		);
 	});
@@ -334,6 +427,7 @@ test.describe("choosing a row while the now-playing screen is open", () => {
 		what: string;
 		label: string;
 		route: string;
+		routeOf?: (player: FakePlayer) => string;
 		heading: string | RegExp;
 		setUp?: (page: Page) => Promise<void>;
 	}[] = [
@@ -365,14 +459,17 @@ test.describe("choosing a row while the now-playing screen is open", () => {
 		{
 			what: "a playlist",
 			label: FAVORITES,
-			route: "p2",
+			route: "the playlist's own GUID",
+			routeOf: (player) =>
+				player.playlists.find((entry) => entry.title === FAVORITES)!.guid,
 			heading: FAVORITES,
 		},
 	];
 
-	for (const { what, label, route, heading, setUp } of CHOICES) {
+	for (const { what, label, route, routeOf, heading, setUp } of CHOICES) {
 		test(`${what} closes the screen and lands on #/${route}, not back on ${LIBRARY}`, async ({
 			page,
+			player,
 			isMobile,
 		}) => {
 			await setUp?.(page);
@@ -388,7 +485,9 @@ test.describe("choosing a row while the now-playing screen is open", () => {
 			await link(page, label).click();
 
 			await expect(nowPlayingScreen(page)).toBeHidden();
-			await expect(page).toHaveURL(new RegExp(`#/${route}$`));
+			await expect(page).toHaveURL(
+				new RegExp(`#/${routeOf ? routeOf(player) : route}$`),
+			);
 			await expect(
 				page.getByRole("heading", { level: 1, name: heading }),
 			).toBeVisible();
@@ -481,13 +580,19 @@ test.describe("reordering playlists", () => {
 		});
 		await page.mouse.up();
 
+		const guid = player.playlists.find(
+			(entry) => entry.title === DEFAULT_PLAYLIST,
+		)!.guid;
+
 		// Position among the player's playlists, not among the visible rows: the two
 		// differ the moment Jean's hidden scratch playlist exists.
 		await expect
 			.poll(() =>
-				requestsTo(player, "/playlists/move/").map((entry) => entry.path),
+				requestsTo(player, "/move")
+					.filter((entry) => entry.method === "POST")
+					.map((entry) => entry.path),
 			)
-			.toEqual(["/api/playlists/move/p1/1"]);
+			.toEqual([`/api/playlists/${guid}/move`]);
 		await expect
 			.poll(() => titlesInOrder(player).slice(0, 2))
 			.toEqual([LIBRARY, DEFAULT_PLAYLIST]);
@@ -564,14 +669,22 @@ test.describe("dragging tracks onto a playlist", () => {
 		await expect(target).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "/items/copy").length,
-			1,
-		);
-		const copy = requestsTo(player, "/items/copy")[0];
-		expect(copy.path).toBe("/api/playlists/p7/p2/items/copy");
-		expect(copy.body).toEqual({ items: [0] });
+		const libraryGuid = player.playlists.find(
+			(entry) => entry.title === LIBRARY,
+		)!.guid;
+		const favoritesGuid = player.playlists.find(
+			(entry) => entry.title === FAVORITES,
+		)!.guid;
+
+		const copyRequests = () =>
+			requestsTo(player, "/items/copy").filter(
+				(entry) => entry.method === "POST",
+			);
+
+		await expectSettlesAt(player, () => copyRequests().length, 1);
+		const copy = copyRequests()[0];
+		expect(copy.path).toBe(`/api/playlists/${favoritesGuid}/items/copy`);
+		expect(copy.body).toEqual({ source: libraryGuid, runs: [[0, 1]] });
 
 		await expect
 			.poll(

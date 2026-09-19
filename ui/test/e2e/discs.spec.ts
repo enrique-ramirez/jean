@@ -1,5 +1,11 @@
 import type { Locator, Page } from "./fixtures.ts";
-import { expect, rowByTitle, scrollUntilMounted, test } from "./fixtures.ts";
+import {
+	expect,
+	openLibrary,
+	rowByTitle,
+	scrollUntilMounted,
+	test,
+} from "./fixtures.ts";
 
 // Deathconsciousness is the fixture's two-disc album and the last one in the
 // Library, so everything here scrolls to the end first. Both discs number their
@@ -22,7 +28,7 @@ test.describe("a multi-disc album in the album layout", () => {
 	test("the discs are headed inside one album, not split into two", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, DISC_TWO));
 
 		await expect(heading(page, "Disc 1")).toBeVisible();
@@ -38,14 +44,14 @@ test.describe("a multi-disc album in the album layout", () => {
 	test("the numbers stay bare, because the heading already said it", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, DISC_TWO));
 
 		await expect(trackNumberOf(rowByTitle(page, DISC_TWO))).toHaveText("01");
 	});
 
 	test("an ordinary album is not headed at all", async ({ page }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, SINGLE_DISC_TRACK));
 
 		const album = page
@@ -62,7 +68,7 @@ test.describe("a multi-disc album in the list layout", () => {
 	test("the track number carries the disc, since nothing else can", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, DISC_TWO));
 
 		await expect(trackNumberOf(rowByTitle(page, DISC_ONE))).toHaveText("1.01");
@@ -72,7 +78,7 @@ test.describe("a multi-disc album in the list layout", () => {
 	test("the number fits its column rather than running into what follows", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, DISC_ONE));
 
 		// Four characters where the column was drawn for two.
@@ -86,7 +92,7 @@ test.describe("a multi-disc album in the list layout", () => {
 	});
 
 	test("a single-disc album keeps a plain number", async ({ page }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, SINGLE_DISC_TRACK));
 
 		await expect(trackNumberOf(rowByTitle(page, SINGLE_DISC_TRACK))).toHaveText(
@@ -108,7 +114,7 @@ test.describe("a library with no disc tags, in the album layout", () => {
 	test("the album is not headed into discs it was never told about", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, DISC_TWO));
 
 		const album = page
@@ -128,7 +134,7 @@ test.describe("a library with no disc tags, in the list layout", () => {
 	test("the number stays bare rather than being prefixed with a guess", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, DISC_TWO));
 
 		// Both discs number from 01, and with the tag gone there is nothing to tell

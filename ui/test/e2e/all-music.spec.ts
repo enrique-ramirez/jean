@@ -60,8 +60,8 @@ test.describe("playing from all music", () => {
 		// nothing.
 		await trackRow(page, 12).dblclick();
 		await expect
-			.poll(() => playedFrom(player)?.plref)
-			.toBe(scratchOf(player)?.id);
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)?.guid);
 		await expect(trackRow(page, 12)).toContainText(trackPlayed(player)!);
 	});
 });
@@ -81,8 +81,8 @@ test.describe("the order a set is played in", () => {
 
 		await trackRow(page, 7).dblclick();
 		await expect
-			.poll(() => playedFrom(player)?.plref)
-			.toBe(scratchOf(player)?.id);
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)?.guid);
 		await expect(trackRow(page, 7)).toContainText(trackPlayed(player)!);
 	});
 
@@ -143,7 +143,10 @@ test.describe("where the music is coming from", () => {
 		await expect(sidebar(page).getByLabel("Playing from here")).toHaveCount(1);
 	});
 
-	test("browsing away leaves the mark where the sound is", async ({ page }) => {
+	test("browsing away leaves the mark where the sound is", async ({
+		page,
+		player,
+	}) => {
 		await page.goto("/#/all");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
@@ -154,7 +157,10 @@ test.describe("where the music is coming from", () => {
 			allMusicRow(page).getByLabel("Playing from here"),
 		).toBeVisible();
 
-		await page.goto("/#/p5");
+		const guid = player.playlists.find(
+			(entry) => entry.title === "Rock en Español",
+		)!.guid;
+		await page.goto(`/#/${guid}`);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
 		).toBeVisible();

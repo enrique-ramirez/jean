@@ -294,14 +294,21 @@ test.describe("navigation and appearance", () => {
 		await expect(row.locator("span").first()).not.toBeEmpty();
 	});
 
-	test("w shows what is playing and hides it again", async ({ page }) => {
+	test("w shows what is playing and hides it again", async ({
+		page,
+		player,
+	}) => {
 		await page.keyboard.press("w");
 		await expect(nowPlayingScreen(page)).toBeVisible();
+
+		const guid = player.playlists.find(
+			(entry) => entry.title === "Library",
+		)!.guid;
 
 		// The hash rather than the element: dismissing navigates at once and takes
 		// the exit animation to leave.
 		await page.keyboard.press("w");
-		await expect(page).toHaveURL(/#\/p7$/);
+		await expect(page).toHaveURL(new RegExp(`#/${guid}$`));
 	});
 
 	test("p goes to what is playing", async ({ page, player }) => {
@@ -314,7 +321,10 @@ test.describe("navigation and appearance", () => {
 			.poll(() => player.player.activeItem.index)
 			.toBeGreaterThanOrEqual(0);
 
-		await page.goto("/#/p2");
+		const guid = player.playlists.find(
+			(entry) => entry.title === "Favorites",
+		)!.guid;
+		await page.goto(`/#/${guid}`);
 		await page.keyboard.press("p");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
@@ -684,6 +694,7 @@ test.describe("with the full-screen lyric open", () => {
 
 	test("W leaves the screen under it open, and dismisses it again after it closes", async ({
 		page,
+		player,
 	}) => {
 		await playRow(page, 0);
 		await openTheLyricScreen(page);
@@ -693,8 +704,12 @@ test.describe("with the full-screen lyric open", () => {
 		await closeTheLyricScreen(page);
 		await expectTheScreenIsStillOpen(page);
 
+		const guid = player.playlists.find(
+			(entry) => entry.title === "Library",
+		)!.guid;
+
 		await page.keyboard.press("w");
-		await expect(page).toHaveURL(/#\/p7$/);
+		await expect(page).toHaveURL(new RegExp(`#/${guid}$`));
 	});
 
 	test("Q leaves the queue shut, and opens it again after it closes", async ({

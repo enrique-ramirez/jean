@@ -47,28 +47,6 @@ const tagWrites = (player: { requests: { method: string }[] }) =>
 		(entry) => entry.method === "POST",
 	);
 
-test.describe("with no foo_jean", () => {
-	test.use({ ...RATED, fooJean: null, fooJeanToken: null });
-
-	test("ratings are read-only and nothing is probed", async ({
-		page,
-		player,
-	}) => {
-		await openLibrary(page);
-
-		await expect(readOnlyStars(page, 0)).toHaveAccessibleName("5 of 5 stars");
-		await expect(
-			trackRow(page, 0).getByRole("button", { name: /^Rate / }),
-		).toHaveCount(0);
-
-		await expect
-			.poll(() => requestsTo(player, "/clientconfig/foo_jean").length)
-			.toBeGreaterThan(0);
-		await expectSettlesAt(player, () => requestsTo(player, "/api/status"), []);
-		await expectSettlesAt(player, () => tagWrites(player), []);
-	});
-});
-
 test.describe("with writing switched off", () => {
 	test.use({
 		...RATED,

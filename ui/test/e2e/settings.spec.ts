@@ -1,4 +1,4 @@
-import type { Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
@@ -6,6 +6,7 @@ import {
 	openLibrary,
 	openSettings,
 	playedFrom,
+	playRequests,
 	requestsTo,
 	settingsDialog,
 	statusBar,
@@ -18,15 +19,21 @@ const tagWrites = (player: { requests: { method: string }[] }) =>
 		(entry) => entry.method === "POST",
 	);
 
+const libraryHash = (player: FakePlayer) =>
+	`#/${player.playlists.find((entry) => entry.title === "Library")!.guid}`;
+
 test.describe("the settings dialog", () => {
-	test("opens over the list rather than replacing it", async ({ page }) => {
+	test("opens over the list rather than replacing it", async ({
+		page,
+		player,
+	}) => {
 		await openLibrary(page);
 		await expect(trackRow(page, 0)).toBeVisible();
 
 		await openSettings(page);
 
 		await expect(trackRow(page, 0)).toBeAttached();
-		await expect(page).toHaveURL(/#\/p7$/);
+		await expect(page).toHaveURL(new RegExp(`${libraryHash(player)}$`));
 	});
 
 	test("escape closes it, and does not clear the selection behind it", async ({
@@ -86,7 +93,7 @@ test.describe("the settings dialog", () => {
 		await openLibrary(page);
 		await trackRow(page, 0).dblclick();
 		await expect(statusBar(page)).toContainText("Los Calientes");
-		const played = requestsTo(player, "/player/play").length;
+		const played = playRequests(player).length;
 
 		await openSettings(page);
 		await page.keyboard.press("Space");
@@ -98,7 +105,7 @@ test.describe("the settings dialog", () => {
 			() => requestsTo(player, "/player/play-pause"),
 			[],
 		);
-		expect(requestsTo(player, "/player/play").length).toBe(played);
+		expect(playRequests(player).length).toBe(played);
 	});
 
 	// Playwright delivers the key over CDP, past the macOS menu bar, so this
@@ -121,12 +128,15 @@ test.describe("the settings dialog", () => {
 		test.use({ firstRun: true });
 
 		test("it opens itself, once", async ({ page }) => {
-			await page.goto("/#/p7");
+			// Loaded rather than reached through the sidebar: on a first run the
+			// dialog covers the sidebar too, so nothing behind it can be clicked yet.
+			await page.goto("/");
 			await expect(settingsDialog(page)).toBeVisible();
 
 			await page.getByRole("button", { name: "Close settings" }).click();
 			await expect(settingsDialog(page)).toBeHidden();
 
+			await openLibrary(page);
 			await page.reload();
 			await expect(
 				page.getByRole("heading", { level: 1, name: "Library" }),
@@ -295,11 +305,7 @@ test.describe("playback follows cursor", () => {
 		await openLibrary(page);
 		await expect(statusBar(page)).toContainText("La Fox");
 
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "/player/play/p7/0"),
-			[],
-		);
+		await expectSettlesAt(player, () => playRequests(player), []);
 		await expect(statusBar(page)).toContainText("La Fox");
 	});
 

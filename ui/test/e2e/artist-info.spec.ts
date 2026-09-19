@@ -2,6 +2,7 @@ import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	nowPlayingScreen,
+	openLibrary,
 	openNowPlaying,
 	openSettings,
 	settingsDialog,
@@ -30,7 +31,7 @@ const openArtistTab = async (page: Page, isMobile: boolean) => {
 };
 
 const playSomething = async (page: Page) => {
-	await page.goto("/#/p7");
+	await openLibrary(page);
 	await expect(
 		page.getByRole("heading", { level: 1, name: "Library" }),
 	).toBeVisible();

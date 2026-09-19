@@ -1,5 +1,11 @@
 import type { Locator } from "./fixtures.ts";
-import { expect, rowByTitle, scrollUntilMounted, test } from "./fixtures.ts";
+import {
+	expect,
+	openLibrary,
+	rowByTitle,
+	scrollUntilMounted,
+	test,
+} from "./fixtures.ts";
 
 // Jar Of Flies, retagged: the captured library has no featured artist on it and
 // no compilation. 'No Excuses' and "Don't Follow" both name Mad Season -- on one
@@ -35,7 +41,7 @@ test.describe("guests on an album row", () => {
 	test("the guests sit beside the title and the album artist is not repeated", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, GUESTS));
 
 		const row = rowByTitle(page, GUESTS);
@@ -50,7 +56,7 @@ test.describe("guests on an album row", () => {
 	test("a comma-joined tag loses the comma, not the guest", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, JOINED_BY_COMMA));
 
 		const row = rowByTitle(page, JOINED_BY_COMMA);
@@ -61,7 +67,7 @@ test.describe("guests on an album row", () => {
 	test("an artist who is not the album's keeps a line of their own", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, SOMEONE_ELSE));
 
 		const row = rowByTitle(page, SOMEONE_ELSE);
@@ -74,7 +80,7 @@ test.describe("guests on an album row", () => {
 	});
 
 	test("a row with nothing to add says nothing", async ({ page }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, "Rotten Apple"));
 
 		const row = rowByTitle(page, "Rotten Apple");
@@ -83,7 +89,7 @@ test.describe("guests on an album row", () => {
 	});
 
 	test("the title truncates last", async ({ page }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, GUESTS));
 
 		const title = names(rowByTitle(page, GUESTS)).locator("span").first();
@@ -105,7 +111,7 @@ test.describe("the same track in the list layout", () => {
 	});
 
 	test("the artist is stated in full, under the title", async ({ page }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, GUESTS));
 
 		const row = rowByTitle(page, GUESTS);
@@ -118,7 +124,7 @@ test.describe("the same track in the list layout", () => {
 	test("the album group is the only place a row is told about its album", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, SOMEONE_ELSE));
 
 		const row = rowByTitle(page, SOMEONE_ELSE);
@@ -141,7 +147,7 @@ test.describe("an album row with two lines has room for them", () => {
 	test("it grows rather than crushing the two lines together", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await scrollUntilMounted(page, rowByTitle(page, SOMEONE_ELSE));
 
 		const slack = await rowByTitle(page, SOMEONE_ELSE).evaluate(

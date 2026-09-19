@@ -2,7 +2,7 @@ import {
 	expect,
 	expectSettlesAt,
 	openSidebar,
-	requestsTo,
+	playRequests,
 	sidebar,
 	test,
 	viewHeader,
@@ -44,11 +44,7 @@ test.describe("a library with nothing in it", () => {
 		await expect(
 			viewHeader(page).getByRole("button", { name: /^(Play|Shuffle)$/ }),
 		).toHaveCount(0);
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "/player/play/"),
-			[],
-		);
+		await expectSettlesAt(player, () => playRequests(player), []);
 		expect(
 			player.playlists.some((entry) => entry.title.startsWith("#Jean [")),
 		).toBe(false);

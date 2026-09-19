@@ -196,7 +196,7 @@ test.describe("a #Jean playlist is Jean's, not furniture", () => {
 			player.playlists.some((entry) => entry.title === "#Jean Library"),
 		).toBe(true);
 
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await openSidebar(page);
 		await expect(sidebar(page).getByText("#Jean Library")).toHaveCount(0);
 		await expect(
@@ -205,7 +205,10 @@ test.describe("a #Jean playlist is Jean's, not furniture", () => {
 				.filter({ hasText: /^Library/ }),
 		).toHaveCount(1);
 
-		await page.goto("/#/p8");
+		const guid = player.playlists.find(
+			(entry) => entry.title === "#Jean Library",
+		)!.guid;
+		await page.goto(`/#/${guid}`);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "#Jean Library" }),
 		).toHaveCount(0);

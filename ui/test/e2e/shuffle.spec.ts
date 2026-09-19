@@ -6,8 +6,10 @@ import {
 	globalControls,
 	nowPlayingScreen,
 	OFFERS_NO_SHUFFLE,
+	openLibrary,
 	openNowPlaying,
 	playedFrom,
+	playRequests,
 	requestsTo,
 	rowByTitle,
 	searchFor,
@@ -22,7 +24,20 @@ const SHUFFLE_TRACKS = 4;
 const REPEAT_PLAYLIST = 1;
 
 // Rock en Español is the Jessico album: twelve tracks, playlist indices 0-11.
-const ALBUM = { id: "p5", route: "/#/p5", title: "Rock en Español" };
+const ALBUM = { title: "Rock en Español" };
+
+const albumGuid = (player: FakePlayer) =>
+	player.playlists.find((entry) => entry.title === ALBUM.title)!.guid;
+
+const openAlbum = async (page: Page, player: FakePlayer) => {
+	await page.goto(`/#/${albumGuid(player)}`);
+	await expect(
+		page.getByRole("heading", { level: 1, name: ALBUM.title }),
+	).toBeVisible();
+};
+
+const playedFromPath = (path: string) =>
+	Number(/\/items\/(\d+)\/play$/.exec(path)?.[1]);
 
 const headerShuffle = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: "Shuffle" });
@@ -47,11 +62,8 @@ const orderRequests = (player: FakePlayer) =>
 	);
 
 test.describe("the header shuffle starts a shuffled run", () => {
-	test.beforeEach(async ({ page }) => {
-		await page.goto(ALBUM.route);
-		await expect(
-			page.getByRole("heading", { level: 1, name: ALBUM.title }),
-		).toBeVisible();
+	test.beforeEach(async ({ page, player }) => {
+		await openAlbum(page, player);
 	});
 
 	test("it plays a track from this playlist and turns the mode on", async ({
@@ -59,15 +71,15 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		player,
 		isMobile,
 	}) => {
-		// play/{plref}/{index} makes that playlist active and the order draws the
-		// next track from it, so the player does the shuffling.
+		// The play route makes that playlist active and the order draws the next
+		// track from it, so the player does the shuffling.
 		await headerShuffle(page).click();
 
 		// Resolved back to a song rather than compared to a range: every index this
 		// twelve-track album could send falls inside [0, 12), so a bounds check
 		// passes for a shuffle that started somewhere else entirely.
 		await expect.poll(() => trackPlayed(player)).not.toBeNull();
-		expect(playedFrom(player)?.plref).toBe(ALBUM.id);
+		expect(playedFrom(player)?.id).toBe(albumGuid(player));
 		await expect(rowByTitle(page, trackPlayed(player) as string)).toBeVisible();
 
 		await expectSettlesAt(player, () => orderRequests(player), [
@@ -77,7 +89,7 @@ test.describe("the header shuffle starts a shuffled run", () => {
 			"aria-pressed",
 			"true",
 		);
-		expect(requestsTo(player, "/player/play/")).toHaveLength(1);
+		expect(playRequests(player)).toHaveLength(1);
 		expect(player.playQueue).toEqual([]);
 		expect(requestsTo(player, "/playqueue/")).toEqual([]);
 	});
@@ -92,12 +104,12 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		await page.keyboard.press("s");
 
 		await expect.poll(() => trackPlayed(player)).not.toBeNull();
-		expect(playedFrom(player)?.plref).toBe(ALBUM.id);
+		expect(playedFrom(player)?.id).toBe(albumGuid(player));
 		await expect(rowByTitle(page, trackPlayed(player) as string)).toBeVisible();
 		await expectSettlesAt(player, () => orderRequests(player), [
 			SHUFFLE_TRACKS,
 		]);
-		expect(requestsTo(player, "/player/play/")).toHaveLength(1);
+		expect(playRequests(player)).toHaveLength(1);
 	});
 
 	test("it starts somewhere different each time", async ({ page, player }) => {
@@ -105,15 +117,11 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		// file passing.
 		await times(6, async (press) => {
 			await headerShuffle(page).click();
-			await expect
-				.poll(() => requestsTo(player, "/player/play/").length)
-				.toBe(press + 1);
+			await expect.poll(() => playRequests(player).length).toBe(press + 1);
 		});
 
 		const picked = new Set(
-			requestsTo(player, "/player/play/").map((entry) =>
-				Number(entry.path.split("/").pop()),
-			),
+			playRequests(player).map((entry) => playedFromPath(entry.path)),
 		);
 		// Six draws from twelve landing on one track is a 1-in-250,000 coincidence.
 		expect(picked.size).toBeGreaterThan(1);
@@ -128,7 +136,7 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		await expect.poll(() => player.player.playbackMode).toBe(SHUFFLE_TRACKS);
 
 		await headerShuffle(page).click();
-		await expect.poll(() => requestsTo(player, "/player/play/").length).toBe(2);
+		await expect.poll(() => playRequests(player).length).toBe(2);
 
 		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
@@ -158,7 +166,7 @@ test.describe("shuffle in the search results header", () => {
 
 test.describe("the status bar shuffle is the mode", () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
@@ -222,18 +230,18 @@ test.describe("the status bar shuffle is the mode", () => {
 			"aria-pressed",
 			"true",
 		);
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "/player/play/"),
-			[],
-		);
+		await expectSettlesAt(player, () => playRequests(player), []);
 		expect(player.playQueue).toEqual([]);
 		// Asked of the page rather than of the status bar: on a phone the switch is
 		// on the now-playing screen, and reaching it hides the bar.
 		await expect(page.getByText("Nothing playing").first()).toBeVisible();
 	});
 
-	test("it is the same switch from every view", async ({ page, isMobile }) => {
+	test("it is the same switch from every view", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
 		await (await modeShuffle(page, isMobile)).click();
 		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
@@ -242,10 +250,7 @@ test.describe("the status bar shuffle is the mode", () => {
 
 		// Navigating away closes the now-playing screen on a phone, so this also
 		// checks the mode survives the trip rather than belonging to the screen.
-		await page.goto(ALBUM.route);
-		await expect(
-			page.getByRole("heading", { level: 1, name: ALBUM.title }),
-		).toBeVisible();
+		await openAlbum(page, player);
 		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
@@ -281,7 +286,7 @@ test.describe("shuffle remembers the order it interrupted", () => {
 	});
 
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
@@ -348,10 +353,7 @@ test.describe("a player that offers no shuffle", () => {
 		player,
 		isMobile,
 	}) => {
-		await page.goto(ALBUM.route);
-		await expect(
-			page.getByRole("heading", { level: 1, name: ALBUM.title }),
-		).toBeVisible();
+		await openAlbum(page, player);
 
 		// The order is found by name, because the enum differs between players and
 		// versions; with none matching there is nothing to turn on.
@@ -362,11 +364,7 @@ test.describe("a player that offers no shuffle", () => {
 		await headerShuffle(page)
 			.click({ force: true })
 			.catch(() => {});
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "/player/play/"),
-			[],
-		);
+		await expectSettlesAt(player, () => playRequests(player), []);
 
 		await expect(await modeShuffle(page, isMobile)).toBeDisabled();
 	});

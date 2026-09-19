@@ -1,8 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import { fetchPlaylists, removePlaylistItems } from "@/shared/api/beefweb";
+import { PLAYLISTS_KEY, playlistInfoOf } from "@/domain/player/usePlayer";
+import {
+	fetchPlaylistAnnotations,
+	removePlaylistRows,
+} from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
 import type { LibrarySource } from "./librarySource";
@@ -13,6 +17,8 @@ import type { Refs } from "./project";
 // is, so reading the count back is the only way to know whether anything happened.
 export function useAddTracks() {
 	const queryClient = useQueryClient();
+	const { discovery } = useFooJean();
+	const { origin, token } = discovery;
 
 	return useCallback(
 		async ({
@@ -27,11 +33,19 @@ export function useAddTracks() {
 			const count = itemIndices.length;
 			if (count === 0) return;
 
+			const fetchAnnotations = async () =>
+				origin && token ? await fetchPlaylistAnnotations(origin, token) : null;
+
 			const countOf = async () => {
-				const playlists = await fetchPlaylists();
-				queryClient.setQueryData(PLAYLISTS_KEY, playlists);
+				const annotations = await fetchAnnotations();
+				if (annotations)
+					queryClient.setQueryData(
+						PLAYLISTS_KEY,
+						annotations.map(playlistInfoOf),
+					);
 				return (
-					playlists.find((entry) => entry.id === target.id)?.itemCount ?? null
+					annotations?.find((entry) => entry.id === target.id)?.itemCount ??
+					null
 				);
 			};
 
@@ -69,7 +83,12 @@ export function useAddTracks() {
 			}
 
 			const undo = async () => {
-				const current = (await fetchPlaylists()).find(
+				if (!origin || !token) {
+					pushToast({ tone: "error", message: translate("add.undoFailed") });
+					return;
+				}
+
+				const current = (await fetchAnnotations())?.find(
 					(entry) => entry.id === target.id,
 				);
 
@@ -84,10 +103,10 @@ export function useAddTracks() {
 				}
 
 				try {
-					await removePlaylistItems(
-						target.id,
-						Array.from({ length: count }, (_, offset) => before + offset),
-					);
+					await removePlaylistRows(origin, token, target.id, {
+						structure: current.structure,
+						runs: [[before, count]],
+					});
 					await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 				} catch {
 					pushToast({ tone: "error", message: translate("add.undoFailed") });
@@ -99,6 +118,6 @@ export function useAddTracks() {
 				action: { label: translate("action.undo"), run: undo },
 			});
 		},
-		[queryClient],
+		[queryClient, origin, token],
 	);
 }

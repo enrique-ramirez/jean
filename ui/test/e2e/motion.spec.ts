@@ -1,5 +1,5 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
-import { expect, statusBar, test } from "./fixtures.ts";
+import { expect, openLibrary, statusBar, test } from "./fixtures.ts";
 
 const TOGGLE = 'footer button[aria-label="Pause"]';
 
@@ -51,7 +51,7 @@ const boxOfToggle = () => {
 };
 
 const startPlaying = async (page: Page) => {
-	await page.goto("/#/p7");
+	await openLibrary(page);
 	await page
 		.getByRole("main")
 		.getByRole("button", { name: "Play", exact: true })
@@ -124,7 +124,7 @@ test.describe("the now-playing arrow", () => {
 	// exists while the playing track is out of view, and clicking a row would
 	// scroll it back in.
 	const showPill = async (page: Page, player: FakePlayer) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();

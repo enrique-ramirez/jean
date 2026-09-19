@@ -70,12 +70,15 @@ test.describe("play-count shading", () => {
 		expect(cool!.patina).toBeGreaterThan(recent!.patina);
 	});
 
-	test("the scale is per list, not per library", async ({ page }) => {
+	test("the scale is per list, not per library", async ({ page, player }) => {
 		// Los Calientes is one of many in the library, and the most played in Rock
 		// en Español.
 		const inLibrary = await shading(page, RECENT);
 
-		await page.goto("/#/p5");
+		const guid = player.playlists.find(
+			(entry) => entry.title === "Rock en Español",
+		)!.guid;
+		await page.goto(`/#/${guid}`);
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Rock en Español" }),
 		).toBeVisible();

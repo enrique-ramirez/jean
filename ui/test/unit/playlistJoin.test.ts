@@ -21,10 +21,13 @@ const ARRIVING = false;
 const annotation = (
 	entry: Partial<PlaylistAnnotation> & { id: string },
 ): PlaylistAnnotation => ({
-	beefwebId: null,
 	index: 0,
 	title: "Playlist",
+	itemCount: 0,
 	isAutoPlaylist: false,
+	role: null,
+	structure: 0,
+	revision: 0,
 	managed: null,
 	...entry,
 });
@@ -40,32 +43,20 @@ const playlist = (
 	...entry,
 });
 
-test("resolves a playlist GUID to the beefweb id its annotation carries", () => {
-	const entries = [annotation({ id: PLAYING_GUID, beefwebId: "p7", index: 2 })];
-	const playlists = [playlist({ id: "p3", index: 2 })];
+test("confirms a GUID the settled annotations carry", () => {
+	const entries = [annotation({ id: PLAYING_GUID })];
 
-	assert.equal(beefwebIdOf(PLAYING_GUID, entries, playlists, SETTLED), "p7");
+	assert.equal(beefwebIdOf(PLAYING_GUID, entries, [], SETTLED), PLAYING_GUID);
 });
 
-test("falls back to the playlist at the annotation's index where beefweb has named none yet", () => {
-	const entries = [annotation({ id: PLAYING_GUID, beefwebId: null, index: 2 })];
-	const playlists = [
-		playlist({ id: "p3", index: 1 }),
-		playlist({ id: "p7", index: 2 }),
-	];
+test("confirms a GUID only the playlist list carries", () => {
+	const playlists = [playlist({ id: PLAYING_GUID })];
 
-	assert.equal(beefwebIdOf(PLAYING_GUID, entries, playlists, SETTLED), "p7");
-});
-
-test("answers no playlist where the annotation names neither an id nor an index beefweb knows", () => {
-	const entries = [annotation({ id: PLAYING_GUID, beefwebId: null, index: 4 })];
-	const playlists = [playlist({ id: "p3", index: 1 })];
-
-	assert.equal(beefwebIdOf(PLAYING_GUID, entries, playlists, SETTLED), null);
+	assert.equal(beefwebIdOf(PLAYING_GUID, [], playlists, SETTLED), PLAYING_GUID);
 });
 
 test("answers no playlist for a GUID the settled annotations do not carry", () => {
-	const entries = [annotation({ id: OTHER_GUID, beefwebId: "p3", index: 1 })];
+	const entries = [annotation({ id: OTHER_GUID })];
 
 	assert.equal(beefwebIdOf(PLAYING_GUID, entries, [], SETTLED), null);
 });
@@ -78,20 +69,20 @@ test("answers no playlist for a track playing from none, however the annotations
 	assert.equal(beefwebIdOf(null, [], [], ARRIVING), null);
 });
 
-test("resolves a beefweb id back to the playlist GUID foo_jean addresses", () => {
+test("confirms an id already the GUID list carries", () => {
 	const entries = [
-		annotation({ id: OTHER_GUID, beefwebId: "p3", index: 1 }),
-		annotation({ id: PLAYING_GUID, beefwebId: "p7", index: 2 }),
+		annotation({ id: OTHER_GUID }),
+		annotation({ id: PLAYING_GUID }),
 	];
 
-	assert.equal(guidOf("p7", entries), PLAYING_GUID);
+	assert.equal(guidOf(PLAYING_GUID, entries), PLAYING_GUID);
 });
 
-test("refuses a beefweb id no annotation carries rather than naming another playlist", () => {
-	const entries = [annotation({ id: OTHER_GUID, beefwebId: "p3", index: 1 })];
+test("refuses an id no annotation carries rather than naming another playlist", () => {
+	const entries = [annotation({ id: OTHER_GUID })];
 
-	assert.throws(() => guidOf("p7", entries), Error);
+	assert.throws(() => guidOf(PLAYING_GUID, entries), Error);
 	// The component answers no list at all where it cannot read the player's
 	// playlists, and that is the same refusal rather than a crash at the seam.
-	assert.throws(() => guidOf("p7", null), Error);
+	assert.throws(() => guidOf(PLAYING_GUID, null), Error);
 });

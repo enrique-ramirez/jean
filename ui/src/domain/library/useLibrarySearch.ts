@@ -22,8 +22,9 @@ import { libraryIndex, searchLibrary } from "@/domain/track/libraryIndex";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
 import { rankEntities } from "@/domain/track/rankEntities";
 import { bestMatches } from "@/domain/track/rankTracks";
-import { removePlaylist } from "@/shared/api/beefweb";
+import { removePlaylist } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { readStoredState, useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
 import { fold, fuzzyScore, squash, TIER } from "@/shared/lib/text";
@@ -72,6 +73,7 @@ const entityOf = (suggestion: Suggestion) =>
 
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const permissions = usePermissions();
+	const { discovery } = useFooJean();
 	const { data: playerSnapshot } = usePlayer();
 	const player = playerSnapshot?.player;
 	const playingPlaylistId =
@@ -124,9 +126,17 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		)
 			return;
 
-		removePlaylist(scratch.id);
+		const { origin, token } = discovery;
+		if (origin && token) removePlaylist(origin, token, scratch.id);
 		setPinnedScratch(null);
-	}, [playlists, canEdit, player, playingPlaylistId, setPinnedScratch]);
+	}, [
+		playlists,
+		canEdit,
+		player,
+		playingPlaylistId,
+		setPinnedScratch,
+		discovery,
+	]);
 
 	const deferredDraft = useDeferredValue(draft);
 

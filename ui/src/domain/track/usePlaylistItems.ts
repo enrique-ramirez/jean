@@ -31,16 +31,28 @@ function useLoadedRows(
 }
 
 export function usePlaylistItems(
+	origin: string | null,
+	token: string | null,
 	playlistId: string | null | undefined,
 	itemCount: number | null | undefined,
 ) {
-	const isReady = Boolean(playlistId) && itemCount != null;
+	const isReady =
+		Boolean(origin) &&
+		Boolean(token) &&
+		Boolean(playlistId) &&
+		itemCount != null;
 
 	return useLoadedRows(
 		isReady ? playlistKey(playlistId as string, itemCount as number) : null,
 		useCallback(
-			() => loadPlaylist(playlistId as string, itemCount as number),
-			[playlistId, itemCount],
+			() =>
+				loadPlaylist(
+					origin as string,
+					token as string,
+					playlistId as string,
+					itemCount as number,
+				),
+			[origin, token, playlistId, itemCount],
 		),
 	);
 }

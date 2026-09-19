@@ -1,4 +1,8 @@
-import type { FakePlaylist, Track } from "../test/fake-api/state.ts";
+import {
+	type FakePlaylist,
+	guidOfDefault,
+	type Track,
+} from "../test/fake-api/state.ts";
 
 export interface CapturedAlbum {
 	albumArtist: string;
@@ -73,14 +77,20 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 	return [
 		{
 			id: "p1",
+			guid: guidOfDefault(1),
 			title: "Default Playlist",
 			isCurrent: false,
+			structure: 0,
+			revision: 0,
 			items: of("nirvana-nevermind").slice(0, 6),
 		},
 		{
 			id: "p7",
+			guid: guidOfDefault(7),
 			title: "Library",
 			isCurrent: true,
+			structure: 0,
+			revision: 0,
 			items: of(
 				"radiohead-ok-computer",
 				"the-strokes-is-this-it",
@@ -89,8 +99,11 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 		},
 		{
 			id: "p2",
+			guid: guidOfDefault(2),
 			title: "Favorites",
 			isCurrent: false,
+			structure: 0,
+			revision: 0,
 			items: [
 				...of("brand-new-deja-entendu").slice(0, 4),
 				...of("queen-a-night-at-the-opera").slice(0, 3),
@@ -100,17 +113,23 @@ const playlistsOf = (byAlbum: Map<string, CapturedAlbum>): FakePlaylist[] => {
 		},
 		{
 			id: "p5",
+			guid: guidOfDefault(5),
 			title: "Loud",
 			isCurrent: false,
+			structure: 0,
+			revision: 0,
 			items: of("metallica-metallica", "korn-issues"),
 		},
 		// An autoplaylist looks ordinary from the API, except that writes to it are
 		// accepted and ignored.
 		{
 			id: "p9",
+			guid: guidOfDefault(9),
 			title: "Recently Added",
 			isCurrent: false,
 			isAuto: true,
+			structure: 0,
+			revision: 0,
 			items: of("bad-bunny-yhlqmdlg").slice(0, 8),
 		},
 	];

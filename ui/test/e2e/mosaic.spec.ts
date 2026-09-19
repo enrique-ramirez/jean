@@ -1,5 +1,5 @@
 import type { Page } from "./fixtures.ts";
-import { expect, test } from "./fixtures.ts";
+import { expect, openLibrary, test } from "./fixtures.ts";
 
 // `#/all` for anything shaped: `libraryShape` replaces the media library and leaves the captured
 // playlists alone, so `p7` there is still the real five.
@@ -106,7 +106,7 @@ test.describe("one album, one cover", () => {
 	test("the tiles are different records, not the same one repeated", async ({
 		page,
 	}) => {
-		await page.goto("/#/p7");
+		await openLibrary(page);
 		await drawn(page);
 
 		const shown = await mosaic(page)
@@ -138,7 +138,7 @@ test.describe("while the covers are arriving", () => {
 		});
 
 		try {
-			await page.goto("/#/p7");
+			await openLibrary(page);
 			await expect(mosaic(page)).toBeVisible();
 
 			// `Artwork`'s own placeholder is right for a single cover. Nine identical

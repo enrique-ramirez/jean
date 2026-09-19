@@ -51,8 +51,7 @@ export function useAutoPlaylists(): ReadonlySet<string> {
 
 	return useMemo(() => {
 		const ids = new Set<string>();
-		for (const entry of entries)
-			if (entry.isAutoPlaylist && entry.beefwebId) ids.add(entry.beefwebId);
+		for (const entry of entries) if (entry.isAutoPlaylist) ids.add(entry.id);
 		return ids;
 	}, [entries]);
 }

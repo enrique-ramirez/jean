@@ -2,6 +2,7 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
+	guidOfPlaylist,
 	openLibrary,
 	pressAndHold,
 	requestsTo,
@@ -20,6 +21,14 @@ const titlesIn = (player: FakePlayer, id: string) =>
 	player.playlists
 		.find((entry) => entry.id === id)!
 		.items.map((track) => track["%title%"]);
+
+const structureOf = (player: FakePlayer, beefwebId: string) =>
+	player.playlists.find((entry) => entry.id === beefwebId)!.structure;
+
+// The component is cross-origin, so a write also logs the preflight it answered with a 204:
+// counting every request matching the path counts that too.
+const postsTo = (player: FakePlayer, pattern: string) =>
+	requestsTo(player, pattern).filter((entry) => entry.method === "POST");
 
 // Right-click on a pointer, press-and-hold on touch: the same menu, asked for
 // the way each surface asks for it.
@@ -155,14 +164,17 @@ test.describe("adding tracks to a playlist", () => {
 
 		await expectSettlesAt(
 			player,
-			() => requestsTo(player, "/items/copy").length,
+			() => postsTo(player, "/items/copy").length,
 			1,
 		);
-		const copy = requestsTo(player, "/items/copy")[0];
+		const copy = postsTo(player, "/items/copy")[0];
 		expect(copy.path).toBe(
-			`/api/playlists/${LIBRARY}/${FAVORITES.id}/items/copy`,
+			`/api/playlists/${guidOfPlaylist(player, FAVORITES.id)}/items/copy`,
 		);
-		expect(copy.body).toEqual({ items: [0, 1, 2] });
+		expect(copy.body).toEqual({
+			source: guidOfPlaylist(player, LIBRARY),
+			runs: [[0, 3]],
+		});
 
 		await expect(toast(page)).toContainText(
 			`Added 3 tracks to ${FAVORITES.title}`,
@@ -188,17 +200,20 @@ test.describe("undoing it", () => {
 			)
 			.toHaveLength(FAVORITES.itemCount + 1);
 
+		const structureAfterAdd = structureOf(player, FAVORITES.id);
+
 		await toast(page).getByRole("button", { name: "Undo" }).click();
 
 		// The appended range, computed from the itemCount already in PlaylistInfo:
 		// no %path% fetched, no matching, one request.
 		await expectSettlesAt(
 			player,
-			() => requestsTo(player, "/items/remove").length,
+			() => postsTo(player, "/items/remove").length,
 			1,
 		);
-		expect(requestsTo(player, "/items/remove")[0].body).toEqual({
-			items: [FAVORITES.itemCount],
+		expect(postsTo(player, "/items/remove")[0].body).toEqual({
+			structure: structureAfterAdd,
+			runs: [[FAVORITES.itemCount, 1]],
 		});
 
 		// Titles rather than a count: removing the first track instead of the last
@@ -225,15 +240,18 @@ test.describe("undoing it", () => {
 			)
 			.toHaveLength(FAVORITES.itemCount + 3);
 
+		const structureAfterAdd = structureOf(player, FAVORITES.id);
+
 		await toast(page).getByRole("button", { name: "Undo" }).click();
 
 		await expectSettlesAt(
 			player,
-			() => requestsTo(player, "/items/remove").length,
+			() => postsTo(player, "/items/remove").length,
 			1,
 		);
-		expect(requestsTo(player, "/items/remove")[0].body).toEqual({
-			items: [7, 8, 9],
+		expect(postsTo(player, "/items/remove")[0].body).toEqual({
+			structure: structureAfterAdd,
+			runs: [[7, 3]],
 		});
 		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
 	});

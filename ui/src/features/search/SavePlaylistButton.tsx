@@ -6,7 +6,8 @@ import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import { createPlaylist } from "@/shared/api/beefweb";
+import { createPlaylist, requireFooJean } from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
@@ -34,6 +35,7 @@ export function SavePlaylistButton({
 }) {
 	const t = useTranslate();
 	const queryClient = useQueryClient();
+	const { discovery } = useFooJean();
 	const [title, setTitle] = useState(search.query);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -58,7 +60,11 @@ export function SavePlaylistButton({
 				return { id, title: name };
 			}
 
-			const playlist = await createPlaylist(name);
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			const playlist = await createPlaylist(origin, token, { title: name });
 			await library.source.addTo(playlist.id, indices);
 			// Refetched rather than invalidated: the route that follows resolves against this list, and an id it has not
 			// seen yet lands on the old view.

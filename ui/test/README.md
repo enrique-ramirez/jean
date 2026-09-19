@@ -225,8 +225,8 @@ test('does the thing', async ({ page, player }) => {
   await trackRow(page, 2).dblclick()
 
   // what went over the wire, read off the fake rather than the browser
-  await expect.poll(() => requestsTo(player, '/player/play/').map((r) => r.path))
-    .toEqual(['/api/player/play/p7/2'])
+  await expect.poll(() => requestsTo(player, '/items/2/play').map((r) => r.path))
+    .toHaveLength(1)
 
   // and what came back, via SSE
   await expect(page.locator('footer')).toContainText('Deléctrico')
@@ -251,7 +251,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |
 | `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
-| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failState: 503 }`, `{ failQueue: 500 }`, `{ knowsPlayingLocation: false }`, `{ annotatesEveryPlaylist: false }`, `{ unannotatedPlaylists: ['p2'] }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
+| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failState: 503 }`, `{ failQueue: 500 }`, `{ knowsPlayingLocation: false }`, `{ annotatesEveryPlaylist: false }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
 | `fooJeanToken` | seeds the credential. `FOO_JEAN_TOKEN` by default; `null` is a device that has never paired |
 | `motion` | reduced by default, since Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work. It is accepted and silently ignored, so the fixture calls `page.emulateMedia()` |
 

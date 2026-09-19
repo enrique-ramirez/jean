@@ -72,8 +72,8 @@ test.describe("an artist is a place", () => {
 			.click();
 
 		await expect
-			.poll(() => playedFrom(player)?.plref)
-			.toBe(scratchOf(player)?.id);
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)?.guid);
 		expect(trackPlayed(player)).toBeTruthy();
 		await expectPlayingFrom(page, ARTIST);
 	});

@@ -67,11 +67,6 @@ export interface FooJeanOptions {
 	// playlist created since is one the poll can name and the client cannot.
 	annotatesEveryPlaylist?: boolean;
 
-	// beefweb ids `GET /api/playlists` carries no entry for, named rather than
-	// taken off the end. The same lag as above seen from a spec that cares which
-	// playlist is the one a client can find no GUID for.
-	unannotatedPlaylists?: string[];
-
 	canReadLibrary?: boolean;
 	libraryBuilds?: number;
 	libraryBusy?: number;
@@ -141,7 +136,6 @@ const DEFAULTS: FooJeanFake = {
 	loseQueueAnswer: null,
 	knowsPlayingLocation: true,
 	annotatesEveryPlaylist: true,
-	unannotatedPlaylists: [],
 	canStream: true,
 	streamFormats: ["opus", "aac"],
 	playableFormats: ["opus", "aac"],
@@ -471,9 +465,6 @@ const WRITES_DISABLED = {
 		"this install has playlist writes turned off; turn on writePlaylists in config.json to allow them",
 	detail: "",
 };
-
-const guidFor = (index: number) =>
-	`00000000-0000-0000-0000-${String(index).padStart(12, "0")}`;
 
 const GUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -1041,7 +1032,6 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 		item && item.index >= 0 ? state.playlistById(item.playlistId) : null;
 	const track = state.playingTrack();
 	const { seconds, takenAtMs } = state.positionMark;
-	const playlistIndex = playlist ? state.playlists.indexOf(playlist) : -1;
 	return {
 		playback: state.player.playbackState,
 		path: track ? String(evaluate(track, "%path%") ?? "") : "",
@@ -1058,10 +1048,11 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 		),
 		...(track ? nameOf(track) : { title: null, artist: null }),
 		playingLocation:
-			fake.knowsPlayingLocation && item && playlist && playlistIndex >= 0
-				? { playlistId: guidFor(playlistIndex), index: item.index }
+			fake.knowsPlayingLocation && item && playlist
+				? { playlistId: playlist.guid, index: item.index }
 				: null,
 		queueRevision: state.queueRevision,
+		playlistsRevision: state.playlistsRevision,
 	};
 };
 
@@ -1081,10 +1072,7 @@ const queuedTrackOf = (state: FakeState, entry: QueuedRead) => {
 		libraryPath: state.libraryPathFor(entry.track),
 		location:
 			playlist && entry.index >= 0
-				? {
-						playlistId: guidFor(state.playlists.indexOf(playlist)),
-						index: entry.index,
-					}
+				? { playlistId: playlist.guid, index: entry.index }
 				: null,
 	};
 };
@@ -1483,12 +1471,9 @@ export async function handleAgent({
 				if (parsed.at && parsed.at.revision !== state.queueRevision)
 					return json(response, QUEUE_MOVED, 409);
 
-				const index = state.playlists.findIndex(
-					(_, at) => guidFor(at) === parsed.playlistId,
-				);
-				if (index < 0)
+				const playlist = state.playlistByGuid(parsed.playlistId);
+				if (!playlist)
 					return json(response, { error: "no such playlist", detail: "" }, 404);
-				const playlist = state.playlists[index];
 
 				const pastEnd = parsed.positions.find(
 					(position) => position >= playlist.items.length,
@@ -1624,29 +1609,248 @@ export async function handleAgent({
 		return sendCover(file);
 	}
 
-	if (path === "/api/playlists") {
+	if (method === "GET" && path === "/api/playlists") {
 		// The same latency switch the beefweb fake honours. Held after the request
 		// is recorded and before the list is built, so a spec can hold a refetch
 		// open across a playlist mutation the tick has already moved past.
 		if (state.latency > 0) await delay(state.latency);
 
-		const annotated = state.playlists
-			.map((playlist, index) => ({
-				id: guidFor(index),
-				beefwebId: playlist.id,
-				index,
-				title: playlist.title,
-				isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
-				managed: null,
-			}))
-			.filter((entry) => !fake.unannotatedPlaylists.includes(entry.beefwebId));
-		// Dropped from the end rather than filtered, so every entry that is left
-		// keeps the id and the index the component would have given it.
+		const annotated = state.playlists.map((playlist, index) => ({
+			id: playlist.guid,
+			index,
+			title: playlist.title,
+			itemCount: playlist.items.length,
+			isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
+			role: null,
+			structure: playlist.structure,
+			revision: playlist.revision,
+			managed: null,
+		}));
 		return json(response, {
 			playlists: fake.annotatesEveryPlaylist
 				? annotated
 				: annotated.slice(0, -1),
 		});
+	}
+
+	if (method === "POST" && path === "/api/playlists") {
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+
+		const asked = body as { title?: unknown } | null;
+		if (typeof asked?.title !== "string" || asked.title.length === 0)
+			return json(
+				response,
+				{
+					error: "unacceptable title",
+					detail: "'title' is required",
+				},
+				400,
+			);
+
+		const made = state.addPlaylist(asked.title);
+		const playlist = requirePlaylist(state, made.id);
+		state.notifyPlaylists();
+
+		return json(response, {
+			id: playlist.guid,
+			index: state.playlists.length - 1,
+			title: playlist.title,
+			itemCount: playlist.items.length,
+			isAutoPlaylist: false,
+			role: null,
+			structure: playlist.structure,
+			revision: playlist.revision,
+			managed: null,
+		});
+	}
+
+	const byIdMatch = /^\/api\/playlists\/([^/]+)$/.exec(path);
+	if ((method === "POST" || method === "DELETE") && byIdMatch) {
+		const guid = byIdMatch[1];
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		if (method === "DELETE") {
+			state.removePlaylist(playlist.id);
+			return empty(response);
+		}
+
+		const asked = body as { title?: unknown } | null;
+		if (typeof asked?.title !== "string" || asked.title.length === 0)
+			return json(
+				response,
+				{ error: "unacceptable title", detail: "'title' is required" },
+				400,
+			);
+		state.renamePlaylist(playlist.id, asked.title);
+		return empty(response);
+	}
+
+	const moveMatch = /^\/api\/playlists\/([^/]+)\/move$/.exec(path);
+	if (method === "POST" && moveMatch) {
+		const guid = moveMatch[1];
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const asked = body as { index?: unknown } | null;
+		if (!isNonNegInt(asked?.index))
+			return json(
+				response,
+				{ error: "unacceptable index", detail: "'index' is required" },
+				400,
+			);
+		if (asked.index >= state.playlists.length)
+			return json(
+				response,
+				{ error: "that position is past the end", detail: "" },
+				400,
+			);
+
+		state.movePlaylist(playlist.id, asked.index);
+		return empty(response);
+	}
+
+	const playMatch = /^\/api\/playlists\/([^/]+)\/items\/(\d+)\/play$/.exec(
+		path,
+	);
+	if (method === "POST" && playMatch) {
+		const [, guid, indexText] = playMatch;
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const index = Number(indexText);
+		if (index >= playlist.items.length)
+			return json(
+				response,
+				{ error: "that position is past the end", detail: "" },
+				400,
+			);
+
+		state.playItem(playlist.id, index);
+		return empty(response);
+	}
+
+	const rowsMatch = /^\/api\/playlists\/([^/]+)\/items$/.exec(path);
+	if (method === "GET" && rowsMatch) {
+		const guid = rowsMatch[1];
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const offset = Number(url.searchParams.get("offset"));
+		const count = Number(url.searchParams.get("count"));
+		const columns = url.searchParams.getAll("columns");
+		if (columns.length === 0)
+			return json(
+				response,
+				{ error: "unacceptable column", detail: "'columns' is required" },
+				400,
+			);
+
+		const page = playlist.items.slice(offset, offset + count);
+		return json(response, {
+			structure: playlist.structure,
+			revision: playlist.revision,
+			totalCount: playlist.items.length,
+			items: page.map((track) => ({
+				columns: columns.map((expression) => evaluate(track, expression)),
+				libraryPath: state.libraryPathFor(track),
+			})),
+		});
+	}
+
+	const copyMatch = /^\/api\/playlists\/([^/]+)\/items\/copy$/.exec(path);
+	if (method === "POST" && copyMatch) {
+		const guid = copyMatch[1];
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+
+		const target = state.playlistByGuid(guid);
+		if (!target)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const asked = body as { source?: unknown; runs?: unknown } | null;
+		if (typeof asked?.source !== "string" || !GUID_PATTERN.test(asked.source))
+			return json(
+				response,
+				{
+					error: "unacceptable playlist id",
+					detail: "'source' must be a playlist id this component issued",
+				},
+				400,
+			);
+		const source = state.playlistByGuid(asked.source);
+		if (!source)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const selection = decodeSelection(
+			{ runs: asked.runs },
+			source.items.length,
+		);
+		if (!selection.ok) return json(response, selection.body, selection.status);
+
+		if (target.isAuto)
+			return json(response, { structure: target.structure, positions: [] });
+
+		const before = target.items.length;
+		state.editItems(target, () => {
+			target.items.push(
+				...selection.ordinals.map((ordinal) => source.items[ordinal]),
+			);
+		});
+		state.notifyPlaylists();
+
+		return json(response, {
+			structure: target.structure,
+			positions: selection.ordinals.map((_, at) => before + at),
+		});
+	}
+
+	const removeRowsMatch = /^\/api\/playlists\/([^/]+)\/items\/remove$/.exec(
+		path,
+	);
+	if (method === "POST" && removeRowsMatch) {
+		const guid = removeRowsMatch[1];
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const asked = body as { structure?: unknown } | null;
+		if (!asked || !Number.isInteger(asked.structure))
+			return json(
+				response,
+				{ error: "malformed request", detail: "'structure' is required" },
+				400,
+			);
+		if (asked.structure !== playlist.structure)
+			return json(response, STRUCTURE_MOVED, 409);
+
+		const selection = decodeSelection(
+			body as Record<string, unknown>,
+			playlist.items.length,
+		);
+		if (!selection.ok) return json(response, selection.body, selection.status);
+
+		const drop = new Set(selection.ordinals);
+		state.editItems(playlist, () => {
+			playlist.items = playlist.items.filter((_, at) => !drop.has(at));
+		});
+		state.notifyPlaylists();
+
+		return json(response, { structure: playlist.structure });
 	}
 
 	const ownFillMatch = /^\/api\/playlists\/own\/([^/]+)\/items$/.exec(path);
@@ -1700,7 +1904,7 @@ export async function handleAgent({
 		state.notifyPlaylists();
 
 		return json(response, {
-			playlistId: guidFor(state.playlists.indexOf(playlist)),
+			playlistId: playlist.guid,
 			beefwebId: playlist.id,
 			positions,
 		});
@@ -1753,10 +1957,9 @@ export async function handleAgent({
 		if (state.libraryFeed.columns.length === 0)
 			return json(response, NOT_BUILT, 503);
 
-		const index = state.playlists.findIndex((_, at) => guidFor(at) === guid);
-		if (index < 0)
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
 			return json(response, { error: "no such playlist", detail: "" }, 404);
-		const playlist = state.playlists[index];
 
 		const parsed = parseFill(body, {
 			requireTitle: false,
@@ -1817,13 +2020,17 @@ export async function handleAgent({
 		const title = String(asked?.title ?? "");
 		const made = state.addPlaylist(title);
 		fake.autoPlaylists.push(made.id);
+		const playlist = requirePlaylist(state, made.id);
 
 		return json(response, {
-			id: guidFor(state.playlists.length),
-			beefwebId: made.id,
+			id: playlist.guid,
 			index: state.playlists.length - 1,
-			title: made.title,
+			title: playlist.title,
+			itemCount: playlist.items.length,
 			isAutoPlaylist: true,
+			role: null,
+			structure: playlist.structure,
+			revision: playlist.revision,
 			managed: {
 				key: String(asked?.key ?? ""),
 				query: String(asked?.query ?? ""),

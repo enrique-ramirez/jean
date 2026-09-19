@@ -1,9 +1,11 @@
+import type { FakePlayer } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
+	openLibrary,
 	playedFrom,
+	playRequests,
 	pressAndHold,
-	requestsTo,
 	statusBar,
 	test,
 	trackRow,
@@ -12,6 +14,9 @@ import {
 // The Library fixture is Jessico in playlist order.
 const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 
+const libraryGuid = (player: FakePlayer) =>
+	player.playlists.find((entry) => entry.title === "Library")!.guid;
+
 // Album mode renders its rows through AlbumGroup rather than TrackList, so
 // these gestures take a different path in each layout.
 ["compact", "album"].forEach((layout) => {
@@ -19,7 +24,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 		test.use({ settings: { "jean.layout": layout } });
 
 		test.beforeEach(async ({ page }) => {
-			await page.goto("/#/p7");
+			await openLibrary(page);
 			await expect(
 				page.getByRole("heading", { level: 1, name: "Library" }),
 			).toBeVisible();
@@ -41,7 +46,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 			// and still looks right on screen.
 			await expect
 				.poll(() => playedFrom(player))
-				.toEqual({ plref: "p7", index: THIRD_TRACK.index });
+				.toEqual({ id: libraryGuid(player), index: THIRD_TRACK.index });
 
 			// Nothing below is written by the click: the app learns it played from
 			// the SSE snapshot the fake pushes afterwards.
@@ -76,7 +81,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 
 			await expect
 				.poll(() => playedFrom(player))
-				.toEqual({ plref: "p7", index: 1 });
+				.toEqual({ id: libraryGuid(player), index: 1 });
 			await expect(statusBar(page)).toContainText("Fizz");
 		});
 
@@ -91,7 +96,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 
 			await expect
 				.poll(() => playedFrom(player))
-				.toEqual({ plref: "p7", index: 0 });
+				.toEqual({ id: libraryGuid(player), index: 0 });
 			await expect(statusBar(page)).toContainText("Los Calientes");
 		});
 
@@ -112,11 +117,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 				"aria-selected",
 				"true",
 			);
-			await expectSettlesAt(
-				player,
-				() => requestsTo(player, "/player/play/"),
-				[],
-			);
+			await expectSettlesAt(player, () => playRequests(player), []);
 			await expect(statusBar(page)).toContainText("Nothing playing");
 		});
 
@@ -147,7 +148,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 		test.use({ settings: { "jean.layout": layout } });
 
 		test.beforeEach(async ({ page }) => {
-			await page.goto("/#/p7");
+			await openLibrary(page);
 			await expect(
 				page.getByRole("heading", { level: 1, name: "Library" }),
 			).toBeVisible();
@@ -158,7 +159,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 
 			await expect
 				.poll(() => playedFrom(player))
-				.toEqual({ plref: "p7", index: THIRD_TRACK.index });
+				.toEqual({ id: libraryGuid(player), index: THIRD_TRACK.index });
 			await expect(statusBar(page)).toContainText(THIRD_TRACK.title);
 			await expect(trackRow(page, THIRD_TRACK.index)).toHaveAttribute(
 				"data-active",
@@ -173,11 +174,7 @@ const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
 			await pressAndHold(page, trackRow(page, THIRD_TRACK.index));
 
 			await expect(page.getByRole("dialog")).toBeVisible();
-			await expectSettlesAt(
-				player,
-				() => requestsTo(player, "/player/play/"),
-				[],
-			);
+			await expectSettlesAt(player, () => playRequests(player), []);
 		});
 	});
 });

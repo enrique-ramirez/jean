@@ -1,10 +1,7 @@
 import { QUEUE_DROP_TARGET, queueDropIndex } from "@/domain/player/queue";
-import {
-	canChangePlaylists,
-	usePermissions,
-	usePlaylists,
-} from "@/domain/player/usePlayer";
-import type { Permissions } from "@/shared/api/types";
+import { usePlaylists } from "@/domain/player/usePlayer";
+import { permitsPlaylistWrites } from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useDragSource } from "@/shared/ui/dnd";
 import { titleOf } from "./fields";
@@ -13,9 +10,6 @@ import type { TrackRows } from "./project";
 import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
-
-export const canDropOnPlaylist = (permissions: Partial<Permissions>) =>
-	canChangePlaylists(permissions);
 
 export function useTrackDragSource({
 	rows,
@@ -27,7 +21,8 @@ export function useTrackDragSource({
 	selection: Set<number>;
 }) {
 	const { data: playlists = [] } = usePlaylists();
-	const permissions = usePermissions();
+	const { discovery } = useFooJean();
+	const canWritePlaylists = permitsPlaylistWrites(discovery);
 	const addTracks = useAddTracks();
 	const t = useTranslate();
 	const { queueTracks } = useQueueTracks();
@@ -56,7 +51,7 @@ export function useTrackDragSource({
 		canDrop: (id) => {
 			if (id === source.playlistId) return false;
 			if (id === QUEUE_DROP_TARGET || queueDropIndex(id) !== null) return true;
-			return canDropOnPlaylist(permissions);
+			return canWritePlaylists;
 		},
 
 		onDrop: (id, payload) => {

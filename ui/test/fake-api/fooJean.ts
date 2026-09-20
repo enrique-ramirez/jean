@@ -1666,10 +1666,19 @@ export async function handleAgent({
 	}
 
 	if (method === "POST" && path === "/api/playlists") {
+		if (state.latency > 0) await delay(state.latency);
+
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);
 
-		const asked = body as { title?: unknown } | null;
+		const asked = body as {
+			title?: unknown;
+			source?: unknown;
+			structure?: unknown;
+			runs?: unknown;
+			bitset?: unknown;
+			ordinals?: unknown;
+		} | null;
 		if (typeof asked?.title !== "string" || asked.title.length === 0)
 			return json(
 				response,
@@ -1680,8 +1689,76 @@ export async function handleAgent({
 				400,
 			);
 
+		let fillTracks: Track[] | null = null;
+
+		if (asked.source !== undefined) {
+			if (typeof asked.source !== "string" || !GUID_PATTERN.test(asked.source))
+				return json(
+					response,
+					{
+						error: "unacceptable playlist id",
+						detail: "'source' must be a playlist id this component issued",
+					},
+					400,
+				);
+			if (
+				asked.structure !== undefined ||
+				asked.bitset !== undefined ||
+				asked.ordinals !== undefined
+			)
+				return json(
+					response,
+					{
+						error: "malformed request",
+						detail:
+							"'source' is refused with 'structure', 'bitset' or 'ordinals'",
+					},
+					400,
+				);
+
+			const source = state.playlistByGuid(asked.source);
+			if (!source)
+				return json(response, { error: "no such playlist", detail: "" }, 404);
+
+			const selection = decodeSelection(
+				{ runs: asked.runs },
+				source.items.length,
+			);
+			if (!selection.ok)
+				return json(response, selection.body, selection.status);
+
+			fillTracks = selection.ordinals.map((ordinal) => source.items[ordinal]);
+		} else if (
+			asked.structure !== undefined ||
+			asked.runs !== undefined ||
+			asked.bitset !== undefined ||
+			asked.ordinals !== undefined
+		) {
+			if (!fake.canReadLibrary)
+				return json(
+					response,
+					{ error: "the media library is not available" },
+					503,
+				);
+			if (state.libraryFeed.columns.length === 0)
+				return json(response, NOT_BUILT, 503);
+
+			const parsed = parseFill(body, {
+				requireTitle: true,
+				trackCount: state.libraryTracks.length,
+			});
+			if (!parsed.ok) return json(response, parsed.body, parsed.status);
+			if (parsed.structure !== state.libraryFeed.structure)
+				return json(response, STRUCTURE_MOVED, 409);
+
+			const tracks = state.ordinalOrder();
+			fillTracks = parsed.ordinals.map((ordinal) => tracks[ordinal].track);
+		}
+
 		const made = state.addPlaylist(asked.title);
 		const playlist = requirePlaylist(state, made.id);
+		if (fillTracks && fillTracks.length > 0)
+			insertTracks(state, playlist, fillTracks, { replace: true });
 		state.notifyPlaylists();
 
 		return json(response, {
@@ -1699,6 +1776,8 @@ export async function handleAgent({
 
 	const byIdMatch = /^\/api\/playlists\/([^/]+)$/.exec(path);
 	if ((method === "POST" || method === "DELETE") && byIdMatch) {
+		if (state.latency > 0) await delay(state.latency);
+
 		const guid = byIdMatch[1];
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);
@@ -1725,6 +1804,8 @@ export async function handleAgent({
 
 	const moveMatch = /^\/api\/playlists\/([^/]+)\/move$/.exec(path);
 	if (method === "POST" && moveMatch) {
+		if (state.latency > 0) await delay(state.latency);
+
 		const guid = moveMatch[1];
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);
@@ -1853,6 +1934,8 @@ export async function handleAgent({
 
 	const copyMatch = /^\/api\/playlists\/([^/]+)\/items\/copy$/.exec(path);
 	if (method === "POST" && copyMatch) {
+		if (state.latency > 0) await delay(state.latency);
+
 		const guid = copyMatch[1];
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);
@@ -1902,6 +1985,8 @@ export async function handleAgent({
 		path,
 	);
 	if (method === "POST" && removeRowsMatch) {
+		if (state.latency > 0) await delay(state.latency);
+
 		const guid = removeRowsMatch[1];
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);

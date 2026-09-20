@@ -1,3 +1,4 @@
+import type { RecordedRequest } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
@@ -5,6 +6,7 @@ import {
 	guidOfPlaylist,
 	openLibrary,
 	pressAndHold,
+	refusePlaylistWrites,
 	requestsTo,
 	test,
 	trackRow,
@@ -29,6 +31,30 @@ const structureOf = (player: FakePlayer, beefwebId: string) =>
 // counting every request matching the path counts that too.
 const postsTo = (player: FakePlayer, pattern: string) =>
 	requestsTo(player, pattern).filter((entry) => entry.method === "POST");
+
+// Reads of the playlist collection alone, which is where an item count comes from.
+const listReads = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) => entry.method === "GET" && entry.path === "/api/playlists",
+	);
+
+// Anything a copy or a removal could have been built from, before it went out: a
+// read of the playlist collection, which is the only place an item count lives,
+// and any playlist write. A page of rows for the view on screen is neither, and
+// belongs to the list somebody is looking at rather than to the edit. Preflights
+// are the browser's own.
+const countReadsAndWritesBefore = (
+	player: FakePlayer,
+	request: RecordedRequest,
+) =>
+	player.requests
+		.slice(0, player.requests.indexOf(request))
+		.filter(
+			(entry) =>
+				entry.path === "/api/playlists" ||
+				(entry.method === "POST" && entry.path.startsWith("/api/playlists/")),
+		)
+		.map((entry) => `${entry.method} ${entry.path}`);
 
 // Right-click on a pointer, press-and-hold on touch: the same menu, asked for
 // the way each surface asks for it.
@@ -147,6 +173,41 @@ test.describe("adding tracks to a playlist", () => {
 		).toBeVisible();
 	});
 
+	// A copy answers where the rows landed and the generation they landed at, so
+	// there is nothing left for a count to say. Reading one either side of the write
+	// costs two round trips on the path a user waits through, and the answer is stale
+	// the moment the desktop touches the playlist.
+	test("the copy is the only thing sent, with no item count read around it", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		// The list the view was drawn from has to be in the log before it is emptied,
+		// or the load's own read lands inside the window and is counted against the
+		// copy. Nothing here moves the playlists revision, so once it has landed the
+		// poll asks for the list again only when the copy moves it.
+		await expectSettlesAt(player, () => listReads(player).length > 0, true);
+		player.requests.length = 0;
+
+		await addToFavorites(page, 0, isMobile);
+
+		await expect(toast(page)).toContainText(
+			`Added 1 track to ${FAVORITES.title}`,
+		);
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/items/copy").length,
+			1,
+		);
+		expect(
+			countReadsAndWritesBefore(player, postsTo(player, "/items/copy")[0]),
+		).toEqual([]);
+
+		// The one read left is the poll catching up with the playlists revision the
+		// copy moved, which every client on the network gets whoever did the writing.
+		await expectSettlesAt(player, () => listReads(player).length, 1);
+	});
+
 	test("a selection copies in one request, not one per track", async ({
 		page,
 		player,
@@ -256,6 +317,46 @@ test.describe("undoing it", () => {
 		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
 	});
 
+	// A rating, a play count or a retag moves the playlist's content revision and
+	// leaves its rows where they are. The undo is addressed by the structure
+	// generation the copy answered, so none of that is in its way.
+	test("a rating written in the target since does not stop it", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const before = titlesIn(player, FAVORITES.id);
+
+		await addToFavorites(page, 0, isMobile);
+		await expect
+			.poll(() => titlesIn(player, FAVORITES.id).length)
+			.toBe(FAVORITES.itemCount + 1);
+
+		// `retagPlaying` is the fake's only content change that leaves a row where it
+		// is, so the row that changes has to be the playing one.
+		const caughtUp = listReads(player).length;
+		player.playItem(FAVORITES.id, 0);
+		player.retagPlaying({ "%rating%": "4" });
+
+		// Both of those move the playlists revision, and the poll answers by reading
+		// the list. Waiting for that read keeps it out of the window below, where it
+		// would look like Jean counting the rows before removing any.
+		await expect.poll(() => listReads(player).length).toBeGreaterThan(caughtUp);
+
+		player.requests.length = 0;
+		await toast(page).getByRole("button", { name: "Undo" }).click();
+
+		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/items/remove").length,
+			1,
+		);
+		expect(
+			countReadsAndWritesBefore(player, postsTo(player, "/items/remove")[0]),
+		).toEqual([]);
+	});
+
 	// The indices are only ours while nothing else has touched the playlist, and
 	// the desktop is a second writer Jean cannot see coming.
 	test("it abandons itself when the playlist changed underneath", async ({
@@ -287,11 +388,13 @@ test.describe("undoing it", () => {
 			`${FAVORITES.title} has changed since then`,
 		);
 
-		// It removed nothing, rather than removing the wrong rows and reporting it.
+		// The component is what notices. Nothing here reads the playlist first, so the
+		// removal goes out against the generation the copy answered, comes back 409,
+		// and takes nothing off: a check made in the player cannot be raced.
 		await expectSettlesAt(
 			player,
-			() => requestsTo(player, "/items/remove").length,
-			0,
+			() => postsTo(player, "/items/remove").length,
+			1,
 		);
 		expect(titlesIn(player, FAVORITES.id)).toEqual(after);
 	});
@@ -315,6 +418,28 @@ test.describe("undoing it", () => {
 		expect(
 			player.playlists.find((entry) => entry.id === FAVORITES.id)!.items,
 		).toHaveLength(FAVORITES.itemCount + 1);
+	});
+});
+
+// The other refusal an add can meet, and the only one with a remedy: the player
+// owner holds this switch in the component's own preferences. Saying a smart
+// playlist swallowed the tracks would send them looking at the playlist instead.
+test.describe("an add the component refuses outright", () => {
+	test.beforeEach(({ page }) => openLibrary(page));
+
+	// `writePlaylists` by name, because a setting is only actionable if the message
+	// spells what to go and look for. The component's own 403 already says it: Jean
+	// standing in front of that answer must not say less than it does.
+	test("names writePlaylists, and blames no smart playlist", async ({
+		page,
+		isMobile,
+	}) => {
+		await refusePlaylistWrites(page);
+
+		await addToFavorites(page, 0, isMobile);
+
+		await expect(toast(page)).toContainText("writePlaylists");
+		await expect(toast(page)).not.toContainText(/smart playlist/i);
 	});
 });
 

@@ -26,6 +26,7 @@ import {
 	statusBar,
 	test,
 	touchDrag,
+	trackPlayed,
 	trackRow,
 } from "./fixtures.ts";
 import { openPanels, panelTab } from "./nowPlaying.ts";
@@ -1028,6 +1029,223 @@ test("follows a row's cover address when its file moves at the player", async ({
 	});
 
 	await expect.poll(() => coverAsks(player)).toContain(MOVED.cover);
+});
+
+// Ticks handed over one at a time. An edit made at the player reaches Jean on
+// the poll and nowhere else, so what "within one poll" can be measured against
+// is a supply of ticks the test owns: every one is refused, the edit is made,
+// then exactly one goes through. What the client does with that tick is
+// untimed, so a slow machine waits rather than failing, and a client wanting a
+// second tick never gets one.
+const holdThePoll = async (page: Page) => {
+	let allowed = 0;
+	let refused = 0;
+
+	await page.route(
+		(url) => url.pathname === "/api/state",
+		async (route) => {
+			// The browser's own preflight for the `Authorization` header, which
+			// carries no state and must not spend the tick being handed out.
+			if (route.request().method() !== "GET") return route.continue();
+			if (allowed > 0) {
+				allowed -= 1;
+				return route.continue();
+			}
+			refused += 1;
+			return route.abort();
+		},
+	);
+
+	const untilRefusedAgain = async () => {
+		const seen = refused;
+		await expect
+			.poll(() => refused, { message: "the poll stopped asking" })
+			.toBeGreaterThan(seen);
+	};
+
+	// Held before the caller edits anything, so nothing it does can ride a tick
+	// that was already in flight.
+	await untilRefusedAgain();
+
+	return {
+		untilRefusedAgain,
+		letOneThrough: () => {
+			allowed = 1;
+		},
+	};
+};
+
+// An edit made at the player with Jean left alone, and the single tick it is
+// allowed to reach the client on. `stillShows` is read with the edit made and
+// the poll refused since, so it is the screen of a client that has asked and
+// been told nothing.
+const editedAtThePlayer = async (
+	page: Page,
+	edit: () => void,
+	stillShows: () => Promise<void>,
+) => {
+	const poll = await holdThePoll(page);
+	edit();
+	await poll.untilRefusedAgain();
+	await stillShows();
+	poll.letOneThrough();
+};
+
+// A row copied in from another playlist, one of the ways a person adds tracks in
+// foobar2000. Its title is one `WATCHED` does not already carry, so the row that
+// appears cannot be one of its own read twice.
+const ADDED = { from: ALSO_HELD.id, index: 0, title: "Tautou" };
+
+// The row below the one removed, which is what a person is left looking at.
+const EXPOSED_BY_REMOVAL = "Nutshell";
+
+const RENAMED = "Saturday night";
+
+test("shows a row added at the player within one poll", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	await expect(rowByTitle(page, ADDED.title)).toHaveCount(0);
+
+	await editedAtThePlayer(
+		page,
+		() => {
+			expect(player.copyItems(ADDED.from, WATCHED.id, [ADDED.index])).toBe(
+				true,
+			);
+		},
+		() => expect(rowByTitle(page, ADDED.title)).toHaveCount(0),
+	);
+
+	await expect(rowByTitle(page, ADDED.title)).toBeVisible();
+});
+
+test("shows a row removed at the player within one poll", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	await expect(trackRow(page, 0)).toContainText(WATCHED.first);
+
+	await editedAtThePlayer(
+		page,
+		() => {
+			expect(player.removeItems(WATCHED.id, [0])).toBe(true);
+		},
+		() => expect(trackRow(page, 0)).toContainText(WATCHED.first),
+	);
+
+	await expect(trackRow(page, 0)).toContainText(EXPOSED_BY_REMOVAL);
+	await expect(rowByTitle(page, WATCHED.first)).toHaveCount(0);
+});
+
+test("shows rows reordered at the player within one poll", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	await expect(trackRow(page, 0)).toContainText(WATCHED.first);
+
+	await editedAtThePlayer(
+		page,
+		() => {
+			expect(player.sortItems(WATCHED.id, { by: "%title%" })).toBe(true);
+		},
+		() => expect(trackRow(page, 0)).toContainText(WATCHED.first),
+	);
+
+	await expect(trackRow(page, 0)).toContainText(SORTED_FIRST);
+	await expect(trackRow(page, 3)).toContainText(SORTED_LAST);
+});
+
+test("shows the open playlist renamed at the player within one poll", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+
+	await editedAtThePlayer(
+		page,
+		() => {
+			expect(player.renamePlaylist(WATCHED.id, RENAMED)).toBe(true);
+		},
+		() =>
+			expect(
+				page.getByRole("heading", { level: 1, name: WATCHED.title }),
+			).toBeVisible(),
+	);
+
+	await expect(
+		page.getByRole("heading", { level: 1, name: RENAMED }),
+	).toBeVisible();
+});
+
+// Either control, since what is asserted is the value rather than whether it can
+// be written: `Stars` is an `img` and `StarsInput` is a `group`.
+const ratingOf = (page: Page, row: number) =>
+	trackRow(page, row)
+		.getByRole("img", { name: /stars|Unrated/ })
+		.or(trackRow(page, row).getByRole("group", { name: /stars|Unrated/ }));
+
+test.describe("with a rating column drawn on every row", () => {
+	// Pinned for the reason `rating.spec.ts` gives: the compact layout draws two
+	// optional columns, so a phone otherwise shows a different set from a desktop.
+	test.use({ settings: { "jean.columns": ["duration", "rating"] } });
+
+	test("shows a rating written at the player within one poll, without reading the playlist's rows again", async ({
+		page,
+		player,
+	}) => {
+		await openPlaylistView(page, player, WATCHED);
+		const guid = guidOfPlaylist(player, WATCHED.id);
+		await expect(ratingOf(page, 0)).toHaveAccessibleName("Unrated");
+
+		// `retagPlaying` is the fake's only content change that leaves a row where
+		// it is, so the row that changes has to be the playing one. Nothing the
+		// deadline promises turns on that.
+		player.playItem(WATCHED.id, 0);
+		await expect(statusBar(page)).toContainText(WATCHED.first);
+		player.requests.length = 0;
+
+		await editedAtThePlayer(
+			page,
+			() => {
+				player.retagPlaying({ "%rating%": "4" });
+			},
+			() => expect(ratingOf(page, 0)).toHaveAccessibleName("Unrated"),
+		);
+
+		await expect(ratingOf(page, 0)).toHaveAccessibleName("4 of 5 stars");
+		expect(changeReads(player, guid).length).toBeGreaterThan(0);
+		await expectSettlesAt(player, () => wholeRowReads(player, guid), []);
+	});
+});
+
+// beefweb's own address for playing a row, which the component's route replaced.
+const BEEFWEB_PLAY = /^\/api\/player\/play\/[^/]+\/\d+$/;
+
+const beefwebPlays = (player: FakePlayer) =>
+	player.requests
+		.filter((one) => one.method === "POST" && BEEFWEB_PLAY.test(one.path))
+		.map((one) => one.path);
+
+// Not the first row, so a request naming the wrong index plays a different song
+// rather than landing on the right one by luck.
+const PLAYED_ROW = { row: 2, title: "I Stay Away" };
+
+test("plays a double-clicked row through the component rather than through beefweb", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	player.requests.length = 0;
+
+	await trackRow(page, PLAYED_ROW.row).dblclick();
+
+	await expect(statusBar(page)).toContainText(PLAYED_ROW.title);
+	await expect.poll(() => trackPlayed(player)).toBe(PLAYED_ROW.title);
+	await expectSettlesAt(player, () => beefwebPlays(player), []);
 });
 
 test("the queue panel follows a track queued at the player", async ({

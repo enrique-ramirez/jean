@@ -6,7 +6,11 @@ import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import { createPlaylist, requireFooJean } from "@/shared/api/fooJean";
+import {
+	createPlaylist,
+	encodeFill,
+	requireFooJean,
+} from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
@@ -64,8 +68,13 @@ export function SavePlaylistButton({
 				discovery.origin,
 				discovery.token,
 			);
-			const playlist = await createPlaylist(origin, token, { title: name });
-			await library.source.addTo(playlist.id, indices);
+			const playlist = await createPlaylist(origin, token, {
+				title: name,
+				...encodeFill(indices, {
+					structure: library.structure,
+					trackCount: library.paths?.length ?? 0,
+				}),
+			});
 			// Refetched rather than invalidated: the route that follows resolves against this list, and an id it has not
 			// seen yet lands on the old view.
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
@@ -83,6 +92,8 @@ export function SavePlaylistButton({
 		if (title.trim().length > 0 && !save.isPending) save.mutate();
 	};
 
+	if (!canWritePlaylists) return null;
+
 	return (
 		<Menu
 			isOpen={isOpen}
@@ -92,13 +103,11 @@ export function SavePlaylistButton({
 				<Button
 					icon={ListPlus}
 					aria-expanded={isOpen}
-					disabled={!canWritePlaylists || trackCount === 0 || library.isLoading}
+					disabled={trackCount === 0 || library.isLoading}
 					title={library.isLoading ? t("search.stillReading") : undefined}
 					onClick={() => onOpenChange(!isOpen)}
 				>
-					{canWritePlaylists
-						? t("search.saveAsPlaylist")
-						: t("search.saveAsPlaylistLocked")}
+					{t("search.saveAsPlaylist")}
 				</Button>
 			}
 		>

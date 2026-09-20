@@ -4,17 +4,14 @@ import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { isScratchPlaylist, scratchTitle } from "@/domain/track/jeanPlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
-import {
-	copyPlaylistRows,
-	createPlaylist,
-	fetchPlaylistAnnotations,
-} from "@/shared/api/fooJean";
+import { createPlaylist } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
 export const SCRATCH_PIN_KEY = "jean.scratchPlaylist";
 export const SCRATCH_LANDED_KEY = "jean.scratchPlaylistLanded";
+export const SCRATCH_LANDED_COUNT_KEY = "jean.scratchPlaylistLandedCount";
 
 // Module-scope rather than a ref: Home, a view and the now-playing menu each call this hook
 // separately, and a fill started from one must still be able to abandon a fill started from another.
@@ -34,6 +31,10 @@ export function useScratchPlaylist({
 	// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
 	const [landedTitle, setLandedTitle] = useStoredState<string | null>(
 		SCRATCH_LANDED_KEY,
+		null,
+	);
+	const [landedCount, setLandedCount] = useStoredState<number | null>(
+		SCRATCH_LANDED_COUNT_KEY,
 		null,
 	);
 	const queryClient = useQueryClient();
@@ -93,6 +94,7 @@ export function useScratchPlaylist({
 
 			setPinnedId(id);
 			setLandedTitle(title);
+			setLandedCount(refs.length);
 			return id;
 		},
 		[
@@ -101,29 +103,25 @@ export function useScratchPlaylist({
 			playlist,
 			setPinnedId,
 			setLandedTitle,
+			setLandedCount,
 			queryClient,
 			token,
 		],
 	);
 
+	// The playlist's own polled `itemCount` is the fallback for a scratch filled by another device,
+	// which leaves no `landedCount` behind for this one.
 	const adopt = useCallback(
 		async (title: string) => {
 			if (!playlist || !origin || !readyToken) return null;
-			const [created, annotations] = await Promise.all([
-				createPlaylist(origin, readyToken, { title }),
-				fetchPlaylistAnnotations(origin, readyToken),
-			]);
-			const count =
-				annotations?.find((entry) => entry.id === playlist.id)?.itemCount ?? 0;
-			if (count > 0) {
-				await copyPlaylistRows(origin, readyToken, created.id, {
-					source: playlist.id,
-					runs: [[0, count]],
-				});
-			}
+			const count = landedCount ?? playlist.itemCount;
+			const created = await createPlaylist(origin, readyToken, {
+				title,
+				...(count > 0 ? { source: playlist.id, runs: [[0, count]] } : {}),
+			});
 			return created.id;
 		},
-		[playlist, origin, readyToken],
+		[playlist, origin, readyToken, landedCount],
 	);
 
 	return { playlist, holdsView, ensure, adopt };

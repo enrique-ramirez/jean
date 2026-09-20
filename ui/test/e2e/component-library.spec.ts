@@ -2,7 +2,6 @@ import type { RecordedRequest } from "../fake-api/state.ts";
 import {
 	dragFrom,
 	expect,
-	expectDisabledWithItsReason,
 	expectSettlesAt,
 	type FakePlayer,
 	FOO_JEAN_TOKEN,
@@ -110,11 +109,14 @@ const addToPlaylist = (page: Page) =>
 const sidebarRow = (page: Page, title: string) =>
 	sidebar(page).locator("> div").filter({ hasText: title });
 
+// Waits on the queue item rather than on Add to playlist, which an install with
+// playlist writes off does not draw at all: a helper that waited on it could open
+// no menu on the one install this file has a describe about.
 const openTrackMenu = async (page: Page, isMobile: boolean, index: number) => {
 	const row = trackRow(page, index);
 	if (isMobile) await pressAndHold(page, row);
 	else await row.click({ button: "right" });
-	await expect(addToPlaylist(page)).toBeVisible();
+	await expect(menuItem(page, "Add to queue")).toBeVisible();
 };
 
 const fileInto = async (
@@ -649,18 +651,16 @@ test.describe("filing a library row into a playlist of your own", () => {
 				.toBe(1);
 		});
 
-		// The reason goes in the label because that is the only place both surfaces
-		// have: there is no tooltip component, and a phone reaches no `title`. And it
-		// names foo_jean because the setting is the player owner's own, held in the
-		// component's preferences, so that is where somebody goes to undo it.
-		test("Add to playlist is drawn disabled, naming the component's own setting", async ({
+		// Nothing about this install can make the item work, so the menu is one row
+		// shorter rather than carrying one that explains itself.
+		test("Add to playlist is not in the row menu at all", async ({
 			page,
 			isMobile,
 		}) => {
 			await openAllMusic(page);
 			await openTrackMenu(page, isMobile, 2);
 
-			await expectDisabledWithItsReason(addToPlaylist(page));
+			await expect(addToPlaylist(page)).toHaveCount(0);
 		});
 	});
 

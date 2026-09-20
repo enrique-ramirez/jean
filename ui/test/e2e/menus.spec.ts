@@ -1,4 +1,4 @@
-import type { Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
@@ -279,6 +279,16 @@ test.describe("a dropdown owns the keyboard too", () => {
 test.describe("an install that will not let Jean change playlists", () => {
 	test.use({ fooJean: { canWritePlaylists: false } });
 
+	const playlistRow = (page: Page, title: string) =>
+		sidebar(page).locator("> div").filter({ hasText: title });
+
+	const movesAsked = (player: FakePlayer) =>
+		player.requests
+			.filter(
+				(entry) => entry.method === "POST" && entry.path.endsWith("/move"),
+			)
+			.map((entry) => entry.path);
+
 	test("the sidebar offers no edits rather than buttons that would 403", async ({
 		page,
 	}) => {
@@ -291,6 +301,78 @@ test.describe("an install that will not let Jean change playlists", () => {
 		await expect(
 			sidebar(page).getByRole("button", { name: /Favorites/ }),
 		).toBeVisible();
+	});
+
+	// The menu is where a row is filed from on both surfaces, so its absence is
+	// what a phone notices. Everything else in the menu stays: the setting refuses
+	// playlist writes and nothing else.
+	test("the row menu offers nowhere to file a track", async ({
+		page,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+
+		const row = trackRow(page, 0);
+		if (isMobile) await pressAndHold(page, row);
+		else await row.click({ button: "right" });
+		await expect(menuItem(page, "Add to queue")).toBeVisible();
+
+		await expect(menuItem(page, /Add to playlist/)).toHaveCount(0);
+	});
+
+	test("a playlist row offers no rename and no delete", async ({
+		page,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await openSidebar(page);
+
+		const favorites = playlistRow(page, "Favorites");
+		if (isMobile) await pressAndHold(page, favorites);
+		else await favorites.click({ button: "right" });
+
+		await expect(menuItem(page, "Rename")).toHaveCount(0);
+		await expect(menuItem(page, "Delete")).toHaveCount(0);
+	});
+
+	test("a playlist cannot be dragged or keyed into another position", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "reordering is a grip and a key, both desktop-only");
+
+		await openLibrary(page);
+		await openSidebar(page);
+
+		const first = playlistRow(page, "Default Playlist");
+		const second = playlistRow(page, "Library");
+		const from = (await first.boundingBox())!;
+		const onto = (await second.boundingBox())!;
+
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(
+			onto.x + onto.width / 2,
+			onto.y + onto.height * 0.75,
+			{ steps: 12 },
+		);
+		await page.mouse.up();
+
+		// Focused first, or the keys would be refused by a caret that never landed
+		// rather than by the setting.
+		const row = sidebar(page)
+			.getByRole("button", { name: /Default Playlist/ })
+			.first();
+		await row.focus();
+		await expect(row).toBeFocused();
+		await page.keyboard.press("Alt+ArrowDown");
+
+		await expectSettlesAt(player, () => movesAsked(player), []);
+		expect(player.playlists.map((entry) => entry.title).slice(0, 2)).toEqual([
+			"Default Playlist",
+			"Library",
+		]);
 	});
 });
 

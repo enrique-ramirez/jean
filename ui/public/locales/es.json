@@ -21,7 +21,7 @@
 	"add.smartPlaylist": "No se añadió nada a {playlist}. Las listas inteligentes las construye el reproductor y no admiten añadidos.",
 	"add.undoFailed": "No se pudo deshacer.",
 	"add.undoStale": "{playlist} ha cambiado desde entonces, así que no se quitó nada.",
-	"add.writePlaylistsOff": "No se añadió nada a {playlist}. foo_jean tiene desactivada la escritura de listas.",
+	"add.writePlaylistsOff": "No se añadió nada a {playlist}. foo_jean tiene desactivada la escritura de listas; activa writePlaylists en su config.json para permitirlo.",
 	"album.coverAlt": "Carátula de {album}",
 	"album.crumb": "Álbum",
 	"album.disc": "Disco {number}",
@@ -311,7 +311,6 @@
 	"playlist.chooseOne": "Elige una lista para empezar.",
 	"playlist.createRefused": "El reproductor no quiso crear una lista.",
 	"playlist.delete": "Eliminar la lista",
-	"playlist.deleteBlockedByQueue": "Todavía hay pistas de esta lista en la cola, y eliminarla mientras estén ahí pararía el reproductor. Vacía la cola y vuelve a intentarlo.",
 	"playlist.deleteFailed": "No se pudo eliminar {playlist}.",
 	"playlist.deleteWarning": {
 		"one": "{playlist} se quitará del reproductor. Su {count} pista se queda donde está en el disco.",

@@ -123,21 +123,23 @@ export function trackActions({
 			onSelect: () => queueTracks({ source, itemIndices }),
 		},
 		...(rating ? [rating] : []),
-		{ type: "separator" as const },
-		{
-			id: "add",
-			label: canWritePlaylists
-				? t("track.addToPlaylist")
-				: t("track.addToPlaylistLocked"),
-			icon: ListPlus,
-			disabled: !canWritePlaylists || targets.length === 0,
-			filter: t("track.findPlaylist"),
-			items: targets.map((target) => ({
-				id: target.id,
-				label: target.title,
-				icon: ListMusic,
-				onSelect: () => addTracks({ source, target, itemIndices }),
-			})),
-		},
+		...(canWritePlaylists
+			? [
+					{ type: "separator" as const },
+					{
+						id: "add",
+						label: t("track.addToPlaylist"),
+						icon: ListPlus,
+						disabled: targets.length === 0,
+						filter: t("track.findPlaylist"),
+						items: targets.map((target) => ({
+							id: target.id,
+							label: target.title,
+							icon: ListMusic,
+							onSelect: () => addTracks({ source, target, itemIndices }),
+						})),
+					},
+				]
+			: []),
 	];
 }

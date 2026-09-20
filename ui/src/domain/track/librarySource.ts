@@ -3,7 +3,6 @@ import { fetchLibraryNodes, libraryPathMatcher } from "@/shared/api/beefweb";
 import type {
 	FillOwnPlaylistRequest,
 	FillPlaylistRequest,
-	FillResult,
 } from "@/shared/api/fooJean";
 import {
 	copyPlaylistRows,
@@ -31,6 +30,11 @@ export interface ResolvedTrack {
 	columns: string[];
 }
 
+export interface AddedRows {
+	positions: number[];
+	structure?: number;
+}
+
 export interface LibrarySourceCommon {
 	playlistId: string | null;
 
@@ -42,7 +46,7 @@ export interface LibrarySourceCommon {
 		row: TrackColumns,
 		columns?: string[],
 	) => Promise<ResolvedTrack | null>;
-	addTo: (targetId: string, refs: Refs) => Promise<unknown>;
+	addTo: (targetId: string, refs: Refs) => Promise<AddedRows>;
 	queueTargets: (refs: Refs) => Promise<QueueSource>;
 	playingPosition: (
 		refs: Refs,
@@ -109,7 +113,7 @@ const addToPlaylist =
 		structure: number,
 		token: string | null,
 	) =>
-	async (targetId: string, refs: Refs): Promise<FillResult> => {
+	async (targetId: string, refs: Refs): Promise<AddedRows> => {
 		const required = requireFooJean(origin, token);
 
 		const request: FillPlaylistRequest = encodeFill(refs, {
@@ -117,7 +121,13 @@ const addToPlaylist =
 			trackCount: paths.length,
 		});
 
-		return fillPlaylist(required.origin, required.token, targetId, request);
+		const result = await fillPlaylist(
+			required.origin,
+			required.token,
+			targetId,
+			request,
+		);
+		return { positions: result.positions };
 	};
 
 const queueLibraryTracks =
@@ -241,7 +251,7 @@ const fromPlaylist = ({
 		kind: "rows",
 		targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
 	}),
-	addTo: async (targetId: string, refs: Refs) => {
+	addTo: async (targetId: string, refs: Refs): Promise<AddedRows> => {
 		const required = requireFooJean(origin, token);
 		return copyPlaylistRows(required.origin, required.token, targetId, {
 			source: playlistId,

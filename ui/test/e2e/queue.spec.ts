@@ -172,21 +172,6 @@ const rowQueuedAtThePlayer = (
 	return String(track["%title%"] ?? "");
 };
 
-// The same press, repeated: what somebody who queued a large selection at the
-// desktop leaves behind. Rows repeat because the fixture's playlists are shorter
-// than the queue this needs, and an entry is an entry to the guard either way.
-const rowsQueuedAtThePlayer = (
-	player: FakePlayer,
-	playlistId: string,
-	indices: number[],
-) =>
-	player.queueInsert(
-		indices.map((index) => ({
-			playlistId,
-			track: trackOfPlaylist(player, playlistId, index),
-		})),
-	);
-
 // The same press on a library track with no playlist open: the player holds the
 // handle alone, and there is no position for beefweb to name it by.
 const trackQueuedAtThePlayer = (player: FakePlayer, ordinal: number) => {
@@ -948,7 +933,13 @@ test.describe("what the player does with it", () => {
 });
 
 test.describe("deleting a playlist the queue points into", () => {
-	test("clears the queue of it before sending the delete", async ({
+	// An entry whose playlist has gone is the player's own business, and
+	// `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, has what
+	// foobar2000 does with one. The client's half is this: the panel has an entry
+	// it can no longer resolve a playlist for, and it goes on drawing it rather
+	// than emptying itself or throwing. `sidebar.spec.ts` covers the other half,
+	// that the delete asks the queue nothing at all.
+	test("the entry stays in the panel with its playlist gone", async ({
 		page,
 		player,
 		isMobile,
@@ -963,62 +954,21 @@ test.describe("deleting a playlist the queue points into", () => {
 
 		await queueTracks(page, isMobile, 0);
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
+		const [queued] = queuedAtThePlayer(player);
 
 		await deletePlaylist(page, isMobile, "Favorites");
-
 		await expect
 			.poll(() => player.playlists.some((entry) => entry.id === "p2"), {
 				timeout: 5000,
 			})
 			.toBe(false);
 
-		// Deleting a playlist the queue points into crashes foo_beefweb and takes
-		// foobar2000 with it, so the order of these two is the assertion. Both the
-		// queue and the delete itself go through the component now.
-		const order = player.requests.filter(
-			(entry) =>
-				emptiesTheQueue(entry) ||
-				(entry.method === "DELETE" && entry.path === `/api/playlists/${guid}`),
-		);
-
-		expect(
-			order.length,
-			"the queue was never emptied of the playlist at the component",
-		).toBeGreaterThan(1);
-		expect(order.at(-1)?.path).toBe(`/api/playlists/${guid}`);
-		expect(
-			order.slice(0, -1).every((entry) => entry.path.startsWith("/api/queue")),
-		).toBe(true);
-		expect(queuedAtThePlayer(player)).toHaveLength(0);
-	});
-
-	// `QUEUE_LIMIT` is a thousand and a selection that size is one press away, so
-	// a queue longer than any one pass through it is ordinary rather than
-	// pathological. Sixty-five is written out rather than read off the guard,
-	// since a test that took its number from the thing it is testing would agree
-	// with whatever that number was changed to. It costs a read and a removal per
-	// entry, which is the shape the component's routes have today.
-	test("clears all sixty-five of a playlist's queue entries before sending the delete", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
-		rowsQueuedAtThePlayer(
-			player,
-			"p2",
-			Array.from({ length: 65 }, (_, at) => at % 7),
-		);
-		expect(queuedAtThePlayer(player)).toHaveLength(65);
-
-		await page.goto("/");
-		await deletePlaylist(page, isMobile, "Favorites");
-
-		await expect
-			.poll(() => player.playlists.some((entry) => entry.id === "p2"), {
-				timeout: 10_000,
-			})
-			.toBe(false);
-		expect(queuedAtThePlayer(player)).toHaveLength(0);
+		// Opened after the delete, so the panel draws whatever the component
+		// answers for a queue whose playlist is not there any more.
+		await openQueue(page);
+		await expect(queueRows(page)).toHaveCount(1);
+		await expect(queuePanel(page)).toContainText(queued.title);
+		expect(queuedAtThePlayer(player)).toHaveLength(1);
 	});
 });
 

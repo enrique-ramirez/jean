@@ -1,3 +1,4 @@
+import type { RecordedRequest } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	dragFrom,
@@ -10,6 +11,7 @@ import {
 	openNowPlaying,
 	openSidebar,
 	pressAndHold,
+	refusePlaylistWrites,
 	requestsTo,
 	scrollUntilMounted,
 	searchFor,
@@ -84,6 +86,61 @@ const listReads = (player: FakePlayer) =>
 	player.requests.filter(
 		(one) => one.method === "GET" && one.path === "/api/playlists",
 	).length;
+
+// Everything the component was asked about the play queue before a given request
+// went out, as method and path, so a failure names the call rather than a number.
+const queueAskedBefore = (player: FakePlayer, request: RecordedRequest) =>
+	player.requests
+		.slice(0, player.requests.indexOf(request))
+		.filter((one) => one.path.startsWith("/api/queue"))
+		.map((one) => `${one.method} ${one.path}`);
+
+// Anything that would change the queue rather than read it. A read after a delete
+// is the player's own news: losing its playlist costs a queued entry the position
+// it was published with, which moves the queue revision for every client on the
+// network. A write is Jean taking somebody's queue apart.
+const queueWrites = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(one) =>
+				one.path.startsWith("/api/queue") &&
+				one.method !== "GET" &&
+				one.method !== "OPTIONS",
+		)
+		.map((one) => `${one.method} ${one.path}`);
+
+// The playlists the sidebar draws, in the order it draws them. A reorder Jean made
+// on its own shows nowhere else: the player's list has not moved.
+const PLAYLIST_TITLES = [DEFAULT_PLAYLIST, LIBRARY, FAVORITES, SPANISH, AUTO];
+
+const playlistsDrawn = async (page: Page) => {
+	const rows = await sidebar(page).locator("[data-nav-row]").allTextContents();
+	return rows
+		.map((text) =>
+			PLAYLIST_TITLES.find((title) => text.trim().startsWith(title)),
+		)
+		.filter((title) => title !== undefined);
+};
+
+// Long enough that waiting for the player is the difference between a screen
+// somebody can work with and one that is not there yet. A phone at the edge of the
+// house is the case: on localhost every answer lands before the next frame, so
+// with nothing held an eager screen and a patient one read the same.
+const PLAYER_HELD_MS = 6000;
+const AT_ONCE_MS = 2000;
+
+const holdThePlayer = (page: Page) =>
+	page.request.post("/__control/latency", { data: { ms: PLAYER_HELD_MS } });
+
+const queueRow = async (page: Page, index: number, isMobile: boolean) => {
+	const row = trackRow(page, index);
+	if (isMobile) await pressAndHold(page, row);
+	else await row.click({ button: "right" });
+	const item = page.getByRole("menuitem", { name: "Add to queue" });
+	await expect(item).toBeEnabled();
+	await item.click();
+	await expect(item).toHaveCount(0);
+};
 
 // The fake's own key for a playlist, which is how a spec drives the player from
 // outside the app. Found by title, since the address Jean uses is the question
@@ -192,6 +249,25 @@ test.describe("creating a playlist", () => {
 			.not.toContain("New playlist");
 	});
 
+	test("the row opens in rename mode without waiting for the player", async ({
+		page,
+		player,
+	}) => {
+		await openApp(page);
+		await holdThePlayer(page);
+
+		await page.getByRole("button", { name: "New playlist" }).click();
+
+		const field = page.getByRole("textbox", { name: "Rename New playlist" });
+		await expect(field).toBeFocused({ timeout: AT_ONCE_MS });
+
+		// A field that cannot be committed from is not rename mode. The row has no id
+		// of the player's yet, so the name typed into it has to wait for one.
+		await field.fill("Road trip");
+		await page.keyboard.press("Enter");
+		await expect.poll(() => titlesInOrder(player)).toContain("Road trip");
+	});
+
 	test("a second one does not take the same name", async ({ page, player }) => {
 		await openApp(page);
 		const add = page.getByRole("button", { name: "New playlist" });
@@ -220,6 +296,32 @@ test.describe("renaming a playlist", () => {
 
 		await expect(link(page, "Bangers")).toBeVisible();
 		await expect.poll(() => titlesInOrder(player)).toContain("Bangers");
+	});
+
+	// The write is held so that the two states can be told apart at all. A sidebar
+	// that waits for the component looks identical to one that does not while the
+	// answer takes a frame, and looks like a dead row for as long as the answer
+	// takes on a link that is having a bad afternoon.
+	test("the row carries the new name before the component has answered", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openApp(page);
+		await menuFor(page, FAVORITES, isMobile);
+		await page.getByRole("menuitem", { name: "Rename" }).click();
+		await holdThePlayer(page);
+
+		await page
+			.getByRole("textbox", { name: `Rename ${FAVORITES}` })
+			.fill("Bangers");
+		await page.keyboard.press("Enter");
+
+		await expect(link(page, "Bangers")).toBeVisible({ timeout: AT_ONCE_MS });
+		expect(
+			titlesInOrder(player),
+			"the fake has to hold a playlist write behind /__control/latency",
+		).toContain(FAVORITES);
 	});
 
 	test("Escape leaves the name alone", async ({ page, player, isMobile }) => {
@@ -277,6 +379,59 @@ test.describe("deleting a playlist", () => {
 				).length,
 			0,
 		);
+	});
+
+	// The player keeps playing a queued track whose playlist has gone, so clearing
+	// the queue first would throw away something the user asked for to avert
+	// nothing. `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, has what
+	// foobar2000 actually does with a queued entry whose playlist is deleted.
+	test("a track queued out of it stays queued, and the delete asks the queue nothing first", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openApp(page);
+		const guid = player.playlists.find(
+			(entry) => entry.title === FAVORITES,
+		)!.guid;
+		await link(page, FAVORITES).click();
+		await expect(
+			page.getByRole("heading", { level: 1, name: FAVORITES }),
+		).toBeVisible();
+
+		await queueRow(page, 0, isMobile);
+		// Settled rather than polled: queueing opens the panel, which reads the queue
+		// back, and a read still in flight would land the far side of the clear and
+		// be counted against the delete.
+		await expectSettlesAt(player, () => player.playQueue.length, 1);
+		// Scoped to the panel: on a phone the scrim behind it carries the same name.
+		await page
+			.getByRole("complementary", { name: "Queue" })
+			.getByRole("button", { name: "Close the queue" })
+			.click();
+
+		player.requests.length = 0;
+
+		await openSidebar(page);
+		await menuFor(page, FAVORITES, isMobile);
+		await page.getByRole("menuitem", { name: "Delete" }).click();
+		await page.getByRole("menuitem", { name: "Delete playlist" }).click();
+
+		await expect(link(page, FAVORITES)).toHaveCount(0);
+
+		// The guard that went read the queue and emptied it of the playlist before
+		// sending any of this, so what it left behind is queue calls ahead of the
+		// delete.
+		const sent = () =>
+			player.requests.find(
+				(one) =>
+					one.method === "DELETE" && one.path === `/api/playlists/${guid}`,
+			);
+		await expect.poll(() => sent() !== undefined).toBe(true);
+		expect(queueAskedBefore(player, sent()!)).toEqual([]);
+
+		await expectSettlesAt(player, () => queueWrites(player), []);
+		expect(player.playQueue).toHaveLength(1);
 	});
 
 	test("deleting what you are looking at steps onto the neighbour", async ({
@@ -638,6 +793,71 @@ test.describe("reordering playlists", () => {
 		await expect
 			.poll(() => titlesInOrder(player).slice(0, 2))
 			.toEqual([LIBRARY, DEFAULT_PLAYLIST]);
+	});
+});
+
+// Every one of these draws the change before the player has agreed to it, which is
+// what makes the sidebar feel like the list rather than a view of it. The price is
+// that a refusal has to be taken back on screen, and a sidebar left showing an edit
+// the player refused is a lie that survives until the next poll happens to notice.
+test.describe("an edit the component refuses", () => {
+	test("a rename goes back to the name the player still has", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openApp(page);
+		await refusePlaylistWrites(page);
+
+		await menuFor(page, FAVORITES, isMobile);
+		await page.getByRole("menuitem", { name: "Rename" }).click();
+		await page
+			.getByRole("textbox", { name: `Rename ${FAVORITES}` })
+			.fill("Bangers");
+		await page.keyboard.press("Enter");
+
+		await expect(page.getByRole("status")).toBeVisible();
+		await expect(link(page, FAVORITES)).toBeVisible();
+		await expect(link(page, "Bangers")).toHaveCount(0);
+		expect(titlesInOrder(player)).toContain(FAVORITES);
+	});
+
+	test("a delete puts the playlist back", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openApp(page);
+		await refusePlaylistWrites(page);
+
+		await menuFor(page, FAVORITES, isMobile);
+		await page.getByRole("menuitem", { name: "Delete" }).click();
+		await page.getByRole("menuitem", { name: "Delete playlist" }).click();
+
+		await expect(page.getByRole("status")).toBeVisible();
+		await expect(link(page, FAVORITES)).toBeVisible();
+		expect(titlesInOrder(player)).toContain(FAVORITES);
+	});
+
+	test("a reorder puts the row back where it was", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "Alt and the arrows are the desktop's way to reorder");
+
+		await openApp(page);
+		await refusePlaylistWrites(page);
+
+		await link(page, DEFAULT_PLAYLIST).focus();
+		await page.keyboard.press("Alt+ArrowDown");
+
+		await expect(page.getByRole("status")).toBeVisible();
+		await expect.poll(() => playlistsDrawn(page)).toEqual(PLAYLIST_TITLES);
+		expect(titlesInOrder(player).slice(0, 2)).toEqual([
+			DEFAULT_PLAYLIST,
+			LIBRARY,
+		]);
 	});
 });
 

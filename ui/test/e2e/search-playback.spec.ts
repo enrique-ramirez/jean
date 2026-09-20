@@ -2,7 +2,6 @@ import type { Track } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
-	expectDisabledWithItsReason,
 	expectPlayingFrom,
 	expectSettlesAt,
 	openLibrary,
@@ -454,7 +453,62 @@ test.describe("clearing the search", () => {
 	});
 });
 
+// Every write the component was asked for under `/api/playlists`, by path. A copy
+// or a fill after the create would show up here beside it.
+const playlistWrites = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) =>
+				entry.method === "POST" && entry.path.startsWith("/api/playlists"),
+		)
+		.map((entry) => entry.path);
+
+const itemsOf = (player: FakePlayer, title: string) =>
+	player.playlists.find((entry) => entry.title === title)?.items ?? [];
+
 test.describe("saving results as a playlist", () => {
+	// The create carries the rows, so both paths cost the same one job of the
+	// player's. Two requests is two chances for the desktop to get between them,
+	// and a playlist left half filled is the user's to clean up.
+	test("is one request where the scratch is already holding the results", async ({
+		page,
+		player,
+	}) => {
+		await searchAndPlay(page, player);
+		// The play is a request of its own after the fill, and `searchAndPlay` waits
+		// only for the fill. On a loaded machine it lands the far side of the clear
+		// and sits inside the window that is meant to hold the save alone.
+		await expectSettlesAt(
+			player,
+			() => playedFrom(player)?.id,
+			scratchOf(player)?.guid,
+		);
+		player.requests.length = 0;
+
+		await saveAs(page, "Keepers");
+
+		await expectSettlesAt(player, () => playlistWrites(player), [
+			"/api/playlists",
+		]);
+		expect(itemsOf(player, "Keepers")).toHaveLength(QUERY.matches);
+	});
+
+	test("is one request where nothing has been played yet", async ({
+		page,
+		player,
+	}) => {
+		await search(page, QUERY.text);
+		await expectSettlesAt(player, () => scratchOf(player), undefined);
+		player.requests.length = 0;
+
+		await saveAs(page, "Unplayed");
+
+		await expectSettlesAt(player, () => playlistWrites(player), [
+			"/api/playlists",
+		]);
+		expect(itemsOf(player, "Unplayed")).toHaveLength(QUERY.matches);
+	});
+
 	test("saving copies the results without disturbing what is already playing", async ({
 		page,
 		player,
@@ -691,12 +745,17 @@ test.describe("a beefweb install that will not let Jean change playlists", () =>
 test.describe("where the player owner has turned playlist writes off", () => {
 	test.use({ fooJean: { canWritePlaylists: false } });
 
-	test("Save as playlist is drawn disabled, naming the component's own setting", async ({
-		page,
-	}) => {
+	// A control that can never be pressed is furniture, and the player owner already
+	// knows they set the setting a label would explain to them.
+	test("Save as playlist is not drawn at all", async ({ page }) => {
 		await search(page, QUERY.text);
 
-		await expectDisabledWithItsReason(saveAsPlaylist(page));
+		// The header is otherwise whole: what is gone is the one control the setting
+		// refuses, not the view around it.
+		await expect(
+			viewHeader(page).getByRole("button", { name: "Play", exact: true }),
+		).toBeVisible();
+		await expect(saveAsPlaylist(page)).toHaveCount(0);
 	});
 });
 

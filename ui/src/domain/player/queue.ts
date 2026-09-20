@@ -4,7 +4,6 @@ import {
 	type FillPlaylistRequest,
 	fetchQueue,
 	type QueueRead,
-	removeQueueEntry,
 } from "@/shared/api/fooJean";
 
 export const QUEUE_KEY = ["queue"];
@@ -75,49 +74,4 @@ export async function recheckQueue(
 
 	const read = await fetchQueue(origin, token);
 	if (read) client.setQueryData(QUEUE_KEY, read);
-}
-
-const matchingIndices = (entries: QueueRead["entries"], guid: string | null) =>
-	entries.reduce<number[]>((indices, entry, at) => {
-		if (entry.location?.playlistId === guid) indices.push(at);
-		return indices;
-	}, []);
-
-const MAX_CONSECUTIVE_STALE_REREADS = 3;
-
-// The revision math rests on the component bumping it by exactly one per accepted
-// mutation; see ../../shared/api/README.md, *What Jean does about the queue*.
-export async function dequeuePlaylist(
-	origin: string,
-	token: string,
-	guid: string | null,
-): Promise<boolean> {
-	let read = await fetchQueue(origin, token);
-	if (!read) return false;
-
-	let revision = read.revision;
-	let pending = matchingIndices(read.entries, guid);
-	let staleRereads = 0;
-
-	while (pending.length > 0) {
-		const at = pending.pop();
-		if (at === undefined) break;
-
-		const removed = await removeQueueEntry(origin, token, at, revision);
-		if (removed.ok) {
-			revision += 1;
-			staleRereads = 0;
-			continue;
-		}
-		if (removed.reason === "failed") return false;
-
-		staleRereads += 1;
-		if (staleRereads > MAX_CONSECUTIVE_STALE_REREADS) return false;
-
-		read = await fetchQueue(origin, token);
-		if (!read) return false;
-		revision = read.revision;
-		pending = matchingIndices(read.entries, guid);
-	}
-	return true;
 }

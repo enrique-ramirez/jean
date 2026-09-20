@@ -44,13 +44,11 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 import { clamp } from "@/shared/lib/math";
-import { refusal } from "@/shared/lib/refusal";
 import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
 import { usePlayingPlaylist } from "./playlistJoin";
 import { audibleAt, positionAt } from "./position";
-import { dequeuePlaylist, QUEUE_KEY } from "./queue";
 
 export const PLAYLISTS_KEY = ["playlists"];
 
@@ -142,10 +140,11 @@ export function usePermissions(): Partial<Permissions> {
 export const canChangePlaylists = (permissions: Partial<Permissions>) =>
 	permissions.changePlaylists !== false;
 
-function useOptimisticWrite<TData, TInput>(
+function useOptimisticWrite<TData, TInput, TResult = unknown>(
 	queryKey: QueryKey,
-	mutationFn: (input: TInput) => Promise<unknown>,
+	mutationFn: (input: TInput) => Promise<TResult>,
 	patch: (previous: TData, input: TInput) => TData | null,
+	reconcile?: (previous: TData, input: TInput, result: TResult) => TData | null,
 ) {
 	const queryClient = useQueryClient();
 
@@ -159,6 +158,14 @@ function useOptimisticWrite<TData, TInput>(
 			if (next) queryClient.setQueryData(queryKey, next);
 			return { previous };
 		},
+
+		onSuccess: reconcile
+			? (result: TResult, input: TInput) => {
+					const current = queryClient.getQueryData<TData>(queryKey);
+					const next = current ? reconcile(current, input, result) : null;
+					if (next) queryClient.setQueryData(queryKey, next);
+				}
+			: undefined,
 
 		onError: (
 			_error: unknown,
@@ -198,33 +205,50 @@ const usePlayerPatch = <TInput>(
 const renumber = (playlists: PlaylistInfo[]) =>
 	playlists.map((entry, index) => ({ ...entry, index }));
 
-const usePlaylistPatch = <TInput>(
-	mutationFn: (input: TInput) => Promise<unknown>,
+const usePlaylistPatch = <TInput, TResult = unknown>(
+	mutationFn: (input: TInput) => Promise<TResult>,
 	patch: (playlists: PlaylistInfo[], input: TInput) => PlaylistInfo[],
+	reconcile?: (
+		playlists: PlaylistInfo[],
+		input: TInput,
+		result: TResult,
+	) => PlaylistInfo[],
 ) =>
-	useOptimisticWrite<PlaylistInfo[], TInput>(
+	useOptimisticWrite<PlaylistInfo[], TInput, TResult>(
 		PLAYLISTS_KEY,
 		mutationFn,
 		(previous, input) => renumber(patch(previous, input)),
+		reconcile &&
+			((previous, input, result) =>
+				renumber(reconcile(previous, input, result))),
 	);
 
 export function usePlaylistActions() {
-	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
 
-	const create = useMutation({
-		mutationFn: async (title: string) => {
+	const create = usePlaylistPatch<{ id: string; title: string }, PlaylistInfo>(
+		async ({ title }) => {
 			const { origin, token } = requireFooJean(
 				discovery.origin,
 				discovery.token,
 			);
-			const annotation = await createPlaylist(origin, token, { title });
-			// Refetched rather than invalidated: what follows resolves against this list, and a row not
-			// in it yet cannot be put into rename mode.
-			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
-			return playlistInfoOf(annotation);
+			return playlistInfoOf(await createPlaylist(origin, token, { title }));
 		},
-	});
+		(playlists, { id, title }) => [
+			...playlists,
+			{
+				id,
+				title,
+				itemCount: 0,
+				structure: 0,
+				revision: 0,
+				index: playlists.length,
+				...NOT_TRACKED,
+			},
+		],
+		(playlists, { id }, created) =>
+			playlists.map((entry) => (entry.id === id ? created : entry)),
+	);
 
 	return {
 		create,
@@ -244,20 +268,11 @@ export function usePlaylistActions() {
 		),
 
 		remove: usePlaylistPatch(
-			async (id: string) => {
+			(id: string) => {
 				const { origin, token } = requireFooJean(
 					discovery.origin,
 					discovery.token,
 				);
-				try {
-					// `id` is the same GUID `GET /playlists` carries, so there is nothing left to
-					// resolve here: `dequeuePlaylist` reads the queue directly against it.
-					const dequeued = await dequeuePlaylist(origin, token, id);
-					if (!dequeued)
-						throw refusal(translate("playlist.deleteBlockedByQueue"));
-				} finally {
-					await queryClient.refetchQueries({ queryKey: QUEUE_KEY });
-				}
 				return removePlaylist(origin, token, id);
 			},
 			(playlists, id) => playlists.filter((entry) => entry.id !== id),

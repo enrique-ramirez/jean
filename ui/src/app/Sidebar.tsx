@@ -28,15 +28,14 @@ import { isSearchRoute } from "@/domain/library/searchRoute";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useAutoPlaylists } from "@/domain/player/useAutoPlaylists";
 import {
-	canChangePlaylists,
 	untitledPlaylistName,
-	usePermissions,
 	usePlaylistActions,
 } from "@/domain/player/usePlayer";
 import { withoutJeanPlaylists } from "@/domain/track/jeanPlaylists";
-import { canDropOnPlaylist } from "@/domain/track/useTrackDragSource";
+import { permitsPlaylistWrites } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
@@ -134,17 +133,20 @@ export function Sidebar({
 }) {
 	const t = useTranslate();
 	const format = useFormats();
-	const permissions = usePermissions();
+	const { discovery } = useFooJean();
+	const canEdit = permitsPlaylistWrites(discovery);
 	const { create, rename, remove, move } = usePlaylistActions();
 	const drag = useDragState();
 	const autoPlaylists = useAutoPlaylists();
-	const canEdit = canChangePlaylists(permissions);
 
 	const menu = useContextMenu({ disabled: !canEdit });
 	const swipe = useSwipe({ onLeft: onDismiss });
 	const [targetId, setTargetId] = useState<string | null>(null);
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [focusedId, setFocusedId] = useState<string | null>(null);
+	const [pendingCreates, setPendingCreates] = useState(
+		new Map<string, Promise<string | null>>(),
+	);
 
 	const shown = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
 
@@ -232,11 +234,32 @@ export function Sidebar({
 			message: isRefusal(error) ? error.message : message,
 		});
 
-	const newPlaylist = () =>
-		create.mutate(untitledPlaylistName(shown), {
-			onSuccess: (playlist) => setRenamingId(playlist.id),
-			onError: refused(t("playlist.createRefused")),
-		});
+	const newPlaylist = () => {
+		const id = `pending:${crypto.randomUUID()}`;
+		const title = untitledPlaylistName(shown);
+		setRenamingId(id);
+
+		const landed = create.mutateAsync({ id, title }).then(
+			(playlist) => {
+				setRenamingId((current) => (current === id ? playlist.id : current));
+				return playlist.id;
+			},
+			(error) => {
+				refused(t("playlist.createRefused"))(error);
+				return null;
+			},
+		);
+
+		setPendingCreates((current) => new Map(current).set(id, landed));
+		landed.finally(() =>
+			setPendingCreates((current) => {
+				if (!current.has(id)) return current;
+				const next = new Map(current);
+				next.delete(id);
+				return next;
+			}),
+		);
+	};
 
 	const deletePlaylist = (playlist: PlaylistInfo) => {
 		if (playlist.id === selectedId) {
@@ -391,8 +414,11 @@ export function Sidebar({
 						isPlaying={playlist.id === playingPlaylistId}
 						isSelected={playlist.id === selectedId}
 						isRenaming={playlist.id === renamingId}
+						isPending={pendingCreates.has(playlist.id)}
 						isAuto={autoPlaylists.has(playlist.id)}
-						isDropTarget={canDropOnPlaylist(permissions) && drag.isDragging}
+						isDropTarget={
+							canEdit && drag.isDragging && !pendingCreates.has(playlist.id)
+						}
 						isDropOver={drag.over === playlist.id}
 						canEdit={canEdit}
 						rowProps={sortable.itemProps(index)}
@@ -409,7 +435,11 @@ export function Sidebar({
 								menu.triggerProps.onContextMenu(event);
 							},
 						}}
-						onSelect={() => onSelect(playlist.id)}
+						onSelect={
+							pendingCreates.has(playlist.id)
+								? undefined
+								: () => onSelect(playlist.id)
+						}
 						onFocus={() => setFocusedId(playlist.id)}
 						onBlur={() =>
 							setFocusedId((current) =>
@@ -418,11 +448,32 @@ export function Sidebar({
 						}
 						onRename={(title) => {
 							setRenamingId(null);
+
+							const pending = pendingCreates.get(playlist.id);
+							if (pending) {
+								if (title) {
+									pending.then((id) => {
+										if (id && title !== playlist.title)
+											rename.mutate(
+												{ id, title },
+												{
+													onError: refused(
+														t("playlist.renameFailed", { playlist: title }),
+													),
+												},
+											);
+									});
+								}
+								return;
+							}
+
 							if (title && title !== playlist.title) {
 								rename.mutate(
 									{ id: playlist.id, title },
 									{
-										onError: refused(`${playlist.title} could not be renamed.`),
+										onError: refused(
+											t("playlist.renameFailed", { playlist: playlist.title }),
+										),
 									},
 								);
 							}
@@ -458,6 +509,7 @@ function PlaylistRow({
 	isPlaying,
 	isSelected,
 	isRenaming,
+	isPending,
 	isAuto,
 	isDropTarget,
 	isDropOver,
@@ -475,6 +527,7 @@ function PlaylistRow({
 	isPlaying: boolean;
 	isSelected: boolean;
 	isRenaming: boolean;
+	isPending: boolean;
 	isAuto: boolean;
 	isDropTarget: boolean;
 	isDropOver: boolean;
@@ -483,7 +536,7 @@ function PlaylistRow({
 	dragProps: PropBag;
 	handleProps: PropBag;
 	menuProps: PropBag;
-	onSelect: () => void;
+	onSelect?: () => void;
 	onFocus: () => void;
 	onBlur: () => void;
 	onRename: (title: string | null) => void;
@@ -498,6 +551,17 @@ function PlaylistRow({
 			<div className={styles.row} ref={ref} style={dragStyle} {...rowState}>
 				<RenameField title={playlist.title} onCommit={onRename} />
 			</div>
+		);
+	}
+
+	if (isPending) {
+		return (
+			<NavRow
+				icon={isAuto ? WandSparkles : ListMusic}
+				label={playlist.title}
+				count={format.number(playlist.itemCount)}
+				rowProps={{ ref, style: dragStyle, ...rowState }}
+			/>
 		);
 	}
 

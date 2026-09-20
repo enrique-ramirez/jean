@@ -32,7 +32,7 @@ export const en = {
 	"add.undoFailed": "Could not undo that.",
 	"add.undoStale": "{playlist} has changed since then, so nothing was removed.",
 	"add.writePlaylistsOff":
-		"Nothing was added to {playlist}. foo_jean has playlist writes turned off.",
+		"Nothing was added to {playlist}. foo_jean has playlist writes turned off; turn on writePlaylists in its config.json to allow them.",
 	"album.coverAlt": "{album} cover",
 	"album.crumb": "Album",
 	"album.disc": "Disc {number}",
@@ -379,8 +379,6 @@ export const en = {
 	"playlist.chooseOne": "Select a playlist to begin.",
 	"playlist.createRefused": "The player would not create a playlist.",
 	"playlist.delete": "Delete playlist",
-	"playlist.deleteBlockedByQueue":
-		"Tracks from this playlist are still in the play queue, and deleting it while they are would stop the player. Clear the queue and try again.",
 	"playlist.deleteFailed": "{playlist} could not be deleted.",
 	"playlist.deleteWarning": {
 		one: "{playlist} will be removed from the player. Its {count} track stays where it is on disk.",
@@ -394,6 +392,7 @@ export const en = {
 	"playlist.new": "New playlist",
 	"playlist.newName": "New playlist",
 	"playlist.playingFrom": "Playing from",
+	"playlist.renameFailed": "{playlist} could not be renamed.",
 	"playlist.renameOne": "Rename {playlist}",
 	"playlist.reorderRefused": "The player would not reorder that.",
 	"queue.close": "Close the queue",

@@ -413,6 +413,11 @@ export function handleControl({
 		return empty(response);
 	}
 
+	if (action === "writePlaylists") {
+		state.fooJean.canWritePlaylists = input.canWrite !== false;
+		return empty(response);
+	}
+
 	if (action === "skipGap") {
 		state.skipGapMs = Number(input?.ms) || 0;
 		return empty(response);

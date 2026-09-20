@@ -20,7 +20,7 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **Every queue change reaches `foo_jean` as one request, with no local copy to keep or reconcile.** `../../shared/api/README.md`, *What Jean does about the queue*, has the shape and what a stale revision answers.
 
-**The queue entries are cleared before a playlist is deleted, and the delete abandoned if they will not clear**, for the reason `../../shared/api/README.md` gives under its crash warning. That guard belongs to the *operation*, not to the sidebar, since the failure mode is the whole of foobar2000.
+**A playlist delete asks the queue nothing**: a queued entry outlives the playlist it pointed into, and `plugins/fb2k/ARCHITECTURE.md`'s *Facts about the player* has what foobar2000 does with it and what reading one carelessly costs.
 
 **Queueing checks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits.** Every queue mutation goes through the component rather than through beefweb, so one gate covers a library row, a playlist row, a move, a remove and a clear alike.
 

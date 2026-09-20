@@ -44,7 +44,7 @@ Two boundaries are genuinely ambiguous and both go to the lower, more common sca
 
 **Adding tracks to a playlist does not check for duplicates.** foobar2000 playlists are ordered lists, not sets; inventing a uniqueness rule the player does not have would be lying about the data. There is no cheap check available either: items have no id, so identity is `%path%`, and reading it is a request of its own before the drop could land.
 
-**Undo instead, as the general rule for anything that writes.** Since tracks are appended, the indices just created are exactly the range past the old count, so undo costs no extra request and needs no path matching. **Re-read `itemCount` before undoing and abandon it if it no longer matches**: the desktop may have changed the playlist underneath, and removing the wrong rows is far worse than not offering the undo.
+**Undo instead, as the general rule for anything that writes.** The write answers exactly where the rows landed, so undo needs no path matching, and a copy names the structure generation it landed at too, so undo costs no extra request there; a fill by library ordinals carries no structure of its own and asks for it once, only if undo is pressed. **A `409` on the removal, not a re-read of `itemCount`, is what says the desktop changed the playlist underneath.**
 
 ### Following playback
 

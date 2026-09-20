@@ -425,6 +425,21 @@ export const expectDisabledWithItsReason = async (control: Locator) => {
 	await expect(control).not.toHaveAccessibleName(READS_AS_A_LOGIN);
 };
 
+// The player owner turning `writePlaylists` off with Jean already open. The
+// component answers its capabilities once, at discovery, so every playlist
+// control stays drawn and the next edit comes back 403. That is the only way a
+// refusal reaches a control somebody can still press: an install that had the
+// setting off at load draws none of them.
+export const refusePlaylistWrites = async (page: Page) => {
+	const answered = await page.request.post("/__control/writePlaylists", {
+		data: { canWrite: false },
+	});
+	expect(
+		answered.ok(),
+		"the fake needs a control that turns writePlaylists off mid-test",
+	).toBe(true);
+};
+
 // ---- reading the player -----------------------------------------------------
 
 export const requestsTo = (player: FakePlayer, pattern: string) =>

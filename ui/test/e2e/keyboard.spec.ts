@@ -1,6 +1,7 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectPlayingFrom,
 	expectSettlesAt,
 	expectTheScreenIsStillOpen,
 	inSequence,
@@ -317,9 +318,11 @@ test.describe("navigation and appearance", () => {
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
 		await trackRow(page, 0).dblclick();
-		await expect
-			.poll(() => player.player.activeItem.index)
-			.toBeGreaterThanOrEqual(0);
+		// Jean's own account of what is playing, which is the whole of what `p` acts
+		// on. The player holding the track is a different fact and arrives first: this
+		// client still has to learn which set it came from before the key means
+		// anything.
+		await expectPlayingFrom(page, "All music");
 
 		const guid = player.playlists.find(
 			(entry) => entry.title === "Favorites",

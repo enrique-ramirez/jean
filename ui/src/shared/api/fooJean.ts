@@ -656,8 +656,8 @@ export async function fetchPlaylistItemChanges(
 	origin: string,
 	token: string,
 	id: string,
-	structure: number,
-	since: number,
+	structure: string,
+	since: string,
 	columns: readonly string[],
 	{ signal }: { signal?: AbortSignal } = {},
 ): Promise<PlaylistChangesResult> {

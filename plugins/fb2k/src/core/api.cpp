@@ -17,6 +17,13 @@ namespace jean {
 
 namespace {
 
+// A playlist's structure generation and content revision travel as strings: they are seeded
+// past 2^53, where a JSON number stops being exact. contract/openapi.yaml, `PlaylistAnnotation`,
+// has why.
+json digitsOf(uint64_t counter) {
+    return json(std::to_string(counter));
+}
+
 json identity() {
     return json{{"name", kComponentName}, {"version", kVersion}, {"apiVersion", kApiVersion}};
 }
@@ -44,8 +51,8 @@ json annotation(const PlaylistAnnotation& playlist) {
     body["itemCount"] = playlist.itemCount;
     body["isAutoPlaylist"] = playlist.isAutoPlaylist;
     body["role"] = playlist.role ? json(roleName(*playlist.role)) : json(nullptr);
-    body["structure"] = playlist.structure;
-    body["revision"] = playlist.revision;
+    body["structure"] = digitsOf(playlist.structure);
+    body["revision"] = digitsOf(playlist.revision);
     body["managed"] = playlist.managed ? json{{"key", playlist.managed->key},
                                               {"query", playlist.managed->query},
                                               {"sort", playlist.managed->sort},
@@ -222,6 +229,12 @@ QueuePositionField readQueuePosition(const json& root) {
 FillRequest malformedFill() {
     FillRequest request;
     request.refusal = PlaylistRefusal::malformedBody;
+    return request;
+}
+
+RemoveRowsRequest refuseRemoveRows(PlaylistRefusal refusal) {
+    RemoveRowsRequest request;
+    request.refusal = refusal;
     return request;
 }
 
@@ -562,19 +575,19 @@ std::string fillResultDocument(const std::string& playlistId, const std::string&
 }
 
 std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions) {
-    return json{{"structure", structure}, {"positions", positions}}.dump();
+    return json{{"structure", digitsOf(structure)}, {"positions", positions}}.dump();
 }
 
 std::string removedRowsDocument(uint64_t structure) {
-    return json{{"structure", structure}}.dump();
+    return json{{"structure", digitsOf(structure)}}.dump();
 }
 
 std::string playlistRowsDocument(const PlaylistRowsRead& read) {
     json items = json::array();
     std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(items), playlistRowOf);
 
-    return json{{"structure", read.structure},
-                {"revision", read.revision},
+    return json{{"structure", digitsOf(read.structure)},
+                {"revision", digitsOf(read.revision)},
                 {"totalCount", read.totalCount},
                 {"items", std::move(items)}}
         .dump();
@@ -601,7 +614,7 @@ std::string playlistChangesDocument(const PlaylistChangesRead& read) {
                 json{{"text", dictionaries[column].values}, {"ids", std::move(ids[column])}});
     }
 
-    return json{{"revision", read.revision},
+    return json{{"revision", digitsOf(read.revision)},
                 {"columns", std::move(columns)},
                 {"items", std::move(items)}}
         .dump();
@@ -876,6 +889,33 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
     const auto selection = decodeSelection(root, trackCount);
     if (!selection.ok())
         return refuseFill();
+
+    request.ordinals = selection.ordinals;
+    return request;
+}
+
+RemoveRowsRequest parseRemoveRows(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseRemoveRows(PlaylistRefusal::malformedBody);
+
+    const auto& root = document.value;
+
+    if (!declaresOnly(root, kFillFields))
+        return refuseRemoveRows(PlaylistRefusal::malformedBody);
+
+    const auto structure = root.find("structure");
+    RemoveRowsRequest request;
+    if (structure == root.end() || !structure->is_string() ||
+        !readDecimal(structure->get<std::string>(), request.structure))
+        return refuseRemoveRows(PlaylistRefusal::malformedBody);
+
+    if (!namesOneSelectionForm(root))
+        return refuseRemoveRows(PlaylistRefusal::badOrdinals);
+
+    const auto selection = decodeSelection(root, kAnyRowPosition);
+    if (!selection.ok())
+        return refuseRemoveRows(PlaylistRefusal::badOrdinals);
 
     request.ordinals = selection.ordinals;
     return request;

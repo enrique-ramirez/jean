@@ -54,6 +54,10 @@ export const PLAYLISTS_KEY = ["playlists"];
 // under `src/` reads either any more, but `PlaylistInfo` is a wider contract than this bundle owns.
 const NOT_TRACKED = { isCurrent: false, totalTime: 0 };
 
+// A generation is always a non-empty run of digits, so an empty string is a value the component
+// can never answer and is safe to hold until the create response replaces it.
+const UNKNOWN_GENERATION = "";
+
 export const playlistInfoOf = (
 	annotation: PlaylistAnnotation,
 ): PlaylistInfo => ({
@@ -253,8 +257,8 @@ export function usePlaylistActions() {
 				id,
 				title,
 				itemCount: 0,
-				structure: 0,
-				revision: 0,
+				structure: UNKNOWN_GENERATION,
+				revision: UNKNOWN_GENERATION,
 				index: playlists.length,
 				role: null,
 				...NOT_TRACKED,

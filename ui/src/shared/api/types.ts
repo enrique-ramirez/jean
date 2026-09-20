@@ -67,8 +67,9 @@ export interface PlaylistInfo {
 	itemCount: number;
 	title: string;
 	totalTime: number;
-	structure: number;
-	revision: number;
+	// A string of decimal digits, never a number: `shared/api/README.md` has why.
+	structure: string;
+	revision: string;
 	// What `foo_jean` keeps the playlist for, `"scratch"` or `null`. Read from a marker the component
 	// writes rather than from `title`, so it survives a rename at the player.
 	role: "scratch" | null;

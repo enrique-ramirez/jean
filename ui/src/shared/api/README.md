@@ -410,6 +410,8 @@ This is the one part of the component's surface the spec does not describe, beca
 - **The header answers capability detection exactly**, so a field that resolves on one track in ten thousand is detected rather than missed by a sample. Detection is still a guess a Settings switch overrules.
 - **A `{structure, revision}` pair compares for equality only, never for order.** `revision` counts within one `structure`, and `structure` itself resets when the component starts fresh, so a pair read after a restart can be lower than one already held without being older. `playlistStore.ts`'s `recheckMissed` holds the pair a poll answered while an entry was busy and, once idle, checks it against the one the entry landed on rather than trusting which sorts higher. A mismatch is worth a fresh, untagged `GET /api/state`: the route is `ETag`ged, so once the player settles every later poll answers `304`, and a generation seen mid-export would otherwise never surface again.
 
+**A playlist's own `structure` and `revision` are a different pair from this one, and they travel as strings of decimal digits rather than numbers.** `contract/openapi.yaml`'s `PlaylistAnnotation.structure` has why; `playlistStore.ts` keeps a playlist's feed and the library's snapshot as two separate shapes because of it.
+
 ## What Jean does about the queue
 
 `GET /api/queue` answers every entry in the player's own order plus the revision they were read at. `domain/player/queue.ts`'s `recheckQueue` only asks for it when `GET /api/state`'s `queueRevision` has moved from the one already cached, off the same one-second poll that already carries player state, so a client watching the queue costs nothing beyond the poll it already runs.

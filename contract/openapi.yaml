@@ -493,7 +493,9 @@ paths:
 
         `structure` moves when a playlist's rows are added, removed, reordered or replaced, so rows held against an older one sit at positions that have moved. `revision` moves when a row already in the playlist would answer differently, a tag, a rating or a play count, and the rows stay where they are.
 
-        Both are counters kept for as long as this component runs rather than anything the player stores, so neither repeats a value across a restart of it and a client holding numbers from an earlier run reads the playlist again.
+        Both are counters kept for as long as this component runs rather than anything the player stores, and both are seeded so that no value either has published comes back after a restart, so a client holding a pair from an earlier run reads the playlist again.
+
+        **Both travel as strings of decimal digits, and a client MUST NOT read either as a number.** That seeding puts them far above 2^53, and a JSON number is an IEEE 754 double, exact only that far: parsed as a number, four consecutive generations round to one value and a structural edit becomes invisible to the client that was watching for it. Compare a pair for equality, hand it back as it arrived, and never order, count or do arithmetic on one. Every other counter this API publishes is inside 2^53 and is a number.
       responses:
         "200":
           description: One entry per playlist.
@@ -1012,8 +1014,8 @@ paths:
                 default:
                   summary: Two rows of a five-row playlist, the second of them outside the media library.
                   value:
-                    structure: 12
-                    revision: 30
+                    structure: "9204739866101318923"
+                    revision: "9204739866101318977"
                     totalCount: 5
                     items:
                       - columns: ["Imaginary Track", "Fictional Artist"]
@@ -1096,7 +1098,9 @@ paths:
 
         A row here does **not** come in the shape `GET /playlists/{id}/items` answers a row in. The values are lifted out into one dictionary per column, distinct within this response, and each row carries one id into each dictionary. `PlaylistChanges` has why and how to read it.
 
-        Call this when `GET /state`'s `playlistsRevision` has moved and `GET /playlists` reports the same `structure` and a higher `revision` for this playlist. A different `structure` is a `409`: rows were added, removed or reordered, so every position the client holds names something else.
+        Call this when `GET /state`'s `playlistsRevision` has moved and `GET /playlists` reports the same `structure` and a different `revision` for this playlist. A different `structure` is a `409`: rows were added, removed or reordered, so every position the client holds names something else.
+
+        `structure` and `revision` are strings of decimal digits here as everywhere, and a client compares them for equality rather than for order. `PlaylistAnnotation.structure` has why. This component is the one side that reads them as numbers, and it is where the window is judged.
 
         A revision nothing has changed since is a `200` carrying no rows, never an error.
 
@@ -1107,15 +1111,17 @@ paths:
           required: true
           description: |
             The `structure` generation the client's positions were read at, from the page or the delta it holds. Required rather than defaulted to the current one: a client patching by position always knows which generation its positions belong to, and a request that does not name one cannot be told from a stale one.
-          schema: { type: integer, minimum: 0 }
-          example: 12
+
+            A run of decimal digits, sent exactly as it arrived. It is a 64-bit counter for the reason `PlaylistAnnotation.structure` gives, so a client that holds it as a number sends a neighbour of the value it meant and is refused. Anything but digits is a `400`. This is not the `structure` a fill sends, which names the media library's generation and is a number.
+          schema: { type: string, pattern: "^[0-9]+$" }
+          example: "9204739866101318923"
         - name: since
           in: query
           required: true
           description: |
-            The `revision` the client currently holds for this playlist. A whole number.
-          schema: { type: integer, minimum: 0 }
-          example: 29
+            The `revision` the client currently holds for this playlist, as a run of decimal digits, on the same terms as `structure` above. Unlike `GET /library/changes`'s `since`, which names the media library's revision and is a number, this one is a playlist's own.
+          schema: { type: string, pattern: "^[0-9]+$" }
+          example: "9204739866101318976"
         - name: columns
           in: query
           required: true
@@ -1137,9 +1143,9 @@ paths:
               examples:
                 default:
                   summary: |
-                    Three rows retagged since revision 29, one of them outside the media library. They were asked for as `%title%` and `%album artist%`, and two of the three share an artist, so that artist is carried once.
+                    Three rows retagged since the revision the request named, one of them outside the media library. They were asked for as `%title%` and `%album artist%`, and two of the three share an artist, so that artist is carried once.
                   value:
-                    revision: 30
+                    revision: "9204739866101318977"
                     columns:
                       - text: ["Imaginary Track", "Another Track", "Dragged in"]
                         ids: [0, 1, 2]
@@ -1154,10 +1160,10 @@ paths:
                         libraryPath: null
                 caughtUp:
                   summary: Nothing has changed since the revision asked from.
-                  value: { revision: 30, columns: [], items: [] }
+                  value: { revision: "9204739866101318976", columns: [], items: [] }
         "400":
           description: |
-            The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all or a set the column gate refuses, a missing `since`, or a `structure` or `since` that is not a whole number. The schemas below tell the column and revision refusals from the other two.
+            The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all or a set the column gate refuses, a missing `since`, or a `structure` or `since` that is not a run of decimal digits inside 64 bits. The schemas below tell the column and revision refusals from the other two.
           content:
             application/json:
               schema:
@@ -1217,7 +1223,7 @@ paths:
               examples:
                 default:
                   summary: Three rows appended to a playlist that held four.
-                  value: { structure: 13, positions: [4, 5, 6] }
+                  value: { structure: "9204739866101318924", positions: [4, 5, 6] }
         "400":
           description: |
             The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, or a `runs` entry naming a row past the end of the source playlist. A create from the same source is refused in the same words.
@@ -1271,11 +1277,11 @@ paths:
             schema: { $ref: "#/components/schemas/RemovePlaylistRowsRequest" }
             examples:
               runs:
-                summary: Rows 1 and 2 of a playlist read at generation 12.
-                value: { structure: 12, runs: [[1, 2]] }
+                summary: Rows 1 and 2 of a playlist read at the generation named.
+                value: { structure: "9204739866101318923", runs: [[1, 2]] }
               ordinals:
                 summary: The same two rows as a plain list.
-                value: { structure: 12, ordinals: [1, 2] }
+                value: { structure: "9204739866101318923", ordinals: [1, 2] }
       responses:
         "200":
           description: Removed. `structure` is the generation the playlist now stands at.
@@ -1284,10 +1290,10 @@ paths:
               schema: { $ref: "#/components/schemas/RemovedRows" }
               examples:
                 default:
-                  value: { structure: 13 }
+                  value: { structure: "9204739866101318924" }
         "400":
           description: |
-            The request was understood and declined before the player was asked: a body that is not JSON, a missing or non-numeric `structure`, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, or a position past the end of the playlist. A fill sent the same set is refused in the same words.
+            The request was understood and declined before the player was asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, or a position past the end of the playlist. A fill sent the same set is refused in the same words.
           content:
             application/json:
               schema:
@@ -2924,15 +2930,21 @@ components:
 
             Read from a marker this component writes on the playlist rather than from the title, so a playlist renamed at the player keeps its role and a playlist somebody titles to look like this one never gains one.
         structure:
-          type: integer
-          minimum: 0
+          type: string
+          pattern: "^[0-9]+$"
           description: |
             Moves when the playlist's rows are added, removed, reordered or replaced. Rows a client read at an earlier value are at positions that have moved, and it MUST read them again.
+
+            **A string of decimal digits, and never a JSON number.** This is a 64-bit counter, seeded so that no value it has ever published comes back after a restart, which puts it far above 2^53. A JSON number is an IEEE 754 double and exact only to 2^53, so a parser that reads this as a number rounds four consecutive generations to a single value and a client comparing two of them cannot see the edit between them. Compare these for equality and send them back as they arrived. Nothing here is ordered, counted or added to, so a string costs a client nothing.
+
+            The other counters on this API are inside 2^53 and stay numbers: `GET /state`'s `playlistsRevision` and `queueRevision`, the media library's own `structure` and `revision`, and the library `structure` a fill or a create resolves its ordinals against. Only a playlist's own two are spelled this way.
         revision:
-          type: integer
-          minimum: 0
+          type: string
+          pattern: "^[0-9]+$"
           description: |
             Moves when a row already in the playlist would answer differently, a tag, a rating or a play count. The rows stay where they are.
+
+            A string of decimal digits for the reason `structure` gives, and compared the same way.
         managed:
           description: |
             What this component stored when it created the playlist, or `null` for every playlist it did not create, including autoplaylists made in the player. This is how a client tells a folder it manages from an autoplaylist that was already there.
@@ -3059,10 +3071,13 @@ components:
       required: [structure]
       properties:
         structure:
-          type: integer
+          type: string
+          pattern: "^[0-9]+$"
           description: |
             The playlist's own `structure` generation, the one its positions were read at. Read it from `GET /playlists`, from a page, from a delta or from the answer a copy gave. A value other than the playlist's current one is a `409` and nothing is removed.
-          examples: [12]
+
+            A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives, sent exactly as it arrived. **This is not the `structure` a fill sends.** A fill resolves media library ordinals against the library's own generation, which is inside 2^53 and is a number; this names one playlist's own counter, which is not.
+          examples: ["9204739866101318923"]
         runs: { $ref: "#/components/schemas/Runs" }
         bitset: { $ref: "#/components/schemas/Bitset" }
         ordinals: { $ref: "#/components/schemas/Ordinals" }
@@ -3174,10 +3189,13 @@ components:
       required: [structure, positions]
       properties:
         structure:
-          type: integer
+          type: string
+          pattern: "^[0-9]+$"
           description: |
             The target playlist's `structure` generation once the rows have landed. An undo naming this one removes exactly the rows below and nothing else, and a rating changed in between moves the playlist's `revision` rather than this, so it does not block one.
-          examples: [13]
+
+            A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives, and it goes back into `POST /playlists/{id}/items/remove` exactly as it arrived. A client that holds it as a number undoes against a neighbour of it and is refused `409` every time.
+          examples: ["9204739866101318924"]
         positions:
           type: array
           items: { type: integer, minimum: 0 }
@@ -3191,10 +3209,13 @@ components:
       required: [structure]
       properties:
         structure:
-          type: integer
+          type: string
+          pattern: "^[0-9]+$"
           description: |
             The playlist's `structure` generation once the rows are gone. A client holding the rest of the rows re-keys them to this rather than reading the playlist again.
-          examples: [13]
+
+            A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives.
+          examples: ["9204739866101318924"]
 
     QueryPreview:
       type: object
@@ -3421,15 +3442,17 @@ components:
       required: [structure, revision, totalCount, items]
       properties:
         structure:
-          type: integer
-          minimum: 0
+          type: string
+          pattern: "^[0-9]+$"
           description: |
-            The playlist's structure generation as of this read, the same number `GET /playlists` reports for it. Rows held against an older one sit at positions that have moved.
+            The playlist's structure generation as of this read, the same value `GET /playlists` reports for it. Rows held against an older one sit at positions that have moved.
+
+            A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives: it is a 64-bit counter and a JSON number could not carry it. `totalCount` beside it is a plain number, and so is every position in `items`.
         revision:
-          type: integer
-          minimum: 0
+          type: string
+          pattern: "^[0-9]+$"
           description: |
-            The playlist's content revision as of this read. A higher one with the same `structure` means a row already in the playlist would answer differently.
+            The playlist's content revision as of this read. A different one with the same `structure` means a row already in the playlist would answer differently. Compared for equality and never for order: these are strings, and a higher counter does not sort higher.
         totalCount:
           type: integer
           minimum: 0
@@ -3448,10 +3471,12 @@ components:
       required: [revision, columns, items]
       properties:
         revision:
-          type: integer
-          minimum: 0
+          type: string
+          pattern: "^[0-9]+$"
           description: |
-            The playlist's content revision as of this read. A client that patches these rows in holds this revision and asks from it next time.
+            The playlist's content revision as of this read. A client that patches these rows in holds this revision and sends it back as `since` next time.
+
+            A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives. Store it as it arrived: a round trip through a number lands on a neighbour of it, and the next request is then refused or, worse, answers nothing and looks caught up.
         columns:
           type: array
           items: { $ref: "#/components/schemas/ChangedPlaylistColumn" }

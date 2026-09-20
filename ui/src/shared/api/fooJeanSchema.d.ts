@@ -121,7 +121,9 @@ export interface paths {
          *
          *     `structure` moves when a playlist's rows are added, removed, reordered or replaced, so rows held against an older one sit at positions that have moved. `revision` moves when a row already in the playlist would answer differently, a tag, a rating or a play count, and the rows stay where they are.
          *
-         *     Both are counters kept for as long as this component runs rather than anything the player stores, so neither repeats a value across a restart of it and a client holding numbers from an earlier run reads the playlist again.
+         *     Both are counters kept for as long as this component runs rather than anything the player stores, and both are seeded so that no value either has published comes back after a restart, so a client holding a pair from an earlier run reads the playlist again.
+         *
+         *     **Both travel as strings of decimal digits, and a client MUST NOT read either as a number.** That seeding puts them far above 2^53, and a JSON number is an IEEE 754 double, exact only that far: parsed as a number, four consecutive generations round to one value and a structural edit becomes invisible to the client that was watching for it. Compare a pair for equality, hand it back as it arrived, and never order, count or do arithmetic on one. Every other counter this API publishes is inside 2^53 and is a number.
          */
         get: operations["getPlaylists"];
         put?: never;
@@ -399,7 +401,9 @@ export interface paths {
          *
          *     A row here does **not** come in the shape `GET /playlists/{id}/items` answers a row in. The values are lifted out into one dictionary per column, distinct within this response, and each row carries one id into each dictionary. `PlaylistChanges` has why and how to read it.
          *
-         *     Call this when `GET /state`'s `playlistsRevision` has moved and `GET /playlists` reports the same `structure` and a higher `revision` for this playlist. A different `structure` is a `409`: rows were added, removed or reordered, so every position the client holds names something else.
+         *     Call this when `GET /state`'s `playlistsRevision` has moved and `GET /playlists` reports the same `structure` and a different `revision` for this playlist. A different `structure` is a `409`: rows were added, removed or reordered, so every position the client holds names something else.
+         *
+         *     `structure` and `revision` are strings of decimal digits here as everywhere, and a client compares them for equality rather than for order. `PlaylistAnnotation.structure` has why. This component is the one side that reads them as numbers, and it is where the window is judged.
          *
          *     A revision nothing has changed since is a `200` carrying no rows, never an error.
          *
@@ -1188,10 +1192,20 @@ export interface components {
              * @enum {string|null}
              */
             role: "scratch" | null;
-            /** @description Moves when the playlist's rows are added, removed, reordered or replaced. Rows a client read at an earlier value are at positions that have moved, and it MUST read them again. */
-            structure: number;
-            /** @description Moves when a row already in the playlist would answer differently, a tag, a rating or a play count. The rows stay where they are. */
-            revision: number;
+            /**
+             * @description Moves when the playlist's rows are added, removed, reordered or replaced. Rows a client read at an earlier value are at positions that have moved, and it MUST read them again.
+             *
+             *     **A string of decimal digits, and never a JSON number.** This is a 64-bit counter, seeded so that no value it has ever published comes back after a restart, which puts it far above 2^53. A JSON number is an IEEE 754 double and exact only to 2^53, so a parser that reads this as a number rounds four consecutive generations to a single value and a client comparing two of them cannot see the edit between them. Compare these for equality and send them back as they arrived. Nothing here is ordered, counted or added to, so a string costs a client nothing.
+             *
+             *     The other counters on this API are inside 2^53 and stay numbers: `GET /state`'s `playlistsRevision` and `queueRevision`, the media library's own `structure` and `revision`, and the library `structure` a fill or a create resolves its ordinals against. Only a playlist's own two are spelled this way.
+             */
+            structure: string;
+            /**
+             * @description Moves when a row already in the playlist would answer differently, a tag, a rating or a play count. The rows stay where they are.
+             *
+             *     A string of decimal digits for the reason `structure` gives, and compared the same way.
+             */
+            revision: string;
             /**
              * @description What this component stored when it created the playlist, or `null` for every playlist it did not create, including autoplaylists made in the player. This is how a client tells a folder it manages from an autoplaylist that was already there.
              *
@@ -1277,9 +1291,11 @@ export interface components {
         RemovePlaylistRowsRequest: {
             /**
              * @description The playlist's own `structure` generation, the one its positions were read at. Read it from `GET /playlists`, from a page, from a delta or from the answer a copy gave. A value other than the playlist's current one is a `409` and nothing is removed.
-             * @example 12
+             *
+             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives, sent exactly as it arrived. **This is not the `structure` a fill sends.** A fill resolves media library ordinals against the library's own generation, which is inside 2^53 and is a number; this names one playlist's own counter, which is not.
+             * @example 9204739866101318923
              */
-            structure: number;
+            structure: string;
             runs?: components["schemas"]["Runs"];
             bitset?: components["schemas"]["Bitset"];
             ordinals?: components["schemas"]["Ordinals"];
@@ -1368,9 +1384,11 @@ export interface components {
         CopiedRows: {
             /**
              * @description The target playlist's `structure` generation once the rows have landed. An undo naming this one removes exactly the rows below and nothing else, and a rating changed in between moves the playlist's `revision` rather than this, so it does not block one.
-             * @example 13
+             *
+             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives, and it goes back into `POST /playlists/{id}/items/remove` exactly as it arrived. A client that holds it as a number undoes against a neighbour of it and is refused `409` every time.
+             * @example 9204739866101318924
              */
-            structure: number;
+            structure: string;
             /**
              * @description One position per row appended, in ascending source order, 0-based in the target. Empty where `runs` named no rows.
              * @example [
@@ -1384,9 +1402,11 @@ export interface components {
         RemovedRows: {
             /**
              * @description The playlist's `structure` generation once the rows are gone. A client holding the rest of the rows re-keys them to this rather than reading the playlist again.
-             * @example 13
+             *
+             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives.
+             * @example 9204739866101318924
              */
-            structure: number;
+            structure: string;
         };
         QueryPreview: {
             /** @description Whether foobar2000 could read the query. Check this before `matches`. */
@@ -1516,10 +1536,14 @@ export interface components {
         };
         /** @description `GET /playlists/{id}/items`'s whole answer: the rows asked for, how many the playlist holds, and the two numbers they were read at. */
         PlaylistPage: {
-            /** @description The playlist's structure generation as of this read, the same number `GET /playlists` reports for it. Rows held against an older one sit at positions that have moved. */
-            structure: number;
-            /** @description The playlist's content revision as of this read. A higher one with the same `structure` means a row already in the playlist would answer differently. */
-            revision: number;
+            /**
+             * @description The playlist's structure generation as of this read, the same value `GET /playlists` reports for it. Rows held against an older one sit at positions that have moved.
+             *
+             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives: it is a 64-bit counter and a JSON number could not carry it. `totalCount` beside it is a plain number, and so is every position in `items`.
+             */
+            structure: string;
+            /** @description The playlist's content revision as of this read. A different one with the same `structure` means a row already in the playlist would answer differently. Compared for equality and never for order: these are strings, and a higher counter does not sort higher. */
+            revision: string;
             /** @description How many rows the whole playlist holds, not how many this page carries. */
             totalCount: number;
             items: components["schemas"]["PlaylistRow"][];
@@ -1530,8 +1554,12 @@ export interface components {
          *     Values are deduplicated, which `GET /playlists/{id}/items` does not do. A change reaching many rows at once, a bulk retag or a folder rescan, is mostly one value repeated, and a client that cannot tell a repeat from a fresh value grows its dictionary by a row rather than by a value. So the values sit in `columns` and the rows carry only where they are. Deduplication is **within this one response**: no dictionary here has a `base`, nothing is measured against what the client already holds, and the component keeps no dictionary between responses.
          */
         PlaylistChanges: {
-            /** @description The playlist's content revision as of this read. A client that patches these rows in holds this revision and asks from it next time. */
-            revision: number;
+            /**
+             * @description The playlist's content revision as of this read. A client that patches these rows in holds this revision and sends it back as `since` next time.
+             *
+             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives. Store it as it arrived: a round trip through a number lands on a neighbour of it, and the next request is then refused or, worse, answers nothing and looks caught up.
+             */
+            revision: string;
             /** @description One dictionary per column the request declared, in the order it declared them, whenever `items` carries a row. Empty when `items` is, which is the answer a client polling a quiet playlist gets every tick and the reason this is not padded out to the declared count. Any other length means the two sides disagree about the column set: read the page again rather than patch. */
             columns: components["schemas"]["ChangedPlaylistColumn"][];
             /** @description Only the rows whose content moved, in no promised order. A client patches each into the page it holds by `position`, and reads its values at the same index in every entry of `columns`. */
@@ -2913,14 +2941,16 @@ export interface operations {
             query: {
                 /**
                  * @description The `structure` generation the client's positions were read at, from the page or the delta it holds. Required rather than defaulted to the current one: a client patching by position always knows which generation its positions belong to, and a request that does not name one cannot be told from a stale one.
-                 * @example 12
+                 *
+                 *     A run of decimal digits, sent exactly as it arrived. It is a 64-bit counter for the reason `PlaylistAnnotation.structure` gives, so a client that holds it as a number sends a neighbour of the value it meant and is refused. Anything but digits is a `400`. This is not the `structure` a fill sends, which names the media library's generation and is a number.
+                 * @example 9204739866101318923
                  */
-                structure: number;
+                structure: string;
                 /**
-                 * @description The `revision` the client currently holds for this playlist. A whole number.
-                 * @example 29
+                 * @description The `revision` the client currently holds for this playlist, as a run of decimal digits, on the same terms as `structure` above. Unlike `GET /library/changes`'s `since`, which names the media library's revision and is a number, this one is a playlist's own.
+                 * @example 9204739866101318976
                  */
-                since: number;
+                since: string;
                 /** @description The columns to evaluate, on the same terms as `GET /playlists/{id}/items`: repeated once per column, never comma-separated, at most 64, each 1 to 1024 printable characters, and no repeats. Send the set the held page was read with, or the patched rows will carry different values from the rows around them. */
                 columns: string[];
             };
@@ -2945,7 +2975,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistChanges"];
                 };
             };
-            /** @description The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all or a set the column gate refuses, a missing `since`, or a `structure` or `since` that is not a whole number. The schemas below tell the column and revision refusals from the other two. */
+            /** @description The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all or a set the column gate refuses, a missing `since`, or a `structure` or `since` that is not a run of decimal digits inside 64 bits. The schemas below tell the column and revision refusals from the other two. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3046,7 +3076,7 @@ export interface operations {
                     "application/json": components["schemas"]["RemovedRows"];
                 };
             };
-            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a missing or non-numeric `structure`, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, or a position past the end of the playlist. A fill sent the same set is refused in the same words. */
+            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, or a position past the end of the playlist. A fill sent the same set is refused in the same words. */
             400: {
                 headers: {
                     [name: string]: unknown;

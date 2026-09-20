@@ -48,16 +48,26 @@ interface Chunk {
 	// answers an out-of-range ref: nothing for `artworkUrl` to draw from.
 	paths: string[];
 	totalCount: number;
-	structure: number;
-	revision: number;
+	structure: string;
+	revision: string;
 }
 
-interface Feed {
+interface LibraryFeed {
+	kind: "library";
 	structure: number;
 	revision: number;
 	isChecking: boolean;
+}
+
+interface PlaylistFeed {
+	kind: "playlist";
+	structure: string;
+	revision: string;
+	isChecking: boolean;
 	appendedChars?: number;
 }
+
+type Feed = LibraryFeed | PlaylistFeed;
 
 // README.md: a `{structure, revision}` pair compares for equality only, never order.
 type LibraryGeneration = Pick<
@@ -103,10 +113,12 @@ export const EMPTY_PLAYLIST: PlaylistSnapshot = Object.freeze({
 
 export const componentLibraryKey = (origin: string) => `component:${origin}`;
 
-export const generationKey = (key: string, structure: number) =>
+// Shared with the media library key, whose own `structure` stays a number: `useLibrary.ts` builds
+// its key through this too.
+export const generationKey = (key: string, structure: number | string) =>
 	`${key}:s${structure}`;
 
-export const playlistKey = (playlistId: string, structure: number) =>
+export const playlistKey = (playlistId: string, structure: string) =>
 	generationKey(playlistId, structure);
 
 const fetchChunk = async (
@@ -241,6 +253,7 @@ async function load(
 		);
 		addChunk(first);
 		entry.feed = {
+			kind: "playlist",
 			structure: first.structure,
 			revision: first.revision,
 			isChecking: false,
@@ -347,6 +360,7 @@ async function loadSnapshot(entry: Entry, origin: string, token: string) {
 		);
 
 		entry.feed = {
+			kind: "library",
 			structure: library.structure,
 			revision: library.revision,
 			isChecking: false,
@@ -448,7 +462,7 @@ function appendedCharCount(columns: PlaylistChanges["columns"]): number {
 
 function applyPlaylistChanges(
 	entry: Entry,
-	feed: Feed,
+	feed: PlaylistFeed,
 	changes: PlaylistChanges,
 ): boolean {
 	if (!fitsHeldPaths(entry.snapshot.paths, changes.items)) return false;
@@ -476,7 +490,7 @@ function applyPlaylistChanges(
 	return true;
 }
 
-function applyDelta(entry: Entry, feed: Feed, delta: JlibDelta) {
+function applyDelta(entry: Entry, feed: LibraryFeed, delta: JlibDelta) {
 	const held = entry.snapshot.columns;
 	const columns = patchedColumns(held, delta, TRACK_EXPRESSIONS);
 	if (!columns) return false;
@@ -500,6 +514,7 @@ async function recheckMissed(entry: Entry, origin: string, token: string) {
 	const feed = entry.feed;
 	if (
 		feed &&
+		feed.kind === "library" &&
 		missed.structure === feed.structure &&
 		missed.revision === feed.revision
 	)
@@ -519,7 +534,11 @@ export async function recheckComponentLibrary(
 	if (!entry) return;
 
 	const feed = entry.feed;
-	if (!feed || feed.isChecking || entry.snapshot.isLoading) {
+	if (feed?.kind !== "library") {
+		entry.missedLibrary = library;
+		return;
+	}
+	if (feed.isChecking || entry.snapshot.isLoading) {
 		entry.missedLibrary = library;
 		return;
 	}
@@ -546,7 +565,7 @@ export const loadPlaylist = (
 	origin: string,
 	token: string,
 	playlistId: string,
-	structure: number,
+	structure: string,
 	itemCount: number,
 ) =>
 	begin(playlistKey(playlistId, structure), itemCount, itemCount > 0, (entry) =>
@@ -557,17 +576,17 @@ export async function recheckPlaylist(
 	origin: string,
 	token: string,
 	playlistId: string,
-	generation: { structure: number; revision: number },
+	generation: { structure: string; revision: string },
 ) {
 	const entry = entries.get(playlistKey(playlistId, generation.structure));
 	const feed = entry?.feed;
-	if (!entry || !feed || feed.isChecking) return;
+	if (!entry || !feed || feed.kind !== "playlist" || feed.isChecking) return;
 	// The entry's own generation, read from the rows response rather than assumed from the key, can
 	// still be ahead of what the caller believes: a structural edit landing between the caller reading
 	// the list and this entry's own fetch completing. A fresh key for the new structure is what
 	// resolves that, not a patch here.
 	if (generation.structure !== feed.structure) return;
-	if (generation.revision <= feed.revision) return;
+	if (generation.revision === feed.revision) return;
 
 	feed.isChecking = true;
 	try {

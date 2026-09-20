@@ -787,6 +787,30 @@ TEST_CASE("the poll's playlists revision moves with the playlists and not with t
           afterTheSeek["playlistsRevision"].get<uint64_t>());
 }
 
+// The two counters that may stay numbers, and the line that decides it. A playlist's own
+// structure generation and content revision are seeded so that neither repeats across a restart
+// of this component, which puts them past 2^53, where a JSON number stops being exact, so those
+// two travel as strings of decimal digits. These two are inside 2^53 and exact, and the cases
+// above compare them for order. The mistake this catches is converting every counter together on
+// the grounds that counters should look alike: it would take the ordering away for nothing.
+TEST_CASE("the poll's two revisions are numbers, where a playlist's own counters are not") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    const TestServer server = serving(&library, &store);
+
+    const auto player = playerSection(server);
+    REQUIRE(player.contains("queueRevision"));
+    REQUIRE(player.contains("playlistsRevision"));
+
+    INFO("queueRevision: ", player["queueRevision"].dump(),
+         ", playlistsRevision: ", player["playlistsRevision"].dump());
+
+    CHECK(player["queueRevision"].is_number_unsigned());
+    CHECK(player["playlistsRevision"].is_number_unsigned());
+}
+
 TEST_CASE("the player section names the playlists revision once and carries nothing else new") {
     Library library;
     fill(library);

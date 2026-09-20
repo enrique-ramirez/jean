@@ -1509,7 +1509,7 @@ struct HttpServer::Impl {
             if (playlistIdRefused(id, res))
                 return;
 
-            const auto request = parseFill(req.body, kAnyRowPosition, std::nullopt);
+            const auto request = parseRemoveRows(req.body);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
                 return;

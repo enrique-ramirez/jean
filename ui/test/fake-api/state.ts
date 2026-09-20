@@ -40,9 +40,10 @@ export interface FakePlaylist {
 	isCurrent: boolean;
 	items: Track[];
 	isAuto?: boolean;
-	structure: number;
-	revision: number;
-	changeHistory: { revision: number; positions: number[] }[];
+	// `bigint`: `GENERATION_SEED` below and `ui/test/README.md` have why.
+	structure: bigint;
+	revision: bigint;
+	changeHistory: { revision: bigint; positions: number[] }[];
 }
 
 export interface LibraryEntry {
@@ -246,6 +247,9 @@ export function libraryItemsOf(tracks: Track[]): LibraryEntry[] {
 export const guidOfDefault = (n: number) =>
 	`00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
+// `ui/test/README.md` has why this value and not a smaller one.
+export const GENERATION_SEED = 9204739866101318656n;
+
 const FIRST_CREATED_GUID = 1000;
 
 const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
@@ -254,9 +258,9 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		guid: guidOfDefault(1),
 		title: "Default Playlist",
 		isCurrent: false,
-		structure: 0,
-		revision: 0,
-		changeHistory: [{ revision: 0, positions: [] }],
+		structure: GENERATION_SEED,
+		revision: GENERATION_SEED,
+		changeHistory: [{ revision: GENERATION_SEED, positions: [] }],
 		items: tracksOf("jar-of-flies").slice(0, 4),
 	},
 	{
@@ -264,9 +268,9 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		guid: guidOfDefault(7),
 		title: "Library",
 		isCurrent: true,
-		structure: 0,
-		revision: 0,
-		changeHistory: [{ revision: 0, positions: [] }],
+		structure: GENERATION_SEED,
+		revision: GENERATION_SEED,
+		changeHistory: [{ revision: GENERATION_SEED, positions: [] }],
 		items: allTracks(),
 	},
 	{
@@ -274,9 +278,9 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		guid: guidOfDefault(2),
 		title: "Favorites",
 		isCurrent: false,
-		structure: 0,
-		revision: 0,
-		changeHistory: [{ revision: 0, positions: [] }],
+		structure: GENERATION_SEED,
+		revision: GENERATION_SEED,
+		changeHistory: [{ revision: GENERATION_SEED, positions: [] }],
 		items: [
 			...tracksOf("deja-entendu").slice(0, 3),
 			...tracksOf("jessico").slice(0, 2),
@@ -288,9 +292,9 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		guid: guidOfDefault(5),
 		title: "Rock en Español",
 		isCurrent: false,
-		structure: 0,
-		revision: 0,
-		changeHistory: [{ revision: 0, positions: [] }],
+		structure: GENERATION_SEED,
+		revision: GENERATION_SEED,
+		changeHistory: [{ revision: GENERATION_SEED, positions: [] }],
 		items: tracksOf("jessico"),
 	},
 	{
@@ -298,9 +302,9 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		guid: guidOfDefault(8),
 		title: "#Jean Library",
 		isCurrent: false,
-		structure: 0,
-		revision: 0,
-		changeHistory: [{ revision: 0, positions: [] }],
+		structure: GENERATION_SEED,
+		revision: GENERATION_SEED,
+		changeHistory: [{ revision: GENERATION_SEED, positions: [] }],
 		items: allTracks(),
 	},
 	{
@@ -309,9 +313,9 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 		title: "Recently Added",
 		isCurrent: false,
 		isAuto: true,
-		structure: 0,
-		revision: 0,
-		changeHistory: [{ revision: 0, positions: [] }],
+		structure: GENERATION_SEED,
+		revision: GENERATION_SEED,
+		changeHistory: [{ revision: GENERATION_SEED, positions: [] }],
 		items: tracksOf("jar-of-flies").slice(0, 5),
 	},
 ];
@@ -606,8 +610,8 @@ export function createState({
 		const item = state.player.activeItem;
 		const held = playing?.playlistId === playlist.id ? playing : null;
 		edit();
-		playlist.structure += 1;
-		playlist.revision += 1;
+		playlist.structure += 1n;
+		playlist.revision += 1n;
 		playlist.changeHistory = [{ revision: playlist.revision, positions: [] }];
 		markPlaylistsChanged();
 		if (!held) return;
@@ -944,7 +948,7 @@ export function createState({
 			const at = playlist?.items.indexOf(playing.track) ?? -1;
 			if (playlist && at >= 0) {
 				playlist.items[at] = retagged;
-				playlist.revision += 1;
+				playlist.revision += 1n;
 				playlist.changeHistory = [
 					...playlist.changeHistory,
 					{ revision: playlist.revision, positions: [at] },
@@ -1163,9 +1167,9 @@ export function createState({
 				guid: guidOfDefault(nextCreatedGuid++),
 				title: title || "New playlist",
 				isCurrent: false,
-				structure: 0,
-				revision: 0,
-				changeHistory: [{ revision: 0, positions: [] }],
+				structure: GENERATION_SEED,
+				revision: GENERATION_SEED,
+				changeHistory: [{ revision: GENERATION_SEED, positions: [] }],
 				items: [],
 			};
 			state.playlists.push(playlist);
@@ -1177,8 +1181,8 @@ export function createState({
 				itemCount: 0,
 				title: playlist.title,
 				totalTime: 0,
-				structure: playlist.structure,
-				revision: playlist.revision,
+				structure: String(playlist.structure),
+				revision: String(playlist.revision),
 				role: null,
 			};
 		},

@@ -287,6 +287,46 @@ TEST_CASE("a delta of playlist rows is the shape contract/openapi.yaml publishes
     CHECK(keysOf(column.dump()) == Keys{"text", "ids"});
 }
 
+// A playlist's structure generation and its content revision are 64-bit counters, seeded so that
+// neither repeats across a restart of this component, and a JSON number is an IEEE 754 double,
+// exact only to 2^53. So the type is the contract rather than a detail of how a document is
+// built: contract/openapi.yaml types both `string` with pattern `^[0-9]+$`, and a document that
+// carries either as a number carries a value the client that reads it cannot get back.
+TEST_CASE("every document carrying a playlist's counters carries them as strings of digits") {
+    INFO(kUpdateSpec);
+
+    // The neighbouring value is 9204739866101318924, and both of them, along with every value
+    // within five hundred of either, parse to 9204739866101318656 as a double.
+    constexpr uint64_t kSeeded = 9204739866101318923ULL;
+
+    // Each field's JSON text rather than its value, so a failure names the type it arrived as:
+    // a number prints bare where a run of digits prints in quotes.
+    const std::string digits = R"("9204739866101318923")";
+
+    PlaylistAnnotation playlist;
+    playlist.structure = kSeeded;
+    playlist.revision = kSeeded;
+
+    const auto annotation = json::parse(playlistDocument(playlist));
+    CHECK(annotation.at("structure").dump() == digits);
+    CHECK(annotation.at("revision").dump() == digits);
+
+    PlaylistRowsRead page;
+    page.structure = kSeeded;
+    page.revision = kSeeded;
+
+    const auto rows = json::parse(playlistRowsDocument(page));
+    CHECK(rows.at("structure").dump() == digits);
+    CHECK(rows.at("revision").dump() == digits);
+
+    PlaylistChangesRead changes;
+    changes.revision = kSeeded;
+    CHECK(json::parse(playlistChangesDocument(changes)).at("revision").dump() == digits);
+
+    CHECK(json::parse(copiedRowsDocument(kSeeded, {})).at("structure").dump() == digits);
+    CHECK(json::parse(removedRowsDocument(kSeeded)).at("structure").dump() == digits);
+}
+
 TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 

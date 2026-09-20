@@ -29,6 +29,22 @@ using nlohmann::json;
 
 namespace {
 
+// Every structure generation and content revision below is nineteen digits, because a playlist's
+// two counters are seeded so that neither repeats across a restart of this component and a live
+// one reads 3539374692803743171. A JSON number is an IEEE 754 double and exact only to 2^53, so
+// each of these, and every value within five hundred of it, parses to kThroughADouble. A case at
+// five digits passes whether the field is a number or a run of digits and says nothing.
+constexpr uint64_t kThroughADouble = 9204739866101318656ULL;
+
+constexpr uint64_t kRockStructure = 9204739866101318907ULL;
+constexpr uint64_t kRockRevision = 9204739866101318919ULL;
+
+constexpr uint64_t kOrdinaryStructure = 9204739866101318904ULL;
+constexpr uint64_t kOrdinaryRevision = 9204739866101318902ULL;
+
+constexpr uint64_t kRowsStructure = 9204739866101318923ULL;
+constexpr uint64_t kRowsRevision = 9204739866101318977ULL;
+
 constexpr char kCreate[] = R"({"title": "#Jean Rock", "query": "%genre% IS Rock"})";
 
 PlaylistAnnotation rock() {
@@ -43,8 +59,8 @@ PlaylistAnnotation rock() {
     playlist.title = "#Jean Rock";
     playlist.itemCount = 412;
     playlist.isAutoPlaylist = true;
-    playlist.structure = 7;
-    playlist.revision = 19;
+    playlist.structure = kRockStructure;
+    playlist.revision = kRockRevision;
     playlist.managed = spec;
     return playlist;
 }
@@ -443,8 +459,8 @@ PlaylistAnnotation ordinary() {
     playlist.index = 3;
     playlist.title = "Ordinary playlist";
     playlist.itemCount = 3;
-    playlist.structure = 4;
-    playlist.revision = 2;
+    playlist.structure = kOrdinaryStructure;
+    playlist.revision = kOrdinaryRevision;
     return playlist;
 }
 
@@ -458,6 +474,30 @@ json entryFor(const json& body, const std::string& id) {
 
     REQUIRE(found != playlists.end());
     return *found;
+}
+
+// A structure generation or a content revision, read the one way a client may read one. Asserted
+// rather than converted: a number here is the defect this whole file is about, and it has to fail
+// as an assertion rather than as a type error out of the JSON library.
+std::string counterIn(const json& document, const std::string& field) {
+    REQUIRE(document.contains(field));
+
+    const auto& value = document.at(field);
+    INFO(field, " on the wire: ", value.dump());
+    REQUIRE(value.is_string());
+
+    return value.get<std::string>();
+}
+
+// The JSON text of a field rather than its value, so a failure names the type it arrived as: a
+// number prints bare where a run of digits prints in quotes.
+std::string wireValue(const json& document, const std::string& field) {
+    REQUIRE(document.contains(field));
+    return document.at(field).dump();
+}
+
+std::string asDigits(uint64_t counter) {
+    return "\"" + std::to_string(counter) + "\"";
 }
 
 struct Row {
@@ -486,9 +526,6 @@ std::vector<Row> playlistRows() {
     return {libraryRow("First", "01.flac"), libraryRow("Second", "02.flac"), strayRow("Dragged in"),
             libraryRow("Fourth", "04.flac"), libraryRow("Fifth", "05.flac")};
 }
-
-constexpr uint64_t kRowsStructure = 12;
-constexpr uint64_t kRowsRevision = 30;
 
 PlaylistRow formatted(const Row& row, const std::vector<std::string>& columns) {
     PlaylistRow answer;
@@ -647,15 +684,20 @@ Player countingChangeReads(int* reads) {
     return player;
 }
 
-std::string changesPath(const std::string& id, uint64_t structure, uint64_t since,
-                        const std::vector<std::string>& columns) {
-    auto path = "/api/playlists/" + id + "/items/changes?structure=" + std::to_string(structure) +
-                "&since=" + std::to_string(since);
+std::string changesPath(const std::string& id, const std::string& structure,
+                        const std::string& since, const std::vector<std::string>& columns) {
+    auto path = "/api/playlists/" + id + "/items/changes?structure=" + structure +
+                "&since=" + since;
 
     for (const auto& column : columns)
         path += "&columns=" + encoded(column);
 
     return path;
+}
+
+std::string changesPath(const std::string& id, uint64_t structure, uint64_t since,
+                        const std::vector<std::string>& columns) {
+    return changesPath(id, std::to_string(structure), std::to_string(since), columns);
 }
 
 json deltaOf(const TestServer& server, uint64_t since, const std::vector<std::string>& columns) {
@@ -778,7 +820,7 @@ constexpr char kCreatedPlaylistId[] = "44444444-4444-4444-4444-444444444444";
 // Neither number is zero and the two are equal, which is what PlaylistVersions answers for a
 // playlist it has never seen. A route pinning either to a constant of its own is what this
 // catches.
-constexpr uint64_t kUntouchedVersion = 8123;
+constexpr uint64_t kUntouchedVersion = 9204739866101318881ULL;
 
 struct CreateLog {
     // Every call that changes the player, whichever one it was. A create that reached the
@@ -1258,7 +1300,16 @@ json copyBody(const std::string& sourceId, const json& runs) {
 }
 
 json removeRowsBody(uint64_t structure, const json& runs) {
-    return json{{"structure", structure}, {"runs", runs}};
+    return json{{"structure", std::to_string(structure)}, {"runs", runs}};
+}
+
+// A removal names the playlist's own generation, as a run of decimal digits. A fill names the
+// media library's, which is a number: withStructure below is the fill's builder and the two are
+// no longer interchangeable.
+json withGeneration(const json& set, uint64_t structure) {
+    json body{{"structure", std::to_string(structure)}};
+    body.update(set);
+    return body;
 }
 
 json withStructure(const json& set, uint64_t structure) {
@@ -1278,8 +1329,8 @@ json heldTitles(const TestServer& server, const std::string& id) {
     return titlesIn(pageOf(server, id, 0, kEveryHeldRow, {"%title%"}));
 }
 
-uint64_t generationOf(const TestServer& server, const std::string& id) {
-    return entryFor(listingOf(server), id).at("structure").get<uint64_t>();
+std::string generationOf(const TestServer& server, const std::string& id) {
+    return counterIn(entryFor(listingOf(server), id), "structure");
 }
 
 struct RowEdit {
@@ -1522,8 +1573,8 @@ TEST_CASE("GET /api/playlists answers each playlist by everything a client draws
     CHECK(first["title"] == "#Jean Rock");
     CHECK(first["itemCount"] == 412);
     CHECK(first["isAutoPlaylist"] == true);
-    CHECK(first["structure"] == 7);
-    CHECK(first["revision"] == 19);
+    CHECK(wireValue(first, "structure") == asDigits(kRockStructure));
+    CHECK(wireValue(first, "revision") == asDigits(kRockRevision));
     CHECK(first["managed"]["key"] == "folder:genre:Rock");
 
     auto second = entryFor(body, kSecondPlaylistId);
@@ -1531,8 +1582,8 @@ TEST_CASE("GET /api/playlists answers each playlist by everything a client draws
     CHECK(second["title"] == "Ordinary playlist");
     CHECK(second["itemCount"] == 3);
     CHECK(second["isAutoPlaylist"] == false);
-    CHECK(second["structure"] == 4);
-    CHECK(second["revision"] == 2);
+    CHECK(wireValue(second, "structure") == asDigits(kOrdinaryStructure));
+    CHECK(wireValue(second, "revision") == asDigits(kOrdinaryRevision));
     CHECK(second["managed"].is_null());
 }
 
@@ -1648,8 +1699,8 @@ TEST_CASE("a page says how many rows the playlist holds and which versions it wa
 
     CHECK(page.at("items").size() == 2);
     CHECK(page.at("totalCount") == playlistRows().size());
-    CHECK(page.at("structure") == kRowsStructure);
-    CHECK(page.at("revision") == kRowsRevision);
+    CHECK(wireValue(page, "structure") == asDigits(kRowsStructure));
+    CHECK(wireValue(page, "revision") == asDigits(kRowsRevision));
 }
 
 TEST_CASE("offset and count decide which of a playlist's rows a page holds") {
@@ -1808,7 +1859,7 @@ TEST_CASE("a delta says which revision the client is now caught up to") {
     const auto delta = deltaOf(server, kChangedSince, {"%title%"});
 
     CHECK(delta.at("items").size() == changedRows().size());
-    CHECK(delta.at("revision") == kRowsRevision);
+    CHECK(wireValue(delta, "revision") == asDigits(kRowsRevision));
 }
 
 TEST_CASE("a revision nothing has changed since answers an empty delta rather than an error") {
@@ -1817,7 +1868,7 @@ TEST_CASE("a revision nothing has changed since answers an empty delta rather th
     const auto delta = deltaOf(server, kRowsRevision, {"%title%"});
 
     CHECK(delta.at("items").empty());
-    CHECK(delta.at("revision") == kRowsRevision);
+    CHECK(wireValue(delta, "revision") == asDigits(kRowsRevision));
 }
 
 // What a client polling a quiet playlist gets every tick, so it carries no dictionary to hold a
@@ -1847,6 +1898,29 @@ TEST_CASE("a revision older than the retained window is refused rather than patc
                  410);
 }
 
+// What a client patching rows does on every poll: it holds the two counters the page it is
+// patching answered and hands them straight back. A client that read them as numbers hands back
+// kThroughADouble for both, so the request that was meant to fetch a few changed rows is told the
+// playlist was restructured and that its revision fell out of the window, and it reloads the
+// whole playlist instead. That is the difference a digit makes here.
+TEST_CASE("the two counters a page answered are read back at the values it answered") {
+    const TestServer server(servingSettings(), changeReadingPlayer());
+
+    const auto page = pageOf(server, kPlaylistId, 0, playlistRows().size(), {"%title%"});
+    const auto structure = counterIn(page, "structure");
+    const auto since = counterIn(page, "revision");
+
+    const auto response = get(server, changesPath(kPlaylistId, structure, since, {"%title%"}));
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(json::parse(response->body).at("items").empty());
+
+    const auto rounded = std::to_string(kThroughADouble);
+    checkRefused(server, changesPath(kPlaylistId, rounded, since, {"%title%"}), 409);
+    checkRefused(server, changesPath(kPlaylistId, structure, rounded, {"%title%"}), 410);
+}
+
 TEST_CASE("a request for changes the component can judge for itself is a 400 and never reaches "
           "the player") {
     int reads = 0;
@@ -1864,9 +1938,14 @@ TEST_CASE("a request for changes the component can judge for itself is a 400 and
     for (const auto& request : {
              Request{kPlaylistId, "structure=" + std::to_string(kRowsStructure) + columns},
              Request{kPlaylistId, asked},
-             Request{kPlaylistId, "structure=twelve&since=29" + columns},
-             Request{kPlaylistId, "structure=12&since=yesterday" + columns},
-             Request{kPlaylistId, "structure=12&since=-1" + columns},
+             Request{kPlaylistId, "structure=twelve&since=" + std::to_string(kChangedSince) +
+                                      columns},
+             Request{kPlaylistId,
+                     "structure=" + std::to_string(kRowsStructure) + "&since=yesterday" + columns},
+             Request{kPlaylistId,
+                     "structure=" + std::to_string(kRowsStructure) + "&since=-1" + columns},
+             Request{kPlaylistId, "structure=99999999999999999999&since=" +
+                                      std::to_string(kChangedSince) + columns},
              Request{"------------------------------------", asked + columns},
          }) {
         INFO("id: ", request.id, " query: ", request.query);
@@ -2359,11 +2438,11 @@ TEST_CASE("a copy answers where the rows landed and the generation the target is
 
     const auto answered = json::parse(response->body);
     REQUIRE(answered.contains("positions"));
-    REQUIRE(answered.contains("structure"));
-
     CHECK(answered.at("positions") == json::array({4, 5, 6}));
-    CHECK(answered.at("structure") == generationOf(server, kPlaylistId));
-    CHECK(answered.at("structure") != before);
+
+    const auto generation = counterIn(answered, "structure");
+    CHECK(generation == generationOf(server, kPlaylistId));
+    CHECK(generation != before);
 }
 
 // See ARCHITECTURE.md, *Facts about the player*, on why beefweb's own API needs that read and
@@ -2418,10 +2497,9 @@ TEST_CASE("a removal takes the rows the runs named out of the playlist and answe
 
     CHECK(heldTitles(server, kPlaylistId) == json::array({"First", "Fourth"}));
 
-    const auto answered = json::parse(response->body);
-    REQUIRE(answered.contains("structure"));
-    CHECK(answered.at("structure") == generationOf(server, kPlaylistId));
-    CHECK(answered.at("structure") != kRowsStructure);
+    const auto generation = counterIn(json::parse(response->body), "structure");
+    CHECK(generation == generationOf(server, kPlaylistId));
+    CHECK(generation != std::to_string(kRowsStructure));
 }
 
 TEST_CASE("a removal against a generation the playlist has moved past is a 409 and removes "
@@ -2440,7 +2518,49 @@ TEST_CASE("a removal against a generation the playlist has moved past is a 409 a
     CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::rowsMoved));
 
     CHECK(heldTitles(server, kPlaylistId) == before);
-    CHECK(generationOf(server, kPlaylistId) == kRowsStructure);
+
+    const auto generation = generationOf(server, kPlaylistId);
+    CHECK(generation == std::to_string(kRowsStructure));
+}
+
+// An undo names the generation the page it was read from answered, verbatim. What stands between
+// the two on a client is JSON.parse: read as a number, every generation this playlist can reach
+// comes back as kThroughADouble, a value it has never stood at, and the undo is refused every
+// time.
+TEST_CASE("a removal against the generation a page answered is accepted, and against the value a "
+          "double makes of it is not") {
+    SUBCASE("the generation handed back exactly as it arrived") {
+        RowsLog log;
+        const TestServer server(servingSettings(), rowEditingPlayer(&log));
+
+        const auto page = pageOf(server, kPlaylistId, 0, kEveryHeldRow, {"%title%"});
+
+        const auto response =
+            post(server, removeRowsPath(kPlaylistId),
+                 json{{"structure", counterIn(page, "structure")},
+                      {"runs", json::array({json::array({1, 2})})}}
+                     .dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(heldTitles(server, kPlaylistId) == json::array({"First", "Fourth"}));
+    }
+
+    SUBCASE("the generation after a trip through a double") {
+        RowsLog log;
+        const TestServer server(servingSettings(), rowEditingPlayer(&log));
+
+        const auto response =
+            post(server, removeRowsPath(kPlaylistId),
+                 json{{"structure", std::to_string(kThroughADouble)},
+                      {"runs", json::array({json::array({1, 2})})}}
+                     .dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(heldTitles(server, kPlaylistId) ==
+              json::array({"First", "Second", "Third", "Fourth"}));
+    }
 }
 
 // A lock belongs to whichever component installed it, and running into one is nothing a client
@@ -2546,7 +2666,7 @@ TEST_CASE("a removal the component can judge for itself is refused exactly as a 
         INFO("set: ", bad.name);
 
         const auto removed = post(server, removeRowsPath(kPlaylistId),
-                                  withStructure(bad.set, kRowsStructure).dump());
+                                  withGeneration(bad.set, kRowsStructure).dump());
         const auto filled =
             post(server, userFill(), withStructure(bad.set, library.state().structure).dump());
 
@@ -2558,9 +2678,10 @@ TEST_CASE("a removal the component can judge for itself is refused exactly as a 
         CHECK(json::parse(removed->body)["error"] == json::parse(filled->body)["error"]);
     }
 
-    for (const std::string& body :
-         {std::string("not json"), json::object().dump(),
-          json{{"structure", "12"}, {"runs", json::array({json::array({0, 1})})}}.dump()}) {
+    // A body naming no generation at all, which both routes refuse in the same words. How each
+    // one spells the generation it does take is where they part company, and the two cases below
+    // this one hold that.
+    for (const std::string& body : {std::string("not json"), json::object().dump()}) {
         INFO("body: ", body);
 
         const auto removed = post(server, removeRowsPath(kPlaylistId), body);
@@ -2577,6 +2698,74 @@ TEST_CASE("a removal the component can judge for itself is refused exactly as a 
     CHECK(log.removals == 0);
     CHECK(log.fills == 0);
     CHECK(heldTitles(server, kPlaylistId) == json::array({"First", "Second", "Third", "Fourth"}));
+}
+
+TEST_CASE("a removal names a generation as a run of decimal digits, and anything else is a 400 "
+          "the player never sees") {
+    RowsLog log;
+    const TestServer server(servingSettings(), rowEditingPlayer(&log));
+
+    struct BadGeneration {
+        std::string name;
+        json value;
+    };
+
+    const std::vector<BadGeneration> generations{
+        {"a JSON number, which is the spelling a fill takes", json(kRowsStructure)},
+        {"digits behind a sign", json("-" + std::to_string(kRowsStructure))},
+        {"digits with a fraction after them", json(std::to_string(kRowsStructure) + ".0")},
+        {"a word", json("twelve")},
+        {"an empty string", json("")},
+        {"null", json(nullptr)},
+        {"more digits than 64 bits hold", json("99999999999999999999")},
+    };
+
+    for (const auto& bad : generations) {
+        INFO("structure: ", bad.name);
+
+        const auto response =
+            post(server, removeRowsPath(kPlaylistId),
+                 json{{"structure", bad.value}, {"runs", json::array({json::array({1, 2})})}}
+                     .dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(log.removals == 0);
+    CHECK(heldTitles(server, kPlaylistId) == json::array({"First", "Second", "Third", "Fourth"}));
+}
+
+// The guard on the field that did not move. A fill resolves media library ordinals against the
+// library's own generation, which is inside 2^53 and is a number; a removal names one playlist's
+// counter, which is not. One parser taught both spellings would pass every case about a removal
+// and lose the refusal a fill depends on, so the fill is driven here from the other side.
+TEST_CASE("a fill's structure is still a number and refuses the digits a removal takes") {
+    Library library;
+    buildLibrary(library);
+
+    RowsLog log;
+    const TestServer server(servingSettings(), rowEditingPlayer(&log), &library);
+
+    const auto sentAsDigits = post(server, userFill(),
+                                   json{{"structure", std::to_string(library.state().structure)},
+                                        {"ordinals", json::array({0})}}
+                                       .dump());
+
+    REQUIRE(sentAsDigits);
+    CHECK(sentAsDigits->status == 400);
+    CHECK(log.fills == 0);
+
+    const auto sentAsANumber = post(server, userFill(),
+                                    json{{"structure", library.state().structure},
+                                         {"ordinals", json::array({0})}}
+                                        .dump());
+
+    REQUIRE(sentAsANumber);
+    INFO("status: ", sentAsANumber->status);
+    CHECK(accepted(sentAsANumber));
+    CHECK(log.fills == 1);
 }
 
 TEST_CASE("a row edit naming a playlist the player does not hold is a 404, and the player is what "

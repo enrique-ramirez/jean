@@ -1000,6 +1000,41 @@ test("reads the whole playlist again when its rows are reordered at the player, 
 	await expectSettlesAt(player, () => changeReads(player, guid), []);
 });
 
+const structureGenerationOf = (player: FakePlayer, id: string) => {
+	const found = player.playlists.find((entry) => entry.id === id);
+	if (!found) throw new Error(`no playlist ${id}`);
+	return found.structure;
+};
+
+// A reorder steps the structure generation by one, and the counter is seeded
+// where a double's ULP is 1024, so a client reading it as a number holds the
+// same row-cache key either side of this edit: the rows are never read again
+// and the screen keeps the old order. The two reads of the player below pin that
+// seed, because a smaller one agrees with such a client by coincidence and puts
+// this case to sleep.
+test("redraws rows reordered at the player where a double cannot tell the two generations apart", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	await expect(trackRow(page, 0)).toContainText(WATCHED.first);
+	const before = structureGenerationOf(player, WATCHED.id);
+
+	expect(player.sortItems(WATCHED.id, { by: "%title%" })).toBe(true);
+
+	const after = structureGenerationOf(player, WATCHED.id);
+	expect(after, "the reorder has to move the structure generation").not.toBe(
+		before,
+	);
+	expect(
+		Number(after),
+		"both generations have to land on one double, or this case guards nothing",
+	).toBe(Number(before));
+
+	await expect(trackRow(page, 0)).toContainText(SORTED_FIRST);
+	await expect(trackRow(page, 3)).toContainText(SORTED_LAST);
+});
+
 test("asks nothing about a second playlist it still holds when one playlist's row changes", async ({
 	page,
 	player,

@@ -259,6 +259,22 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
 
 constexpr size_t kAnyRowPosition = std::numeric_limits<uint32_t>::max();
 
+// `POST /api/playlists/{id}/items/remove`'s body. `structure` names the playlist's own
+// generation, so it arrives as a run of decimal digits rather than the number a fill's does;
+// see contract/openapi.yaml, `RemovePlaylistRowsRequest`. Whether it still matches the
+// playlist's current generation is for the caller to ask the player, not this.
+struct RemoveRowsRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// Never throws.
+RemoveRowsRequest parseRemoveRows(const std::string& body);
+
 // Which of the two sets a create carries, or neither; see contract/openapi.yaml,
 // `CreatePlaylistRequest`. A body naming both is read as naming a source playlist, and the
 // library fields it also carries are then fields that form does not declare.

@@ -855,6 +855,15 @@ const QUEUE_MOVED = {
 // A query parameter and a URL segment both arrive as untyped text rather than a JSON number.
 const isDecimal = (text: string): boolean => /^\d+$/.test(text);
 
+// A playlist's own `structure` and `revision` travel as strings of decimal digits on the wire;
+// `shared/api/README.md` has why.
+const generationText = (value: bigint): string => String(value);
+
+function parseGeneration(text: string | null): bigint | null {
+	if (text === null || !isDecimal(text)) return null;
+	return BigInt(text);
+}
+
 type ParsedMoveQueue =
 	| { ok: true; from: number; to: number; revision: number }
 	| ({ ok: false } & FillFailure);
@@ -1671,8 +1680,8 @@ export async function handleAgent({
 			itemCount: playlist.items.length,
 			isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
 			role: ownRoleOf(fake, playlist.id),
-			structure: playlist.structure,
-			revision: playlist.revision,
+			structure: generationText(playlist.structure),
+			revision: generationText(playlist.revision),
 			managed: null,
 		}));
 		return json(response, {
@@ -1785,8 +1794,8 @@ export async function handleAgent({
 			itemCount: playlist.items.length,
 			isAutoPlaylist: false,
 			role: ownRoleOf(fake, playlist.id),
-			structure: playlist.structure,
-			revision: playlist.revision,
+			structure: generationText(playlist.structure),
+			revision: generationText(playlist.revision),
 			managed: null,
 		});
 	}
@@ -1891,8 +1900,8 @@ export async function handleAgent({
 
 		const page = playlist.items.slice(offset, offset + count);
 		return json(response, {
-			structure: playlist.structure,
-			revision: playlist.revision,
+			structure: generationText(playlist.structure),
+			revision: generationText(playlist.revision),
 			totalCount: playlist.items.length,
 			items: page.map((track) => ({
 				columns: columns.map((expression) => evaluate(track, expression)),
@@ -1916,15 +1925,24 @@ export async function handleAgent({
 				400,
 			);
 
-		const structure = Number(url.searchParams.get("structure"));
-		const since = Number(url.searchParams.get("since"));
+		const structure = parseGeneration(url.searchParams.get("structure"));
+		const since = parseGeneration(url.searchParams.get("since"));
+		if (structure === null || since === null)
+			return json(
+				response,
+				{
+					error: "unacceptable revision",
+					detail: "'structure' and 'since' must be a run of decimal digits",
+				},
+				400,
+			);
 
 		if (structure !== playlist.structure)
 			return json(response, ROWS_MOVED, 409);
 
 		if (since === playlist.revision)
 			return json(response, {
-				revision: playlist.revision,
+				revision: generationText(playlist.revision),
 				columns: [],
 				items: [],
 			});
@@ -1942,7 +1960,7 @@ export async function handleAgent({
 		const rows = ordered.map((position) => playlist.items[position]);
 
 		return json(response, {
-			revision: playlist.revision,
+			revision: generationText(playlist.revision),
 			columns: changedColumnDictionaries(columns, rows),
 			items: ordered.map((position) => ({
 				position,
@@ -1984,7 +2002,10 @@ export async function handleAgent({
 		if (!selection.ok) return json(response, selection.body, selection.status);
 
 		if (target.isAuto)
-			return json(response, { structure: target.structure, positions: [] });
+			return json(response, {
+				structure: generationText(target.structure),
+				positions: [],
+			});
 
 		const before = target.items.length;
 		state.editItems(target, () => {
@@ -1995,7 +2016,7 @@ export async function handleAgent({
 		state.notifyPlaylists();
 
 		return json(response, {
-			structure: target.structure,
+			structure: generationText(target.structure),
 			positions: selection.ordinals.map((_, at) => before + at),
 		});
 	}
@@ -2015,13 +2036,17 @@ export async function handleAgent({
 			return json(response, { error: "no such playlist", detail: "" }, 404);
 
 		const asked = body as { structure?: unknown } | null;
-		if (!asked || !Number.isInteger(asked.structure))
+		const structure =
+			typeof asked?.structure === "string"
+				? parseGeneration(asked.structure)
+				: null;
+		if (structure === null)
 			return json(
 				response,
 				{ error: "malformed request", detail: "'structure' is required" },
 				400,
 			);
-		if (asked.structure !== playlist.structure)
+		if (structure !== playlist.structure)
 			return json(response, STRUCTURE_MOVED, 409);
 
 		const selection = decodeSelection(
@@ -2036,7 +2061,7 @@ export async function handleAgent({
 		});
 		state.notifyPlaylists();
 
-		return json(response, { structure: playlist.structure });
+		return json(response, { structure: generationText(playlist.structure) });
 	}
 
 	const ownFillMatch = /^\/api\/playlists\/own\/([^/]+)\/items$/.exec(path);
@@ -2215,8 +2240,8 @@ export async function handleAgent({
 			itemCount: playlist.items.length,
 			isAutoPlaylist: true,
 			role: ownRoleOf(fake, playlist.id),
-			structure: playlist.structure,
-			revision: playlist.revision,
+			structure: generationText(playlist.structure),
+			revision: generationText(playlist.revision),
 			managed: {
 				key: String(asked?.key ?? ""),
 				query: String(asked?.query ?? ""),

@@ -24,8 +24,10 @@ const titlesIn = (player: FakePlayer, id: string) =>
 		.find((entry) => entry.id === id)!
 		.items.map((track) => track["%title%"]);
 
+// A string of decimal digits on the wire, never the fake's own internal number: the requests below
+// compare against exactly what the client sent.
 const structureOf = (player: FakePlayer, beefwebId: string) =>
-	player.playlists.find((entry) => entry.id === beefwebId)!.structure;
+	String(player.playlists.find((entry) => entry.id === beefwebId)!.structure);
 
 // The component is cross-origin, so a write also logs the preflight it answered with a 204:
 // counting every request matching the path counts that too.

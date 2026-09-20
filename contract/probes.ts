@@ -10,7 +10,7 @@ export interface Context {
 	run: string;
 	deviceId: string;
 	playlistId: string | null;
-	playlistPage: { structure: number; revision: number } | null;
+	playlistPage: { structure: string; revision: string } | null;
 	managed: unknown;
 	ticket: string | null;
 	revision: number | null;
@@ -148,7 +148,7 @@ export const drives: Drive[] = [
 						query: { offset: "0", count: "1", columns: "%title%" },
 					},
 		learns: (body, context) => {
-			const page = body as { structure?: number; revision?: number };
+			const page = body as { structure?: string; revision?: string };
 			context.playlistPage =
 				page.structure === undefined || page.revision === undefined
 					? null
@@ -163,8 +163,8 @@ export const drives: Drive[] = [
 				: {
 						pathParams: { id: context.playlistId },
 						query: {
-							structure: String(context.playlistPage.structure),
-							since: String(context.playlistPage.revision),
+							structure: context.playlistPage.structure,
+							since: context.playlistPage.revision,
 							columns: "%title%",
 						},
 					},

@@ -35,8 +35,8 @@ export function usePlaylistItems(
 	origin: string | null,
 	token: string | null,
 	playlistId: string | null | undefined,
-	structure: number | null | undefined,
-	revision: number | null | undefined,
+	structure: string | null | undefined,
+	revision: string | null | undefined,
 	itemCount: number | null | undefined,
 ) {
 	const isReady =
@@ -47,14 +47,14 @@ export function usePlaylistItems(
 		itemCount != null;
 
 	const snapshot = useLoadedRows(
-		isReady ? playlistKey(playlistId as string, structure as number) : null,
+		isReady ? playlistKey(playlistId as string, structure as string) : null,
 		useCallback(
 			() =>
 				loadPlaylist(
 					origin as string,
 					token as string,
 					playlistId as string,
-					structure as number,
+					structure as string,
 					itemCount as number,
 				),
 			[origin, token, playlistId, structure, itemCount],
@@ -68,7 +68,7 @@ export function usePlaylistItems(
 			token as string,
 			playlistId as string,
 			{
-				structure: structure as number,
+				structure: structure as string,
 				revision,
 			},
 		);

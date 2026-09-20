@@ -32,7 +32,7 @@ export interface ResolvedTrack {
 
 export interface AddedRows {
 	positions: number[];
-	structure?: number;
+	structure?: string;
 }
 
 export interface LibrarySourceCommon {

@@ -13,6 +13,7 @@ import {
 	pressAndHold,
 	refusePlaylistWrites,
 	requestsTo,
+	scratchOf,
 	scrollUntilMounted,
 	searchFor,
 	sidebar,
@@ -33,8 +34,14 @@ const AUTO = "Recently Added";
 // Rows are direct children of the nav; so is the section header, hence the
 // filter. The drop target, the drag gesture and the grip all live on the row
 // rather than on the button inside it.
+//
+// Matched on the label's own text rather than on the row's, because two
+// playlists may share a substring and `Library` is inside `#Jean Library`. A
+// substring that happens to be unique in one fixture is not an address.
 const row = (page: Page, title: string) =>
-	sidebar(page).locator("> div").filter({ hasText: title });
+	sidebar(page)
+		.locator("> div")
+		.filter({ has: page.getByText(title, { exact: true }) });
 const link = (page: Page, title: string) =>
 	row(page, title).getByRole("button").first();
 
@@ -211,6 +218,26 @@ test.describe("where the playlist list comes from", () => {
 
 		await expect(link(page, "Bangers")).toBeVisible();
 		await expectSettlesAt(player, () => listReads(player), 1);
+	});
+});
+
+// `#Jean Library` in the fixture is the user's own: a playlist somebody made and
+// happened to title with Jean's prefix. The component gives it no role, and it
+// gives its own scratch one whatever that is called, so a title the two can
+// share is no way to tell them apart.
+test.describe("the scratch playlist among the user's own", () => {
+	const JEAN_TITLED = "#Jean Library";
+
+	test("hides the scratch by its role and shows a user's own playlist titled #Jean", async ({
+		page,
+		player,
+	}) => {
+		await playAShelf(page);
+		const scratchTitle = scratchOf(player)!.title;
+		await openSidebar(page);
+
+		await expect(link(page, JEAN_TITLED)).toBeVisible();
+		await expect(row(page, scratchTitle)).toHaveCount(0);
 	});
 });
 

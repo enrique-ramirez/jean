@@ -1,8 +1,6 @@
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
 
-// beefweb has no hidden or app-owned playlist, so ownership is declared in the title: anything
-// beginning `#Jean` is Jean's plumbing, anything else is the user's music.
 const PREFIX = "#Jean";
 
 const SCRATCH_PREFIX = `${PREFIX} [`;
@@ -33,20 +31,17 @@ export const scratchTitle = (kind: string, label?: string | null) =>
 
 export const isScratchPlaylist = (
 	playlist: PlaylistInfo | null | undefined,
-): playlist is PlaylistInfo =>
-	// biome-ignore lint/complexity/useOptionalChain: the explicit null check is what narrows for the type predicate
-	playlist != null &&
-	playlist.title.startsWith(SCRATCH_PREFIX) &&
-	playlist.title.endsWith(SCRATCH_SUFFIX);
+): playlist is PlaylistInfo => playlist != null && playlist.role === "scratch";
 
+// Assumes the caller has already found the scratch by role: this only decodes what a fill wrote into
+// the title, and does not check `role` itself.
 export function scratchContentsOf(
 	playlist: PlaylistInfo | null | undefined,
 ): ScratchContents | null {
-	if (!isScratchPlaylist(playlist)) return null;
-	const body = playlist.title.slice(
-		SCRATCH_PREFIX.length,
-		-SCRATCH_SUFFIX.length,
-	);
+	const title = playlist?.title;
+	if (!title?.startsWith(SCRATCH_PREFIX) || !title.endsWith(SCRATCH_SUFFIX))
+		return null;
+	const body = title.slice(SCRATCH_PREFIX.length, -SCRATCH_SUFFIX.length);
 	const at = body.indexOf(": ");
 	return at === -1
 		? { kind: body, label: "" }
@@ -60,8 +55,5 @@ export function queryOfScratchPlaylist(
 	return held && held.kind === SCRATCH_KIND.search ? held.label : null;
 }
 
-const isJeanPlaylist = (playlist: PlaylistInfo | null | undefined) =>
-	Boolean(playlist?.title?.startsWith(PREFIX));
-
-export const withoutJeanPlaylists = (playlists: PlaylistInfo[]) =>
-	playlists.filter((entry) => !isJeanPlaylist(entry));
+export const withoutScratchPlaylist = (playlists: PlaylistInfo[]) =>
+	playlists.filter((entry) => entry.role !== "scratch");

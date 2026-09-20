@@ -21,7 +21,7 @@ Where "the library" comes from, what plays a set of tracks, and why search resul
 `foo_jean` answers the whole library, and there is no second way to get it. **No playlist stands in for the library and none ever will.** A playlist's rows come from the playlist and a library view's from the library, never the other way about: Jean shows a playlist under its real name and reads it as one, and it cannot tell that somebody built one to mirror their collection.
 
 - **Never make `Default Playlist` hold anything of Jean's.** Selecting an album in foobar's library view replaces its entire contents, so a set parked there is gone the next time somebody clicks an album at the player. That is the player's own behaviour rather than a role read off the title: the playlist is shown, read and edited like any other, and Jean's own sets live under `#Jean…`.
-- **Anything titled `#Jean…` is Jean's, so it is not furniture.** It is filtered out of the sidebar, the command palette and the routing fallback. `domain/track/jeanPlaylists.ts` owns that namespace.
+- **The scratch is hidden by its role, and nothing is hidden by title.** `foo_jean` marks the one playlist it keeps for itself; that is what Jean filters out of the sidebar, the command palette, the routing fallback and *Add to playlist*. A user's own playlist titled `#Jean…` carries no role and is shown like any other. `domain/track/jeanPlaylists.ts` owns the check.
 
 The all-music view is a *view over the library array*, projected through the source seam like a shelf or a set of results. It never pretends to be a playlist.
 
@@ -56,7 +56,7 @@ This is about side effects, not capability. **Explicit user intent is different*
 
 ## Showing playlists
 
-**Show playlists under their real names. Never relabel or reinterpret them.** The `#Jean…` namespace is the one exception, and those are Jean's own. **Never infer a role from a name the user chose.** `Default Playlist` is a volatile scratch buffer on one install and someone's primary working playlist on the next.
+**Show playlists under their real names. Never relabel or reinterpret them.** The scratch is the one exception, and it is found by its role, never by the `#Jean` title it wears as a courtesy. **Never infer a role from a name the user chose.** `Default Playlist` is a volatile scratch buffer on one install and someone's primary working playlist on the next.
 
 ### Playlist kinds: real, but undetectable
 
@@ -67,7 +67,7 @@ A regular playlist is editable and only the user changes it. A smart playlist or
 So handle the split by design:
 
 - **Volatility mostly does not matter.** Only the library gets the expensive indexed treatment; every other playlist is small enough to read on demand.
-- **Editability is graceful failure.** `permissions.changePlaylists` can already deny an edit, so that path must exist anyway. Attempt, catch, explain, then record the refusal so the affordance disappears for that playlist.
+- **Editability is graceful failure.** A locked playlist and the read-only-playlists setting already have to be caught, so that path exists anyway. Attempt, catch, explain, then record the refusal so the affordance disappears for that playlist.
 - **Hierarchy belongs to the user.** Pinning, grouping and ordering playlists in Jean's sidebar is the third tier of the source-of-truth ladder, and legitimate precisely because foobar exposes no such concept.
 
 ## Search results are a view until you play them
@@ -77,11 +77,11 @@ Searching is a client-side filter over the in-memory index: **no request, no pla
 **Playing is the exception, and it has to be.** beefweb plays from playlists and knows nothing else, so playing a result in place leaves the player carrying on from *there*: the next track is the library's next track, and with shuffle on a random one out of everything. So the results materialise into a real playlist at the moment someone asks to hear them, and playback happens inside it.
 
 - **One playlist, reused, not one per search.** Its title carries the kind and the label of whatever it holds, so the thing is self-describing wherever it surfaces, including foobar's own sidebar. Reusing it avoids id churn and means never deleting something currently playing.
-- **Resolved by a stored id that is *checked against the title before it is trusted*, falling back to the first playlist whose title fits.** A bare id is not enough: the playlist behind it may have been renamed, adopted or deleted at the player, and refilling somebody's playlist because Jean still had its id is the mistake that costs their data. This is not the same ladder the library playlist climbs, which is a name match and has no pin at all.
+- **Resolved by its role, never by title.** A stored id is tried first and *checked against the role before it is trusted*, falling back to whichever playlist in the list carries it. `foo_jean` marks the scratch itself, so a rename, an adoption or a delete-and-recreate at the player is still found.
 - **Hidden from Jean, visible in foobar.** There is no hidden-playlist concept and beefweb cannot fake one, so it is filtered out of the sidebar, the palette, the library and the routing fallback, the last because playing a set makes it the *current* playlist, and landing there on next open would show those results stripped of the search that made them. **Reordering still has to count the hidden row**: the player orders the real list, so a drop position among visible rows has to be translated through whichever playlist occupies it.
 - **Lazy.** Nothing is written while typing or refining, and a second play of the same set reuses what is there.
 - **The playlist is how a search survives a reload and reaches another device.** The query is in the title and every client can see the player's playlists, so reading it costs nothing and does not touch the library.
-- **Dismissing the search deletes it, unless the player is on it.** Deleting the playing playlist does not end playback at the end of the track. The player falls back to another playlist and carries on, which is the wandering this arrangement exists to stop. **The check joins the active item's GUID to a beefweb id through `usePlayingPlaylist`, gated on `playbackState`, not `isCurrent`**, which stays pointing at the last playlist played from long after playback stopped and would keep the scratch alive forever. **An unresolved join counts as still playing**: the guard cannot tell the scratch isn't the one on screen, so it leaves it alone until it can.
+- **Dismissing the search empties it, unless the player is on it.** The guard is gated on `playbackState`, not `isCurrent`, which stays pointing at the last playlist played from long after playback stopped and would leave the scratch protected forever. **A GUID `usePlayingPlaylist` has not yet resolved reads as still playing**: the guard cannot yet tell the scratch isn't the one on screen, so it leaves it alone until it can.
 - **Playing a library set asks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits.** The scratch playlist fills through the component's own route rather than beefweb's. A playlist route is unaffected either way: its rows are already in a playlist.
 - **The scratch playlist's own title can lag the fill landing on it.** `foo_jean` retitles the playlist for the view being asked for before it knows whether that fill will be accepted, so a refused fill can leave the live title naming a view the playlist does not hold, and a poll landing in between sees exactly that. `useScratchPlaylist.ts` keeps `landedTitle`, the title of the last fill this client watched land, and every reader of what the scratch holds trusts it over the playlist's own title. A device that filled nothing itself has no `landedTitle` of its own and reads the live title instead, which is the only account another device's fill leaves behind.
 

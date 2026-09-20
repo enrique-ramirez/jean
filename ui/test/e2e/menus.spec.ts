@@ -98,12 +98,14 @@ test.describe("a nested page", () => {
 		await openLibrary(page);
 		await openTargets(page, isMobile);
 
-		// Not the open playlist, and not Jean's scratch, which the next search
-		// empties.
+		// Every playlist but the open one, which is where these tracks already are.
+		// `#Jean Library` is the user's, titled in the prefix the component uses
+		// for its own, and a title decides nothing: only the role does, and
+		// `jean-namespace.spec.ts` is where this menu meets a playlist carrying one.
 		await expect(menuItem(page, "Favorites")).toBeVisible();
 		await expect(menuItem(page, "Rock en Español")).toBeVisible();
+		await expect(menuItem(page, "#Jean Library")).toHaveCount(1);
 		await expect(menuItem(page, /^Library$/)).toHaveCount(0);
-		await expect(menuItem(page, /#Jean/)).toHaveCount(0);
 	});
 });
 
@@ -279,8 +281,12 @@ test.describe("a dropdown owns the keyboard too", () => {
 test.describe("an install that will not let Jean change playlists", () => {
 	test.use({ fooJean: { canWritePlaylists: false } });
 
+	// The label's own text, not the row's: `Library` is inside `#Jean Library`,
+	// which the user owns and Jean draws.
 	const playlistRow = (page: Page, title: string) =>
-		sidebar(page).locator("> div").filter({ hasText: title });
+		sidebar(page)
+			.locator("> div")
+			.filter({ has: page.getByText(title, { exact: true }) });
 
 	const movesAsked = (player: FakePlayer) =>
 		player.requests

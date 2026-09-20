@@ -1,4 +1,4 @@
-import type { Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
@@ -17,6 +17,19 @@ const paletteField = (page: Page) =>
 	page.getByRole("textbox", { name: "Go to" });
 const results = (page: Page) => palette(page).getByRole("option");
 
+// One row per playlist the player holds, plus All music. Counted off the player
+// rather than written down, since a number here is a claim about the fixture and
+// what the palette lists is the question.
+const everyPlaylistAndAllMusic = (player: FakePlayer) =>
+	player.playlists.length + 1;
+
+// Matched on the label's own text rather than on the row's: `Library` is inside
+// `#Jean Library`, which the user owns and the sidebar draws.
+const sidebarLink = (page: Page, title: string) =>
+	sidebar(page)
+		.getByRole("button")
+		.filter({ has: page.getByText(title, { exact: true }) });
+
 test.describe("the command palette", () => {
 	test.skip(
 		({ isMobile }) => isMobile,
@@ -31,9 +44,10 @@ test.describe("the command palette", () => {
 
 	test("it opens with the field ready and every playlist listed", async ({
 		page,
+		player,
 	}) => {
 		await expect(paletteField(page)).toBeFocused();
-		await expect(results(page)).toHaveCount(6);
+		await expect(results(page)).toHaveCount(everyPlaylistAndAllMusic(player));
 		await expect(results(page).first()).toHaveText(/^All music/);
 		await expect(results(page).first()).toHaveAttribute(
 			"aria-selected",
@@ -43,6 +57,7 @@ test.describe("the command palette", () => {
 
 	test("the first result stays active under a pointer that has not moved", async ({
 		page,
+		player,
 	}) => {
 		const box = (await results(page).nth(2).boundingBox())!;
 		await page.keyboard.press("Escape");
@@ -50,7 +65,7 @@ test.describe("the command palette", () => {
 
 		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 		await page.keyboard.press("g");
-		await expect(results(page)).toHaveCount(6);
+		await expect(results(page)).toHaveCount(everyPlaylistAndAllMusic(player));
 
 		await expect(results(page).first()).toHaveAttribute(
 			"aria-selected",
@@ -162,13 +177,15 @@ test.describe("the shelf that is playing", () => {
 
 	test("gets a row above All music, and is not there before it plays", async ({
 		page,
+		player,
 	}) => {
 		await page.goto("/");
 		const explore = page.getByRole("region", { name: "Explore" });
 		await expect(explore).toBeVisible();
 
+		const before = everyPlaylistAndAllMusic(player);
 		await page.keyboard.press("g");
-		await expect(results(page)).toHaveCount(6);
+		await expect(results(page)).toHaveCount(before);
 		await expect(results(page).first()).toHaveText(/^All music/);
 		await page.keyboard.press("Escape");
 
@@ -177,41 +194,15 @@ test.describe("the shelf that is playing", () => {
 		await expectPlayingFrom(page, "Most played");
 
 		await page.keyboard.press("g");
-		await expect(results(page)).toHaveCount(7);
+		// Exactly one row more than before playing: the shelf borrowed one, and the
+		// playlist the component filled to play it is listed nowhere.
+		await expect(results(page)).toHaveCount(before + 1);
 		await expect(results(page).first()).toHaveText(/^Most played/);
 
 		await page.keyboard.press("Enter");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Most played" }),
 		).toBeVisible();
-	});
-});
-
-test.describe("a #Jean playlist is Jean's, not furniture", () => {
-	test("it is not in the sidebar, not in the palette, and not somewhere a route lands", async ({
-		page,
-		player,
-	}) => {
-		expect(
-			player.playlists.some((entry) => entry.title === "#Jean Library"),
-		).toBe(true);
-
-		await openLibrary(page);
-		await openSidebar(page);
-		await expect(sidebar(page).getByText("#Jean Library")).toHaveCount(0);
-		await expect(
-			sidebar(page)
-				.getByRole("button")
-				.filter({ hasText: /^Library/ }),
-		).toHaveCount(1);
-
-		const guid = player.playlists.find(
-			(entry) => entry.title === "#Jean Library",
-		)!.guid;
-		await page.goto(`/#/${guid}`);
-		await expect(
-			page.getByRole("heading", { level: 1, name: "#Jean Library" }),
-		).toHaveCount(0);
 	});
 });
 
@@ -232,10 +223,7 @@ test.describe("where a view puts you when you come back to it", () => {
 		await expectNear(page, LEFT_AT);
 
 		await openSidebar(page);
-		await sidebar(page)
-			.getByRole("button")
-			.filter({ hasText: "Favorites" })
-			.click();
+		await sidebarLink(page, "Favorites").click();
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Favorites" }),
 		).toBeVisible();
@@ -243,12 +231,9 @@ test.describe("where a view puts you when you come back to it", () => {
 		await expect.poll(() => scrollTop(page)).toBe(0);
 
 		await openSidebar(page);
-		await sidebar(page)
-			.getByRole("button")
-			.filter({ hasText: "Library" })
-			.click();
+		await sidebarLink(page, "Library").click();
 		await expect(
-			page.getByRole("heading", { level: 1, name: "Library" }),
+			page.getByRole("heading", { level: 1, name: "Library", exact: true }),
 		).toBeVisible();
 
 		await expectNear(page, LEFT_AT);

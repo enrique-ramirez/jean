@@ -4,7 +4,10 @@ import {
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
+	holdThePoll,
+	nowPlayingScreen,
 	openLibrary,
+	openNowPlaying,
 	openSidebar,
 	playedFrom,
 	requestsTo,
@@ -59,6 +62,15 @@ const searchAndPlay = async (
 	await trackRow(page, row).dblclick();
 	await expect.poll(() => scratchOf(player)?.items.length).toBe(query.matches);
 };
+
+// Every call that took the rows out of the scratch. Addressed by role rather
+// than by id, which is the only address the component accepts for its own.
+const scratchEmpties = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "DELETE" &&
+			entry.path === "/api/playlists/own/scratch/items",
+	);
 
 const saveAsPlaylist = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: /Save as playlist/ });
@@ -388,7 +400,10 @@ test.describe("a scratch playlist under a name that is not the view it holds", (
 });
 
 test.describe("clearing the search", () => {
-	test("takes the scratch playlist with it", async ({ page, player }) => {
+	test("empties the scratch once playback has stopped", async ({
+		page,
+		player,
+	}) => {
 		await searchAndPlay(page, player);
 
 		// Stop first: whether the scratch survives is decided from the app's copy of
@@ -404,33 +419,20 @@ test.describe("clearing the search", () => {
 
 		await page.getByRole("button", { name: "Clear search" }).click();
 
-		await expect.poll(() => scratchOf(player)).toBeUndefined();
+		await expect.poll(() => scratchOf(player)?.items.length).toBe(0);
 	});
 
-	test("but not while the player is still on it", async ({ page, player }) => {
-		await searchAndPlay(page, player);
-
-		await page.getByRole("button", { name: "Clear search" }).click();
-
-		// Ordered rather than timed: the field emptying says the handler ran, and a
-		// navigation after it says anything it sent has reached the player. Revealed
-		// first, since the compact bar puts the field away with the search.
-		await revealSearch(page);
-		await expect(page.getByLabel("Search your library")).toHaveValue("");
-		await openSpanish(page, player);
-
-		// Deleting the playing playlist does not stop playback: the player falls back
-		// to another playlist and keeps going.
-		expect(scratchOf(player)).toBeDefined();
-		expect(scratchOf(player)!.items).toHaveLength(QUERY.matches);
-	});
-
-	// The two cases above never make the guard tell scratch from anything else: stopped
-	// needs no comparison at all, and playing the scratch matches however the check is
-	// wired. A guard that just refuses whenever the player hasn't stopped, regardless of
-	// which playlist, would still pass both. Only moving off the scratch while playback
-	// continues forces a real one.
-	test("keeps the scratch while it is playing, then deletes it once the player has moved to another playlist", async ({
+	// The stopped case above never makes the guard tell the scratch from anything
+	// else: stopped needs no comparison at all, and playing the scratch matches
+	// however the check is wired. A guard that simply refused whenever the player
+	// had not stopped would pass both. Only moving off the scratch while playback
+	// continues forces a real one, which is why both halves are one case here.
+	//
+	// The scratch is the component's own, so a delete addressed at its id comes
+	// back 403 however the read-only-playlists setting is set. Emptying it is the
+	// route that exists for this, and it keeps the marker the role resolves
+	// through, the playlist's id and its place in the player's own list.
+	test("empties the scratch through the component's own route, and leaves its rows alone while it is playing", async ({
 		page,
 		player,
 	}) => {
@@ -438,18 +440,132 @@ test.describe("clearing the search", () => {
 
 		await searchAndPlay(page, player);
 		const scratchId = scratchOf(player)!.id;
+		await expect(statusBar(page)).toContainText("Los Calientes");
 
 		await page.getByRole("button", { name: "Clear search" }).click();
-		await expectSettlesAt(player, () => scratchOf(player)?.id, scratchId);
 
+		// Ordered rather than timed: the field emptying says the handler ran, so
+		// the rows still being there is a decision rather than a race. Revealed
+		// first, since the compact bar puts the field away with the search.
+		await revealSearch(page);
+		await expect(page.getByLabel("Search your library")).toHaveValue("");
+		await expectSettlesAt(
+			player,
+			() => scratchOf(player)?.items.length,
+			QUERY.matches,
+		);
+		expect(scratchEmpties(player)).toHaveLength(0);
+
+		// Off the scratch, with playback carrying on somewhere else: now its rows
+		// are Jean's to drop.
 		player.playItem(ELSEWHERE.playlist, ELSEWHERE.index);
 		await expect(statusBar(page)).toContainText(ELSEWHERE.title);
-
 		await searchFor(page, QUERY.text);
-		expect(scratchOf(player)?.id).toBe(scratchId);
 
 		await page.getByRole("button", { name: "Clear search" }).click();
-		await expect.poll(() => scratchOf(player)).toBeUndefined();
+
+		await expect.poll(() => scratchEmpties(player).length).toBe(1);
+		await expectSettlesAt(player, () => scratchOf(player)?.id, scratchId);
+		expect(scratchOf(player)!.items).toHaveLength(0);
+	});
+});
+
+// The component finds its own playlist by a marker it writes rather than by a
+// name, so a rename at the player leaves the role exactly where it was. The
+// title is the user's to change, and Jean reads nothing off it: not whether to
+// draw the row, and not what to call the set somebody is listening to.
+test.describe("a scratch renamed or deleted at the player", () => {
+	// Ordinary enough that a client hiding by title would draw it, which is the
+	// whole of what this rename is for.
+	const RENAMED = "Road trip";
+
+	const idOfPlaylist = (player: FakePlayer, title: string) =>
+		player.playlists.find((entry) => entry.title === title)!.id;
+
+	test("a rename keeps it out of the sidebar, and Playing from keeps the name Jean gave it", async ({
+		page,
+		player,
+	}) => {
+		await searchAndPlay(page, player, NARROWER);
+		await expect(statusBar(page)).toContainText("Deléctrico");
+
+		player.renamePlaylist(scratchOf(player)!.id, RENAMED);
+		// A second rename in the same breath, on a playlist the sidebar does draw.
+		// The row carrying its new name is what says the list has been read since,
+		// so the two assertions below are about a client that heard rather than one
+		// that has not asked yet.
+		player.renamePlaylist(idOfPlaylist(player, "Favorites"), "Bangers");
+
+		await openSidebar(page);
+		await expect(sidebar(page).getByText("Bangers")).toBeVisible();
+
+		await expect(sidebar(page).getByText(RENAMED)).toHaveCount(0);
+		await expectPlayingFrom(page, NARROWER.text);
+	});
+
+	test("a deletion clears Playing from and the row it marked, within one poll", async ({
+		page,
+		player,
+	}) => {
+		await searchAndPlay(page, player);
+		await expect(statusBar(page)).toContainText("Los Calientes");
+		const scratchId = scratchOf(player)!.id;
+
+		await openSidebar(page);
+		const playingHere = sidebar(page).getByLabel("Playing from here");
+		await expect(playingHere).toBeVisible();
+
+		const poll = await holdThePoll(page);
+		expect(player.removePlaylist(scratchId)).toBe(true);
+		await poll.untilRefusedAgain();
+		// Asked and told nothing, so this is still the screen drawn before the
+		// deletion.
+		await expect(playingHere).toBeVisible();
+		poll.letOneThrough();
+
+		await expect(playingHere).toHaveCount(0);
+		// The search entry itself stays: those results are still what is on
+		// screen, and nothing about the deletion says otherwise.
+		await expect(sidebar(page).getByText(QUERY.text)).toBeVisible();
+
+		await openNowPlaying(page);
+		await expect(nowPlayingScreen(page).locator("header")).not.toContainText(
+			"Playing from",
+		);
+	});
+
+	test("a deletion leaves the track playing, says nothing about it, and the next set makes the scratch again", async ({
+		page,
+		player,
+	}) => {
+		await searchAndPlay(page, player);
+		await expect(statusBar(page)).toContainText("Los Calientes");
+		const scratchId = scratchOf(player)!.id;
+		const scratchGuid = scratchOf(player)!.guid;
+
+		expect(player.removePlaylist(scratchId)).toBe(true);
+
+		// Jean has heard: the mark saying the set is playing has gone.
+		await openSidebar(page);
+		await expect(sidebar(page).getByLabel("Playing from here")).toHaveCount(0);
+
+		expect(player.player.playbackState).toBe("playing");
+		await expect(statusBar(page)).toContainText("Los Calientes");
+		await expectSettlesAt(player, () => page.getByRole("status").count(), 0);
+
+		await searchFor(page, NARROWER.text);
+		await trackRow(page, 0).dblclick();
+
+		await expect
+			.poll(() => scratchOf(player)?.items.length)
+			.toBe(NARROWER.matches);
+		// A GUID foobar2000 never reuses, so this is a playlist that was made
+		// rather than the deleted one somehow recovered.
+		expect(scratchOf(player)!.guid).not.toBe(scratchGuid);
+		await expect
+			.poll(() => playedFrom(player)?.id)
+			.toBe(scratchOf(player)!.guid);
+		await expect(statusBar(page)).toContainText("Deléctrico");
 	});
 });
 
@@ -640,7 +756,9 @@ test.describe("saving results as a playlist", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Keepers" }),
 		).toBeVisible();
-		await expect.poll(() => scratchOf(player)).toBeUndefined();
+		// The rows are released, and the playlist holding them is not: it is the
+		// component's own and the delete that used to end this is refused now.
+		await expect.poll(() => scratchOf(player)?.items.length).toBe(0);
 		await expect(page.getByLabel("Search your library")).toHaveValue("");
 	});
 

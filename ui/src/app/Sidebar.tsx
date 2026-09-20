@@ -31,7 +31,7 @@ import {
 	untitledPlaylistName,
 	usePlaylistActions,
 } from "@/domain/player/usePlayer";
-import { withoutJeanPlaylists } from "@/domain/track/jeanPlaylists";
+import { withoutScratchPlaylist } from "@/domain/track/jeanPlaylists";
 import { permitsPlaylistWrites } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
@@ -148,7 +148,7 @@ export function Sidebar({
 		new Map<string, Promise<string | null>>(),
 	);
 
-	const shown = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
+	const shown = useMemo(() => withoutScratchPlaylist(playlists), [playlists]);
 
 	const playingRoute = playingFrom?.isPlaying ? playingFrom.route : null;
 

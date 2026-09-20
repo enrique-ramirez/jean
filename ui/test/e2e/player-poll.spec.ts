@@ -13,6 +13,7 @@ import {
 	expectSettlesAt,
 	globalControls,
 	guidOfPlaylist,
+	holdThePoll,
 	listenHere,
 	nowPlayingScreen,
 	openAllMusic,
@@ -1030,50 +1031,6 @@ test("follows a row's cover address when its file moves at the player", async ({
 
 	await expect.poll(() => coverAsks(player)).toContain(MOVED.cover);
 });
-
-// Ticks handed over one at a time. An edit made at the player reaches Jean on
-// the poll and nowhere else, so what "within one poll" can be measured against
-// is a supply of ticks the test owns: every one is refused, the edit is made,
-// then exactly one goes through. What the client does with that tick is
-// untimed, so a slow machine waits rather than failing, and a client wanting a
-// second tick never gets one.
-const holdThePoll = async (page: Page) => {
-	let allowed = 0;
-	let refused = 0;
-
-	await page.route(
-		(url) => url.pathname === "/api/state",
-		async (route) => {
-			// The browser's own preflight for the `Authorization` header, which
-			// carries no state and must not spend the tick being handed out.
-			if (route.request().method() !== "GET") return route.continue();
-			if (allowed > 0) {
-				allowed -= 1;
-				return route.continue();
-			}
-			refused += 1;
-			return route.abort();
-		},
-	);
-
-	const untilRefusedAgain = async () => {
-		const seen = refused;
-		await expect
-			.poll(() => refused, { message: "the poll stopped asking" })
-			.toBeGreaterThan(seen);
-	};
-
-	// Held before the caller edits anything, so nothing it does can ride a tick
-	// that was already in flight.
-	await untilRefusedAgain();
-
-	return {
-		untilRefusedAgain,
-		letOneThrough: () => {
-			allowed = 1;
-		},
-	};
-};
 
 // An edit made at the player with Jean left alone, and the single tick it is
 // allowed to reach the client on. `stillShows` is read with the edit made and

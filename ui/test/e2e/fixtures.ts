@@ -140,9 +140,11 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 		},
 		use,
 	) => {
-		const playlists = DEFAULT_PLAYLISTS().filter(
-			(playlist) => !withoutPlaylists || playlist.title.startsWith("#Jean"),
-		);
+		// Nothing in the default set is one of the component's own: it makes its
+		// scratch on the first fill and takes a role then, so a player nobody has
+		// played a set on has no playlist Jean keeps for itself. A title is no
+		// longer a way to ask, and `#Jean Library` is the user's.
+		const playlists = withoutPlaylists ? [] : DEFAULT_PLAYLISTS();
 
 		await use(
 			fakeServer.reset(
@@ -472,6 +474,50 @@ export const expectSettlesAt = async <T>(
 	// Widened, or the matcher does not resolve against an unbound generic.
 	const settled: unknown = await read();
 	expect(settled).toEqual(expected);
+};
+
+// Ticks handed over one at a time. A change made at the player reaches Jean on
+// the poll and nowhere else, so what "within one poll" can be measured against
+// is a supply of ticks the test owns: every one is refused, the change is made,
+// then exactly one goes through. What the client does with that tick is
+// untimed, so a slow machine waits rather than failing, and a client wanting a
+// second tick never gets one.
+export const holdThePoll = async (page: Page) => {
+	let allowed = 0;
+	let refused = 0;
+
+	await page.route(
+		(url) => url.pathname === "/api/state",
+		async (route) => {
+			// The browser's own preflight for the `Authorization` header, which
+			// carries no state and must not spend the tick being handed out.
+			if (route.request().method() !== "GET") return route.continue();
+			if (allowed > 0) {
+				allowed -= 1;
+				return route.continue();
+			}
+			refused += 1;
+			return route.abort();
+		},
+	);
+
+	const untilRefusedAgain = async () => {
+		const seen = refused;
+		await expect
+			.poll(() => refused, { message: "the poll stopped asking" })
+			.toBeGreaterThan(seen);
+	};
+
+	// Held before the caller changes anything, so nothing it does can ride a tick
+	// that was already in flight.
+	await untilRefusedAgain();
+
+	return {
+		untilRefusedAgain,
+		letOneThrough: () => {
+			allowed = 1;
+		},
+	};
 };
 
 // beefweb addresses a cover by a playlist and a row. Its two other artwork

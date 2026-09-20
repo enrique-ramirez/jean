@@ -6,11 +6,7 @@ import {
 	useState,
 } from "react";
 import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
-import {
-	canChangePlaylists,
-	usePermissions,
-	usePlayer,
-} from "@/domain/player/usePlayer";
+import { usePlayer } from "@/domain/player/usePlayer";
 import { type Album, albumIndex } from "@/domain/track/albums";
 import { type Artist, artistIndex } from "@/domain/track/artists";
 import { type Genre, genreIndex } from "@/domain/track/genres";
@@ -22,7 +18,7 @@ import { libraryIndex, searchLibrary } from "@/domain/track/libraryIndex";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
 import { rankEntities } from "@/domain/track/rankEntities";
 import { bestMatches } from "@/domain/track/rankTracks";
-import { removePlaylist } from "@/shared/api/fooJean";
+import { emptyOwnPlaylist, permitsPlaylistWrites } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { readStoredState, useStoredState } from "@/shared/hooks/useStoredState";
@@ -72,7 +68,6 @@ const entityOf = (suggestion: Suggestion) =>
 				: null;
 
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
-	const permissions = usePermissions();
 	const { discovery } = useFooJean();
 	const { data: playerSnapshot } = usePlayer();
 	const player = playerSnapshot?.player;
@@ -92,7 +87,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
 	const remembered = useMemo(() => {
 		const scratch = playlists.find(isScratchPlaylist);
-		if (!scratch) return null;
+		if (!scratch || scratch.itemCount === 0) return null;
 		return (
 			queryOfScratchPlaylist(
 				landedTitle ? { ...scratch, title: landedTitle } : scratch,
@@ -105,7 +100,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		setDraft((current) => current || remembered || "");
 	}, [remembered]);
 
-	const canEdit = canChangePlaylists(permissions);
+	const canEdit = permitsPlaylistWrites(discovery);
 
 	const clear = useCallback(() => {
 		setDraft("");
@@ -127,7 +122,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 			return;
 
 		const { origin, token } = discovery;
-		if (origin && token) removePlaylist(origin, token, scratch.id);
+		if (origin && token) emptyOwnPlaylist(origin, token, "scratch");
 		setPinnedScratch(null);
 	}, [
 		playlists,

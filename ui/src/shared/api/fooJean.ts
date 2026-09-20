@@ -595,6 +595,13 @@ export async function fillOwnPlaylist(
 	return (await response.json()) as FillResult;
 }
 
+export const emptyOwnPlaylist = (
+	origin: string,
+	token: string,
+	role: OwnPlaylistRole,
+) =>
+	requestThrowing(`${origin}/api/playlists/own/${role}/items`, token, "DELETE");
+
 // A 403 here is always `writePlaylists` off: this route addresses a playlist by the GUID its own
 // annotation carries, so the other 403 this contract has, a target foo_jean did not create, cannot
 // apply to it.

@@ -33,7 +33,7 @@ import { type ArtistTab, artistRoute } from "@/domain/track/artistRoute";
 import { type ArtistTracks, refsOfArtist } from "@/domain/track/artists";
 import {
 	SCRATCH_KIND,
-	withoutJeanPlaylists,
+	withoutScratchPlaylist,
 } from "@/domain/track/jeanPlaylists";
 import { askToJump } from "@/domain/track/jumpToPlaying";
 import {
@@ -294,7 +294,10 @@ function Shell() {
 						title: t("library.allMusic"),
 					};
 
-	const browsable = useMemo(() => withoutJeanPlaylists(playlists), [playlists]);
+	const browsable = useMemo(
+		() => withoutScratchPlaylist(playlists),
+		[playlists],
+	);
 
 	const palettePlaylists = useMemo(
 		() =>

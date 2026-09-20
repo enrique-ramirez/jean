@@ -378,7 +378,11 @@ test.describe("playing a set out of the library", () => {
 
 		expect(scratchOf(player)?.items).toHaveLength(54);
 		await openSidebar(page);
-		await expect(sidebar(page).getByText(/#Jean/)).toHaveCount(0);
+		// The pair, because either half alone passes against a filter that is
+		// wrong in one direction: the playlist the component made for this fill is
+		// out, and the user's own, which only shares its title's prefix, is in.
+		await expect(sidebar(page).getByText("#Jean [all music]")).toHaveCount(0);
+		await expect(sidebar(page).getByText("#Jean Library")).toHaveCount(1);
 	});
 
 	test("a second row from the same view plays without filling the playlist again", async ({

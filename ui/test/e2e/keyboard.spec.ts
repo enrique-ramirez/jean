@@ -44,8 +44,12 @@ import { panelTab, playRow, TAGGED } from "./nowPlaying.ts";
 // Playwright both map Mod by platform, so the literal would pass here and fail
 // on Linux.
 
+// Matched on the label's own text rather than on the button's: `Library` is
+// inside `#Jean Library`, which the user owns and the sidebar draws.
 const sidebarLink = (page: Page, title: string) =>
-	sidebar(page).getByRole("button").filter({ hasText: title });
+	sidebar(page)
+		.getByRole("button")
+		.filter({ has: page.getByText(title, { exact: true }) });
 
 const currentSidebarRow = (page: Page) =>
 	sidebar(page).locator('button[aria-current="true"]');

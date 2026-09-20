@@ -33,7 +33,6 @@ import {
 } from "@/shared/api/fooJean";
 import type {
 	ActiveItem,
-	Permissions,
 	PlaybackMode,
 	PlayerSnapshot,
 	PlayerState,
@@ -65,6 +64,7 @@ export const playlistInfoOf = (
 	itemCount: annotation.itemCount,
 	structure: annotation.structure,
 	revision: annotation.revision,
+	role: annotation.role,
 	...NOT_TRACKED,
 });
 
@@ -131,14 +131,6 @@ export function usePlaylistsCaughtUp(): boolean {
 	});
 	return seen !== undefined && seen === fetchedAt;
 }
-
-export function usePermissions(): Partial<Permissions> {
-	const { data } = usePlayer();
-	return data?.player?.permissions ?? {};
-}
-
-export const canChangePlaylists = (permissions: Partial<Permissions>) =>
-	permissions.changePlaylists !== false;
 
 function useOptimisticWrite<TData, TInput, TResult = unknown>(
 	queryKey: QueryKey,
@@ -243,6 +235,7 @@ export function usePlaylistActions() {
 				structure: 0,
 				revision: 0,
 				index: playlists.length,
+				role: null,
 				...NOT_TRACKED,
 			},
 		],

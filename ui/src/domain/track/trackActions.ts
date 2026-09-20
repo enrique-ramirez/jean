@@ -5,7 +5,7 @@ import type { Translate } from "@/shared/i18n/locale";
 import type { ActionNode } from "@/shared/ui/ActionMenu";
 import { namesAnArtist } from "./artists";
 import { creditedArtists } from "./fields";
-import { withoutJeanPlaylists } from "./jeanPlaylists";
+import { withoutScratchPlaylist } from "./jeanPlaylists";
 import type { LibrarySource } from "./librarySource";
 import { MAX_STARS } from "./rating";
 import { QUEUE_LIMIT } from "./useQueueTracks";
@@ -68,7 +68,7 @@ export function trackActions({
 	// -- so this is where an artist is reachable from a row at all.
 	credit?: string | null;
 }): ActionNode[] {
-	const targets = withoutJeanPlaylists(playlists).filter(
+	const targets = withoutScratchPlaylist(playlists).filter(
 		(entry) => entry.id !== source.playlistId,
 	);
 

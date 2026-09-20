@@ -1179,6 +1179,7 @@ export function createState({
 				totalTime: 0,
 				structure: playlist.structure,
 				revision: playlist.revision,
+				role: null,
 			};
 		},
 

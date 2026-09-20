@@ -469,6 +469,12 @@ const WRITES_DISABLED = {
 	detail: "",
 };
 
+const OWN_PLAYLIST = {
+	error:
+		"that playlist is foo_jean's own; address it by its role rather than by its id",
+	detail: "",
+};
+
 const ROWS_MOVED = {
 	error:
 		"the playlist's rows were added, removed or reordered; read them again",
@@ -951,6 +957,16 @@ const requirePlaylist = (state: FakeState, id: string): FakePlaylist => {
 	return playlist;
 };
 
+const ownRoleOf = (fake: FooJeanFake, id: string): OwnPlaylistRole | null =>
+	fake.ownPlaylists.scratch === id ? "scratch" : null;
+
+const OWN_TITLE_PREFIX = "#Jean";
+
+// A title beginning `#Jean` reaches the player exactly as sent; one that does not is prefixed
+// with `#Jean ` first. The check is exact and case-sensitive, matching the component's own.
+const ownPlaylistTitle = (asked: string) =>
+	asked.startsWith(OWN_TITLE_PREFIX) ? asked : `${OWN_TITLE_PREFIX} ${asked}`;
+
 // Applies `title` on every call, whether this is what makes the playlist for
 // `role` or finds one already there, so a retitle from one fill to the next is
 // the same call that fills it. Keyed on the role rather than on the title, so a
@@ -961,12 +977,13 @@ function resolveOwnPlaylist(
 	role: OwnPlaylistRole,
 	title: string,
 ): FakePlaylist {
+	const asked = ownPlaylistTitle(title);
 	const existingId = fake.ownPlaylists[role];
 	if (existingId && state.playlistById(existingId)) {
-		state.renamePlaylist(existingId, title);
+		state.renamePlaylist(existingId, asked);
 		return requirePlaylist(state, existingId);
 	}
-	const made = state.addPlaylist(title);
+	const made = state.addPlaylist(asked);
 	fake.ownPlaylists[role] = made.id;
 	return requirePlaylist(state, made.id);
 }
@@ -1653,7 +1670,7 @@ export async function handleAgent({
 			title: playlist.title,
 			itemCount: playlist.items.length,
 			isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
-			role: null,
+			role: ownRoleOf(fake, playlist.id),
 			structure: playlist.structure,
 			revision: playlist.revision,
 			managed: null,
@@ -1767,7 +1784,7 @@ export async function handleAgent({
 			title: playlist.title,
 			itemCount: playlist.items.length,
 			isAutoPlaylist: false,
-			role: null,
+			role: ownRoleOf(fake, playlist.id),
 			structure: playlist.structure,
 			revision: playlist.revision,
 			managed: null,
@@ -1785,6 +1802,8 @@ export async function handleAgent({
 		const playlist = state.playlistByGuid(guid);
 		if (!playlist)
 			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		if (ownRoleOf(fake, playlist.id)) return json(response, OWN_PLAYLIST, 403);
 
 		if (method === "DELETE") {
 			state.removePlaylist(playlist.id);
@@ -2195,7 +2214,7 @@ export async function handleAgent({
 			title: playlist.title,
 			itemCount: playlist.items.length,
 			isAutoPlaylist: true,
-			role: null,
+			role: ownRoleOf(fake, playlist.id),
 			structure: playlist.structure,
 			revision: playlist.revision,
 			managed: {

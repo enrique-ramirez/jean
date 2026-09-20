@@ -272,12 +272,19 @@ TEST_CASE("a delta of playlist rows is the shape contract/openapi.yaml publishes
     INFO(kUpdateSpec);
 
     PlaylistChangesRead read;
-    read.rows.emplace_back();
+    ChangedPlaylistRow changed;
+    changed.row.columns = {"value"};
+    read.rows.push_back(changed);
 
-    CHECK(keysOf(playlistChangesDocument(read)) == Keys{"revision", "items"});
+    CHECK(keysOf(playlistChangesDocument(read)) == Keys{"revision", "columns", "items"});
 
-    const auto row = json::parse(playlistChangesDocument(read))["items"][0];
-    CHECK(keysOf(row.dump()) == Keys{"position", "columns", "libraryPath"});
+    const auto document = json::parse(playlistChangesDocument(read));
+
+    const auto row = document["items"][0];
+    CHECK(keysOf(row.dump()) == Keys{"position", "libraryPath"});
+
+    const auto column = document["columns"][0];
+    CHECK(keysOf(column.dump()) == Keys{"text", "ids"});
 }
 
 TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publishes") {

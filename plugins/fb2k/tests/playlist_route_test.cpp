@@ -588,14 +588,23 @@ std::map<uint32_t, Row> changedRows() {
             {kStrayRow, strayRow("Dragged in, five stars")}};
 }
 
+// Two of the three carry one artist and all three carry different titles, so one response holds a
+// column whose values repeat across changed rows beside a column whose values do not.
+std::map<uint32_t, Row> rowsSharingAnArtist() {
+    return {{1, libraryRow("Second, five stars", "02.flac")},
+            {kStrayRow, strayRow("Dragged in, five stars")},
+            {3, libraryRow("Fourth, five stars", "04.flac")}};
+}
+
 constexpr uint64_t kChangedSince = kRowsRevision - 1;
 constexpr uint64_t kOldestRetained = kRowsRevision - 2;
 
-Player changeReadingPlayer() {
+Player changeReadingPlayer(std::map<uint32_t, Row> changed = changedRows()) {
     Player player = rowReadingPlayer();
 
-    player.readChangedPlaylistRows = [](const std::string& playlistId, uint64_t structure,
-                                        uint64_t since, const std::vector<std::string>& columns) {
+    player.readChangedPlaylistRows = [changed = std::move(changed)](
+                                         const std::string& playlistId, uint64_t structure,
+                                         uint64_t since, const std::vector<std::string>& columns) {
         PlaylistChangesRead read;
         if (playlistId != kPlaylistId) {
             read.outcome = PlaylistOutcome::noSuchPlaylist;
@@ -616,7 +625,7 @@ Player changeReadingPlayer() {
         if (since >= kRowsRevision)
             return read;
 
-        for (const auto& [position, row] : changedRows())
+        for (const auto& [position, row] : changed)
             read.rows.push_back({position, formatted(row, columns)});
 
         return read;
@@ -657,14 +666,51 @@ json deltaOf(const TestServer& server, uint64_t since, const std::vector<std::st
     return json::parse(response->body);
 }
 
+json dictionariesIn(const json& delta) {
+    REQUIRE(delta.contains("columns"));
+    return delta.at("columns");
+}
+
+// `text` promises the values a column takes and no order, so a case about which column a
+// dictionary belongs to reads it as a set.
+std::set<std::string> valuesIn(const json& dictionary) {
+    REQUIRE(dictionary.contains("text"));
+
+    std::set<std::string> values;
+    for (const auto& value : dictionary.at("text"))
+        values.insert(value.get<std::string>());
+
+    return values;
+}
+
+// A changed row does not carry its own values: the response carries one dictionary per declared
+// column, and a row's value in each is the entry its id names.
+json columnsAt(const json& delta, size_t row) {
+    json values = json::array();
+    for (const auto& dictionary : dictionariesIn(delta)) {
+        REQUIRE(dictionary.contains("text"));
+        REQUIRE(dictionary.contains("ids"));
+        REQUIRE(dictionary.at("ids").size() == delta.at("items").size());
+
+        const auto id = dictionary.at("ids").at(row).get<size_t>();
+        REQUIRE(id < dictionary.at("text").size());
+        values.push_back(dictionary.at("text").at(id));
+    }
+
+    return values;
+}
+
 std::map<uint32_t, json> byPosition(const json& delta) {
     REQUIRE(delta.contains("items"));
 
     std::map<uint32_t, json> rows;
-    for (const auto& item : delta.at("items")) {
+    for (size_t at = 0; at < delta.at("items").size(); ++at) {
+        auto item = delta.at("items").at(at);
         INFO("row: ", item.dump());
         REQUIRE(item.contains("position"));
-        rows.emplace(item.at("position").get<uint32_t>(), item);
+
+        item["columns"] = columnsAt(delta, at);
+        rows.emplace(item.at("position").get<uint32_t>(), std::move(item));
     }
 
     return rows;
@@ -1682,7 +1728,7 @@ TEST_CASE("a delta carries only the rows whose content changed, each at the posi
                            {std::to_string(kStrayRow), "Dragged in, five stars"}}));
 }
 
-TEST_CASE("a changed row carries the fields a page's row carries, its library path included") {
+TEST_CASE("a changed row resolves to the fields a page's row carries, its library path included") {
     const TestServer server(servingSettings(), changeReadingPlayer());
 
     const auto rows = byPosition(deltaOf(server, kChangedSince, {"%artist%", "%title%"}));
@@ -1695,6 +1741,65 @@ TEST_CASE("a changed row carries the fields a page's row carries, its library pa
     CHECK(rows.at(kStrayRow).at("columns") ==
           json::array({"Somebody Else", "Dragged in, five stars"}));
     CHECK(rows.at(kStrayRow).at("libraryPath").is_null());
+}
+
+// A bulk retag reaches thousands of rows sharing an album or an artist, and the client appends
+// what this carries to the dictionary it holds. One entry per changed row is the growth the
+// dictionary exists to stop, so the count matters as much as the values.
+TEST_CASE("a value two changed rows share is carried once, with an id into it from each") {
+    const TestServer server(servingSettings(), changeReadingPlayer(rowsSharingAnArtist()));
+
+    const auto delta = deltaOf(server, kChangedSince, {"%artist%", "%title%"});
+    const auto rows = byPosition(delta);
+
+    REQUIRE(rows.size() == 3);
+    CHECK(rows.at(1).at("columns").at(0) == "Fictional Artist");
+    CHECK(rows.at(3).at("columns").at(0) == "Fictional Artist");
+    CHECK(rows.at(kStrayRow).at("columns").at(0) == "Somebody Else");
+
+    const auto artists = dictionariesIn(delta).at(0);
+    CHECK(artists.at("text").size() == 2);
+    CHECK(artists.at("ids").size() == 3);
+
+    const auto titles = dictionariesIn(delta).at(1);
+    CHECK(titles.at("text").size() == 3);
+    CHECK(titles.at("ids").size() == 3);
+}
+
+TEST_CASE("a changed row carries where it sits and nothing else, so a value travels once") {
+    const TestServer server(servingSettings(), changeReadingPlayer(rowsSharingAnArtist()));
+
+    const auto delta = deltaOf(server, kChangedSince, {"%artist%", "%title%"});
+
+    REQUIRE(delta.at("items").size() == 3);
+    for (const auto& item : delta.at("items")) {
+        INFO("row: ", item.dump());
+        CHECK(keysOf(item) == Keys{"position", "libraryPath"});
+    }
+}
+
+TEST_CASE("the dictionaries arrive in the order the request declared its columns") {
+    const TestServer server(servingSettings(), changeReadingPlayer(rowsSharingAnArtist()));
+
+    const std::set<std::string> artists{"Fictional Artist", "Somebody Else"};
+    const std::set<std::string> titles{"Second, five stars", "Dragged in, five stars",
+                                       "Fourth, five stars"};
+
+    SUBCASE("the artist asked for first answers first") {
+        const auto columns = dictionariesIn(deltaOf(server, kChangedSince, {"%artist%", "%title%"}));
+
+        REQUIRE(columns.size() == 2);
+        CHECK(valuesIn(columns.at(0)) == artists);
+        CHECK(valuesIn(columns.at(1)) == titles);
+    }
+
+    SUBCASE("the same two asked for the other way round answer the other way round") {
+        const auto columns = dictionariesIn(deltaOf(server, kChangedSince, {"%title%", "%artist%"}));
+
+        REQUIRE(columns.size() == 2);
+        CHECK(valuesIn(columns.at(0)) == titles);
+        CHECK(valuesIn(columns.at(1)) == artists);
+    }
 }
 
 TEST_CASE("a delta says which revision the client is now caught up to") {
@@ -1713,6 +1818,19 @@ TEST_CASE("a revision nothing has changed since answers an empty delta rather th
 
     CHECK(delta.at("items").empty());
     CHECK(delta.at("revision") == kRowsRevision);
+}
+
+// What a client polling a quiet playlist gets every tick, so it carries no dictionary to hold a
+// place for a row that is not there.
+TEST_CASE("a delta with no changed rows carries no dictionaries rather than an empty one per "
+          "column") {
+    const TestServer server(servingSettings(), changeReadingPlayer());
+
+    const auto delta = deltaOf(server, kRowsRevision, {"%artist%", "%title%"});
+    const auto columns = dictionariesIn(delta);
+
+    CHECK(delta.at("items").empty());
+    CHECK(columns.empty());
 }
 
 TEST_CASE("a structure generation the playlist has moved past is refused rather than patched") {

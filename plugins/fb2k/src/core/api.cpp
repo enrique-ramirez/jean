@@ -93,9 +93,9 @@ json playlistRowOf(const PlaylistRow& row) {
 }
 
 json changedPlaylistRowOf(const ChangedPlaylistRow& changed) {
-    auto row = playlistRowOf(changed.row);
-    row["position"] = changed.position;
-    return row;
+    return json{{"position", changed.position},
+                {"libraryPath",
+                 changed.row.libraryPath ? json(*changed.row.libraryPath) : json(nullptr)}};
 }
 
 json queuedTrackOf(const QueuedTrack& track) {
@@ -585,7 +585,26 @@ std::string playlistChangesDocument(const PlaylistChangesRead& read) {
     std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(items),
                    changedPlaylistRowOf);
 
-    return json{{"revision", read.revision}, {"items", std::move(items)}}.dump();
+    json columns = json::array();
+    if (!read.rows.empty()) {
+        const size_t columnCount = read.rows.front().row.columns.size();
+        std::vector<Dictionary> dictionaries(columnCount);
+        std::vector<json> ids(columnCount, json::array());
+
+        for (const auto& changed : read.rows) {
+            for (size_t column = 0; column < columnCount; ++column)
+                ids[column].push_back(dictionaries[column].intern(changed.row.columns[column]));
+        }
+
+        for (size_t column = 0; column < columnCount; ++column)
+            columns.push_back(
+                json{{"text", dictionaries[column].values}, {"ids", std::move(ids[column])}});
+    }
+
+    return json{{"revision", read.revision},
+                {"columns", std::move(columns)},
+                {"items", std::move(items)}}
+        .dump();
 }
 
 PlaylistPageRequest parsePlaylistPage(const std::string& offsetText, const std::string& countText) {

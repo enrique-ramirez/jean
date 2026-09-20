@@ -56,6 +56,7 @@ interface Feed {
 	structure: number;
 	revision: number;
 	isChecking: boolean;
+	appendedChars?: number;
 }
 
 // README.md: a `{structure, revision}` pair compares for equality only, never order.
@@ -81,6 +82,8 @@ const CONCURRENCY = 4;
 const COALESCE_MS = 250;
 
 const MAX_IDLE_ENTRIES = 4;
+
+const MAX_APPENDED_CHARS = 256 * 1024;
 
 const entries = new Map<string, Entry>();
 
@@ -241,6 +244,7 @@ async function load(
 			structure: first.structure,
 			revision: first.revision,
 			isChecking: false,
+			appendedChars: 0,
 		};
 
 		const total = first.totalCount;
@@ -433,6 +437,13 @@ function fitsHeldPaths(
 	);
 }
 
+function appendedCharCount(items: PlaylistChanges["items"]): number {
+	let total = 0;
+	for (const row of items)
+		for (const value of row.columns) total += value.length;
+	return total;
+}
+
 function applyPlaylistChanges(
 	entry: Entry,
 	feed: Feed,
@@ -445,10 +456,14 @@ function applyPlaylistChanges(
 		return true;
 	}
 
+	const appended = appendedCharCount(changes.items);
+	if ((feed.appendedChars ?? 0) + appended > MAX_APPENDED_CHARS) return false;
+
 	const held = entry.snapshot.columns;
 	const columns = patchedPlaylistColumns(held, changes.items);
 	if (!columns) return false;
 
+	feed.appendedChars = (feed.appendedChars ?? 0) + appended;
 	feed.revision = changes.revision;
 	emit(entry, {
 		columns,

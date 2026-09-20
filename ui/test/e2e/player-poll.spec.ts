@@ -858,6 +858,81 @@ test.describe("with each playlist's window of changed positions spent", () => {
 	});
 });
 
+// A patch appends what it answered to the row cache's dictionaries and nothing
+// evicts it while the playlist stays open, so what the waste is measured in is
+// characters: one lyric-sized value outweighs a thousand ratings, and an edit
+// count cannot tell the two apart. The two runs below are the same edit at two
+// sizes, and the small one is what says the case is not had by reading the
+// playlist whole every time.
+//
+// `%genre%` carries the characters because Jean holds it as a row column and
+// draws it in no default column set, so what a run costs the cache is not what
+// it costs layout.
+const BULKY_CHARS = 256 * 1024;
+
+const SMALL_EDITS = 3;
+const BULKY_EDITS = 8;
+
+const editedTitle = (at: number) => `${RETITLED} [${at}]`;
+
+const smallGenre = (at: number) => `Alternative ${at}`;
+
+const bulkyGenre = (at: number) => smallGenre(at).padEnd(BULKY_CHARS, "x");
+
+const tagsFor = (at: number, genre: (at: number) => string): Track => ({
+	"%title%": editedTitle(at),
+	"%genre%": genre(at),
+});
+
+const expectRowShows = (page: Page, at: number) =>
+	expect(rowByTitle(page, editedTitle(at))).toBeVisible();
+
+// Each edit is waited for by the value it wrote, because two edits made inside
+// one poll reach the client as one changed row: the one in between would cost
+// the cache nothing and the run would never add up to what it claims.
+const retagAndWait = async (
+	page: Page,
+	player: FakePlayer,
+	at: number,
+	genre: (at: number) => string,
+) => {
+	player.retagPlaying(tagsFor(at, genre));
+	await expectRowShows(page, at);
+};
+
+test("goes on patching small changes into a playlist, and reads its rows whole again once the patches have appended enough characters", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	const guid = guidOfPlaylist(player, WATCHED.id);
+
+	await editTheFirstRow(page, player, tagsFor(1, smallGenre));
+	await expectRowShows(page, 1);
+	for (let at = 2; at <= SMALL_EDITS; at += 1)
+		await retagAndWait(page, player, at, smallGenre);
+
+	expect(changeReads(player, guid).length).toBeGreaterThanOrEqual(SMALL_EDITS);
+	await expectSettlesAt(player, () => wholeRowReads(player, guid), []);
+
+	player.requests.length = 0;
+	const last = SMALL_EDITS + BULKY_EDITS;
+	for (let at = SMALL_EDITS + 1; at <= last; at += 1)
+		await retagAndWait(page, player, at, bulkyGenre);
+
+	await expect
+		.poll(() => wholeRowReads(player, guid).length)
+		.toBeGreaterThan(0);
+
+	// A refresh rather than a reset: the row the reload answered carries the
+	// last edit, and the count holds once the player has gone quiet.
+	await expectSettlesAt(
+		player,
+		() => rowByTitle(page, editedTitle(last)).count(),
+		1,
+	);
+});
+
 test("reads the whole playlist again when its rows are reordered at the player, rather than patching", async ({
 	page,
 	player,

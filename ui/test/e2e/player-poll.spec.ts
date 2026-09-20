@@ -933,6 +933,70 @@ test("goes on patching small changes into a playlist, and reads its rows whole a
 	);
 });
 
+// The cap the client reads the playlist whole at, from `MAX_APPENDED_CHARS` in
+// `domain/track/playlistStore.ts`.
+const APPEND_CAP = 256 * 1024;
+
+// A bulk retag reaches many rows with one value. Whether that value arrives once
+// or once per changed row is invisible from outside the client, since both patch
+// the same rows and draw the same screen, so what the repeat costs the row cache
+// is what tells them apart. The run below repeats one long value at a size where
+// a copy per changed row crosses the cap and one copy per distinct value does
+// not.
+const SHARED_ROWS = 4;
+
+const SHARED_CHARS = 70 * 1024;
+
+const SHARED_ROUNDS = 3;
+
+const sharedGenre = (round: number) =>
+	`Retagged together ${round}`.padEnd(SHARED_CHARS, "x");
+
+// Distinct per row, so a row drawing its neighbour's new value fails rather than
+// reading as a repeat of the value they genuinely share.
+const titleOfRow = (round: number, at: number) => `Retagged ${round}.${at}`;
+
+// One synchronous run per round, because a poll landing mid-round splits it into
+// two responses and neither carries enough rows to cost what this case measures.
+const retagEveryRow = (player: FakePlayer, round: number) => {
+	for (let at = 0; at < SHARED_ROWS; at += 1) {
+		player.playItem(WATCHED.id, at);
+		player.retagPlaying({
+			"%title%": titleOfRow(round, at),
+			"%genre%": sharedGenre(round),
+		});
+	}
+};
+
+test("patches a long value every changed row shares, where a copy per changed row would have crossed the cap", async ({
+	page,
+	player,
+}) => {
+	expect(
+		SHARED_ROWS * SHARED_CHARS,
+		"a copy per changed row has to cross the cap, or the run measures nothing",
+	).toBeGreaterThan(APPEND_CAP);
+	expect(
+		SHARED_ROUNDS * SHARED_CHARS,
+		"one copy per distinct value has to stay under the cap for the whole run",
+	).toBeLessThan(APPEND_CAP);
+
+	await openPlaylistView(page, player, WATCHED);
+	const guid = guidOfPlaylist(player, WATCHED.id);
+	player.requests.length = 0;
+
+	for (let round = 1; round <= SHARED_ROUNDS; round += 1) {
+		retagEveryRow(player, round);
+		for (let at = 0; at < SHARED_ROWS; at += 1)
+			await expect(trackRow(page, at)).toContainText(titleOfRow(round, at));
+	}
+
+	await expectSettlesAt(player, () => wholeRowReads(player, guid), []);
+	expect(changeReads(player, guid).length).toBeGreaterThanOrEqual(
+		SHARED_ROUNDS,
+	);
+});
+
 test("reads the whole playlist again when its rows are reordered at the player, rather than patching", async ({
 	page,
 	player,

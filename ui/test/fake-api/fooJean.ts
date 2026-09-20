@@ -1146,6 +1146,23 @@ const sendBlob = async (
 	return true;
 };
 
+const changedColumnDictionaries = (columns: string[], rows: Track[]) =>
+	columns.map((expression) => {
+		const text: string[] = [];
+		const idOf = new Map<string, number>();
+		const ids = rows.map((track) => {
+			const value = evaluate(track, expression);
+			let id = idOf.get(value);
+			if (id === undefined) {
+				id = text.length;
+				text.push(value);
+				idOf.set(value, id);
+			}
+			return id;
+		});
+		return { text, ids };
+	});
+
 // A player with no media library at all still answers what it is playing: this
 // route never 503s on that account, unlike the three `handleLibrary` routes,
 // which have nothing to serve without one.
@@ -1806,7 +1823,11 @@ export async function handleAgent({
 			return json(response, ROWS_MOVED, 409);
 
 		if (since === playlist.revision)
-			return json(response, { revision: playlist.revision, items: [] });
+			return json(response, {
+				revision: playlist.revision,
+				columns: [],
+				items: [],
+			});
 
 		const at = playlist.changeHistory.findIndex(
 			(entry) => entry.revision === since,
@@ -1817,18 +1838,16 @@ export async function handleAgent({
 		for (const entry of playlist.changeHistory.slice(at + 1))
 			for (const position of entry.positions) positions.add(position);
 
+		const ordered = [...positions].sort((a, b) => a - b);
+		const rows = ordered.map((position) => playlist.items[position]);
+
 		return json(response, {
 			revision: playlist.revision,
-			items: [...positions]
-				.sort((a, b) => a - b)
-				.map((position) => {
-					const track = playlist.items[position];
-					return {
-						position,
-						columns: columns.map((expression) => evaluate(track, expression)),
-						libraryPath: state.libraryPathFor(track),
-					};
-				}),
+			columns: changedColumnDictionaries(columns, rows),
+			items: ordered.map((position) => ({
+				position,
+				libraryPath: state.libraryPathFor(playlist.items[position]),
+			})),
 		});
 	}
 

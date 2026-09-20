@@ -395,7 +395,9 @@ export interface paths {
         };
         /**
          * The rows of a playlist whose content moved since a revision.
-         * @description The patch between the `revision` a client holds for one playlist and the current one. It carries only the rows whose content would answer differently, each at the position it sits at, in the same shape `GET /playlists/{id}/items` answers a row in, so a client patches what it holds rather than reading the page again.
+         * @description The patch between the `revision` a client holds for one playlist and the current one. It carries only the rows whose content would answer differently, each at the position it sits at, so a client patches what it holds rather than reading the page again.
+         *
+         *     A row here does **not** come in the shape `GET /playlists/{id}/items` answers a row in. The values are lifted out into one dictionary per column, distinct within this response, and each row carries one id into each dictionary. `PlaylistChanges` has why and how to read it.
          *
          *     Call this when `GET /state`'s `playlistsRevision` has moved and `GET /playlists` reports the same `structure` and a higher `revision` for this playlist. A different `structure` is a `409`: rows were added, removed or reordered, so every position the client holds names something else.
          *
@@ -1522,28 +1524,50 @@ export interface components {
             totalCount: number;
             items: components["schemas"]["PlaylistRow"][];
         };
-        /** @description `GET /playlists/{id}/items/changes`'s whole answer: the rows whose content moved, and the revision they bring the client up to. No `structure`, because the request named the only one this answer can be against. */
+        /**
+         * @description `GET /playlists/{id}/items/changes`'s whole answer: the rows whose content moved, the values they now carry, and the revision they bring the client up to. No `structure`, because the request named the only one this answer can be against.
+         *
+         *     Values are deduplicated, which `GET /playlists/{id}/items` does not do. A change reaching many rows at once, a bulk retag or a folder rescan, is mostly one value repeated, and a client that cannot tell a repeat from a fresh value grows its dictionary by a row rather than by a value. So the values sit in `columns` and the rows carry only where they are. Deduplication is **within this one response**: no dictionary here has a `base`, nothing is measured against what the client already holds, and the component keeps no dictionary between responses.
+         */
         PlaylistChanges: {
             /** @description The playlist's content revision as of this read. A client that patches these rows in holds this revision and asks from it next time. */
             revision: number;
-            /** @description Only the rows whose content moved, in no promised order. A client patches each into the page it holds by `position`. */
+            /** @description One dictionary per column the request declared, in the order it declared them, whenever `items` carries a row. Empty when `items` is, which is the answer a client polling a quiet playlist gets every tick and the reason this is not padded out to the declared count. Any other length means the two sides disagree about the column set: read the page again rather than patch. */
+            columns: components["schemas"]["ChangedPlaylistColumn"][];
+            /** @description Only the rows whose content moved, in no promised order. A client patches each into the page it holds by `position`, and reads its values at the same index in every entry of `columns`. */
             items: components["schemas"]["ChangedPlaylistRow"][];
         };
-        /** @description One row whose content moved, in the shape `PlaylistRow` carries plus the position it sits at. */
+        /**
+         * @description One column's values across this response: the distinct strings it takes, and one id per changed row. Row *i* in `items` takes `text[ids[i]]`, so `ids` is as long as `items` and `text` is as long as the column has distinct values here.
+         *
+         *     The names come from `LibraryColumn`, and so does what they mean. Two things differ, both because this is JSON rather than a blob. There is no `ends`: JSON delimits its own strings, so `text` is the array of values instead of a run of bytes with offsets into it. And there is no `base`, because nothing here is appended to a dictionary the client already holds.
+         */
+        ChangedPlaylistColumn: {
+            /**
+             * @description Every distinct value this column takes across this response, each carried once however many changed rows share it, in no promised order. A field the player cannot resolve is `?`, the single question mark, which is how a client tells an unresolved field from an empty one.
+             * @example [
+             *       "Imaginary Album",
+             *       "?"
+             *     ]
+             */
+            text: string[];
+            /**
+             * @description One index into `text` per changed row, in the order `items` carries them. As long as `items`, and every entry below `text`'s length.
+             * @example [
+             *       0,
+             *       0,
+             *       1
+             *     ]
+             */
+            ids: number[];
+        };
+        /** @description Where one row whose content moved sits, and where the media library holds its track. Its values are not here: they are in `PlaylistChanges.columns`, at this row's index in `items`. */
         ChangedPlaylistRow: {
             /**
              * @description Where this row sits in the playlist, counting from zero, at the `structure` the request named.
              * @example 1
              */
             position: number;
-            /**
-             * @description One value per declared column, in the order declared. A field the player cannot resolve is `?`, which is how a client tells an unresolved field from an empty one.
-             * @example [
-             *       "Imaginary Track",
-             *       "Fictional Artist"
-             *     ]
-             */
-            columns: string[];
             /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
             libraryPath: string | null;
         };

@@ -403,21 +403,23 @@ function reloadPlaylist(
 
 function patchedPlaylistColumns(
 	held: LibraryColumns,
-	items: PlaylistChanges["items"],
+	changes: PlaylistChanges,
 ): LibraryColumns | null {
-	const ordinals = Uint32Array.from(items, (row) => row.position);
+	if (changes.columns.length !== held.fields.length) return null;
+
+	const ordinals = Uint32Array.from(changes.items, (row) => row.position);
 
 	const fields: LibraryColumns["fields"][number][] = [];
 	for (let index = 0; index < held.fields.length; index += 1) {
 		const field = held.fields[index];
-		const appended = items.map((row) => row.columns[index]);
+		const column = changes.columns[index];
 		const base = field.distinct;
 		const patched = patchColumn(field, {
 			ordinals,
-			ids: Uint32Array.from(appended, (_, at) => base + at),
+			ids: Uint32Array.from(changes.items, (_, at) => base + column.ids[at]),
 			base,
-			appended,
-			distinct: base + appended.length,
+			appended: column.text,
+			distinct: base + column.text.length,
 			hasUnresolved: false,
 			allUnresolved: false,
 		});
@@ -437,10 +439,10 @@ function fitsHeldPaths(
 	);
 }
 
-function appendedCharCount(items: PlaylistChanges["items"]): number {
+function appendedCharCount(columns: PlaylistChanges["columns"]): number {
 	let total = 0;
-	for (const row of items)
-		for (const value of row.columns) total += value.length;
+	for (const column of columns)
+		for (const value of column.text) total += value.length;
 	return total;
 }
 
@@ -456,11 +458,11 @@ function applyPlaylistChanges(
 		return true;
 	}
 
-	const appended = appendedCharCount(changes.items);
+	const appended = appendedCharCount(changes.columns);
 	if ((feed.appendedChars ?? 0) + appended > MAX_APPENDED_CHARS) return false;
 
 	const held = entry.snapshot.columns;
-	const columns = patchedPlaylistColumns(held, changes.items);
+	const columns = patchedPlaylistColumns(held, changes);
 	if (!columns) return false;
 
 	feed.appendedChars = (feed.appendedChars ?? 0) + appended;

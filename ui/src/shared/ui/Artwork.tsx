@@ -32,6 +32,7 @@ export function Artwork({
 	alt = "",
 	className,
 	onSettled,
+	revealsInstantly,
 }: {
 	src: string | null | undefined;
 	identity?: string | null;
@@ -39,6 +40,8 @@ export function Artwork({
 	alt?: string;
 	className?: string;
 	onSettled?: (outcome: ArtworkOutcome) => void;
+	// See `shared/ui/CLAUDE.md`, *Artwork*: when this is right and when it is not.
+	revealsInstantly?: boolean;
 }) {
 	const access = useContext(AccessContext);
 	const addressNeedsAuth = Boolean(access && src?.startsWith(access.origin));
@@ -124,7 +127,7 @@ export function Artwork({
 			}
 		};
 
-		let cancel = whenNearViewport(element, () => {
+		const claim = () => {
 			const held = heldArtwork(key);
 			if (held) {
 				claimed = true;
@@ -134,7 +137,11 @@ export function Artwork({
 			}
 
 			release.current = requestArtwork(key, resolve);
-		});
+		};
+
+		let cancel = () => {};
+		if (revealsInstantly) claim();
+		else cancel = whenNearViewport(element, claim);
 
 		return () => {
 			live = false;
@@ -145,7 +152,7 @@ export function Artwork({
 			release.current?.();
 			release.current = null;
 		};
-	}, [src, key, access, addressNeedsAuth]);
+	}, [src, key, access, addressNeedsAuth, revealsInstantly]);
 
 	const settle = (outcome: ArtworkOutcome) => {
 		release.current?.(outcome);

@@ -167,7 +167,7 @@ Arbitrary JSON blob storage, keyed by id.
 
 ### Artwork
 
-Addressed by **playlist index**, so this answers for a playlist Jean is showing and for the cover wheel's neighbouring slots, and for nothing else. The status bar and the now-playing screen's centre cover read `foo_jean`'s `GET /artwork/playing` instead; see *What Jean does about artwork* below. A library row's cover comes from the component too.
+Addressed by **playlist index**, so this answers for a playlist Jean is showing and for nothing else: nothing in `ui/src` builds this address any more. The cover wheel's neighbouring slots and a queued playlist row draw `foo_jean`'s `GET /artwork?track=<libraryPath>` instead, addressed by the row's own library path, and draw nothing where a row has none. The status bar and the now-playing screen's centre cover read `foo_jean`'s `GET /artwork/playing`, and the media session draws no cover at all: the OS issues that request itself, cannot carry a bearer token, and the route answers `401`. See *What Jean does about artwork* below.
 
 > **Every response carries a short `max-age` with `must-revalidate`**, from one filter that does not tell a sleeve from a status poll, so a browser refetches a cover it drew a moment ago. beefweb answers a conditional request correctly, so the header is the whole of the problem and it is the player's to change.
 
@@ -428,4 +428,4 @@ The component's clock, not beefweb's, is what a listener hears; the spec carries
 
 ## What Jean does about artwork
 
-`libraryArtworkUrl()` and `playingArtworkUrl()` in `fooJean.ts` build the two client-side URLs; `GET /artwork` and `GET /artwork/playing` in the contract are the routes, and the contract's *Artwork* section is the reference for what each one answers. The status bar and the now-playing screen's centre cover read the playing route rather than beefweb's playlist-indexed one. The cover wheel's neighbouring slots stay on beefweb's route: they name a position ahead of and behind the current track, not the track itself, which the playing route cannot address.
+`libraryArtworkUrl()` and `playingArtworkUrl()` in `fooJean.ts` build the two client-side URLs; `GET /artwork` and `GET /artwork/playing` in the contract are the routes, and the contract's *Artwork* section is the reference for what each one answers. The status bar and the now-playing screen's centre cover read the playing route. The cover wheel's neighbouring slots and a queued playlist row read `libraryArtworkUrl()` too, by the row's own library path: nothing in `ui/src` builds beefweb's playlist-indexed address any more. The media session asks for neither: the OS fetches whatever address it is given itself and cannot carry a bearer token, so handing it either route would only earn a `401`.

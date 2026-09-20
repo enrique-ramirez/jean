@@ -1,14 +1,11 @@
 import { GripVertical, X } from "lucide-react";
 import { type CSSProperties, memo, useMemo } from "react";
-import { beefwebIdOf } from "@/domain/player/playlistJoin";
 import { formatTime, positionAt } from "@/domain/player/position";
 import type { QueueEntry } from "@/domain/player/queue";
 import { queueDropAt, queuedSeconds, startsIn } from "@/domain/player/queue";
-import { usePlaylistAnnotations } from "@/domain/player/useAutoPlaylists";
-import { usePlayer, usePlaylists } from "@/domain/player/usePlayer";
+import { usePlayer } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { coverKey } from "@/domain/track/fields";
-import { artworkUrl } from "@/shared/api/beefweb";
 import { isFooJeanReady, libraryArtworkUrl } from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
@@ -231,35 +228,20 @@ export function QueuePanel({
 
 	const { discovery } = useFooJean();
 	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
-	const { data: playlists = [] } = usePlaylists();
-	const {
-		entries: playlistAnnotations,
-		hasSettled,
-		isFetching,
-	} = usePlaylistAnnotations();
-	const joinSettled = hasSettled && !isFetching;
 
 	const isPlaying = snapshot?.player?.playbackState === "playing";
 
 	const keys = useMemo(() => rowKeys(entries), [entries]);
 
+	// A row queued by playlist position has no second address to fall back on: Jean names a playlist
+	// by the GUID the component issues, which beefweb cannot resolve. Only a library path draws a
+	// cover here.
 	const covers = useMemo(
 		() =>
-			entries.map((entry): string | null | undefined => {
-				if (entry.libraryPath)
-					return libraryArtworkUrl(origin, entry.libraryPath);
-				if (!entry.location) return null;
-				const beefwebId = beefwebIdOf(
-					entry.location.playlistId,
-					playlistAnnotations,
-					playlists,
-					joinSettled,
-				);
-				return beefwebId
-					? artworkUrl(beefwebId, entry.location.index)
-					: beefwebId;
-			}),
-		[entries, origin, playlistAnnotations, playlists, joinSettled],
+			entries.map((entry): string | null =>
+				entry.libraryPath ? libraryArtworkUrl(origin, entry.libraryPath) : null,
+			),
+		[entries, origin],
 	);
 
 	const { scrollRef, itemProps, dragProps, handleProps } = useSortableList({

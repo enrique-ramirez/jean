@@ -6,6 +6,8 @@ import {
 } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
+	coversFromBeefweb,
+	coversFromTheComponent,
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
@@ -113,14 +115,8 @@ const ANOTHER_ALBUM = { row: 7, title: "Break Blossom" };
 
 const PLAYING_COVER = "/api/artwork/playing";
 
-// beefweb's positional address, at any row. The wheel's two neighbours are the
-// only thing left on it, so a slot that changed which of the two addresses it is
-// drawn from shows up as a count here and nowhere else.
-const POSITIONAL_COVER = /^\/api\/artwork\/[^/]+\/\d+$/;
-
-// beefweb's address for the cover of the row something is playing from. The
-// cover wheel still addresses the rows either side of it this way on purpose,
-// so this names one row rather than the whole of beefweb's artwork.
+// beefweb's address for the cover of the row something is playing from, which
+// names one row rather than the whole of beefweb's artwork.
 const playingRowCovers = (player: FakePlayer) => {
 	const { playlistId, index } = player.player.activeItem;
 	return player.requests
@@ -140,16 +136,19 @@ const playingCoverAnswers = (player: FakePlayer) =>
 			carriedThePicture: (one.answered?.bytes ?? 0) > 0,
 		}));
 
-// Every request that asks for a cover, at both of the addresses one is reachable
-// at. Watching a single address would miss a picture asked for again under the
-// other name, and that is the swap itself. GETs alone, as `playingCoverAnswers`
-// above: an `OPTIONS` preflight fetches no bytes and is not a picture being
-// asked for.
-const coversAskedFor = (player: FakePlayer) =>
-	player.requests
+// Every request that asks for a cover, at all three addresses one is reachable
+// at: the component's playing cover, the component's by library path, and
+// beefweb's by row. Watching a single address would miss a picture asked for
+// again under another name, and that is the swap itself. GETs alone, as
+// `playingCoverAnswers` above: an `OPTIONS` preflight fetches no bytes and is
+// not a picture being asked for.
+const coversAskedFor = (player: FakePlayer) => [
+	...requestsTo(player, PLAYING_COVER)
 		.filter((one) => one.method === "GET")
-		.map((one) => routeOf(one.path))
-		.filter((path) => path === PLAYING_COVER || POSITIONAL_COVER.test(path));
+		.map((one) => routeOf(one.path)),
+	...coversFromBeefweb(player),
+	...coversFromTheComponent(player),
+];
 
 const drawnCover = (within: Locator) =>
 	within.locator("[data-artwork='ok']").first();
@@ -600,21 +599,10 @@ test("a cover survives the playing row being pulled from its own playlist", asyn
 });
 
 // `navigator.mediaSession` rather than the DOM: `useMediaSession` writes to a
-// browser API with nothing on screen to read, and this is the whole of what a
-// spec can observe of it. Whether the browser or the OS goes on to fetch
-// `artwork[0].src` successfully is not: same-origin is as far as a spec can
-// stand as a proxy for "fetchable with no token of Jean's to attach".
-const session = (page: Page) =>
-	page.evaluate(() => {
-		const artwork = navigator.mediaSession.metadata?.artwork?.[0]?.src ?? null;
-		return {
-			title: navigator.mediaSession.metadata?.title ?? null,
-			artwork,
-			artworkSameOrigin: artwork
-				? new URL(artwork, document.baseURI).origin === location.origin
-				: null,
-		};
-	});
+// browser API with nothing on screen to read, and the name it publishes is the
+// whole of what a spec can observe of it.
+const sessionTitle = (page: Page) =>
+	page.evaluate(() => navigator.mediaSession.metadata?.title ?? null);
 
 const remainingLabel = (page: Page) =>
 	queuePanel(page).getByText(/left of this track$/);
@@ -681,7 +669,7 @@ test("the now-playing menu keeps offering the track's actions when the playing r
 	).toBeVisible();
 });
 
-test("the media session keeps its title, not its artwork, when the playing row is pulled from its own playlist", async ({
+test("the media session keeps naming the track when the playing row is pulled from its own playlist", async ({
 	page,
 	player,
 }) => {
@@ -689,19 +677,14 @@ test("the media session keeps its title, not its artwork, when the playing row i
 	await trackRow(page, PLAYING_ROW.row).dblclick();
 	await listenHere(page);
 
-	await expect
-		.poll(() => session(page).then((live) => live.artwork))
-		.not.toBeNull();
-	expect((await session(page)).artworkSameOrigin).toBe(true);
+	await expect.poll(() => sessionTitle(page)).toBe(PLAYING_ROW.title);
 
 	await pullPlayingRow(player);
 
-	// The artwork is addressed by the row's place in the playlist, which is
-	// exactly what the pull took away. No place, no address: an absent cover
-	// rather than a stale or an unfetchable one.
-	const live = await session(page);
-	expect(live.title).toBe(PLAYING_ROW.title);
-	expect(live.artwork).toBeNull();
+	// A lock screen goes on naming a track whose place in a playlist is gone,
+	// which is the half of the session a pull can take away. The other half, that
+	// it publishes no picture at all, is `media-session.spec.ts`.
+	expect(await sessionTitle(page)).toBe(PLAYING_ROW.title);
 });
 
 test("the sidebar follows a playlist renamed at the player", async ({
@@ -1346,29 +1329,18 @@ test("a neighbour becoming the centre asks for no cover at all", async ({
 	// decoded and composited already.
 	await expect(drawnSlots(page)).toHaveCount(3);
 
-	// Three addresses for three slots, asserted rather than assumed: the centre at
-	// the component's own and the two neighbours at beefweb's rows either side. Two
-	// addresses for one picture is the trap, so a wheel that never asked for the
-	// row below has not set it and an empty log after the swipe would say nothing.
+	// Three sleeves drawn means three covers fetched, and none of them at
+	// beefweb's positional address: Jean names a playlist by the GUID the
+	// component issues, which beefweb cannot resolve, so the neighbours come
+	// from the component by library path until 013.
 	//
-	// And it is the point the log may be thrown away at, which the centre decides
-	// rather than the neighbours. `expectSettlesAt` waits for the log to go quiet,
-	// and the centre's fetch is the one that lags: it goes through
+	// And this is the point the log may be thrown away at, which the centre
+	// decides rather than the neighbours. `expectSettlesAt` waits for the log to
+	// go quiet, and the centre's fetch is the one that lags: it goes through
 	// `shared/ui/artworkQueue.ts`'s settle gate, while a neighbour's, drawn with
 	// no identity, goes straight out. A reset taken on a neighbour's sleeve lands
 	// while the centre's first fetch is still out and counts it below as a second.
-	const { playlistId, index } = player.player.activeItem;
-	await expectSettlesAt(
-		player,
-		// Addresses rather than requests. How many times one address is asked for
-		// belongs to the revalidation case above.
-		() => [...new Set(coversAskedFor(player))].sort(),
-		[
-			PLAYING_COVER,
-			`/api/artwork/${playlistId}/${index - 1}`,
-			`/api/artwork/${playlistId}/${index + 1}`,
-		].sort(),
-	);
+	await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 	player.requests.length = 0;
 
 	await swipeToThePrevious(page);

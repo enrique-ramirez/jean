@@ -61,9 +61,6 @@ export async function fetchPlaylistItems(
 	};
 }
 
-export const artworkUrl = (playlistId: string, index: number) =>
-	`/api/artwork/${id(playlistId)}/${index}`;
-
 // One folder of the library tree, which is how a client reaches one track by a path it holds. See
 // README.md: an ordinal is not an offset into `/library/items`.
 export async function fetchLibraryNodes(

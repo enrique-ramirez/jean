@@ -22,6 +22,11 @@ interface Sleeve {
 	alt: string;
 }
 
+export interface NeighbourArtwork {
+	src: string;
+	identity: string;
+}
+
 const nodeOf = (at: number) => ((at % 3) + 3) % 3;
 
 export function useCoverWheel({
@@ -29,7 +34,7 @@ export function useCoverWheel({
 	audibleCover,
 	playerTrackKey,
 	artwork,
-	positionalArtwork,
+	neighbourArtworkSrc,
 	alt,
 	nextArtwork,
 	previousArtwork,
@@ -43,10 +48,10 @@ export function useCoverWheel({
 	artwork: string | null;
 	// The address a neighbour would have fetched this same track under. A slot already showing a
 	// sleeve from that address is showing the right picture and must be left alone.
-	positionalArtwork: string | null;
+	neighbourArtworkSrc: string | null;
 	alt: string;
-	nextArtwork: string | null;
-	previousArtwork: string | null;
+	nextArtwork: NeighbourArtwork | null;
+	previousArtwork: NeighbourArtwork | null;
 	onSkip: (by: number) => void;
 }) {
 	const ref = useRef<HTMLDivElement | null>(null);
@@ -120,13 +125,13 @@ export function useCoverWheel({
 		if (at === null) return;
 
 		setSleeves((held) => {
-			if (held[at]?.src === positionalArtwork) return held;
+			if (held[at]?.src === neighbourArtworkSrc) return held;
 			if (!artwork) return held;
 			if (held[at]?.src === artwork && held[at]?.identity === audibleCover)
 				return held;
 			return { ...held, [at]: { src: artwork, alt, identity: audibleCover } };
 		});
-	}, [audibleTrackKey, artwork, audibleCover, alt, positionalArtwork]);
+	}, [audibleTrackKey, artwork, audibleCover, alt, neighbourArtworkSrc]);
 
 	const confirmed = useRef<string | null>(null);
 	useEffect(() => {
@@ -139,12 +144,16 @@ export function useCoverWheel({
 		setSleeves((held) => {
 			const filled = { ...held };
 			let added = false;
-			for (const [at, src] of [
+			for (const [at, neighbour] of [
 				[position + 1, nextArtwork],
 				[position - 1, previousArtwork],
 			] as const) {
-				if (!src || filled[at]) continue;
-				filled[at] = { src, alt: "", identity: null };
+				if (!neighbour || filled[at]) continue;
+				filled[at] = {
+					src: neighbour.src,
+					alt: "",
+					identity: neighbour.identity,
+				};
 				added = true;
 			}
 			return added ? filled : held;
@@ -246,6 +255,7 @@ export function CoverWheel({
 						identity={sleeve?.identity}
 						alt={sleeve?.alt ?? ""}
 						className={styles.cover}
+						revealsInstantly={!isCurrent}
 					/>
 				</div>
 			))}

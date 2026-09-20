@@ -1,5 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
@@ -19,8 +20,12 @@ import { albumHref } from "@/domain/track/albumRoute";
 import { coverKey, readValue } from "@/domain/track/fields";
 import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
 import { setRatingLayer } from "@/domain/track/ratingTarget";
-import { artworkUrl } from "@/shared/api/beefweb";
-import { isFooJeanReady, playingArtworkUrl } from "@/shared/api/fooJean";
+import {
+	fetchPlaylistRows,
+	isFooJeanReady,
+	libraryArtworkUrl,
+	playingArtworkUrl,
+} from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -31,7 +36,7 @@ import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
-import { CoverWheel, useCoverWheel } from "./CoverWheel";
+import { CoverWheel, type NeighbourArtwork, useCoverWheel } from "./CoverWheel";
 import { ListenHere, playerNameOf } from "./ListenHere";
 import { LyricsScreen } from "./LyricsScreen";
 import { parseLyrics } from "./lyricsFormat";
@@ -84,6 +89,41 @@ function Rating() {
 
 // Must match the exit animation in NowPlaying.module.css.
 const SLIDE_MS = 280;
+
+type RowWindow = ReadonlyArray<
+	readonly [position: number, path: string | null]
+>;
+
+const NEIGHBOURS_KEY = "nowPlayingNeighbours";
+
+// `foo_jean` addresses a cover by library path, so a neighbour's sleeve needs that row's own path
+// rather than its position.
+async function fetchRowWindow(
+	origin: string,
+	token: string,
+	playlistId: string,
+	index: number,
+): Promise<RowWindow> {
+	const offset = Math.max(0, index - 1);
+	const { items } = await fetchPlaylistRows(
+		origin,
+		token,
+		playlistId,
+		offset,
+		3,
+		["%path%"],
+	);
+	return items.map((row, at) => [offset + at, row.libraryPath] as const);
+}
+
+const neighbourArtworkOf = (
+	origin: string | null,
+	path: string | null,
+): NeighbourArtwork | null => {
+	if (!path) return null;
+	const src = libraryArtworkUrl(origin, path);
+	return src ? { src, identity: path } : null;
+};
 
 export function NowPlaying({
 	isOpen,
@@ -161,9 +201,11 @@ export function NowPlaying({
 	const hasPosition = Boolean(item && item.index >= 0);
 	const isPlaying = player?.playbackState === "playing";
 
-	const artwork = track
-		? playingArtworkUrl(isFooJeanReady(discovery) ? discovery.origin : null)
-		: null;
+	const isReady = isFooJeanReady(discovery);
+	const origin = isReady ? discovery.origin : null;
+	const token = isReady ? discovery.token : null;
+
+	const artwork = track ? playingArtworkUrl(origin) : null;
 	const artworkKey =
 		hasPosition && item && playlistId !== undefined
 			? `${playlistId}:${item.index}`
@@ -179,18 +221,60 @@ export function NowPlaying({
 	const year = readValue(details?.row[NOW_PLAYING_FIELD.year]);
 	const albumArtist = readValue(details?.row[NOW_PLAYING_FIELD.albumArtist]);
 
+	const windowQuery = useQuery({
+		queryKey: [NEIGHBOURS_KEY, origin, playlistId, item?.index],
+		enabled: isOpen && hasPosition && Boolean(origin && token && playlistId),
+		queryFn: () =>
+			origin && token && playlistId && item
+				? fetchRowWindow(origin, token, playlistId, item.index)
+				: null,
+		staleTime: Infinity,
+		refetchOnWindowFocus: false,
+		retry: false,
+	}).data;
+
+	// Every row a window has ever named, by position, so a row seen as a neighbour once is not
+	// re-fetched the moment it becomes the centre. Kept only for the playlist it was read against:
+	// a position means nothing once the playing playlist changes.
+	const [knownPaths, setKnownPaths] = useState<Map<number, string | null>>(
+		() => new Map(),
+	);
+	const knownPathsPlaylist = useRef<string | null | undefined>(playlistId);
+	// Cleared during render rather than in the effect below: the query for a new playlist answers
+	// `undefined` until it lands, and waiting for that to clear the map would read a former
+	// playlist's paths at the new one's positions for however long the fetch takes.
+	if (knownPathsPlaylist.current !== playlistId) {
+		knownPathsPlaylist.current = playlistId;
+		setKnownPaths(new Map());
+	}
+	useEffect(() => {
+		if (!windowQuery) return;
+		setKnownPaths((current) => {
+			const merged = new Map(current);
+			let changed = false;
+			for (const [position, path] of windowQuery) {
+				if (merged.get(position) !== path) {
+					merged.set(position, path);
+					changed = true;
+				}
+			}
+			return changed ? merged : current;
+		});
+	}, [windowQuery]);
+
+	const pathAt = (position: number) => knownPaths.get(position) ?? null;
+
 	const neighbours =
 		order.isInOrder && hasPosition && item && playlistId
 			? {
-					nextArtwork: artworkUrl(playlistId, item.index + 1),
-					previousArtwork:
-						item.index > 0 ? artworkUrl(playlistId, item.index - 1) : null,
+					nextArtwork: neighbourArtworkOf(origin, pathAt(item.index + 1)),
+					previousArtwork: neighbourArtworkOf(origin, pathAt(item.index - 1)),
 				}
 			: { nextArtwork: null, previousArtwork: null };
 
-	const positionalArtwork =
+	const neighbourArtworkSrc =
 		hasPosition && item && playlistId
-			? artworkUrl(playlistId, item.index)
+			? (neighbourArtworkOf(origin, pathAt(item.index))?.src ?? null)
 			: null;
 
 	const liveItem = live?.player?.activeItem;
@@ -204,7 +288,7 @@ export function NowPlaying({
 				? `${livePlaylistId}:${liveItem.index}`
 				: null,
 		artwork,
-		positionalArtwork,
+		neighbourArtworkSrc,
 		alt: album ? `${album} cover` : "",
 		...neighbours,
 		onSkip: sendSkip,

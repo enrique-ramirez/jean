@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { audibleAt } from "@/domain/player/position";
 import { useListener } from "@/domain/player/useListener";
 import {
@@ -12,7 +11,6 @@ import {
 import { value } from "@/domain/track/fields";
 import { NOW_PLAYING_FIELD } from "@/features/now-playing/nowPlayingFields";
 import { useNowPlayingTrack } from "@/features/now-playing/useNowPlayingTrack";
-import { artworkUrl } from "@/shared/api/beefweb";
 import type { NowPlayingTrack, PlayerSnapshot } from "@/shared/api/types";
 import { clamp } from "@/shared/lib/math";
 
@@ -88,13 +86,8 @@ export function useMediaSession(
 	const { details } = useNowPlayingTrack({ enabled: live });
 
 	const item = snapshot?.player?.activeItem;
-	const playlistId = usePlayingPlaylist(item?.playlistGuid ?? null);
 	const isPlaying = snapshot?.player?.playbackState === "playing";
 	const album = details ? value(details.row, NOW_PLAYING_FIELD.album) : null;
-	const artwork =
-		live && item && item.index >= 0 && playlistId
-			? artworkUrl(playlistId, item.index)
-			: null;
 
 	useEffect(() => {
 		const target = session();
@@ -105,11 +98,12 @@ export function useMediaSession(
 					title: track?.title ?? "",
 					artist: track?.artist ?? "",
 					album: album ?? "",
-					// No `sizes` and no `type`: beefweb serves one image at whatever the file holds and has no thumbnail endpoint.
-					artwork: artwork ? [{ src: artwork }] : [],
+					// The browser and the OS fetch this address themselves and cannot carry a bearer
+					// token, so `foo_jean`'s cover route answers 401 and there is no picture to give it.
+					artwork: [],
 				})
 			: null;
-	}, [live, track?.title, track?.artist, album, artwork]);
+	}, [live, track?.title, track?.artist, album]);
 
 	useEffect(() => {
 		const target = session();

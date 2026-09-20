@@ -1,5 +1,7 @@
 import {
+	coversFromBeefweb,
 	expect,
+	expectSettlesAt,
 	FOO_JEAN_TOKEN,
 	listenHere,
 	openLibrary,
@@ -13,6 +15,10 @@ const play = async (page: Page) => {
 	await openLibrary(page);
 	await trackRow(page, 0).dblclick();
 };
+
+// A row further down the same playlist, far enough along that both the title
+// and the artist move with it.
+const ANOTHER_ARTIST = { row: 12, title: "Tautou", artist: "Brand New" };
 
 // By its name rather than by its role: the row is a button only where pressing it
 // would do something, which here it does -- this device is the only listener.
@@ -63,10 +69,42 @@ test.describe("the media session", () => {
 		// to disagree about.
 		expect(await page.title()).toBe(`${live.title} — ${live.artist} · Jean`);
 		expect(live.album).not.toBe("");
-		// beefweb serves one image per track and has no thumbnail endpoint, so
-		// there is a single entry and it claims no size.
-		expect(live.artwork).toContain("/api/artwork/");
 		expect(live.state).toBe("playing");
+	});
+
+	// The operating system fetches the artwork address itself, so Jean cannot put
+	// a bearer token on it and the component answers 401. Until a blob URL with
+	// an owner closes that, the session publishes the words and no picture;
+	// `_todo/07-technical-debt.md`, *The OS media session cannot reach the
+	// playing cover*, is the measurement and what it would take.
+	test("carries no cover, and keeps naming the track it moves to", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		await play(page);
+		await listenHere(page);
+		await expect
+			.poll(() => session(page).then((live) => live.title))
+			.toBe("Los Calientes");
+
+		// A browser resolves every artwork entry against the document, so an entry
+		// carrying an empty address still reads back as one. Null here is no entry.
+		expect((await session(page)).artwork).toBeNull();
+
+		player.playItem(player.player.activeItem.playlistId, ANOTHER_ARTIST.row);
+
+		// The half that must not regress. A lock screen with no picture still says
+		// what is playing, and it is the only thing a browser test can read back.
+		await expect
+			.poll(() => session(page))
+			.toMatchObject({
+				title: ANOTHER_ARTIST.title,
+				artist: ANOTHER_ARTIST.artist,
+				artwork: null,
+			});
+
+		await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 	});
 
 	test("follows the player's transport", async ({ page }) => {

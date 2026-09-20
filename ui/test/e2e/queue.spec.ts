@@ -3,6 +3,8 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	AS_A_CLIENT,
 	componentOrigin,
+	coversFromBeefweb,
+	coversFromTheComponent,
 	dragFrom,
 	expect,
 	expectSettlesAt,
@@ -1819,40 +1821,6 @@ test.describe("an entry the player has no position for", () => {
 const coverOfRow = (page: Page, at: number) =>
 	queueRows(page).nth(at).locator("[data-artwork]");
 
-// beefweb addresses a cover by a playlist and a row, which is what the pattern
-// says and what keeps its other two artwork routes out. GETs alone, since a
-// preflight fetches no picture.
-const beefwebCovers = (player: FakePlayer) =>
-	player.requests
-		.filter((entry) => entry.method === "GET")
-		.map((entry) => entry.path)
-		.filter((path) => /^\/api\/artwork\/[^/?]+\/\d+$/.test(path));
-
-// A positional cover asked for at a playlist beefweb does not publish. A GUID,
-// an `undefined` or a playlist index standing in for an id all land here.
-const coversAtNoPlaylist = (player: FakePlayer) =>
-	beefwebCovers(player).filter(
-		(path) =>
-			!player.playlists.some((playlist) =>
-				path.startsWith(`/api/artwork/${playlist.id}/`),
-			),
-	);
-
-// The component addresses a cover by the track's library path, so this is the
-// track each request named.
-const componentCovers = (player: FakePlayer) =>
-	player.requests
-		.filter(
-			(entry) =>
-				entry.method === "GET" && entry.path.startsWith("/api/artwork?"),
-		)
-		.map(
-			(entry) =>
-				new URLSearchParams(entry.path.slice(entry.path.indexOf("?"))).get(
-					"track",
-				) ?? "",
-		);
-
 const libraryPathOfQueued = (player: FakePlayer, at: number) => {
 	const entry = player.queuedEntries()[at];
 	if (!entry) throw new Error(`nothing queued at ${at}`);
@@ -1888,25 +1856,18 @@ test.describe("the cover on a queued row", () => {
 		await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
 			timeout: 15_000,
 		});
-		expect(componentCovers(player)).toContain(path);
-		await expectSettlesAt(
-			player,
-			() =>
-				beefwebCovers(player).filter((asked) =>
-					asked.startsWith("/api/artwork/p2/"),
-				).length,
-			0,
-		);
+		expect(coversFromTheComponent(player)).toContain(path);
+		await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 	});
 
 	// A file in a playlist that the media library has never seen: foobar2000
 	// queues it and the component has no library path to name it by. Beefweb's
-	// positional address cannot resolve a playlist addressed by GUID, so the
-	// cover draws nothing.
+	// positional address cannot resolve a playlist addressed by GUID, so there
+	// is no second address to fall back on and the cover draws nothing.
 	test.describe("for a track the media library does not carry", () => {
 		test.use({ mediaLibrarySize: 12 });
 
-		test("draws no cover, since beefweb's positional address cannot resolve a GUID", async ({
+		test("draws no cover, and asks beefweb for none either", async ({
 			page,
 			player,
 		}) => {
@@ -1916,16 +1877,19 @@ test.describe("the cover on a queued row", () => {
 			rowQueuedAtThePlayer(player, "p2", 0);
 			await expect(queueRows(page)).toHaveCount(1);
 			expect(
+				queuePositions(player),
+				"the entry carries no position, so beefweb's address is not the one being refused",
+			).toEqual([0]);
+			expect(
 				libraryPathOfQueued(player, 0),
 				"the media library carries this track, so the case is not set up",
 			).toBeNull();
 
-			await expect(coverOfRow(page, 0)).toHaveAttribute(
-				"data-artwork",
-				"failed",
-				{ timeout: 15_000 },
-			);
-			expect(coversAtNoPlaylist(player)).toHaveLength(1);
+			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+			expect(coversFromTheComponent(player)).not.toContain("");
+
+			await expect(coverOfRow(page, 0).locator("svg")).toBeVisible();
+			await expect(coverOfRow(page, 0).locator("img")).toHaveCount(0);
 		});
 
 		test("is a glyph where the player has neither a path nor a row for it", async ({
@@ -1944,9 +1908,11 @@ test.describe("the cover on a queued row", () => {
 			expect(queuePositions(player)).toEqual([null]);
 			expect(libraryPathOfQueued(player, 0)).toBeNull();
 
-			await expectSettlesAt(player, () => coversAtNoPlaylist(player).length, 0);
-			expect(componentCovers(player)).not.toContain("");
-			expect(componentCovers(player)).not.toContain(String(track["%path%"]));
+			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+			expect(coversFromTheComponent(player)).not.toContain("");
+			expect(coversFromTheComponent(player)).not.toContain(
+				String(track["%path%"]),
+			);
 
 			await expect(coverOfRow(page, 0).locator("svg")).toBeVisible();
 			await expect(coverOfRow(page, 0).locator("img")).toHaveCount(0);

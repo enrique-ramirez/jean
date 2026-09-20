@@ -459,6 +459,34 @@ export const expectSettlesAt = async <T>(
 	expect(settled).toEqual(expected);
 };
 
+// beefweb addresses a cover by a playlist and a row. Its two other artwork
+// routes take no row, so the pattern tells them apart.
+const BEEFWEB_POSITIONAL_COVER = /^\/api\/artwork\/[^/?]+\/\d+$/;
+
+// Every cover asked for at beefweb's positional address. GETs alone, since a
+// preflight fetches no picture.
+export const coversFromBeefweb = (player: FakePlayer) =>
+	player.requests
+		.filter((entry) => entry.method === "GET")
+		.map((entry) => entry.path)
+		.filter((path) => BEEFWEB_POSITIONAL_COVER.test(path));
+
+// The component addresses a cover by the track's library path, so this is the
+// track each of its cover requests named. An empty string is a request that
+// named no track at all, which the component answers 400.
+export const coversFromTheComponent = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) =>
+				entry.method === "GET" && entry.path.startsWith("/api/artwork?"),
+		)
+		.map(
+			(entry) =>
+				new URLSearchParams(entry.path.slice(entry.path.indexOf("?"))).get(
+					"track",
+				) ?? "",
+		);
+
 // The playlist Jean materialises to play a set from. Found by the prefix rather
 // than by a title, because the title is named for whichever set filled it.
 export const scratchOf = (player: FakePlayer) =>

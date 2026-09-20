@@ -1,6 +1,9 @@
-import type { Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	coversFromBeefweb,
+	coversFromTheComponent,
 	expect,
+	expectSettlesAt,
 	FOO_JEAN_TOKEN,
 	listenHere,
 	nowPlayingScreen,
@@ -14,6 +17,26 @@ import { playRow } from "./nowPlaying.ts";
 
 const wheel = (page: Page) =>
 	nowPlayingScreen(page).locator("[data-cover-wheel]");
+
+// The slots with a picture on them, which at rest is the centre and whichever
+// neighbour the wheel could resolve a cover for.
+const drawnSleeves = (page: Page) => wheel(page).locator("[data-artwork='ok']");
+
+const currentSleeve = (page: Page) =>
+	wheel(page).locator("[data-current] [data-artwork]");
+
+// The library path the component answers for one row of a playlist, read off
+// the player rather than composed here.
+const libraryPathOfRow = (
+	player: FakePlayer,
+	playlistId: string,
+	row: number,
+) => {
+	const playlist = player.playlists.find((entry) => entry.id === playlistId);
+	const track = playlist?.items[row];
+	if (!track) throw new Error(`no row ${row} in ${playlistId}`);
+	return player.libraryPathFor(track);
+};
 
 const detents = (page: Page) =>
 	wheel(page).evaluate((el) => {
@@ -208,6 +231,95 @@ test.describe("the cover wheel", () => {
 
 		await expect.poll(() => detents(page), { timeout: 10_000 }).toBe(0);
 		expect(player.player.activeItem.index).toBe(3);
+	});
+});
+
+// beefweb addresses a cover by a playlist and a row, and Jean addresses a
+// playlist by the GUID the component issues, which beefweb cannot resolve. So
+// the sleeves either side come from the component by library path until 013
+// brings a positional address back.
+test.describe("the sleeves either side of the playing row", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"the wheel is the phone's skip gesture",
+	);
+	// Nothing may scroll the list behind the screen onto the rows asserted on
+	// below: a row the list mounts asks for its own cover at the same address,
+	// and the wheel's request would stop being the one being read.
+	test.use({ motion: "allow", settings: { "jean.followPlayback": false } });
+
+	// Far enough down the playing playlist that the list behind the screen has
+	// never mounted this row or the one after it.
+	const FAR_FROM_THE_TOP = { row: 20, title: "Guernica" };
+
+	test("come from the component, addressed by that row's library path", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 0);
+		await expect(currentSleeve(page)).toHaveAttribute("data-artwork", "ok");
+		const { playlistId } = player.player.activeItem;
+		player.requests.length = 0;
+
+		player.playItem(playlistId, FAR_FROM_THE_TOP.row);
+
+		// Jean's own view of the row, not the player's. Nothing pushes the playing
+		// position, so a swipe sent the moment the player moves turns the wheel
+		// from a centre Jean has never been on, and a person cannot swipe at a row
+		// the screen has not drawn yet either.
+		await expect(nowPlayingScreen(page).locator("h1")).toContainText(
+			FAR_FROM_THE_TOP.title,
+		);
+
+		// Asked for before the turn, which is what a neighbour is for: a sleeve
+		// fetched at the moment of the swipe arrives a frame late and the swipe
+		// lands on an empty slot. Nothing else on screen has been near this row,
+		// so this names the wheel's own request.
+		await expect
+			.poll(() => coversFromTheComponent(player))
+			.toContain(
+				libraryPathOfRow(player, playlistId, FAR_FROM_THE_TOP.row + 1),
+			);
+
+		await across(page, 0.85, 0.25);
+		await expect
+			.poll(() => player.player.activeItem.index)
+			.toBe(FAR_FROM_THE_TOP.row + 1);
+		await expect(currentSleeve(page)).toHaveAttribute("data-artwork", "ok");
+
+		await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+	});
+
+	// A playlist of files the media library has never seen: the component has no
+	// library path to name either neighbour by, and there is no second address
+	// left to fall back on.
+	test.describe("where the media library carries neither of them", () => {
+		test.use({ mediaLibrarySize: 12 });
+
+		const ROW_WITH_A_NEIGHBOUR_EITHER_SIDE = 1;
+
+		test("draw no cover, and ask for none", async ({ page, player }) => {
+			await openLibrary(page);
+			await page.request.post("/__control/play", {
+				data: { playlistId: "p1", index: ROW_WITH_A_NEIGHBOUR_EITHER_SIDE },
+			});
+			await expect
+				.poll(() => player.player.activeItem.index)
+				.toBe(ROW_WITH_A_NEIGHBOUR_EITHER_SIDE);
+			await openNowPlaying(page);
+
+			await expect(currentSleeve(page)).toHaveAttribute("data-artwork", "ok");
+			expect(
+				libraryPathOfRow(player, "p1", ROW_WITH_A_NEIGHBOUR_EITHER_SIDE + 1),
+				"the media library carries the next row, so the case is not set up",
+			).toBeNull();
+
+			// The centre alone. A neighbour with no library path has no address, and
+			// an address built from an empty path is a 400 rather than a cover.
+			await expect(drawnSleeves(page)).toHaveCount(1);
+			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+			expect(coversFromTheComponent(player)).not.toContain("");
+		});
 	});
 });
 

@@ -1154,11 +1154,10 @@ const expectQueueTakesALibraryRow = async (
 	);
 };
 
-test.describe("a player that will not let Jean make playlists", () => {
+test.describe("a player whose beefweb permissions say nothing about queueing a library row", () => {
 	test.use({
 		playerState: {
 			permissions: {
-				changePlaylists: false,
 				changeOutput: true,
 				changeClientConfig: true,
 			},

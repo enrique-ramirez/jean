@@ -9,7 +9,6 @@ import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
-export const SCRATCH_PIN_KEY = "jean.scratchPlaylist";
 export const SCRATCH_LANDED_KEY = "jean.scratchPlaylistLanded";
 export const SCRATCH_LANDED_COUNT_KEY = "jean.scratchPlaylistLandedCount";
 
@@ -24,10 +23,6 @@ export function useScratchPlaylist({
 	playlists: PlaylistInfo[];
 	canEdit: boolean;
 }) {
-	const [pinnedId, setPinnedId] = useStoredState<string | null>(
-		SCRATCH_PIN_KEY,
-		null,
-	);
 	// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
 	const [landedTitle, setLandedTitle] = useStoredState<string | null>(
 		SCRATCH_LANDED_KEY,
@@ -41,13 +36,10 @@ export function useScratchPlaylist({
 	const { token, discovery } = useFooJean();
 	const { origin, token: readyToken } = discovery;
 
-	const playlist = useMemo(() => {
-		const pinned = pinnedId
-			? playlists.find((entry) => entry.id === pinnedId)
-			: null;
-		const byId = isScratchPlaylist(pinned) ? pinned : null;
-		return byId ?? playlists.find(isScratchPlaylist) ?? null;
-	}, [playlists, pinnedId]);
+	const playlist = useMemo(
+		() => playlists.find(isScratchPlaylist) ?? null,
+		[playlists],
+	);
 
 	const holdsView = useCallback(
 		(kind: string, label: string | null, count: number) =>
@@ -92,7 +84,6 @@ export function useScratchPlaylist({
 					?.find((entry) => entry.title === title)?.id ??
 				null;
 
-			setPinnedId(id);
 			setLandedTitle(title);
 			setLandedCount(refs.length);
 			return id;
@@ -101,7 +92,6 @@ export function useScratchPlaylist({
 			canEdit,
 			holdsView,
 			playlist,
-			setPinnedId,
 			setLandedTitle,
 			setLandedCount,
 			queryClient,

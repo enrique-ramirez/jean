@@ -462,8 +462,6 @@ export const en = {
 	"search.reading": "Searching {loaded} of {total}…",
 	"search.resultsEyebrow": "Search results in your library",
 	"search.saveAsPlaylist": "Save as playlist",
-	"search.saveAsPlaylistLocked":
-		"Save as playlist (foo_jean has playlist writes turned off)",
 	"search.saveFailed": "Could not save — {message}",
 	"search.section.albums": "Albums",
 	"search.section.artists": "Artists",
@@ -631,8 +629,6 @@ export const en = {
 	"theme.toLight": "Switch to light theme",
 	"track.actions": "Track actions",
 	"track.addToPlaylist": "Add to playlist",
-	"track.addToPlaylistLocked":
-		"Add to playlist (foo_jean has playlist writes turned off)",
 	"track.andMore": {
 		one: "{track} and {count} more",
 		other: "{track} and {count} more",

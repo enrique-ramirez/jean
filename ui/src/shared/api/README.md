@@ -1,6 +1,6 @@
 # API reference
 
-Two HTTP APIs sit under Jean. **beefweb** does playlists and the queue, takes the playback commands, and answers artwork for a row that is in a playlist. **`foo_jean`** listens on a port of its own and answers the player's own state as well as everything else: the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
+Two HTTP APIs sit under Jean. **beefweb** takes the playback commands: play, pause, seek, volume, skip and the playback order. **`foo_jean`** listens on a port of its own and answers everything else: the player's own state, the playlist list and every edit to it, the queue, the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
 
 Verified against foobar2000 with the beefweb plugin. Where behaviour differs by plugin version it says so: **0.10** is the current release, **0.11** adds the media library API.
 
@@ -77,6 +77,8 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 > **Nothing may address a playback mode by index.** The ordinal in `{ playbackMode }`, and in `options`' `playbackOrder` value, means whatever this install's enum says it means: order and wording both vary. `foo_jean` maps it to its own names instead, `contract/openapi.yaml`'s `PlaybackMode`.
 
 ### Playlists
+
+**Jean does not call any route on this page.** Every playlist read and edit goes through `foo_jean`'s own routes instead, addressed by its GUID rather than beefweb's `p1`, `p2`, …; what follows is a fact about beefweb, real for any client that has no other playlist API to reach for.
 
 | Route | Body | Notes |
 |---|---|---|

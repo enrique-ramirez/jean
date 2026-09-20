@@ -15,7 +15,6 @@ import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { usePlaySet } from "@/domain/library/usePlaySet";
 import { usePlayerPoll } from "@/domain/player/playerPoll";
-import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -25,6 +24,7 @@ import {
 	usePlaylists,
 	usePlayPause,
 	usePrevious,
+	useResolvedPlaylistId,
 	useSeekBy,
 } from "@/domain/player/usePlayer";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
@@ -135,7 +135,7 @@ function Shell() {
 	const { data: playlists = [], isSuccess: hasPlaylists } = usePlaylists();
 	const { data: playerState, isSuccess: hasPlayer } = usePlayer();
 	const activeItem = playerState?.player?.activeItem;
-	const playingPlaylistId = usePlayingPlaylist(
+	const playingPlaylistId = useResolvedPlaylistId(
 		activeItem?.playlistGuid ?? null,
 	);
 	const isPlaying = useIsPlaying();

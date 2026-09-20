@@ -46,7 +46,6 @@ import { clamp } from "@/shared/lib/math";
 import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
-import { usePlayingPlaylist } from "./playlistJoin";
 import { audibleAt, positionAt } from "./position";
 
 export const PLAYLISTS_KEY = ["playlists"];
@@ -130,6 +129,28 @@ export function usePlaylistsCaughtUp(): boolean {
 		refetchOnWindowFocus: false,
 	});
 	return seen !== undefined && seen === fetchedAt;
+}
+
+export function resolvedPlaylistId(
+	guid: string | null,
+	playlists: readonly PlaylistInfo[],
+	caughtUp: boolean,
+): string | null | undefined {
+	if (!guid) return null;
+	if (playlists.some((playlist) => playlist.id === guid)) return guid;
+	return caughtUp ? null : undefined;
+}
+
+export function useResolvedPlaylistId(
+	guid: string | null,
+): string | null | undefined {
+	const { data: playlists = [] } = usePlaylists();
+	const caughtUp = usePlaylistsCaughtUp();
+
+	return useMemo(
+		() => resolvedPlaylistId(guid, playlists, caughtUp),
+		[guid, playlists, caughtUp],
+	);
 }
 
 function useOptimisticWrite<TData, TInput, TResult = unknown>(
@@ -320,7 +341,7 @@ export function useActiveItem(
 ): ActiveItem | null {
 	const { data } = usePlayer();
 	const item = data?.player?.activeItem;
-	const playingId = usePlayingPlaylist(item?.playlistGuid ?? null);
+	const playingId = useResolvedPlaylistId(item?.playlistGuid ?? null);
 	if (!item || item.index < 0 || playingId !== playlistId) return null;
 	return item;
 }

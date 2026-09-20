@@ -215,11 +215,10 @@ test.describe("a player that reports no permissions at all", () => {
 	});
 });
 
-test.describe("a beefweb install that will not let Jean change playlists", () => {
+test.describe("a beefweb permission that says nothing about playing a library set", () => {
 	test.use({
 		playerState: {
 			permissions: {
-				changePlaylists: false,
 				changeOutput: true,
 				changeClientConfig: true,
 			},

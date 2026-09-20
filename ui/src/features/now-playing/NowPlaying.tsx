@@ -3,7 +3,6 @@ import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
-import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -12,6 +11,7 @@ import {
 	usePlayer,
 	usePlayPause,
 	usePrevious,
+	useResolvedPlaylistId,
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
@@ -197,7 +197,7 @@ export function NowPlaying({
 
 	const player = snapshot?.player;
 	const item = player?.activeItem;
-	const playlistId = usePlayingPlaylist(item?.playlistGuid ?? null);
+	const playlistId = useResolvedPlaylistId(item?.playlistGuid ?? null);
 	const hasPosition = Boolean(item && item.index >= 0);
 	const isPlaying = player?.playbackState === "playing";
 
@@ -278,7 +278,7 @@ export function NowPlaying({
 			: null;
 
 	const liveItem = live?.player?.activeItem;
-	const livePlaylistId = usePlayingPlaylist(liveItem?.playlistGuid ?? null);
+	const livePlaylistId = useResolvedPlaylistId(liveItem?.playlistGuid ?? null);
 
 	const wheel = useCoverWheel({
 		audibleTrackKey: artworkKey,

@@ -281,11 +281,10 @@ test.describe("a front door on a player that offers no shuffle", () => {
 	});
 });
 
-test.describe("a front door on a beefweb install that will not let Jean change playlists", () => {
+test.describe("a front door where a beefweb permission says nothing about playing a library set", () => {
 	test.use({
 		playerState: {
 			permissions: {
-				changePlaylists: false,
 				changeOutput: true,
 				changeClientConfig: true,
 			},

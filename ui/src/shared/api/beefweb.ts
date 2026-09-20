@@ -3,18 +3,11 @@ import type {
 	LibraryNodesResponse,
 	NowPlayingTrack,
 	PlayerState,
-	PlaylistInfo,
-	PlaylistItemsResponse,
 	TrackColumns,
-	TrackRows,
 } from "./types";
 
 const encode = (expressions: readonly string[]) =>
 	encodeURIComponent(expressions.join(","));
-
-export const UPDATES_URL = "/api/query/updates?playlists=true";
-
-const id = encodeURIComponent;
 
 async function request(path: string, options?: RequestInit) {
 	const response = await fetch(path, options);
@@ -31,35 +24,6 @@ const post = (path: string, body?: unknown) =>
 		headers: body ? { "Content-Type": "application/json" } : undefined,
 		body: body ? JSON.stringify(body) : undefined,
 	});
-
-export async function fetchPlaylists(): Promise<PlaylistInfo[]> {
-	const response = await request("/api/playlists");
-	const { playlists } = (await response.json()) as {
-		playlists: PlaylistInfo[];
-	};
-	return playlists;
-}
-
-export async function fetchPlaylistItems(
-	playlistId: string,
-	offset: number,
-	count: number,
-	columns: string[],
-	{ signal }: { signal?: AbortSignal } = {},
-): Promise<TrackRows> {
-	const response = await request(
-		`/api/playlists/${id(playlistId)}/items/${offset}:${count}?columns=${encode(columns)}`,
-		{ signal },
-	);
-	const { playlistItems } = (await response.json()) as {
-		playlistItems: PlaylistItemsResponse;
-	};
-	return {
-		rows: playlistItems.items.map((item) => item.columns),
-		totalCount: playlistItems.totalCount,
-		offset: playlistItems.offset,
-	};
-}
 
 // One folder of the library tree, which is how a client reaches one track by a path it holds. See
 // README.md: an ordinal is not an offset into `/library/items`.
@@ -103,8 +67,6 @@ export const previousTrack = () => {
 	return post("/api/player/previous");
 };
 export const stop = () => post("/api/player/stop");
-export const playItem = (playlistId: string, index: number) =>
-	post(`/api/player/play/${id(playlistId)}/${index}`);
 export const seekTo = (position: number) => post("/api/player", { position });
 export const seekBy = (offset: number) =>
 	post("/api/player", { relativePosition: offset });
@@ -117,40 +79,6 @@ export const volumeDown = () => post("/api/player/volume/down");
 // foobar2000 carries the order as an option named `playbackOrder`.
 export const setPlaybackOrder = (value: number) =>
 	post("/api/player", { options: [{ id: "playbackOrder", value }] });
-
-export async function createPlaylist(title: string): Promise<PlaylistInfo> {
-	const response = await post(
-		`/api/playlists/add?title=${encodeURIComponent(title)}`,
-	);
-	return response.json() as Promise<PlaylistInfo>;
-}
-
-export const renamePlaylist = (playlistId: string, title: string) =>
-	post(`/api/playlists/${id(playlistId)}`, { title });
-// Deleting a playlist the play queue points into crashes foo_beefweb and takes foobar2000 with it.
-export const removePlaylist = (playlistId: string) =>
-	post(`/api/playlists/remove/${id(playlistId)}`);
-export const movePlaylist = (playlistId: string, index: number) =>
-	post(`/api/playlists/move/${id(playlistId)}/${index}`);
-
-// `items` is often a typed array, which `JSON.stringify` turns into an object. Hence the copy, here
-// and in `removePlaylistItems`.
-export const copyPlaylistItems = (
-	sourceId: string,
-	targetId: string,
-	items: ArrayLike<number>,
-) =>
-	post(`/api/playlists/${id(sourceId)}/${id(targetId)}/items/copy`, {
-		items: Array.from(items),
-	});
-
-export const removePlaylistItems = (
-	playlistId: string,
-	items: ArrayLike<number>,
-) =>
-	post(`/api/playlists/${id(playlistId)}/items/remove`, {
-		items: Array.from(items),
-	});
 
 export function readTrack(
 	player: PlayerState | null | undefined,

@@ -3,11 +3,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import type {
-	PlaylistInfo,
-	PlaylistItemsResponse,
-} from "../../src/shared/api/types.ts";
+import type { PlaylistInfo } from "../../src/shared/api/types.ts";
 import type { FakePlayerState } from "./state.ts";
+
+// beefweb's own shape for `GET /playlists/{id}/items/{offset}:{count}`, read directly from a real
+// player rather than through Jean, which no longer calls this route.
+interface PlaylistItemsResponse {
+	items: { columns: string[] }[];
+}
 
 interface CapturedTrack {
 	index: number;

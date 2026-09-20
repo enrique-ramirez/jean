@@ -17,8 +17,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
 import { pollPlayerNow } from "./playerPoll";
-import { guidOf } from "./playlistJoin";
-import { QUEUE_KEY, type QueueSource, readQueue } from "./queue";
+import { guidOf, QUEUE_KEY, type QueueSource, readQueue } from "./queue";
 import { askToShowQueue } from "./showQueue";
 
 export function useQueue() {

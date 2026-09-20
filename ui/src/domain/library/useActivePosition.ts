@@ -1,6 +1,8 @@
 import { useMemo } from "react";
-import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
-import { useAudiblePlayer } from "@/domain/player/usePlayer";
+import {
+	useAudiblePlayer,
+	useResolvedPlaylistId,
+} from "@/domain/player/usePlayer";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import { readTrack } from "@/shared/api/beefweb";
@@ -26,7 +28,7 @@ export function useActivePosition({
 	const path = playing?.path ?? null;
 	const subsong = playing?.subsong ?? 0;
 	const playlistId =
-		usePlayingPlaylist(activeItem?.playlistGuid ?? null) ?? null;
+		useResolvedPlaylistId(activeItem?.playlistGuid ?? null) ?? null;
 	const index = activeItem?.index ?? -1;
 	const scratchId = scratch.playlist?.id ?? null;
 

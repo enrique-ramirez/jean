@@ -1,7 +1,10 @@
 import { Music, Star } from "lucide-react";
 import { useMemo, useState } from "react";
-import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
-import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
+import {
+	useAudiblePlayer,
+	usePlaylists,
+	useResolvedPlaylistId,
+} from "@/domain/player/usePlayer";
 import { librarySourceOf } from "@/domain/track/librarySource";
 import { starsOf } from "@/domain/track/rating";
 import { ratingItems, trackActions } from "@/domain/track/trackActions";
@@ -30,7 +33,7 @@ export function useNowPlayingMenu() {
 	const item = snapshot?.player?.activeItem;
 	const track = readTrack(snapshot?.player);
 	const hasTrack = Boolean(track);
-	const playingPlaylistId = usePlayingPlaylist(item?.playlistGuid ?? null);
+	const playingPlaylistId = useResolvedPlaylistId(item?.playlistGuid ?? null);
 
 	const source = useMemo(
 		() =>

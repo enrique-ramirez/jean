@@ -410,23 +410,6 @@ export const searchFor = async (page: Page, text: string) => {
 	).toBeVisible();
 };
 
-const NAMES_THE_COMPONENT = /foo_jean/i;
-const READS_AS_A_LOGIN =
-	/denied|forbidden|unauthoris|unauthoriz|sign in|signed out|log in|logged out|password|credential/i;
-
-// A playlist control Jean may not use is drawn disabled with its reason in its own
-// label, and the reason is one setting: foo_jean's `writePlaylists`, which the
-// player owner holds in the component's own preferences. So the label has to name
-// the component somebody goes and changes it in, and it may not read as a
-// credential problem, because nobody is signed out of anything. How it is worded
-// beyond that is nobody's business here.
-export const expectDisabledWithItsReason = async (control: Locator) => {
-	await expect(control).toBeVisible();
-	await expect(control).toBeDisabled();
-	await expect(control).toHaveAccessibleName(NAMES_THE_COMPONENT);
-	await expect(control).not.toHaveAccessibleName(READS_AS_A_LOGIN);
-};
-
 // The player owner turning `writePlaylists` off with Jean already open. The
 // component answers its capabilities once, at discovery, so every playlist
 // control stays drawn and the next edit comes back 403. That is the only way a

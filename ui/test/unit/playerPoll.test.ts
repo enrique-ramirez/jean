@@ -147,7 +147,6 @@ const held = (over: Partial<PlayerState> = {}): PlayerState => ({
 		version: "0.0",
 	},
 	permissions: {
-		changePlaylists: true,
 		changeOutput: true,
 		changeClientConfig: true,
 	},
@@ -414,7 +413,6 @@ test("a tick draws the player's name, the fader's range and what the install per
 		isMuted: false,
 	});
 	assert.deepEqual(player?.permissions, {
-		changePlaylists: false,
 		changeOutput: false,
 		changeClientConfig: true,
 	});
@@ -463,7 +461,6 @@ test("a tick overwrites everything its document speaks for, whoever put the prev
 		isMuted: false,
 	});
 	assert.deepEqual(player?.permissions, {
-		changePlaylists: false,
 		changeOutput: false,
 		changeClientConfig: true,
 	});
@@ -538,7 +535,6 @@ test("a tick before capabilities have landed reports the level with no range to 
 	assert.equal(player?.volume.value, -6);
 	assert.equal(volumePercent(player?.volume), 0);
 	assert.deepEqual(player?.permissions, {
-		changePlaylists: true,
 		changeOutput: true,
 		changeClientConfig: true,
 	});

@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
 	type FillPlaylistRequest,
 	fetchQueue,
+	type PlaylistAnnotation,
 	type QueueRead,
 } from "@/shared/api/fooJean";
 
@@ -19,6 +20,17 @@ export interface QueueTarget {
 export type QueueSource =
 	| { kind: "rows"; targets: QueueTarget[] }
 	| { kind: "tracks"; request: FillPlaylistRequest };
+
+// Validates rather than converts: every id a caller holds is already the GUID `GET /playlists`
+// answers, and this confirms it names a playlist the annotation list still carries.
+export function guidOf(
+	id: string,
+	entries: readonly PlaylistAnnotation[] | null,
+): string {
+	const entry = entries?.find((annotation) => annotation.id === id);
+	if (!entry) throw new Error(`no foo_jean playlist for id ${id}`);
+	return entry.id;
+}
 
 export const queueDropAt = (at: number) => `${QUEUE_DROP_TARGET}@${at}`;
 

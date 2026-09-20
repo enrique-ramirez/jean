@@ -1,6 +1,9 @@
 import { useMemo } from "react";
-import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
-import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
+import {
+	useAudiblePlayer,
+	usePlaylists,
+	useResolvedPlaylistId,
+} from "@/domain/player/usePlayer";
 import {
 	isScratchPlaylist,
 	scratchContentsOf,
@@ -14,7 +17,7 @@ export function usePlayingFrom() {
 	const t = useTranslate();
 	const { data: playlists = [] } = usePlaylists();
 	const snapshot = useAudiblePlayer();
-	const activePlaylistId = usePlayingPlaylist(
+	const activePlaylistId = useResolvedPlaylistId(
 		snapshot?.player?.activeItem?.playlistGuid ?? null,
 	);
 	const [landedTitle] = useStoredState<string | null>(SCRATCH_LANDED_KEY, null);

@@ -5,8 +5,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
-import { usePlayer } from "@/domain/player/usePlayer";
+import { usePlayer, useResolvedPlaylistId } from "@/domain/player/usePlayer";
 import { type Album, albumIndex } from "@/domain/track/albums";
 import { type Artist, artistIndex } from "@/domain/track/artists";
 import { type Genre, genreIndex } from "@/domain/track/genres";
@@ -21,11 +20,11 @@ import { bestMatches } from "@/domain/track/rankTracks";
 import { emptyOwnPlaylist, permitsPlaylistWrites } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
-import { readStoredState, useStoredState } from "@/shared/hooks/useStoredState";
+import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
 import { fold, fuzzyScore, squash, TIER } from "@/shared/lib/text";
 import type { Library } from "./useLibrary";
-import { SCRATCH_LANDED_KEY, SCRATCH_PIN_KEY } from "./useScratchPlaylist";
+import { SCRATCH_LANDED_KEY } from "./useScratchPlaylist";
 
 export type SearchSectionLabel = Extract<Phrase, `search.section.${string}`>;
 
@@ -72,16 +71,12 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const { data: playerSnapshot } = usePlayer();
 	const player = playerSnapshot?.player;
 	const playingPlaylistId =
-		usePlayingPlaylist(player?.activeItem?.playlistGuid ?? null) ?? null;
+		useResolvedPlaylistId(player?.activeItem?.playlistGuid ?? null) ?? null;
 	const [draft, setDraft] = useState("");
 	const [query, setQuery] = useState("");
 	const [isFocused, setIsFocused] = useState(false);
 	const [isOpen, setIsOpen] = useState(false);
 	const inputRef = useRef<HTMLInputElement | null>(null);
-	const [, setPinnedScratch] = useStoredState<string | null>(
-		SCRATCH_PIN_KEY,
-		null,
-	);
 	const [landedTitle] = useStoredState<string | null>(SCRATCH_LANDED_KEY, null);
 
 	// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
@@ -108,10 +103,8 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		setIsOpen(false);
 		if (!canEdit) return;
 
-		// Read now rather than from the hook above: a save drops the pin as it hands the playlist to the user, and a value captured by this callback predates that.
-		const pinned = readStoredState<string | null>(SCRATCH_PIN_KEY, null);
-		const scratch = playlists.find((entry) => entry.id === pinned);
-		if (!isScratchPlaylist(scratch)) return;
+		const scratch = playlists.find(isScratchPlaylist);
+		if (!scratch) return;
 
 		const stillPlaying =
 			player !== undefined && player.playbackState !== "stopped";
@@ -123,15 +116,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 		const { origin, token } = discovery;
 		if (origin && token) emptyOwnPlaylist(origin, token, "scratch");
-		setPinnedScratch(null);
-	}, [
-		playlists,
-		canEdit,
-		player,
-		playingPlaylistId,
-		setPinnedScratch,
-		discovery,
-	]);
+	}, [playlists, canEdit, player, playingPlaylistId, discovery]);
 
 	const deferredDraft = useDeferredValue(draft);
 

@@ -55,7 +55,7 @@ The neutrals follow the accent's hue rather than a warm one.
 
 **The title never animates.** A marquee rewrites `document.title` several times a second forever, and history, bookmarks and the tab's tooltip each snapshot whichever frame they catch. A tab ellipsises early, so the track leads and the app name trails, and there is no play or pause glyph, because `▶` renders as a colour emoji on some platforms.
 
-**`Disconnected` in the title only covers a failed first load.** `usePlayer` has `staleTime: Infinity` and never refetches, so the error flag is set by a load that did not succeed and by nothing afterwards: a player that quits while the tab is open leaves the last track in the title. The status bar has the same blind spot. Closing it means watching the `EventSource`'s own `readyState`.
+**`Disconnected` in the title never fires.** `usePlayer` is a `skipToken` query with no `queryFn` of its own; `["player"]` is only ever written by `setQueryData`, so its `isError` cannot become true, not on a failed first load and not afterwards. A player that quits while the tab is open leaves the last track in the title, and the status bar has the same blind spot. Closing it means noticing a poll that keeps failing, which `playerPoll.ts` does not do today: `fetchState`'s failures return early and touch nothing react-query would call an error.
 
 **There is no `apple-touch-icon`.** iOS ignores SVG icons on a home screen and wants a PNG at a fixed size.
 

@@ -1,4 +1,3 @@
-import { usePlayingPlaylist } from "@/domain/player/playlistJoin";
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
@@ -7,6 +6,7 @@ import {
 	usePlayer,
 	usePlayPause,
 	usePrevious,
+	useResolvedPlaylistId,
 	useSeek,
 	useTransport,
 } from "@/domain/player/usePlayer";
@@ -90,7 +90,7 @@ export function StatusBar({
 	const transport = useTransport();
 	const previous = usePrevious();
 	const order = usePlaybackOrder();
-	const playlistId = usePlayingPlaylist(
+	const playlistId = useResolvedPlaylistId(
 		snapshot?.player?.activeItem?.playlistGuid ?? null,
 	);
 

@@ -45,7 +45,6 @@ export interface PlayerInfo {
 }
 
 export interface Permissions {
-	changePlaylists: boolean;
 	changeOutput: boolean;
 	changeClientConfig: boolean;
 }
@@ -76,19 +75,6 @@ export interface PlaylistInfo {
 }
 
 export type TrackColumns = string[];
-
-export interface PlaylistItemsResponse {
-	offset: number;
-	totalCount: number;
-	// No id: position is the identity, so any mutation invalidates indices being held.
-	items: { columns: TrackColumns }[];
-}
-
-export interface TrackRows {
-	rows: TrackColumns[];
-	totalCount: number;
-	offset: number;
-}
 
 export interface LibraryInfo {
 	supported: boolean;
@@ -128,10 +114,6 @@ export interface AddFromLibraryBody {
 	index?: number;
 	replace?: boolean;
 	play?: boolean;
-}
-
-export interface UpdateMessage {
-	playlists?: PlaylistInfo[];
 }
 
 export interface PlayerSnapshot {

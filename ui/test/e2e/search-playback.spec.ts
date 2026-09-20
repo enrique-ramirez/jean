@@ -802,11 +802,10 @@ const beefwebPlaylistWrites = (player: FakePlayer) =>
 				entry.path.includes("add-from-library")),
 	);
 
-test.describe("a beefweb install that will not let Jean change playlists", () => {
+test.describe("a beefweb permission that says nothing about playing a search result", () => {
 	test.use({
 		playerState: {
 			permissions: {
-				changePlaylists: false,
 				changeOutput: true,
 				changeClientConfig: true,
 			},

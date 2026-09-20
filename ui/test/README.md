@@ -246,7 +246,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `mediaLibrarySize` | swaps the media library, which is what the component publishes, for that many generated tracks |
 | `libraryShape` | states a library outright: counts, durations, years, tags to omit, whether an artist is spelled two ways, how many subsongs share a file. A description rather than built tracks, since an option's top level does not survive the trip to the worker as an array (nested arrays are fine) |
 | `withoutFields` | removes title-formatting expressions, so the player answers `?` as a real one does. `['%lastfm_play_count%']` is an install with no playback-statistics component, and everything built on play counts must disappear rather than break |
-| `withoutPlaylists` | empties everything but Jean's own: the player a fresh install would find |
+| `withoutPlaylists` | empties the playlist list entirely: the player a fresh install would find |
 | `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches the media library as well as the playlists |
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |

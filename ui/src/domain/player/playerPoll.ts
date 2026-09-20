@@ -46,10 +46,6 @@ function mergePlayer(
 			version: capabilities?.playerVersion ?? previous?.info.version ?? "",
 		},
 		permissions: {
-			changePlaylists:
-				capabilities?.canWritePlaylists ??
-				previous?.permissions.changePlaylists ??
-				true,
 			changeOutput:
 				capabilities?.canChangeOutput ??
 				previous?.permissions.changeOutput ??

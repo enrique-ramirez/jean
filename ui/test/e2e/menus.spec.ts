@@ -382,11 +382,10 @@ test.describe("an install that will not let Jean change playlists", () => {
 	});
 });
 
-test.describe("a player whose own permissions refuse playlist changes", () => {
+test.describe("a player whose beefweb permissions say nothing about filing a track", () => {
 	test.use({
 		playerState: {
 			permissions: {
-				changePlaylists: false,
 				changeOutput: true,
 				changeClientConfig: true,
 			},

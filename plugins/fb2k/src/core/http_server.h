@@ -87,10 +87,12 @@ struct FillResult {
 
 // Resolves `ordinals` against the snapshot built for `structure`, in the order given, and
 // inserts the tracks they name into `playlistId`, emptying it first when `replace` is set.
-// Whether the write is permitted is decided before this is called; this callback is never
-// asked to weigh in. `title` renames the playlist in the same main-thread work item that
-// checks the generation, so a refusal never lands ahead of the rows it refused; an empty
-// `title` is a user's playlist saying it is not this component's to rename.
+// The read-only-playlists switch is decided before this is called. Whether foobar2000 has
+// the playlist locked against the edit is not: only the player knows a lock's state, so
+// this callback answers `playlistLocked` itself. `title` renames the playlist in the same
+// main-thread work item that checks the generation, so a refusal never lands ahead of the
+// rows it refused; an empty `title` is a user's playlist saying it is not this component's
+// to rename.
 using PlaylistFiller =
     std::function<FillResult(const std::string& playlistId, const std::string& title,
                              uint64_t structure, const std::vector<uint32_t>& ordinals,

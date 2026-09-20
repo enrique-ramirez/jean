@@ -352,6 +352,11 @@ void beginFill(const std::string& playlistId, const std::string& title, uint64_t
         return;
     }
 
+    if (lockRefuses(index, playlist_lock::filter_add)) {
+        answer->set(FillResult{PlaylistOutcome::playlistLocked, {}});
+        return;
+    }
+
     const auto resolved = resolveOrdinals(structure, ordinals);
     if (!resolved.structureMatched) {
         answer->set(FillResult{PlaylistOutcome::structureMoved, {}});

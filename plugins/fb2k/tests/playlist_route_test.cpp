@@ -1550,6 +1550,23 @@ Player lockedPlaylistPlayer(int* asked) {
     return player;
 }
 
+// The same refusals for the route that inserts library rows, which reaches the player through
+// fill rather than through copyPlaylistRows. foobar2000 takes an insert into a locked playlist
+// and drops it without failing anything, so the positions a fill worked out ahead of the insert
+// are no evidence that rows landed. They ride along with the refusal here for that reason.
+Player refusingFillPlayer(FillLog* log, PlaylistOutcome outcome) {
+    auto player = fillingPlayer(log);
+
+    player.fill = [log, outcome](const std::string& playlistId, const std::string&, uint64_t,
+                                 const std::vector<uint32_t>&, bool) {
+        log->fills++;
+        log->filled = playlistId;
+        return FillResult{outcome, {53, 54, 55}, ""};
+    };
+
+    return player;
+}
+
 }  // namespace
 
 TEST_CASE("GET /api/playlists answers each playlist by everything a client draws it from") {
@@ -2581,6 +2598,62 @@ TEST_CASE("an edit the player refuses for a locked playlist is a 409 rather than
         CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::playlistLocked));
 
         CHECK(asked == 1);
+    }
+}
+
+// The same lock, met by the route above's neighbour. A copy and a fill both add rows, so both
+// meet playlist_lock's filter_add, and a client told 409 by one and 200 by the other has no way
+// to know which answer to believe. The refusal reads identically for that reason.
+TEST_CASE("a fill into a locked playlist is the 409 a copy into one is") {
+    Library library;
+    buildLibrary(library);
+
+    for (const auto& target : targets(library.state().structure)) {
+        INFO("target: ", target.name);
+
+        FillLog log;
+        const TestServer server(servingSettings(),
+                                refusingFillPlayer(&log, PlaylistOutcome::playlistLocked),
+                                &library);
+
+        const auto response = post(server, target.path, target.body);
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::playlistLocked));
+
+        CHECK(log.fills == 1);
+    }
+}
+
+// The undo on Jean's toast is built from the positions a fill answered, so positions for rows
+// that never landed ask the player to remove rows past the end of a playlist. A refusal names
+// none, whatever the player reported adding on its way to refusing.
+TEST_CASE("a fill the player refused answers no positions") {
+    struct Refusal {
+        PlaylistOutcome outcome;
+        int status;
+    };
+
+    Library library;
+    buildLibrary(library);
+
+    for (const auto& refusal :
+         {Refusal{PlaylistOutcome::playlistLocked, 409},
+          Refusal{PlaylistOutcome::noSuchPlaylist, 404},
+          Refusal{PlaylistOutcome::playerRefused, 500},
+          Refusal{PlaylistOutcome::timedOut, 504}}) {
+        INFO("outcome: ", describe(refusal.outcome));
+
+        FillLog log;
+        const TestServer server(servingSettings(), refusingFillPlayer(&log, refusal.outcome),
+                                &library);
+
+        const auto response = post(server, userFill(), userBody(library.state().structure));
+
+        REQUIRE(response);
+        CHECK(response->status == refusal.status);
+        CHECK(json::parse(response->body).count("positions") == 0);
     }
 }
 

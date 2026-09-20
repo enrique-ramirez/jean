@@ -803,7 +803,7 @@ paths:
               schema: { $ref: "#/components/schemas/FillResult" }
         "400": { $ref: "#/components/responses/PlaylistRefused" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "409": { $ref: "#/components/responses/StructureMoved" }
+        "409": { $ref: "#/components/responses/FillConflict" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
@@ -1071,7 +1071,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/WritesDisabled" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
-        "409": { $ref: "#/components/responses/StructureMoved" }
+        "409": { $ref: "#/components/responses/FillConflict" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
@@ -2233,6 +2233,22 @@ components:
             restructured:
               value:
                 error: "tracks were added or removed; export the library again"
+                detail: ""
+
+    FillConflict:
+      description: |
+        The `structure` the request named is no longer the current one, or another component has locked the target playlist against having rows added. The `error` string distinguishes them. The first is the same `409` `GET /library/changes` answers, and the remedy is the same: export the library again and resolve the set against the `structure` it reports. The second is released at the player, by whatever put it there, and nothing a client sends changes that.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            restructured:
+              value:
+                error: "tracks were added or removed; export the library again"
+                detail: ""
+            locked:
+              value:
+                error: "another component has locked that playlist against that edit"
                 detail: ""
 
     TooManyRequests:

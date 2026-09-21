@@ -1369,6 +1369,15 @@ export interface components {
              */
             playlistId: string;
             /**
+             * @description The target playlist's `structure` generation once the rows have landed. An undo naming this one removes exactly the rows below and nothing else, and a rating changed in between moves the playlist's `revision` rather than this, so it does not block one.
+             *
+             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives, and it goes back into `POST /playlists/{id}/items/remove` exactly as it arrived. A client that holds it as a number undoes against a neighbour of it and is refused `409` every time.
+             *
+             *     Not the same field as the `structure` this request sent: that one is the media library's own generation, an ordinal is resolved against it, and it stays a plain number.
+             * @example 9204739866101318924
+             */
+            structure: string;
+            /**
              * @description One position per row inserted, in the order the rows were inserted: request order for `ordinals`, ascending ordinal order for `runs` and `bitset`. `positions[i]` is where the *i*-th inserted row landed, 0-based.
              * @example [
              *       0,
@@ -2482,7 +2491,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistAnnotation"];
                 };
             };
-            /** @description The request was understood and declined: a body that is not JSON, a missing, empty, unprintable or over-long `title`, a `source` this component did not issue, a set that is not exactly one of `runs`, `bitset` and `ordinals`, one naming an ordinal outside the library while its `structure` is still the current one, or a `source` row past the end of that playlist. The schemas below tell the last of those from the rest. */
+            /** @description The request was understood and declined: a body that is not JSON, a missing, empty, unprintable or over-long `title`, a `source` this component did not issue, a set that is not exactly one of `runs`, `bitset` and `ordinals`, one naming an ordinal outside the library while its `structure` is still the current one, a `source` row past the end of that playlist, or a `source` selection resolving to more than 1,500,000 rows, an engineered ceiling on what one request may resolve to, set far above any selection made in a playlist view; the real playlist length is checked again once the player has answered. The schemas below tell the last of those from the rest. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2677,7 +2686,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Inserted. `positions` names where each row landed. */
+            /** @description Inserted. `positions` names where each row landed, and `structure` the generation the target now stands at. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2934,7 +2943,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Inserted. `positions` names where each row landed. */
+            /** @description Inserted. `positions` names where each row landed, and `structure` the generation the target now stands at. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3040,7 +3049,7 @@ export interface operations {
                     "application/json": components["schemas"]["CopiedRows"];
                 };
             };
-            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, or a `runs` entry naming a row past the end of the source playlist. A create from the same source is refused in the same words. */
+            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, a `runs` entry naming a row past the end of the source playlist, or a selection resolving to more than 1,500,000 rows, an engineered ceiling on what one request may resolve to, set far above any selection made in a playlist view; the real playlist length is checked again once the player has answered. A create from the same source is refused in the same words. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3096,7 +3105,7 @@ export interface operations {
                     "application/json": components["schemas"]["RemovedRows"];
                 };
             };
-            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, or a position past the end of the playlist. A fill sent the same set is refused in the same words. */
+            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, a position past the end of the playlist, or a selection resolving to more than 1,500,000 rows, an engineered ceiling on what one request may resolve to, set far above any selection made in a playlist view; the real playlist length is checked again once the player has answered. A fill sent the same set is refused in the same words. */
             400: {
                 headers: {
                     [name: string]: unknown;

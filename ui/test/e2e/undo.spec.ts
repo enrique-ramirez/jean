@@ -8,6 +8,7 @@ import {
 	expect,
 	expectSettlesAt,
 	guidOfPlaylist,
+	openAllMusic,
 	openLibrary,
 	pressAndHold,
 	refusePlaylistWrites,
@@ -37,6 +38,14 @@ const structureOf = (player: FakePlayer, beefwebId: string) =>
 // counting every request matching the path counts that too.
 const postsTo = (player: FakePlayer, pattern: string) =>
 	requestsTo(player, pattern).filter((entry) => entry.method === "POST");
+
+// The route a library view adds through, which is not the copy: it names library ordinals
+// against the library's own generation rather than a source playlist's rows.
+const fillsInto = (player: FakePlayer, guid: string) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "POST" && entry.path === `/api/playlists/${guid}/items`,
+	);
 
 // Reads of the playlist collection alone, which is where an item count comes from.
 const listReads = (player: FakePlayer) =>
@@ -494,6 +503,109 @@ test.describe("undoing it", () => {
 		expect(
 			player.playlists.find((entry) => entry.id === FAVORITES.id)!.items,
 		).toHaveLength(FAVORITES.itemCount + 1);
+	});
+});
+
+// Every case above starts from a playlist, so the write is the copy. A library view
+// writes through the fill instead, which is a different route with a different answer,
+// and the undo hanging off it is the same promise.
+test.describe("undoing an add made from a library view", () => {
+	test.beforeEach(({ page }) => openAllMusic(page));
+
+	test("the fill is the only thing sent, with no item count read around it", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await expectSettlesAt(player, () => listReads(player).length > 0, true);
+		player.requests.length = 0;
+
+		await addTo(page, 0, isMobile, FAVORITES.title);
+
+		await expect(toast(page)).toContainText(
+			`Added 1 track to ${FAVORITES.title}`,
+		);
+		const target = guidOfPlaylist(player, FAVORITES.id);
+		await expectSettlesAt(player, () => fillsInto(player, target).length, 1);
+		expect(
+			countReadsAndWritesBefore(player, fillsInto(player, target)[0]),
+		).toEqual([]);
+
+		// The one read left is the poll catching up with the playlists revision the
+		// fill moved, which every client on the network gets whoever did the writing.
+		await expectSettlesAt(player, () => listReads(player).length, 1);
+	});
+
+	// The generation the fill landed at is the only thing that can address those rows.
+	// Refetching one at undo time reads whatever the desktop has since made true, and a
+	// removal sent against that is accepted and takes off somebody else's rows.
+	test("it abandons itself when the playlist changed underneath", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await addTo(page, 0, isMobile, FAVORITES.title);
+		await expect(
+			toast(page).getByRole("button", { name: "Undo" }),
+		).toBeVisible();
+
+		// foobar2000 on the desktop, adding two tracks of its own while the toast is
+		// still on screen.
+		await page.request.post("/__control/append", {
+			data: { sourceId: LIBRARY, targetId: FAVORITES.id, items: [20, 21] },
+		});
+		await expect
+			.poll(() => titlesIn(player, FAVORITES.id).length)
+			.toBe(FAVORITES.itemCount + 3);
+
+		const after = titlesIn(player, FAVORITES.id);
+		await toast(page).getByRole("button", { name: "Undo" }).click();
+
+		await expect(toast(page)).toContainText(
+			en["add.undoStale"].replace("{playlist}", FAVORITES.title),
+		);
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/items/remove").length,
+			1,
+		);
+		expect(titlesIn(player, FAVORITES.id)).toEqual(after);
+	});
+
+	// The other half of the same sentence: a generation named verbatim is not a refusal
+	// to undo anything. A rating moves the content revision and leaves every row where
+	// it is, so it is not in the way.
+	test("a rating written in the target since does not stop it", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const before = titlesIn(player, FAVORITES.id);
+
+		await addTo(page, 0, isMobile, FAVORITES.title);
+		await expect
+			.poll(() => titlesIn(player, FAVORITES.id).length)
+			.toBe(FAVORITES.itemCount + 1);
+
+		// `retagPlaying` is the fake's only content change that leaves a row where it
+		// is, so the row that changes has to be the playing one.
+		const caughtUp = listReads(player).length;
+		player.playItem(FAVORITES.id, 0);
+		player.retagPlaying({ "%rating%": "4" });
+		await expect.poll(() => listReads(player).length).toBeGreaterThan(caughtUp);
+
+		player.requests.length = 0;
+		await toast(page).getByRole("button", { name: "Undo" }).click();
+
+		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/items/remove").length,
+			1,
+		);
+		expect(
+			countReadsAndWritesBefore(player, postsTo(player, "/items/remove")[0]),
+		).toEqual([]);
 	});
 });
 

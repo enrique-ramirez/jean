@@ -2153,7 +2153,11 @@ export async function handleAgent({
 		);
 		state.notifyPlaylists();
 
-		return json(response, { playlistId: playlist.guid, positions });
+		return json(response, {
+			playlistId: playlist.guid,
+			structure: generationText(playlist.structure),
+			positions,
+		});
 	}
 
 	if (method === "DELETE" && ownFillMatch) {
@@ -2231,7 +2235,11 @@ export async function handleAgent({
 		);
 		state.notifyPlaylists();
 
-		return json(response, { playlistId: guid, positions });
+		return json(response, {
+			playlistId: guid,
+			structure: generationText(playlist.structure),
+			positions,
+		});
 	}
 
 	if (method === "POST" && path === "/api/autoplaylists/preview") {

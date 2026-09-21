@@ -32,7 +32,7 @@ export interface ResolvedTrack {
 
 export interface AddedRows {
 	positions: number[];
-	structure?: string;
+	structure: string;
 }
 
 export interface LibrarySourceCommon {
@@ -127,7 +127,7 @@ const addToPlaylist =
 			targetId,
 			request,
 		);
-		return { positions: result.positions };
+		return { positions: result.positions, structure: result.structure };
 	};
 
 const queueLibraryTracks =

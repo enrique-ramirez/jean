@@ -73,4 +73,4 @@ Two traps worth keeping: Chrome throws a **`TypeError` on a position past the du
 
 **The session carries no artwork at all.** The browser and the OS fetch that address themselves, so Jean cannot attach the bearer token `foo_jean`'s cover route requires, and handing it the address would only earn a 401.
 
-**The album is the one field on the lock screen the update stream does not carry, and it must not join it**, since the stream re-evaluates its `trcolumns` on every push. It comes from the same per-track query the now-playing screen uses, so the screen and the lock screen never ask twice.
+**The album is the one field on the lock screen `PlayerState` does not carry, and it must not join it**, since `useNowPlayingTrack` already fetches it once per track for the now-playing screen. The media session reads that same query, so the screen and the lock screen never ask twice.

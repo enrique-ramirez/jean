@@ -1,11 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import {
-	fetchPlaylistAnnotations,
-	removePlaylistRows,
-	runsOf,
-} from "@/shared/api/fooJean";
+import { removePlaylistRows, runsOf } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
@@ -63,7 +59,6 @@ export function useAddTracks() {
 			}
 
 			const runs = runsOf(added.positions);
-			const landedStructure = added.structure;
 
 			const undo = async () => {
 				if (!origin || !token) {
@@ -71,20 +66,9 @@ export function useAddTracks() {
 					return;
 				}
 
-				const structure =
-					landedStructure ??
-					(await fetchPlaylistAnnotations(origin, token))?.find(
-						(entry) => entry.id === target.id,
-					)?.structure;
-
-				if (structure === undefined) {
-					pushToast({ tone: "error", message: translate("add.undoFailed") });
-					return;
-				}
-
 				try {
 					await removePlaylistRows(origin, token, target.id, {
-						structure,
+						structure: added.structure,
 						runs,
 					});
 					await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });

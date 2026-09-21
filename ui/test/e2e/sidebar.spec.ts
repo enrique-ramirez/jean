@@ -886,6 +886,88 @@ test.describe("an edit the component refuses", () => {
 			LIBRARY,
 		]);
 	});
+
+	// A refusal is allowed to take its time: `WRITE_TIMEOUT_MS` in `fooJean.ts`
+	// leaves a playlist write in the air for thirty-five seconds, and every poll
+	// inside that window can bring news of somebody working at the player. So the
+	// list a rollback puts back is not the list on screen, and putting the whole
+	// of it back throws that news away.
+	const RENAMED_AT_THE_PLAYER = "Cumbia";
+	const RENAMED_AFTERWARDS = "Boleros";
+
+	// `POST /api/playlists/{guid}` is the rename, and the write this case has to
+	// catch in flight rather than after it has been answered.
+	const renamesAsked = (player: FakePlayer) =>
+		player.requests.filter(
+			(one) =>
+				one.method === "POST" && /^\/api\/playlists\/[^/]+$/.test(one.path),
+		).length;
+
+	const releaseThePlayer = (page: Page) =>
+		page.request.post("/__control/latency", { data: { ms: 0 } });
+
+	// Renames a playlist in Jean against a component that will refuse it, holds
+	// the refusal, and moves the list at the player while it is held. Returns with
+	// the poll's answer on screen and the refusal still travelling.
+	const refuseSlowlyWhileTheListMoves = async (
+		page: Page,
+		player: FakePlayer,
+		isMobile: boolean,
+	) => {
+		await openApp(page);
+		await refusePlaylistWrites(page);
+		await holdThePlayer(page);
+
+		await menuFor(page, FAVORITES, isMobile);
+		await page.getByRole("menuitem", { name: "Rename" }).click();
+		await page
+			.getByRole("textbox", { name: `Rename ${FAVORITES}` })
+			.fill("Bangers");
+		await page.keyboard.press("Enter");
+
+		// Let go the moment the component has the write, so the polls that follow
+		// are answered at once and land ahead of the refusal.
+		await expect.poll(() => renamesAsked(player)).toBe(1);
+		await releaseThePlayer(page);
+
+		player.renamePlaylist(idOf(player, SPANISH), RENAMED_AT_THE_PLAYER);
+		await expect(link(page, RENAMED_AT_THE_PLAYER)).toBeVisible();
+	};
+
+	test("a refusal landing after a poll keeps the list the poll brought", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await refuseSlowlyWhileTheListMoves(page, player, isMobile);
+
+		await expect(page.getByRole("status")).toBeVisible();
+
+		// A tick past the refusal, so a sidebar that went back to the list this
+		// edit started from has had a poll to notice and put itself right.
+		const ticks = ticksTaken(player);
+		await expect.poll(() => ticksTaken(player)).toBeGreaterThan(ticks + 1);
+
+		await expect(link(page, RENAMED_AT_THE_PLAYER)).toBeVisible();
+		await expect(link(page, SPANISH)).toHaveCount(0);
+		await expect(link(page, FAVORITES)).toBeVisible();
+	});
+
+	test("the list still catches up with the player after a refusal it skipped rolling back", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await refuseSlowlyWhileTheListMoves(page, player, isMobile);
+		await expect(page.getByRole("status")).toBeVisible();
+
+		// Nothing in Jean asks for the list again, so what the poll says about the
+		// revision is the only thing that can bring this rename over.
+		player.renamePlaylist(idOf(player, DEFAULT_PLAYLIST), RENAMED_AFTERWARDS);
+
+		await expect(link(page, RENAMED_AFTERWARDS)).toBeVisible();
+		await expect(link(page, DEFAULT_PLAYLIST)).toHaveCount(0);
+	});
 });
 
 test.describe("dragging tracks onto a playlist", () => {

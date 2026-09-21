@@ -163,6 +163,7 @@ function useOptimisticWrite<TData, TInput, TResult = unknown>(
 	mutationFn: (input: TInput) => Promise<TResult>,
 	patch: (previous: TData, input: TInput) => TData | null,
 	reconcile?: (previous: TData, input: TInput, result: TResult) => TData | null,
+	revisionKey?: QueryKey,
 ) {
 	const queryClient = useQueryClient();
 
@@ -172,9 +173,12 @@ function useOptimisticWrite<TData, TInput, TResult = unknown>(
 		onMutate: async (input: TInput) => {
 			await queryClient.cancelQueries({ queryKey });
 			const previous = queryClient.getQueryData<TData>(queryKey);
+			const previousRevision = revisionKey
+				? queryClient.getQueryData(revisionKey)
+				: undefined;
 			const next = previous ? patch(previous, input) : null;
 			if (next) queryClient.setQueryData(queryKey, next);
-			return { previous };
+			return { previous, previousRevision };
 		},
 
 		onSuccess: reconcile
@@ -188,10 +192,15 @@ function useOptimisticWrite<TData, TInput, TResult = unknown>(
 		onError: (
 			_error: unknown,
 			_input: TInput,
-			context: { previous?: TData } | undefined,
+			context: { previous?: TData; previousRevision?: unknown } | undefined,
 		) => {
-			if (context?.previous)
-				queryClient.setQueryData(queryKey, context.previous);
+			if (!context?.previous) return;
+			if (
+				revisionKey &&
+				queryClient.getQueryData(revisionKey) !== context.previousRevision
+			)
+				return;
+			queryClient.setQueryData(queryKey, context.previous);
 		},
 	});
 }
@@ -239,6 +248,7 @@ const usePlaylistPatch = <TInput, TResult = unknown>(
 		reconcile &&
 			((previous, input, result) =>
 				renumber(reconcile(previous, input, result))),
+		PLAYLISTS_REVISION_KEY,
 	);
 
 export function usePlaylistActions() {

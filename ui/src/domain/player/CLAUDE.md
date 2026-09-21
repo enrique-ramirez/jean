@@ -20,6 +20,8 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **Every queue change reaches `foo_jean` as one request, with no local copy to keep or reconcile.** `../../shared/api/README.md`, *What Jean does about the queue*, has the shape and what a stale revision answers.
 
+**A rollback restores its snapshot only if the cache still holds what the mutation was taken against**, checked off a revision inside the data for the queue and off a sibling cache key for the playlist list, so neither ever wipes out a change that landed while the mutation was in flight.
+
 **A playlist delete asks the queue nothing**: a queued entry outlives the playlist it pointed into, and `plugins/fb2k/ARCHITECTURE.md`'s *Facts about the player* has what foobar2000 does with it and what reading one carelessly costs.
 
 **Queueing checks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits.** Every queue mutation goes through the component rather than through beefweb, so one gate covers a library row, a playlist row, a move, a remove and a clear alike.

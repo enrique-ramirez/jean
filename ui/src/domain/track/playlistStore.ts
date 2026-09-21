@@ -3,6 +3,7 @@ import {
 	fetchPlaylistRows,
 	fetchState,
 	type PlaylistChanges,
+	type PlaylistChangesResult,
 	type StateDocument,
 } from "@/shared/api/fooJean";
 import {
@@ -75,6 +76,8 @@ type LibraryGeneration = Pick<
 	"structure" | "revision"
 >;
 
+type PlaylistGeneration = Pick<PlaylistFeed, "structure" | "revision">;
+
 interface Entry {
 	key: string;
 	listeners: Subscribers;
@@ -83,6 +86,7 @@ interface Entry {
 	isStarted: boolean;
 	feed: Feed | null;
 	missedLibrary: LibraryGeneration | null;
+	missedPlaylist: PlaylistGeneration | null;
 }
 
 const FIRST_CHUNK = 2500;
@@ -163,6 +167,7 @@ function entryFor(key: string): Entry {
 		isStarted: false,
 		feed: null,
 		missedLibrary: null,
+		missedPlaylist: null,
 	};
 	entries.set(key, entry);
 	return entry;
@@ -262,7 +267,13 @@ async function load(
 
 		const total = first.totalCount;
 		publish(total, collector.count() < total);
-		if (collector.count() >= total) return;
+		if (collector.count() >= total)
+			return void (await recheckMissedPlaylist(
+				entry,
+				origin,
+				token,
+				playlistId,
+			));
 
 		const held = collector.count();
 		const offsets = Array.from(
@@ -309,6 +320,7 @@ async function load(
 		// than when the count is reached.
 		dropDeferred();
 		publish(total, false);
+		await recheckMissedPlaylist(entry, origin, token, playlistId);
 	} catch (error) {
 		dropDeferred();
 		if (error instanceof Error && error.name === "AbortError") return;
@@ -572,15 +584,41 @@ export const loadPlaylist = (
 		load(entry, origin, token, playlistId),
 	);
 
+async function fetchChangesOrNull(
+	origin: string,
+	token: string,
+	playlistId: string,
+	structure: string,
+	revision: string,
+): Promise<PlaylistChangesResult | null> {
+	try {
+		return await fetchPlaylistItemChanges(
+			origin,
+			token,
+			playlistId,
+			structure,
+			revision,
+			TRACK_EXPRESSIONS,
+		);
+	} catch {
+		return null;
+	}
+}
+
 export async function recheckPlaylist(
 	origin: string,
 	token: string,
 	playlistId: string,
-	generation: { structure: string; revision: string },
+	generation: PlaylistGeneration,
 ) {
 	const entry = entries.get(playlistKey(playlistId, generation.structure));
-	const feed = entry?.feed;
-	if (!entry || !feed || feed.kind !== "playlist" || feed.isChecking) return;
+	if (!entry) return;
+
+	const feed = entry.feed;
+	if (feed?.kind !== "playlist") {
+		entry.missedPlaylist = generation;
+		return;
+	}
 	// The entry's own generation, read from the rows response rather than assumed from the key, can
 	// still be ahead of what the caller believes: a structural edit landing between the caller reading
 	// the list and this entry's own fetch completing. A fresh key for the new structure is what
@@ -588,22 +626,56 @@ export async function recheckPlaylist(
 	if (generation.structure !== feed.structure) return;
 	if (generation.revision === feed.revision) return;
 
+	if (feed.isChecking) {
+		entry.missedPlaylist = generation;
+		return;
+	}
+
 	feed.isChecking = true;
 	try {
-		const result = await fetchPlaylistItemChanges(
+		const result = await fetchChangesOrNull(
 			origin,
 			token,
 			playlistId,
 			feed.structure,
 			feed.revision,
-			TRACK_EXPRESSIONS,
 		);
+		if (!result) return;
 
-		if (!result.ok || !applyPlaylistChanges(entry, feed, result.changes))
+		if (!result.ok)
+			return void (await reloadPlaylist(entry, origin, token, playlistId));
+
+		// A row inside the prefix a load has already published would patch in
+		// cleanly right now, but the load's next publish is built from a collector
+		// that never saw the patch and would overwrite it. Deferred until the load
+		// finishes and replays through `recheckMissedPlaylist`.
+		//
+		// Checked after the fetch rather than before it, unlike the library guard:
+		// the refusal above answers from this same fetch whether or not a load is
+		// running, so the fetch has to go out either way.
+		if (entry.snapshot.isLoading) {
+			entry.missedPlaylist = generation;
+			return;
+		}
+
+		if (!applyPlaylistChanges(entry, feed, result.changes))
 			return void (await reloadPlaylist(entry, origin, token, playlistId));
 	} finally {
-		feed.isChecking = false;
+		if (entry.feed === feed) feed.isChecking = false;
+		await recheckMissedPlaylist(entry, origin, token, playlistId);
 	}
+}
+
+async function recheckMissedPlaylist(
+	entry: Entry,
+	origin: string,
+	token: string,
+	playlistId: string,
+) {
+	const missed = entry.missedPlaylist;
+	if (!missed || entry.snapshot.isLoading) return;
+	entry.missedPlaylist = null;
+	await recheckPlaylist(origin, token, playlistId, missed);
 }
 
 export const loadComponentLibrary = (origin: string, token: string) =>

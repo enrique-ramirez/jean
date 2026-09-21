@@ -69,7 +69,7 @@ Sleeves on the rim of a circle whose centre is far below the screen, so one rota
 
 ## The one request
 
-**The lyric tag and the detail fields MUST never reach the update stream.** It re-evaluates its `trcolumns` on every push, on track change, on pause and on each write of a volume drag, and the lyric tag alone is large. They are fetched once per track instead, and the stream keeps carrying its four expressions.
+**The lyric tag and the detail fields MUST never reach the poll.** `GET /api/state` runs on a fixed one-second interval, and the lyric tag alone is large enough to make that costly to repeat. They are fetched once per track instead, and `PlayerState` keeps carrying only its four fields: `path`, `subsong`, `title` and `artist`.
 
 It is **keyed on the file**, not on the playlist position, which moves whenever anything above it is edited. And the answer is **verified rather than trusted**: the player reports whatever is playing when the request is *served*, so a track that ended in flight would otherwise cache the next track's lyrics under this one's key.
 

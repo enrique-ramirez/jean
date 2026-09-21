@@ -1,3 +1,4 @@
+import type { Route } from "@playwright/test";
 import { en } from "../../src/shared/i18n/en.ts";
 import {
 	evaluate,
@@ -23,6 +24,8 @@ import {
 	requestsTo,
 	rowByTitle,
 	scratchOf,
+	scrollTo,
+	scrollUntilMounted,
 	sidebar,
 	statusBar,
 	test,
@@ -1049,6 +1052,420 @@ test("asks nothing about a second playlist it still holds when one playlist's ro
 
 	await expect(trackRow(page, 0)).toContainText(RETITLED);
 	await expectSettlesAt(player, () => rowReadsFor(player, idle), []);
+});
+
+// The first changes read, answered by the player and then held open, so a second
+// edit can be made while it is still out. Held after the answer rather than on
+// its way out: a request stopped before it reaches the player comes back
+// carrying both edits at once, and a run built on that measures nothing.
+const holdTheFirstChangesRead = async (page: Page) => {
+	let taken = false;
+	let answered = () => {};
+	let release = () => {};
+	const onTheWire = new Promise<void>((resolve) => {
+		answered = resolve;
+	});
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+
+	await page.route(
+		(url) => url.pathname.endsWith("/items/changes"),
+		async (route) => {
+			// The browser's own preflight for the `Authorization` header, which
+			// carries no rows and must not be the read this holds.
+			if (taken || route.request().method() !== "GET") return route.continue();
+			taken = true;
+
+			const response = await route.fetch();
+			const body = await response.body();
+			answered();
+			await held;
+			await route.fulfill({ response, body });
+		},
+	);
+
+	return { onTheWire, release: () => release() };
+};
+
+const PATCHED_ONCE = "Rotten Apple (first pass)";
+
+const PATCHED_TWICE = "Rotten Apple (second pass)";
+
+test("shows both changes to a row where the second was made while the first was still being read", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	player.playItem(WATCHED.id, 0);
+	await expect(statusBar(page)).toContainText(WATCHED.first);
+
+	const firstRead = await holdTheFirstChangesRead(page);
+	const poll = await holdThePoll(page);
+
+	player.retagPlaying({ "%title%": PATCHED_ONCE });
+	poll.letOneThrough();
+	await firstRead.onTheWire;
+
+	player.retagPlaying({ "%title%": PATCHED_TWICE });
+	poll.letOneThrough();
+	await poll.untilRefusedAgain();
+
+	firstRead.release();
+	await expect(trackRow(page, 0)).toContainText(PATCHED_TWICE);
+});
+
+// The component answers this when foobar2000 did not finish in time, which a
+// busy player reaches on its own. `409` and `410` are the only refusals the
+// changes route has a reload for, so this one and every other status have
+// nowhere of their own to land.
+const PLAYER_TOO_SLOW = 504;
+
+// A refusal the browser hands to the page as a status rather than as a network
+// failure. A fulfilled response is CORS-checked like any other, and the
+// component's port is not the page's, so without the origin back this case
+// would quietly become the one below it.
+const refuseWith = (status: number) => (route: Route) =>
+	route.fulfill({
+		status,
+		headers: {
+			"access-control-allow-origin": route.request().headers().origin ?? "",
+		},
+	});
+
+// A wifi blip: the request leaves and nothing comes back.
+const dropTheConnection = (route: Route) => route.abort();
+
+// One changes read failed, and every read after it answered. The browser's own
+// preflight for the `Authorization` header is let through, since it carries no
+// rows and refusing it is a different failure.
+const failTheNextChangesRead = async (
+	page: Page,
+	refuse: (route: Route) => Promise<void>,
+) => {
+	let taken = false;
+	let failed = () => {};
+	const hasFailed = new Promise<void>((resolve) => {
+		failed = resolve;
+	});
+
+	await page.route(
+		(url) => url.pathname.endsWith("/items/changes"),
+		async (route) => {
+			if (taken || route.request().method() !== "GET") return route.continue();
+			taken = true;
+			await refuse(route);
+			failed();
+		},
+	);
+
+	return { hasFailed };
+};
+
+const PATCHED_AFTER_A_FAILURE = "Rotten Apple (after the failure)";
+
+// Two tags written at the player, with the read that would have carried the
+// first one failing. The second is written only once that failure has happened:
+// two edits inside one poll reach the client as one changed row, so the failed
+// read would carry both and leave nothing for a later one to bring.
+const editTwiceAcrossAFailedChangesRead = async (
+	page: Page,
+	player: FakePlayer,
+	refuse: (route: Route) => Promise<void>,
+) => {
+	await openPlaylistView(page, player, WATCHED);
+	const { hasFailed } = await failTheNextChangesRead(page, refuse);
+
+	await retitleTheFirstRow(page, player);
+	await hasFailed;
+
+	player.retagPlaying({ "%title%": PATCHED_AFTER_A_FAILURE });
+};
+
+test("a changes read the player is too slow for leaves the rows catching up on the next edit, and nothing uncaught on the page", async ({
+	page,
+	player,
+}) => {
+	const uncaught: string[] = [];
+	page.on("pageerror", (error) => uncaught.push(error.message));
+
+	await editTwiceAcrossAFailedChangesRead(
+		page,
+		player,
+		refuseWith(PLAYER_TOO_SLOW),
+	);
+
+	await expect(trackRow(page, 0)).toContainText(PATCHED_AFTER_A_FAILURE);
+	await expectSettlesAt(player, () => uncaught, []);
+});
+
+test("a changes read the network drops leaves the rows catching up on the next edit, and nothing uncaught on the page", async ({
+	page,
+	player,
+}) => {
+	const uncaught: string[] = [];
+	page.on("pageerror", (error) => uncaught.push(error.message));
+
+	await editTwiceAcrossAFailedChangesRead(page, player, dropTheConnection);
+
+	await expect(trackRow(page, 0)).toContainText(PATCHED_AFTER_A_FAILURE);
+	await expectSettlesAt(player, () => uncaught, []);
+});
+
+// `FIRST_CHUNK` and `CHUNK_SIZE` in `domain/track/playlistStore.ts`: a playlist
+// arrives one page at a time, and a third page is what leaves a prefix on screen
+// long enough for a restart to shorten it visibly.
+const FIRST_PAGE = 2500;
+
+const LATER_PAGE = 7500;
+
+const READ_SO_FAR = FIRST_PAGE + LATER_PAGE;
+
+const PLAYLIST_ROWS = READ_SO_FAR + 2000;
+
+// Past every row read so far, so the changes route names a position the client
+// holds no path against yet.
+const CHANGED_ROW = READ_SO_FAR + 1000;
+
+const PATCHED_PAST_THE_PREFIX = "Retagged past the prefix";
+
+// The first row, which the client holds a path for from the first page on and
+// which stays mounted with no scrolling, so the assertion below waits on the
+// playlist rather than on a list still moving.
+const ROW_IN_THE_PREFIX = 0;
+
+const PATCHED_INSIDE_THE_PREFIX = "Retagged inside the prefix";
+
+// The playlist `librarySize` fills, and the only one long enough to be read in
+// pages.
+const LONG = { id: "p7", title: "Library" };
+
+const PAGE_READ = /^\/api\/playlists\/[^/]+\/items$/;
+
+// Every page of a playlist but the first, answered by the player and then held,
+// so the load can be left part way through at a known row. A page let through
+// later carries what the player held when it was asked rather than what an edit
+// made since left behind.
+const holdThePages = async (page: Page) => {
+	const held = new Map<number, () => void>();
+	let freely = false;
+
+	const release = (offset: number) => {
+		held.get(offset)?.();
+		held.delete(offset);
+	};
+
+	await page.route(
+		(url) => PAGE_READ.test(url.pathname),
+		async (route) => {
+			const request = route.request();
+			const offset = Number(new URL(request.url()).searchParams.get("offset"));
+			if (freely || offset === 0 || request.method() !== "GET")
+				return route.continue();
+
+			const response = await route.fetch();
+			const body = await response.body();
+			await new Promise<void>((resolve) => held.set(offset, resolve));
+			// Reading the playlist again aborts the pages already out, and a request
+			// nobody is waiting for can no longer be answered.
+			await route.fulfill({ response, body }).catch(() => {});
+		},
+	);
+
+	return {
+		letThrough: async (offset: number) => {
+			await expect
+				.poll(() => held.has(offset), {
+					message: `no page of the playlist was read at offset ${offset}`,
+				})
+				.toBe(true);
+			release(offset);
+		},
+		letTheRestThrough: () => {
+			freely = true;
+			for (const offset of [...held.keys()]) release(offset);
+		},
+	};
+};
+
+// How many rows the list says it has, which is what a screen reader announces
+// and what the scrollbar is drawn from.
+const rowCount = (page: Page) =>
+	page.getByRole("grid").getAttribute("aria-rowcount");
+
+const expectRowCount = (page: Page, rows: number) =>
+	expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", String(rows));
+
+// What a given row says, counted rather than asserted on, so `expectSettlesAt`
+// can read it: a row that is not there answers zero instead of throwing.
+const rowsSaying = (page: Page, at: number, title: string) =>
+	trackRow(page, at).filter({ hasText: title }).count();
+
+const firstPageReads = (player: FakePlayer, guid: string) =>
+	wholeRowReads(player, guid).filter(
+		(path) => new URLSearchParams(path.split("?")[1]).get("offset") === "0",
+	);
+
+// Measured rather than assumed: the row is a different height on a phone, and in
+// album layout it sits under a cover.
+const rowHeightOf = async (page: Page) => {
+	const box = await trackRow(page, 0).boundingBox();
+	expect(
+		box,
+		"the first row has to be on screen to be measured",
+	).not.toBeNull();
+	return box?.height ?? 0;
+};
+
+test.describe("with a playlist longer than the pages it arrives in", () => {
+	test.use({ librarySize: PLAYLIST_ROWS });
+
+	test("patches a row changed past the rows read so far, rather than starting the playlist again from the top", async ({
+		page,
+		player,
+	}) => {
+		const pages = await holdThePages(page);
+		await openPlaylistView(page, player, LONG);
+		const guid = guidOfPlaylist(player, LONG.id);
+
+		await expectRowCount(page, FIRST_PAGE);
+		const rowHeight = await rowHeightOf(page);
+
+		// One more page through and the last one left out, so the list is part read
+		// and the row about to change is past everything it holds.
+		await pages.letThrough(FIRST_PAGE);
+		await expectRowCount(page, READ_SO_FAR);
+
+		player.playItem(LONG.id, CHANGED_ROW);
+		player.retagPlaying({ "%title%": PATCHED_PAST_THE_PREFIX });
+		await expect
+			.poll(() => changeReads(player, guid).length)
+			.toBeGreaterThan(0);
+
+		await expectSettlesAt(player, () => rowCount(page), String(READ_SO_FAR));
+		await expectSettlesAt(player, () => firstPageReads(player, guid).length, 1);
+
+		pages.letTheRestThrough();
+		await expectRowCount(page, PLAYLIST_ROWS);
+		await scrollTo(page, rowHeight * CHANGED_ROW);
+		await scrollUntilMounted(page, trackRow(page, CHANGED_ROW));
+		await expect(trackRow(page, CHANGED_ROW)).toContainText(
+			PATCHED_PAST_THE_PREFIX,
+		);
+	});
+
+	// The case above changes a row past everything the client holds, so its new
+	// value has to wait for the load. This one changes a row the client already
+	// has, which can be patched straight in while the pages after it are still
+	// arriving, and those pages are published from rows read before the patch. So
+	// the value can be right and then wrong again, and what is asserted is what
+	// the row says once the whole playlist is in rather than what it said on the
+	// way.
+	test("a row changed inside the rows already read keeps its new value once the rest of the playlist arrives", async ({
+		page,
+		player,
+	}) => {
+		const pages = await holdThePages(page);
+		await openPlaylistView(page, player, LONG);
+		const guid = guidOfPlaylist(player, LONG.id);
+
+		await expectRowCount(page, FIRST_PAGE);
+
+		const ticks = ticksTaken(player);
+		player.playItem(LONG.id, ROW_IN_THE_PREFIX);
+		player.retagPlaying({ "%title%": PATCHED_INSIDE_THE_PREFIX });
+
+		// Two whole polls with the later pages still held, so the tick carrying the
+		// edit was spent while the playlist had nothing but its first page. The row
+		// count says the hold held for both of them.
+		await expect.poll(() => ticksTaken(player)).toBeGreaterThan(ticks + 1);
+		await expectRowCount(page, FIRST_PAGE);
+
+		pages.letTheRestThrough();
+		await expectRowCount(page, PLAYLIST_ROWS);
+
+		await expectSettlesAt(
+			player,
+			() => rowsSaying(page, ROW_IN_THE_PREFIX, PATCHED_INSIDE_THE_PREFIX),
+			1,
+		);
+		// And the value is there because the row was patched, not because the
+		// playlist was read again from the top.
+		await expectSettlesAt(player, () => firstPageReads(player, guid).length, 1);
+	});
+});
+
+// The status the component answers when the revision asked about has fallen out
+// of its window, which is one of the two the client reads the playlist whole
+// again on.
+const REVISION_GONE = 410;
+
+// The first page of the reload, answered by the player and then held, so an edit
+// made while it waits is one the rows it will arrive carrying know nothing
+// about. Held after the answer rather than on its way out: a request stopped
+// before it reaches the player comes back carrying the edit, and then there is
+// nothing for the client to have missed.
+const holdTheReloadsFirstPage = async (page: Page, guid: string) => {
+	let taken = false;
+	let answered = () => {};
+	let release = () => {};
+	const onTheWire = new Promise<void>((resolve) => {
+		answered = resolve;
+	});
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+
+	await page.route(
+		(url) => url.pathname === `/api/playlists/${guid}/items`,
+		async (route) => {
+			const request = route.request();
+			const offset = new URL(request.url()).searchParams.get("offset");
+			if (taken || offset !== "0" || request.method() !== "GET")
+				return route.continue();
+			taken = true;
+
+			const response = await route.fetch();
+			const body = await response.body();
+			answered();
+			await held;
+			await route.fulfill({ response, body }).catch(() => {});
+		},
+	);
+
+	return { onTheWire, release: () => release() };
+};
+
+const PATCHED_DURING_THE_RELOAD = "Rotten Apple (during the reload)";
+
+test("shows a row changed at the player while the playlist was being read again", async ({
+	page,
+	player,
+}) => {
+	await openPlaylistView(page, player, WATCHED);
+	const guid = guidOfPlaylist(player, WATCHED.id);
+	const firstPage = await holdTheReloadsFirstPage(page, guid);
+	await failTheNextChangesRead(page, refuseWith(REVISION_GONE));
+
+	// The edit that sends the client to the changes route, which the refusal turns
+	// into a read of the whole playlist.
+	await retitleTheFirstRow(page, player);
+	await firstPage.onTheWire;
+
+	// A second edit, made with the reload's rows already off the player and the
+	// client still waiting for them, and given two whole polls to reach a client
+	// that is holding none of the playlist to compare it against.
+	const ticks = ticksTaken(player);
+	player.retagPlaying({ "%title%": PATCHED_DURING_THE_RELOAD });
+	await expect.poll(() => ticksTaken(player)).toBeGreaterThan(ticks + 1);
+
+	firstPage.release();
+
+	await expectSettlesAt(
+		player,
+		() => rowsSaying(page, 0, PATCHED_DURING_THE_RELOAD),
+		1,
+	);
 });
 
 test("follows a row's cover address when its file moves at the player", async ({

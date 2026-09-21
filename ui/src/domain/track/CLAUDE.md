@@ -44,7 +44,7 @@ Two boundaries are genuinely ambiguous and both go to the lower, more common sca
 
 **Adding tracks to a playlist does not check for duplicates.** foobar2000 playlists are ordered lists, not sets; inventing a uniqueness rule the player does not have would be lying about the data. There is no cheap check available either: items have no id, so identity is `%path%`, and reading it is a request of its own before the drop could land.
 
-**Undo instead, as the general rule for anything that writes.** The write answers exactly where the rows landed, so undo needs no path matching, and a copy names the structure generation it landed at too, so undo costs no extra request there; a fill by library ordinals carries no structure of its own and asks for it once, only if undo is pressed. **A `409` on the removal, not a re-read of `itemCount`, is what says the desktop changed the playlist underneath.**
+**Undo instead, as the general rule for anything that writes.** The write answers exactly where the rows landed, so undo needs no path matching, and a fill by library ordinals answers the structure generation it landed at exactly as a copy does, so undo costs no extra request either way. **A `409` on the removal, not a re-read of `itemCount`, is what says the desktop changed the playlist underneath.**
 
 ### Following playback
 
@@ -113,7 +113,7 @@ Prefer computed sizes where they are genuinely fixed and measurement where they 
 
 ### Artwork in a list
 
-**`loading="lazy"` is not the mechanism.** It asks whether a row is visible, and a virtualised list moves rows through the viewport by the hundred: one jump across a long playlist starts an artwork request for every row it passed. What that costs is not frames, it is the rest of the app. Nothing blocks the main thread, but the browser gives an origin six HTTP/1.1 connections, the update stream holds one open forever, and everything Jean asks for afterwards queues behind covers for rows that are long gone. `shared/ui/artworkQueue.ts` is the answer; see `shared/ui/CLAUDE.md` for why the settle gate rather than the queue is the load-bearing half.
+**`loading="lazy"` is not the mechanism.** It asks whether a row is visible, and a virtualised list moves rows through the viewport by the hundred: one jump across a long playlist starts an artwork request for every row it passed. What that costs is not frames, it is the rest of the app. Nothing blocks the main thread, but the browser gives an origin six HTTP/1.1 connections, and an unbounded request per row spends all of them on covers for rows that are already gone, so everything Jean asks for afterwards queues behind them. `shared/ui/artworkQueue.ts` is the answer; see `shared/ui/CLAUDE.md` for why the settle gate rather than the queue is the load-bearing half.
 
 **A cover belongs to an album, but it is addressed per row, so ask once.** Runs are contiguous and a record's rows need not be: search results and a genre page interleave albums, so the cover is chosen by album identity rather than by adjacency. Untagged rows are grouped by their artist alone, which is as much as there is to go on. That an album has one cover was checked rather than asserted.
 

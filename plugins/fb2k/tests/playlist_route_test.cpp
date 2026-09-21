@@ -6,6 +6,7 @@
 
 #include "core/library.h"
 #include "core/settings.h"
+#include "support/keys.h"
 #include "support/log_capture.h"
 #include "support/spec.h"
 #include "support/test_server.h"
@@ -796,17 +797,6 @@ void checkRefused(const TestServer& server, const std::string& path, int status)
     REQUIRE(response);
     CHECK(response->status == status);
     CHECK(json::parse(response->body)["error"].is_string());
-}
-
-using Keys = std::set<std::string>;
-
-Keys keysOf(const json& entry) {
-    const auto fields = entry.items();
-
-    Keys keys;
-    std::transform(fields.begin(), fields.end(), std::inserter(keys, keys.end()),
-                   [](const auto& field) { return field.key(); });
-    return keys;
 }
 
 constexpr char kCreatePlaylist[] = "/api/playlists";

@@ -9,6 +9,7 @@
 #include "core/api.h"
 #include "core/version.h"
 #include "support/fixtures.h"
+#include "support/keys.h"
 #include "support/spec.h"
 #include "support/test_server.h"
 #include "support/wire.h"
@@ -27,18 +28,6 @@ using namespace jean::testing;
 using nlohmann::json;
 
 namespace {
-
-using Keys = std::set<std::string>;
-
-Keys keysOf(const std::string& document) {
-    const auto body = json::parse(document);
-    const auto entries = body.items();
-
-    Keys keys;
-    std::transform(entries.begin(), entries.end(), std::inserter(keys, keys.end()),
-                   [](const auto& entry) { return entry.key(); });
-    return keys;
-}
 
 constexpr char kUpdateSpec[] = "shape changed -- update contract/openapi.yaml to match";
 
@@ -178,7 +167,7 @@ TEST_CASE("a stream timeline is the shape contract/openapi.yaml publishes") {
 
     // The client's own `anchor + currentTime` arithmetic reads exactly these four, so
     // renaming one of them is a client that silently stops following the audio.
-    CHECK(keysOf(json::parse(streamTimelineDocument(12.5, {mark}))["marks"][0].dump()) ==
+    CHECK(keysOf(json::parse(streamTimelineDocument(12.5, {mark}))["marks"][0]) ==
           Keys{"at", "path", "subsong", "position"});
 }
 
@@ -250,7 +239,7 @@ TEST_CASE("what foo_jean stored about a playlist is the shape contract/openapi.y
     playlist.managed = AutoPlaylistSpec();
 
     const auto managed = json::parse(playlistDocument(playlist))["managed"];
-    CHECK(keysOf(managed.dump()) == Keys{"key", "query", "sort", "forceSort"});
+    CHECK(keysOf(managed) == Keys{"key", "query", "sort", "forceSort"});
 }
 
 TEST_CASE("a page of playlist rows is the shape contract/openapi.yaml publishes") {
@@ -265,7 +254,7 @@ TEST_CASE("a page of playlist rows is the shape contract/openapi.yaml publishes"
     // A row the media library does not hold carries libraryPath as null rather than leaving it
     // out, so a client reads one shape.
     const auto row = json::parse(playlistRowsDocument(read))["items"][0];
-    CHECK(keysOf(row.dump()) == Keys{"columns", "libraryPath"});
+    CHECK(keysOf(row) == Keys{"columns", "libraryPath"});
 }
 
 TEST_CASE("a delta of playlist rows is the shape contract/openapi.yaml publishes") {
@@ -281,10 +270,10 @@ TEST_CASE("a delta of playlist rows is the shape contract/openapi.yaml publishes
     const auto document = json::parse(playlistChangesDocument(read));
 
     const auto row = document["items"][0];
-    CHECK(keysOf(row.dump()) == Keys{"position", "libraryPath"});
+    CHECK(keysOf(row) == Keys{"position", "libraryPath"});
 
     const auto column = document["columns"][0];
-    CHECK(keysOf(column.dump()) == Keys{"text", "ids"});
+    CHECK(keysOf(column) == Keys{"text", "ids"});
 }
 
 // A playlist's structure generation and its content revision are 64-bit counters, seeded so that
@@ -419,7 +408,7 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     playing.artist = "Fictional Artist";
     playing.playingLocation = PlayingLocation{"45837d74-fa4f-415c-bba9-bf2db8f0dc04", 3};
 
-    CHECK(keysOf(json::parse(stateDocument({}, playing, {}, 4))["player"].dump()) == required);
+    CHECK(keysOf(json::parse(stateDocument({}, playing, {}, 4))["player"]) == required);
 
     INFO("contract/openapi.yaml's GET /state examples do not match PlayerState.required");
     CHECK(publishedStatePlayerExample("built") == required);
@@ -452,15 +441,15 @@ TEST_CASE("the snapshot is framed the way contract/openapi.yaml describes") {
     CHECK((8 + headerLength) % 4 == 0);
 
     const auto header = json::parse(snapshot.substr(8, headerLength));
-    CHECK(keysOf(header.dump()) ==
+    CHECK(keysOf(header) ==
           Keys{"kind", "structure", "revision", "trackCount", "columns", "spine"});
     CHECK(header["kind"] == "snapshot");
 
-    CHECK(keysOf(header["columns"][0].dump()) ==
+    CHECK(keysOf(header["columns"][0]) ==
           Keys{"name", "ids", "dict", "distinct", "hasUnresolved", "allUnresolved"});
-    CHECK(keysOf(header["columns"][0]["ids"].dump()) == Keys{"offset", "count", "width"});
-    CHECK(keysOf(header["columns"][0]["dict"].dump()) == Keys{"text", "ends"});
-    CHECK(keysOf(header["spine"].dump()) == Keys{"directory", "filename", "subsong"});
+    CHECK(keysOf(header["columns"][0]["ids"]) == Keys{"offset", "count", "width"});
+    CHECK(keysOf(header["columns"][0]["dict"]) == Keys{"text", "ends"});
+    CHECK(keysOf(header["spine"]) == Keys{"directory", "filename", "subsong"});
 }
 
 // A delta is framed like a snapshot and carries three keys a snapshot does not: `since` on the
@@ -483,15 +472,15 @@ TEST_CASE("a delta is the shape contract/openapi.yaml publishes") {
 
     const auto header = decode(serialiseDelta(changes.delta)).header;
 
-    CHECK(keysOf(header.dump()) ==
+    CHECK(keysOf(header) ==
           Keys{"kind", "structure", "revision", "since", "trackCount", "columns", "spine"});
     CHECK(header["kind"] == "delta");
 
     const auto& moved = header["columns"][0];
-    CHECK(keysOf(moved.dump()) ==
+    CHECK(keysOf(moved) ==
           Keys{"name", "ids", "ordinals", "dict", "distinct", "hasUnresolved", "allUnresolved"});
-    CHECK(keysOf(moved["ordinals"].dump()) == Keys{"offset", "count", "width"});
-    CHECK(keysOf(moved["dict"].dump()) == Keys{"text", "ends", "base"});
+    CHECK(keysOf(moved["ordinals"]) == Keys{"offset", "count", "width"});
+    CHECK(keysOf(moved["dict"]) == Keys{"text", "ends", "base"});
 }
 
 TEST_CASE("the library statuses contract/openapi.yaml documents are the ones we answer with") {

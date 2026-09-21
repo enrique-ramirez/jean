@@ -9,6 +9,7 @@
 #include "core/library.h"
 #include "core/player_state.h"
 #include "core/text.h"
+#include "support/keys.h"
 #include "support/spec.h"
 #include "support/test_server.h"
 #include "support/wire.h"
@@ -150,13 +151,6 @@ std::vector<PlaylistMark> oneListed() {
 
 bool mentions(const std::string& body, const std::string& text) {
     return toLower(body).find(toLower(text)) != std::string::npos;
-}
-
-std::set<std::string> keysOf(const json& object) {
-    std::set<std::string> keys;
-    for (const auto& field : object.items())
-        keys.insert(field.key());
-    return keys;
 }
 
 uint64_t playOne(Library& library, const std::string& count) {
@@ -510,7 +504,7 @@ TEST_CASE("no part of the poll document carries the beefweb id the same playlist
 
     const auto location = json::parse(response->body)["player"]["playingLocation"];
     REQUIRE(location.is_object());
-    CHECK(keysOf(location) == std::set<std::string>{"index", "playlistId"});
+    CHECK(keysOf(location) == Keys{"index", "playlistId"});
 }
 
 // The two states the "Playing from" line turns on. A place that is merely empty rather than
@@ -819,7 +813,7 @@ TEST_CASE("the player section names the playlists revision once and carries noth
     store.playlistsChanged(oneListed());
     const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
 
-    const std::set<std::string> published = {
+    const Keys published = {
         "playback",        "path",          "subsong",           "position",
         "duration",        "volume",        "muted",             "playbackMode",
         "title",           "artist",        "playingLocation",   "queueRevision",

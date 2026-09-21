@@ -9,6 +9,7 @@
 #include "core/http_server.h"
 #include "core/library.h"
 #include "core/player_state.h"
+#include "support/keys.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -17,7 +18,6 @@
 #include <functional>
 #include <iterator>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -77,15 +77,8 @@ json entriesOf(const TestServer& server) {
     return body["entries"];
 }
 
-std::set<std::string> keysOf(const json& object) {
-    std::set<std::string> keys;
-    for (const auto& item : object.items())
-        keys.insert(item.key());
-    return keys;
-}
-
-const std::set<std::string> kEntryKeys = {"title",       "artist",      "duration", "album",
-                                          "albumArtist", "libraryPath", "location"};
+const Keys kEntryKeys = {"title",       "artist",      "duration", "album",
+                         "albumArtist", "libraryPath", "location"};
 
 constexpr uint32_t kQueueLimit = 1000;
 
@@ -145,7 +138,7 @@ TEST_CASE("GET /api/queue answers the queue revision its entries were read at, a
 
     const auto body = queueOf(server);
 
-    CHECK(keysOf(body) == std::set<std::string>{"entries", "revision"});
+    CHECK(keysOf(body) == Keys{"entries", "revision"});
     REQUIRE(body["revision"].is_number_unsigned());
     CHECK(body["revision"].get<uint64_t>() == kReadAt);
     REQUIRE(body["entries"].is_array());
@@ -220,7 +213,7 @@ TEST_CASE("every queue entry carries exactly its seven keys, whichever of them a
         CHECK(keysOf(entry) == kEntryKeys);
     }
 
-    CHECK(keysOf(entries[0]["location"]) == std::set<std::string>{"index", "playlistId"});
+    CHECK(keysOf(entries[0]["location"]) == Keys{"index", "playlistId"});
 }
 
 TEST_CASE("a queue of QUEUE_LIMIT entries is answered whole and in order") {

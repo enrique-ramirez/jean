@@ -1028,26 +1028,6 @@ export function createState({
 			};
 		},
 
-		itemsPayload(
-			playlistId: string,
-			offset: number,
-			count: number,
-			expressions: string[],
-		) {
-			const playlist = byId(playlistId);
-			if (!playlist) return null;
-			const slice = playlist.items.slice(offset, offset + count);
-			return {
-				playlistItems: {
-					offset,
-					totalCount: playlist.items.length,
-					items: slice.map((track) => ({
-						columns: columnsFor(track, expressions),
-					})),
-				},
-			};
-		},
-
 		artworkFor: coverOf,
 
 		// Resolved through the playing item rather than through the media library:
@@ -1219,8 +1199,7 @@ export function createState({
 
 		// Item changes push `player` and not `playlists`, as beefweb does: an add, a
 		// rename or a delete produces a `playlists` message; a copy or a remove of
-		// items does not. So `itemCount` in PlaylistInfo goes stale from the first
-		// write on.
+		// items does not.
 		copyItems(sourceId: string, targetId: string, indices: number[]) {
 			const source = byId(sourceId);
 			const target = byId(targetId);

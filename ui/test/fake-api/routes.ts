@@ -120,8 +120,6 @@ export async function handleApi({
 
 		if (!state.library.supported) return empty(response, 501);
 
-		// `range` is a query parameter here, not a path segment as it is for
-		// playlist items. That is beefweb's own choice, not this fake's.
 		const range = url.searchParams.get("range");
 		const [offset, count] = range ? range.split(":").map(Number) : [0, null];
 		const expressions = parseColumns(url.searchParams.get("columns"));
@@ -171,53 +169,6 @@ export async function handleApi({
 	}
 
 	if (head === "playlists") {
-		if (method === "GET" && rest.length === 0) {
-			return json(response, { playlists: state.playlistsPayload() });
-		}
-
-		if (method === "GET" && rest.length === 3 && rest[1] === "items") {
-			const [offset, count] = rest[2].split(":").map(Number);
-			const payload = state.itemsPayload(
-				rest[0],
-				offset,
-				count,
-				parseColumns(url.searchParams.get("columns")),
-			);
-			return payload
-				? json(response, payload)
-				: json(response, { error: "no such playlist" }, 404);
-		}
-
-		if (method === "POST" && rest[0] === "add") {
-			return json(
-				response,
-				state.addPlaylist(url.searchParams.get("title") ?? ""),
-			);
-		}
-
-		if (method === "POST" && rest[0] === "remove" && rest.length === 2) {
-			return state.removePlaylist(rest[1])
-				? empty(response)
-				: empty(response, 404);
-		}
-
-		if (method === "POST" && rest[0] === "move" && rest.length === 3) {
-			return state.movePlaylist(rest[1], Number(rest[2]))
-				? empty(response)
-				: empty(response, 404);
-		}
-
-		if (
-			method === "POST" &&
-			rest.length === 3 &&
-			rest[1] === "items" &&
-			rest[2] === "sort"
-		) {
-			return state.sortItems(rest[0], { by: "%path%", ...body })
-				? empty(response)
-				: empty(response, 404);
-		}
-
 		if (
 			method === "POST" &&
 			rest.length === 3 &&
@@ -232,28 +183,11 @@ export async function handleApi({
 
 		if (
 			method === "POST" &&
-			rest.length === 4 &&
-			rest[2] === "items" &&
-			rest[3] === "copy"
-		) {
-			return state.copyItems(rest[0], rest[1], body?.items ?? [])
-				? empty(response)
-				: empty(response, 404);
-		}
-
-		if (
-			method === "POST" &&
 			rest.length === 3 &&
 			rest[1] === "items" &&
 			rest[2] === "remove"
 		) {
 			return state.removeItems(rest[0], body?.items ?? [])
-				? empty(response)
-				: empty(response, 404);
-		}
-
-		if (method === "POST" && rest.length === 1) {
-			return state.renamePlaylist(rest[0], body?.title ?? "")
 				? empty(response)
 				: empty(response, 404);
 		}
@@ -320,7 +254,6 @@ function streamUpdates({
 	const trcolumns = parseColumns(url.searchParams.get("trcolumns"));
 	const qcolumns = parseColumns(url.searchParams.get("qcolumns"));
 	const wantsPlayer = url.searchParams.get("player") === "true";
-	const wantsPlaylists = url.searchParams.get("playlists") === "true";
 	const wantsQueue = url.searchParams.get("playQueue") === "true";
 
 	response.writeHead(200, {
@@ -335,7 +268,6 @@ function streamUpdates({
 
 	const snapshot: UpdatePayload = {};
 	if (wantsPlayer) snapshot.player = state.playerPayload(trcolumns);
-	if (wantsPlaylists) snapshot.playlists = state.playlistsPayload();
 	if (wantsQueue) snapshot.playQueue = state.queuePayload(qcolumns);
 	send(snapshot);
 
@@ -343,8 +275,6 @@ function streamUpdates({
 		const payload: UpdatePayload = {};
 		if (changed.player && wantsPlayer)
 			payload.player = state.playerPayload(trcolumns);
-		if (changed.playlists && wantsPlaylists)
-			payload.playlists = state.playlistsPayload();
 		if (changed.playQueue && wantsQueue)
 			payload.playQueue = state.queuePayload(qcolumns);
 		if (Object.keys(payload).length > 0) send(payload);

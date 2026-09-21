@@ -28,6 +28,7 @@ const playlist = (
 	structure: 0,
 	revision: 0,
 	role: null,
+	isAutoPlaylist: false,
 	...entry,
 });
 

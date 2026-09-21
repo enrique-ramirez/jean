@@ -1184,6 +1184,7 @@ export function createState({
 				structure: String(playlist.structure),
 				revision: String(playlist.revision),
 				role: null,
+				isAutoPlaylist: false,
 			};
 		},
 

@@ -18,6 +18,8 @@
 		"one": "{count} pista añadida a {playlist}",
 		"other": "{count} pistas añadidas a {playlist}"
 	},
+	"add.failed": "No se añadió nada a {playlist}.",
+	"add.locked": "No se añadió nada a {playlist}. Algo más en el reproductor la tiene bloqueada.",
 	"add.smartPlaylist": "No se añadió nada a {playlist}. Las listas inteligentes las construye el reproductor y no admiten añadidos.",
 	"add.undoFailed": "No se pudo deshacer.",
 	"add.undoStale": "{playlist} ha cambiado desde entonces, así que no se quitó nada.",

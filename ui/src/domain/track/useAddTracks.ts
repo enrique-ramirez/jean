@@ -13,9 +13,23 @@ import { pushToast } from "@/shared/ui/toastStore";
 import type { AddedRows, LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
+const causeOf = (
+	status: unknown,
+	target: PlaylistInfo,
+):
+	| "add.writePlaylistsOff"
+	| "add.smartPlaylist"
+	| "add.locked"
+	| "add.failed" => {
+	if (status === 403) return "add.writePlaylistsOff";
+	if (status === 409)
+		return target.isAutoPlaylist ? "add.smartPlaylist" : "add.locked";
+	return "add.failed";
+};
+
 // A copy or a fill answers where the rows landed, so nothing here reads the target's item count
-// before or after: an empty `positions` on a write that still answered is what an autoplaylist
-// swallowing it looks like, and needs no read to see.
+// before or after: a locked playlist is refused outright with `409`, and a `200` with an empty
+// `positions` is a shape no route on a real player answers.
 export function useAddTracks() {
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
@@ -34,25 +48,17 @@ export function useAddTracks() {
 			const count = itemIndices.length;
 			if (count === 0) return;
 
-			const refuse = (writePlaylistsOff = false) =>
-				pushToast({
-					tone: "error",
-					message: translate(
-						writePlaylistsOff ? "add.writePlaylistsOff" : "add.smartPlaylist",
-						{ playlist: target.title },
-					),
-				});
-
 			let added: AddedRows;
 			try {
 				added = await source.addTo(target.id, itemIndices);
 			} catch (error) {
-				refuse(error instanceof Error && error.cause === 403);
-				return;
-			}
-
-			if (added.positions.length === 0) {
-				refuse();
+				const status = error instanceof Error ? error.cause : undefined;
+				pushToast({
+					tone: "error",
+					message: translate(causeOf(status, target), {
+						playlist: target.title,
+					}),
+				});
 				return;
 			}
 

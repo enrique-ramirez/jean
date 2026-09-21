@@ -1,6 +1,10 @@
+import type { APIRequestContext } from "@playwright/test";
+import { en } from "../../src/shared/i18n/en.ts";
 import type { RecordedRequest } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	AS_A_CLIENT,
+	componentOrigin,
 	expect,
 	expectSettlesAt,
 	guidOfPlaylist,
@@ -77,10 +81,15 @@ const addToFavorites = async (page: Page, index: number, isMobile: boolean) => {
 		.click();
 };
 
-// An autoplaylist, which the API gives no way to recognise: PlaylistInfo says
-// nothing about it and the write comes back 204 either way. The fake refuses it
-// as the player does, by accepting it and doing nothing. See `useAddTracks`.
+// An autoplaylist; `useAddTracks.ts`'s top comment has what a lock on it means for a write.
 const AUTO = { id: "p9", title: "Recently Added", itemCount: 5 };
+
+// What the component answers an edit the player refused for a lock: `PlaylistLocked` and
+// `FillConflict` in `contract/openapi.yaml`, which publish the same two fields.
+const LOCKED = {
+	error: "another component has locked that playlist against that edit",
+	detail: "",
+};
 
 const addTo = async (
 	page: Page,
@@ -93,23 +102,63 @@ const addTo = async (
 	await page.getByRole("menuitem", { name: title, exact: true }).click();
 };
 
-test.describe("a playlist that takes the write and ignores it", () => {
+// How a copy was answered, which the request log cannot say: it holds what was asked of the
+// player and not what came back. The POST alone, since the browser's own preflight goes to the
+// same address.
+const copyStatuses = (page: Page) => {
+	const answered: number[] = [];
+	page.on("response", (response) => {
+		if (
+			response.request().method() === "POST" &&
+			response.url().includes("/items/copy")
+		)
+			answered.push(response.status());
+	});
+	return answered;
+};
+
+const lockPlaylistAtThePlayer = async (page: Page, beefwebId: string) => {
+	const answered = await page.request.post("/__control/lockPlaylist", {
+		data: { id: beefwebId, locked: true },
+	});
+	expect(
+		answered.ok(),
+		"the fake needs a control that locks a playlist against edits mid-test",
+	).toBe(true);
+};
+
+// A playlist write that failed rather than one the player refused: a 500, a connection that
+// died, a playlist deleted at the player between the menu opening and the click. Shaped like
+// `/__control/state`'s `failState`, and turned off by leaving the status out.
+const failPlaylistWritesAtThePlayer = async (page: Page, status: number) => {
+	const answered = await page.request.post("/__control/failPlaylistWrites", {
+		data: { status },
+	});
+	expect(
+		answered.ok(),
+		"the fake needs a control that fails a playlist write mid-test",
+	).toBe(true);
+};
+
+test.describe("an add into a playlist the player has locked", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
 
-	test("says so, rather than claiming the tracks landed", async ({
+	test("says nothing was added, where the copy came back refused", async ({
 		page,
 		player,
 		isMobile,
 	}) => {
+		const answered = copyStatuses(page);
+
 		await addTo(page, 0, isMobile, AUTO.title);
 
-		// The request is sent and answers 204; there is no way to know beforehand.
-		await expect
-			.poll(() => requestsTo(player, "/items/").length)
-			.toBeGreaterThan(0);
+		// The request is sent and refused; there is no way to know beforehand.
+		await expect.poll(() => answered).toEqual([409]);
 
 		await expect(toast(page)).toContainText(AUTO.title);
-		await expect(toast(page)).toContainText("Nothing was added to");
+		await expect(toast(page)).toContainText(
+			en["add.smartPlaylist"].replace("{playlist}", AUTO.title),
+		);
 		expect(titlesIn(player, AUTO.id)).toHaveLength(AUTO.itemCount);
 	});
 
@@ -127,8 +176,8 @@ test.describe("a playlist that takes the write and ignores it", () => {
 
 	// The other cause a refusal can have is foo_jean's `writePlaylists`, which is
 	// on here and permits the write. One message covering both would read as a
-	// setting to go and change, and there is nothing to change: this playlist would
-	// ignore the write whatever the player owner does.
+	// setting to go and change, and there is nothing to change: the player holds
+	// this playlist whatever the player owner does with that switch.
 	test("says nothing about a setting that is not what stopped it", async ({
 		page,
 		isMobile,
@@ -137,6 +186,31 @@ test.describe("a playlist that takes the write and ignores it", () => {
 
 		await expect(toast(page)).toContainText("Nothing was added to");
 		await expect(toast(page)).not.toHaveText(/foo_jean/i);
+	});
+
+	// An ordinary playlist, refused by a lock some other component took. Jean knows the lock
+	// and not what took it, so a message about smart playlists sends somebody to look at a
+	// playlist that is nothing of the kind, and one about `writePlaylists` sends them to a
+	// switch that is on.
+	test("names no smart playlist where the lock is another component's", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await lockPlaylistAtThePlayer(page, FAVORITES.id);
+		const answered = copyStatuses(page);
+
+		await addTo(page, 0, isMobile, FAVORITES.title);
+
+		await expect.poll(() => answered).toEqual([409]);
+
+		await expect(toast(page)).toContainText(FAVORITES.title);
+		await expect(toast(page)).not.toContainText(/smart playlist/i);
+		await expect(toast(page)).not.toContainText(/writePlaylists/i);
+		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
+			0,
+		);
+		expect(titlesIn(player, FAVORITES.id)).toHaveLength(FAVORITES.itemCount);
 	});
 
 	test("the playlist that does take them still says the true thing", async ({
@@ -442,6 +516,109 @@ test.describe("an add the component refuses outright", () => {
 
 		await expect(toast(page)).toContainText("writePlaylists");
 		await expect(toast(page)).not.toContainText(/smart playlist/i);
+	});
+});
+
+test.describe("an add that failed rather than being refused", () => {
+	test.beforeEach(({ page }) => openLibrary(page));
+
+	// Nothing came back that says why, so there is no cause to report and none to borrow. The
+	// two causes Jean can name belong to answers it did not get: a smart playlist is the 409
+	// from a playlist the player builds, and `writePlaylists` is the 403.
+	test("names the playlist and no cause, where the copy simply failed", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await failPlaylistWritesAtThePlayer(page, 500);
+		const answered = copyStatuses(page);
+
+		await addTo(page, 0, isMobile, FAVORITES.title);
+
+		await expect.poll(() => answered).toEqual([500]);
+
+		await expect(toast(page)).toContainText(FAVORITES.title);
+		await expect(toast(page)).not.toContainText(/smart playlist/i);
+		await expect(toast(page)).not.toContainText(/writePlaylists/i);
+		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
+			0,
+		);
+		expect(titlesIn(player, FAVORITES.id)).toHaveLength(FAVORITES.itemCount);
+	});
+});
+
+// Asked of the fake directly, because what is under test is the fake's fidelity to the player
+// rather than anything Jean draws, and every case above rests on it. foobar2000 refuses rows
+// into a locked playlist and leaves its row count where it was; both routes that add rows
+// consult the lock, so both answer the same 409.
+test.describe("what the player answers an edit it holds the lock on", () => {
+	const copyInto = (
+		request: APIRequestContext,
+		origin: string,
+		player: FakePlayer,
+		target: string,
+	) =>
+		request.post(
+			`${origin}/api/playlists/${guidOfPlaylist(player, target)}/items/copy`,
+			{
+				...AS_A_CLIENT,
+				data: { source: guidOfPlaylist(player, LIBRARY), runs: [[0, 3]] },
+			},
+		);
+
+	test("refuses a copy into an autoplaylist, in the words the contract publishes", async ({
+		request,
+		player,
+	}) => {
+		const origin = await componentOrigin(request);
+
+		const refused = await copyInto(request, origin, player, AUTO.id);
+
+		expect(refused.status()).toBe(409);
+		expect(await refused.json()).toEqual(LOCKED);
+		expect(titlesIn(player, AUTO.id)).toHaveLength(AUTO.itemCount);
+	});
+
+	test("refuses a fill into an autoplaylist, rather than answering rows it did not add", async ({
+		request,
+		player,
+	}) => {
+		const origin = await componentOrigin(request);
+		const built = await request.get(
+			`${origin}/api/library/export?columns=${encodeURIComponent("%title%")}`,
+			AS_A_CLIENT,
+		);
+		expect(built.status()).toBe(200);
+		const { library } = await (
+			await request.get(`${origin}/api/state`, AS_A_CLIENT)
+		).json();
+
+		const refused = await request.post(
+			`${origin}/api/playlists/${guidOfPlaylist(player, AUTO.id)}/items`,
+			{
+				...AS_A_CLIENT,
+				data: { structure: library.structure, ordinals: [0, 1, 2] },
+			},
+		);
+
+		expect(refused.status()).toBe(409);
+		expect(await refused.json()).toEqual(LOCKED);
+		expect(titlesIn(player, AUTO.id)).toHaveLength(AUTO.itemCount);
+	});
+
+	test("takes the same copy into a playlist nothing holds", async ({
+		request,
+		player,
+	}) => {
+		const origin = await componentOrigin(request);
+
+		const taken = await copyInto(request, origin, player, FAVORITES.id);
+
+		expect(taken.status()).toBe(200);
+		expect((await taken.json()).positions).toEqual([7, 8, 9]);
+		expect(titlesIn(player, FAVORITES.id)).toHaveLength(
+			FAVORITES.itemCount + 3,
+		);
 	});
 });
 

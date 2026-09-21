@@ -48,6 +48,12 @@ export interface FooJeanOptions {
 	// the queue did move, and the next poll carries a revision that says so.
 	failQueue?: number | null;
 
+	// Refuses every playlist mutation with this status, shaped like `failState`:
+	// a spec switches it at runtime through `POST /__control/failPlaylistWrites`
+	// for the case where a write simply failed rather than being refused, and
+	// leaving the status out turns it back off.
+	failPlaylistWrites?: number | null;
+
 	// The answer to a queue mutation, lost on the way back. The player carries the
 	// change out at once, nothing comes back for this many milliseconds, and then
 	// the client is told the change failed, which is what its own write timeout
@@ -115,6 +121,9 @@ export interface FooJeanFake extends Required<Omit<FooJeanOptions, "port">> {
 	port: number | null;
 	installed: boolean;
 	ownPlaylists: Partial<Record<OwnPlaylistRole, string>>;
+	// Beefweb ids a control has locked against edits mid-test, consulted beside `isAuto`.
+	// `POST /__control/lockPlaylist` is the only way in or out of this set.
+	lockedPlaylists: Set<string>;
 }
 
 const DEFAULTS: FooJeanFake = {
@@ -135,6 +144,7 @@ const DEFAULTS: FooJeanFake = {
 	failWrites: null,
 	failState: null,
 	failQueue: null,
+	failPlaylistWrites: null,
 	loseQueueAnswer: null,
 	knowsPlayingLocation: true,
 	annotatesEveryPlaylist: true,
@@ -162,6 +172,7 @@ const DEFAULTS: FooJeanFake = {
 	failCreate: null,
 	canWritePlaylists: true,
 	canChangeOutput: true,
+	lockedPlaylists: new Set(),
 };
 
 export const fooJeanState = (options: FooJeanOptions | null): FooJeanFake => ({
@@ -169,6 +180,7 @@ export const fooJeanState = (options: FooJeanOptions | null): FooJeanFake => ({
 	installed: options !== null,
 	...options,
 	ownPlaylists: {},
+	lockedPlaylists: new Set(),
 });
 
 export const discoveryRecord = (fake: FooJeanFake, listeningPort: number) => {
@@ -466,6 +478,18 @@ const STRUCTURE_MOVED = {
 const WRITES_DISABLED = {
 	error:
 		"this install has playlist writes turned off; turn on writePlaylists in config.json to allow them",
+	detail: "",
+};
+
+// `PlaylistLocked` and `FillConflict` in `contract/openapi.yaml` publish the same two fields for
+// this cause, so one constant answers both routes.
+const PLAYLIST_LOCKED = {
+	error: "another component has locked that playlist against that edit",
+	detail: "",
+};
+
+const PLAYER_REFUSED = {
+	error: "the player could not do that",
 	detail: "",
 };
 
@@ -968,6 +992,13 @@ const requirePlaylist = (state: FakeState, id: string): FakePlaylist => {
 
 const ownRoleOf = (fake: FooJeanFake, id: string): OwnPlaylistRole | null =>
 	fake.ownPlaylists.scratch === id ? "scratch" : null;
+
+// Whether the player would lock this playlist against having rows added: seeded true on a
+// fixture playlist, or built by `POST /api/autoplaylists` or the `autoPlaylists` fixture
+// option, both of which only ever add an id to `fake.autoPlaylists`. The one function is what
+// every route that would otherwise disagree with `GET /api/playlists` calls.
+const locksAgainstAdds = (fake: FooJeanFake, playlist: FakePlaylist): boolean =>
+	Boolean(playlist.isAuto) || fake.autoPlaylists.includes(playlist.id);
 
 const OWN_TITLE_PREFIX = "#Jean";
 
@@ -1483,6 +1514,17 @@ export async function handleAgent({
 		);
 	}
 
+	// A write that failed at the player rather than one it refused: a 500, a 429 from the rate
+	// limiter, a connection that died. `/api/autoplaylists/preview` is read-only and excluded.
+	if (
+		fake.failPlaylistWrites &&
+		method !== "GET" &&
+		(path.startsWith("/api/playlists") || path === "/api/autoplaylists")
+	) {
+		if (fake.failPlaylistWrites === 429) response.setHeader("Retry-After", "1");
+		return json(response, PLAYER_REFUSED, fake.failPlaylistWrites);
+	}
+
 	// How a queue mutation the player has already carried out is answered: at once,
 	// or refused once `loseQueueAnswer` has passed, which is a client being told the
 	// change failed after the queue moved.
@@ -1678,7 +1720,7 @@ export async function handleAgent({
 			index,
 			title: playlist.title,
 			itemCount: playlist.items.length,
-			isAutoPlaylist: fake.autoPlaylists.includes(playlist.id),
+			isAutoPlaylist: locksAgainstAdds(fake, playlist),
 			role: ownRoleOf(fake, playlist.id),
 			structure: generationText(playlist.structure),
 			revision: generationText(playlist.revision),
@@ -2001,11 +2043,8 @@ export async function handleAgent({
 		);
 		if (!selection.ok) return json(response, selection.body, selection.status);
 
-		if (target.isAuto)
-			return json(response, {
-				structure: generationText(target.structure),
-				positions: [],
-			});
+		if (locksAgainstAdds(fake, target) || fake.lockedPlaylists.has(target.id))
+			return json(response, PLAYLIST_LOCKED, 409);
 
 		const before = target.items.length;
 		state.editItems(target, () => {
@@ -2171,6 +2210,12 @@ export async function handleAgent({
 		const playlist = state.playlistByGuid(guid);
 		if (!playlist)
 			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		if (
+			locksAgainstAdds(fake, playlist) ||
+			fake.lockedPlaylists.has(playlist.id)
+		)
+			return json(response, PLAYLIST_LOCKED, 409);
 
 		const parsed = parseFill(body, {
 			requireTitle: false,

@@ -27,6 +27,9 @@ export const en = {
 		one: "Added {count} track to {playlist}",
 		other: "Added {count} tracks to {playlist}",
 	},
+	"add.failed": "Nothing was added to {playlist}.",
+	"add.locked":
+		"Nothing was added to {playlist}. Something else at the player has it locked.",
 	"add.smartPlaylist":
 		"Nothing was added to {playlist}. Smart playlists are built by the player and cannot be added to.",
 	"add.undoFailed": "Could not undo that.",

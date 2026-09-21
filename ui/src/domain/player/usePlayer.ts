@@ -68,6 +68,7 @@ export const playlistInfoOf = (
 	structure: annotation.structure,
 	revision: annotation.revision,
 	role: annotation.role,
+	isAutoPlaylist: annotation.isAutoPlaylist,
 	...NOT_TRACKED,
 });
 
@@ -261,6 +262,7 @@ export function usePlaylistActions() {
 				revision: UNKNOWN_GENERATION,
 				index: playlists.length,
 				role: null,
+				isAutoPlaylist: false,
 				...NOT_TRACKED,
 			},
 		],

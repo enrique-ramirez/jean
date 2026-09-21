@@ -73,6 +73,7 @@ export interface PlaylistInfo {
 	// What `foo_jean` keeps the playlist for, `"scratch"` or `null`. Read from a marker the component
 	// writes rather than from `title`, so it survives a rename at the player.
 	role: "scratch" | null;
+	isAutoPlaylist: boolean;
 }
 
 export type TrackColumns = string[];

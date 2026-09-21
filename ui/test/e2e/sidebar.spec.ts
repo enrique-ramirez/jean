@@ -1,3 +1,4 @@
+import { en } from "../../src/shared/i18n/en.ts";
 import type { RecordedRequest } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
@@ -27,8 +28,7 @@ const LIBRARY = "Library";
 const FAVORITES = "Favorites";
 const SPANISH = "Rock en Español";
 const SHELF = "Most played";
-// An autoplaylist, indistinguishable from the rest over the API: it accepts a
-// copy with a 204 rather than a 4xx, and adds nothing. See `useAddTracks`.
+// An autoplaylist; `useAddTracks.ts`'s top comment has what a lock on it means for a write.
 const AUTO = "Recently Added";
 
 // Rows are direct children of the nav; so is the section header, hence the
@@ -944,7 +944,7 @@ test.describe("dragging tracks onto a playlist", () => {
 		await expect(page.getByRole("status")).toContainText(FAVORITES);
 	});
 
-	test("a playlist that ignores the write is not reported as a copy", async ({
+	test("a drop onto a playlist that fills itself says so in the ghost, and sends nothing", async ({
 		page,
 		player,
 	}) => {
@@ -953,11 +953,19 @@ test.describe("dragging tracks onto a playlist", () => {
 
 		const target = await dragTrackTo(page, 0, AUTO);
 		await expect(target).toHaveAttribute("data-drop-over", "true");
+
+		const ghost = page.locator("[data-refused='true']");
+		await expect(ghost).toBeVisible();
+		await expect(ghost).toHaveText(en["playlist.autoRefuses"]);
+
 		await page.mouse.up();
 
-		await expect(page.getByRole("status")).toContainText(
-			"Nothing was added to",
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/items/copy").length,
+			0,
 		);
+		await expect(page.getByRole("status")).toHaveCount(0);
 		expect(
 			player.playlists.find((entry) => entry.title === AUTO)!.items,
 		).toHaveLength(5);

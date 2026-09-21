@@ -418,6 +418,22 @@ export function handleControl({
 		return empty(response);
 	}
 
+	if (action === "lockPlaylist") {
+		const id = String(input.id ?? "");
+		if (input.locked) state.fooJean.lockedPlaylists.add(id);
+		else state.fooJean.lockedPlaylists.delete(id);
+		return empty(response);
+	}
+
+	// Switches every playlist write's refusal mid-test, the same pattern
+	// `/__control/state`'s `failState` uses for `GET /api/state`. Omitting the
+	// field (or sending it null) turns the refusal back off.
+	if (action === "failPlaylistWrites") {
+		state.fooJean.failPlaylistWrites =
+			typeof input.status === "number" ? input.status : null;
+		return empty(response);
+	}
+
 	if (action === "skipGap") {
 		state.skipGapMs = Number(input?.ms) || 0;
 		return empty(response);

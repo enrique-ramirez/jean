@@ -1,3 +1,4 @@
+import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 
 import {
@@ -9,11 +10,24 @@ import {
 	viewHeader,
 } from "./fixtures.ts";
 
-// beefweb's `PlaylistInfo` has six fields and none of them says whether a playlist is an
-// autoplaylist. `foo_jean` answers it, and Jean uses the answer only to *remove* affordances -- so
-// without the component every playlist looks exactly as it did before.
+// `foo_jean` answers which playlists the player fills itself. This file is about the one use of
+// that answer before any write is attempted: the sidebar removes the drop affordance rather than
+// offering one the player would refuse. A row it says nothing about is drawn like any other.
 
 const PAIRED = { fooJeanToken: "0123456789abcdef0123456789abcdef" };
+
+// The fixture seeds `Recently Added` as an autoplaylist, so it refuses wherever this file looks.
+// `Favorites` refuses only where a describe says the player fills that one too.
+const AUTO = "Recently Added";
+const FAVORITES = "Favorites";
+const ORDINARY = ["Default Playlist", "Library", "Rock en Español"];
+
+// Matched on the label's own text rather than on the row's, because `Library` is inside
+// `#Jean Library`. The refusal sits on the row, so the row is what a case addresses.
+const row = (page: Page, title: string) =>
+	sidebar(page)
+		.locator("> div")
+		.filter({ has: page.getByText(title, { exact: true }) });
 
 const createButton = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: "Create autoplaylist" });
@@ -27,18 +41,27 @@ test.describe("marking autoplaylists in the sidebar", () => {
 		fooJean: { autoPlaylists: ["p2"] },
 	});
 
-	test("the one the player fills is drawn differently from the rest", async ({
+	test("the ones the player fills are drawn differently from the rest", async ({
 		page,
 	}) => {
 		await page.goto("/");
 		await openSidebar(page);
 
-		const rows = sidebar(page).locator("[data-drop-refuses]");
-		await expect(rows).toHaveCount(1);
-		await expect(rows.first()).toContainText("Favorites");
+		for (const title of [FAVORITES, AUTO])
+			await expect(row(page, title)).toHaveAttribute(
+				"data-drop-refuses",
+				en["playlist.autoRefuses"],
+			);
+
+		// Drawn first, then ordinary: a negated assertion against a row that is not there passes
+		// for the wrong reason, and a title this fixture stopped using would read as a pass.
+		for (const title of ORDINARY) {
+			await expect(row(page, title)).toBeVisible();
+			await expect(row(page, title)).not.toHaveAttribute("data-drop-refuses");
+		}
 	});
 
-	test("it still arms as a drop target, so it can say why not", async ({
+	test("one the player fills still arms as a drop target, so it can say why not", async ({
 		page,
 	}) => {
 		await page.goto("/");
@@ -47,23 +70,33 @@ test.describe("marking autoplaylists in the sidebar", () => {
 		// Excluded with `canDrop` instead, the pointer would sit over a row that reacts
 		// to nothing and the reason would arrive only as a toast, after the drop.
 		await expect(
-			sidebar(page).getByRole("button", { name: /Favorites/ }),
+			row(page, FAVORITES).getByRole("button", { name: new RegExp(FAVORITES) }),
 		).toBeVisible();
-		await expect(sidebar(page).locator("[data-drop-refuses]")).toHaveAttribute(
+		await expect(row(page, FAVORITES)).toHaveAttribute(
 			"data-drop-refuses",
-			"Autoplaylists fill themselves",
+			en["playlist.autoRefuses"],
 		);
 	});
 });
 
-test.describe("without the component", () => {
-	test("no playlist is marked, and every one still takes a drop", async ({
+test.describe("a playlist the component says nothing about", () => {
+	test("carries no refusal, whatever the row beside it carries", async ({
 		page,
 	}) => {
 		await page.goto("/");
 		await openSidebar(page);
 
-		await expect(sidebar(page).locator("[data-drop-refuses]")).toHaveCount(0);
+		// The component is the only source. Nothing here names a playlist for it, so the one the
+		// fixture builds at the player is the only row that may refuse, `Favorites` included.
+		await expect(row(page, AUTO)).toHaveAttribute(
+			"data-drop-refuses",
+			en["playlist.autoRefuses"],
+		);
+
+		for (const title of [FAVORITES, ...ORDINARY]) {
+			await expect(row(page, title)).toBeVisible();
+			await expect(row(page, title)).not.toHaveAttribute("data-drop-refuses");
+		}
 	});
 });
 

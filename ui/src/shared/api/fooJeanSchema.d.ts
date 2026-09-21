@@ -217,7 +217,7 @@ export interface paths {
          *
          *     `title` is the exception: omit it to leave the name alone. Resending a remembered title would undo a rename made in the player.
          *
-         *     The playlist itself is kept, and with it its id, its position and beefweb's id for it. Deleting and recreating changes all three.
+         *     The playlist itself is kept, and with it its id and its position in the player's list. Deleting and recreating changes both.
          *
          *     Only playlists this component created can be updated, and that is a `403` whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first.
          */

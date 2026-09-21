@@ -63,6 +63,8 @@ constexpr char kNoQueue[] = "the queue is not available";
 
 constexpr char kNoPlaylistRows[] = "the playlist's rows are not available";
 
+constexpr char kNoPlaylistWrites[] = "playlist changes are not available";
+
 constexpr char kNoLibrary[] = "the media library is not available";
 
 constexpr char kNoOwnPlaylists[] = "the component's own playlists are not available";
@@ -235,9 +237,19 @@ struct RequiredTitle {
     bool ok() const { return refusal == PlaylistRefusal::none; }
 };
 
-RequiredTitle requiredTitle(const std::string& body) {
+// `onlyTitle` is for the two schemas contract/openapi.yaml declares additionalProperties:
+// false with nothing beside title: the rename, and a create naming no set. A create naming
+// one, and the own-playlist fill that shares this reader, are held to their own wider field
+// list by parseFill or parseSourceRows before either calls this, so they leave it false.
+constexpr bool kOnlyTitle = true;
+
+RequiredTitle requiredTitle(const std::string& body, bool onlyTitle = false) {
     const auto document = parseJsonObject(body);
     if (!document.ok())
+        return {PlaylistRefusal::malformedBody, {}};
+
+    if (onlyTitle && !std::all_of(document.value.items().begin(), document.value.items().end(),
+                                  [](const auto& field) { return field.key() == "title"; }))
         return {PlaylistRefusal::malformedBody, {}};
 
     const auto title = readText(document.value, "title", kMaxTitle, Need::required);
@@ -1003,11 +1015,56 @@ struct HttpServer::Impl {
         return true;
     }
 
+    // Only POST /playlists/{id}/items calls this. POST /playlists/own/{role}/items resolves
+    // its id through the role itself, so it never holds a client-supplied one for this guard
+    // to check.
+    //
+    // `!player.listPlaylists` is unreachable with a real player: component.cpp wires it
+    // unconditionally. The escape exists only for a fake built to model some other route,
+    // free to leave the field unset because it never claims to answer for playlist roles.
+    //
+    // A listing the player could not answer is refused here rather than passed through: it is
+    // not evidence that the id names an ordinary playlist, and letting the request continue on
+    // it would open the scratch playlist to whichever client holds its id at the moment the
+    // component is struggling.
+    bool ownPlaylistRefused(const std::string& id, httplib::Response& res) {
+        if (!player.listPlaylists)
+            return false;
+
+        const auto listed = player.listPlaylists();
+        if (listed.outcome != PlaylistOutcome::done) {
+            respond(res, httpStatusFor(listed.outcome),
+                    playlistFailedDocument(playlistFailure(listed.outcome)));
+            return true;
+        }
+
+        const auto found =
+            std::find_if(listed.playlists.begin(), listed.playlists.end(),
+                        [&id](const PlaylistAnnotation& playlist) { return playlist.id == id; });
+
+        if (found == listed.playlists.end() || !found->role)
+            return false;
+
+        respond(res, httpStatusFor(PlaylistOutcome::ownPlaylist),
+                playlistFailedDocument(playlistFailure(PlaylistOutcome::ownPlaylist)));
+        return true;
+    }
+
     static bool playlistIdRefused(const std::string& id, httplib::Response& res) {
         if (isPlaylistId(id))
             return false;
 
         respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+        return true;
+    }
+
+    bool playlistChangeTooFast(httplib::Response& res) {
+        if (!changingTooFast())
+            return false;
+
+        res.set_header("Retry-After", "1");
+        respond(res, httpStatusFor(PlaylistRefusal::tooFast),
+                fillRefusedDocument(PlaylistRefusal::tooFast));
         return true;
     }
 
@@ -1090,7 +1147,8 @@ struct HttpServer::Impl {
             if (writesRefused(res))
                 return;
 
-            const auto title = requiredTitle(req.body);
+            const auto set = newPlaylistSetOf(req.body);
+            const auto title = requiredTitle(req.body, set == NewPlaylistSet::none);
             if (!title.ok()) {
                 respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
                 return;
@@ -1100,10 +1158,15 @@ struct HttpServer::Impl {
             if (!rows)
                 return;
 
-            const auto made = askIfAvailable(player.createPlaylist,
-                                             playlistFailure(PlaylistOutcome::unavailable),
-                                             title.value, *rows);
+            if (playlistChangeTooFast(res))
+                return;
 
+            if (!player.createPlaylist) {
+                respond(res, 503, errorDocument(kNoPlaylistWrites));
+                return;
+            }
+
+            const auto made = player.createPlaylist(title.value, *rows);
             if (made.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(made.outcome), playlistFailedDocument(made));
                 return;
@@ -1122,15 +1185,21 @@ struct HttpServer::Impl {
             if (playlistIdRefused(id, res))
                 return;
 
-            const auto title = requiredTitle(req.body);
+            const auto title = requiredTitle(req.body, kOnlyTitle);
             if (!title.ok()) {
                 respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
                 return;
             }
 
-            answerPlaylistEdit(res, askIfAvailable(player.renamePlaylist,
-                                                   playlistFailure(PlaylistOutcome::unavailable),
-                                                   id, title.value));
+            if (playlistChangeTooFast(res))
+                return;
+
+            if (!player.renamePlaylist) {
+                respond(res, 503, errorDocument(kNoPlaylistWrites));
+                return;
+            }
+
+            answerPlaylistEdit(res, player.renamePlaylist(id, title.value));
         });
 
         server.Delete(kPlaylistById, [this](const httplib::Request& req, httplib::Response& res) {
@@ -1141,9 +1210,15 @@ struct HttpServer::Impl {
             if (playlistIdRefused(id, res))
                 return;
 
-            answerPlaylistEdit(res, askIfAvailable(player.removePlaylist,
-                                                   playlistFailure(PlaylistOutcome::unavailable),
-                                                   id));
+            if (playlistChangeTooFast(res))
+                return;
+
+            if (!player.removePlaylist) {
+                respond(res, 503, errorDocument(kNoPlaylistWrites));
+                return;
+            }
+
+            answerPlaylistEdit(res, player.removePlaylist(id));
         });
 
         constexpr char kMovePlaylist[] = R"(/api/playlists/([0-9a-f-]{36})/move)";
@@ -1162,9 +1237,15 @@ struct HttpServer::Impl {
                 return;
             }
 
-            answerPlaylistEdit(res, askIfAvailable(player.movePlaylist,
-                                                   playlistFailure(PlaylistOutcome::unavailable),
-                                                   id, request.index));
+            if (playlistChangeTooFast(res))
+                return;
+
+            if (!player.movePlaylist) {
+                respond(res, 503, errorDocument(kNoPlaylistWrites));
+                return;
+            }
+
+            answerPlaylistEdit(res, player.movePlaylist(id, request.index));
         });
 
         server.Post("/api/autoplaylists/preview", [this](const httplib::Request& req,
@@ -1356,6 +1437,9 @@ struct HttpServer::Impl {
                 return;
             }
 
+            if (ownPlaylistRefused(id, res))
+                return;
+
             auto request = refuseFillChange(
                 parseFill(req.body, state.trackCount, state.structure));
             if (!request.ok()) {
@@ -1483,6 +1567,9 @@ struct HttpServer::Impl {
                 return;
             }
 
+            if (playlistChangeTooFast(res))
+                return;
+
             if (!player.copyPlaylistRows) {
                 respond(res, 503, errorDocument(kNoPlaylistRows));
                 return;
@@ -1514,6 +1601,9 @@ struct HttpServer::Impl {
                 respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
                 return;
             }
+
+            if (playlistChangeTooFast(res))
+                return;
 
             if (!player.removePlaylistRows) {
                 respond(res, 503, errorDocument(kNoPlaylistRows));

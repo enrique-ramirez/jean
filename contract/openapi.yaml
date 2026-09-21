@@ -562,10 +562,11 @@ paths:
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/StructureMoved" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503":
           description: |
-            A set of media library tracks arrived and this install either does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or has built no snapshot yet to resolve it against. A create carrying no such set is answered `503` only where the component cannot reach the player's playlists at all.
+            A set of media library tracks arrived and this install either does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or has built no snapshot yet to resolve it against. A create carrying no such set is answered `503` only where the component cannot reach the player's playlists at all, which `PlaylistWritesUnavailable` describes.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -574,8 +575,8 @@ paths:
                   value: { error: the media library is not available }
                 nothingYet:
                   value: { error: the library snapshot has not been built yet, detail: "" }
-                noPlaylists:
-                  value: { error: autoplaylists are not available, detail: "" }
+                noPlayer:
+                  value: { error: playlist changes are not available }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /autoplaylists:
@@ -866,7 +867,7 @@ paths:
           description: Renamed.
         "400":
           description: |
-            An id this component did not issue, a body that is not JSON, or a missing, empty, unprintable or over-long `title`.
+            An id this component did not issue, a body that is not JSON, a field the schema does not declare, or a missing, empty, unprintable or over-long `title`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PlaylistRefusal" }
@@ -875,8 +876,9 @@ paths:
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/PlaylistLocked" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
-        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "503": { $ref: "#/components/responses/PlaylistWritesUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
     delete:
       tags: [playlists]
@@ -902,8 +904,9 @@ paths:
         "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/PlaylistLocked" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
-        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "503": { $ref: "#/components/responses/PlaylistWritesUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /playlists/{id}/move:
@@ -952,8 +955,9 @@ paths:
         "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
-        "503": { $ref: "#/components/responses/PlaylistUnavailable" }
+        "503": { $ref: "#/components/responses/PlaylistWritesUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /playlists/{id}/items:
@@ -1243,6 +1247,7 @@ paths:
               schema: { $ref: "#/components/schemas/PlaylistFailed" }
         "409": { $ref: "#/components/responses/PlaylistLocked" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
@@ -1319,6 +1324,7 @@ paths:
                     error: "another component has locked that playlist against that edit"
                     detail: ""
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
@@ -2255,7 +2261,7 @@ components:
       description: |
         Playlist changes or queue changes are arriving faster than this component will make them. The limit bounds how fast a client bug can flood the player with playlists or queue entries; it is not a security control.
 
-        A burst of thirty is allowed, refilling at one a second, one budget shared across creating, updating and deleting a playlist and across queueing, moving, removing and clearing the queue. Reading and previewing are not limited. `Retry-After` is sent in seconds.
+        A burst of thirty is allowed, refilling at one a second, one budget shared across creating, renaming, moving and deleting a playlist, copying rows into one and removing them, and across queueing, moving, removing and clearing the queue. Reading and previewing are not limited. `Retry-After` is sent in seconds.
       headers:
         Retry-After:
           schema: { type: string }
@@ -2296,6 +2302,16 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
+    PlaylistWritesUnavailable:
+      description: |
+        The component could not reach the part of the player a playlist is created, renamed, moved or deleted through. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`: a request naming none should not send a player owner to `maxAutoPlaylists`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: playlist changes are not available }
 
     FillUnavailable:
       description: |
@@ -3043,6 +3059,8 @@ components:
             What to title the playlist. Applied on every call, whether this one is what creates the playlist for `role` or finds one already there, so retitling it from one fill to the next is the same call that fills it, never a second one.
 
             A title beginning `#Jean` reaches foobar2000's own tab exactly as sent; one that does not is prefixed with `#Jean` before it gets there. These are the component's own playlists, and a title is all the player's own list of playlists shows about whose a playlist is. No title is refused for lacking the prefix.
+
+            `maxLength` bounds this request, not the tab it ends up in: the prefix is added afterwards, so a title at the bound that does not already begin `#Jean` reaches foobar2000 six characters past it.
 
             No control characters, which would be line breaks in a playlist tab.
         structure:

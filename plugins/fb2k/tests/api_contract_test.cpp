@@ -358,12 +358,15 @@ TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we
 
     CHECK(httpStatusFor(PlaylistOutcome::done) == 200);
     CHECK(httpStatusFor(PlaylistOutcome::queryInvalid) == 400);
+    CHECK(httpStatusFor(PlaylistOutcome::positionPastEnd) == 400);
     CHECK(httpStatusFor(PlaylistOutcome::notOurs) == 403);
     CHECK(httpStatusFor(PlaylistOutcome::noSuchPlaylist) == 404);
     CHECK(httpStatusFor(PlaylistOutcome::keyInUse) == 409);
     CHECK(httpStatusFor(PlaylistOutcome::tooMany) == 409);
     CHECK(httpStatusFor(PlaylistOutcome::structureMoved) == 409);
+    CHECK(httpStatusFor(PlaylistOutcome::queueMoved) == 409);
     CHECK(httpStatusFor(PlaylistOutcome::rowsMoved) == 409);
+    CHECK(httpStatusFor(PlaylistOutcome::playlistLocked) == 409);
     CHECK(httpStatusFor(PlaylistOutcome::rowsRevisionTooOld) == 410);
     CHECK(httpStatusFor(PlaylistOutcome::playerRefused) == 500);
     CHECK(httpStatusFor(PlaylistOutcome::timedOut) == 504);

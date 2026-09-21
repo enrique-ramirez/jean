@@ -1461,6 +1461,34 @@ Player writingPlayer(WriteLog* log) {
     return player;
 }
 
+// The six writes a playlist bundle builds, taken out of the list above rather than written a
+// second time. The three autoplaylist routes and the fill are older and carry their own cases,
+// and the generation playlistWrites takes is the fill's alone, so nothing kept here reads it.
+std::vector<Write> theSixWrites() {
+    const std::set<std::string> six{"creating a playlist",
+                                    "renaming a playlist",
+                                    "moving a playlist",
+                                    "deleting a playlist",
+                                    "copying rows into a playlist",
+                                    "removing rows from a playlist"};
+
+    auto writes = playlistWrites(0);
+    writes.erase(std::remove_if(writes.begin(), writes.end(),
+                                [&six](const Write& write) { return six.count(write.name) == 0; }),
+                 writes.end());
+
+    REQUIRE(writes.size() == six.size());
+    return writes;
+}
+
+// Every change a write route can make to the player, whichever route made it, so a burst aimed
+// at one route is read without a counter per route.
+int playerChanges(const WriteLog& log) {
+    return log.autoPlaylists.creates + log.autoPlaylists.updates + log.autoPlaylists.removals +
+           log.fills.fills + log.creates.creates + log.edits.renames + log.edits.moves +
+           log.edits.removals + log.rows.copies + log.rows.removals;
+}
+
 // With writePlaylists on, the role is the only thing that can refuse these, so the message names
 // it. With the setting off, whether the setting or the role answers first is nothing the client
 // can depend on and nothing this asks about. Reusing notOurs' message is what it catches: that one
@@ -1563,6 +1591,17 @@ Player refusingFillPlayer(FillLog* log, PlaylistOutcome outcome) {
         log->filled = playlistId;
         return FillResult{outcome, {53, 54, 55}, ""};
     };
+
+    return player;
+}
+
+// A player that will not say which playlists it has. makePlaylistLister goes through askPlayer,
+// which answers timedOut after the full wait and playerRefused once the main thread's queue is
+// closed at shutdown, so both of these reach a route on an install that is still serving.
+Player refusingListingPlayer(FillLog* log, PlaylistOutcome outcome) {
+    auto player = fillingPlayer(log);
+
+    player.listPlaylists = [outcome] { return PlaylistsResult{outcome, {}}; };
 
     return player;
 }
@@ -2419,6 +2458,44 @@ TEST_CASE("a request each of the three edits can judge for itself is refused bef
     CHECK(titleOf(server, kPlaylistId) == "#Jean Rock");
 }
 
+// All three request schemas are additionalProperties: false, and the move is the one that holds
+// its body to them. A create carrying a set is held to them too, by the fill's own grammar; a
+// create carrying none reads its title and looks at nothing else, which is the hole this covers
+// along with the rename's. What a client loses is the report that a field it sent is not read.
+TEST_CASE("a field none of the three edits declares is refused, and nothing is renamed, moved or "
+          "made") {
+    WriteLog log;
+    const TestServer server(servingSettings(), writingPlayer(&log));
+
+    struct Sent {
+        std::string name;
+        std::string path;
+        json body;
+    };
+
+    const std::vector<Sent> routes{
+        {"renaming", playlistPath(kPlaylistId), {{"title", kNewTitle}}},
+        {"creating with no set", kCreatePlaylist, {{"title", kNewTitle}}},
+        {"moving", movePath(kSecondPlaylistId), {{kMoveIndexField, 0}}}};
+
+    const std::vector<std::pair<std::string, json>> undeclared{{"junk", 1}, {"replace", true}};
+
+    for (const auto& route : routes) {
+        for (const auto& field : undeclared) {
+            INFO("route: ", route.name, ", field: ", field.first);
+
+            const auto response =
+                post(server, route.path, withField(route.body.dump(), field.first, field.second));
+
+            REQUIRE(response);
+            CHECK(response->status == 400);
+            CHECK(errorIn(*response) == describe(PlaylistRefusal::malformedBody));
+        }
+    }
+
+    CHECK(playerChanges(log) == 0);
+}
+
 TEST_CASE("a copy appends a source playlist's rows to the end of the target, ascending whatever "
           "order the runs named them in") {
     RowsLog log;
@@ -2969,6 +3046,27 @@ TEST_CASE("a component with no player refuses honestly rather than pretending it
               ->status == 503);
 }
 
+// A create, a rename, a delete and a move all answer PlaylistOutcome::unavailable when there is
+// no seam behind them, and that outcome's message is the autoplaylist one. It sends a player
+// owner to maxAutoPlaylists in config.json over a request that named no autoplaylist.
+TEST_CASE("a playlist write with nothing behind it does not blame autoplaylists") {
+    const TestServer server;
+
+    for (const auto& write : theSixWrites()) {
+        INFO("write: ", write.name);
+
+        const auto response = write.send(server);
+
+        REQUIRE(response);
+        CHECK(response->status == 503);
+
+        const auto error = errorIn(*response);
+        INFO("error: ", error);
+        CHECK(error != describe(PlaylistOutcome::unavailable));
+        CHECK(error.find("autoplaylist") == std::string::npos);
+    }
+}
+
 TEST_CASE("updating and removing address one playlist by its id") {
     PlayerLog log;
     const TestServer server(servingSettings(), recordingPlayer(&log));
@@ -3087,6 +3185,46 @@ TEST_CASE("a client stuck in a loop is slowed down rather than obeyed") {
 
     // Reading changes nothing, so it is not limited and a different route cannot spend it.
     CHECK(server.client().Get("/api/playlists", TestServer::bearer())->status == 200);
+}
+
+// One budget covers every playlist write, as contract/openapi.yaml says, so a client looping any
+// one of them is refused. The create is the one that spent nothing: a loop on it made playlists
+// as fast as foobar2000 would take them.
+TEST_CASE("a client looping any of the six playlist writes is slowed down rather than obeyed") {
+    // Past kPlaylistBurst by enough that a token earned back mid-burst cannot hide the limit.
+    constexpr int kBurst = 40;
+
+    for (const auto& write : theSixWrites()) {
+        INFO("write: ", write.name);
+
+        WriteLog log;
+        const TestServer server(servingSettings(), writingPlayer(&log));
+
+        std::vector<httplib::Result> replies;
+        std::generate_n(std::back_inserter(replies), kBurst,
+                        [&server, &write] { return write.send(server); });
+
+        // The limit refuses work; it does not drop callers.
+        CHECK(std::all_of(replies.begin(), replies.end(),
+                          [](const httplib::Result& reply) { return static_cast<bool>(reply); }));
+
+        const auto refused =
+            std::count_if(replies.begin(), replies.end(), [](const httplib::Result& reply) {
+                return reply && reply->status == 429;
+            });
+
+        // Each route sets its own Retry-After, so one carrying the limit and still leaving a
+        // client with nothing to back off by is a state this can reach.
+        const auto actionable =
+            std::count_if(replies.begin(), replies.end(), [](const httplib::Result& reply) {
+                return reply && reply->status == 429 &&
+                       reply->get_header_value("Retry-After") == "1" && !errorIn(*reply).empty();
+            });
+
+        CHECK(refused > 0);
+        CHECK(actionable == refused);
+        CHECK(playerChanges(log) < kBurst);
+    }
 }
 
 TEST_CASE("an install that allows no autoplaylists says so before a client offers to make one") {
@@ -3414,6 +3552,66 @@ TEST_CASE("a fill leaves the scratch under no title that hides whose playlist it
         INFO("titled at the player: ", title);
         CHECK(title.substr(0, kJeanPrefix.size()) == kJeanPrefix);
     }
+}
+
+// What the case above leaves open, and what the contract states nowhere: the separator between
+// the prefix and the title asked for is one space, and "already prefixed" is an exact match,
+// case included. A lowercase #jean is therefore prefixed again rather than left alone. This is
+// what ships, and it is here so that a reader who would rather it were case-insensitive changes
+// it deliberately instead of by tidying.
+TEST_CASE("the scratch's title is prefixed on an exact-case match and separated by one space") {
+    Library library;
+    buildLibrary(library);
+
+    struct Titling {
+        std::string asked;
+        std::string atThePlayer;
+    };
+
+    for (const auto& titling : {Titling{"Party mix", "#Jean Party mix"},
+                                Titling{"#Jean Party mix", "#Jean Party mix"},
+                                Titling{"#jean mix", "#Jean #jean mix"}}) {
+        INFO("title the fill asked for: ", titling.asked);
+
+        FillLog log;
+        log.structure = library.state().structure;
+        const TestServer server(servingSettings(), namingPlayer(&log), &library);
+
+        const auto response = post(server, kScratchFill, ownBody(titling.asked, log.structure));
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+
+        const auto found = foundByRole(server);
+        REQUIRE(found.size() == 1);
+        CHECK(found.front().at("title") == titling.atThePlayer);
+    }
+}
+
+// kMaxTitle bounds the request and not the tab. It is this component's own number rather than
+// anything foobar2000 imposes, and a tab title takes the six characters the prefix adds without
+// complaint, so a title at the bound is accepted and the playlist ends up longer than it.
+// Shrinking the accepted title by the prefix instead would refuse titles that work today.
+TEST_CASE("a title at the bound is accepted and reaches the player with the prefix on top of it") {
+    Library library;
+    buildLibrary(library);
+
+    FillLog log;
+    log.structure = library.state().structure;
+    const TestServer server(servingSettings(), namingPlayer(&log), &library);
+
+    const std::string asked(kMaxTitle, 'a');
+    const auto response = post(server, kScratchFill, ownBody(asked, log.structure));
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+
+    const auto found = foundByRole(server);
+    REQUIRE(found.size() == 1);
+
+    const auto title = found.front().at("title").get<std::string>();
+    CHECK(title == kJeanPrefix + " " + asked);
+    CHECK(title.size() > kMaxTitle);
 }
 
 TEST_CASE("each fill operation addresses its own kind of playlist") {
@@ -3903,6 +4101,82 @@ TEST_CASE("an edit addressing the component's own scratch playlist is refused wh
     }
 }
 
+// The sixth way in, and the one a fill route cannot refuse from inside the seam: the role route
+// resolves the role itself and then hands the same seam that GUID, so what refuses this has to
+// be the route. A client holding the id this component reports its role on would otherwise
+// replace the rows of the playlist Jean is playing a set from.
+TEST_CASE("a fill addressing the scratch by its id is refused, and the role route still fills it") {
+    Library library;
+    buildLibrary(library);
+
+    for (const bool writePlaylists : {true, false}) {
+        INFO("writePlaylists: ", writePlaylists);
+
+        FillLog log;
+        log.structure = library.state().structure;
+        const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
+                                namingPlayer(&log), &library);
+
+        const auto first = post(server, kScratchFill, ownBody(kScratchTitle, log.structure));
+        REQUIRE(first);
+        REQUIRE(first->status == 200);
+
+        const auto rows = log.held[kScratchPlaylistId];
+        const auto fills = log.fills;
+
+        const auto byId =
+            post(server, "/api/playlists/" + std::string(kScratchPlaylistId) + "/items",
+                 userBody(log.structure));
+
+        REQUIRE(byId);
+        CHECK(byId->status == 403);
+        namesTheRole(*byId, writePlaylists);
+        CHECK(log.fills == fills);
+        CHECK(log.held[kScratchPlaylistId] == rows);
+
+        const auto again = post(server, kScratchFill, ownBody(kScratchTitle, log.structure));
+
+        REQUIRE(again);
+        CHECK(again->status == 200);
+        CHECK(json::parse(again->body)["playlistId"] == kScratchPlaylistId);
+        CHECK(log.fills == fills + 1);
+        CHECK(log.held[kScratchPlaylistId] == rows);
+    }
+}
+
+// The third answer the listing can give, and the one that decides whether the scratch is safe
+// while the component is struggling: not "this is the scratch" and not "this is not", but the
+// player never said. A fill let through here is a client with the scratch's GUID replacing the
+// rows Jean is playing from, at exactly the moment nothing else is working. The status is the
+// listing's own, because 403 would claim the component knew whose playlist this was.
+TEST_CASE("a fill by id the component could not check against the listing is refused with the "
+          "listing's own outcome") {
+    struct Unanswered {
+        PlaylistOutcome outcome;
+        int status;
+    };
+
+    Library library;
+    buildLibrary(library);
+
+    for (const auto& listing : {Unanswered{PlaylistOutcome::timedOut, 504},
+                                Unanswered{PlaylistOutcome::playerRefused, 500}}) {
+        INFO("outcome: ", describe(listing.outcome));
+
+        FillLog log;
+        log.structure = library.state().structure;
+        const TestServer server(servingSettings(),
+                                refusingListingPlayer(&log, listing.outcome), &library);
+
+        const auto response = post(server, userFill(), userBody(log.structure));
+
+        REQUIRE(response);
+        CHECK(response->status == listing.status);
+        CHECK(log.fills == 0);
+        CHECK(log.inserted.empty());
+    }
+}
+
 // The asymmetry the refusal above turns on, and the rule it rests on: the scratch may not be
 // addressed as the thing being changed, and may always be read from. Jean plays a search through
 // the scratch, so *Add to playlist* and *Save as playlist* over those results both read its rows
@@ -4117,4 +4391,31 @@ TEST_CASE("the contract publishes a 403 on exactly the writes the setting can re
 
     CHECK_FALSE(answers403("POST /playlists/own/{role}/items"));
     CHECK_FALSE(answers403("DELETE /playlists/own/{role}/items"));
+}
+
+TEST_CASE("the contract publishes a 429 on every write the playlist limit can refuse") {
+    const auto published = publishedRoutes();
+
+    const auto statusesOf = [&published](const std::string& name) {
+        const auto found =
+            std::find_if(published.begin(), published.end(), [&name](const SpecRoute& route) {
+                return route.method + " " + route.path == name;
+            });
+
+        REQUIRE_MESSAGE(found != published.end(), "contract/openapi.yaml publishes no ", name);
+        return found->statuses;
+    };
+
+    for (const std::string& name :
+         {std::string("POST /playlists"), std::string("POST /playlists/{id}"),
+          std::string("DELETE /playlists/{id}"), std::string("POST /playlists/{id}/move"),
+          std::string("POST /playlists/{id}/items/copy"),
+          std::string("POST /playlists/{id}/items/remove")}) {
+        INFO("route: ", name);
+        CHECK(statusesOf(name).count(429) == 1);
+    }
+
+    // Reading spends nothing, so a client may page a playlist while another is being written.
+    CHECK(statusesOf("GET /playlists").count(429) == 0);
+    CHECK(statusesOf("GET /playlists/{id}/items").count(429) == 0);
 }

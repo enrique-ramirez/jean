@@ -26,10 +26,6 @@ namespace {
 constexpr GUID kJeanRecord = {
     0x45837d74, 0xfa4f, 0x415c, {0xbb, 0xa9, 0xbf, 0x2d, 0xb8, 0xf0, 0xdc, 0x04}};
 
-// {E937900E-EF79-4574-81B1-2A840C1741CC}
-constexpr GUID kBeefwebId = {
-    0xe937900e, 0xef79, 0x4574, {0x81, 0xb1, 0x2a, 0x84, 0x0c, 0x17, 0x41, 0xcc}};
-
 // {651E1108-C122-49F5-94E1-89C184CAEDFA}
 constexpr GUID kOwnPlaylist = {
     0x651e1108, 0xc122, 0x49f5, {0x94, 0xe1, 0x89, 0xc1, 0x84, 0xca, 0xed, 0xfa}};
@@ -83,9 +79,6 @@ PlaylistAnnotation annotate(size_t index, const PlaylistVersions& versions) {
     const auto version = versions.of(playlist.id);
     playlist.structure = version.structure;
     playlist.revision = version.revision;
-
-    if (const auto beefwebId = readProperty(index, kBeefwebId); looksLikeBeefwebId(beefwebId))
-        playlist.beefwebId = beefwebId;
 
     if (const auto stored = readProperty(index, kJeanRecord); !stored.empty())
         playlist.managed = parseStoredAutoPlaylist(stored);
@@ -273,14 +266,8 @@ void beginUpdate(const std::string& id, const AutoPlaylistSpec& spec,
     answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index, versions)});
 }
 
-void beginRemove(const std::string& id, const AnswerPtr<PlaylistResult>& answer) {
-    const auto found = ourPlaylist(id);
-    if (found.outcome != PlaylistOutcome::done) {
-        answer->set(playlistFailure(found.outcome));
-        return;
-    }
-
-    const auto index = found.index;
+void removePlaylistAt(size_t index, const std::string& kind,
+                      const AnswerPtr<PlaylistResult>& answer) {
     const auto title = playlistTitle(index);
 
     if (!playlist_manager::get()->remove_playlist(index)) {
@@ -288,8 +275,18 @@ void beginRemove(const std::string& id, const AnswerPtr<PlaylistResult>& answer)
         return;
     }
 
-    logInfo("removed autoplaylist '" + title + "'");
+    logInfo("removed " + kind + " '" + title + "'");
     answer->set(PlaylistResult{});
+}
+
+void beginRemove(const std::string& id, const AnswerPtr<PlaylistResult>& answer) {
+    const auto found = ourPlaylist(id);
+    if (found.outcome != PlaylistOutcome::done) {
+        answer->set(playlistFailure(found.outcome));
+        return;
+    }
+
+    removePlaylistAt(found.index, "autoplaylist", answer);
 }
 
 size_t findOwnPlaylist(OwnPlaylistRole role) {
@@ -344,8 +341,7 @@ void beginEmptyOwnPlaylist(OwnPlaylistRole role, const PlaylistVersions& version
 
 void beginFill(const std::string& playlistId, const std::string& title, uint64_t structure,
                const std::vector<uint32_t>& ordinals, bool replace,
-               const PlaylistVersions& versions, const OrdinalResolver& resolveOrdinals,
-               const AnswerPtr<FillResult>& answer) {
+               const OrdinalResolver& resolveOrdinals, const AnswerPtr<FillResult>& answer) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size) {
         answer->set(FillResult{PlaylistOutcome::noSuchPlaylist, {}});
@@ -377,8 +373,7 @@ void beginFill(const std::string& playlistId, const std::string& title, uint64_t
     std::vector<size_t> positions(resolved.items.get_count());
     std::iota(positions.begin(), positions.end(), base);
 
-    answer->set(FillResult{PlaylistOutcome::done, std::move(positions),
-                           annotate(index, versions).beefwebId});
+    answer->set(FillResult{PlaylistOutcome::done, std::move(positions)});
 }
 
 struct CopiedRows {
@@ -504,15 +499,7 @@ void beginRemovePlaylist(const std::string& id, const AnswerPtr<PlaylistResult>&
         return;
     }
 
-    const auto title = playlistTitle(index);
-
-    if (!playlist_manager::get()->remove_playlist(index)) {
-        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
-        return;
-    }
-
-    logInfo("removed playlist '" + title + "'");
-    answer->set(PlaylistResult{});
+    removePlaylistAt(index, "playlist", answer);
 }
 
 // The permutation playlist_manager::reorder expects; see ARCHITECTURE.md, *Facts about the
@@ -727,7 +714,7 @@ CopiedChanges changesFailure(PlaylistOutcome outcome) {
 
 void beginReadChangedRows(const std::string& playlistId, uint64_t structure, uint64_t since,
                           const std::vector<std::string>& columns,
-                          const ChangedPositionsReader& changedPositions,
+                          const PlaylistVersions& versions,
                           const AnswerPtr<CopiedChanges>& answer) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size) {
@@ -735,7 +722,7 @@ void beginReadChangedRows(const std::string& playlistId, uint64_t structure, uin
         return;
     }
 
-    const auto changed = changedPositions(playlistId, structure, since);
+    const ChangedSince changed = versions.changedSince(playlistId, structure, since);
 
     CopiedChanges copied;
     copied.catchUp = changed.catchUp;
@@ -846,13 +833,6 @@ std::optional<PlayingLocation> queuedLocationOf(const t_playback_queue_item& ite
     return queuedLocation(item.m_playlist, item.m_item, playlistId);
 }
 
-ChangedPositionsReader changedPositionsFrom(const PlaylistVersions& versions) {
-    return [&versions](const std::string& playlistId, uint64_t structure, uint64_t since) {
-        const ChangedSince changed = versions.changedSince(playlistId, structure, since);
-        return ChangedPositions{changed.catchUp, changed.revision, changed.positions};
-    };
-}
-
 // The SDK has no per-playlist subscription, so every playlist's events arrive here and each
 // callback resolves the one it was handed: ARCHITECTURE.md, *Facts about the player*. The mask
 // is only valid for the length of the call, so it is walked here and the marks are published
@@ -864,8 +844,8 @@ struct PlaylistWatch::Callback : public playlist_callback_impl_base {
         : playlist_callback_impl_base(flag_on_items_added | flag_on_items_removed |
                                        flag_on_items_reordered | flag_on_items_replaced |
                                        flag_on_items_modified | flag_on_playlist_created |
-                                       flag_on_playlists_reorder | flag_on_playlists_removed |
-                                       flag_on_playlist_renamed),
+                                       flag_on_playlists_reorder | flag_on_playlists_removing |
+                                       flag_on_playlists_removed | flag_on_playlist_renamed),
           mainThread_(mainThread), versions_(versions), store_(store) {}
 
     void on_items_added(t_size playlist, t_size, metadb_handle_list_cref,
@@ -893,6 +873,16 @@ struct PlaylistWatch::Callback : public playlist_callback_impl_base {
 
     void on_playlist_created(t_size, const char*, t_size) override { publishMarks(); }
     void on_playlists_reorder(const t_size*, t_size) override { publishMarks(); }
+
+    // Read as the last callback at which a marked index still resolves to a GUID, which the SDK
+    // does not document either way: ARCHITECTURE.md, *Facts about the player*.
+    void on_playlists_removing(const bit_array& mask, t_size oldCount, t_size) override {
+        for (t_size at = mask.find_first(true, 0, oldCount); at < oldCount;
+             at = mask.find_next(true, at, oldCount)) {
+            versions_.forget(playlistId(at));
+        }
+    }
+
     void on_playlists_removed(const bit_array&, t_size, t_size) override { publishMarks(); }
     void on_playlist_renamed(t_size, const char*, t_size) override { publishMarks(); }
 
@@ -972,18 +962,17 @@ PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
 }
 
 PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
-                                                  ChangedPositionsReader changedPositions) {
+                                                  const PlaylistVersions& versions) {
     const auto libraryManager = library_manager::get();
 
-    return [&mainThread, libraryManager, changedPositions = std::move(changedPositions)](
-               const std::string& playlistId, uint64_t structure, uint64_t since,
-               const std::vector<std::string>& columns) {
+    return [&mainThread, libraryManager, &versions](const std::string& playlistId,
+                                                    uint64_t structure, uint64_t since,
+                                                    const std::vector<std::string>& columns) {
         const auto copied = askPlayer<CopiedChanges>(
             mainThread, "reading a playlist's changed rows",
             [playlistId, structure, since, columns,
-             changedPositions](const AnswerPtr<CopiedChanges>& answer) {
-                beginReadChangedRows(playlistId, structure, since, columns, changedPositions,
-                                     answer);
+             &versions](const AnswerPtr<CopiedChanges>& answer) {
+                beginReadChangedRows(playlistId, structure, since, columns, versions, answer);
             },
             changesFailure(PlaylistOutcome::timedOut),
             changesFailure(PlaylistOutcome::playerRefused));
@@ -1161,17 +1150,16 @@ PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
     };
 }
 
-PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, const PlaylistVersions& versions,
-                                  OrdinalResolver resolveOrdinals) {
-    return [&mainThread, &versions, resolveOrdinals](
-               const std::string& playlistId, const std::string& title, uint64_t structure,
-               const std::vector<uint32_t>& ordinals, bool replace) {
+PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals) {
+    return [&mainThread, resolveOrdinals](const std::string& playlistId, const std::string& title,
+                                          uint64_t structure,
+                                          const std::vector<uint32_t>& ordinals, bool replace) {
         return askPlayer<FillResult>(
             mainThread, "filling a playlist",
-            [playlistId, title, structure, ordinals, replace, &versions, resolveOrdinals](
-                const AnswerPtr<FillResult>& answer) {
-                beginFill(playlistId, title, structure, ordinals, replace, versions,
-                          resolveOrdinals, answer);
+            [playlistId, title, structure, ordinals, replace,
+             resolveOrdinals](const AnswerPtr<FillResult>& answer) {
+                beginFill(playlistId, title, structure, ordinals, replace, resolveOrdinals,
+                          answer);
             },
             FillResult{PlaylistOutcome::timedOut, {}},
             FillResult{PlaylistOutcome::playerRefused, {}});

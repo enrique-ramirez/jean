@@ -1258,6 +1258,8 @@ export interface components {
              *
              *     A title beginning `#Jean` reaches foobar2000's own tab exactly as sent; one that does not is prefixed with `#Jean` before it gets there. These are the component's own playlists, and a title is all the player's own list of playlists shows about whose a playlist is. No title is refused for lacking the prefix.
              *
+             *     `maxLength` bounds this request, not the tab it ends up in: the prefix is added afterwards, so a title at the bound that does not already begin `#Jean` reaches foobar2000 six characters past it.
+             *
              *     No control characters, which would be line breaks in a playlist tab.
              */
             title: string;
@@ -1366,11 +1368,6 @@ export interface components {
              * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
              */
             playlistId: string;
-            /**
-             * @description beefweb's own id for the same playlist, read from the property beefweb keeps on it. `null` where beefweb has written none, which for a playlist this component has just made lasts until beefweb next rebuilds its map. No other route here reports it.
-             * @example p3
-             */
-            beefwebId: string | null;
             /**
              * @description One position per row inserted, in the order the rows were inserted: request order for `ordinals`, ascending ordinal order for `runs` and `bitset`. `positions[i]` is where the *i*-th inserted row landed, 0-based.
              * @example [
@@ -1898,10 +1895,19 @@ export interface components {
                 "application/json": components["schemas"]["LibraryFailed"];
             };
         };
+        /** @description The `structure` the request named is no longer the current one, or another component has locked the target playlist against having rows added. The `error` string distinguishes them. The first is the same `409` `GET /library/changes` answers, and the remedy is the same: export the library again and resolve the set against the `structure` it reports. The second is released at the player, by whatever put it there, and nothing a client sends changes that. */
+        FillConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
         /**
          * @description Playlist changes or queue changes are arriving faster than this component will make them. The limit bounds how fast a client bug can flood the player with playlists or queue entries; it is not a security control.
          *
-         *     A burst of thirty is allowed, refilling at one a second, one budget shared across creating, updating and deleting a playlist and across queueing, moving, removing and clearing the queue. Reading and previewing are not limited. `Retry-After` is sent in seconds.
+         *     A burst of thirty is allowed, refilling at one a second, one budget shared across creating, renaming, moving and deleting a playlist, copying rows into one and removing them, and across queueing, moving, removing and clearing the queue. Reading and previewing are not limited. `Retry-After` is sent in seconds.
          */
         TooManyRequests: {
             headers: {
@@ -1951,6 +1957,15 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description The component could not reach the part of the player a playlist is created, renamed, moved or deleted through. Unrelated to autoplaylists, whose own unavailability is `PlaylistUnavailable`: a request naming none should not send a player owner to `maxAutoPlaylists`. */
+        PlaylistWritesUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
             };
         };
         /** @description Either this install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or no snapshot has been built yet. Both mean there is nothing to resolve the set against. */
@@ -2481,8 +2496,9 @@ export interface operations {
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["StructureMoved"];
             413: components["responses"]["BodyTooLarge"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
-            /** @description A set of media library tracks arrived and this install either does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or has built no snapshot yet to resolve it against. A create carrying no such set is answered `503` only where the component cannot reach the player's playlists at all. */
+            /** @description A set of media library tracks arrived and this install either does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or has built no snapshot yet to resolve it against. A create carrying no such set is answered `503` only where the component cannot reach the player's playlists at all, which `PlaylistWritesUnavailable` describes. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2672,7 +2688,7 @@ export interface operations {
             };
             400: components["responses"]["PlaylistRefused"];
             401: components["responses"]["Unauthorized"];
-            409: components["responses"]["StructureMoved"];
+            409: components["responses"]["FillConflict"];
             413: components["responses"]["BodyTooLarge"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
@@ -2736,7 +2752,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description An id this component did not issue, a body that is not JSON, or a missing, empty, unprintable or over-long `title`. */
+            /** @description An id this component did not issue, a body that is not JSON, a field the schema does not declare, or a missing, empty, unprintable or over-long `title`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2750,8 +2766,9 @@ export interface operations {
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistLocked"];
             413: components["responses"]["BodyTooLarge"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
-            503: components["responses"]["PlaylistUnavailable"];
+            503: components["responses"]["PlaylistWritesUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };
@@ -2790,8 +2807,9 @@ export interface operations {
             403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistLocked"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
-            503: components["responses"]["PlaylistUnavailable"];
+            503: components["responses"]["PlaylistWritesUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };
@@ -2834,8 +2852,9 @@ export interface operations {
             403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
             413: components["responses"]["BodyTooLarge"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
-            503: components["responses"]["PlaylistUnavailable"];
+            503: components["responses"]["PlaylistWritesUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };
@@ -2928,7 +2947,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["WritesDisabled"];
             404: components["responses"]["NoSuchPlaylist"];
-            409: components["responses"]["StructureMoved"];
+            409: components["responses"]["FillConflict"];
             413: components["responses"]["BodyTooLarge"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
@@ -3043,6 +3062,7 @@ export interface operations {
             };
             409: components["responses"]["PlaylistLocked"];
             413: components["responses"]["BodyTooLarge"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
@@ -3098,6 +3118,7 @@ export interface operations {
                 };
             };
             413: components["responses"]["BodyTooLarge"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
             504: components["responses"]["PlayerTooSlow"];

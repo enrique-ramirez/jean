@@ -1378,11 +1378,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            // The annotation the role already resolved, rather than filled.beefwebId: this
-            // route holds its own answer and has no reason to prefer a second one.
-            respond(res, 200,
-                    fillResultDocument(resolved.playlist.id, resolved.playlist.beefwebId,
-                                       filled.positions));
+            respond(res, 200, fillResultDocument(resolved.playlist.id, filled.positions));
         });
 
         server.Delete(kOwnItems, [this](const httplib::Request& req, httplib::Response& res) {
@@ -1462,7 +1458,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            respond(res, 200, fillResultDocument(id, filled.beefwebId, filled.positions));
+            respond(res, 200, fillResultDocument(id, filled.positions));
         });
 
         server.Get(kPlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {

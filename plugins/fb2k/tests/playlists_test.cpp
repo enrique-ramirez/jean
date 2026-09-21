@@ -364,19 +364,6 @@ TEST_CASE("an unreadable stored record degrades rather than throwing") {
     CHECK_FALSE(partial.forceSort);
 }
 
-TEST_CASE("a beefweb id is 'p' and digits, and anything else is reported absent") {
-    CHECK(looksLikeBeefwebId("p1"));
-    CHECK(looksLikeBeefwebId("p4294967295"));
-
-    // Written by something other than the beefweb this reads. Passing it on would let a
-    // client join the two APIs on a value neither of them means.
-    CHECK_FALSE(looksLikeBeefwebId("1"));
-    CHECK_FALSE(looksLikeBeefwebId("p1a"));
-    CHECK_FALSE(looksLikeBeefwebId("P1"));
-    CHECK_FALSE(looksLikeBeefwebId(""));
-    CHECK_FALSE(looksLikeBeefwebId("p" + std::string(32, '1')));
-}
-
 TEST_CASE("a key is taken only by another playlist this component created") {
     const std::vector<PlaylistAnnotation> playlists{managed("id-1", "folder:genre:Rock"),
                                                     theirs("id-2")};

@@ -80,11 +80,6 @@ bool isPlaylistId(const std::string& id) {
                       [](char c, char shape) { return shape == '-' ? c == '-' : isLowerHex(c); });
 }
 
-bool looksLikeBeefwebId(const std::string& id) {
-    return !id.empty() && id.size() <= 32 && id.front() == 'p' &&
-           std::all_of(id.begin() + 1, id.end(), [](char c) { return c >= '0' && c <= '9'; });
-}
-
 std::optional<PlayingLocation> queuedLocation(
     size_t playlist, size_t item, const std::function<std::string(size_t)>& playlistIdAt) {
     constexpr size_t kInfinite = std::numeric_limits<size_t>::max();
@@ -251,6 +246,15 @@ void PlaylistVersions::playingRowChanged(const std::optional<PlayingLocation>& n
 
     if (left)
         recordChangeLocked(left->playlistId, {left->index});
+}
+
+void PlaylistVersions::forget(const std::string& playlistId) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    playlists_.erase(playlistId);
+
+    if (playingRow_ && playingRow_->playlistId == playlistId)
+        playingRow_.reset();
 }
 
 PlaylistVersion PlaylistVersions::of(const std::string& playlistId) const {

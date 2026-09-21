@@ -66,8 +66,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.writeTags = makeTagWriter(mainThread);
     player.listPlaylists = makePlaylistLister(mainThread, playlistVersions);
     player.readPlaylistRows = makePlaylistRowReader(mainThread, playlistVersions);
-    player.readChangedPlaylistRows =
-        makeChangedPlaylistRowReader(mainThread, changedPositionsFrom(playlistVersions));
+    player.readChangedPlaylistRows = makeChangedPlaylistRowReader(mainThread, playlistVersions);
     player.playPlaylistRow = makePlaylistRowPlayer(mainThread);
     player.readQueue = makeQueueReader(mainThread, playerState);
     player.queuePlaylistRows = makePlaylistRowQueuer(mainThread, playerState);
@@ -89,7 +88,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.copyPlaylistRows = makePlaylistRowCopier(mainThread, playlistVersions);
     player.removePlaylistRows = makePlaylistRowRemover(mainThread, playlistVersions);
     player.emptyOwnPlaylist = makeOwnPlaylistEmptier(mainThread, playlistVersions);
-    player.fill = makePlaylistFiller(mainThread, playlistVersions, libraryFeed.ordinalResolver());
+    player.fill = makePlaylistFiller(mainThread, libraryFeed.ordinalResolver());
     player.previewQuery = makeQueryPreviewer(mainThread);
     player.refreshLibrary = libraryFeed.refresher();
     player.readArtwork = libraryFeed.artworkReader();

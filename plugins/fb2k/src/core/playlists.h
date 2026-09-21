@@ -51,8 +51,6 @@ struct PlaylistAnnotation {
     // never reused.
     std::string id;
 
-    std::string beefwebId;
-
     int index = 0;
 
     std::string title;
@@ -77,7 +75,6 @@ struct PlaylistVersion {
 
 enum class RowsChanged { added, removed, reordered, replaced };
 
-// The fields fb2k/playlists.h's ChangedPositions carries, in the order it copies them.
 struct ChangedSince {
     DeltaOutcome catchUp = DeltaOutcome::ok;
     uint64_t revision = 0;
@@ -101,6 +98,8 @@ public:
     // install, so the row a track leaves is recorded on the way out whatever the player
     // announced: ARCHITECTURE.md, *Facts about the player*.
     void playingRowChanged(const std::optional<PlayingLocation>& nowPlaying);
+
+    void forget(const std::string& playlistId);
 
     PlaylistVersion of(const std::string& playlistId) const;
 
@@ -252,10 +251,6 @@ AutoPlaylistRequest parseQueryPreview(const std::string& body);
 // pfc::GUID_from_text reads unknown characters as zero and never reports failure, so
 // garbage would become a well-formed GUID.
 bool isPlaylistId(const std::string& id);
-
-// beefweb's own ids are "p" and a number; anything else was written by something other
-// than the beefweb this reads, and is reported absent rather than passed on.
-bool looksLikeBeefwebId(const std::string& id);
 
 // nullopt once the entry's row or whole playlist is gone, never the infinite index left in
 // its place, for the reason ARCHITECTURE.md, *Facts about the player*, gives.

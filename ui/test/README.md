@@ -164,8 +164,6 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 
 **Two places it is poorer than the component, and both are about the playing cover.** The fake resolves a sleeve by matching the playing path against the captured albums, so a track it has never seen answers `404`; the component reads the file through foobar2000's own now-playing loader, and an off-library track with embedded art does get a cover. And the fake has no loader, so it resolves a new cover in the same tick: the component clears the held picture on a track change and answers `404` until the core pushes the next one, which is a gap no spec here can see. Modelling that second one would put a timing race into the assertion that a track change within an album revalidates rather than downloads.
 
-**One place it is kinder by accident.** `POST /api/autoplaylists` answers with `beefwebId` already filled in, because the fake made the playlist itself a line earlier. Real beefweb assigns its playlist ids lazily and answers `null` there until its own playlists are next read; `contract/openapi.yaml` has the join and the fallback to `index`. A spec that takes the id straight off the create response passes here and fails against a real install.
-
 ### Three gaps against the contract
 
 These are not on purpose and are not fixed. `contract/` found them. `POST` and `DELETE /api/autoplaylists/{id}` have no route here at all, so they fall to the catch-all and answer `error` where the contract publishes a `detail` beside it; the `503` from `POST /api/autoplaylists` has the same gap; and `GET /api/capabilities` omits `streamFormats` when `canStream` is false, which the contract requires either way.

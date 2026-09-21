@@ -76,13 +76,10 @@ using LibraryRefresher = std::function<void(std::vector<std::string> columns, Re
 using OwnPlaylistResolver =
     std::function<PlaylistResult(OwnPlaylistRole role, const std::string& title)>;
 
-// Where the rows an insert asked for landed, in the order they were inserted, and beefweb's
-// id for the playlist they landed in as of the write. Empty where beefweb has not mapped
-// that playlist yet, exactly as PlaylistAnnotation.beefwebId reports it.
+// Where the rows an insert asked for landed, in the order they were inserted.
 struct FillResult {
     PlaylistOutcome outcome = PlaylistOutcome::done;
     std::vector<size_t> positions;
-    std::string beefwebId;
 };
 
 // Resolves `ordinals` against the snapshot built for `structure`, in the order given, and

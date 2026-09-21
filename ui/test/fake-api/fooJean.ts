@@ -2153,11 +2153,7 @@ export async function handleAgent({
 		);
 		state.notifyPlaylists();
 
-		return json(response, {
-			playlistId: playlist.guid,
-			beefwebId: playlist.id,
-			positions,
-		});
+		return json(response, { playlistId: playlist.guid, positions });
 	}
 
 	if (method === "DELETE" && ownFillMatch) {
@@ -2235,11 +2231,7 @@ export async function handleAgent({
 		);
 		state.notifyPlaylists();
 
-		return json(response, {
-			playlistId: guid,
-			beefwebId: playlist.id,
-			positions,
-		});
+		return json(response, { playlistId: guid, positions });
 	}
 
 	if (method === "POST" && path === "/api/autoplaylists/preview") {

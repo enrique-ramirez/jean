@@ -22,7 +22,6 @@ Player listingManyPlaylists() {
     for (int i = 0; i < kPlaylistCount; ++i) {
         PlaylistAnnotation playlist;
         playlist.id = kPlaylistId;
-        playlist.beefwebId = "p" + std::to_string(i);
         playlist.index = i;
         playlist.title = "#Jean Folder " + std::to_string(i);
         playlists.push_back(playlist);

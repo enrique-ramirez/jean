@@ -55,7 +55,6 @@ PlaylistAnnotation rock() {
 
     PlaylistAnnotation playlist;
     playlist.id = kPlaylistId;
-    playlist.beefwebId = "p3";
     playlist.index = 2;
     playlist.title = "#Jean Rock";
     playlist.itemCount = 412;
@@ -183,7 +182,6 @@ struct FillLog {
     std::map<std::string, size_t> held;
     std::map<std::string, std::string> titles;
     std::map<std::string, std::string> playlists{{"scratch", kScratchPlaylistId}};
-    std::string beefwebId = "p4";
     std::string listedTitle;
 
     const std::string& idFor(OwnPlaylistRole role) {
@@ -206,7 +204,6 @@ Player fillingPlayer(FillLog* log) {
 
         PlaylistAnnotation playlist;
         playlist.id = log->idFor(role);
-        playlist.beefwebId = log->beefwebId;
 
         // A playlist made for a role carries its title from the start, which is what keeps it out
         // of the sidebar for the poll that finds it.
@@ -224,7 +221,6 @@ Player fillingPlayer(FillLog* log) {
     player.emptyOwnPlaylist = [log](OwnPlaylistRole role) {
         PlaylistAnnotation playlist;
         playlist.id = log->idFor(role);
-        playlist.beefwebId = log->beefwebId;
 
         log->held[playlist.id] = 0;
 
@@ -256,7 +252,7 @@ Player fillingPlayer(FillLog* log) {
         log->replace = replace;
 
         if (structure != log->structure)
-            return FillResult{PlaylistOutcome::structureMoved, {}, ""};
+            return FillResult{PlaylistOutcome::structureMoved, {}};
 
         if (!title.empty())
             log->titles[playlistId] = title;
@@ -271,7 +267,7 @@ Player fillingPlayer(FillLog* log) {
         std::iota(positions.begin(), positions.end(), held);
         held += ordinals.size();
 
-        return FillResult{PlaylistOutcome::done, std::move(positions), ""};
+        return FillResult{PlaylistOutcome::done, std::move(positions)};
     };
 
     return player;
@@ -359,7 +355,6 @@ Player fillingPlayerListing(FillLog* log) {
     player.listPlaylists = [log] {
         PlaylistAnnotation playlist;
         playlist.id = kPlaylistId;
-        playlist.beefwebId = "p3";
         playlist.title = log->listedTitle;
         return PlaylistsResult{PlaylistOutcome::done, {playlist}};
     };
@@ -862,7 +857,7 @@ Player creatingPlayer(CreateLog* log) {
     player.fill = [log](const std::string&, const std::string&, uint64_t,
                         const std::vector<uint32_t>&, bool) {
         log->jobs++;
-        return FillResult{PlaylistOutcome::done, {}, ""};
+        return FillResult{PlaylistOutcome::done, {}};
     };
 
     player.ownPlaylist = [log](OwnPlaylistRole, const std::string&) {
@@ -1263,7 +1258,7 @@ Player rowEditingPlayer(RowsLog* log) {
                         const std::vector<uint32_t>&, bool) {
         ++log->calls;
         log->fills++;
-        return FillResult{PlaylistOutcome::done, {}, ""};
+        return FillResult{PlaylistOutcome::done, {}};
     };
 
     return player;
@@ -1579,7 +1574,7 @@ Player refusingFillPlayer(FillLog* log, PlaylistOutcome outcome) {
                                  const std::vector<uint32_t>&, bool) {
         log->fills++;
         log->filled = playlistId;
-        return FillResult{outcome, {53, 54, 55}, ""};
+        return FillResult{outcome, {53, 54, 55}};
     };
 
     return player;
@@ -3887,50 +3882,22 @@ TEST_CASE("a fill answers the id of the playlist the rows landed in") {
     }
 }
 
-TEST_CASE("a fill answers beefweb's id for that playlist, or null where beefweb has none yet") {
+TEST_CASE("a fill answers exactly the playlist and the positions, from either route") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
 
-    SUBCASE("a playlist beefweb has already mapped is answered by the id it reported") {
-        auto log = holding(structure);
-        log.beefwebId = "p7";
-        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+    for (const auto& target : targets(structure)) {
+        INFO("target: ", target.name);
 
-        const auto response = post(server, kScratchFill, ownBody(kScratchTitle, structure));
-
-        REQUIRE(response);
-        REQUIRE(response->status == 200);
-        CHECK(json::parse(response->body)["beefwebId"] == "p7");
-    }
-
-    SUBCASE("one beefweb has not seen yet is null rather than blank or missing") {
-        auto log = holding(structure);
-        log.beefwebId = "";
-        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
-
-        const auto response = post(server, kScratchFill, ownBody(kScratchTitle, structure));
-
-        REQUIRE(response);
-        REQUIRE(response->status == 200);
-
-        auto body = json::parse(response->body);
-        CHECK(body.contains("beefwebId"));
-        CHECK(body["beefwebId"].is_null());
-    }
-
-    SUBCASE("a user's playlist answers the field as well") {
         auto log = holding(structure);
         const TestServer server(servingSettings(), fillingPlayer(&log), &library);
 
-        const auto response = post(server, userFill(), userBody(structure));
+        const auto response = post(server, target.path, target.body);
 
         REQUIRE(response);
         REQUIRE(response->status == 200);
-
-        auto body = json::parse(response->body);
-        CHECK(body.contains("beefwebId"));
-        CHECK((body["beefwebId"].is_null() || body["beefwebId"].is_string()));
+        CHECK(keysOf(response->body) == Keys{"playlistId", "positions"});
     }
 }
 

@@ -8,7 +8,6 @@ import type { Refs } from "../../src/domain/track/project.ts";
 
 const ORIGIN = "http://player.invalid:8881";
 const TOKEN = "token";
-const TARGET_PLAYLIST = "p3";
 const TARGET_GUID = "{5a1d0000-0000-0000-0000-000000000001}";
 
 const REFS: Refs = Int32Array.of(0, 1, 2);
@@ -17,9 +16,9 @@ const REFS: Refs = Int32Array.of(0, 1, 2);
 // all of its own has still settled once this much clock has passed.
 const LONGEST_WAIT_MS = 120_000;
 
-// One per request the deepest call makes: `addTo` reads the playlist
-// annotations, then fills.
-const AWAITED_STEPS = 2;
+// One per request the deepest call makes. Each request is timed from its own
+// start, so each needs the clock wound again.
+const AWAITED_STEPS = 1;
 
 const librarySource = (): LibrarySource => {
 	const collector = pathCollector();
@@ -35,30 +34,14 @@ const librarySource = (): LibrarySource => {
 	});
 };
 
-const ANNOTATIONS = {
-	playlists: [{ id: TARGET_GUID, beefwebId: TARGET_PLAYLIST }],
-};
-
-const answerFor = (url: string) =>
-	url.endsWith("/api/playlists") ? ANNOTATIONS : undefined;
-
-const stallEverythingElse = () => {
-	globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-		const answer = answerFor(String(input));
-		if (answer !== undefined)
-			return Promise.resolve(
-				new Response(JSON.stringify(answer), {
-					headers: { "Content-Type": "application/json" },
-				}),
-			);
-
-		return new Promise<Response>((_resolve, reject) => {
+const stallEveryRequest = () => {
+	globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+		new Promise<Response>((_resolve, reject) => {
 			const signal = init?.signal;
 			if (!signal) return;
 			if (signal.aborted) reject(signal.reason);
 			else signal.addEventListener("abort", () => reject(signal.reason));
-		});
-	}) as typeof fetch;
+		})) as typeof fetch;
 };
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -95,7 +78,7 @@ const CALLS: Call[] = [
 	},
 	{
 		name: "adding library rows to a playlist",
-		run: (source) => source.addTo(TARGET_PLAYLIST, REFS),
+		run: (source) => source.addTo(TARGET_GUID, REFS),
 	},
 ];
 
@@ -111,7 +94,7 @@ test("a component call that never answers settles rather than leaving the caller
 	});
 
 	for (const { name, run } of CALLS) {
-		stallEverythingElse();
+		stallEveryRequest();
 		assert.ok(
 			await settles(run(librarySource())),
 			`${name}: never settled, however far the clock was wound`,

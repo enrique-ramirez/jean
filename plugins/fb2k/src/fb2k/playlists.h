@@ -6,8 +6,6 @@
 #include "fb2k/main_thread.h"
 
 #include <cstddef>
-#include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,17 +26,6 @@ std::string playlistId(size_t index);
 size_t findPlaylist(const std::string& id);
 
 std::optional<PlayingLocation> queuedLocationOf(const t_playback_queue_item& item);
-
-struct ChangedPositions {
-    DeltaOutcome catchUp = DeltaOutcome::ok;
-    uint64_t revision = 0;
-    std::vector<uint32_t> positions;
-};
-
-using ChangedPositionsReader = std::function<ChangedPositions(
-    const std::string& playlistId, uint64_t structure, uint64_t since)>;
-
-ChangedPositionsReader changedPositionsFrom(const PlaylistVersions& versions);
 
 // Registering a callback touches the player, so this is constructed and destroyed on the main
 // thread. Construction also seeds the store with the playlists already there, since the
@@ -61,7 +48,7 @@ PlaylistLister makePlaylistLister(MainThreadQueue& mainThread, const PlaylistVer
 PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
                                         const PlaylistVersions& versions);
 PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
-                                                  ChangedPositionsReader changedPositions);
+                                                  const PlaylistVersions& versions);
 PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread);
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions,
@@ -82,8 +69,7 @@ PlaylistRowCopier makePlaylistRowCopier(MainThreadQueue& mainThread,
                                         const PlaylistVersions& versions);
 PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
                                           const PlaylistVersions& versions);
-PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, const PlaylistVersions& versions,
-                                  OrdinalResolver resolveOrdinals);
+PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals);
 QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread);
 
 // Main thread only. The SDK offers a count and a getter rather than a range; this turns

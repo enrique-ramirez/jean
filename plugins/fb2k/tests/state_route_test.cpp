@@ -119,15 +119,10 @@ json playerSection(const TestServer& server) {
 constexpr char kPlayingPlaylistId[] = "6f1c0b8a-2d4e-4f7a-9c31-0ab5e8d24f60";
 constexpr uint32_t kPlayingRow = 12;
 
-// beefweb's own id for the same playlist, which this component holds beside the GUID and which
-// is the one thing that may not cross: a client joining on it joins on the world being removed.
-constexpr char kBeefwebPlaylistId[] = "p37";
-
 Player listingThePlayingPlaylist() {
     return TestServer::listing([] {
         PlaylistAnnotation playlist;
         playlist.id = kPlayingPlaylistId;
-        playlist.beefwebId = kBeefwebPlaylistId;
         playlist.title = "Evening";
         return PlaylistsResult{PlaylistOutcome::done, {playlist}};
     });
@@ -147,10 +142,6 @@ std::vector<QueueEntry> oneQueued() {
 
 std::vector<PlaylistMark> oneListed() {
     return {PlaylistMark{kPlayingPlaylistId, "Evening", 1, 1}};
-}
-
-bool mentions(const std::string& body, const std::string& text) {
-    return toLower(body).find(toLower(text)) != std::string::npos;
 }
 
 uint64_t playOne(Library& library, const std::string& count) {
@@ -487,7 +478,7 @@ TEST_CASE("the poll document places the playing track by the GUID GET /api/playl
     CHECK(location["index"] == kPlayingRow);
 }
 
-TEST_CASE("no part of the poll document carries the beefweb id the same playlist is listed under") {
+TEST_CASE("a playing location names a playlist by GUID and a row, and carries nothing else") {
     Library library;
     fill(library);
     PlayerStateStore store;
@@ -497,10 +488,6 @@ TEST_CASE("no part of the poll document carries the beefweb id the same playlist
     const auto response = get(server, "/api/state");
     REQUIRE(response);
     REQUIRE(response->status == 200);
-
-    INFO("beefweb id: ", kBeefwebPlaylistId);
-    CHECK_FALSE(mentions(response->body, kBeefwebPlaylistId));
-    CHECK_FALSE(mentions(response->body, "beefweb"));
 
     const auto location = json::parse(response->body)["player"]["playingLocation"];
     REQUIRE(location.is_object());

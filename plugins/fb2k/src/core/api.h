@@ -83,7 +83,7 @@ std::string queryPreviewDocument(const PreviewResult& preview);
 int httpStatusFor(PlaylistRefusal refusal);
 int httpStatusFor(PlaylistOutcome outcome);
 
-std::string fillResultDocument(const std::string& playlistId, const std::string& beefwebId,
+std::string fillResultDocument(const std::string& playlistId,
                                const std::vector<size_t>& positions);
 
 std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions);

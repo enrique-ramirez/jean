@@ -699,7 +699,7 @@ paths:
 
         `title` is the exception: omit it to leave the name alone. Resending a remembered title would undo a rename made in the player.
 
-        The playlist itself is kept, and with it its id, its position and beefweb's id for it. Deleting and recreating changes all three.
+        The playlist itself is kept, and with it its id and its position in the player's list. Deleting and recreating changes both.
 
         Only playlists this component created can be updated, and that is a `403` whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first.
       requestBody:
@@ -3198,18 +3198,13 @@ components:
     FillResult:
       type: object
       additionalProperties: false
-      required: [playlistId, beefwebId, positions]
+      required: [playlistId, positions]
       properties:
         playlistId:
           type: string
           description: |
             foobar2000's own playlist GUID, lower case and dashed. From `POST /playlists/own/{role}/items` this is the id `role` resolved to; from `POST /playlists/{id}/items` it is the `id` the request named.
           examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
-        beefwebId:
-          type: [string, "null"]
-          description: |
-            beefweb's own id for the same playlist, read from the property beefweb keeps on it. `null` where beefweb has written none, which for a playlist this component has just made lasts until beefweb next rebuilds its map. No other route here reports it.
-          examples: ["p3"]
         positions:
           type: array
           items: { type: integer, minimum: 0 }

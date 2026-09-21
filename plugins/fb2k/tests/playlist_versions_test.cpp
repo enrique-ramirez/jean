@@ -314,6 +314,51 @@ TEST_CASE("a structural change to one playlist leaves another's window alone") {
     CHECK(changed.positions == std::vector<uint32_t>{3});
 }
 
+TEST_CASE("a playlist the player removes reads afterwards like one nothing ever touched") {
+    PlaylistVersions versions;
+    const PlaylistVersion held = versions.of(kAlbums);
+
+    versions.contentChanged(kAlbums, {4});
+    versions.rowsChanged(kAlbums, RowsChanged::added);
+    versions.contentChanged(kAlbums, {1});
+
+    versions.forget(kAlbums);
+
+    const PlaylistVersion untouched = versions.of(kMixes);
+    CHECK(versions.of(kAlbums).structure == untouched.structure);
+    CHECK(versions.of(kAlbums).revision == untouched.revision);
+
+    const ChangedSince changed = versions.changedSince(kAlbums, held.structure, held.revision);
+    CHECK(changed.catchUp == DeltaOutcome::ok);
+    CHECK(changed.positions.empty());
+}
+
+TEST_CASE("a playlist forgotten while it was playing takes no mark when playback moves on") {
+    PlaylistVersions versions;
+    versions.playingRowChanged(PlayingLocation{kAlbums, 3});
+
+    versions.forget(kAlbums);
+    versions.playingRowChanged(PlayingLocation{kSingles, 0});
+
+    const PlaylistVersion untouched = versions.of(kMixes);
+    CHECK(versions.of(kAlbums).revision == untouched.revision);
+}
+
+TEST_CASE("forgetting one playlist leaves another's window alone") {
+    PlaylistVersions versions;
+    const PlaylistVersion singles = versions.of(kSingles);
+
+    versions.contentChanged(kAlbums, {3});
+    versions.contentChanged(kSingles, {9});
+
+    versions.forget(kAlbums);
+
+    const ChangedSince changed =
+        versions.changedSince(kSingles, singles.structure, singles.revision);
+    CHECK(changed.catchUp == DeltaOutcome::ok);
+    CHECK(changed.positions == std::vector<uint32_t>{9});
+}
+
 // The two cases below are the only ones in this file that drive PlaylistVersions from more than
 // one thread. Without them, `--sanitize=thread` runs over an otherwise single-threaded suite and
 // has nothing of its own to catch.

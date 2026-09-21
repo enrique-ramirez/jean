@@ -477,6 +477,17 @@ TEST_CASE("an export asks for no revision at all") {
     CHECK(request.since == 0);
 }
 
+// GET /api/library/changes forwards its since straight into this parser and relies on an
+// empty one reading as revision zero. The playlist route is the one that refuses an empty
+// since, before ever calling here. Pinned so a later attempt to make this parser refuse it too
+// does not silently break the library route instead.
+TEST_CASE("a since that arrived present but empty is read as revision zero") {
+    const auto request = parseLibraryRequest({}, "");
+
+    REQUIRE(request.ok());
+    CHECK(request.since == 0);
+}
+
 TEST_CASE("the spine is always there, so a request need name no column of its own") {
     CHECK(parseLibraryRequest({}, "").ok());
 }

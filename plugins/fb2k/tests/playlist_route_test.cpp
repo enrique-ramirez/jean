@@ -184,6 +184,12 @@ struct FillLog {
     std::map<std::string, std::string> playlists{{"scratch", kScratchPlaylistId}};
     std::string listedTitle;
 
+    // The target's own structure generation, as distinct from `structure` above, which is
+    // the library's: a fill resolves ordinals against one and lands at the other. Seeded at
+    // kRowsStructure, so a test asking for it gets the same nineteen-digit shape every other
+    // generation in this file does, and bumped on every insert that lands a row.
+    std::map<std::string, uint64_t> landed;
+
     const std::string& idFor(OwnPlaylistRole role) {
         auto& id = playlists[nameOf(role)];
         if (id.empty())
@@ -267,7 +273,13 @@ Player fillingPlayer(FillLog* log) {
         std::iota(positions.begin(), positions.end(), held);
         held += ordinals.size();
 
-        return FillResult{PlaylistOutcome::done, std::move(positions)};
+        auto& generation = log->landed[playlistId];
+        if (generation == 0)
+            generation = kRowsStructure;
+        if (!ordinals.empty())
+            generation++;
+
+        return FillResult{PlaylistOutcome::done, std::move(positions), generation};
     };
 
     return player;
@@ -1979,6 +1991,12 @@ TEST_CASE("a request for changes the component can judge for itself is a 400 and
     for (const auto& request : {
              Request{kPlaylistId, "structure=" + std::to_string(kRowsStructure) + columns},
              Request{kPlaylistId, asked},
+             // An empty parameter is still a declared one. `since` is refused because its
+             // reading would otherwise take an empty string for zero; `structure` is refused
+             // for failing to parse as a whole number at all.
+             Request{kPlaylistId,
+                     "structure=" + std::to_string(kRowsStructure) + "&since=" + columns},
+             Request{kPlaylistId, "structure=&since=" + std::to_string(kChangedSince) + columns},
              Request{kPlaylistId, "structure=twelve&since=" + std::to_string(kChangedSince) +
                                       columns},
              Request{kPlaylistId,
@@ -3882,7 +3900,8 @@ TEST_CASE("a fill answers the id of the playlist the rows landed in") {
     }
 }
 
-TEST_CASE("a fill answers exactly the playlist and the positions, from either route") {
+TEST_CASE("a fill answers exactly the playlist, its generation and the positions, from either "
+          "route") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -3897,7 +3916,38 @@ TEST_CASE("a fill answers exactly the playlist and the positions, from either ro
 
         REQUIRE(response);
         REQUIRE(response->status == 200);
-        CHECK(keysOf(response->body) == Keys{"playlistId", "positions"});
+        CHECK(keysOf(response->body) == Keys{"playlistId", "structure", "positions"});
+    }
+}
+
+// A fill answers the target's own structure generation exactly as a copy does, so an undo can
+// name it rather than reading the playlist list to learn one that may already have moved. The
+// value is nineteen digits, past where a JSON number stays exact, and it has to survive the trip
+// with every one of them intact and move again on a second insert rather than repeat.
+TEST_CASE("a fill answers the generation the target landed at, whole and moving on every insert") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    for (const auto& target : targets(structure)) {
+        INFO("target: ", target.name);
+
+        auto log = holding(structure);
+        const TestServer server(servingSettings(), fillingPlayer(&log), &library);
+
+        const auto first = post(server, target.path, target.body);
+        REQUIRE(first);
+        REQUIRE(first->status == 200);
+        const auto firstGeneration = counterIn(json::parse(first->body), "structure");
+        CHECK(firstGeneration == std::to_string(kRowsStructure + 1));
+
+        const auto second = post(server, target.path, target.body);
+        REQUIRE(second);
+        REQUIRE(second->status == 200);
+        const auto secondGeneration = counterIn(json::parse(second->body), "structure");
+
+        CHECK(secondGeneration == std::to_string(kRowsStructure + 2));
+        CHECK(secondGeneration != firstGeneration);
     }
 }
 

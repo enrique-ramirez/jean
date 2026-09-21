@@ -88,7 +88,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.copyPlaylistRows = makePlaylistRowCopier(mainThread, playlistVersions);
     player.removePlaylistRows = makePlaylistRowRemover(mainThread, playlistVersions);
     player.emptyOwnPlaylist = makeOwnPlaylistEmptier(mainThread, playlistVersions);
-    player.fill = makePlaylistFiller(mainThread, libraryFeed.ordinalResolver());
+    player.fill = makePlaylistFiller(mainThread, libraryFeed.ordinalResolver(), playlistVersions);
     player.previewQuery = makeQueryPreviewer(mainThread);
     player.refreshLibrary = libraryFeed.refresher();
     player.readArtwork = libraryFeed.artworkReader();

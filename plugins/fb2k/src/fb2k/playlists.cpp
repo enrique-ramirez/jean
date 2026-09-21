@@ -341,7 +341,8 @@ void beginEmptyOwnPlaylist(OwnPlaylistRole role, const PlaylistVersions& version
 
 void beginFill(const std::string& playlistId, const std::string& title, uint64_t structure,
                const std::vector<uint32_t>& ordinals, bool replace,
-               const OrdinalResolver& resolveOrdinals, const AnswerPtr<FillResult>& answer) {
+               const OrdinalResolver& resolveOrdinals, const PlaylistVersions& versions,
+               const AnswerPtr<FillResult>& answer) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size) {
         answer->set(FillResult{PlaylistOutcome::noSuchPlaylist, {}});
@@ -373,7 +374,8 @@ void beginFill(const std::string& playlistId, const std::string& title, uint64_t
     std::vector<size_t> positions(resolved.items.get_count());
     std::iota(positions.begin(), positions.end(), base);
 
-    answer->set(FillResult{PlaylistOutcome::done, std::move(positions)});
+    answer->set(FillResult{PlaylistOutcome::done, std::move(positions),
+                           versions.of(playlistId).structure});
 }
 
 struct CopiedRows {
@@ -1150,16 +1152,18 @@ PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
     };
 }
 
-PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals) {
-    return [&mainThread, resolveOrdinals](const std::string& playlistId, const std::string& title,
-                                          uint64_t structure,
-                                          const std::vector<uint32_t>& ordinals, bool replace) {
+PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals,
+                                  const PlaylistVersions& versions) {
+    return [&mainThread, resolveOrdinals, &versions](const std::string& playlistId,
+                                                      const std::string& title, uint64_t structure,
+                                                      const std::vector<uint32_t>& ordinals,
+                                                      bool replace) {
         return askPlayer<FillResult>(
             mainThread, "filling a playlist",
-            [playlistId, title, structure, ordinals, replace,
-             resolveOrdinals](const AnswerPtr<FillResult>& answer) {
+            [playlistId, title, structure, ordinals, replace, resolveOrdinals,
+             &versions](const AnswerPtr<FillResult>& answer) {
                 beginFill(playlistId, title, structure, ordinals, replace, resolveOrdinals,
-                          answer);
+                          versions, answer);
             },
             FillResult{PlaylistOutcome::timedOut, {}},
             FillResult{PlaylistOutcome::playerRefused, {}});

@@ -11,7 +11,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -83,7 +82,7 @@ std::string queryPreviewDocument(const PreviewResult& preview);
 int httpStatusFor(PlaylistRefusal refusal);
 int httpStatusFor(PlaylistOutcome outcome);
 
-std::string fillResultDocument(const std::string& playlistId,
+std::string fillResultDocument(const std::string& playlistId, uint64_t structure,
                                const std::vector<size_t>& positions);
 
 std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions);
@@ -257,7 +256,13 @@ struct FillRequest {
 FillRequest parseFill(const std::string& body, size_t trackCount,
                       std::optional<uint64_t> expectedStructure, bool allowsTitle = false);
 
-constexpr size_t kAnyRowPosition = std::numeric_limits<uint32_t>::max();
+// The row ceiling `parseRemoveRows` and `parseSourceRows` hold a selection against, in place
+// of the real playlist length, which core/ does not have at parse time. A playlist's rows are
+// not bounded by the library: the same track can repeat any number of times through queueing,
+// repeated adds or a deliberate repeat. This is an engineered ceiling on what one request may
+// resolve to, set far above any selection a person makes in a playlist view; the real playlist
+// length is checked again on the main thread once the player has answered.
+constexpr size_t kMaxPlaylistPositionRows = 1500000;
 
 // `POST /api/playlists/{id}/items/remove`'s body. `structure` names the playlist's own
 // generation, so it arrives as a run of decimal digits rather than the number a fill's does;

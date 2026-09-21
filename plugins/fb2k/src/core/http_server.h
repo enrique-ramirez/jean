@@ -76,10 +76,12 @@ using LibraryRefresher = std::function<void(std::vector<std::string> columns, Re
 using OwnPlaylistResolver =
     std::function<PlaylistResult(OwnPlaylistRole role, const std::string& title)>;
 
-// Where the rows an insert asked for landed, in the order they were inserted.
+// Where the rows an insert asked for landed, in the order they were inserted, and the
+// target's structure generation once they had.
 struct FillResult {
     PlaylistOutcome outcome = PlaylistOutcome::done;
     std::vector<size_t> positions;
+    uint64_t structure = 0;
 };
 
 // Resolves `ordinals` against the snapshot built for `structure`, in the order given, and

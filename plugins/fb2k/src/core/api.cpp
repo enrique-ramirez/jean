@@ -370,6 +370,11 @@ SelectionResult decodeSelection(const json& root, size_t trackCount) {
         if (!runs->is_array())
             return {PlaylistRefusal::badOrdinals, {}};
 
+        // A run's count is a JSON number, so a body of a few dozen bytes can name a
+        // resolved set no process here could hold. Summing every run's count against
+        // trackCount runs to completion before the loop below expands a single one, so
+        // an oversized request is refused at the cost of the sum rather than the
+        // allocation it asked for.
         uint64_t total = 0;
         for (const auto& run : *runs) {
             if (!run.is_array() || run.size() != 2 || !run[0].is_number_unsigned() ||
@@ -566,9 +571,12 @@ std::string playlistFailedDocument(const PlaylistResult& result) {
     return json{{"error", describe(result.outcome)}, {"detail", result.detail}}.dump();
 }
 
-std::string fillResultDocument(const std::string& playlistId,
+std::string fillResultDocument(const std::string& playlistId, uint64_t structure,
                                const std::vector<size_t>& positions) {
-    return json{{"playlistId", playlistId}, {"positions", positions}}.dump();
+    return json{{"playlistId", playlistId},
+                {"structure", digitsOf(structure)},
+                {"positions", positions}}
+        .dump();
 }
 
 std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions) {
@@ -910,7 +918,7 @@ RemoveRowsRequest parseRemoveRows(const std::string& body) {
     if (!namesOneSelectionForm(root))
         return refuseRemoveRows(PlaylistRefusal::badOrdinals);
 
-    const auto selection = decodeSelection(root, kAnyRowPosition);
+    const auto selection = decodeSelection(root, kMaxPlaylistPositionRows);
     if (!selection.ok())
         return refuseRemoveRows(PlaylistRefusal::badOrdinals);
 
@@ -949,7 +957,7 @@ SourceRowsRequest parseSourceRows(const std::string& body, bool allowsTitle) {
     if (source == root.end() || !source->is_string() || !isPlaylistId(source->get<std::string>()))
         return refuseSourceRows(PlaylistRefusal::badId);
 
-    const auto selection = decodeSelection(root, kAnyRowPosition);
+    const auto selection = decodeSelection(root, kMaxPlaylistPositionRows);
     if (!selection.ok())
         return refuseSourceRows(PlaylistRefusal::badOrdinals);
 

@@ -195,15 +195,17 @@ LibraryRequest columnsDeclared(const httplib::Request& req) {
                          : parseLibraryRequest(asked, std::string());
 }
 
-// The same gate with the revision the client is catching up from, read the way
-// GET /api/library/changes reads it: required, and a present but empty one means zero.
+// The same gate with the revision the client is catching up from. Unlike
+// GET /api/library/changes, where a present but empty `since` is read as revision zero, a
+// playlist's own `since` has no such zero to fall back to, so an empty value is refused here
+// rather than forwarded to parseLibraryRequest's library reading of it.
 LibraryRequest columnsAndSinceDeclared(const httplib::Request& req) {
     const auto asked = columnsAsked(req);
     if (asked.empty())
         return missing(LibraryRefusal::badColumn, "'columns' is required");
 
-    if (!req.has_param("since"))
-        return missing(LibraryRefusal::badSince, "'since' is required");
+    if (!req.has_param("since") || req.get_param_value("since").empty())
+        return missing(LibraryRefusal::badSince, "'since' must be a whole number");
 
     return parseLibraryRequest(asked, req.get_param_value("since"));
 }
@@ -1378,7 +1380,8 @@ struct HttpServer::Impl {
                 return;
             }
 
-            respond(res, 200, fillResultDocument(resolved.playlist.id, filled.positions));
+            respond(res, 200,
+                    fillResultDocument(resolved.playlist.id, filled.structure, filled.positions));
         });
 
         server.Delete(kOwnItems, [this](const httplib::Request& req, httplib::Response& res) {
@@ -1458,7 +1461,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            respond(res, 200, fillResultDocument(id, filled.positions));
+            respond(res, 200, fillResultDocument(id, filled.structure, filled.positions));
         });
 
         server.Get(kPlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {

@@ -69,7 +69,8 @@ PlaylistRowCopier makePlaylistRowCopier(MainThreadQueue& mainThread,
                                         const PlaylistVersions& versions);
 PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
                                           const PlaylistVersions& versions);
-PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals);
+PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals,
+                                  const PlaylistVersions& versions);
 QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread);
 
 // Main thread only. The SDK offers a count and a getter rather than a range; this turns

@@ -314,12 +314,16 @@ TEST_CASE("every document carrying a playlist's counters carries them as strings
 
     CHECK(json::parse(copiedRowsDocument(kSeeded, {})).at("structure").dump() == digits);
     CHECK(json::parse(removedRowsDocument(kSeeded)).at("structure").dump() == digits);
+    CHECK(json::parse(fillResultDocument(kPlaylistId, kSeeded, {})).at("structure").dump() ==
+          digits);
 }
 
 TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     CHECK(keysOf(playlistRemovedDocument(kPlaylistId)) == Keys{"removed", "id"});
+    CHECK(keysOf(fillResultDocument(kPlaylistId, 0, {})) ==
+          Keys{"playlistId", "structure", "positions"});
 
     const auto refused = parseAutoPlaylist("not json", Need::required);
     REQUIRE_FALSE(refused.ok());

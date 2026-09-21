@@ -550,7 +550,7 @@ paths:
               schema: { $ref: "#/components/schemas/PlaylistAnnotation" }
         "400":
           description: |
-            The request was understood and declined: a body that is not JSON, a missing, empty, unprintable or over-long `title`, a `source` this component did not issue, a set that is not exactly one of `runs`, `bitset` and `ordinals`, one naming an ordinal outside the library while its `structure` is still the current one, or a `source` row past the end of that playlist. The schemas below tell the last of those from the rest.
+            The request was understood and declined: a body that is not JSON, a missing, empty, unprintable or over-long `title`, a `source` this component did not issue, a set that is not exactly one of `runs`, `bitset` and `ordinals`, one naming an ordinal outside the library while its `structure` is still the current one, a `source` row past the end of that playlist, or a `source` selection resolving to more than 1,500,000 rows, an engineered ceiling on what one request may resolve to, set far above any selection made in a playlist view; the real playlist length is checked again once the player has answered. The schemas below tell the last of those from the rest.
           content:
             application/json:
               schema:
@@ -798,10 +798,17 @@ paths:
                 value: { title: "Scratch", structure: 41, ordinals: [9, 0, 1] }
       responses:
         "200":
-          description: Inserted. `positions` names where each row landed.
+          description: Inserted. `positions` names where each row landed, and `structure` the generation the target now stands at.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/FillResult" }
+              examples:
+                default:
+                  summary: Two rows inserted into the scratch playlist.
+                  value:
+                    playlistId: "45837d74-fa4f-415c-bba9-bf2db8f0dc04"
+                    structure: "9204739866101318924"
+                    positions: [0, 1]
         "400": { $ref: "#/components/responses/PlaylistRefused" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/FillConflict" }
@@ -1067,10 +1074,17 @@ paths:
                 value: { structure: 41, ordinals: [9, 0, 1] }
       responses:
         "200":
-          description: Inserted. `positions` names where each row landed.
+          description: Inserted. `positions` names where each row landed, and `structure` the generation the target now stands at.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/FillResult" }
+              examples:
+                default:
+                  summary: Three rows appended to a playlist that held four.
+                  value:
+                    playlistId: "45837d74-fa4f-415c-bba9-bf2db8f0dc04"
+                    structure: "9204739866101318924"
+                    positions: [4, 5, 6]
         "400": { $ref: "#/components/responses/PlaylistRefused" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/WritesDisabled" }
@@ -1230,7 +1244,7 @@ paths:
                   value: { structure: "9204739866101318924", positions: [4, 5, 6] }
         "400":
           description: |
-            The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, or a `runs` entry naming a row past the end of the source playlist. A create from the same source is refused in the same words.
+            The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, a `runs` entry naming a row past the end of the source playlist, or a selection resolving to more than 1,500,000 rows, an engineered ceiling on what one request may resolve to, set far above any selection made in a playlist view; the real playlist length is checked again once the player has answered. A create from the same source is refused in the same words.
           content:
             application/json:
               schema:
@@ -1298,7 +1312,7 @@ paths:
                   value: { structure: "9204739866101318924" }
         "400":
           description: |
-            The request was understood and declined before the player was asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, or a position past the end of the playlist. A fill sent the same set is refused in the same words.
+            The request was understood and declined before the player was asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a set that is not exactly one of `runs`, `bitset` and `ordinals`, a field the schema does not declare, a position past the end of the playlist, or a selection resolving to more than 1,500,000 rows, an engineered ceiling on what one request may resolve to, set far above any selection made in a playlist view; the real playlist length is checked again once the player has answered. A fill sent the same set is refused in the same words.
           content:
             application/json:
               schema:
@@ -3175,7 +3189,7 @@ components:
         Read in ascending order, never in the order the pairs are listed: a run cannot carry any other. A client holding a click-ordered set MUST send `ordinals` instead.
       items:
         type: array
-        items: { type: integer, minimum: 0 }
+        items: { type: integer, minimum: 0, maximum: 4294967295 }
         minItems: 2
         maxItems: 2
       examples: [[[0, 2], [9, 1]]]
@@ -3190,7 +3204,7 @@ components:
 
     Ordinals:
       type: array
-      items: { type: integer, minimum: 0 }
+      items: { type: integer, minimum: 0, maximum: 4294967295 }
       description: |
         The set as a plain list of the positions `Runs` describes. The only one of the three forms read in the order it is given rather than ascending, which makes it the form a client holding a click-ordered set, such as a multi-select or a queue, MUST send. Sending the same set as `runs` or `bitset` reads it in ascending order instead, silently.
       examples: [[9, 0, 1]]
@@ -3198,13 +3212,23 @@ components:
     FillResult:
       type: object
       additionalProperties: false
-      required: [playlistId, positions]
+      required: [playlistId, structure, positions]
       properties:
         playlistId:
           type: string
           description: |
             foobar2000's own playlist GUID, lower case and dashed. From `POST /playlists/own/{role}/items` this is the id `role` resolved to; from `POST /playlists/{id}/items` it is the `id` the request named.
           examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
+        structure:
+          type: string
+          pattern: "^[0-9]+$"
+          description: |
+            The target playlist's `structure` generation once the rows have landed. An undo naming this one removes exactly the rows below and nothing else, and a rating changed in between moves the playlist's `revision` rather than this, so it does not block one.
+
+            A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives, and it goes back into `POST /playlists/{id}/items/remove` exactly as it arrived. A client that holds it as a number undoes against a neighbour of it and is refused `409` every time.
+
+            Not the same field as the `structure` this request sent: that one is the media library's own generation, an ordinal is resolved against it, and it stays a plain number.
+          examples: ["9204739866101318924"]
         positions:
           type: array
           items: { type: integer, minimum: 0 }

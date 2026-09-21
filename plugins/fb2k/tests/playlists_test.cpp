@@ -103,6 +103,20 @@ FillRequest filling(const std::string& form, size_t trackCount = kTracks) {
                      trackCount, std::nullopt);
 }
 
+constexpr uint32_t kRowCeiling = 1500000;
+
+std::string runsOf(uint64_t start, uint64_t count) {
+    return R"("runs": [[)" + std::to_string(start) + ", " + std::to_string(count) + "]]";
+}
+
+RemoveRowsRequest removing(const std::string& form) {
+    return parseRemoveRows(R"({"structure": "7", )" + form + "}");
+}
+
+SourceRowsRequest copying(const std::string& form) {
+    return parseSourceRows(R"({"source": ")" + kPlaylistGuids[0] + R"(", )" + form + "}");
+}
+
 }  // namespace
 
 TEST_CASE("a well-formed request is taken apart into its pieces") {
@@ -314,6 +328,67 @@ TEST_CASE("a plain list may name more rows than the library holds, since a repea
 
     REQUIRE(queued.ok());
     CHECK(queued.ordinals == Ordinals(13, 4));
+}
+
+TEST_CASE("runs resolving past the row ceiling are refused on a removal and on a copy") {
+    // The empty set below pins the refusal's own contract, not the order decodeSelection
+    // works in: every refusal path returns a fresh, empty result regardless of when it is
+    // reached. What actually keeps this refusal cheap is decodeSelection's own shape; see
+    // the comment on its sum loop.
+    for (const std::string& form :
+         {runsOf(0, uint64_t{kRowCeiling} + 1),
+          R"("runs": [[0, )" + std::to_string(kRowCeiling) + R"(], [0, 1]])"}) {
+        INFO("form: ", form);
+
+        const auto removal = removing(form);
+        CHECK_FALSE(removal.ok());
+        CHECK(describe(removal.refusal) == "unacceptable ordinal set");
+        CHECK(httpStatusFor(removal.refusal) == 400);
+        CHECK(removal.ordinals.empty());
+
+        const auto copy = copying(form);
+        CHECK_FALSE(copy.ok());
+        CHECK(describe(copy.refusal) == "unacceptable ordinal set");
+        CHECK(httpStatusFor(copy.refusal) == 400);
+        CHECK(copy.positions.empty());
+    }
+}
+
+TEST_CASE("a selection reaching the row ceiling exactly is still taken") {
+    // Selecting a whole playlist is the commonest edit there is, so a ceiling tightened by one
+    // row refuses real work.
+    const auto whole = runsOf(0, kRowCeiling);
+
+    const auto removal = removing(whole);
+    REQUIRE(removal.ok());
+    CHECK(removal.ordinals.size() == kRowCeiling);
+    CHECK(removal.ordinals.back() == kRowCeiling - 1);
+
+    const auto copy = copying(whole);
+    REQUIRE(copy.ok());
+    CHECK(copy.positions.size() == kRowCeiling);
+    CHECK(copy.positions.back() == kRowCeiling - 1);
+}
+
+TEST_CASE("a playlist position past the row ceiling is refused rather than dropped") {
+    CHECK(removing(runsOf(kRowCeiling - 1, 1)).ordinals == Ordinals{kRowCeiling - 1});
+    CHECK(copying(runsOf(kRowCeiling - 1, 1)).positions == Ordinals{kRowCeiling - 1});
+
+    const auto removal = removing(runsOf(kRowCeiling, 1));
+    CHECK_FALSE(removal.ok());
+    CHECK(describe(removal.refusal) == "unacceptable ordinal set");
+    CHECK(httpStatusFor(removal.refusal) == 400);
+    CHECK(removal.ordinals.empty());
+
+    const auto copy = copying(runsOf(kRowCeiling, 1));
+    CHECK_FALSE(copy.ok());
+    CHECK(describe(copy.refusal) == "unacceptable ordinal set");
+    CHECK(httpStatusFor(copy.refusal) == 400);
+    CHECK(copy.positions.empty());
+
+    const auto listed = removing(R"("ordinals": [)" + std::to_string(kRowCeiling) + "]");
+    CHECK_FALSE(listed.ok());
+    CHECK(listed.ordinals.empty());
 }
 
 TEST_CASE("a playlist id is the lower-case dashed form and nothing else") {

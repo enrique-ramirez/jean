@@ -4,6 +4,7 @@ import { classNames } from "@/shared/lib/classNames";
 import { dropArtwork, heldArtwork, holdArtwork } from "./artworkHandles";
 import {
 	type ArtworkOutcome,
+	onForgotten,
 	outcomeFor,
 	requestArtwork,
 } from "./artworkQueue";
@@ -35,7 +36,7 @@ export function Artwork({
 	revealsInstantly,
 }: {
 	src: string | null | undefined;
-	identity?: string | null;
+	identity?: string;
 	size?: number | string;
 	alt?: string;
 	className?: string;
@@ -45,40 +46,41 @@ export function Artwork({
 }) {
 	const access = useContext(AccessContext);
 	const addressNeedsAuth = Boolean(access && src?.startsWith(access.origin));
-	const key = identity === null ? null : (identity ?? src ?? null);
+	const key = identity ?? src ?? null;
 	const [state, setState] = useState<ArtworkState>(
 		() => knownState(key) ?? "waiting",
 	);
 	const [href, setHref] = useState<string | null>(null);
+	const [retryToken, setRetryToken] = useState(0);
 	const box = useRef<HTMLDivElement | null>(null);
 	const release = useRef<((outcome?: ArtworkOutcome) => void) | null>(null);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: retryToken re-fires this after a forgotten key, not a read
 	useEffect(() => {
 		const known = knownState(key);
+		const forget = key
+			? onForgotten(key, () => setRetryToken((token) => token + 1))
+			: undefined;
 
 		if (!src) {
 			setState(src === null ? "failed" : "waiting");
 			setHref(null);
-			return;
+			return forget;
 		}
 
 		if (known === "failed") {
 			setState("failed");
 			setHref(null);
-			return;
+			return forget;
 		}
 
 		setState(known ?? "waiting");
 		setHref(null);
 
-		if (!key) {
-			setHref(src);
-			if (!known) setState("granted");
-			return;
-		}
+		if (!key) return forget;
 
 		const element = box.current;
-		if (!element) return;
+		if (!element) return forget;
 
 		let live = true;
 		let claimed = false;
@@ -144,6 +146,7 @@ export function Artwork({
 		else cancel = whenNearViewport(element, claim);
 
 		return () => {
+			forget?.();
 			live = false;
 			cancel();
 			cancel = () => {};
@@ -152,7 +155,7 @@ export function Artwork({
 			release.current?.();
 			release.current = null;
 		};
-	}, [src, key, access, addressNeedsAuth, revealsInstantly]);
+	}, [src, key, access, addressNeedsAuth, revealsInstantly, retryToken]);
 
 	const settle = (outcome: ArtworkOutcome) => {
 		release.current?.(outcome);

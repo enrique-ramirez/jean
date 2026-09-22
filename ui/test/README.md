@@ -87,7 +87,7 @@ Two things the fake **refuses** rather than approximating, since a filter that s
 
 ### Covers
 
-`GET /api/artwork?track=` is the route every library cover comes through, and the fake answers it on the component's own terms: `Cache-Control: no-cache, must-revalidate`, a strong quoted `ETag`, and a `304` for a conditional request that matches. beefweb's two artwork routes keep foobar2000's own terms instead, and the same file server answers all three.
+`GET /api/artwork?track=` is the route every library cover comes through, and the fake answers it on the component's own terms: a present cover `Cache-Control: private, max-age=15552000`, a `404` `private, max-age=600`, a strong quoted `ETag` under either, and a `304` for a conditional request that matches. `GET /api/artwork/playing` and the positional fallback answer `private, no-cache` instead, on every outcome. beefweb's two artwork routes keep foobar2000's own terms, and the same file server answers all five.
 
 ### Ordering
 
@@ -162,7 +162,7 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 
 **One place the fake is deliberately kinder.** The stream serves WAV rather than Ogg Opus, since there is no encoder in a Node fake, and in Chromium a non-seekable WAV does not fire `loadedmetadata` until a substantial amount of *content* has arrived. Not bytes: the same byte rate with a longer primed burst starts playing far sooner. That is a property of PCM in a container never meant to be streamed. So the healthy stream hands over a burst up front and then feeds at 1x, which starts sooner than a real one would; what that could hide, a long gap between asking and hearing, is covered by `quiet` instead.
 
-**Two places it is poorer than the component, and both are about the playing cover.** The fake resolves a sleeve by matching the playing path against the captured albums, so a track it has never seen answers `404`; the component reads the file through foobar2000's own now-playing loader, and an off-library track with embedded art does get a cover. And the fake has no loader, so it resolves a new cover in the same tick: the component clears the held picture on a track change and answers `404` until the core pushes the next one, which is a gap no spec here can see. Modelling that second one would put a timing race into the assertion that a track change within an album revalidates rather than downloads.
+**Two places it is poorer than the component, and both are about the playing cover.** The fake resolves a sleeve by matching the playing path against the captured albums, so a track it has never seen answers `404`; the component reads the file through foobar2000's own now-playing loader, and an off-library track with embedded art does get a cover. And the fake has no loader, so it resolves a new cover in the same tick: the component clears the held picture on a track change and answers `404` until the core pushes the next one, which is a gap no spec here can see. Modelling that second one would put a timing race into the assertion that a track change within an album costs no request at all, since every row of it addresses the same cover and the browser already holds it.
 
 ### Three gaps against the contract
 
@@ -190,7 +190,7 @@ LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='C:\Music' pnpm test:live
 
 `LIVE` is the url the app is served at, not the origin, because beefweb serves its own client at the root and Jean under a `urlMappings` prefix, and the api origin is taken from it.
 
-**It exists for rule 9 below.** These are the comparisons where that matters: the join between the `%path%` the player reports playing and the row Jean drew, a cover that has to decode rather than merely have a `src`, an update that arrives on a real SSE stream, `fold()` against tags read off real files, and the `foo_jean` discovery chain against a real component rather than a second node server.
+**It exists for rule 10 below.** These are the comparisons where that matters: the join between the `%path%` the player reports playing and the row Jean drew, a cover that has to decode rather than merely have a `src`, an update that arrives on a real SSE stream, `fold()` against tags read off real files, and the `foo_jean` discovery chain against a real component rather than a second node server.
 
 **Nothing here may assume what is in the library.** Counts, titles, which row carries a rating and whether any artist is accented are all read off the player first and asserted against; a spec that cannot be satisfied skips itself and says why. That is why the suite is short: an assertion that survives an unknown library has to be about a relationship rather than a value.
 
@@ -208,7 +208,7 @@ Two rules outrank the rest.
 
 | | |
 |---|---|
-| Finding things | `trackRow`, `rowByTitle`, `statusBar`, `viewHeader`, `globalControls`, `sidebar`, `openSidebar`, `closeSidebar`, `openLibrary`, `openNowPlaying`, `nowPlayingScreen`, `listenHere`, `settingsDialog`, `openSettings`, `expectPlayingFrom` |
+| Finding things | `trackRow`, `rowByTitle`, `statusBar`, `withNoListOnScreen`, `viewHeader`, `globalControls`, `sidebar`, `openSidebar`, `closeSidebar`, `openLibrary`, `openNowPlaying`, `nowPlayingScreen`, `listenHere`, `settingsDialog`, `openSettings`, `expectPlayingFrom` |
 | Reading the player | `requestsTo`, `expectSettlesAt`, `scratchOf`, `playedFrom`, `trackPlayed` |
 | Gestures | `touchDrag`, `dragTo`, `pressAndHold` |
 | Scrolling | `isRowOnScreen`, `scrollUntilMounted`, `scrollTop`, `scrollTo` |
@@ -248,6 +248,8 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `withoutFields` | removes title-formatting expressions, so the player answers `?` as a real one does. `['%lastfm_play_count%']` is an install with no playback-statistics component, and everything built on play counts must disappear rather than break |
 | `withoutPlaylists` | empties the playlist list entirely: the player a fresh install would find |
 | `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches the media library as well as the playlists |
+| `embeddedArt` | gives a track a cover of its own, keyed by title: `{ 'No Excuses': 'deja-entendu.jpg' }` names a file in `fake-api/artwork/`. That track's own address answers it and the rest of the album answers the album's, which is what a file carrying the wrong sleeve looks like to `GET /api/artwork` |
+| `playlistsFromRow` | seeds a playlist from that row on and drops the ones before it, keyed by beefweb id: `{ p1: 1 }` is a view that begins partway into an album |
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |
 | `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
@@ -278,9 +280,10 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
    **Settle by watching, never by sleeping.** Where the thing to wait on is a scroll offset rather than a request, the local `settle()` helpers walk it frame by frame from inside the page and return once it has held still; `artwork.spec.ts` waits for the offset *and* the request log to stop moving together. A fixed `waitForTimeout` followed by a hard assertion fails a slow machine instead of waiting for it, and is the slowest thing in whatever file it is in. Use `waitForTimeout` only to cross a threshold on purpose: past a hold, past a debounce, or to let a window elapse and prove nothing happened.
 
    Where the end state is what matters, prefer a retrying assertion over settle-then-assert. `expectCentredOrClamped` polls a sentence describing what it saw, so a failure reports the offset rather than a boolean.
-6. **Touch is a gesture, not a narrow mouse.** Touch tests go through CDP `Input.dispatchTouchEvent` rather than dispatching DOM events, since what is under test is the browser's own decision about who the gesture belongs to: without `touch-action: none` it decides the finger is panning and stops delivering moves, and a swipe aimed at one place lands at another. A dispatched `pointermove` sails past that and passes either way.
-7. **Check an injection more than once.** A guard that fails on one run and passes on the next is flaky, not covered.
-8. **A test that cannot fail is worse than no test.** When one covers a guard rather than a feature, such as "a long press plays nothing" or "a desktop click does not play", delete the guard, watch it go red, and put the guard back.
-9. **Anywhere the fake supplies both sides of a comparison, it is only testing that a string equals itself.** Path joins between the stream timeline and the poll's own `player.path` are the case in point, and have to be verified against a real player.
-10. **Assert what a value settles at, never what it passed through.** `expectSettlesAt` is that, and the top of this section is why.
-11. **A keyboard shortcut gated by `useKeymap`'s `enabled` waits for nothing on its own.** `locator.click()` waits for the button sharing that condition to become actionable; `page.keyboard.press()` fires immediately, and a keystroke sent before the gate opens is not queued for when it does. Wait on whatever draws the gate visibly, usually the same button, before pressing the key.
+6. **A case that means to watch which address a cover is asked for has to own the page.** A cover is held for 180 days, and `artworkHandles` holds a blob per identity for the tab's life, so any view that draws tracks pre-warms both, and a later ask at the same identity is answered inside the browser rather than reaching the player. `withNoListOnScreen` in `fixtures.ts` is the page that draws none: the search route before anything has been searched for. It waits on the status bar rather than on the empty list, since no rows is true of a page that has not rendered yet.
+7. **Touch is a gesture, not a narrow mouse.** Touch tests go through CDP `Input.dispatchTouchEvent` rather than dispatching DOM events, since what is under test is the browser's own decision about who the gesture belongs to: without `touch-action: none` it decides the finger is panning and stops delivering moves, and a swipe aimed at one place lands at another. A dispatched `pointermove` sails past that and passes either way.
+8. **Check an injection more than once.** A guard that fails on one run and passes on the next is flaky, not covered.
+9. **A test that cannot fail is worse than no test.** When one covers a guard rather than a feature, such as "a long press plays nothing" or "a desktop click does not play", delete the guard, watch it go red, and put the guard back.
+10. **Anywhere the fake supplies both sides of a comparison, it is only testing that a string equals itself.** Path joins between the stream timeline and the poll's own `player.path` are the case in point, and have to be verified against a real player.
+11. **Assert what a value settles at, never what it passed through.** `expectSettlesAt` is that, and the top of this section is why.
+12. **A keyboard shortcut gated by `useKeymap`'s `enabled` waits for nothing on its own.** `locator.click()` waits for the button sharing that condition to become actionable; `page.keyboard.press()` fires immediately, and a keystroke sent before the gate opens is not queued for when it does. Wait on whatever draws the gate visibly, usually the same button, before pressing the key.

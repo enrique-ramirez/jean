@@ -18,7 +18,7 @@ const UNANSWERED_MS = 4000;
 
 interface Sleeve {
 	src: string;
-	identity?: string | null;
+	identity?: string;
 	alt: string;
 }
 
@@ -43,9 +43,12 @@ export function useCoverWheel({
 	audibleTrackKey: string | null;
 	// What the audible picture *is*. `audibleTrackKey` is a playlist position and says only that the
 	// track changed; it must never reach the cache as an identity.
-	audibleCover: string | null;
+	audibleCover: string | undefined;
 	playerTrackKey: string | null;
-	artwork: string | null;
+	// `undefined` is the address not resolved yet, same as `Artwork`'s own `src`: nothing is
+	// committed to a slot until this is truthy, so a canonicalising caller can leave it unset
+	// rather than reach for the off-library fallback while the read it needs is still in flight.
+	artwork: string | null | undefined;
 	// The address a neighbour would have fetched this same track under. A slot already showing a
 	// sleeve from that address is showing the right picture and must be left alone.
 	neighbourArtworkSrc: string | null;

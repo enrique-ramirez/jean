@@ -30,6 +30,11 @@ export interface ActiveItem {
 	// reader asking whether something is playing wants `path` or `playbackState`, never this.
 	index: number;
 	path: string | null;
+	// The record the playing track is from, and its album artist, computed by the player and carried
+	// on every poll: `null` where the player has not computed one. A cover is keyed by these, never
+	// by the track, so an album played through costs one request.
+	album: string | null;
+	albumArtist: string | null;
 	// foobar2000's own playlist GUID, matching `PlaylistAnnotation.id`. Not beefweb's id, which stays
 	// on `playlistId`.
 	playlistGuid: string | null;

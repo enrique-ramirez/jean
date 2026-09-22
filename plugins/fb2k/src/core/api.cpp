@@ -126,6 +126,8 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
                 {"playbackMode", player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
                 {"title", player.title ? json(*player.title) : json(nullptr)},
                 {"artist", player.artist ? json(*player.artist) : json(nullptr)},
+                {"album", player.album ? json(*player.album) : json(nullptr)},
+                {"albumArtist", player.albumArtist ? json(*player.albumArtist) : json(nullptr)},
                 {"playingLocation", playingLocationOf(player.playingLocation)},
                 {"currentPlaylistId",
                  player.currentPlaylistId ? json(*player.currentPlaylistId) : json(nullptr)},

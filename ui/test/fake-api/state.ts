@@ -360,6 +360,8 @@ export function createState({
 	withoutFields = [],
 	library = {},
 	retagged = {},
+	embeddedArt = {},
+	playlistsFromRow = {},
 	fooJean = null,
 	artworkOf = null,
 	countsPlays = false,
@@ -374,6 +376,8 @@ export function createState({
 	withoutFields?: string[];
 	library?: Partial<LibraryInfo>;
 	retagged?: Record<string, Track>;
+	embeddedArt?: Record<string, string>;
+	playlistsFromRow?: Record<string, number>;
 	fooJean?: FooJeanOptions | null;
 	artworkOf?: ((track: Track) => string | null) | null;
 	countsPlays?: boolean | null;
@@ -389,6 +393,11 @@ export function createState({
 	if (patches.size > 0)
 		for (const playlist of playlists)
 			playlist.items = playlist.items.map(retag);
+
+	for (const [id, from] of Object.entries(playlistsFromRow)) {
+		const playlist = playlists.find((entry) => entry.id === id);
+		if (playlist) playlist.items = playlist.items.slice(from);
+	}
 
 	// The library API serves its own copy of the tracks, so a player without the
 	// component that publishes these fields has to strip both.
@@ -534,7 +543,15 @@ export function createState({
 		playerVersion += 1;
 	};
 
+	// foobar2000 answers a cover out of the file it was asked about, so a track
+	// whose own tags carry another sleeve answers with that one. `embeddedArt` is
+	// how a fixture states one, keyed by title the way `retagged` is.
+	const ownArt = new Map(Object.entries(embeddedArt));
+
 	const coverOfTrack = (track: Track) => {
+		const own = ownArt.get(track["%title%"] ?? "");
+		if (own) return own;
+
 		const album = LIBRARY.albums.find((entry) =>
 			entry.tracks.some((candidate) => candidate["%path%"] === track["%path%"]),
 		);
@@ -1451,10 +1468,7 @@ export function createState({
 			const entry = libraryItemsOf(libraryTracks).find(
 				(item) => item.path === path,
 			);
-			if (!entry) return null;
-			const album = LIBRARY.albums.find((a) => a.tracks.includes(entry.track));
-			if (album) return `${album.slug}.jpg`;
-			return artworkOf?.(entry.track) ?? null;
+			return entry ? coverOfTrack(entry.track) : null;
 		},
 
 		libraryPathFor(track: Track) {

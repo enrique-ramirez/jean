@@ -35,6 +35,8 @@ interface JeanFixtures {
 	withoutFields: string[];
 	library: Partial<LibraryInfo>;
 	retagged: Record<string, Track>;
+	embeddedArt: Record<string, string>;
+	playlistsFromRow: Record<string, number>;
 	countsPlays: boolean;
 	fooJean: FooJeanOptions | null;
 	fooJeanToken: string | null;
@@ -110,6 +112,10 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 
 	retagged: [{}, { option: true }],
 
+	embeddedArt: [{}, { option: true }],
+
+	playlistsFromRow: [{}, { option: true }],
+
 	countsPlays: [false, { option: true }],
 
 	// Defaults and the states each option can present are in `test/README.md`.
@@ -133,6 +139,8 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 			withoutPlaylists,
 			withoutFields,
 			retagged,
+			embeddedArt,
+			playlistsFromRow,
 			countsPlays,
 			library,
 			playerState,
@@ -155,6 +163,8 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 					mediaLibrary: libraryShape ? libraryOfShape(libraryShape) : null,
 					withoutFields,
 					retagged,
+					embeddedArt,
+					playlistsFromRow,
 					countsPlays,
 					library,
 					player: playerState,
@@ -232,6 +242,21 @@ export const rowByTitle = (page: Page, title: string) =>
 	page.locator('[role="row"]').filter({ hasText: title }).first();
 
 export const statusBar = (page: Page) => page.locator("footer");
+
+// The search route before anything has been searched for, which is the one view that draws no rows
+// at all. Any other view of tracks asks for the cover of every record in it, and a cover already
+// fetched is held for months, so a case that means to watch which address a playing surface reaches
+// for has to open on a page that draws none.
+//
+// Waited on the status bar rather than on the empty list: no rows is true of a page that has not
+// rendered yet. The full bar is drawn only once the player has answered.
+export const withNoListOnScreen = async (page: Page) => {
+	await page.goto("/#/search");
+	await expect(
+		statusBar(page).getByRole("button", { name: "Show current track" }),
+	).toBeVisible();
+	await expect(page.locator('main [role="row"]')).toHaveCount(0);
+};
 
 // Not "Now playing": that name belongs to the playing row's equalizer, and
 // `play.spec` counts how many elements answer to it.
@@ -530,6 +555,19 @@ export const coversFromTheComponent = (player: FakePlayer) =>
 					"track",
 				) ?? "",
 		);
+
+// The component's fallback address for a row it has no library path for, as
+// `playlist GUID/row`. Four path segments are what tell it from beefweb's own
+// positional address, which has three and cannot resolve a GUID at all.
+const COMPONENT_POSITIONAL_COVER =
+	/^\/api\/artwork\/playlists\/([^/?]+)\/(\d+)$/;
+
+export const coversByPosition = (player: FakePlayer) =>
+	player.requests
+		.filter((entry) => entry.method === "GET")
+		.map((entry) => COMPONENT_POSITIONAL_COVER.exec(entry.path))
+		.filter((match): match is RegExpExecArray => match !== null)
+		.map((match) => `${match[1]}/${match[2]}`);
 
 // The playlist Jean materialises to play a set from. Found by the prefix rather
 // than by a title, because the title is named for whichever set filled it.

@@ -261,10 +261,11 @@ RequiredTitle requiredTitle(const std::string& body, bool onlyTitle = false) {
     return {PlaylistRefusal::none, title.value};
 }
 
-constexpr char kKeepAndRevalidate[] = "no-cache, must-revalidate";
+// See ARCHITECTURE.md, *Artwork*, for why this and the two lifetimes below are what they are.
+constexpr char kAskEveryTime[] = "private, no-cache";
 
 void revalidateAlways(httplib::Response& res, const std::string& tag) {
-    res.set_header("Cache-Control", kKeepAndRevalidate);
+    res.set_header("Cache-Control", kAskEveryTime);
     res.set_header("ETag", tag);
 }
 
@@ -272,6 +273,21 @@ void revalidatePerEncoding(httplib::Response& res, const std::string& tag) {
     revalidateAlways(res, tag);
     res.set_header("Vary", "Accept-Encoding");
 }
+
+constexpr int kSecondsPerDay = 24 * 60 * 60;
+
+constexpr int kCoverCacheLifetimeSeconds = 180 * kSecondsPerDay;
+constexpr int kMissingCoverCacheLifetimeSeconds = 10 * 60;
+
+std::string freshFor(int seconds) {
+    return "private, max-age=" + std::to_string(seconds);
+}
+
+// What sendArtwork answers with on a 200 or a 304 (present), and on its own 404 or 413 (refused).
+struct ArtworkCacheControl {
+    std::string present;
+    std::string refused;
+};
 
 // The body is produced only once the client is known not to hold it already, because
 // serialising a library is the expensive half of any of these requests.
@@ -875,25 +891,29 @@ struct HttpServer::Impl {
     }
 
     static void sendArtwork(const httplib::Request& req, httplib::Response& res,
-                            const ArtworkSource& source) {
+                            const ArtworkSource& source, const ArtworkCacheControl& caching) {
         if (alreadyHolds(req, source.tag)) {
-            revalidateAlways(res, source.tag);
+            res.set_header("Cache-Control", caching.present);
+            res.set_header("ETag", source.tag);
             res.status = 304;
             return;
         }
 
         if (source.picture.size() > kMaxArtworkBytes) {
+            res.set_header("Cache-Control", caching.refused);
             respond(res, 413, errorDocument(kArtworkTooLarge));
             return;
         }
 
         const auto type = imageTypeOf(source.picture);
         if (type.empty()) {
+            res.set_header("Cache-Control", caching.refused);
             respond(res, 404, errorDocument(kUnpublishableArtwork));
             return;
         }
 
-        revalidateAlways(res, source.tag);
+        res.set_header("Cache-Control", caching.present);
+        res.set_header("ETag", source.tag);
         res.status = 200;
         res.set_content(source.picture, type);
     }
@@ -916,12 +936,16 @@ struct HttpServer::Impl {
                 return;
 
             const auto source = player.readArtwork(track);
+            const auto missingCoverCacheControl = freshFor(kMissingCoverCacheLifetimeSeconds);
+
             if (source.picture.empty()) {
+                res.set_header("Cache-Control", missingCoverCacheControl);
                 respond(res, 404, errorDocument(kNoArtworkForTrack));
                 return;
             }
 
-            sendArtwork(req, res, source);
+            sendArtwork(req, res, source,
+                       {freshFor(kCoverCacheLifetimeSeconds), missingCoverCacheControl});
         });
     }
 
@@ -930,6 +954,8 @@ struct HttpServer::Impl {
     void addPlayingArtworkRoute() {
         server.Get(kPlayingArtworkPath, [this](const httplib::Request& req,
                                                httplib::Response& res) {
+            res.set_header("Cache-Control", kAskEveryTime);
+
             if (fetchingArtworkTooFast(res))
                 return;
 
@@ -939,7 +965,58 @@ struct HttpServer::Impl {
                 return;
             }
 
-            sendArtwork(req, res, source);
+            sendArtwork(req, res, source, {kAskEveryTime, kAskEveryTime});
+        });
+    }
+
+    // The fallback for a row GET /api/artwork cannot address: no path reaches the client, so
+    // the player resolves the playlist and the row to a handle itself and this shares every
+    // refusal, the rate limit and the response shape addPlayingArtworkRoute() and
+    // addArtworkRoute() already answer with.
+    void addPlaylistRowArtworkRoute() {
+        constexpr char kPlaylistRowArtworkPath[] =
+            R"(/api/artwork/playlists/([0-9a-f-]{36})/([^/]+))";
+
+        server.Get(kPlaylistRowArtworkPath, [this](const httplib::Request& req,
+                                                   httplib::Response& res) {
+            res.set_header("Cache-Control", kAskEveryTime);
+
+            const auto request = parsePlayRow(req.matches[1].str(), req.matches[2].str());
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            if (!player.readPlaylistRowArtwork) {
+                respond(res, 503, errorDocument(kNoArtwork));
+                return;
+            }
+
+            if (fetchingArtworkTooFast(res))
+                return;
+
+            const auto read = player.readPlaylistRowArtwork(request.playlistId, request.index);
+
+            // Both refused as 404, unlike POST .../play: neither is a position a client could
+            // choose differently, and a client drawing a grid of covers treats every one the
+            // same as a track address the snapshot never held.
+            if (read.outcome == PlaylistOutcome::noSuchPlaylist ||
+                read.outcome == PlaylistOutcome::positionPastEnd) {
+                respond(res, 404, errorDocument(describe(read.outcome)));
+                return;
+            }
+
+            if (read.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(read.outcome), errorDocument(describe(read.outcome)));
+                return;
+            }
+
+            if (read.libraryPath || read.source.picture.empty()) {
+                respond(res, 404, errorDocument(kNoArtworkForTrack));
+                return;
+            }
+
+            sendArtwork(req, res, read.source, {kAskEveryTime, kAskEveryTime});
         });
     }
 
@@ -1931,6 +2008,7 @@ ListenerStatus HttpServer::start() {
     impl.addStateRoutes();
     impl.addArtworkRoute();
     impl.addPlayingArtworkRoute();
+    impl.addPlaylistRowArtworkRoute();
     impl.addPairingRoute();
 
     if (impl.settings.authToken.empty())

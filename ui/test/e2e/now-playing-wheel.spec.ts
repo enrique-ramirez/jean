@@ -1,17 +1,22 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	coversByPosition,
 	coversFromBeefweb,
 	coversFromTheComponent,
 	expect,
 	expectSettlesAt,
 	FOO_JEAN_TOKEN,
+	guidOfPlaylist,
+	inSequence,
 	listenHere,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	statusBar,
 	test,
 	touchDrag,
 	trackRow,
+	withNoListOnScreen,
 } from "./fixtures.ts";
 import { playRow } from "./nowPlaying.ts";
 
@@ -37,6 +42,23 @@ const libraryPathOfRow = (
 	if (!track) throw new Error(`no row ${row} in ${playlistId}`);
 	return player.libraryPathFor(track);
 };
+
+// The library-relative address a record's cover is asked at, which is its first track in album
+// order. Jar Of Flies is the Default Playlist's first four rows; Deja Entendu runs through the
+// middle of the captured Library playlist.
+const JAR_OF_FLIES_COVER =
+	"A/Alice in Chains/(1994) Jar Of Flies/01. Rotten Apple.flac";
+const DEJA_ENTENDU_COVER = "B/Brand New/(2003) Deja Entendu/01. Tautou.mp3";
+
+// Every cover address asked for, on either server: one request log carries both, and what these
+// cases turn on is how few addresses were asked at all.
+const coverAddresses = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) =>
+				entry.method === "GET" && entry.path.startsWith("/api/artwork"),
+		)
+		.map((entry) => entry.path);
 
 const detents = (page: Page) =>
 	wheel(page).evaluate((el) => {
@@ -234,72 +256,155 @@ test.describe("the cover wheel", () => {
 	});
 });
 
-// beefweb addresses a cover by a playlist and a row, and Jean addresses a
-// playlist by the GUID the component issues, which beefweb cannot resolve. So
-// the sleeves either side come from the component by library path until 013
-// brings a positional address back.
+// One record is one address and one request, on a playing surface as much as on a
+// list. `/api/artwork/playing` names a different picture as soon as the track changes, so a cover
+// keyed by the track is fetched afresh for every track of the record, and nothing the browser
+// already holds can answer for the next one.
+test.describe("an album played through", () => {
+	// The Default Playlist is one record's first four tracks, in album order.
+	const TITLES = ["Rotten Apple", "Nutshell", "I Stay Away", "No Excuses"];
+
+	const playAtThePlayer = async (
+		page: Page,
+		player: FakePlayer,
+		row: number,
+	) => {
+		await page.request.post("/__control/play", {
+			data: { playlistId: "p1", index: row },
+		});
+		await expect.poll(() => player.player.activeItem.index).toBe(row);
+	};
+
+	const statusBarSleeve = (page: Page) =>
+		statusBar(page).locator("[data-artwork]");
+
+	// The sleeve the screen puts in front of a person: the wheel's centre slot on
+	// a phone, the one large cover on a desktop.
+	const screenSleeve = (page: Page, isMobile: boolean) =>
+		isMobile
+			? currentSleeve(page)
+			: nowPlayingScreen(page).locator("[data-artwork]");
+
+	test("costs the status bar one cover, at the record's own address", async ({
+		page,
+		player,
+	}) => {
+		await withNoListOnScreen(page);
+		await playAtThePlayer(page, player, 0);
+		await expect(statusBarSleeve(page)).toHaveAttribute("data-artwork", "ok");
+
+		await inSequence([1, 2, 3], async (row: number) => {
+			await playAtThePlayer(page, player, row);
+			await expect(statusBar(page)).toContainText(TITLES[row]);
+		});
+		await expect(statusBarSleeve(page)).toHaveAttribute("data-artwork", "ok");
+
+		await expectSettlesAt(player, () => coversFromTheComponent(player), [
+			JAR_OF_FLIES_COVER,
+		]);
+		expect(coverAddresses(player)).toHaveLength(1);
+	});
+
+	test("and the now-playing screen draws the record's sleeve without asking again", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await withNoListOnScreen(page);
+		await playAtThePlayer(page, player, 1);
+		await expect(statusBarSleeve(page)).toHaveAttribute("data-artwork", "ok");
+
+		await openNowPlaying(page);
+		await expect(screenSleeve(page, isMobile)).toHaveAttribute(
+			"data-artwork",
+			"ok",
+		);
+
+		// On a phone the screen is the wheel, whose neighbours are this record's
+		// other rows: they share the address rather than adding two of their own.
+		await expectSettlesAt(player, () => coversFromTheComponent(player), [
+			JAR_OF_FLIES_COVER,
+		]);
+		expect(coverAddresses(player)).toHaveLength(1);
+	});
+});
+
 test.describe("the sleeves either side of the playing row", () => {
 	test.skip(
 		({ isMobile }) => !isMobile,
 		"the wheel is the phone's skip gesture",
 	);
-	// Nothing may scroll the list behind the screen onto the rows asserted on
-	// below: a row the list mounts asks for its own cover at the same address,
-	// and the wheel's request would stop being the one being read.
-	test.use({ motion: "allow", settings: { "jean.followPlayback": false } });
+	test.use({ motion: "allow" });
 
-	// Far enough down the playing playlist that the list behind the screen has
-	// never mounted this row or the one after it.
-	const FAR_FROM_THE_TOP = { row: 20, title: "Guernica" };
+	// The ninth track of a record that sits in the middle of the Library playlist, so the row either
+	// side of it belongs to the same record.
+	const PLAYING = { row: 20, title: "Guernica" };
 
-	test("come from the component, addressed by that row's library path", async ({
+	// The neighbour a swipe is about to land on is a row of the same
+	// record nine times out of ten, so it is asked for at that record's address
+	// rather than at its own, and the swipe costs nothing.
+	test("come from the component, at the address their record's cover has everywhere", async ({
 		page,
 		player,
 	}) => {
-		await playRow(page, 0);
-		await expect(currentSleeve(page)).toHaveAttribute("data-artwork", "ok");
-		const { playlistId } = player.player.activeItem;
-		player.requests.length = 0;
+		// Driven at the player, over no list: only an address nothing has been near
+		// yet is certain to be seen here, for the reason `withNoListOnScreen` gives.
+		await withNoListOnScreen(page);
+		await page.request.post("/__control/play", {
+			data: { playlistId: "p7", index: PLAYING.row },
+		});
+		await expect.poll(() => player.player.activeItem.index).toBe(PLAYING.row);
+		await openNowPlaying(page);
 
-		player.playItem(playlistId, FAR_FROM_THE_TOP.row);
-
-		// Jean's own view of the row, not the player's. Nothing pushes the playing
-		// position, so a swipe sent the moment the player moves turns the wheel
-		// from a centre Jean has never been on, and a person cannot swipe at a row
-		// the screen has not drawn yet either.
+		// Jean's own view of the row, not the player's: a person cannot swipe at a
+		// row the screen has not drawn yet.
 		await expect(nowPlayingScreen(page).locator("h1")).toContainText(
-			FAR_FROM_THE_TOP.title,
+			PLAYING.title,
 		);
 
-		// Asked for before the turn, which is what a neighbour is for: a sleeve
-		// fetched at the moment of the swipe arrives a frame late and the swipe
-		// lands on an empty slot. Nothing else on screen has been near this row,
-		// so this names the wheel's own request.
-		await expect
-			.poll(() => coversFromTheComponent(player))
-			.toContain(
-				libraryPathOfRow(player, playlistId, FAR_FROM_THE_TOP.row + 1),
-			);
+		// Drawn before the turn, which is what a neighbour is for: a sleeve fetched
+		// at the moment of the swipe arrives a frame late and the swipe lands on an
+		// empty slot.
+		await expect(drawnSleeves(page)).toHaveCount(3);
+
+		// One address between the centre and both neighbours, and it is the record's. The set of
+		// distinct addresses rather than a count of asks: a repeat of an address already fetched is
+		// invisible here by design, while a neighbour addressed by its own row would be an address
+		// nothing has asked for and would have to arrive.
+		await expectSettlesAt(
+			player,
+			() => [...new Set(coversFromTheComponent(player))],
+			[DEJA_ENTENDU_COVER],
+		);
 
 		await across(page, 0.85, 0.25);
 		await expect
 			.poll(() => player.player.activeItem.index)
-			.toBe(FAR_FROM_THE_TOP.row + 1);
+			.toBe(PLAYING.row + 1);
 		await expect(currentSleeve(page)).toHaveAttribute("data-artwork", "ok");
 
+		// The row the swipe landed on is the tenth track of that record, and its
+		// own path is an address none of this went near.
+		expect(coversFromTheComponent(player)).not.toContain(
+			libraryPathOfRow(player, "p7", PLAYING.row + 1),
+		);
 		await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 	});
 
-	// A playlist of files the media library has never seen: the component has no
-	// library path to name either neighbour by, and there is no second address
-	// left to fall back on.
+	// A playlist of files the media library has never seen: the
+	// component has no library path to name either neighbour by, so it is asked
+	// for the picture at the row it sits on instead. The address is the
+	// component's own: beefweb cannot resolve a playlist named by GUID.
 	test.describe("where the media library carries neither of them", () => {
 		test.use({ mediaLibrarySize: 12 });
 
 		const ROW_WITH_A_NEIGHBOUR_EITHER_SIDE = 1;
 
-		test("draw no cover, and ask for none", async ({ page, player }) => {
-			await openLibrary(page);
+		test("are drawn from the playlist row each of them sits on", async ({
+			page,
+			player,
+		}) => {
+			await withNoListOnScreen(page);
 			await page.request.post("/__control/play", {
 				data: { playlistId: "p1", index: ROW_WITH_A_NEIGHBOUR_EITHER_SIDE },
 			});
@@ -308,15 +413,28 @@ test.describe("the sleeves either side of the playing row", () => {
 				.toBe(ROW_WITH_A_NEIGHBOUR_EITHER_SIDE);
 			await openNowPlaying(page);
 
-			await expect(currentSleeve(page)).toHaveAttribute("data-artwork", "ok");
 			expect(
 				libraryPathOfRow(player, "p1", ROW_WITH_A_NEIGHBOUR_EITHER_SIDE + 1),
 				"the media library carries the next row, so the case is not set up",
 			).toBeNull();
 
-			// The centre alone. A neighbour with no library path has no address, and
-			// an address built from an empty path is a 400 rather than a cover.
-			await expect(drawnSleeves(page)).toHaveCount(1);
+			// Every slot with a picture on it, the centre and both neighbours, so a
+			// swipe either way lands on a sleeve rather than on a hold.
+			await expect(drawnSleeves(page)).toHaveCount(3);
+
+			// Both neighbours, and no claim either way about the centre: that one
+			// already has `/api/artwork/playing` to reach for, and which of the two
+			// addresses it takes is not this case's to settle.
+			const guid = guidOfPlaylist(player, "p1");
+			await expect
+				.poll(() => coversByPosition(player))
+				.toEqual(
+					expect.arrayContaining([
+						`${guid}/${ROW_WITH_A_NEIGHBOUR_EITHER_SIDE - 1}`,
+						`${guid}/${ROW_WITH_A_NEIGHBOUR_EITHER_SIDE + 1}`,
+					]),
+				);
+
 			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 			expect(coversFromTheComponent(player)).not.toContain("");
 		});

@@ -31,6 +31,8 @@ const EMPTY_ACTIVE_ITEM = {
 	columns: [],
 	index: -1,
 	path: null,
+	album: null,
+	albumArtist: null,
 	playlistGuid: null,
 	playlistId: "",
 	playlistIndex: -1,
@@ -62,6 +64,8 @@ function mergePlayer(
 			duration: doc.duration,
 			index: doc.playingLocation?.index ?? -1,
 			path: doc.path || null,
+			album: doc.album,
+			albumArtist: doc.albumArtist,
 			playlistGuid: doc.playingLocation?.playlistId ?? null,
 			// A mark plus how long ago it was taken, per `Position` in the contract: the client adds
 			// them to get where playback is now.

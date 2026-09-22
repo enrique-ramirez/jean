@@ -6,7 +6,8 @@ import { queueDropAt, queuedSeconds, startsIn } from "@/domain/player/queue";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { coverKey } from "@/domain/track/fields";
-import { isFooJeanReady, libraryArtworkUrl } from "@/shared/api/fooJean";
+import { canonicalArtworkUrl } from "@/domain/track/librarySource";
+import { isFooJeanReady, playlistRowArtworkUrl } from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -37,6 +38,37 @@ const identityOf = (entry: QueueEntry) =>
 		: entry.libraryPath
 			? `lib:${entry.libraryPath}`
 			: `meta:${entry.artist}:${entry.title}`;
+
+interface QueueCover {
+	src: string | null;
+	identity: string;
+}
+
+// `identity` prefers the record `GET /api/queue` already names over `src`'s own address, since two
+// rows of one album share a cover before either row's address is resolved. See
+// `ui/src/shared/api/README.md`, *What Jean does about artwork*, for the fallback chain `src` takes.
+const coverOf = (origin: string | null, entry: QueueEntry): QueueCover => {
+	if (entry.libraryPath) {
+		const src = canonicalArtworkUrl(origin, entry.libraryPath);
+		const identity = entry.album
+			? coverKey(entry.albumArtist || entry.artist, entry.album)
+			: `lib:${entry.libraryPath}`;
+		return { src, identity };
+	}
+
+	if (entry.location && origin) {
+		const { playlistId, index } = entry.location;
+		const identity = entry.album
+			? coverKey(entry.albumArtist || entry.artist, entry.album)
+			: `pos:${playlistId}:${index}`;
+		return {
+			src: playlistRowArtworkUrl(origin, playlistId, index),
+			identity,
+		};
+	}
+
+	return { src: null, identity: coverKey(entry.artist, entry.title, "track") };
+};
 
 const rowKeys = (entries: QueueEntry[]) => {
 	const seen = new Map<string, number>();
@@ -134,7 +166,7 @@ const QueueRow = memo(function QueueRow({
 	itemProps,
 }: {
 	entry: QueueEntry;
-	cover: string | null | undefined;
+	cover: QueueCover;
 	snapshot: PlayerSnapshot | null | undefined;
 	isPlaying: boolean;
 	canQueue: boolean;
@@ -164,8 +196,8 @@ const QueueRow = memo(function QueueRow({
 
 			<Artwork
 				className={styles.tick}
-				src={cover}
-				identity={coverKey(entry.artist, entry.title, "track")}
+				src={cover.src}
+				identity={cover.identity}
 				size={32}
 			/>
 
@@ -233,14 +265,10 @@ export function QueuePanel({
 
 	const keys = useMemo(() => rowKeys(entries), [entries]);
 
-	// A row queued by playlist position has no second address to fall back on: Jean names a playlist
-	// by the GUID the component issues, which beefweb cannot resolve. Only a library path draws a
-	// cover here.
+	// The playlist a row falls back to is named by the GUID `foo_jean` itself issues, which
+	// beefweb cannot resolve: `coverOf` never hands that address to beefweb.
 	const covers = useMemo(
-		() =>
-			entries.map((entry): string | null =>
-				entry.libraryPath ? libraryArtworkUrl(origin, entry.libraryPath) : null,
-			),
+		() => entries.map((entry) => coverOf(origin, entry)),
 		[entries, origin],
 	);
 

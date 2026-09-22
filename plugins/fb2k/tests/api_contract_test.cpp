@@ -398,7 +398,8 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     const auto required =
         Keys{"playback",         "path",           "subsong",           "position",
              "duration",         "volume",         "muted",             "title",
-             "artist",           "playbackMode",   "playingLocation",   "currentPlaylistId",
+             "artist",           "album",          "albumArtist",       "playbackMode",
+             "playingLocation",  "currentPlaylistId",
              "queueRevision",    "playlistsRevision"};
 
     PlayerState playing;
@@ -410,6 +411,8 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     playing.playbackMode = "inOrder";
     playing.title = "Imaginary Track";
     playing.artist = "Fictional Artist";
+    playing.album = "Imaginary Album";
+    playing.albumArtist = "Various Fictional Artists";
     playing.playingLocation = PlayingLocation{"45837d74-fa4f-415c-bba9-bf2db8f0dc04", 3};
     playing.currentPlaylistId = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 

@@ -513,6 +513,12 @@ export const libraryArtworkUrl = (origin: string | null, path: string) =>
 export const playingArtworkUrl = (origin: string | null) =>
 	origin && `${origin}/api/artwork/playing`;
 
+export const playlistRowArtworkUrl = (
+	origin: string | null,
+	playlistId: string,
+	index: number,
+) => origin && `${origin}/api/artwork/playlists/${playlistId}/${index}`;
+
 // The ticket travels in the query string and the bearer token never does: an `<audio>` element sends
 // no headers, and a token here would reach every proxy log on the way.
 export const streamUrl = (origin: string, ticket: string, format: string) =>

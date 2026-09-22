@@ -28,13 +28,25 @@ const thePlayer = (page: Page) =>
 		.getByText("foobar2000", { exact: true });
 
 const session = (page: Page) =>
-	page.evaluate(() => ({
-		state: navigator.mediaSession.playbackState,
-		title: navigator.mediaSession.metadata?.title ?? null,
-		artist: navigator.mediaSession.metadata?.artist ?? null,
-		album: navigator.mediaSession.metadata?.album ?? null,
-		artwork: navigator.mediaSession.metadata?.artwork?.[0]?.src ?? null,
-	}));
+	page.evaluate(() => {
+		const [cover] = navigator.mediaSession.metadata?.artwork ?? [];
+		return {
+			state: navigator.mediaSession.playbackState,
+			title: navigator.mediaSession.metadata?.title ?? null,
+			artist: navigator.mediaSession.metadata?.artist ?? null,
+			album: navigator.mediaSession.metadata?.album ?? null,
+			artwork: cover?.src ?? null,
+			// What the operating system picks a size by. Declared or it has to decode
+			// every entry to find out what it was handed.
+			sizes: cover?.sizes ?? null,
+			type: cover?.type ?? null,
+		};
+	});
+
+// Roughly the longest edge the lock screen is handed, from `LOCK_SCREEN_MAX_EDGE` in
+// `src/app/useMediaSession.ts`. A picture already smaller than this is passed at its own size
+// rather than scaled up, so this is a ceiling and never an expected value.
+const LOCK_SCREEN_MAX_EDGE = 512;
 
 test.describe("the media session", () => {
 	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
@@ -72,12 +84,12 @@ test.describe("the media session", () => {
 		expect(live.state).toBe("playing");
 	});
 
-	// The operating system fetches the artwork address itself, so Jean cannot put
-	// a bearer token on it and the component answers 401. Until a blob URL with
-	// an owner closes that, the session publishes the words and no picture;
-	// `_todo/07-technical-debt.md`, *The OS media session cannot reach the
-	// playing cover*, is the measurement and what it would take.
-	test("carries no cover, and keeps naming the track it moves to", async ({
+	// The operating system fetches an artwork address itself, with no bearer token on it, and every
+	// cover the component serves needs one. So the picture handed over is the one Jean already
+	// fetched, redrawn small and encoded into the URL itself. A `blob:` is no good either: Chrome
+	// on iOS refuses one here. No test can see a lock screen, so this is as close as the suite
+	// gets to it.
+	test("carries the cover as an encoded picture, and keeps naming the track it moves to", async ({
 		page,
 		player,
 	}) => {
@@ -88,20 +100,44 @@ test.describe("the media session", () => {
 			.poll(() => session(page).then((live) => live.title))
 			.toBe("Los Calientes");
 
-		// A browser resolves every artwork entry against the document, so an entry
-		// carrying an empty address still reads back as one. Null here is no entry.
-		expect((await session(page)).artwork).toBeNull();
+		await expect
+			.poll(() => session(page).then((live) => live.artwork))
+			.toMatch(/^data:image\/jpeg;base64,/);
+
+		const live = await session(page);
+		expect(live.type).toBe("image/jpeg");
+
+		// Declared, and small enough that no operating system rejects it for size.
+		expect(live.sizes).toMatch(/^\d+x\d+$/);
+		const edges = String(live.sizes).split("x").map(Number);
+		expect(Math.max(...edges)).toBeLessThanOrEqual(LOCK_SCREEN_MAX_EDGE);
+		expect(Math.min(...edges)).toBeGreaterThan(0);
 
 		player.playItem(player.player.activeItem.playlistId, ANOTHER_ARTIST.row);
 
-		// The half that must not regress. A lock screen with no picture still says
-		// what is playing, and it is the only thing a browser test can read back.
+		// The half that must not regress, and the half a person on a lock screen reads first: the
+		// picture has to move with the words rather than being left on the record that stopped
+		// playing. Read as one retrying assertion rather than as several, because the words and the
+		// picture are published together while the picture is rebuilt asynchronously, so a read
+		// taken between two of them catches the new words over the old sleeve and says nothing
+		// about where either settles.
 		await expect
-			.poll(() => session(page))
-			.toMatchObject({
+			.poll(() =>
+				session(page).then((one) => ({
+					title: one.title,
+					artist: one.artist,
+					type: one.type,
+					isEncoded:
+						one.artwork?.startsWith("data:image/jpeg;base64,") ?? false,
+					movedOn: one.artwork !== live.artwork,
+				})),
+			)
+			.toEqual({
 				title: ANOTHER_ARTIST.title,
 				artist: ANOTHER_ARTIST.artist,
-				artwork: null,
+				type: "image/jpeg",
+				isEncoded: true,
+				movedOn: true,
 			});
 
 		await expectSettlesAt(player, () => coversFromBeefweb(player), []);

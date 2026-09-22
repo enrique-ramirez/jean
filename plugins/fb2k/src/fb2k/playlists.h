@@ -2,6 +2,7 @@
 
 #include "core/http_server.h"
 #include "core/playlists.h"
+#include "fb2k/artwork.h"
 #include "fb2k/library.h"
 #include "fb2k/main_thread.h"
 
@@ -49,6 +50,12 @@ PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
 PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
                                                   const PlaylistVersions& versions);
 PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread);
+
+// The playlist and the row are resolved to a handle on the main thread; the library path and
+// the cover are read from it off the main thread, the way art_.of() and get_relative_path()
+// already are for readPlaylistRows. `art` outlives the reader this returns.
+PlaylistRowArtworkReader makePlaylistRowArtworkReader(MainThreadQueue& mainThread,
+                                                       const AlbumArt& art);
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions, int maxAutoPlaylists);
 AutoPlaylistUpdater makeAutoPlaylistUpdater(MainThreadQueue& mainThread,

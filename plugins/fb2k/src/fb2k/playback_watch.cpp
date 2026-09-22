@@ -26,6 +26,12 @@ constexpr char kTitleScript[] = "%title%";
 // with none of the four reads as no artist rather than as an artist named "?".
 constexpr char kArtistScript[] = "[%artist%]";
 
+// Bracketed for the same reason as %artist%: an untagged track reads as no record rather than
+// one named "?". `[%album artist%]` is a separate title-formatting field, not filled in from
+// `[%artist%]`.
+constexpr char kAlbumScript[] = "[%album%]";
+constexpr char kAlbumArtistScript[] = "[%album artist%]";
+
 std::string displayPathOf(const metadb_handle_ptr& track) {
     if (!track.is_valid())
         return {};
@@ -55,7 +61,10 @@ PlayingTrack trackOf(const metadb_handle_ptr& track) {
 // own broadcast update, since that is a currently-playing concept `playback_control` resolves
 // rather than something the track's stored tags carry.
 void publishName(PlayerStateStore& store, const titleformat_object::ptr& titleScript,
-                 const titleformat_object::ptr& artistScript, const metadb_handle_ptr& track) {
+                 const titleformat_object::ptr& artistScript,
+                 const titleformat_object::ptr& albumScript,
+                 const titleformat_object::ptr& albumArtistScript,
+                 const metadb_handle_ptr& track) {
     const auto playback = playback_control::get();
 
     pfc::string8 title;
@@ -66,7 +75,15 @@ void publishName(PlayerStateStore& store, const titleformat_object::ptr& titleSc
     playback->playback_format_title_ex(track, nullptr, artist, artistScript, nullptr,
                                        playback_control::display_level_titles);
 
-    store.nameChanged(toStd(title), toStd(artist));
+    pfc::string8 album;
+    playback->playback_format_title_ex(track, nullptr, album, albumScript, nullptr,
+                                       playback_control::display_level_titles);
+
+    pfc::string8 albumArtist;
+    playback->playback_format_title_ex(track, nullptr, albumArtist, albumArtistScript, nullptr,
+                                       playback_control::display_level_titles);
+
+    store.nameChanged(toStd(title), toStd(artist), toStd(album), toStd(albumArtist));
 }
 
 // `output_hold`'s mute and the player's own look identical to foobar2000, since it has no
@@ -202,7 +219,8 @@ service_factory_single_t<QueueServiceCallback> g_queueServiceCallback;
 struct PlaybackWatch::Callback : public play_callback_impl_base {
     Callback(MainThreadQueue& mainThread, PlayerStateStore& store, PlaylistVersions& versions,
              OutputHold& outputHold, NowPlayingArtwork& artwork,
-             titleformat_object::ptr titleScript, titleformat_object::ptr artistScript)
+             titleformat_object::ptr titleScript, titleformat_object::ptr artistScript,
+             titleformat_object::ptr albumScript, titleformat_object::ptr albumArtistScript)
         : play_callback_impl_base(flag_on_playback_new_track | flag_on_playback_pause |
                                   flag_on_playback_stop | flag_on_playback_seek |
                                   flag_on_playback_dynamic_info |
@@ -213,7 +231,9 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
           outputHold_(outputHold),
           artwork_(artwork),
           titleScript_(std::move(titleScript)),
-          artistScript_(std::move(artistScript)) {}
+          artistScript_(std::move(artistScript)),
+          albumScript_(std::move(albumScript)),
+          albumArtistScript_(std::move(albumArtistScript)) {}
 
     // Reading the location inline here would race the player: see ARCHITECTURE.md, *Facts about
     // the player*. `started()` leaves `playingLocation` standing on purpose (player_state.cpp),
@@ -223,7 +243,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
     void on_playback_new_track(metadb_handle_ptr track) override {
         artwork_.clear();
         store_.started(trackOf(track), std::chrono::steady_clock::now());
-        publishName(store_, titleScript_, artistScript_, track);
+        publishName(store_, titleScript_, artistScript_, albumScript_, albumArtistScript_, track);
         queueLocationRead();
     }
 
@@ -265,7 +285,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
     void on_playback_dynamic_info_track(const file_info&) override {
         metadb_handle_ptr track;
         if (playback_control::get()->get_now_playing(track))
-            publishName(store_, titleScript_, artistScript_, track);
+            publishName(store_, titleScript_, artistScript_, albumScript_, albumArtistScript_, track);
     }
 
     void on_volume_change(float value) override {
@@ -288,6 +308,8 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
     NowPlayingArtwork& artwork_;
     titleformat_object::ptr titleScript_;
     titleformat_object::ptr artistScript_;
+    titleformat_object::ptr albumScript_;
+    titleformat_object::ptr albumArtistScript_;
 };
 
 // foobar2000 keeps the playback order on playlist_manager rather than on playback_control, so
@@ -399,8 +421,14 @@ PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& stor
     titleformat_object::ptr artistScript;
     compiler->compile_safe_ex(artistScript, kArtistScript, "");
 
+    titleformat_object::ptr albumScript;
+    compiler->compile_safe_ex(albumScript, kAlbumScript, "");
+
+    titleformat_object::ptr albumArtistScript;
+    compiler->compile_safe_ex(albumArtistScript, kAlbumArtistScript, "");
+
     callback_ = std::make_unique<Callback>(mainThread, store, playlistVersions, outputHold, artwork,
-                                           titleScript, artistScript);
+                                           titleScript, artistScript, albumScript, albumArtistScript);
     orderCallback_ = std::make_unique<OrderCallback>(store);
     currentCallback_ = std::make_unique<CurrentCallback>(store);
     locationCallback_ = std::make_unique<LocationCallback>(mainThread, store, playlistVersions);
@@ -411,7 +439,7 @@ PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& stor
 
     metadb_handle_ptr track;
     if (playback_control::get()->get_now_playing(track))
-        publishName(store, titleScript, artistScript, track);
+        publishName(store, titleScript, artistScript, albumScript, albumArtistScript, track);
 }
 
 PlaybackWatch::~PlaybackWatch() = default;

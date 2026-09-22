@@ -112,6 +112,12 @@ export const drives: Drive[] = [
 	},
 	{ id: "getPlayingArtwork", probe: () => ({}) },
 	{
+		id: "getPlaylistRowArtwork",
+		probe: () => ({
+			pathParams: { id: kUnissuedPlaylistId, row: "0" },
+		}),
+	},
+	{
 		id: "writeTags",
 		probe: (operation) => ({ body: example(operation, "setRating") }),
 	},

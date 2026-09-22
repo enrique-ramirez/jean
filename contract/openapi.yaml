@@ -147,11 +147,15 @@ info:
 
     `GET /artwork` is unchanged by this. Everything that addresses a cover by library key keeps using it.
 
+    ### The positional fallback
+
+    `GET /artwork/playlists/{id}/{row}` is the front cover of a playlist row `GET /artwork` cannot address: one with no library-relative path. A client names a playlist and a position; the player resolves the two to a handle, so nothing here becomes a filesystem path and nothing addresses a track the player did not itself find at that row. A row the media library does hold a path for is refused rather than answered: one album is one address, and a position is not that address.
+
     ### Revalidating a cover
 
-    `Cache-Control: no-cache, must-revalidate`, which is "ask every time, and use the copy you have when it has not changed" rather than "do not keep it". A client SHOULD keep the bytes and send the `ETag` back as `If-None-Match`.
+    `GET /artwork` answers a present cover with `Cache-Control: private, max-age=15552000`, 180 days, and a `404` with `private, max-age=600`, ten minutes. The long lifetime is what the one-URL-per-album design is for: a client holding a sleeve spends no request on it again for months. The short one is what tells a client to look again: a cover dropped into an album's folder after the last ask is drawn within ten minutes, with no reload. `private` keeps both out of a cache that is not the client's own, since the response carries a token's worth of trust and nothing another client should be handed.
 
-    `must-revalidate` addresses a cache that is not the client's own, and a client does nothing differently for it. Of the three directives that let a shared cache reuse a response to a request carrying `Authorization`, it is the only one that still makes that cache ask this component before it answers.
+    `GET /artwork/playing` and `GET /artwork/playlists/{id}/{row}` answer `Cache-Control: private, no-cache` on every outcome, present cover or refusal alike: the address names nothing durable, a track playing now or a position in a playlist, so the picture behind it changes without the URL changing and a lifetime would hand a client the wrong sleeve. `no-cache` asks a client to revalidate before it draws the copy it holds rather than forbidding the copy outright, so a client SHOULD still keep the bytes and send the `ETag` back as `If-None-Match`.
 
     The validator is strong, quoted and opaque, and it is a fold of the picture itself, so it moves when and only when the cover does. That catches the change nothing else can see: an image file sitting beside the music, replaced in place, alters no tag and no track and is announced to nobody. The player loads the cover to answer at all, so a `304` saves the transfer and the redraw rather than the work at the player.
 
@@ -202,7 +206,7 @@ tags:
       The play queue: read whole, refetched on its own revision, added to, reordered, trimmed one entry at a time, or emptied outright.
   - name: artwork
     description: |
-      Cover art: one route addressed by a track the media library holds, and one addressed by whatever is playing.
+      Cover art: one route addressed by a track the media library holds, one addressed by whatever is playing, and one addressed by a playlist and a position for a track that reaches neither.
   - name: stream
     description: |
       Listening to the player's own output. foobar2000 decodes and sequences; this carries the result to a browser.
@@ -1406,11 +1410,11 @@ paths:
       responses:
         "200":
           description: |
-            The current state of the snapshot. `Cache-Control` is `no-cache, must-revalidate`, as on every route here that sets a validator.
+            The current state of the snapshot. `Cache-Control` is `private, no-cache`, as on every route here that sets a validator: this must stay current, so no cache but the client's own may hold it, and a client revalidates before drawing the copy it holds rather than reusing it blind.
           headers:
             Cache-Control:
               schema: { type: string }
-              description: "`no-cache, must-revalidate`."
+              description: "`private, no-cache`."
             Vary:
               schema: { type: string }
               description: "`Accept-Encoding`."
@@ -1440,6 +1444,8 @@ paths:
                       playbackMode: inOrder
                       title: Imaginary Track
                       artist: Fictional Artist
+                      album: Imaginary Album
+                      albumArtist: Various Fictional Artists
                       playingLocation:
                         { playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04, index: 3 }
                       currentPlaylistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
@@ -1461,6 +1467,8 @@ paths:
                       playbackMode: inOrder
                       title: null
                       artist: null
+                      album: null
+                      albumArtist: null
                       playingLocation: null
                       currentPlaylistId: null
                       queueRevision: 0
@@ -1757,11 +1765,11 @@ paths:
       responses:
         "200":
           description: |
-            The snapshot. `Cache-Control` is `no-cache, must-revalidate`, so a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
+            The snapshot. `Cache-Control` is `private, no-cache`, so no cache but the client's own may hold it and a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
           headers:
             Cache-Control:
               schema: { type: string }
-              description: "`no-cache, must-revalidate`."
+              description: "`private, no-cache`."
             Content-Encoding:
               schema: { type: string, enum: [gzip] }
               description: Present only when the request offered gzip. Absent means the bytes as they stand.
@@ -1815,11 +1823,11 @@ paths:
       responses:
         "200":
           description: |
-            The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `no-cache, must-revalidate`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*.
+            The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `private, no-cache`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*.
           headers:
             Cache-Control:
               schema: { type: string }
-              description: "`no-cache, must-revalidate`."
+              description: "`private, no-cache`."
             Content-Encoding:
               schema: { type: string, enum: [gzip] }
               description: Present only when the request offered gzip. Absent means the bytes as they stand.
@@ -1893,7 +1901,7 @@ paths:
               description: Strong, quoted and opaque. Send it back as `If-None-Match`.
             Cache-Control:
               schema: { type: string }
-              description: "`no-cache, must-revalidate`: keep the bytes, and ask before drawing them again."
+              description: "`private, max-age=15552000`, 180 days: this album's cover is fresh for months, and never in a cache but that client's."
           content:
             image/jpeg: { schema: { type: string, format: binary } }
             image/png: { schema: { type: string, format: binary } }
@@ -1925,18 +1933,77 @@ paths:
               description: Strong, quoted and opaque. Send it back as `If-None-Match`.
             Cache-Control:
               schema: { type: string }
-              description: "`no-cache, must-revalidate`: keep the bytes, and ask before drawing them again."
+              description: "`private, no-cache`: revalidate on every request, since this URL names a different picture once the track does."
           content:
             image/jpeg: { schema: { type: string, format: binary } }
             image/png: { schema: { type: string, format: binary } }
             image/gif: { schema: { type: string, format: binary } }
             image/webp: { schema: { type: string, format: binary } }
             image/bmp: { schema: { type: string, format: binary } }
-        "304": { $ref: "#/components/responses/ArtworkNotModified" }
+        "304": { $ref: "#/components/responses/RevalidatedArtworkNotModified" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NoPlayingArtwork" }
         "413": { $ref: "#/components/responses/ArtworkTooLarge" }
         "429": { $ref: "#/components/responses/ArtworkRequestedTooFast" }
+
+  /artwork/playlists/{id}/{row}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: |
+          The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        example: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+      - name: row
+        in: path
+        required: true
+        description: The row's position in the playlist, `0` being the first.
+        schema: { type: integer, minimum: 0, maximum: 4294967295 }
+        example: 0
+    get:
+      tags: [artwork]
+      operationId: getPlaylistRowArtwork
+      summary: The front cover of a playlist row with no library-relative path.
+      description: |
+        The fallback for a row `GET /artwork` cannot address. *The positional fallback* above is the whole of it: why a playlist and a position stand in for a path, and why a row the media library does hold a path for is refused rather than answered.
+
+        A query string carrying `track` is ignored: the client's whole say in this request is the playlist and the position, and the player resolves the handle behind them.
+      responses:
+        "200":
+          description: |
+            The cover, in the format the player stored it in.
+          headers:
+            ETag:
+              schema: { type: string }
+              description: Strong, quoted and opaque. Send it back as `If-None-Match`.
+            Cache-Control:
+              schema: { type: string }
+              description: "`private, no-cache`: revalidate on every request, since this URL names a different picture once the row does."
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/bmp: { schema: { type: string, format: binary } }
+        "304": { $ref: "#/components/responses/RevalidatedArtworkNotModified" }
+        "400":
+          description: An `id` this component did not issue, or a `row` that is not a whole number or is larger than 4294967295.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PlaylistRefusal"
+                  - $ref: "#/components/schemas/PlaylistFailed"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoPositionalArtwork" }
+        "413": { $ref: "#/components/responses/ArtworkTooLarge" }
+        "429": { $ref: "#/components/responses/ArtworkRequestedTooFast" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/ArtworkUnavailable" }
+        "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
   /stream/ticket:
     post:
@@ -2412,7 +2479,7 @@ components:
       headers:
         Cache-Control:
           schema: { type: string }
-          description: "`no-cache, must-revalidate`, as on the `200`."
+          description: "`private, no-cache`, as on the `200`."
         ETag:
           schema: { type: string }
           description: The same tag the `200` carried, coding suffix and all.
@@ -2515,7 +2582,20 @@ components:
           description: The same tag the `200` carried.
         Cache-Control:
           schema: { type: string }
-          description: "`no-cache, must-revalidate`."
+          description: "`private, max-age=15552000`, as on the `200`."
+
+    RevalidatedArtworkNotModified:
+      description: |
+        The cover is byte for byte the one the client was last sent, so there is no body.
+
+        `ETag` is repeated so a client can keep validating against it, and `Cache-Control` is repeated so a stored copy that has just been confirmed still revalidates next time.
+      headers:
+        ETag:
+          schema: { type: string }
+          description: The same tag the `200` carried.
+        Cache-Control:
+          schema: { type: string }
+          description: "`private, no-cache`, as on the `200`."
 
     ArtworkRefused:
       description: |
@@ -2532,6 +2612,10 @@ components:
         There is no picture to send. Either the snapshot holds no track at that address, which is what a client sees after tracks moved on disk, or the player has no front cover for the one it holds, or the cover is in a format this component does not publish.
 
         The `error` string tells them apart. All three are ordinary: an album without a sleeve is not a fault, and a client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+      headers:
+        Cache-Control:
+          schema: { type: string }
+          description: "`private, max-age=600`, ten minutes: a cover added at the player is drawn within that window with no reload."
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -2546,10 +2630,36 @@ components:
         There is no picture to send for whatever is playing: nothing is playing yet, the player has no front cover for what is, or the cover is in a format this component does not publish.
 
         The `error` string is the same one `GET /artwork` answers with for the second and third of those, because from a reader's side it is the same fact. A client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+      headers:
+        Cache-Control:
+          schema: { type: string }
+          description: "`private, no-cache`: revalidate on every request, since this URL names a different picture once the track does."
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           examples:
+            nothing:
+              value: { error: no artwork for that track }
+            unreadable:
+              value: { error: that artwork is not in a format this component sends }
+
+    NoPositionalArtwork:
+      description: |
+        There is no picture to send from a playlist and a position: the playlist does not exist, the position is past its end, the media library already holds a path for that row, the player has no front cover for what it found there, or the cover is in a format this component does not publish.
+
+        The `error` string tells them apart. All five are ordinary and a client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+      headers:
+        Cache-Control:
+          schema: { type: string }
+          description: "`private, no-cache`: revalidate on every request, since this URL names a different picture once the row does."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            noSuchPlaylist:
+              value: { error: no such playlist }
+            positionPastEnd:
+              value: { error: that position is past the end }
             nothing:
               value: { error: no artwork for that track }
             unreadable:
@@ -3416,7 +3526,7 @@ components:
       additionalProperties: false
       required:
         [playback, path, subsong, position, duration, volume, muted, playbackMode, title, artist,
-         playingLocation, currentPlaylistId, queueRevision, playlistsRevision]
+         album, albumArtist, playingLocation, currentPlaylistId, queueRevision, playlistsRevision]
       properties:
         playback:
           type: string
@@ -3455,6 +3565,14 @@ components:
           type: [string, "null"]
           description: |
             The playing track's artist, computed by the player, or `null` when it has not computed one.
+        album:
+          type: [string, "null"]
+          description: |
+            The record the playing track is from, computed by the player, or `null` when it has not computed one. A client keys a cover by this, alongside `albumArtist`, rather than by the track, so an album played through costs one request.
+        albumArtist:
+          type: [string, "null"]
+          description: |
+            The playing track's album artist, computed by the player, or `null` when it has not computed one. Not filled in from `artist`: a compilation credits a different artist on every row of the same record.
         playingLocation:
           description: |
             Where the playing track sits, or `null` when it is not playing from a playlist this component can name.

@@ -149,6 +149,19 @@ using PlaylistRowCopier =
 using PlaylistRowRemover = std::function<RowsEdited(
     const std::string& playlistId, uint64_t structure, const std::vector<uint32_t>& positions)>;
 
+// What GET /api/artwork/playlists/{id}/{row} has to decide from: `outcome` carries the two
+// only the player can answer, an unknown playlist and a position past its end. `libraryPath`
+// is set where the media library already holds a path for the row, which the route refuses
+// (ARCHITECTURE.md, *Artwork*, has why); `source` is the cover itself where there is one to send.
+struct PlaylistArtworkRead {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    std::optional<std::string> libraryPath;
+    ArtworkSource source;
+};
+
+using PlaylistRowArtworkReader =
+    std::function<PlaylistArtworkRead(const std::string& playlistId, uint32_t row)>;
+
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.
 struct Player {
@@ -207,6 +220,7 @@ struct Player {
     LibraryRefresher refreshLibrary;
 
     ArtworkReader readArtwork;
+    PlaylistRowArtworkReader readPlaylistRowArtwork;
 };
 
 class HttpServer {

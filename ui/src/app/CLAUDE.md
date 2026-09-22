@@ -71,6 +71,6 @@ The Android lock screen, macOS Now Playing and the media keys, iOS Control Centr
 
 Two traps worth keeping: Chrome throws a **`TypeError` on a position past the duration**, which a live stream's own clock will produce, and `setActionHandler` **throws for an action the browser does not know** rather than ignoring it. Both are caught: losing the scrubber is not worth losing the session.
 
-**The session carries no artwork at all.** The browser and the OS fetch that address themselves, so Jean cannot attach the bearer token `foo_jean`'s cover route requires, and handing it the address would only earn a 401.
+**The session carries the playing cover, redrawn rather than addressed.** The browser and the OS fetch whatever address they are given themselves, so Jean cannot attach the bearer token `foo_jean`'s cover routes require and hands over no address at all: `shrinkForLockScreen()` is where the cover Jean already fetched with the token is redrawn into something the session can take instead, and why.
 
-**The album is the one field on the lock screen `PlayerState` does not carry, and it must not join it**, since `useNowPlayingTrack` already fetches it once per track for the now-playing screen. The media session reads that same query, so the screen and the lock screen never ask twice.
+**The album and the album artist ride the same poll as title and artist, on `PlayerState.activeItem`.** The media session keys its cover off them directly, the way the status bar and the now-playing screen do, rather than waiting on `useNowPlayingTrack`'s own per-track read: that query still exists for the now-playing screen's lyrics, rating and detail panels, but nothing here depends on it, and nothing in this file should start to.

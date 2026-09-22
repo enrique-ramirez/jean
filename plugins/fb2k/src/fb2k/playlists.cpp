@@ -765,6 +765,43 @@ PlaylistOutcome beginPlayRow(const std::string& playlistId, uint32_t index) {
     return PlaylistOutcome::done;
 }
 
+// What the main thread hands over for GET /api/artwork/playlists/{id}/{row}: the handle alone,
+// so the library-path check and the cover read happen off it exactly as they do for a page of
+// rows.
+struct RowHandle {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    metadb_handle_ptr handle;
+};
+
+RowHandle rowHandleFailure(PlaylistOutcome outcome) {
+    RowHandle failure;
+    failure.outcome = outcome;
+    return failure;
+}
+
+void beginReadRowHandle(const std::string& playlistId, uint32_t row,
+                        const AnswerPtr<RowHandle>& answer) {
+    const auto playlist = findPlaylist(playlistId);
+    if (playlist == pfc::infinite_size) {
+        answer->set(rowHandleFailure(PlaylistOutcome::noSuchPlaylist));
+        return;
+    }
+
+    const auto manager = playlist_manager::get();
+    if (row >= manager->playlist_get_item_count(playlist)) {
+        answer->set(rowHandleFailure(PlaylistOutcome::positionPastEnd));
+        return;
+    }
+
+    RowHandle found;
+    if (!manager->playlist_get_item_handle(found.handle, playlist, row)) {
+        answer->set(rowHandleFailure(PlaylistOutcome::playerRefused));
+        return;
+    }
+
+    answer->set(std::move(found));
+}
+
 PlaylistRow formattedRow(const metadb_handle_ptr& handle,
                          const std::vector<titleformat_object::ptr>& scripts,
                          const library_manager::ptr& libraryManager) {
@@ -1007,6 +1044,35 @@ PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread) {
                 answer->set(beginPlayRow(playlistId, index));
             },
             PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+    };
+}
+
+PlaylistRowArtworkReader makePlaylistRowArtworkReader(MainThreadQueue& mainThread,
+                                                       const AlbumArt& art) {
+    const auto libraryManager = library_manager::get();
+
+    return [&mainThread, &art, libraryManager](const std::string& playlistId, uint32_t row) {
+        const auto found = askPlayer<RowHandle>(
+            mainThread, "reading a playlist row's artwork",
+            [playlistId, row](const AnswerPtr<RowHandle>& answer) {
+                beginReadRowHandle(playlistId, row, answer);
+            },
+            rowHandleFailure(PlaylistOutcome::timedOut),
+            rowHandleFailure(PlaylistOutcome::playerRefused));
+
+        PlaylistArtworkRead read;
+        read.outcome = found.outcome;
+        if (read.outcome != PlaylistOutcome::done)
+            return read;
+
+        pfc::string8 relative;
+        if (libraryManager->get_relative_path(found.handle, relative)) {
+            read.libraryPath = forwardSlashed(toStd(relative));
+            return read;
+        }
+
+        read.source = art.of(found.handle);
+        return read;
     };
 }
 

@@ -750,6 +750,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/artwork/playlists/{id}/{row}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+                /**
+                 * @description The row's position in the playlist, `0` being the first.
+                 * @example 0
+                 */
+                row: number;
+            };
+            cookie?: never;
+        };
+        /**
+         * The front cover of a playlist row with no library-relative path.
+         * @description The fallback for a row `GET /artwork` cannot address. *The positional fallback* above is the whole of it: why a playlist and a position stand in for a path, and why a row the media library does hold a path for is refused rather than answered.
+         *
+         *     A query string carrying `track` is ignored: the client's whole say in this request is the playlist and the position, and the player resolves the handle behind them.
+         */
+        get: operations["getPlaylistRowArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stream/ticket": {
         parameters: {
             query?: never;
@@ -1518,6 +1551,10 @@ export interface components {
             title: string | null;
             /** @description The playing track's artist, computed by the player, or `null` when it has not computed one. */
             artist: string | null;
+            /** @description The record the playing track is from, computed by the player, or `null` when it has not computed one. A client keys a cover by this, alongside `albumArtist`, rather than by the track, so an album played through costs one request. */
+            album: string | null;
+            /** @description The playing track's album artist, computed by the player, or `null` when it has not computed one. Not filled in from `artist`: a compilation credits a different artist on every row of the same record. */
+            albumArtist: string | null;
             /** @description Where the playing track sits, or `null` when it is not playing from a playlist this component can name. */
             playingLocation: components["schemas"]["PlayingLocation"] | null;
             /**
@@ -2056,7 +2093,7 @@ export interface components {
          */
         NotModified: {
             headers: {
-                /** @description `no-cache, must-revalidate`, as on the `200`. */
+                /** @description `private, no-cache`, as on the `200`. */
                 "Cache-Control"?: string;
                 /** @description The same tag the `200` carried, coding suffix and all. */
                 ETag?: string;
@@ -2162,7 +2199,22 @@ export interface components {
             headers: {
                 /** @description The same tag the `200` carried. */
                 ETag?: string;
-                /** @description `no-cache, must-revalidate`. */
+                /** @description `private, max-age=15552000`, as on the `200`. */
+                "Cache-Control"?: string;
+                [name: string]: unknown;
+            };
+            content?: never;
+        };
+        /**
+         * @description The cover is byte for byte the one the client was last sent, so there is no body.
+         *
+         *     `ETag` is repeated so a client can keep validating against it, and `Cache-Control` is repeated so a stored copy that has just been confirmed still revalidates next time.
+         */
+        RevalidatedArtworkNotModified: {
+            headers: {
+                /** @description The same tag the `200` carried. */
+                ETag?: string;
+                /** @description `private, no-cache`, as on the `200`. */
                 "Cache-Control"?: string;
                 [name: string]: unknown;
             };
@@ -2184,6 +2236,8 @@ export interface components {
          */
         NoArtwork: {
             headers: {
+                /** @description `private, max-age=600`, ten minutes: a cover added at the player is drawn within that window with no reload. */
+                "Cache-Control"?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -2197,6 +2251,23 @@ export interface components {
          */
         NoPlayingArtwork: {
             headers: {
+                /** @description `private, no-cache`: revalidate on every request, since this URL names a different picture once the track does. */
+                "Cache-Control"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description There is no picture to send from a playlist and a position: the playlist does not exist, the position is past its end, the media library already holds a path for that row, the player has no front cover for what it found there, or the cover is in a format this component does not publish.
+         *
+         *     The `error` string tells them apart. All five are ordinary and a client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+         */
+        NoPositionalArtwork: {
+            headers: {
+                /** @description `private, no-cache`: revalidate on every request, since this URL names a different picture once the row does. */
+                "Cache-Control"?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -3194,10 +3265,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The current state of the snapshot. `Cache-Control` is `no-cache, must-revalidate`, as on every route here that sets a validator. */
+            /** @description The current state of the snapshot. `Cache-Control` is `private, no-cache`, as on every route here that sets a validator: this must stay current, so no cache but the client's own may hold it, and a client revalidates before drawing the copy it holds rather than reusing it blind. */
             200: {
                 headers: {
-                    /** @description `no-cache, must-revalidate`. */
+                    /** @description `private, no-cache`. */
                     "Cache-Control"?: string;
                     /** @description `Accept-Encoding`. */
                     Vary?: string;
@@ -3537,10 +3608,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The snapshot. `Cache-Control` is `no-cache, must-revalidate`, so a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            /** @description The snapshot. `Cache-Control` is `private, no-cache`, so no cache but the client's own may hold it and a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
             200: {
                 headers: {
-                    /** @description `no-cache, must-revalidate`. */
+                    /** @description `private, no-cache`. */
                     "Cache-Control"?: string;
                     /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
                     "Content-Encoding"?: "gzip";
@@ -3590,10 +3661,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `no-cache, must-revalidate`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*. */
+            /** @description The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `private, no-cache`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*. */
             200: {
                 headers: {
-                    /** @description `no-cache, must-revalidate`. */
+                    /** @description `private, no-cache`. */
                     "Cache-Control"?: string;
                     /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
                     "Content-Encoding"?: "gzip";
@@ -3661,7 +3732,7 @@ export interface operations {
                 headers: {
                     /** @description Strong, quoted and opaque. Send it back as `If-None-Match`. */
                     ETag?: string;
-                    /** @description `no-cache, must-revalidate`: keep the bytes, and ask before drawing them again. */
+                    /** @description `private, max-age=15552000`, 180 days: this album's cover is fresh for months, and never in a cache but that client's. */
                     "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
@@ -3696,7 +3767,7 @@ export interface operations {
                 headers: {
                     /** @description Strong, quoted and opaque. Send it back as `If-None-Match`. */
                     ETag?: string;
-                    /** @description `no-cache, must-revalidate`: keep the bytes, and ask before drawing them again. */
+                    /** @description `private, no-cache`: revalidate on every request, since this URL names a different picture once the track does. */
                     "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
@@ -3708,11 +3779,67 @@ export interface operations {
                     "image/bmp": string;
                 };
             };
-            304: components["responses"]["ArtworkNotModified"];
+            304: components["responses"]["RevalidatedArtworkNotModified"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoPlayingArtwork"];
             413: components["responses"]["ArtworkTooLarge"];
             429: components["responses"]["ArtworkRequestedTooFast"];
+        };
+    };
+    getPlaylistRowArtwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+                /**
+                 * @description The row's position in the playlist, `0` being the first.
+                 * @example 0
+                 */
+                row: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cover, in the format the player stored it in. */
+            200: {
+                headers: {
+                    /** @description Strong, quoted and opaque. Send it back as `If-None-Match`. */
+                    ETag?: string;
+                    /** @description `private, no-cache`: revalidate on every request, since this URL names a different picture once the row does. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/gif": string;
+                    "image/webp": string;
+                    "image/bmp": string;
+                };
+            };
+            304: components["responses"]["RevalidatedArtworkNotModified"];
+            /** @description An `id` this component did not issue, or a `row` that is not a whole number or is larger than 4294967295. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoPositionalArtwork"];
+            413: components["responses"]["ArtworkTooLarge"];
+            429: components["responses"]["ArtworkRequestedTooFast"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["ArtworkUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
         };
     };
     issueStreamTicket: {

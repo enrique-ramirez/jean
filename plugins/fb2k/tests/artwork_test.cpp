@@ -1,14 +1,17 @@
-// Two covers over a real socket, and the pure half behind both: the one a client addresses by
-// track, and the one the player is showing, which a client addresses by nothing at all.
+// Three covers over a real socket, and the pure half behind them: the one a client addresses by
+// track, the one the player is showing, which a client addresses by nothing at all, and the one
+// a client addresses by a playlist and a position, for a track no path reaches.
 
 #include "third_party/doctest.h"
 
 #include "core/artwork.h"
+#include "core/http_server.h"
 #include "support/spec.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <set>
@@ -25,6 +28,10 @@ namespace {
 constexpr char kTrack[] = "Artist/Album/01.flac";
 constexpr char kAddress[] = "/api/artwork?track=Artist%2FAlbum%2F01.flac";
 
+// The same address as a query a client could hang on any route, which is what the positional
+// route has to ignore.
+constexpr char kTrackQuery[] = "?track=Artist%2FAlbum%2F01.flac";
+
 constexpr char kPlayingAddress[] = "/api/artwork/playing";
 
 constexpr char kJpeg[] =
@@ -35,6 +42,16 @@ constexpr char kPng[] =
     "and then the rest of a drawing";
 
 constexpr char kTag[] = "\"7f3a1c00deadbeef\"";
+
+constexpr int kSecondsPerDay = 24 * 60 * 60;
+constexpr int kCoverLifetime = 180 * kSecondsPerDay;
+constexpr int kMissingCoverLifetime = 10 * 60;
+
+std::string freshFor(int seconds) {
+    return "private, max-age=" + std::to_string(seconds);
+}
+
+constexpr char kAskEveryTime[] = "private, no-cache";
 
 struct ArtLog {
     explicit ArtLog(std::string cover) : picture(std::move(cover)) {}
@@ -67,6 +84,60 @@ httplib::Result getHolding(const TestServer& server, const std::string& path,
 
 TestServer servingPlaying(NowPlayingArtwork* playing, ArtLog* log) {
     return TestServer(servingSettings(), showing(log), nullptr, countingMint(), nullptr, playing);
+}
+
+constexpr uint32_t kOffLibraryRow = 0;
+constexpr uint32_t kCoverlessRow = 1;
+constexpr uint32_t kInLibraryRow = 2;
+constexpr uint32_t kRowsInPlaylist = 3;
+
+constexpr char kAbsentPlaylistId[] = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+
+std::string rowAddress(const std::string& playlistId, uint32_t row) {
+    return "/api/artwork/playlists/" + playlistId + "/" + std::to_string(row);
+}
+
+struct RowArtLog {
+    explicit RowArtLog(std::string cover) : picture(std::move(cover)) {}
+
+    std::string picture;
+    std::vector<std::pair<std::string, uint32_t>> asked;
+};
+
+// A playlist of three rows, one per answer the player has about a row it holds. The row the
+// media library holds a path for carries a cover as well, so a refusal there is the path being
+// refused and not a picture being missing.
+PlaylistRowArtworkReader rowReader(RowArtLog* log) {
+    return [log](const std::string& playlistId, uint32_t row) {
+        log->asked.emplace_back(playlistId, row);
+
+        PlaylistArtworkRead read;
+        if (playlistId != kPlaylistId) {
+            read.outcome = PlaylistOutcome::noSuchPlaylist;
+            return read;
+        }
+
+        if (row >= kRowsInPlaylist) {
+            read.outcome = PlaylistOutcome::positionPastEnd;
+            return read;
+        }
+
+        if (row == kInLibraryRow)
+            read.libraryPath = kTrack;
+
+        if (row != kCoverlessRow) {
+            read.source.tag = artworkTag(log->picture);
+            read.source.picture = log->picture;
+        }
+
+        return read;
+    };
+}
+
+Player showingRows(RowArtLog* rows, ArtLog* byTrack = nullptr) {
+    Player player = byTrack ? showing(byTrack) : Player{};
+    player.readPlaylistRowArtwork = rowReader(rows);
+    return player;
 }
 
 }  // namespace
@@ -134,19 +205,31 @@ TEST_CASE("a cover is sent with the type it actually is, and a validator to ask 
     CHECK(log.asked == std::vector<std::string>{kTrack});
 }
 
-// no-cache rather than no-store: the client is meant to keep the bytes and ask before it
-// trusts them. must-revalidate is not decoration either; the route is authenticated, and
-// ARCHITECTURE.md, *Facts about the player*, is what that directive is for and what a browser
-// does with the same response, which is not the same question.
-TEST_CASE("the client is told to keep the bytes and revalidate them") {
+// One album is one address, so the lifetime is what the route is for: a client holding the
+// sleeve spends no request on it until the lifetime runs out. private is the other half, since
+// an authenticated picture has no business in a cache somebody else reads.
+TEST_CASE("a cover is fresh for 180 days, and in no cache but that client's") {
     ArtLog log{kJpeg};
     const TestServer server(servingSettings(), showing(&log));
 
     const auto response = get(server, kAddress);
 
     REQUIRE(response);
-    CHECK(response->get_header_value("Cache-Control") == "no-cache, must-revalidate");
-    CHECK(response->get_header_value("Cache-Control").find("no-store") == std::string::npos);
+    CHECK(response->status == 200);
+    CHECK(response->get_header_value("Cache-Control") == freshFor(kCoverLifetime));
+}
+
+// An absence is the answer most likely to stop being true, and nothing tells a client it has:
+// a cover dropped into the album's folder is drawn within the window, with no reload.
+TEST_CASE("a cover the player does not have is asked for again ten minutes later") {
+    ArtLog log{kJpeg};
+    const TestServer server(servingSettings(), showing(&log));
+
+    const auto response = get(server, "/api/artwork?track=Artist%2FAlbum%2Fgone.flac");
+
+    REQUIRE(response);
+    CHECK(response->status == 404);
+    CHECK(response->get_header_value("Cache-Control") == freshFor(kMissingCoverLifetime));
 }
 
 TEST_CASE("a client that already holds the cover is answered without the picture") {
@@ -163,7 +246,7 @@ TEST_CASE("a client that already holds the cover is answered without the picture
     CHECK(again->status == 304);
     CHECK(again->body.empty());
     CHECK(again->get_header_value("ETag") == kTag);
-    CHECK(again->get_header_value("Cache-Control") == "no-cache, must-revalidate");
+    CHECK(again->get_header_value("Cache-Control") == freshFor(kCoverLifetime));
 
     CHECK(log.asked.size() == 2);
 }
@@ -444,6 +527,26 @@ TEST_CASE("a client already holding the playing cover is sent no picture and cos
     CHECK(log.asked.empty());
 }
 
+// The address carries nothing about what is playing, so the picture behind this URL changes
+// without the URL changing and a lifetime would hand a client the last album's sleeve.
+TEST_CASE("the playing cover is asked about on every request, since the URL outlives the track") {
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    playing.hold(kJpeg);
+    const TestServer server(servingPlaying(&playing, &log));
+
+    const auto first = get(server, kPlayingAddress);
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+    CHECK(first->get_header_value("Cache-Control") == kAskEveryTime);
+
+    const auto again = getHolding(server, kPlayingAddress, first->get_header_value("ETag"));
+
+    REQUIRE(again);
+    REQUIRE(again->status == 304);
+    CHECK(again->get_header_value("Cache-Control") == kAskEveryTime);
+}
+
 // What the validator is folded from is what decides whether a second track of one album costs
 // anything: the picture, and nothing else. A validator carrying a track path, a counter or the
 // time the picture arrived answers every other case here correctly and still downloads the
@@ -535,4 +638,225 @@ TEST_CASE("a cover let go is not answered for the track that follows it") {
     }
 
     CHECK(log.asked.empty());
+}
+
+// A playlist row outside the media library has no path a client can address, so the client
+// names the playlist and the position instead and the player resolves the handle behind them.
+// Everything past that is the route addressed by a track: the same type, the same validator,
+// the same conditional answer.
+TEST_CASE("a row outside the media library is sent its cover, addressed by a position alone") {
+    RowArtLog rows{kJpeg};
+    const TestServer server(servingSettings(), showingRows(&rows));
+
+    const auto response = get(server, rowAddress(kPlaylistId, kOffLibraryRow));
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(response->body == kJpeg);
+    CHECK(response->get_header_value("Content-Type") == "image/jpeg");
+    CHECK(response->get_header_value("ETag") == artworkTag(kJpeg));
+
+    REQUIRE(rows.asked.size() == 1);
+    CHECK(rows.asked.front().first == kPlaylistId);
+    CHECK(rows.asked.front().second == kOffLibraryRow);
+}
+
+TEST_CASE("a client already holding a row's cover is answered without the picture") {
+    RowArtLog rows{kJpeg};
+    const TestServer server(servingSettings(), showingRows(&rows));
+    const auto address = rowAddress(kPlaylistId, kOffLibraryRow);
+
+    const auto first = get(server, address);
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto again = getHolding(server, address, first->get_header_value("ETag"));
+
+    REQUIRE(again);
+    CHECK(again->status == 304);
+    CHECK(again->body.empty());
+    CHECK(again->get_header_value("ETag") == artworkTag(kJpeg));
+}
+
+// A row is a position in a set somebody reorders, so this URL names a different track once the
+// playlist is edited, the same way the playing one does once the track changes.
+TEST_CASE("a row's cover is asked about on every request, since the URL outlives the row") {
+    RowArtLog rows{kJpeg};
+    const TestServer server(servingSettings(), showingRows(&rows));
+    const auto address = rowAddress(kPlaylistId, kOffLibraryRow);
+
+    const auto first = get(server, address);
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+    CHECK(first->get_header_value("Cache-Control") == kAskEveryTime);
+
+    const auto again = getHolding(server, address, first->get_header_value("ETag"));
+
+    REQUIRE(again);
+    REQUIRE(again->status == 304);
+    CHECK(again->get_header_value("Cache-Control") == kAskEveryTime);
+}
+
+// The row the media library holds a path for is the case worth reading twice: the player
+// answered a picture for it and the route refuses anyway, because one album is one address
+// and a position is not an address for an album.
+TEST_CASE("a position with no cover of its own to send is refused, and four things are none") {
+    RowArtLog rows{kJpeg};
+    const TestServer server(servingSettings(), showingRows(&rows));
+
+    std::string playlistId = kPlaylistId;
+    uint32_t row = kOffLibraryRow;
+    std::string refusal;
+
+    SUBCASE("a playlist the player does not have") { playlistId = kAbsentPlaylistId; }
+
+    SUBCASE("a position past the end of the playlist") { row = kRowsInPlaylist; }
+
+    SUBCASE("a row the media library holds a path for") {
+        row = kInLibraryRow;
+        refusal = "no artwork for that track";
+    }
+
+    SUBCASE("a row whose track has no cover at all") {
+        row = kCoverlessRow;
+        refusal = "no artwork for that track";
+    }
+
+    const auto response = get(server, rowAddress(playlistId, row));
+
+    REQUIRE(response);
+    CHECK(response->status == 404);
+    CHECK(response->get_header_value("Content-Type") == "application/json");
+    CHECK(response->get_header_value("ETag").empty());
+
+    const auto body = json::parse(response->body);
+    CHECK_FALSE(body["error"].get<std::string>().empty());
+
+    // Which words the two a playlist cannot answer are refused in is the route's to pick; the
+    // two the player resolved carry what an unanswerable track already carries.
+    if (!refusal.empty())
+        CHECK(body["error"] == refusal);
+
+    // Only the player knows a playlist it does not have, so each of the four is a refusal it
+    // was asked for rather than a request turned back at the door.
+    REQUIRE(rows.asked.size() == 1);
+    CHECK(rows.asked.front().first == playlistId);
+    CHECK(rows.asked.front().second == row);
+}
+
+// The client's whole say in this request is a playlist and a number. A path it also knows is
+// worth nothing here, and the reader addressed by a track is never reached through this route.
+TEST_CASE("a path in the request buys no cover from a position") {
+    ArtLog byTrack{kPng};
+    RowArtLog rows{kJpeg};
+    const TestServer server(servingSettings(), showingRows(&rows, &byTrack));
+
+    SUBCASE("beside a position that has a cover, the position's is the one sent") {
+        const auto response = get(server, rowAddress(kPlaylistId, kOffLibraryRow) + kTrackQuery);
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(response->body == kJpeg);
+    }
+
+    SUBCASE("beside a position that has none, the refusal stands") {
+        const auto response = get(server, rowAddress(kPlaylistId, kCoverlessRow) + kTrackQuery);
+
+        REQUIRE(response);
+        CHECK(response->status == 404);
+    }
+
+    CHECK(rows.asked.size() == 1);
+    CHECK(byTrack.asked.empty());
+}
+
+TEST_CASE("a picture a position names is bounded and typed as one a track names is") {
+    SUBCASE("larger than this component sends") {
+        RowArtLog rows{std::string(kMaxArtworkBytes + 1, 'x')};
+        const TestServer server(servingSettings(), showingRows(&rows));
+
+        const auto response = get(server, rowAddress(kPlaylistId, kOffLibraryRow));
+
+        REQUIRE(response);
+        CHECK(response->status == 413);
+        CHECK(json::parse(response->body)["error"] ==
+              "that artwork is larger than this component sends");
+    }
+
+    SUBCASE("in a format this component does not send") {
+        RowArtLog rows{"a file that is not a picture"};
+        const TestServer server(servingSettings(), showingRows(&rows));
+
+        const auto response = get(server, rowAddress(kPlaylistId, kOffLibraryRow));
+
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body)["error"] ==
+              "that artwork is not in a format this component sends");
+    }
+}
+
+TEST_CASE("a position answers nothing without a token, and the playlist is never read") {
+    RowArtLog rows{kJpeg};
+    const TestServer server(servingSettings(), showingRows(&rows));
+    const auto address = rowAddress(kPlaylistId, kOffLibraryRow);
+
+    const auto response = server.client().Get(address);
+
+    REQUIRE(response);
+    CHECK(response->status == 401);
+    CHECK(rows.asked.empty());
+
+    // The token is what the 401 is about, so the same address with one is the cover.
+    const auto held = get(server, address);
+
+    REQUIRE(held);
+    CHECK(held->status == 200);
+}
+
+// One budget for every cover, so a client cannot spend twice by asking two ways. A second
+// bucket refills at its own rate, which is what the batch at the end would find: the shared
+// one is empty by then and gains a token every fiftieth of a second at most.
+TEST_CASE("a client looping on positions spends the budget a track address spends") {
+    ArtLog byTrack{kJpeg};
+    RowArtLog rows{kJpeg};
+    const TestServer server(servingSettings(), showingRows(&rows, &byTrack));
+    auto client = server.client();
+    const auto address = rowAddress(kPlaylistId, kOffLibraryRow);
+
+    constexpr int kAttempts = 600;
+    int refused = 0;
+
+    std::string retryAfter;
+    std::string refusal;
+
+    for (int attempt = 0; attempt < kAttempts; ++attempt) {
+        const auto response = client.Get(address, TestServer::bearer());
+        REQUIRE(response);
+
+        if (response->status != 429)
+            continue;
+
+        refused++;
+        retryAfter = response->get_header_value("Retry-After");
+        refusal = json::parse(response->body)["error"].get<std::string>();
+    }
+
+    CHECK(refused > 0);
+    CHECK(retryAfter == "1");
+    CHECK(refusal == "too many artwork requests");
+    CHECK(static_cast<int>(rows.asked.size()) == kAttempts - refused);
+
+    constexpr int kThen = 10;
+    int deniedByTrack = 0;
+
+    for (int attempt = 0; attempt < kThen; ++attempt) {
+        const auto response = client.Get(kAddress, TestServer::bearer());
+        REQUIRE(response);
+
+        if (response->status == 429)
+            deniedByTrack++;
+    }
+
+    CHECK(deniedByTrack > 0);
 }

@@ -38,6 +38,8 @@ constexpr char kPlays[] = "%play_count%";
 // The declaration the fixture library is built from, percent-encoded as a client sends it.
 constexpr char kExport[] = "/api/library/export?columns=%25title%25&columns=%25play_count%25";
 
+constexpr char kAskEveryTime[] = "private, no-cache";
+
 TestServer serving(Library* library, const Player& player = {}) {
     return TestServer(servingSettings(), player, library);
 }
@@ -108,6 +110,8 @@ PlayerState playing() {
 
 constexpr char kSongTitle[] = "Salt Flats";
 constexpr char kSongArtist[] = "The Vela Ensemble";
+constexpr char kSongAlbum[] = "Dry Season";
+constexpr char kSongAlbumArtist[] = "Various Fictional Artists";
 
 json playerSection(const TestServer& server) {
     const auto response = get(server, "/api/state");
@@ -412,6 +416,59 @@ TEST_CASE("the poll document names the playing track, whether the media library 
     CHECK(player["path"] == started.path);
 }
 
+// A client keys a cover by the record a track is from rather than by the track, so every row of an
+// album asks at one address and a record played through costs one request. The album artist is what
+// tells two records of the same name apart, and it is not the track's artist: a compilation names a
+// different one on every row.
+TEST_CASE("the poll document names the record the playing track is from, beside the track") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    const TestServer server = serving(&library, &store);
+
+    SUBCASE("the player named the record") {
+        PlayerState started = playing();
+        started.title = kSongTitle;
+        started.artist = kSongArtist;
+        started.album = kSongAlbum;
+        started.albumArtist = kSongAlbumArtist;
+        store.publish(started);
+
+        const auto player = playerSection(server);
+        REQUIRE(player.contains("album"));
+        REQUIRE(player.contains("albumArtist"));
+
+        CHECK(player["album"] == kSongAlbum);
+        CHECK(player["albumArtist"] == kSongAlbumArtist);
+        CHECK(player["title"] == kSongTitle);
+        CHECK(player["artist"] == kSongArtist);
+    }
+
+    // A client that cannot tell an unnamed record from one named with an empty string keys every
+    // untagged track in the library to one cover.
+    SUBCASE("the player named neither") {
+        store.publish(playing());
+
+        const auto player = playerSection(server);
+        REQUIRE(player.contains("album"));
+        REQUIRE(player.contains("albumArtist"));
+        CHECK(player["album"].is_null());
+        CHECK(player["albumArtist"].is_null());
+    }
+
+    // A single, which carries an album artist on no row. A client falls back to the track's artist
+    // for the key, and can only do that where the absence is reported rather than filled in.
+    SUBCASE("an album with nobody credited for the record") {
+        PlayerState started = playing();
+        started.album = kSongAlbum;
+        store.publish(started);
+
+        const auto player = playerSection(server);
+        CHECK(player["album"] == kSongAlbum);
+        CHECK(player["albumArtist"].is_null());
+    }
+}
+
 // A client that cannot tell an unnamed track from one named with an empty string draws a blank
 // status bar for both, and only one of those is honest.
 TEST_CASE("a name the player did not compute is null, never a missing key or an empty string") {
@@ -548,6 +605,37 @@ TEST_CASE("a client that already holds a representation is answered without one"
         CHECK(again->status == 304);
         CHECK(again->body.empty());
         CHECK(again->get_header_value("ETag") == tag);
+    }
+}
+
+// Each of these answers what the library and the player are right now, under a URL that
+// outlives both. A client holding one has last minute's answer, and a shared cache holds
+// somebody else's library and what they are listening to. The validator is the other half:
+// it is what makes the poll cheap, so the terms have to leave it standing.
+TEST_CASE("every poll route asks again, in no cache but that client's, and keeps its validator") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    const auto from = playOne(library, "5") - 1;
+    const std::string changes = "/api/library/changes?since=" + std::to_string(from);
+
+    for (const std::string& path : {std::string("/api/state"), std::string(kExport), changes}) {
+        INFO("path: ", path);
+
+        const auto first = get(server, path);
+        REQUIRE(first);
+        REQUIRE(first->status == 200);
+        CHECK(first->get_header_value("Cache-Control") == kAskEveryTime);
+
+        const auto tag = first->get_header_value("ETag");
+        REQUIRE_FALSE(tag.empty());
+
+        const auto again = getHolding(server, path, tag);
+        REQUIRE(again);
+        REQUIRE(again->status == 304);
+        CHECK(again->get_header_value("ETag") == tag);
+        CHECK(again->get_header_value("Cache-Control") == kAskEveryTime);
     }
 }
 
@@ -801,9 +889,10 @@ TEST_CASE("the player section names the playlists revision once and carries noth
     const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
 
     const Keys published = {
-        "playback",         "path",          "subsong",          "position", "duration",
-        "volume",           "muted",         "playbackMode",     "title",    "artist",
-        "playingLocation",  "currentPlaylistId", "queueRevision", "playlistsRevision"};
+        "playback",        "path",              "subsong",       "position",
+        "duration",        "volume",            "muted",         "playbackMode",
+        "title",           "artist",            "album",         "albumArtist",
+        "playingLocation", "currentPlaylistId", "queueRevision", "playlistsRevision"};
 
     CHECK(keysOf(playerSection(server)) == published);
 }
@@ -879,7 +968,6 @@ TEST_CASE("the export is the snapshot, framed as contract/openapi.yaml describes
     REQUIRE(response);
     CHECK(response->status == 200);
     CHECK(response->get_header_value("Content-Type") == "application/octet-stream");
-    CHECK(response->get_header_value("Cache-Control") == "no-cache, must-revalidate");
 
     const auto header = decode(response->body).header;
     CHECK(header["kind"] == "snapshot");

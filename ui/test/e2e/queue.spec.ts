@@ -3,6 +3,7 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	AS_A_CLIENT,
 	componentOrigin,
+	coversByPosition,
 	coversFromBeefweb,
 	coversFromTheComponent,
 	dragFrom,
@@ -21,6 +22,7 @@ import {
 	test,
 	touchDrag,
 	trackRow,
+	withNoListOnScreen,
 } from "./fixtures.ts";
 
 const queuePanel = (page: Page) =>
@@ -1780,16 +1782,26 @@ const libraryPathOfQueued = (player: FakePlayer, at: number) => {
 // was queued from, so the library path is the address that keeps working and it
 // is the one taken first.
 test.describe("the cover on a queued row", () => {
-	test("comes from the component, addressed by the track's library path", async ({
+	// The record the second and third rows of Favorites belong to, and the track its cover is
+	// addressed at, which is the row above both of them.
+	const RECORD_IN_FAVORITES = "B/Brand New/(2003) Deja Entendu";
+	const ITS_COVER = `${RECORD_IN_FAVORITES}/01. Tautou.mp3`;
+
+	test("comes from the component, at the address its record's cover has everywhere", async ({
 		page,
 		player,
 	}) => {
-		await openLibrary(page);
+		// Over no list. A view of tracks asks for this record's cover itself, at the very address
+		// being read below, so the read would hold whatever the queued row did and whether it asked
+		// at all.
+		await withNoListOnScreen(page);
 		await openQueue(page);
 
-		// Queued from a playlist other than the one on screen, so beefweb's
-		// positional address for this row is asked for by nothing else here.
-		rowQueuedAtThePlayer(player, "p2", 0);
+		// The second row rather than the first, which is its record's earliest track and so has the
+		// record's address as its own: queued from that one, a row addressed by its own path and a
+		// row addressed by its record's are indistinguishable.
+		const ROW = 1;
+		rowQueuedAtThePlayer(player, "p2", ROW);
 		await expect(queueRows(page)).toHaveCount(1);
 
 		const path = libraryPathOfQueued(player, 0);
@@ -1798,54 +1810,86 @@ test.describe("the cover on a queued row", () => {
 			"the media library does not carry this track, so the case is not set up",
 		).toBeTruthy();
 		expect(
+			path,
+			"this row is its record's earliest track, so its own path cannot be told apart",
+		).not.toBe(ITS_COVER);
+		expect(
 			queuePositions(player),
 			"the entry carries no position, so it cannot show which address wins",
-		).toEqual([0]);
+		).toEqual([ROW]);
 
 		await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
 			timeout: 15_000,
 		});
-		expect(coversFromTheComponent(player)).toContain(path);
+
+		// The record's address and only it: not this row's own path, which is what a cover keyed by
+		// the track would ask at, and not the position, which is the fallback a library path wins
+		// against.
+		await expectSettlesAt(
+			player,
+			() => [...new Set(coversFromTheComponent(player))],
+			[ITS_COVER],
+		);
+		expect(coversByPosition(player)).toEqual([]);
 		await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 	});
 
-	// A file in a playlist that the media library has never seen: foobar2000
-	// queues it and the component has no library path to name it by. Beefweb's
-	// positional address cannot resolve a playlist addressed by GUID, so there
-	// is no second address to fall back on and the cover draws nothing.
+	// A file in a playlist that the media library has never seen:
+	// foobar2000 queues it and the component has no library path to name it by,
+	// so the row it was queued from stands in for one. That address is the
+	// component's own; beefweb cannot resolve a playlist named by GUID at all.
 	test.describe("for a track the media library does not carry", () => {
 		test.use({ mediaLibrarySize: 12 });
 
-		test("draws no cover, and asks beefweb for none either", async ({
+		test("is drawn from the playlist row it was queued from", async ({
 			page,
 			player,
 		}) => {
-			await openLibrary(page);
+			// Over no list. A view of tracks holds a handle for every record in it, keyed by the
+			// record rather than by the row, and a queued row of a record already on screen draws
+			// from that handle and asks for nothing. Which is the right outcome, and it leaves
+			// nothing to watch: the ask below is only this row's where nothing has been near this
+			// record.
+			await withNoListOnScreen(page);
 			await openQueue(page);
 
-			rowQueuedAtThePlayer(player, "p2", 0);
+			const ROW = 0;
+			rowQueuedAtThePlayer(player, "p2", ROW);
 			await expect(queueRows(page)).toHaveCount(1);
 			expect(
 				queuePositions(player),
-				"the entry carries no position, so beefweb's address is not the one being refused",
-			).toEqual([0]);
+				"the entry carries no position, so there is no address to fall back on",
+			).toEqual([ROW]);
 			expect(
 				libraryPathOfQueued(player, 0),
 				"the media library carries this track, so the case is not set up",
 			).toBeNull();
 
+			await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
+				timeout: 15_000,
+			});
+			await expect(coverOfRow(page, 0).locator("img")).toBeVisible();
+
+			await expect
+				.poll(() => coversByPosition(player))
+				.toContain(`${guidOfPlaylist(player, "p2")}/${ROW}`);
 			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 			expect(coversFromTheComponent(player)).not.toContain("");
-
-			await expect(coverOfRow(page, 0).locator("svg")).toBeVisible();
-			await expect(coverOfRow(page, 0).locator("img")).toHaveCount(0);
 		});
 
+		// The other half: nothing addresses this row. No library path and
+		// no position either, so there is no picture to ask anybody for and the
+		// glyph is the honest answer. A position invented for it would name
+		// whatever row happens to sit there now.
 		test("is a glyph where the player has neither a path nor a row for it", async ({
 			page,
 			player,
 		}) => {
-			await openLibrary(page);
+			// The panel opened over no list, so the queued row is the only thing on
+			// the page that could reach for a position. A list of rows the media
+			// library carries no path for asks by position and is right to, and it
+			// would drown out the one read below.
+			await withNoListOnScreen(page);
 			await openQueue(page);
 
 			// The desktop queueing a file it has open and never added to the
@@ -1858,6 +1902,10 @@ test.describe("the cover on a queued row", () => {
 			expect(libraryPathOfQueued(player, 0)).toBeNull();
 
 			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+			expect(
+				coversByPosition(player),
+				"a position was invented for a row the player has none for",
+			).toEqual([]);
 			expect(coversFromTheComponent(player)).not.toContain("");
 			expect(coversFromTheComponent(player)).not.toContain(
 				String(track["%path%"]),
@@ -1865,6 +1913,192 @@ test.describe("the cover on a queued row", () => {
 
 			await expect(coverOfRow(page, 0).locator("svg")).toBeVisible();
 			await expect(coverOfRow(page, 0).locator("img")).toHaveCount(0);
+		});
+
+		// The album clause, on the branch with no library path to key by. Two rows of one
+		// record sit at two positions, so their two addresses have nothing in common and no path
+		// between them: the only thing that can say they are one record is what `GET /api/queue`
+		// answered for each, the album and the album artist. Keyed by the position instead, one
+		// sleeve is decoded twice and held twice for as long as the tab is open, which is a cost
+		// nobody can see and nobody can clear.
+		test.describe("two rows of one record, neither of them in the library", () => {
+			// A row credited to a guest beside the record's own artist. The album artist is what
+			// tells two records of one name apart and it is not the track's artist: keyed by the
+			// artist, these two rows are two different records.
+			test.use({
+				retagged: {
+					"No Excuses": { "%artist%": "Alice in Chains feat. Somebody" },
+				},
+			});
+
+			test("share one sleeve between them", async ({
+				page,
+				player,
+				request,
+			}) => {
+				// Counted rather than inferred: `createObjectURL` mints a new handle per call and
+				// coalesces nothing, so a mint is a second copy of the picture in memory. Installed
+				// before the page loads, since the first cover is fetched on the first render.
+				await page.addInitScript(() => {
+					const mint = URL.createObjectURL.bind(URL);
+					let minted = 0;
+					URL.createObjectURL = (object: Blob | MediaSource) => {
+						minted += 1;
+						return mint(object);
+					};
+					Object.defineProperty(window, "__mintedArtwork", {
+						get: () => minted,
+					});
+				});
+
+				// Over no list, so the two rows are the only covers on the page and the only mints.
+				await withNoListOnScreen(page);
+				await openQueue(page);
+				await expect(queuePanel(page)).toContainText("Nothing queued");
+
+				const ROWS = [1, 3];
+				for (const row of ROWS) rowQueuedAtThePlayer(player, "p1", row);
+				await expect(queueRows(page)).toHaveCount(2);
+
+				// What the client has to go on, read off the component rather than assumed: no path
+				// for either, two positions, and one record named across both.
+				const origin = await componentOrigin(request);
+				const { entries } = await (
+					await request.get(`${origin}/api/queue`, AS_A_CLIENT)
+				).json();
+				expect(
+					entries.map(
+						(entry: { libraryPath: string | null }) => entry.libraryPath,
+					),
+					"the media library carries these rows, so the case is not set up",
+				).toEqual([null, null]);
+				expect(
+					entries.map(
+						(entry: { location: { index: number } | null }) =>
+							entry.location?.index,
+					),
+				).toEqual(ROWS);
+				expect(
+					new Set(
+						entries.map(
+							(entry: { album: string; albumArtist: string }) =>
+								`${entry.albumArtist}\u0000${entry.album}`,
+						),
+					).size,
+					"the queue named the two rows different records, so the case is not set up",
+				).toBe(1);
+
+				await expect(coverOfRow(page, 0)).toHaveAttribute(
+					"data-artwork",
+					"ok",
+					{ timeout: 15_000 },
+				);
+				await expect(coverOfRow(page, 1)).toHaveAttribute("data-artwork", "ok");
+
+				// Whichever of the two positions the sleeve arrived through, and after the fix it is
+				// one of them rather than both, it is a position one of these rows actually sits at.
+				// A picture fetched at a row somebody else is sitting at would share a handle just
+				// as well and be the wrong sleeve.
+				const guid = guidOfPlaylist(player, "p1");
+				expect(coversByPosition(player).length).toBeGreaterThan(0);
+				await expectSettlesAt(
+					player,
+					() =>
+						coversByPosition(player).filter(
+							(asked) => !ROWS.some((row) => asked === `${guid}/${row}`),
+						),
+					[],
+				);
+
+				// One picture between the two rows, as the handle each `<img>` draws from, and one
+				// copy of it in memory. The registry coalesces on the way in, so the count holds
+				// whether the second row was answered out of the first row's claim or raced it.
+				// Nothing here is about the address: two positions are two addresses and there is
+				// no path to build a third from, so only a shared identity can give a shared
+				// handle.
+				const drawn = await queueRows(page)
+					.locator("img")
+					.evaluateAll((images) =>
+						(images as HTMLImageElement[]).map((image) => image.src),
+					);
+				const minted = await page.evaluate(
+					() =>
+						(window as unknown as { __mintedArtwork: number }).__mintedArtwork,
+				);
+
+				expect(drawn, "a row drew no picture at all").toHaveLength(2);
+				expect(
+					{ onScreen: new Set(drawn).size, minted },
+					"two rows of one record, and a copy of its sleeve for each",
+				).toEqual({ onScreen: 1, minted: 1 });
+			});
+		});
+	});
+
+	// Which record a queued row belongs to is what `GET /api/queue`
+	// answers as `album` and `albumArtist`, and nothing else here can tell: an
+	// entry carries no tags of its own. Keyed by the two of them, two rows of one
+	// record share a picture with each other and with every list drawing the same
+	// record, at the one address the sleeve has anywhere.
+	test.describe("two queued rows of one record", () => {
+		// A row credited to a guest beside the record's own artist, which is the
+		// case that tells the two fields apart: keyed by the track's artist these
+		// two rows are different records.
+		test.use({
+			retagged: {
+				"No Excuses": { "%artist%": "Alice in Chains feat. Somebody" },
+			},
+		});
+
+		const RECORD = "A/Alice in Chains/(1994) Jar Of Flies";
+		const FIRST_IN_ALBUM_ORDER = `${RECORD}/01. Rotten Apple.flac`;
+
+		test("share one sleeve, asked for once at the record's own address", async ({
+			page,
+			player,
+		}) => {
+			// Over no list, and this is what makes the read below mean anything. A playlist view
+			// mounts a tile per record and asks for every one of their covers, and a cover already
+			// fetched is held for months, so a later ask at that address is answered
+			// inside the browser and never reaches the player. Nothing here has been near this
+			// record, so the first ask for it has to arrive.
+			await withNoListOnScreen(page);
+			await openQueue(page);
+			await expect(queuePanel(page)).toContainText("Nothing queued");
+
+			// Neither row is the record's first track, so its address is one neither
+			// of them holds.
+			rowQueuedAtThePlayer(player, "p1", 1);
+			rowQueuedAtThePlayer(player, "p1", 3);
+			await expect(queueRows(page)).toHaveCount(2);
+
+			await expect(coverOfRow(page, 0)).toHaveAttribute("data-artwork", "ok", {
+				timeout: 15_000,
+			});
+			await expect(coverOfRow(page, 1)).toHaveAttribute("data-artwork", "ok");
+
+			// One picture between the two rows, as the handle each `<img>` is drawing: a second
+			// handle for one record is a second copy of the sleeve held for the life of the tab,
+			// and it is what an identity taken from the track rather than the record buys.
+			const drawn = await queueRows(page)
+				.locator("img")
+				.evaluateAll((images) =>
+					(images as HTMLImageElement[]).map((image) => image.src),
+				);
+			expect(drawn, "a row drew no picture at all").toHaveLength(2);
+			expect(
+				new Set(drawn).size,
+				`two rows, ${new Set(drawn).size} pictures between them`,
+			).toBe(1);
+
+			// And one address, the record's. A set of addresses rather than a count of asks, since a
+			// repeat of one already fetched is invisible here by design; a row addressed by its own
+			// path would be an address nothing has asked for and would have to arrive.
+			await expectSettlesAt(
+				player,
+				() => [...new Set(coversFromTheComponent(player))],
+				[FIRST_IN_ALBUM_ORDER],
+			);
 		});
 	});
 });

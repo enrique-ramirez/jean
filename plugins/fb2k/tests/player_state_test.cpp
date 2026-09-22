@@ -49,7 +49,15 @@ constexpr uint32_t kPlayingRow = 7;
 constexpr int kEditsInABurst = 50;
 constexpr char kTitle[] = "Cirrus Minor";
 constexpr char kArtist[] = "Pink Floyd";
+constexpr char kAlbum[] = "More";
+constexpr char kAlbumArtist[] = "Pink Floyd";
 constexpr char kSingleSpace[] = " ";
+
+// The song a station announces next, under the same track handle.
+constexpr char kNextTitle[] = "Behave Yourself";
+constexpr char kNextArtist[] = "Booker T. & the M.G.'s";
+constexpr char kNextAlbum[] = "Green Onions";
+constexpr char kNextAlbumArtist[] = "Booker T. & the M.G.'s";
 
 PlayerState playingFrom(uint32_t row) {
     PlayerState state = playing();
@@ -478,14 +486,14 @@ TEST_CASE("a name the player computed as empty reads back absent, one field at a
     PlayerStateStore store;
     store.publish(namedAndPlaced());
 
-    store.nameChanged("", kArtist);
+    store.nameChanged("", kArtist, "", "");
 
     const auto untitled = store.read();
     CHECK_FALSE(untitled.state.title.has_value());
     REQUIRE(untitled.state.artist.has_value());
     CHECK(*untitled.state.artist == kArtist);
 
-    store.nameChanged(kTitle, "");
+    store.nameChanged(kTitle, "", "", "");
 
     const auto unattributed = store.read();
     REQUIRE(unattributed.state.title.has_value());
@@ -500,7 +508,7 @@ TEST_CASE("a name that is a single space is still a name") {
     PlayerStateStore store;
     store.publish(playing());
 
-    store.nameChanged(kSingleSpace, kSingleSpace);
+    store.nameChanged(kSingleSpace, kSingleSpace, "", "");
 
     const auto published = store.read();
     REQUIRE(published.state.title.has_value());
@@ -519,12 +527,53 @@ TEST_CASE("an empty name over a name already absent leaves the version alone") {
     const uint64_t before = store.read().version;
 
     for (int tick = 0; tick < kEditsInABurst; ++tick)
-        store.nameChanged("", "");
+        store.nameChanged("", "", "", "");
 
     const auto published = store.read();
     CHECK_FALSE(published.state.title.has_value());
     CHECK_FALSE(published.state.artist.has_value());
     CHECK(published.version == before);
+}
+
+// `GET /state` answers `null` for a field the player computed nothing for, so an album resolved
+// as nothing has to collapse the way a title already does. Held as an empty string it is a
+// record, and a client keys a cover by it.
+TEST_CASE("a record the player computed as empty reads back absent, one field at a time") {
+    PlayerStateStore store;
+    store.publish(namedAndPlaced());
+
+    store.nameChanged(kTitle, kArtist, "", kAlbumArtist);
+
+    const auto recordless = store.read();
+    CHECK_FALSE(recordless.state.album.has_value());
+    CHECK(recordless.state.albumArtist == kAlbumArtist);
+
+    store.nameChanged(kTitle, kArtist, kAlbum, "");
+
+    const auto unattributed = store.read();
+    CHECK(unattributed.state.album == kAlbum);
+    CHECK_FALSE(unattributed.state.albumArtist.has_value());
+}
+
+// A station announcing its next song leaves the track handle where it is, so nothing resets the
+// record between one song and the next. Moved as a title and then a record, the state in between
+// carries the new song's title beside the previous song's album, which is the wrong sleeve on the
+// status bar and on the lock screen. A client reads only states the store published, so one
+// version moved is what says no such state existed.
+TEST_CASE("a new title never becomes readable beside the previous song's album") {
+    PlayerStateStore store;
+    store.publish(playing());
+    store.nameChanged(kTitle, kArtist, kAlbum, kAlbumArtist);
+    const auto firstSong = store.read();
+
+    store.nameChanged(kNextTitle, kNextArtist, kNextAlbum, kNextAlbumArtist);
+
+    const auto nextSong = store.read();
+    CHECK(nextSong.version == firstSong.version + 1);
+    CHECK(nextSong.state.title == kNextTitle);
+    CHECK(nextSong.state.artist == kNextArtist);
+    CHECK(nextSong.state.album == kNextAlbum);
+    CHECK(nextSong.state.albumArtist == kNextAlbumArtist);
 }
 
 // A client refetches the queue whenever the revision moves, so a report that changed nothing and

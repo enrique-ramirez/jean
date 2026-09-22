@@ -25,6 +25,7 @@ bool operator==(const PlayerState& a, const PlayerState& b) {
            a.position.seconds == b.position.seconds && a.position.taken == b.position.taken &&
            a.duration == b.duration && a.volume == b.volume && a.muted == b.muted &&
            a.playbackMode == b.playbackMode && a.title == b.title && a.artist == b.artist &&
+           a.album == b.album && a.albumArtist == b.albumArtist &&
            a.playingLocation == b.playingLocation &&
            a.currentPlaylistId == b.currentPlaylistId;
 }
@@ -50,6 +51,8 @@ void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now)
     next.position = {0, now};
     next.title.reset();
     next.artist.reset();
+    next.album.reset();
+    next.albumArtist.reset();
 
     applyLocked(std::move(next));
 }
@@ -92,6 +95,8 @@ void PlayerStateStore::stopped() {
     next.position = PositionMark{};
     next.title.reset();
     next.artist.reset();
+    next.album.reset();
+    next.albumArtist.reset();
     next.playingLocation.reset();
 
     applyLocked(std::move(next));
@@ -152,12 +157,15 @@ void PlayerStateStore::currentPlaylistChanged(std::optional<std::string> playlis
     applyLocked(std::move(next));
 }
 
-void PlayerStateStore::nameChanged(std::string title, std::string artist) {
+void PlayerStateStore::nameChanged(std::string title, std::string artist, std::string album,
+                                   std::string albumArtist) {
     const std::lock_guard<std::mutex> held(mutex_);
 
     PlayerState next = state_;
     next.title = title.empty() ? std::nullopt : std::optional(std::move(title));
     next.artist = artist.empty() ? std::nullopt : std::optional(std::move(artist));
+    next.album = album.empty() ? std::nullopt : std::optional(std::move(album));
+    next.albumArtist = albumArtist.empty() ? std::nullopt : std::optional(std::move(albumArtist));
 
     applyLocked(std::move(next));
 }

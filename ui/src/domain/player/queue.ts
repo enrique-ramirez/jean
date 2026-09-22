@@ -44,6 +44,8 @@ export interface QueueEntry {
 	at: number;
 	title: string;
 	artist: string;
+	album: string;
+	albumArtist: string;
 	duration: number;
 	offset: number;
 	libraryPath: string | null;
@@ -59,6 +61,8 @@ export function readQueue(read: QueueRead | undefined): QueueEntry[] {
 			at,
 			title: entry.title,
 			artist: entry.artist,
+			album: entry.album,
+			albumArtist: entry.albumArtist,
 			duration,
 			offset,
 			libraryPath: entry.libraryPath,

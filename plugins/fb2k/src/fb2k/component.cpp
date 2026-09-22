@@ -61,7 +61,7 @@ void explainPortCollision() {
 
 Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const Streamer* streamer,
                    OutputHold& outputHold, LibraryFeed& libraryFeed, PlayerStateStore& playerState,
-                   const PlaylistVersions& playlistVersions) {
+                   const PlaylistVersions& playlistVersions, const AlbumArt& rowArt) {
     Player player;
     player.writeTags = makeTagWriter(mainThread);
     player.listPlaylists = makePlaylistLister(mainThread, playlistVersions);
@@ -92,6 +92,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.previewQuery = makeQueryPreviewer(mainThread);
     player.refreshLibrary = libraryFeed.refresher();
     player.readArtwork = libraryFeed.artworkReader();
+    player.readPlaylistRowArtwork = makePlaylistRowArtworkReader(mainThread, rowArt);
 
     if (streamer != nullptr) {
         player.openStream = streamer->opener();
@@ -141,7 +142,7 @@ public:
           nowPlayingArtworkWatch_(nowPlayingArtwork_),
           server_(settings_, audience_,
                   playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_,
-                              playerState_, playlistVersions_),
+                              playerState_, playlistVersions_, rowArt_),
                   generateToken, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
                   &nowPlayingArtwork_),
           status_(server_.start()) {
@@ -192,6 +193,11 @@ private:
     PlaybackWatch playbackWatch_;
     PlaylistWatch playlistWatch_;
     NowPlayingArtworkWatch nowPlayingArtworkWatch_;
+
+    // Resolved separately from LibraryFeed's own, because a playlist row's handle never
+    // passes through the media library snapshot.
+    AlbumArt rowArt_;
+
     HttpServer server_;
     const ListenerStatus status_;
 };

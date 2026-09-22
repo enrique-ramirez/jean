@@ -42,6 +42,11 @@ struct PlayerState {
     std::optional<std::string> title;
     std::optional<std::string> artist;
 
+    // The record the playing track is from, computed the same way; `contract/openapi.yaml`'s
+    // `album` and `albumArtist` have why a client keys a cover by the pair.
+    std::optional<std::string> album;
+    std::optional<std::string> albumArtist;
+
     std::optional<PlayingLocation> playingLocation;
 
     // The playlist foobar2000 has focused, not the one the playing track sits in
@@ -107,7 +112,8 @@ public:
     void playingLocationChanged(std::optional<PlayingLocation> location);
     void currentPlaylistChanged(std::optional<std::string> playlistId);
 
-    void nameChanged(std::string title, std::string artist);
+    void nameChanged(std::string title, std::string artist, std::string album,
+                     std::string albumArtist);
 
     void queueChanged(std::vector<QueueEntry> entries);
 

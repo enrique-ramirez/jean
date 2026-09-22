@@ -1,5 +1,10 @@
 const SETTLE_MS = 100;
 
+// `kMissingCoverCacheLifetimeSeconds` in `plugins/fb2k/src/core/http_server.cpp`: ten minutes, so a
+// cover added at the player is asked about again within the same window the component's own `404`
+// would have expired in.
+const FAILURE_FORGET_MS = 600_000;
+
 // A browser gives one origin six HTTP/1.1 connections, and covers share that budget with whatever
 // else the origin is answering: beefweb's update stream holds one of its six forever, and the
 // component answers on one work queue.
@@ -20,11 +25,45 @@ let inFlight = 0;
 const SEEN_LIMIT = 4096;
 let seen = new Map<string, ArtworkOutcome>();
 
+const forgetTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const forgetListeners = new Map<string, Set<() => void>>();
+
 export const outcomeFor = (key: string) => seen.get(key);
+
+export function onForgotten(key: string, listener: () => void): () => void {
+	let listeners = forgetListeners.get(key);
+	if (!listeners) {
+		listeners = new Set();
+		forgetListeners.set(key, listeners);
+	}
+	listeners.add(listener);
+
+	return () => {
+		listeners?.delete(listener);
+		if (listeners?.size === 0) forgetListeners.delete(key);
+	};
+}
 
 const remember = (key: string, outcome: ArtworkOutcome) => {
 	if (seen.size >= SEEN_LIMIT) seen = new Map();
 	seen.set(key, outcome);
+
+	const pending = forgetTimers.get(key);
+	if (pending) {
+		clearTimeout(pending);
+		forgetTimers.delete(key);
+	}
+
+	if (outcome !== "failed") return;
+
+	forgetTimers.set(
+		key,
+		setTimeout(() => {
+			forgetTimers.delete(key);
+			seen.delete(key);
+			for (const listener of forgetListeners.get(key) ?? []) listener();
+		}, FAILURE_FORGET_MS),
+	);
 };
 
 const pump = () => {

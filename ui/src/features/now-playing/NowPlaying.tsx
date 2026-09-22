@@ -18,13 +18,17 @@ import {
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { albumHref } from "@/domain/track/albumRoute";
 import { coverKey, readValue } from "@/domain/track/fields";
+import {
+	canonicalArtworkUrl,
+	canonicalPlayingArtworkUrl,
+} from "@/domain/track/librarySource";
 import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
 import { setRatingLayer } from "@/domain/track/ratingTarget";
 import {
 	fetchPlaylistRows,
 	isFooJeanReady,
-	libraryArtworkUrl,
 	playingArtworkUrl,
+	playlistRowArtworkUrl,
 } from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -90,14 +94,25 @@ function Rating() {
 // Must match the exit animation in NowPlaying.module.css.
 const SLIDE_MS = 280;
 
+// The empty string stands for a row the media library confirms carries no path, kept apart from a
+// position this window has not read at all: only the former falls back to `playlistRowArtworkUrl`.
+// `identity` is computed the same way `coverIdentity()` reads a list row's own columns, so a
+// neighbour showing a record already on screen elsewhere shares that record's handle rather than
+// minting a second one under its address.
+interface RowWindowEntry {
+	path: string;
+	identity: string | undefined;
+}
+
 type RowWindow = ReadonlyArray<
-	readonly [position: number, path: string | null]
+	readonly [position: number, row: RowWindowEntry]
 >;
 
 const NEIGHBOURS_KEY = "nowPlayingNeighbours";
 
-// `foo_jean` addresses a cover by library path, so a neighbour's sleeve needs that row's own path
-// rather than its position.
+// A neighbour's sleeve, and the centre's, are both read off the rows this fetches: one album is
+// one address, so the record a row belongs to needs that row's own path, canonicalised, rather
+// than its position.
 async function fetchRowWindow(
 	origin: string,
 	token: string,
@@ -111,18 +126,36 @@ async function fetchRowWindow(
 		playlistId,
 		offset,
 		3,
-		["%path%"],
+		["%path%", "%album%", "%album artist%", "%artist%", "%title%"],
 	);
-	return items.map((row, at) => [offset + at, row.libraryPath] as const);
+	return items.map((row, at) => {
+		const [, album, albumArtist, artist, title] = row.columns.map(readValue);
+		const credited = albumArtist || artist;
+		const identity = album
+			? coverKey(credited, album)
+			: title
+				? coverKey(credited, title, "track")
+				: undefined;
+		return [offset + at, { path: row.libraryPath ?? "", identity }] as const;
+	});
 }
 
-const neighbourArtworkOf = (
+const artworkAt = (
 	origin: string | null,
-	path: string | null,
+	playlistId: string | null,
+	position: number,
+	row: RowWindowEntry,
 ): NeighbourArtwork | null => {
-	if (!path) return null;
-	const src = libraryArtworkUrl(origin, path);
-	return src ? { src, identity: path } : null;
+	if (row.path) {
+		const src = canonicalArtworkUrl(origin, row.path);
+		return src ? { src, identity: row.identity ?? src } : null;
+	}
+
+	if (!origin || !playlistId) return null;
+	const src = playlistRowArtworkUrl(origin, playlistId, position);
+	return src
+		? { src, identity: row.identity ?? `pos:${playlistId}:${position}` }
+		: null;
 };
 
 export function NowPlaying({
@@ -205,17 +238,10 @@ export function NowPlaying({
 	const origin = isReady ? discovery.origin : null;
 	const token = isReady ? discovery.token : null;
 
-	const artwork = track ? playingArtworkUrl(origin) : null;
 	const artworkKey =
 		hasPosition && item && playlistId !== undefined
 			? `${playlistId}:${item.index}`
 			: null;
-
-	// Keyed on the track rather than the album: the album arrives a request later than the cover is
-	// wanted, and an identity every track briefly shared would be worse than not sharing one.
-	const playingCover = track
-		? coverKey(track.artist, track.title, "track")
-		: null;
 
 	const album = readValue(details?.row[NOW_PLAYING_FIELD.album]);
 	const year = readValue(details?.row[NOW_PLAYING_FIELD.year]);
@@ -235,26 +261,28 @@ export function NowPlaying({
 
 	// Every row a window has ever named, by position, so a row seen as a neighbour once is not
 	// re-fetched the moment it becomes the centre. Kept only for the playlist it was read against:
-	// a position means nothing once the playing playlist changes.
-	const [knownPaths, setKnownPaths] = useState<Map<number, string | null>>(
+	// a position means nothing once the playing playlist changes. A position absent from the map is
+	// one this window has not read yet.
+	const [knownRows, setKnownRows] = useState<Map<number, RowWindowEntry>>(
 		() => new Map(),
 	);
-	const knownPathsPlaylist = useRef<string | null | undefined>(playlistId);
+	const knownRowsPlaylist = useRef<string | null | undefined>(playlistId);
 	// Cleared during render rather than in the effect below: the query for a new playlist answers
 	// `undefined` until it lands, and waiting for that to clear the map would read a former
-	// playlist's paths at the new one's positions for however long the fetch takes.
-	if (knownPathsPlaylist.current !== playlistId) {
-		knownPathsPlaylist.current = playlistId;
-		setKnownPaths(new Map());
+	// playlist's rows at the new one's positions for however long the fetch takes.
+	if (knownRowsPlaylist.current !== playlistId) {
+		knownRowsPlaylist.current = playlistId;
+		setKnownRows(new Map());
 	}
 	useEffect(() => {
 		if (!windowQuery) return;
-		setKnownPaths((current) => {
+		setKnownRows((current) => {
 			const merged = new Map(current);
 			let changed = false;
-			for (const [position, path] of windowQuery) {
-				if (merged.get(position) !== path) {
-					merged.set(position, path);
+			for (const [position, row] of windowQuery) {
+				const held = merged.get(position);
+				if (!held || held.path !== row.path || held.identity !== row.identity) {
+					merged.set(position, row);
 					changed = true;
 				}
 			}
@@ -262,19 +290,49 @@ export function NowPlaying({
 		});
 	}, [windowQuery]);
 
-	const pathAt = (position: number) => knownPaths.get(position) ?? null;
+	const rowAt = (position: number) => knownRows.get(position);
+
+	// `undefined` is a neighbour this window has not read yet, and draws nothing rather than the
+	// positional fallback: firing that now and the canonical address once the read lands would be
+	// two requests for a neighbour library holds a path for all along.
+	const neighbourAt = (position: number) => {
+		const row = rowAt(position);
+		return row === undefined
+			? null
+			: artworkAt(origin, playlistId ?? null, position, row);
+	};
 
 	const neighbours =
 		order.isInOrder && hasPosition && item && playlistId
 			? {
-					nextArtwork: neighbourArtworkOf(origin, pathAt(item.index + 1)),
-					previousArtwork: neighbourArtworkOf(origin, pathAt(item.index - 1)),
+					nextArtwork: neighbourAt(item.index + 1),
+					previousArtwork: neighbourAt(item.index - 1),
 				}
 			: { nextArtwork: null, previousArtwork: null };
 
+	const playingAlbum = item?.album ?? null;
+	const playingCredited = item?.albumArtist || item?.columns[0] || null;
+	const centreCanonical = playingAlbum
+		? canonicalPlayingArtworkUrl(origin, playingAlbum, playingCredited || "")
+		: null;
+
+	const artwork = !track
+		? null
+		: (centreCanonical ?? playingArtworkUrl(origin));
+
+	const playingCover = !track
+		? undefined
+		: playingAlbum
+			? coverKey(playingCredited, playingAlbum)
+			: coverKey(track.artist, track.title, "track");
+
+	// Read off the same window a neighbour would be: the address a neighbour's own fetch would have
+	// produced for this position, so a slot already showing it is left alone once it becomes the
+	// centre.
+	const centreRow = hasPosition && item ? rowAt(item.index) : undefined;
 	const neighbourArtworkSrc =
-		hasPosition && item && playlistId
-			? (neighbourArtworkOf(origin, pathAt(item.index))?.src ?? null)
+		hasPosition && item && playlistId && centreRow
+			? (artworkAt(origin, playlistId, item.index, centreRow)?.src ?? null)
 			: null;
 
 	const liveItem = live?.player?.activeItem;

@@ -235,8 +235,19 @@ const bearerOf = (headers: RequestHeaders) =>
 
 const MAX_TRACK_ADDRESS = 4096;
 
-// Word for word what `kKeepAndRevalidate` in the component's `core/http_server.cpp` sends.
-const KEEP_AND_REVALIDATE = "no-cache, must-revalidate";
+const SECONDS_PER_DAY = 24 * 60 * 60;
+
+// Word for word what `kCoverCacheLifetimeSeconds` and `kMissingCoverCacheLifetimeSeconds` in
+// the component's `core/http_server.cpp` hold.
+const COVER_CACHE_LIFETIME_SECONDS = 180 * SECONDS_PER_DAY;
+const MISSING_COVER_CACHE_LIFETIME_SECONDS = 10 * 60;
+
+const freshFor = (seconds: number) => `private, max-age=${seconds}`;
+
+// Word for word what `kAskEveryTime` sends: the playing cover and the positional fallback name
+// a different picture once the track or the row changes, and the state and library routes must
+// stay current, so none of the five may be held past the request that answered it.
+const ASK_EVERY_TIME = "private, no-cache";
 
 // Both artwork routes answer 404 with this one string, as the component does:
 // from a reader's side "no cover for that track" and "no cover for whatever is
@@ -1085,15 +1096,25 @@ const playbackModesOf = (state: FakeState): PlaybackMode[] =>
 
 const fileNameOf = (path: string) => path.split(/[\\/]/).pop() ?? "";
 
-// Mirrors `kTitleScript` and `kArtistScript` in
-// `plugins/fb2k/src/fb2k/playback_watch.cpp`: only the title falls back to the filename.
+// Mirrors the title-formatting scripts in `plugins/fb2k/src/fb2k/playback_watch.cpp`: only the
+// title falls back to the filename, and a tag the player resolved to nothing crosses the wire as
+// `null` rather than as an empty string.
 const nameOf = (track: Track) => ({
 	title:
 		String(track["%title%"] ?? "") ||
 		fileNameOf(String(track["%path%"] ?? "")) ||
 		null,
 	artist: String(track["%artist%"] ?? "") || null,
+	album: String(track["%album%"] ?? "") || null,
+	albumArtist: String(track["%album artist%"] ?? "") || null,
 });
+
+const NOTHING_PLAYING_NAMES = {
+	title: null,
+	artist: null,
+	album: null,
+	albumArtist: null,
+};
 
 // What rides under `player` in `GET /api/state`'s `200`. Position comes from
 // `state.positionMark` rather than from `activeItem.position` directly, since
@@ -1118,7 +1139,7 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 		playbackMode: jeanModeFor(
 			declaredOrders(state)[state.player.playbackMode] ?? "",
 		),
-		...(track ? nameOf(track) : { title: null, artist: null }),
+		...(track ? nameOf(track) : NOTHING_PLAYING_NAMES),
 		playingLocation:
 			fake.knowsPlayingLocation && item && playlist
 				? { playlistId: playlist.guid, index: item.index }
@@ -1194,7 +1215,7 @@ const sendBlob = async (
 
 	response.writeHead(200, {
 		"Content-Type": "application/octet-stream",
-		"Cache-Control": KEEP_AND_REVALIDATE,
+		"Cache-Control": ASK_EVERY_TIME,
 		Vary: "Origin, Accept-Encoding",
 		ETag: tagOf(state, gzip ? "gzip" : "identity", since),
 		...(gzip ? { "Content-Encoding": "gzip" } : null),
@@ -1256,7 +1277,7 @@ async function handleState({
 	}
 	const tag = stateTagOf(state, "identity");
 	response.setHeader("Vary", "Origin, Accept-Encoding");
-	response.setHeader("Cache-Control", KEEP_AND_REVALIDATE);
+	response.setHeader("Cache-Control", ASK_EVERY_TIME);
 	response.setHeader("ETag", tag);
 	if (one(headers["if-none-match"]) === tag) {
 		response.writeHead(304);
@@ -1371,7 +1392,7 @@ export async function handleAgent({
 
 	const recorded = state.record(method, path + url.search, body as never);
 
-	const sendCover = (file: string) => {
+	const sendCover = (file: string, cacheControl: string) => {
 		const conditional = Boolean(headers["if-none-match"]);
 		return artwork(
 			file,
@@ -1379,7 +1400,7 @@ export async function handleAgent({
 			reporting(response, (answer) => {
 				recorded.answered = { conditional, ...answer };
 			}),
-			KEEP_AND_REVALIDATE,
+			cacheControl,
 		);
 	};
 
@@ -1694,19 +1715,52 @@ export async function handleAgent({
 			return json(response, { error: "unacceptable track address" }, 400);
 
 		const file = state.libraryArtworkFor(track);
-		if (!file) return json(response, NO_ARTWORK, 404);
+		if (!file) {
+			response.setHeader(
+				"Cache-Control",
+				freshFor(MISSING_COVER_CACHE_LIFETIME_SECONDS),
+			);
+			return json(response, NO_ARTWORK, 404);
+		}
 
-		return sendCover(file);
+		return sendCover(file, freshFor(COVER_CACHE_LIFETIME_SECONDS));
 	}
 
 	// Addressed by nothing: no path, no index, no handle. Not gated on the media
 	// library either, which is why the contract gives this route no 503 where
-	// `GET /api/artwork` has one.
+	// `GET /api/artwork` has one. The same URL names a different picture once the
+	// track changes, so every outcome here revalidates rather than holding.
 	if (path === "/api/artwork/playing") {
+		response.setHeader("Cache-Control", ASK_EVERY_TIME);
 		const file = state.playingArtwork();
 		if (!file) return json(response, NO_ARTWORK, 404);
 
-		return sendCover(file);
+		return sendCover(file, ASK_EVERY_TIME);
+	}
+
+	// The fallback for a row `GET /api/artwork` cannot address: no path reaches the
+	// client, so the playlist and the row stand in for one. A row the media library
+	// already holds a path for is refused the same way a missing cover is -- one
+	// album is one address, and a position is not an address for an album. A
+	// position outlives no reorder, so every outcome revalidates rather than holding.
+	const positionalArtworkMatch =
+		/^\/api\/artwork\/playlists\/([^/]+)\/(\d+)$/.exec(path);
+	if (positionalArtworkMatch) {
+		response.setHeader("Cache-Control", ASK_EVERY_TIME);
+		const [, guid, rowText] = positionalArtworkMatch;
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist) return json(response, { error: "no such playlist" }, 404);
+
+		const track = playlist.items[Number(rowText)];
+		if (!track)
+			return json(response, { error: "that position is past the end" }, 404);
+
+		if (state.libraryPathFor(track)) return json(response, NO_ARTWORK, 404);
+
+		const file = state.artworkFor(playlist.id, Number(rowText));
+		if (!file) return json(response, NO_ARTWORK, 404);
+
+		return sendCover(file, ASK_EVERY_TIME);
 	}
 
 	if (method === "GET" && path === "/api/playlists") {

@@ -11,6 +11,7 @@ import {
 	useTransport,
 } from "@/domain/player/usePlayer";
 import { coverKey } from "@/domain/track/fields";
+import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { readTrack } from "@/shared/api/beefweb";
 import { isFooJeanReady, playingArtworkUrl } from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
@@ -94,6 +95,8 @@ export function StatusBar({
 		snapshot?.player?.activeItem?.playlistGuid ?? null,
 	);
 
+	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
+
 	if (isPending || isError || !snapshot) {
 		return (
 			<footer className={styles.statusbar}>
@@ -111,9 +114,19 @@ export function StatusBar({
 	const item = player.activeItem;
 	const isPlaying = player.playbackState === "playing";
 	const hasTrack = Boolean(item && item.index >= 0);
-	const artwork = playingArtworkUrl(
-		isFooJeanReady(discovery) ? discovery.origin : null,
-	);
+
+	const album = item.album;
+	const credited = item.albumArtist || item.columns[0] || null;
+	const canonical = album
+		? canonicalPlayingArtworkUrl(origin, album, credited || "")
+		: null;
+
+	const artwork = !track ? null : (canonical ?? playingArtworkUrl(origin));
+	const identity = !track
+		? undefined
+		: album
+			? coverKey(credited, album)
+			: coverKey(track.artist, track.title, "track");
 
 	return (
 		<footer className={styles.statusbar}>
@@ -135,10 +148,8 @@ export function StatusBar({
 								? `${playlistId}:${item.index}`
 								: "idle"
 						}
-						src={track ? artwork : null}
-						identity={
-							track ? coverKey(track.artist, track.title, "track") : undefined
-						}
+						src={artwork}
+						identity={identity}
 						size={44}
 						className={styles.art}
 					/>

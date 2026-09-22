@@ -7,6 +7,7 @@ import {
 } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
+	coversByPosition,
 	coversFromBeefweb,
 	coversFromTheComponent,
 	expect,
@@ -32,6 +33,7 @@ import {
 	touchDrag,
 	trackPlayed,
 	trackRow,
+	withNoListOnScreen,
 } from "./fixtures.ts";
 import { openPanels, panelTab } from "./nowPlaying.ts";
 
@@ -107,46 +109,46 @@ const FIZZ = "168";
 // first row rather than the captured library's first file.
 const FIRST_IN_ALL_MUSIC = "Rotten Apple";
 
-// Two more rows of that same album, since one cover is what a track change
-// inside an album must not move. The second is far enough along that the cover
-// wheel never prefetched it as a neighbour of the row playing before it.
+// One more row of that same album, since one cover is what a track change
+// inside an album must not move.
 const SECOND_IN_THE_ALBUM = { row: 1, title: "Nutshell" };
-const LATER_IN_THE_ALBUM = { row: 3, title: "No Excuses" };
 
 // The row All music turns over to the next album at. A track change has to swap
 // a picture for a different one before anybody can see that it swapped, and
 // every row above this one is the same sleeve.
 const ANOTHER_ALBUM = { row: 7, title: "Break Blossom" };
 
-const PLAYING_COVER = "/api/artwork/playing";
+// The library-relative address a record's cover is asked at, which is its earliest track in album
+// order. The Default Playlist holds the first four rows of this one.
+const FIRST_IN_ALBUM_ORDER =
+	"A/Alice in Chains/(1994) Jar Of Flies/01. Rotten Apple.flac";
+const ONE_RECORD = "p1";
 
-// beefweb's address for the cover of the row something is playing from, which
-// names one row rather than the whole of beefweb's artwork.
-const playingRowCovers = (player: FakePlayer) => {
-	const { playlistId, index } = player.player.activeItem;
-	return player.requests
-		.filter((one) => one.path === `/api/artwork/${playlistId}/${index}`)
-		.map((one) => one.path);
+// Favorites, which crosses from one record into another: its first three rows are one and its next
+// two the other. The second record's cover is asked for at a row above the one playing, so the
+// address cannot be mistaken for the row's own path.
+const TWO_RECORDS = {
+	id: "p2",
+	first: {
+		row: 0,
+		title: "Tautou",
+		cover: "B/Brand New/(2003) Deja Entendu/01. Tautou.mp3",
+	},
+	second: {
+		row: 4,
+		title: "Fizz",
+		cover: "B/Babasónicos/(2001) Jessico/01. Los Calientes.mp3",
+		own: "B/Babasónicos/(2001) Jessico/02. Fizz.mp3",
+	},
 };
 
-// What the component answered for the playing cover, in order. The path cannot
-// say: a picture sent again and a picture revalidated are the same GET at the
-// same address, and only one of the two costs anything.
-const playingCoverAnswers = (player: FakePlayer) =>
-	requestsTo(player, PLAYING_COVER)
-		.filter((one) => one.method === "GET")
-		.map((one) => ({
-			conditional: one.answered?.conditional,
-			status: one.answered?.status,
-			carriedThePicture: (one.answered?.bytes ?? 0) > 0,
-		}));
+const PLAYING_COVER = "/api/artwork/playing";
 
 // Every request that asks for a cover, at all three addresses one is reachable
 // at: the component's playing cover, the component's by library path, and
 // beefweb's by row. Watching a single address would miss a picture asked for
-// again under another name, and that is the swap itself. GETs alone, as
-// `playingCoverAnswers` above: an `OPTIONS` preflight fetches no bytes and is
-// not a picture being asked for.
+// again under another name, and that is the swap itself. GETs alone: an
+// `OPTIONS` preflight fetches no bytes and is not a picture being asked for.
 const coversAskedFor = (player: FakePlayer) => [
 	...requestsTo(player, PLAYING_COVER)
 		.filter((one) => one.method === "GET")
@@ -154,6 +156,29 @@ const coversAskedFor = (player: FakePlayer) => [
 	...coversFromBeefweb(player),
 	...coversFromTheComponent(player),
 ];
+
+// A cover asked for at any address but the record's own: the playing route, beefweb's row, or the
+// component's row. A track whose record the media library holds uses none of the three, and the
+// positional one stays the fallback for a track it has no record for.
+const coversAskedElsewhere = (player: FakePlayer) => [
+	...requestsTo(player, PLAYING_COVER)
+		.filter((one) => one.method === "GET")
+		.map((one) => routeOf(one.path)),
+	...coversFromBeefweb(player),
+	...coversByPosition(player),
+];
+
+const playAtThePlayer = async (
+	page: Page,
+	player: FakePlayer,
+	playlistId: string,
+	row: number,
+) => {
+	await page.request.post("/__control/play", {
+		data: { playlistId, index: row },
+	});
+	await expect.poll(() => player.player.activeItem.index).toBe(row);
+};
 
 const drawnCover = (within: Locator) =>
 	within.locator("[data-artwork='ok']").first();
@@ -1889,76 +1914,99 @@ test("the front door still opens once a slow playlist join settles", async ({
 	await page.request.post("/__control/latency", { data: { ms: 0 } });
 });
 
-// The three below are All music rather than a playlist view, because a playlist
-// draws its own rows through beefweb's positional address and the playing row's
-// cover would then be asked for by something other than the two surfaces these
-// are about. All music draws its rows through the component instead.
-test("the status bar asks for the playing cover at an address with no playlist row in it", async ({
+// The three below drive the player over a page with no list on it, so the cover each names is the
+// playing surface's own. The Default Playlist is one record's first four tracks and is the same
+// four rows All music opens on, so the titles above still name them.
+test("the status bar asks for the playing cover at the record's address, with no playlist row in it", async ({
 	page,
 	player,
 }) => {
-	await openAllMusic(page);
-	await trackRow(page, 0).dblclick();
+	await withNoListOnScreen(page);
+	await playAtThePlayer(page, player, ONE_RECORD, 0);
 	await expect(statusBar(page)).toContainText(FIRST_IN_ALL_MUSIC);
 
-	// The sleeve drew, so the absence below is an absence rather than a cover
+	// The sleeve drew, so the absences below are absences rather than a cover
 	// that never arrived at all.
 	await expect(drawnCover(statusBar(page))).toBeVisible();
-	await expect
-		.poll(() => requestsTo(player, PLAYING_COVER).length)
-		.toBeGreaterThan(0);
 
-	await expectSettlesAt(player, () => playingRowCovers(player), []);
+	// The record's earliest track, which is the address every other view of this
+	// record asks at too, so the browser holds one copy for all of them.
+	await expectSettlesAt(
+		player,
+		() => [...new Set(coversFromTheComponent(player))],
+		[FIRST_IN_ALBUM_ORDER],
+	);
+
+	// No row in any of it. A position outlives no reorder, so an address built
+	// from one names whatever file sits there by the time it is asked again.
+	expect(coversAskedElsewhere(player)).toEqual([]);
 });
 
-test("the now-playing screen asks for the playing cover at that same address", async ({
+test("the now-playing screen asks for that same address, and for no other", async ({
 	page,
 	player,
 }) => {
-	await openAllMusic(page);
-	await trackRow(page, 0).dblclick();
-	await expect(statusBar(page)).toContainText(FIRST_IN_ALL_MUSIC);
+	await withNoListOnScreen(page);
+	await playAtThePlayer(page, player, TWO_RECORDS.id, TWO_RECORDS.first.row);
 	await openNowPlaying(page);
-	await expect(nowPlayingScreen(page)).toContainText(FIRST_IN_ALL_MUSIC);
+	await expect(nowPlayingScreen(page)).toContainText(TWO_RECORDS.first.title);
 	await expect(drawnCover(nowPlayingScreen(page))).toBeVisible();
+	await expectSettlesAt(
+		player,
+		() => [...new Set(coversFromTheComponent(player))],
+		[TWO_RECORDS.first.cover],
+	);
 	player.requests.length = 0;
 
-	// Driven at the player, and to a row further along the album rather than the
-	// next one: the cover wheel prefetches the rows either side of the playing
-	// one at beefweb's address on purpose, so a jump is what leaves the new
-	// centre's own row unasked for by anything but this screen. On a phone the
-	// status bar is unmounted while this screen is open, which is what makes the
-	// screen the only surface left to ask.
-	player.playItem(player.player.activeItem.playlistId, LATER_IN_THE_ALBUM.row);
-	await expect(nowPlayingScreen(page)).toContainText(LATER_IN_THE_ALBUM.title);
+	// Driven at the player, and onto another record rather than another track of
+	// this one: a track of the record already on screen costs no request at all,
+	// which is the case below and not this one. On a phone the status bar is
+	// unmounted while this screen is open, which is what makes the screen the
+	// only surface left to ask.
+	player.playItem(player.player.activeItem.playlistId, TWO_RECORDS.second.row);
+	await expect(nowPlayingScreen(page)).toContainText(TWO_RECORDS.second.title);
+	await expect(drawnCover(nowPlayingScreen(page))).toBeVisible();
 
+	// The second record's earliest track, which is a row this playlist holds
+	// above the one now playing rather than the row itself. On a phone the wheel
+	// draws the row either side as well and each of those carries its own
+	// record's address, so what is read here is the address the centre took.
 	await expect
-		.poll(() => requestsTo(player, PLAYING_COVER).length)
-		.toBeGreaterThan(0);
-
-	await expectSettlesAt(player, () => playingRowCovers(player), []);
+		.poll(() => coversFromTheComponent(player))
+		.toContain(TWO_RECORDS.second.cover);
+	await expectSettlesAt(
+		player,
+		() =>
+			coversFromTheComponent(player).filter(
+				(track) => track === TWO_RECORDS.second.own,
+			),
+		[],
+	);
+	expect(coversAskedElsewhere(player)).toEqual([]);
 });
 
-test("a second track of the same album revalidates the cover rather than downloading it again", async ({
+test("a second track of the same album costs no cover request at all", async ({
 	page,
 	player,
 }) => {
-	await openAllMusic(page);
-	await trackRow(page, 0).dblclick();
+	await withNoListOnScreen(page);
+	await playAtThePlayer(page, player, ONE_RECORD, 0);
 	await expect(statusBar(page)).toContainText(FIRST_IN_ALL_MUSIC);
 	await expect(drawnCover(statusBar(page))).toBeVisible();
 
 	player.playItem(player.player.activeItem.playlistId, SECOND_IN_THE_ALBUM.row);
 	await expect(statusBar(page)).toContainText(SECOND_IN_THE_ALBUM.title);
+	await expect(drawnCover(statusBar(page))).toBeVisible();
 
-	// One address for both tracks, so the second carries the first one's
-	// validator and the picture never leaves the browser. The component folds the
-	// picture rather than anything about the track, which is what makes one album
-	// one validator.
-	await expectSettlesAt(player, () => playingCoverAnswers(player), [
-		{ conditional: false, status: 200, carriedThePicture: true },
-		{ conditional: true, status: 304, carriedThePicture: false },
+	// One ask reached the player across both tracks. The address does not move
+	// when the track does, so whether the second track was answered by the handle
+	// Jean already holds or by the copy the browser is keeping for 180 days, it
+	// asks the player for nothing -- and that is what the list surfaces get out
+	// of one address an album as well.
+	await expectSettlesAt(player, () => coversFromTheComponent(player), [
+		FIRST_IN_ALBUM_ORDER,
 	]);
+	expect(coversAskedElsewhere(player)).toEqual([]);
 });
 
 test("a neighbour becoming the centre asks for no cover at all", async ({

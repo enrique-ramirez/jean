@@ -1,6 +1,6 @@
 import type { Translate } from "@/shared/i18n/locale";
-import { artistGroups, FIELD, readValue, tagGroups } from "./fields";
-import { byValue } from "./libraryColumns";
+import { artistGroups, FIELD, readValue, tagGroups, tagKey } from "./fields";
+import { byValue, type LibraryColumns } from "./libraryColumns";
 import type { TrackRows } from "./project";
 
 export interface DiscRun {
@@ -34,6 +34,9 @@ export function discNumber(raw: string | undefined): number | null {
 	const parsed = Number.parseInt(text, 10);
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
+
+// Track numbers are free text on the same terms discs are, so the same parser reads them.
+const trackOrdinal = discNumber;
 
 const discsWorthDrawing = (discs: DiscRun[]): DiscRun[] | null =>
 	discs.length >= 2 && discs.every((disc) => disc.number !== null)
@@ -102,6 +105,119 @@ export function groupByAlbum(rows: TrackRows, t: Translate): AlbumRun[] {
 		...group,
 		discs: discsWorthDrawing(group.discs),
 	}));
+}
+
+/**
+ * The ref every track of a record shares a cover address through: the whole library's earliest disc,
+ * then earliest track, ties broken by ref, which is stable and total whatever a tag omits or repeats.
+ * Unlike `groupByAlbum`, this sweeps every row rather than contiguous runs, so it answers the same ref
+ * for an album wherever it is reached from. A track with no album tag maps to itself, since it has no
+ * record to share a cover with -- `coverIdentity` falls back to the track's own identity for exactly
+ * that case, and this leaves it alone.
+ */
+export function canonicalTrackRefs(columns: LibraryColumns): Int32Array {
+	const album = columns.fields[FIELD.album];
+	const disc = columns.fields[FIELD.discNumber];
+	const track = columns.fields[FIELD.trackNumber];
+
+	const albums = tagGroups(album);
+	const artists = artistGroups(columns);
+	const discs = byValue(disc, discNumber);
+	const tracks = byValue(track, trackOrdinal);
+
+	const recordOf = new Int32Array(columns.trackCount).fill(-1);
+	const best = new Map<
+		number,
+		readonly [disc: number, track: number, ref: number]
+	>();
+
+	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		const albumGroup = albums.of[album.ids[ref]];
+		if (albumGroup < 0) continue;
+
+		const record = artists.pairedWith(ref, albumGroup);
+		recordOf[ref] = record;
+
+		const order = [
+			discs[disc.ids[ref]] ?? 0,
+			tracks[track.ids[ref]] ?? 0,
+			ref,
+		] as const;
+		const held = best.get(record);
+		if (
+			!held ||
+			order[0] < held[0] ||
+			(order[0] === held[0] && order[1] < held[1])
+		)
+			best.set(record, order);
+	}
+
+	return Int32Array.from({ length: columns.trackCount }, (_, ref) => {
+		const record = recordOf[ref];
+		return record < 0 ? ref : (best.get(record)?.[2] ?? ref);
+	});
+}
+
+export interface AlbumCanonicalIndex {
+	// `credited` is the album artist, falling back to the artist: the same fallback `artistGroups`
+	// resolves per row, taken here as text since the caller has no ref to resolve it from. Answers
+	// null for a record this library does not hold, never a guess at the nearest one.
+	refFor: (album: string, credited: string) => number | null;
+}
+
+/**
+ * The same canonicalisation `canonicalTrackRefs` sweeps, looked up by an album's tag text rather
+ * than by one of its own rows: what a per-track poll or a title-formatted read names a record by,
+ * never a ref into this library. Built once per snapshot and cached the way the caller already
+ * caches `canonicalTrackRefs`, so a lookup after the first costs an object property read.
+ */
+export function albumCanonicalIndex(
+	columns: LibraryColumns,
+): AlbumCanonicalIndex {
+	const album = columns.fields[FIELD.album];
+	const disc = columns.fields[FIELD.discNumber];
+	const track = columns.fields[FIELD.trackNumber];
+
+	const albums = tagGroups(album);
+	const artists = artistGroups(columns);
+	const discs = byValue(disc, discNumber);
+	const tracks = byValue(track, trackOrdinal);
+
+	const best = new Map<
+		string,
+		readonly [disc: number, track: number, ref: number]
+	>();
+
+	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		const albumGroup = albums.of[album.ids[ref]];
+		if (albumGroup < 0) continue;
+
+		const key = `${albumGroup}:${artists.at(ref)}`;
+		const order = [
+			discs[disc.ids[ref]] ?? 0,
+			tracks[track.ids[ref]] ?? 0,
+			ref,
+		] as const;
+		const held = best.get(key);
+		if (
+			!held ||
+			order[0] < held[0] ||
+			(order[0] === held[0] && order[1] < held[1])
+		)
+			best.set(key, order);
+	}
+
+	return {
+		refFor: (albumText, creditedText) => {
+			const albumGroup = albums.group(tagKey(albumText));
+			if (albumGroup < 0) return null;
+
+			const creditedGroup = artists.group(tagKey(creditedText));
+			if (creditedGroup < 0) return null;
+
+			return best.get(`${albumGroup}:${creditedGroup}`)?.[2] ?? null;
+		},
+	};
 }
 
 export function albumCoverRows(groups: AlbumRun[], length: number) {

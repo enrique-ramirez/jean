@@ -70,3 +70,30 @@ export const writeRating = (path: string, rating: string) =>
 
 export const capabilities = () =>
 	component<{ canWritePlaylists: boolean }>("/api/capabilities");
+
+export const copyToNewPlaylist = (
+	title: string,
+	source: string,
+	rows: number,
+) =>
+	component<Playlist>("/api/playlists", {
+		method: "POST",
+		body: JSON.stringify({ title, source, runs: [[0, rows]] }),
+	});
+
+export const removePlaylist = (id: string) =>
+	component<void>(`/api/playlists/${id}`, { method: "DELETE" });
+
+export const playRow = (id: string, index: number) =>
+	component<void>(`/api/playlists/${id}/items/${index}/play`, {
+		method: "POST",
+	});
+
+export const state = () =>
+	component<{
+		player: {
+			playback: string;
+			playingLocation: { playlistId: string; index: number } | null;
+			currentPlaylistId: string | null;
+		};
+	}>("/api/state");

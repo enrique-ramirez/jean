@@ -6,18 +6,13 @@ import {
 	trackRow,
 	viewHeader,
 } from "../e2e/fixtures.ts";
-import { capabilities, playlists, TOKEN } from "./component.ts";
-import { expect, type Page, test } from "./fixtures.ts";
+import { capabilities, playlists } from "./component.ts";
+import { expect, type Page, seedToken, test } from "./fixtures.ts";
 
 // Criterion 32 on a real player, with `writePlaylists` off in the component's own config.json and
 // the player restarted, so the capabilities Jean reads at discovery already say no.
 
 const QUERY = process.env.LIVE_QUERY ?? "80Kidz";
-
-const seedToken = (page: Page) =>
-	page.addInitScript((token: string) => {
-		window.localStorage.setItem("jean.fooJeanToken", JSON.stringify(token));
-	}, TOKEN());
 
 const sidebarRow = (page: Page, title: string) =>
 	sidebar(page)

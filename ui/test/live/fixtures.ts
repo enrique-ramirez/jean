@@ -1,6 +1,6 @@
-import { test as base, expect } from "@playwright/test";
-
+import { test as base, expect, type Page } from "@playwright/test";
 import { fieldTable } from "../../src/shared/api/fieldTable.ts";
+import { TOKEN } from "./component.ts";
 
 //   LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='D:\SomeFolder' pnpm test:live
 
@@ -107,6 +107,13 @@ const SEEDED_SETTINGS = {
 	"jean.heatIntroSeen": true,
 	"jean.settingsSeen": true,
 };
+
+// Pairing is not what most specs are about, and a device that has never paired reaches no
+// component at all.
+export const seedToken = (page: Page) =>
+	page.addInitScript((token: string) => {
+		window.localStorage.setItem("jean.fooJeanToken", JSON.stringify(token));
+	}, TOKEN());
 
 // No test-scoped fixtures of its own -- `page` below overrides a built-in. `Record<string, never>`
 // would give it an index signature, under which `install` resolves as `never`.

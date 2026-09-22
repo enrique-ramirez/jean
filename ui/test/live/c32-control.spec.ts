@@ -5,18 +5,13 @@ import {
 	trackRow,
 	viewHeader,
 } from "../e2e/fixtures.ts";
-import { capabilities, playlists, TOKEN } from "./component.ts";
-import { expect, type Page, test } from "./fixtures.ts";
+import { capabilities, playlists } from "./component.ts";
+import { expect, type Page, seedToken, test } from "./fixtures.ts";
 
 // The control for c32.spec.ts, run with `writePlaylists` back on: every selector that answered zero
 // there has to answer something here, or the zeros said nothing about the setting.
 
 const QUERY = process.env.LIVE_QUERY ?? "80Kidz";
-
-const seedToken = (page: Page) =>
-	page.addInitScript((token: string) => {
-		window.localStorage.setItem("jean.fooJeanToken", JSON.stringify(token));
-	}, TOKEN());
 
 const openAllMusic = async (page: Page) => {
 	await page.goto("#/all");

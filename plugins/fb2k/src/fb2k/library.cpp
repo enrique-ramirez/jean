@@ -70,6 +70,43 @@ void formatRow(const metadb_v2::ptr& metadb, const metadb_handle_ptr& item,
     }
 }
 
+std::vector<titleformat_object::ptr> compiledColumns(const titleformat_compiler::ptr& compiler,
+                                                     const std::vector<std::string>& columns) {
+    std::vector<titleformat_object::ptr> scripts;
+    scripts.reserve(columns.size());
+    for (const std::string& column : columns) {
+        titleformat_object::ptr script;
+        compiler->compile_safe_ex(script, column.c_str(), kUnresolved);
+        scripts.push_back(std::move(script));
+    }
+
+    return scripts;
+}
+
+std::vector<std::string> formattedColumns(const metadb_handle_ptr& handle,
+                                          const std::vector<titleformat_object::ptr>& scripts) {
+    std::vector<std::string> values(scripts.size(), kUnresolved);
+
+    metadb_info_container::ptr info;
+    if (!handle->get_info_ref(info))
+        return values;
+
+    pfc::string8 text;
+    for (size_t column = 0; column < scripts.size(); ++column) {
+        handle->format_title_from_external_info(info->info(), nullptr, text, scripts[column],
+                                                nullptr);
+        values[column] = toStd(text);
+    }
+
+    return values;
+}
+
+LibraryTrackRead trackReadFailure(PlaylistOutcome outcome) {
+    LibraryTrackRead read;
+    read.outcome = outcome;
+    return read;
+}
+
 }  // namespace
 
 struct LibraryFeed::State {
@@ -144,6 +181,48 @@ struct LibraryFeed::State {
             return {};
 
         return art_.of(ordered->items[found->second]);
+    }
+
+    // Ordinals run in relative-path order with the tie broken by subsong, so every subsong of
+    // one file follows the lowest ordinal at its path, which is the one `byRelativePath` keeps.
+    // See ARCHITECTURE.md, *The media library*.
+    metadb_handle_ptr trackAt(const std::string& relativePath, uint32_t subsong) const {
+        const OrderedPtr ordered = order();
+        if (!ordered)
+            return {};
+
+        const auto found = ordered->byRelativePath.find(relativePath);
+        if (found == ordered->byRelativePath.end())
+            return {};
+
+        const size_t count = ordered->items.get_count();
+        for (size_t ordinal = found->second;
+             ordinal < count && ordered->relativePaths[ordinal] == relativePath; ++ordinal) {
+            if (ordered->items[ordinal]->get_subsong_index() == subsong)
+                return ordered->items[ordinal];
+        }
+
+        return {};
+    }
+
+    // On a connection thread like `artwork()`; the columns go to the main thread for the reason
+    // core/http_server.h's `LibraryTrackReader` gives.
+    LibraryTrackRead readTrackColumns(const std::string& track, uint32_t subsong,
+                                      const std::vector<std::string>& columns) const {
+        const metadb_handle_ptr handle = trackAt(track, subsong);
+        if (!handle.is_valid())
+            return {};
+
+        return askPlayer<LibraryTrackRead>(
+            mainThread_, "reading one library track's columns",
+            [handle, columns, compiler = compiler_](const AnswerPtr<LibraryTrackRead>& answer) {
+                LibraryTrackRead read;
+                read.held = true;
+                read.columns = formattedColumns(handle, compiledColumns(compiler, columns));
+                answer->set(std::move(read));
+            },
+            trackReadFailure(PlaylistOutcome::timedOut),
+            trackReadFailure(PlaylistOutcome::playerRefused));
     }
 
     OrdinalResolution resolveOrdinals(uint64_t structure,
@@ -245,11 +324,7 @@ private:
                                               std::chrono::steady_clock::now() - started)
                                               .count();
 
-                for (const std::string& expression : expressions) {
-                    titleformat_object::ptr script;
-                    compiler->compile_safe_ex(script, expression.c_str(), kUnresolved);
-                    walk->scripts.push_back(std::move(script));
-                }
+                walk->scripts = compiledColumns(compiler, expressions);
 
                 logInfo("foobar2000 listed " + std::to_string(walk->items.get_count()) +
                         " library track(s) in " + std::to_string(milliseconds) +
@@ -555,6 +630,25 @@ OrdinalResolver LibraryFeed::ordinalResolver() {
 
     return [state = state_](uint64_t structure, const std::vector<uint32_t>& ordinals) {
         return state->resolveOrdinals(structure, ordinals);
+    };
+}
+
+LibraryTrackResolver LibraryFeed::trackResolver() {
+    if (!state_)
+        return {};
+
+    return [state = state_](const std::string& track, uint32_t subsong) {
+        return state->trackAt(track, subsong);
+    };
+}
+
+LibraryTrackReader LibraryFeed::trackColumnReader() {
+    if (!state_)
+        return {};
+
+    return [state = state_](const std::string& track, uint32_t subsong,
+                            const std::vector<std::string>& columns) {
+        return state->readTrackColumns(track, subsong, columns);
     };
 }
 

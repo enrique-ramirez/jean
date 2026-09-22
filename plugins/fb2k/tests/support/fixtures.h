@@ -8,7 +8,9 @@
 
 #include "third_party/doctest.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,10 +34,23 @@ constexpr char kToken[] = "0123456789abcdef0123456789abcdef";
 // The one form a playlist id may take: lower case, dashed.
 constexpr char kPlaylistId[] = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 
-// A write the default allowlist permits, and the path it names.
-constexpr char kRatingWrite[] =
-    R"({"path": "F:\\foo_jean-test\\sample.mp3", "fields": {"rating": "4"}})";
-constexpr char kRatingWritePath[] = R"(F:\foo_jean-test\sample.mp3)";
+// The library-relative, forward-slashed address `GET /api/artwork?track=` takes.
+constexpr char kTrackAddress[] = "Someone/A Record/01 A Song.flac";
+
+// A playlist generation of the shape one really carries: past 2^53, where a JSON number stops
+// being exact, so a generation one away from it is the near miss a test wants.
+constexpr uint64_t kWriteStructure = 7281905463201847559ULL;
+
+// The one field the default allowlist permits, and the value both write fixtures carry.
+constexpr char kRating[] = "4";
+
+// A write the default allowlist permits, addressed by where the media library holds the track.
+// Leave the subsong out for a file holding one track, which is what a client sends for one.
+std::string ratingWrite(const std::string& track,
+                        std::optional<uint32_t> subsong = std::nullopt);
+
+// The same write, addressed by a row's position in a playlist and the generation it was read at.
+std::string ratingWriteAtRow(const std::string& playlist, uint32_t index, uint64_t structure);
 
 // A configuration that would serve: a legal token, every other default left alone.
 Settings servingSettings();

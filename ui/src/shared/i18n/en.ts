@@ -423,14 +423,11 @@ export const en = {
 		one: "Queue, {count} track",
 		other: "Queue, {count} tracks",
 	},
+	"rate.didNotLand": "We couldn’t rate {track} with {stars} stars",
 	"rate.failed": "{label} was not rated. {message}",
-	"rate.maybeFailed": "{label} may not have been rated. {message}",
 	"rate.moved": "That track has moved. Reload to rate it.",
-	"rate.noAnswer":
-		"foobar2000 did not answer. The rating may not have been saved.",
 	"rate.notAllowed": "This foobar2000 does not allow ratings to be written.",
 	"rate.notSaved": "The rating was not saved. {message}",
-	"rate.slowOk": "foobar2000 took a while, but the rating is saved.",
 	"rate.unknownTrack":
 		"foobar2000 does not know that track, so it was not rated.",
 	"rating.clearOn": "Clear rating ({label})",
@@ -626,7 +623,6 @@ export const en = {
 		other: "{count} minutes",
 	},
 	"span.minutesShort": "{count} min",
-	"tagWrite.noPath": "That track has no path to write to.",
 	"tagWrite.unavailable": "Tag writing is not available.",
 	"theme.toDark": "Switch to dark theme",
 	"theme.toLight": "Switch to light theme",

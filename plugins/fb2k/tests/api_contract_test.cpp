@@ -171,21 +171,27 @@ TEST_CASE("a stream timeline is the shape contract/openapi.yaml publishes") {
           Keys{"at", "path", "subsong", "position"});
 }
 
+// One shape per address form. `structure` is never echoed, being a precondition on the write
+// rather than part of the address, so a client gets back no field it did not send.
 TEST_CASE("a successful write is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     TagWrite write;
-    write.track.path = R"(F:\a\b.mp3)";
     write.fields = {{"rating", "4"}};
 
-    CHECK(keysOf(tagWrittenDocument(write)) == Keys{"written", "path", "subsong", "fields"});
+    write.track.library = LibraryTrackRef{kTrackAddress, 0};
+    CHECK(keysOf(tagWrittenDocument(write)) == Keys{"written", "track", "subsong", "fields"});
+
+    write.track.library.reset();
+    write.track.playlist = PlaylistTrackRef{kPlaylistId, 3, kWriteStructure};
+    CHECK(keysOf(tagWrittenDocument(write)) == Keys{"written", "playlist", "index", "fields"});
 }
 
 TEST_CASE("a refusal is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
-    const auto refused =
-        parseTagWrite(R"({"path": "F:\\a.mp3", "fields": {"artist": "x"}})", servingSettings());
+    const auto refused = parseTagWrite(R"({"track": "a/b.flac", "fields": {"artist": "x"}})",
+                                       servingSettings());
     REQUIRE_FALSE(refused.ok());
 
     // `field` is present only for a rejected field, which is the difference a client branches on.
@@ -252,9 +258,10 @@ TEST_CASE("a page of playlist rows is the shape contract/openapi.yaml publishes"
           Keys{"structure", "revision", "totalCount", "items"});
 
     // A row the media library does not hold carries libraryPath as null rather than leaving it
-    // out, so a client reads one shape.
+    // out, so a client reads one shape. The subsong is there whether the library holds the row or
+    // not, being a property of the handle.
     const auto row = json::parse(playlistRowsDocument(read))["items"][0];
-    CHECK(keysOf(row) == Keys{"columns", "libraryPath"});
+    CHECK(keysOf(row) == Keys{"columns", "libraryPath", "subsong"});
 }
 
 TEST_CASE("a delta of playlist rows is the shape contract/openapi.yaml publishes") {
@@ -270,7 +277,7 @@ TEST_CASE("a delta of playlist rows is the shape contract/openapi.yaml publishes
     const auto document = json::parse(playlistChangesDocument(read));
 
     const auto row = document["items"][0];
-    CHECK(keysOf(row) == Keys{"position", "libraryPath"});
+    CHECK(keysOf(row) == Keys{"position", "libraryPath", "subsong"});
 
     const auto column = document["columns"][0];
     CHECK(keysOf(column) == Keys{"text", "ids"});
@@ -386,6 +393,10 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
     CHECK(keysOf(libraryRefusedDocument(refused)) == Keys{"error", "detail"});
 
     CHECK(keysOf(libraryFailedDocument(DeltaOutcome::structureChanged)) == Keys{"error", "detail"});
+
+    // No libraryPath: the caller supplied the address, so the answer carries only what it did
+    // not already have.
+    CHECK(keysOf(libraryTrackDocument({"Imaginary Track", "Fictional Artist"})) == Keys{"columns"});
 }
 
 // api_contract_test.cpp's other cases compare an emitted document with a key set written by
@@ -396,11 +407,11 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     INFO(kUpdateSpec);
 
     const auto required =
-        Keys{"playback",         "path",           "subsong",           "position",
-             "duration",         "volume",         "muted",             "title",
-             "artist",           "album",          "albumArtist",       "playbackMode",
-             "playingLocation",  "currentPlaylistId",
-             "queueRevision",    "playlistsRevision"};
+        Keys{"playback",          "path",              "subsong",           "libraryPath",
+             "position",          "duration",          "volume",            "muted",
+             "title",             "artist",            "album",             "albumArtist",
+             "playbackMode",      "playingLocation",   "currentPlaylistId",
+             "queueRevision",     "playlistsRevision"};
 
     PlayerState playing;
     playing.playback = PlaybackState::playing;
@@ -511,12 +522,13 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     INFO(kUpdateSpec);
 
     CHECK(describe(TagWriteRefusal::malformedBody) == "malformed request");
-    CHECK(describe(TagWriteRefusal::missingPath) == "missing path");
-    CHECK(describe(TagWriteRefusal::unsafePath) == "unacceptable path");
+    CHECK(describe(TagWriteRefusal::badAddress) == "unacceptable address");
     CHECK(describe(TagWriteRefusal::noFields) == "no fields to write");
     CHECK(describe(TagWriteRefusal::fieldNotAllowed) == "field not allowed");
 
     CHECK(describe(TagWriteOutcome::trackNotKnown) == "foobar2000 does not know that track");
+    CHECK(describe(TagWriteOutcome::rowsMoved) ==
+          "the playlist's rows were added, removed or reordered; read them again");
     CHECK(describe(TagWriteOutcome::writeFailed) == "the player could not write the tags");
     CHECK(describe(TagWriteOutcome::timedOut) == "the player did not answer in time");
     CHECK(describe(TagWriteOutcome::unavailable) == "tag writing is not available");
@@ -608,13 +620,13 @@ TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer w
     INFO(kUpdateSpec);
 
     CHECK(httpStatusFor(TagWriteRefusal::malformedBody) == 400);
-    CHECK(httpStatusFor(TagWriteRefusal::missingPath) == 400);
-    CHECK(httpStatusFor(TagWriteRefusal::unsafePath) == 400);
+    CHECK(httpStatusFor(TagWriteRefusal::badAddress) == 400);
     CHECK(httpStatusFor(TagWriteRefusal::noFields) == 400);
     CHECK(httpStatusFor(TagWriteRefusal::fieldNotAllowed) == 403);
 
     CHECK(httpStatusFor(TagWriteOutcome::written) == 200);
     CHECK(httpStatusFor(TagWriteOutcome::trackNotKnown) == 404);
+    CHECK(httpStatusFor(TagWriteOutcome::rowsMoved) == 409);
     CHECK(httpStatusFor(TagWriteOutcome::writeFailed) == 500);
     CHECK(httpStatusFor(TagWriteOutcome::timedOut) == 504);
     CHECK(httpStatusFor(TagWriteOutcome::unavailable) == 503);

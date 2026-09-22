@@ -1,10 +1,12 @@
 #include "core/tag_write.h"
 
+#include "core/artwork.h"
 #include "core/json.h"
+#include "core/playlists.h"
 #include "core/text.h"
 
 #include <algorithm>
-#include <cctype>
+#include <array>
 #include <iterator>
 #include <limits>
 #include <optional>
@@ -16,7 +18,12 @@ namespace jean {
 
 namespace {
 
-constexpr size_t kMaxPath = 4096;
+// Exactly the fields contract/openapi.yaml declares for this body, `additionalProperties:
+// false` there.
+constexpr std::array<const char*, 6> kTagWriteFields{"track", "subsong",   "playlist",
+                                                     "index", "structure", "fields"};
+constexpr std::array<const char*, 2> kLibraryAddressFields{"track", "subsong"};
+constexpr std::array<const char*, 3> kPlaylistAddressFields{"playlist", "index", "structure"};
 
 TagWriteRequest refuse(TagWriteRefusal refusal, std::string detail = {}) {
     TagWriteRequest request;
@@ -25,26 +32,94 @@ TagWriteRequest refuse(TagWriteRefusal refusal, std::string detail = {}) {
     return request;
 }
 
-bool hasParentEscape(const std::string& path) {
-    auto normalised = path;
-    std::replace(normalised.begin(), normalised.end(), '\\', '/');
-    return ("/" + normalised + "/").find("/../") != std::string::npos;
+template <typename Fields>
+std::string undeclaredField(const json& root, const Fields& fields) {
+    const auto entries = root.items();
+    const auto stray = std::find_if(entries.begin(), entries.end(), [&fields](const auto& entry) {
+        return std::none_of(std::begin(fields), std::end(fields),
+                            [&entry](const char* field) { return entry.key() == field; });
+    });
+
+    return stray == entries.end() ? std::string() : (*stray).key();
 }
 
-bool isSeparator(char c) {
-    return c == '\\' || c == '/';
+template <typename Fields>
+bool namesAny(const json& root, const Fields& fields) {
+    return std::any_of(std::begin(fields), std::end(fields),
+                       [&root](const char* field) { return root.contains(field); });
 }
 
-bool isAbsolute(const std::string& path) {
-    // A drive letter or a leading slash. Anything else is relative to a working directory
-    // this component does not have.
-    const bool driveLetter = path.size() >= 3 &&
-                             std::isalpha(static_cast<unsigned char>(path[0])) != 0 &&
-                             path[1] == ':' && (path[2] == '\\' || path[2] == '/');
+struct AddressField {
+    TrackRef ref;
 
-    // Not redundant with the caller's check: this is the one predicate here that would read
-    // off the end of the string.
-    return driveLetter || (!path.empty() && path.front() == '/');
+    TagWriteRefusal refusal = TagWriteRefusal::none;
+    std::string why;
+
+    bool ok() const { return refusal == TagWriteRefusal::none; }
+};
+
+AddressField unreadable(std::string why, TagWriteRefusal refusal = TagWriteRefusal::badAddress) {
+    return AddressField{TrackRef{}, refusal, std::move(why)};
+}
+
+AddressField readLibraryAddress(const json& root) {
+    const auto track = readString(root, "track");
+    if (!track.present || track.wrongType)
+        return unreadable("'track' is required and must be a string");
+
+    if (const auto why = trackAddressRefusal(track.value); !why.empty())
+        return unreadable(why);
+
+    LibraryTrackRef library;
+    library.track = track.value;
+
+    if (const auto subsong = root.find("subsong"); subsong != root.end()) {
+        if (!subsong->is_number_unsigned() ||
+            subsong->get<uint64_t>() > std::numeric_limits<uint32_t>::max()) {
+            return unreadable("'subsong' must be a non-negative number",
+                              TagWriteRefusal::malformedBody);
+        }
+        library.subsong = subsong->get<uint32_t>();
+    }
+
+    AddressField address;
+    address.ref.library = library;
+    return address;
+}
+
+AddressField readPlaylistAddress(const json& root) {
+    const auto playlist = readString(root, "playlist");
+    if (!playlist.present || playlist.wrongType || !isPlaylistId(playlist.value))
+        return unreadable("'playlist' is required and must be a playlist id");
+
+    PlaylistTrackRef row;
+    row.playlistId = playlist.value;
+
+    const auto index = root.find("index");
+    if (index == root.end() || !index->is_number_unsigned() ||
+        index->get<uint64_t>() > std::numeric_limits<uint32_t>::max())
+        return unreadable("'index' is required and must be a non-negative number");
+    row.index = index->get<uint32_t>();
+
+    const auto structure = readString(root, "structure");
+    if (!structure.present || structure.wrongType || !readDecimal(structure.value, row.structure))
+        return unreadable("'structure' is required and must be a string of digits");
+
+    AddressField address;
+    address.ref.playlist = row;
+    return address;
+}
+
+AddressField readAddress(const json& root) {
+    const bool library = namesAny(root, kLibraryAddressFields);
+    const bool playlist = namesAny(root, kPlaylistAddressFields);
+
+    if (library && playlist)
+        return unreadable("a request names 'track' or 'playlist', never both");
+    if (!library && !playlist)
+        return unreadable("'track' or 'playlist' is required");
+
+    return library ? readLibraryAddress(root) : readPlaylistAddress(root);
 }
 
 std::optional<std::string> readFieldValue(const json& value) {
@@ -78,26 +153,6 @@ std::string fieldNamedTwice(const std::map<std::string, std::string>& fields) {
 
 }  // namespace
 
-bool isSafeTrackPath(const std::string& path) {
-    if (path.empty() || path.size() > kMaxPath)
-        return false;
-
-    if (!isPrintable(path))
-        return false;
-
-    // No scheme of any kind: telling "file://" apart from "http://" and foobar2000's own
-    // "unpack://" is the kind of parsing that goes wrong quietly.
-    if (path.find("://") != std::string::npos)
-        return false;
-
-    // UNC. Never reach a network share on the caller's say-so. Windows takes either
-    // separator, so //nas/share and \\nas\share are one path and both spellings are refused.
-    if (path.size() >= 2 && isSeparator(path[0]) && isSeparator(path[1]))
-        return false;
-
-    return isAbsolute(path) && !hasParentEscape(path);
-}
-
 TagWriteRequest parseTagWrite(const std::string& body, const Settings& settings) {
     const auto document = parseJsonObject(body);
     if (!document.ok())
@@ -105,23 +160,17 @@ TagWriteRequest parseTagWrite(const std::string& body, const Settings& settings)
 
     const auto& root = document.value;
 
-    const auto path = readString(root, "path");
-    if (!path.present || path.wrongType || path.value.empty())
-        return refuse(TagWriteRefusal::missingPath, "'path' is required and must be a string");
+    if (const auto stray = undeclaredField(root, kTagWriteFields); !stray.empty()) {
+        return refuse(TagWriteRefusal::badAddress,
+                      "'" + stray + "' is not a field this route takes");
+    }
+
+    const auto address = readAddress(root);
+    if (!address.ok())
+        return refuse(address.refusal, address.why);
 
     TagWriteRequest request;
-    request.write.track.path = path.value;
-
-    if (!isSafeTrackPath(path.value))
-        return refuse(TagWriteRefusal::unsafePath, "'path' must be a plain absolute local path");
-
-    if (const auto subsong = root.find("subsong"); subsong != root.end()) {
-        if (!subsong->is_number_unsigned() ||
-            subsong->get<uint64_t>() > std::numeric_limits<uint32_t>::max())
-            return refuse(TagWriteRefusal::malformedBody,
-                          "'subsong' must be a non-negative number");
-        request.write.track.subsong = subsong->get<uint32_t>();
-    }
+    request.write.track = address.ref;
 
     const auto fields = root.find("fields");
     if (fields == root.end() || !fields->is_object() || fields->empty()) {
@@ -164,10 +213,8 @@ std::string describe(TagWriteRefusal refusal) {
             return "ok";
         case TagWriteRefusal::malformedBody:
             return "malformed request";
-        case TagWriteRefusal::missingPath:
-            return "missing path";
-        case TagWriteRefusal::unsafePath:
-            return "unacceptable path";
+        case TagWriteRefusal::badAddress:
+            return "unacceptable address";
         case TagWriteRefusal::noFields:
             return "no fields to write";
         case TagWriteRefusal::fieldNotAllowed:
@@ -182,6 +229,8 @@ std::string describe(TagWriteOutcome outcome) {
             return "written";
         case TagWriteOutcome::trackNotKnown:
             return "foobar2000 does not know that track";
+        case TagWriteOutcome::rowsMoved:
+            return "the playlist's rows were added, removed or reordered; read them again";
         case TagWriteOutcome::writeFailed:
             return "the player could not write the tags";
         case TagWriteOutcome::timedOut:

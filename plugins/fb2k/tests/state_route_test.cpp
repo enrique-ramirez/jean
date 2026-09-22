@@ -113,6 +113,10 @@ constexpr char kSongArtist[] = "The Vela Ensemble";
 constexpr char kSongAlbum[] = "Dry Season";
 constexpr char kSongAlbumArtist[] = "Various Fictional Artists";
 
+// The first row fill() puts in the snapshot: the library-relative address a rating is written to
+// and the one GET /api/artwork?track= takes.
+constexpr char kTrackTheLibraryHolds[] = "Artist/Album/01.flac";
+
 json playerSection(const TestServer& server) {
     const auto response = get(server, "/api/state");
     REQUIRE(response);
@@ -239,6 +243,35 @@ Player building(BuildLog* log) {
         log->reasons.push_back(why);
     };
     return player;
+}
+
+constexpr char kTrackTheLibraryDoesNotHold[] = "Artist/Album/never-added.flac";
+constexpr char kTrackTheJobRefuses[] = "Artist/Album/refused.flac";
+constexpr char kTrackTheJobIsTooSlowFor[] = "Artist/Album/slow.flac";
+
+// Stands in for fb2k/library.cpp's one-track read. The address it is given decides the answer, so
+// one server drives every status the player half of GET /api/library/track can produce.
+Player readingOneTrack() {
+    Player player;
+    player.readLibraryTrack = [](const std::string& track, uint32_t,
+                                 const std::vector<std::string>& columns) {
+        LibraryTrackRead read;
+        if (track == kTrackTheJobRefuses)
+            read.outcome = PlaylistOutcome::playerRefused;
+        else if (track == kTrackTheJobIsTooSlowFor)
+            read.outcome = PlaylistOutcome::timedOut;
+        else if (track == kTrackTheLibraryHolds) {
+            read.held = true;
+            read.columns.assign(columns.size(), "One");
+        }
+
+        return read;
+    };
+    return player;
+}
+
+std::string oneTrackPath(const std::string& track) {
+    return "/api/library/track?track=" + track + "&columns=%25title%25";
 }
 
 }  // namespace
@@ -414,6 +447,36 @@ TEST_CASE("the poll document names the playing track, whether the media library 
     CHECK(player["title"] == kSongTitle);
     CHECK(player["artist"] == kSongArtist);
     CHECK(player["path"] == started.path);
+}
+
+// The path is foobar2000's own absolute one and no route takes it, so this is the only address a
+// client can write a rating for the playing track to. A stream and a local file the media library
+// does not hold both have none, and the stars are read-only for them.
+TEST_CASE("the poll document carries where the media library holds the playing track") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    const TestServer server = serving(&library, &store);
+
+    SUBCASE("the media library holds it") {
+        PlayerState started = playing();
+        started.libraryPath = kTrackTheLibraryHolds;
+        store.publish(started);
+
+        const auto player = playerSection(server);
+        REQUIRE(player.contains("libraryPath"));
+        CHECK(player.at("libraryPath") == kTrackTheLibraryHolds);
+    }
+
+    // Null rather than a missing key or an empty string, so a client reads one shape and can tell
+    // a track with no address from one addressed by the empty relative path.
+    SUBCASE("the media library does not hold it") {
+        store.publish(playing());
+
+        const auto player = playerSection(server);
+        REQUIRE(player.contains("libraryPath"));
+        CHECK(player.at("libraryPath").is_null());
+    }
 }
 
 // A client keys a cover by the record a track is from rather than by the track, so every row of an
@@ -712,6 +775,39 @@ TEST_CASE("the player moving invalidates what a client was holding") {
     CHECK(again->get_header_value("ETag") != tag);
 }
 
+// A rescan takes the playing track into the media library while it is still playing, and then
+// nothing else about the player moves. A field outside the comparison the version is computed
+// from is a field whose change never reaches a client at all: it holds the ETag, it is answered
+// 304, and the stars stay read-only until something unrelated moves.
+TEST_CASE("a poll carries a body when the playing track's library path is all that changed") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    const PlayerState started = playing();
+    store.publish(started);
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    PlayerState held = started;
+    held.libraryPath = kTrackTheLibraryHolds;
+    store.publish(held);
+
+    const auto again = getHolding(server, "/api/state", tag);
+    REQUIRE(again);
+    REQUIRE(again->status == 200);
+    CHECK(again->get_header_value("ETag") != tag);
+
+    const auto player = json::parse(again->body).at("player");
+    REQUIRE(player.contains("libraryPath"));
+    CHECK(player.at("libraryPath") == kTrackTheLibraryHolds);
+}
+
 TEST_CASE("a conditional poll is a 200 when the playing row moved, a 304 until it moves again") {
     Library library;
     fill(library);
@@ -889,10 +985,11 @@ TEST_CASE("the player section names the playlists revision once and carries noth
     const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
 
     const Keys published = {
-        "playback",        "path",              "subsong",       "position",
-        "duration",        "volume",            "muted",         "playbackMode",
-        "title",           "artist",            "album",         "albumArtist",
-        "playingLocation", "currentPlaylistId", "queueRevision", "playlistsRevision"};
+        "playback",          "path",              "subsong",           "libraryPath",
+        "position",          "duration",          "volume",            "muted",
+        "playbackMode",      "title",             "artist",            "album",
+        "albumArtist",       "playingLocation",   "currentPlaylistId",
+        "queueRevision",     "playlistsRevision"};
 
     CHECK(keysOf(playerSection(server)) == published);
 }
@@ -1724,6 +1821,19 @@ TEST_CASE("no library route answers a status contract/openapi.yaml does not docu
     note("POST /library/refresh",
          server.client().Post("/api/library/refresh", "", "application/json"));
     note("POST /library/refresh", refresh(off));
+
+    const TestServer reading = serving(&library, readingOneTrack());
+
+    note("GET /library/track", get(reading, oneTrackPath(kTrackTheLibraryHolds)));
+    note("GET /library/track", get(reading, oneTrackPath(kTrackTheLibraryDoesNotHold)));
+    note("GET /library/track", get(reading, oneTrackPath(kTrackTheJobRefuses)));
+    note("GET /library/track", get(reading, oneTrackPath(kTrackTheJobIsTooSlowFor)));
+    note("GET /library/track", get(reading, oneTrackPath(kTrackTheLibraryHolds) + "&subsong=two"));
+    note("GET /library/track", get(reading, "/api/library/track?columns=%25title%25"));
+    note("GET /library/track",
+         get(reading, "/api/library/track?track=" + std::string(kTrackTheLibraryHolds)));
+    note("GET /library/track", reading.client().Get(oneTrackPath(kTrackTheLibraryHolds)));
+    note("GET /library/track", get(off, oneTrackPath(kTrackTheLibraryHolds)));
 
     for (int attempt = 0; attempt < 8; ++attempt) {
         note("POST /library/refresh", refresh(server));

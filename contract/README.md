@@ -23,7 +23,7 @@ CONTRACT_URL=http://<player-host>:8881/api CONTRACT_TOKEN=<token> pnpm test:cont
 
 What one run does to the player, which is little but not nothing:
 
-- **It writes no tags.** The write it sends carries the spec's own example, which names a track that does not exist, so a conformant implementation refuses it.
+- **It writes no tags.** The address it sends carries the run's own token, so it names a track no library holds and a conformant implementation refuses it. This is the one probe that changes a file on disk if its address resolves, and the spec's example address is library-relative, so a library holding a track at that path would resolve it.
 - **It creates one autoplaylist and deletes it again.** The title and the key carry a token generated for the run, so neither can collide with a playlist somebody else made. A run that dies between the two leaves the playlist behind, named so it is obvious what it was.
 - **It declares a column set of its own and takes the library.** One column, so the snapshot a client is using is the other of the two an implementation keeps rather than the one evicted. The refresh that follows rebuilds that one-column set, not the client's.
 - **It asks for one cover and expects not to get it.** The address it sends names a track no player holds, because the snapshot is binary and the suite decodes none of it, so what the answer pins is the refusal rather than a picture.

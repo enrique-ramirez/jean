@@ -63,7 +63,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
                    OutputHold& outputHold, LibraryFeed& libraryFeed, PlayerStateStore& playerState,
                    const PlaylistVersions& playlistVersions, const AlbumArt& rowArt) {
     Player player;
-    player.writeTags = makeTagWriter(mainThread);
+    player.writeTags = makeTagWriter(mainThread, libraryFeed.trackResolver(), playlistVersions);
     player.listPlaylists = makePlaylistLister(mainThread, playlistVersions);
     player.readPlaylistRows = makePlaylistRowReader(mainThread, playlistVersions);
     player.readChangedPlaylistRows = makeChangedPlaylistRowReader(mainThread, playlistVersions);
@@ -93,6 +93,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.refreshLibrary = libraryFeed.refresher();
     player.readArtwork = libraryFeed.artworkReader();
     player.readPlaylistRowArtwork = makePlaylistRowArtworkReader(mainThread, rowArt);
+    player.readLibraryTrack = libraryFeed.trackColumnReader();
 
     if (streamer != nullptr) {
         player.openStream = streamer->opener();

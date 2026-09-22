@@ -248,7 +248,7 @@ test.describe("cursor follows playback", () => {
 			await page.keyboard.press("3");
 			await expectSettlesAt(player, () => tagWrites(player).length, 1);
 			expect(tagWrites(player)[0].body).toMatchObject({
-				path: expect.stringContaining("Deléctrico"),
+				track: expect.stringContaining("Deléctrico"),
 			});
 		});
 	});

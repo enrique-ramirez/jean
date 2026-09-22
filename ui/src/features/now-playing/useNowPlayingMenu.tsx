@@ -34,6 +34,9 @@ export function useNowPlayingMenu() {
 	const track = readTrack(snapshot?.player);
 	const hasTrack = Boolean(track);
 	const playingPlaylistId = useResolvedPlaylistId(item?.playlistGuid ?? null);
+	const playingStructure = playlists.find(
+		(playlist) => playlist.id === playingPlaylistId,
+	)?.structure;
 
 	const source = useMemo(
 		() =>
@@ -43,9 +46,10 @@ export function useNowPlayingMenu() {
 						playlistId: playingPlaylistId,
 						origin: discovery.origin,
 						token: discovery.token,
+						structure: playingStructure,
 					})
 				: null,
-		[playingPlaylistId, discovery.origin, discovery.token],
+		[playingPlaylistId, playingStructure, discovery.origin, discovery.token],
 	);
 
 	const actions = useMemo(() => {

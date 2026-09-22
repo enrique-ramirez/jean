@@ -28,6 +28,12 @@ struct PlayerState {
     PlaybackState playback = PlaybackState::stopped;
     std::string path;
     uint32_t subsong = 0;
+
+    // Where the media library holds the playing track, the address GET /api/artwork?track=
+    // takes, and `std::nullopt` where it holds it nowhere. Not `path`: that is foobar2000's
+    // own absolute one, and no route here takes it.
+    std::optional<std::string> libraryPath;
+
     PositionMark position;
     double duration = 0;
     double volume = 0;
@@ -62,6 +68,7 @@ inline bool operator!=(const PlayerState& a, const PlayerState& b) {
 struct PlayingTrack {
     std::string path;
     uint32_t subsong = 0;
+    std::optional<std::string> libraryPath;
     double duration = 0;
 };
 

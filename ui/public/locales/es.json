@@ -348,13 +348,11 @@
 		"one": "Cola, {count} pista",
 		"other": "Cola, {count} pistas"
 	},
+	"rate.didNotLand": "No pudimos valorar {track} con {stars} estrellas",
 	"rate.failed": "{label} no se valoró. {message}",
-	"rate.maybeFailed": "Puede que {label} no se haya valorado. {message}",
 	"rate.moved": "Esa pista se ha movido. Recarga para valorarla.",
-	"rate.noAnswer": "foobar2000 no respondió. Puede que la valoración no se haya guardado.",
 	"rate.notAllowed": "Este foobar2000 no permite escribir valoraciones.",
 	"rate.notSaved": "La valoración no se guardó. {message}",
-	"rate.slowOk": "foobar2000 tardó un rato, pero la valoración está guardada.",
 	"rate.unknownTrack": "foobar2000 no conoce esa pista, así que no se valoró.",
 	"rating.clearOn": "Quitar la valoración ({label})",
 	"rating.none": "Sin valoración",
@@ -530,7 +528,6 @@
 		"other": "{count} minutos"
 	},
 	"span.minutesShort": "{count} min",
-	"tagWrite.noPath": "Esa pista no tiene ninguna ruta en la que escribir.",
 	"tagWrite.unavailable": "La escritura de etiquetas no está disponible.",
 	"theme.toDark": "Cambiar al tema oscuro",
 	"theme.toLight": "Cambiar al tema claro",

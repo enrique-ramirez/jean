@@ -4,6 +4,8 @@
 # Reading back through beefweb is the assertion: the failure this component exists to avoid is a write the player
 # performed but its own database did not learn about, and only a read through that database can tell the two apart.
 #
+# Each row is addressed the way a client addresses it, so that what this script exercises is what ships.
+#
 #   scripts\verify-tag-write.ps1              set every fixture to 3
 #   scripts\verify-tag-write.ps1 -Rating 5    put them back
 param(
@@ -44,6 +46,12 @@ if ($playlist.itemCount -gt $MaxItems) {
   throw "Playlist '$PlaylistTitle' holds $($playlist.itemCount) items, which is more than -MaxItems ($MaxItems). Refusing: this script writes tags."
 }
 
+$matching = @((Get-Json "$FooJean/playlists" $auth).playlists | Where-Object { $_.title -eq $PlaylistTitle })
+if ($matching.Count -ne 1) {
+  throw "foo_jean reports $($matching.Count) playlists titled '$PlaylistTitle'; the write needs exactly one to address rows in."
+}
+$fooJeanPlaylist = $matching[0]
+
 function Get-Fixtures {
   $uri = "$Beefweb/playlists/$($playlist.id)/items/0:$MaxItems`?columns=%path%,%rating%,%codec%"
   (Get-Json $uri).playlistItems.items | ForEach-Object {
@@ -51,12 +59,38 @@ function Get-Fixtures {
   }
 }
 
-$before = Get-Fixtures
-Write-Output "Writing rating=$Rating to $($before.Count) tracks in '$PlaylistTitle'"
+function Get-Targets {
+  $columns = ('%path%', '%codec%' | ForEach-Object { 'columns=' + [System.Uri]::EscapeDataString($_) }) -join '&'
+  $page = Get-Json "$FooJean/playlists/$($fooJeanPlaylist.id)/items?offset=0&count=$MaxItems&$columns" $auth
+  $rows = @($page.items)
+  for ($index = 0; $index -lt $rows.Count; $index++) {
+    [pscustomobject]@{
+      Path = $rows[$index].columns[0]
+      Codec = $rows[$index].columns[1]
+      LibraryPath = $rows[$index].libraryPath
+      Subsong = [int]$rows[$index].subsong
+      Index = $index
+      Structure = $page.structure
+    }
+  }
+}
 
-foreach ($track in $before) {
-  $body = @{ path = $track.Path; fields = @{ rating = $Rating } } | ConvertTo-Json -Compress
-  # UTF-8 bytes rather than a string: the default is ISO-8859-1 on the way out too, which would corrupt an accented path before foo_jean saw it.
+function Get-Address($target) {
+  if ($target.LibraryPath) {
+    $address = @{ track = $target.LibraryPath }
+    if ($target.Subsong -gt 0) { $address.subsong = $target.Subsong }
+    return $address
+  }
+  return @{ playlist = $fooJeanPlaylist.id; index = $target.Index; structure = $target.Structure }
+}
+
+$before = Get-Fixtures
+$targets = @(Get-Targets)
+Write-Output "Writing rating=$Rating to $($targets.Count) tracks in '$PlaylistTitle'"
+
+foreach ($target in $targets) {
+  $body = ((Get-Address $target) + @{ fields = @{ rating = $Rating } }) | ConvertTo-Json -Compress
+  # UTF-8 bytes rather than a string: the default is ISO-8859-1 on the way out too, which would corrupt an accented address before foo_jean saw it.
   $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 
   try {
@@ -68,8 +102,9 @@ foreach ($track in $before) {
     $detail = $_.ErrorDetails.Message
   }
 
-  Write-Output "  POST $status  $($track.Codec.PadRight(5)) $([System.IO.Path]::GetFileName($track.Path))"
-  if ($detail) { Write-Output "        $detail"; $detail = $null }
+  Write-Output "  POST $status  $($target.Codec.PadRight(5)) $([System.IO.Path]::GetFileName($target.Path))"
+  Write-Output "        sent  $body"
+  if ($detail) { Write-Output "        reply $detail"; $detail = $null }
 }
 
 $after = Get-Fixtures

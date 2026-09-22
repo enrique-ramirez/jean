@@ -62,7 +62,7 @@ function Rating({
 			? t("rating.unrated")
 			: t("rating.outOf", { stars, max: MAX_STARS });
 
-	if (!canRateInline || !isWritableScale(raw))
+	if (!canRateInline || !isWritableScale(raw) || !source.address(itemIndex))
 		return <Stars value={stars} label={label} />;
 
 	return (

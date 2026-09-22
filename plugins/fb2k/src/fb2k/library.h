@@ -26,6 +26,11 @@ struct OrdinalResolution {
 using OrdinalResolver =
     std::function<OrdinalResolution(uint64_t structure, const std::vector<uint32_t>& ordinals)>;
 
+// The handle the snapshot holds at a library-relative path and a subsong within it, the
+// address `GET /api/artwork?track=` takes. Invalid where the snapshot holds no such track.
+using LibraryTrackResolver =
+    std::function<metadb_handle_ptr(const std::string& track, uint32_t subsong)>;
+
 class LibraryFeed {
 public:
     // Main thread only; registering the change callbacks requires it.
@@ -42,6 +47,10 @@ public:
     ArtworkReader artworkReader();
 
     OrdinalResolver ordinalResolver();
+
+    LibraryTrackResolver trackResolver();
+
+    LibraryTrackReader trackColumnReader();
 
     LibraryFeed(const LibraryFeed&) = delete;
     LibraryFeed& operator=(const LibraryFeed&) = delete;

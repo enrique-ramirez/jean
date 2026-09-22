@@ -35,6 +35,7 @@ export function PlaylistView({
 	const {
 		columns,
 		paths,
+		subsongs,
 		loaded,
 		total,
 		isLoading,
@@ -53,17 +54,19 @@ export function PlaylistView({
 
 	const rows = useMemo(() => trackRows(columns), [columns]);
 
-	const source = useMemo(
-		() =>
-			librarySourceOf({
-				kind: "playlist",
-				playlistId: playlist?.id as string,
-				origin,
-				token,
-				paths,
-			}),
-		[playlist?.id, origin, token, paths],
-	);
+	const source = useMemo(() => {
+		const options = {
+			kind: "playlist" as const,
+			playlistId: playlist?.id as string,
+			origin,
+			token,
+			structure: playlist?.structure,
+		};
+
+		return paths && subsongs
+			? librarySourceOf({ ...options, paths, subsongs })
+			: librarySourceOf(options);
+	}, [playlist?.id, playlist?.structure, origin, token, paths, subsongs]);
 
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const isPlaying = useIsPlaying();

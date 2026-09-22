@@ -87,7 +87,10 @@ export function useTrackContextMenu({
 
 		const itemIndices = positions.map((position) => rows.ref(position));
 		const rateable =
-			canRate && rated !== undefined && isWritableScale(rawRating);
+			canRate &&
+			rated !== undefined &&
+			isWritableScale(rawRating) &&
+			source.address(rated) !== null;
 
 		return trackActions({
 			count,

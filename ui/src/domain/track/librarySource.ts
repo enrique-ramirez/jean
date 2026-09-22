@@ -1,5 +1,5 @@
 import type { QueueSource } from "@/domain/player/queue";
-import { fetchLibraryNodes, libraryPathMatcher } from "@/shared/api/beefweb";
+import { libraryPathMatcher } from "@/shared/api/beefweb";
 import type {
 	FillOwnPlaylistRequest,
 	FillPlaylistRequest,
@@ -7,7 +7,6 @@ import type {
 import {
 	copyPlaylistRows,
 	encodeFill,
-	fetchPlaylistRows,
 	fillOwnPlaylist,
 	fillPlaylist,
 	libraryArtworkUrl,
@@ -17,10 +16,9 @@ import {
 } from "@/shared/api/fooJean";
 import type {
 	PlaybackPosition,
-	TrackColumns,
+	TrackAddress,
 	TrackIdentity,
 } from "@/shared/api/types";
-import { FIELD, sameTagValue, value } from "./fields";
 import {
 	type AlbumCanonicalIndex,
 	albumCanonicalIndex,
@@ -36,11 +34,6 @@ import {
 } from "./playlistStore";
 import type { Refs } from "./project";
 
-export interface ResolvedTrack {
-	identity: TrackIdentity;
-	columns: string[];
-}
-
 export interface AddedRows {
 	positions: number[];
 	structure: string;
@@ -52,13 +45,7 @@ export interface LibrarySourceCommon {
 	// A row the media library carries no path for still has a position: `playlistRowArtworkUrl`'s
 	// fallback route.
 	artworkUrl: (ref: number) => string | null;
-	// Null when the ref no longer names the row it was read from: indices move, and the failure mode
-	// is writing a tag to somebody else's file.
-	identify: (
-		ref: number,
-		row: TrackColumns,
-		columns?: string[],
-	) => Promise<ResolvedTrack | null>;
+	address: (ref: number) => TrackAddress | null;
 	addTo: (targetId: string, refs: Refs) => Promise<AddedRows>;
 	queueTargets: (refs: Refs) => Promise<QueueSource>;
 	playingPosition: (
@@ -83,23 +70,28 @@ export type LibrarySource =
 	  })
 	| (LibrarySourceCommon & { kind: "playlist" });
 
+interface MediaLibraryOptions {
+	paths: PathTable;
+	subsongs: Int32Array;
+	artworkOrigin: string | null;
+	token: string | null;
+}
+
+type PlaylistAddresses =
+	| { paths: PathTable; subsongs: Int32Array }
+	| { paths?: undefined; subsongs?: undefined };
+
+type PlaylistOptions = PlaylistAddresses & {
+	playlistId: string;
+	origin?: string | null;
+	token?: string | null;
+	// ARCHITECTURE.md, *The two seams*: the generation the rows on screen were read at.
+	structure?: string | null;
+};
+
 export type LibrarySourceOptions =
-	| {
-			kind: "library";
-			paths: PathTable;
-			subsongs: Int32Array;
-			artworkOrigin: string | null;
-			token: string | null;
-	  }
-	| {
-			kind: "playlist";
-			playlistId: string;
-			origin?: string | null;
-			token?: string | null;
-			// Null where the rows have not loaded, or have loaded with the empty string standing in
-			// for a row whose track the media library does not hold: neither answers a cover.
-			paths?: PathTable | null;
-	  };
+	| ({ kind: "library" } & MediaLibraryOptions)
+	| ({ kind: "playlist" } & PlaylistOptions);
 
 const fillScratch =
 	(paths: PathTable, origin: string | null, structure: number) =>
@@ -246,12 +238,7 @@ const fromMediaLibrary = ({
 	subsongs,
 	artworkOrigin,
 	token,
-}: {
-	paths: PathTable;
-	subsongs: Int32Array;
-	artworkOrigin: string | null;
-	token: string | null;
-}): Extract<LibrarySource, { kind: "library" }> => {
+}: MediaLibraryOptions): Extract<LibrarySource, { kind: "library" }> => {
 	// Read once, alongside `paths`: `structure` and the canonical-ref table both describe the same
 	// snapshot, and reading either again later could see a rebuild `paths` has not, resolving refs
 	// against a generation they do not name.
@@ -268,33 +255,13 @@ const fromMediaLibrary = ({
 		artworkUrl: (ref: number) =>
 			libraryArtworkUrl(artworkOrigin, paths.at(canonicalRefs?.[ref] ?? ref)),
 
-		identify: async (
-			ref: number,
-			_row: TrackColumns,
-			columns: string[] = [],
-		) => {
-			const held = paths.at(ref);
-			if (!held) return null;
-
-			const cut = held.lastIndexOf("/");
-			const { items } = await fetchLibraryNodes(
-				cut < 0 ? "" : held.slice(0, cut),
-				["%path%", ...columns],
-			);
-
-			const subsong = subsongs[ref] ?? 0;
-			const found = items.find(
-				(node) =>
-					node.type === "F" &&
-					node.path === held &&
-					(node.subsong ?? 0) === subsong,
-			);
-			if (!found?.columns) return null;
-
-			return {
-				identity: { path: found.columns[0] || null, subsong },
-				columns: found.columns.slice(1),
-			};
+		// The row's own path, never the album's canonical one `artworkUrl` asks for: a write lands on
+		// the track under the cursor.
+		address: (ref: number) => {
+			const track = paths.at(ref);
+			return track
+				? { kind: "library", track, subsong: subsongs[ref] ?? 0 }
+				: null;
 		},
 
 		fill: fillScratch(paths, artworkOrigin, structure),
@@ -315,75 +282,60 @@ const fromMediaLibrary = ({
 	};
 };
 
-const fromPlaylist = ({
-	playlistId,
-	origin = null,
-	token = null,
-	paths = null,
-}: {
-	playlistId: string;
-	origin?: string | null;
-	token?: string | null;
-	paths?: PathTable | null;
-}): Extract<LibrarySource, { kind: "playlist" }> => ({
-	kind: "playlist",
-	playlistId,
+const fromPlaylist = (
+	options: PlaylistOptions,
+): Extract<LibrarySource, { kind: "playlist" }> => {
+	const { playlistId, origin = null, token = null, structure = null } = options;
 
-	// The player resolves a pathless row's position to a handle of its own via
-	// `playlistRowArtworkUrl`. `paths` itself null is a row not loaded yet rather than one
-	// confirmed pathless, and draws nothing until it catches up.
-	artworkUrl: (ref: number) => {
-		if (!paths) return null;
+	return {
+		kind: "playlist",
+		playlistId,
 
-		const path = paths.at(ref);
-		if (path) return canonicalArtworkUrl(origin, path);
+		artworkUrl: (ref: number) => {
+			if (!options.paths) return null;
 
-		return origin ? playlistRowArtworkUrl(origin, playlistId, ref) : null;
-	},
+			const path = options.paths.at(ref);
+			if (path) return canonicalArtworkUrl(origin, path);
 
-	identify: async (ref: number, row: TrackColumns, columns: string[] = []) => {
-		if (!origin || !token) return null;
+			return origin ? playlistRowArtworkUrl(origin, playlistId, ref) : null;
+		},
 
-		const { items } = await fetchPlaylistRows(
-			origin,
-			token,
-			playlistId,
-			ref,
-			1,
-			["%path%", "%subsong%", "%title%", ...columns],
-		);
-		const found = items[0]?.columns;
-		if (!found || !sameTagValue(found[2], value(row, FIELD.title))) return null;
+		address: (ref: number) => {
+			if (options.paths) {
+				const track = options.paths.at(ref);
+				if (track)
+					return { kind: "library", track, subsong: options.subsongs[ref] };
+			}
 
-		return {
-			identity: { path: found[0] || null, subsong: Number(found[1]) || 0 },
-			columns: found.slice(3),
-		};
-	},
+			return structure
+				? { kind: "playlist", playlist: playlistId, index: ref, structure }
+				: null;
+		},
 
-	queueTargets: async (refs: Refs): Promise<QueueSource> => ({
-		kind: "rows",
-		targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
-	}),
-	addTo: async (targetId: string, refs: Refs): Promise<AddedRows> => {
-		const required = requireFooJean(origin, token);
-		return copyPlaylistRows(required.origin, required.token, targetId, {
-			source: playlistId,
-			runs: runsOf(refs),
-		});
-	},
+		queueTargets: async (refs: Refs): Promise<QueueSource> => ({
+			kind: "rows",
+			targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
+		}),
+		addTo: async (targetId: string, refs: Refs): Promise<AddedRows> => {
+			const required = requireFooJean(origin, token);
+			return copyPlaylistRows(required.origin, required.token, targetId, {
+				source: playlistId,
+				runs: runsOf(refs),
+			});
+		},
 
-	// Index is identity in a playlist, so this can only answer while the player is inside the playlist
-	// being browsed. Refs arrive ascending, so it bisects.
-	playingPosition: (
-		refs: Refs,
-		_track: TrackIdentity | null | undefined,
-		activeItem?: PlaybackPosition | null,
-	) =>
-		activeItem?.playlistId === playlistId
-			? positionOf(refs, activeItem.index)
-			: -1,
-});
+		// Index is identity in a playlist, so this can only answer while the player is inside the
+		// playlist being browsed. Refs arrive ascending, so it bisects.
+		playingPosition: (
+			refs: Refs,
+			_track: TrackIdentity | null | undefined,
+			activeItem?: PlaybackPosition | null,
+		) =>
+			activeItem?.playlistId === playlistId
+				? positionOf(refs, activeItem.index)
+				: -1,
+	};
+};
 
 export function librarySourceOf(
 	options: Extract<LibrarySourceOptions, { kind: "library" }>,

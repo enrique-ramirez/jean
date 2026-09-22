@@ -45,9 +45,21 @@ std::string displayPathOf(const metadb_handle_ptr& track) {
     }
 }
 
+std::optional<std::string> libraryPathOf(const metadb_handle_ptr& track) {
+    if (!track.is_valid())
+        return std::nullopt;
+
+    pfc::string8 relative;
+    if (!library_manager::get()->get_relative_path(track, relative))
+        return std::nullopt;
+
+    return forwardSlashed(toStd(relative));
+}
+
 PlayingTrack trackOf(const metadb_handle_ptr& track) {
     PlayingTrack playing;
     playing.path = displayPathOf(track);
+    playing.libraryPath = libraryPathOf(track);
 
     if (track.is_valid()) {
         playing.subsong = track->get_subsong_index();
@@ -199,6 +211,7 @@ PlayerState initialStateOf(const OutputHold& outputHold,
     metadb_handle_ptr track;
     if (playback->get_now_playing(track)) {
         state.path = displayPathOf(track);
+        state.libraryPath = libraryPathOf(track);
         state.subsong = track->get_subsong_index();
         state.duration = playback->playback_get_length();
         state.position = {playback->playback_get_position(), now};

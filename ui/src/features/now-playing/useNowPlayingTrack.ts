@@ -1,9 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { useAudiblePlayer } from "@/domain/player/usePlayer";
+import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
 import { fetchActiveItemColumns, readTrack } from "@/shared/api/beefweb";
-import type { TrackColumns } from "@/shared/api/types";
+import type {
+	ActiveItem,
+	PlaylistInfo,
+	TrackAddress,
+	TrackColumns,
+} from "@/shared/api/types";
 import { NOW_PLAYING_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
 
 const keyOf = (path: string | null, subsong: number) =>
@@ -14,11 +19,38 @@ export interface NowPlayingDetails {
 	path: string;
 }
 
+function addressOfPlaying(
+	item: ActiveItem | undefined,
+	playlists: readonly PlaylistInfo[],
+): TrackAddress | null {
+	if (!item) return null;
+	if (item.libraryPath)
+		return { kind: "library", track: item.libraryPath, subsong: item.subsong };
+
+	if (!item.playlistGuid || item.index < 0) return null;
+
+	const structure = playlists.find(
+		(playlist) => playlist.id === item.playlistGuid,
+	)?.structure;
+
+	return structure === undefined
+		? null
+		: {
+				kind: "playlist",
+				playlist: item.playlistGuid,
+				index: item.index,
+				structure,
+			};
+}
+
 export function useNowPlayingTrack({ enabled = true } = {}) {
 	const snapshot = useAudiblePlayer();
+	const { data: playlists = [] } = usePlaylists();
 	const track = readTrack(snapshot?.player);
 	const path = track?.path ?? null;
 	const subsong = track?.subsong ?? 0;
+
+	const address = addressOfPlaying(snapshot?.player?.activeItem, playlists);
 
 	const query = useQuery({
 		queryKey: keyOf(path, subsong),
@@ -65,6 +97,7 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 
 	return {
 		track,
+		address,
 		details: query.data ?? null,
 		isPending: enabled && query.isPending && path !== null,
 		setRating,

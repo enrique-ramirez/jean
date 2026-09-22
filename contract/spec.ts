@@ -11,6 +11,7 @@ export interface Schema {
 	additionalProperties?: boolean | Schema;
 	items?: Schema;
 	oneOf?: Schema[];
+	anyOf?: Schema[];
 	enum?: unknown[];
 }
 

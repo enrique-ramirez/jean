@@ -249,7 +249,7 @@ Which of these resolve varies by install, by component and by how the library wa
 
 ## The media library API
 
-**foobar2000 only, and only on beefweb 0.11+.** On 0.10 every endpoint here is **404**. **`foo_jean` answers the library**, and these routes are what a fill, a queue or a tag write acts *through* once a row has been chosen. One read is the exception: `fetchLibraryNodes` asks `by-path` for a track's own folder to resolve that one track's columns, because nothing else here addresses a single track.
+**foobar2000 only, and only on beefweb 0.11+.** On 0.10 every endpoint here is **404**. **`foo_jean` answers the library**, and Jean asks none of these routes: a row, its columns and the address a tag write names it by all come from the component. They are documented here for the folder tree `ui/ARCHITECTURE.md` leaves open.
 
 ### `GET /library/info`
 
@@ -301,7 +301,7 @@ Folder nodes carry `itemCount` and no columns; track nodes carry `subsong` and `
 
 **Ordering is a byte-wise case-sensitive compare**, so `Zappa` sorts before `abba`. Re-sort client-side.
 
-> **This is the only way to reach one track by the path a client already holds.** `/library/items` pages an enumeration ordered by absolute `%path%`, while `foo_jean`'s ordinals are library-relative path order, and on a library with more than one root those two orders disagree. An ordinal is therefore not an offset into `/library/items`, and a folder is what both sides can name.
+> **Within beefweb this is the only way to reach one track by the path a client already holds.** `/library/items` pages an enumeration ordered by absolute `%path%`, while `foo_jean`'s ordinals are library-relative path order, and on a library with more than one root those two orders disagree. An ordinal is therefore not an offset into `/library/items`, and a folder is what both sides can name.
 
 ### Paths
 

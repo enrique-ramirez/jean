@@ -2,11 +2,14 @@ import {
 	discoverFooJean,
 	type FooJeanDiscovery,
 	type FooJeanState,
+	fetchLibraryTrack,
+	fetchPlaylistRows,
 	type WriteResult,
 	writeTags,
 } from "@/shared/api/fooJean";
-import type { TrackIdentity } from "@/shared/api/types";
+import type { TrackAddress } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
+import { UNRESOLVED } from "./libraryColumns";
 
 // Nothing outside this file may ask which implementation it is holding.
 export interface TagWriter {
@@ -16,12 +19,12 @@ export interface TagWriter {
 	allowedFields: string[];
 	allows: (field: string) => boolean;
 	write: (
-		track: TrackIdentity,
+		address: TrackAddress,
 		fields: Record<string, string>,
 	) => Promise<WriteResult>;
+	read: (address: TrackAddress, column: string) => Promise<string | null>;
 }
 
-// `write` answers rather than throwing, so no caller needs to know which writer it holds.
 export const NO_WRITER: TagWriter = {
 	kind: "none",
 	canWrite: false,
@@ -32,7 +35,21 @@ export const NO_WRITER: TagWriter = {
 		reason: "unavailable",
 		message: translate("tagWrite.unavailable"),
 	}),
+	read: async () => null,
 };
+
+const addressFields = (address: TrackAddress) =>
+	address.kind === "library"
+		? {
+				track: address.track,
+				// Omitted rather than sent as 0; an ordinary file has no subsong.
+				...(address.subsong ? { subsong: address.subsong } : null),
+			}
+		: {
+				playlist: address.playlist,
+				index: address.index,
+				structure: address.structure,
+			};
 
 const agentWriter = (
 	origin: string,
@@ -46,19 +63,21 @@ const agentWriter = (
 		canWrite: allowed.size > 0,
 		allowedFields,
 		allows: (field) => allowed.has(field.toLowerCase()),
-		write: async (track, fields) => {
-			if (!track.path)
-				return {
-					ok: false,
-					reason: "unknown-track",
-					message: translate("tagWrite.noPath"),
-				};
-			return writeTags(origin, token, {
-				path: track.path,
-				// Omitted rather than sent as 0; an ordinary file has no subsong.
-				...(track.subsong ? { subsong: track.subsong } : null),
-				fields,
-			});
+		write: async (address, fields) =>
+			writeTags(origin, token, { ...addressFields(address), fields }),
+		read: async (address, column) => {
+			const held = await (address.kind === "library"
+				? fetchLibraryTrack(origin, token, address.track, address.subsong, [
+						column,
+					]).then(({ columns }) => columns[0])
+				: fetchPlaylistRows(origin, token, address.playlist, address.index, 1, [
+						column,
+					]).then(({ items }) => items[0]?.columns[0])
+			).catch(() => undefined);
+
+			// README.md: `?` is foobar2000 saying the field is absent, never a null.
+			if (held === UNRESOLVED) return "";
+			return held === undefined ? null : held;
 		},
 	};
 };

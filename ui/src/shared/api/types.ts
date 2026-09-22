@@ -30,6 +30,9 @@ export interface ActiveItem {
 	// reader asking whether something is playing wants `path` or `playbackState`, never this.
 	index: number;
 	path: string | null;
+	// Library-relative and forward-slashed where the media library holds the playing track, `null`
+	// where it does not. `path` above is foobar2000's own absolute one, which no route accepts.
+	libraryPath: string | null;
 	// The record the playing track is from, and its album artist, computed by the player and carried
 	// on every poll: `null` where the player has not computed one. A cover is keyed by these, never
 	// by the track, so an album played through costs one request.
@@ -96,23 +99,6 @@ export interface LibraryItem {
 	columns: TrackColumns;
 }
 
-export interface LibraryNode {
-	type: "D" | "F";
-	name: string;
-	path: string;
-	itemCount?: number;
-	subsong?: number;
-	columns?: TrackColumns;
-}
-
-export interface LibraryNodesResponse {
-	offset: number;
-	totalCount: number;
-	path: string;
-	parentPath?: string;
-	items: LibraryNode[];
-}
-
 // Omitting both `items` and `query` means the whole library, and is the only way to send a large one:
 // naming every track exceeds the 1 MiB body beefweb accepts.
 export interface AddFromLibraryBody {
@@ -137,6 +123,12 @@ export interface TrackIdentity {
 	path: string | null;
 	subsong: number;
 }
+
+// The two ways the player already holds a track, and what a tag write is addressed by. A position
+// moves, so the playlist form carries the structure generation it was read at.
+export type TrackAddress =
+	| { kind: "library"; track: string; subsong: number }
+	| { kind: "playlist"; playlist: string; index: number; structure: string };
 
 export interface NowPlayingTrack extends TrackIdentity {
 	artist: string;

@@ -811,6 +811,8 @@ PlaylistRow formattedRow(const metadb_handle_ptr& handle,
     if (!handle.is_valid())
         return row;
 
+    row.subsong = handle->get_subsong_index();
+
     metadb_info_container::ptr info;
     if (handle->get_info_ref(info)) {
         pfc::string8 text;

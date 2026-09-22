@@ -151,6 +151,12 @@ TEST_CASE("changing any field a client can see advances the version") {
     SUBCASE("another subsong of the same file starts") {
         changed.subsong = 3;
     }
+    // A rescan can take the playing track into the media library while it is still playing, and
+    // then this is the only field that moves. state_route_test.cpp has what a client misses when
+    // a field sits outside this comparison.
+    SUBCASE("the media library takes in the track that is playing") {
+        changed.libraryPath = "Fictional Artist/Imaginary Album/01 A Title.flac";
+    }
     SUBCASE("somebody seeks") {
         changed.position.seconds = 90.0;
     }

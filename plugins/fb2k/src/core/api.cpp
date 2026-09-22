@@ -95,13 +95,15 @@ json playingLocationOf(const std::optional<PlayingLocation>& location) {
 
 json playlistRowOf(const PlaylistRow& row) {
     return json{{"columns", row.columns},
-                {"libraryPath", row.libraryPath ? json(*row.libraryPath) : json(nullptr)}};
+                {"libraryPath", row.libraryPath ? json(*row.libraryPath) : json(nullptr)},
+                {"subsong", row.subsong}};
 }
 
 json changedPlaylistRowOf(const ChangedPlaylistRow& changed) {
     return json{
         {"position", changed.position},
-        {"libraryPath", changed.row.libraryPath ? json(*changed.row.libraryPath) : json(nullptr)}};
+        {"libraryPath", changed.row.libraryPath ? json(*changed.row.libraryPath) : json(nullptr)},
+        {"subsong", changed.row.subsong}};
 }
 
 json queuedTrackOf(const QueuedTrack& track) {
@@ -119,6 +121,7 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
     return json{{"playback", playbackName(player.playback)},
                 {"path", player.path},
                 {"subsong", player.subsong},
+                {"libraryPath", player.libraryPath ? json(*player.libraryPath) : json(nullptr)},
                 {"position", positionOf(player.position, now)},
                 {"duration", player.duration},
                 {"volume", player.volume},
@@ -511,10 +514,16 @@ std::string streamTimelineDocument(double streamTime, const std::vector<StreamMa
 }
 
 std::string tagWrittenDocument(const TagWrite& write) {
-    json body{{"written", true},
-              {"path", write.track.path},
-              {"subsong", write.track.subsong},
-              {"fields", write.fields}};
+    json body{{"written", true}, {"fields", write.fields}};
+
+    if (const auto& library = write.track.library) {
+        body["track"] = library->track;
+        body["subsong"] = library->subsong;
+    } else if (const auto& row = write.track.playlist) {
+        body["playlist"] = row->playlistId;
+        body["index"] = row->index;
+    }
+
     return body.dump();
 }
 
@@ -540,8 +549,7 @@ int httpStatusFor(TagWriteRefusal refusal) {
         case TagWriteRefusal::fieldNotAllowed:
             return 403;
         case TagWriteRefusal::malformedBody:
-        case TagWriteRefusal::missingPath:
-        case TagWriteRefusal::unsafePath:
+        case TagWriteRefusal::badAddress:
         case TagWriteRefusal::noFields:
             return 400;
     }
@@ -1007,6 +1015,10 @@ std::string libraryFailedDocument(DeltaOutcome outcome) {
     return json{{"error", describe(outcome)}, {"detail", ""}}.dump();
 }
 
+std::string libraryTrackDocument(const std::vector<std::string>& columns) {
+    return json{{"columns", columns}}.dump();
+}
+
 int httpStatusFor(LibraryRefusal refusal) {
     switch (refusal) {
         case LibraryRefusal::none:
@@ -1041,6 +1053,8 @@ int httpStatusFor(TagWriteOutcome outcome) {
             return 200;
         case TagWriteOutcome::trackNotKnown:
             return 404;
+        case TagWriteOutcome::rowsMoved:
+            return 409;
         case TagWriteOutcome::writeFailed:
             return 500;
         case TagWriteOutcome::timedOut:

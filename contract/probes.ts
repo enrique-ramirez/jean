@@ -101,6 +101,18 @@ export const drives: Drive[] = [
 	},
 	{ id: "refreshLibrary", probe: () => ({}) },
 	{
+		// The suite holds no library-relative path, for the reason `getArtwork` gives, so this
+		// drives the refusal instead. `columns` is a declaration the column gate accepts, so the
+		// 404 says the snapshot did not hold the address rather than the gate refusing first.
+		id: "getLibraryTrack",
+		probe: (_, context) => ({
+			query: {
+				track: `contract check ${context.run}/no such track.flac`,
+				columns: "%title%",
+			},
+		}),
+	},
+	{
 		// The snapshot is binary and the suite holds no library-relative path out of it, so
 		// this drives the refusal instead. That is the answer worth pinning anyway: an
 		// address the snapshot does not carry MUST be a 404 in the published shape and never
@@ -118,8 +130,17 @@ export const drives: Drive[] = [
 		}),
 	},
 	{
+		// The one probe in this file that changes a file on disk if its address resolves, and
+		// the spec's example is library-relative, so any library holding a track at that path
+		// would come back rated four stars. The address is salted like `getArtwork`'s instead;
+		// the fields still come from the spec, which is what the write itself is held to.
 		id: "writeTags",
-		probe: (operation) => ({ body: example(operation, "setRating") }),
+		probe: (operation, context) => ({
+			body: {
+				...(example(operation, "setRating") as Record<string, unknown>),
+				track: `contract check ${context.run}/no such track.flac`,
+			},
+		}),
 	},
 	{
 		id: "previewQuery",

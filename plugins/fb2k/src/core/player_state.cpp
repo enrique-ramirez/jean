@@ -22,11 +22,11 @@ bool operator==(const PlaylistMark& a, const PlaylistMark& b) {
 
 bool operator==(const PlayerState& a, const PlayerState& b) {
     return a.playback == b.playback && a.path == b.path && a.subsong == b.subsong &&
-           a.position.seconds == b.position.seconds && a.position.taken == b.position.taken &&
-           a.duration == b.duration && a.volume == b.volume && a.muted == b.muted &&
-           a.playbackMode == b.playbackMode && a.title == b.title && a.artist == b.artist &&
-           a.album == b.album && a.albumArtist == b.albumArtist &&
-           a.playingLocation == b.playingLocation &&
+           a.libraryPath == b.libraryPath && a.position.seconds == b.position.seconds &&
+           a.position.taken == b.position.taken && a.duration == b.duration &&
+           a.volume == b.volume && a.muted == b.muted && a.playbackMode == b.playbackMode &&
+           a.title == b.title && a.artist == b.artist && a.album == b.album &&
+           a.albumArtist == b.albumArtist && a.playingLocation == b.playingLocation &&
            a.currentPlaylistId == b.currentPlaylistId;
 }
 
@@ -47,6 +47,7 @@ void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now)
     next.playback = PlaybackState::playing;
     next.path = std::move(track.path);
     next.subsong = track.subsong;
+    next.libraryPath = std::move(track.libraryPath);
     next.duration = track.duration;
     next.position = {0, now};
     next.title.reset();
@@ -91,6 +92,7 @@ void PlayerStateStore::stopped() {
     next.playback = PlaybackState::stopped;
     next.path.clear();
     next.subsong = 0;
+    next.libraryPath.reset();
     next.duration = 0;
     next.position = PositionMark{};
     next.title.reset();

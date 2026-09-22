@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -11,10 +12,25 @@
 // why. Pure: this half decides whether a file may be rewritten, and fb2k/tag_writer.h writes.
 namespace jean {
 
-// Track identity is the path; see ARCHITECTURE.md, *Track identity*.
-struct TrackRef {
-    std::string path;
+// The library-relative address `GET /api/artwork?track=` takes, and the subsong within the
+// file it names.
+struct LibraryTrackRef {
+    std::string track;
     uint32_t subsong = 0;
+};
+
+// A row the media library does not hold, addressed by where a playlist holds it and by the
+// structure generation the client read that position at.
+struct PlaylistTrackRef {
+    std::string playlistId;
+    uint32_t index = 0;
+    uint64_t structure = 0;
+};
+
+// Exactly one of the two; see ARCHITECTURE.md, *Track identity*.
+struct TrackRef {
+    std::optional<LibraryTrackRef> library;
+    std::optional<PlaylistTrackRef> playlist;
 };
 
 struct TagWrite {
@@ -28,8 +44,7 @@ struct TagWrite {
 enum class TagWriteRefusal {
     none,
     malformedBody,
-    missingPath,
-    unsafePath,
+    badAddress,
     noFields,
     fieldNotAllowed,
 };
@@ -44,11 +59,6 @@ struct TagWriteRequest {
     bool ok() const { return refusal == TagWriteRefusal::none; }
 };
 
-// Not a traversal guard: nothing is concatenated, and the path is an opaque key into
-// foobar2000's database. It refuses paths that were never a library track -- relative,
-// parent-escaping, UNC, or carrying a URL scheme.
-bool isSafeTrackPath(const std::string& path);
-
 // Never throws: the caller is an HTTP handler, where a malformed body is routine.
 TagWriteRequest parseTagWrite(const std::string& body, const Settings& settings);
 
@@ -57,6 +67,7 @@ std::string describe(TagWriteRefusal refusal);
 enum class TagWriteOutcome {
     written,
     trackNotKnown,
+    rowsMoved,
     writeFailed,
     timedOut,
     unavailable,

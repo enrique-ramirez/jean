@@ -8,15 +8,15 @@ import {
 	useState,
 } from "react";
 
-import type { TrackIdentity } from "@/shared/api/types";
+import type { TrackAddress } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { translate } from "@/shared/i18n/locale";
 import type { Translate } from "@/shared/i18n/useTranslate";
 import { pushToast } from "@/shared/ui/toastStore";
-import type { LibraryColumns } from "./libraryColumns";
-import { rowAt } from "./libraryColumns";
+import { FIELD, TRACK_EXPRESSIONS, titleOf } from "./fields";
+import { type LibraryColumns, rowAt } from "./libraryColumns";
 import type { LibrarySource } from "./librarySource";
 import { clearWrittenRating, setWrittenRating } from "./ratingStore";
 import {
@@ -58,13 +58,11 @@ interface TagWriting {
 	setFieldEnabled: (field: string, enabled: boolean) => void;
 	recheck: () => void;
 	rate: (target: RateTarget, stars: number | null) => void;
-	// For a track with no row to overlay. `restore` undoes the caller's own optimistic value on the
-	// failures that rule it out, the same rollback `clearWrittenRating` is for on a row.
 	rateTrack: (
-		track: TrackIdentity,
+		address: TrackAddress,
 		label: string,
 		stars: number | null,
-		restore: () => void,
+		show: { adopt: (raw: string) => void; restore: () => void },
 	) => void;
 }
 
@@ -90,6 +88,23 @@ export const useTagWriting = () => useContext(TagWriterContext);
 // An empty string removes the tag. `"0"` would be a rating of zero.
 const tagValueOf = (stars: number | null) =>
 	stars === null ? "" : String(stars);
+
+const RATING_COLUMN = TRACK_EXPRESSIONS[FIELD.rating];
+
+async function confirmTimedOutRating(
+	writer: TagWriter,
+	address: TrackAddress,
+	label: string,
+	raw: string,
+) {
+	const held = await writer.read(address, RATING_COLUMN);
+	if (held === null || held === raw) return;
+
+	pushToast({
+		message: translate("rate.didNotLand", { track: label, stars: Number(raw) }),
+		tone: "error",
+	});
+}
 
 export function TagWriterProvider({ children }: { children: ReactNode }) {
 	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
@@ -174,30 +189,26 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 
 	const rateTrack = useCallback(
 		(
-			track: TrackIdentity,
+			address: TrackAddress,
 			label: string,
 			stars: number | null,
-			restore: () => void,
+			show: { adopt: (raw: string) => void; restore: () => void },
 		) => {
 			const raw = tagValueOf(stars);
-			writerRef.current.write(track, { [RATING_FIELD]: raw }).then((result) => {
-				if (result.ok) return;
+			const writing = writerRef.current;
+			writing.write(address, { [RATING_FIELD]: raw }).then((result) => {
+				if (result.ok)
+					return show.adopt(result.written.fields[RATING_FIELD] ?? raw);
 
-				if (result.reason === "timeout") {
-					// The write may still land, so a timeout is never rolled back.
-					pushToast({
-						message: translate("rate.maybeFailed", {
-							label,
-							message: result.message,
-						}),
-						tone: "error",
-					});
-					return;
-				}
+				if (result.reason === "timeout")
+					return confirmTimedOutRating(writing, address, label, raw);
 
-				restore();
+				show.restore();
 				pushToast({
-					message: translate("rate.failed", { label, message: result.message }),
+					message:
+						result.reason === "moved"
+							? translate("rate.moved")
+							: translate("rate.failed", { label, message: result.message }),
 					tone: "error",
 				});
 			});
@@ -251,40 +262,36 @@ async function sendRating(
 	writer: TagWriter,
 	refuse: (update: (current: string[]) => string[]) => void,
 ) {
-	const row = rowAt(columns, ref);
-	const resolved = await source.identify(ref, row).catch(() => null);
-	if (!resolved?.identity.path) {
+	const address = source.address(ref);
+	if (!address) {
 		clearWrittenRating(columns, ref);
-		pushToast({
-			message: translate("rate.moved"),
-			tone: "error",
-		});
 		return;
 	}
 
-	const result = await writer.write(resolved.identity, {
-		[RATING_FIELD]: raw,
-	});
+	const result = await writer.write(address, { [RATING_FIELD]: raw });
 
 	if (result.ok) {
 		setWrittenRating(columns, ref, result.written.fields[RATING_FIELD] ?? raw);
 		return;
 	}
 
-	if (result.reason === "timeout") {
-		// The write may still land, so a timeout is never rolled back; ask the player what it ended up with.
-		const after = await source
-			.identify(ref, row, ["%rating%"])
-			.catch(() => null);
-		if (after) setWrittenRating(columns, ref, after.columns[0] ?? "");
+	if (result.reason === "timeout")
+		return confirmTimedOutRating(
+			writer,
+			address,
+			titleOf(rowAt(columns, ref), translate),
+			raw,
+		);
+
+	clearWrittenRating(columns, ref);
+
+	if (result.reason === "moved") {
 		pushToast({
-			message: translate(after ? "rate.slowOk" : "rate.noAnswer"),
-			tone: after ? "default" : "error",
+			message: translate("rate.moved"),
+			tone: "error",
 		});
 		return;
 	}
-
-	clearWrittenRating(columns, ref);
 
 	if (result.reason === "not-allowed") {
 		console.error(

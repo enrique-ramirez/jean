@@ -56,10 +56,28 @@ function keysOfObject(schema: Schema, body: unknown, path: string): string[] {
 	return [...missing, ...undeclared, ...nested];
 }
 
+// The five keywords below are the whole of what this file judges a body against. A schema
+// declaring none of them constrains nothing it reads, so answering "conforms" would report
+// success on a document nothing looked at.
+const judgeable = (schema: Schema) =>
+	schema.type !== undefined ||
+	schema.properties !== undefined ||
+	schema.items !== undefined ||
+	schema.oneOf !== undefined ||
+	schema.anyOf !== undefined;
+
 // Values are never quoted back: one of these documents carries a bearer token.
 export function conforms(schema: Schema, body: unknown, path = ""): string[] {
-	if (schema.oneOf) {
-		const branches = schema.oneOf.map((branch) => conforms(branch, body, path));
+	if (!judgeable(schema))
+		throw new Error(
+			`the spec constrains ${path || "the body"} by nothing this file reads, so a check of it would pass on anything`,
+		);
+
+	// Both keywords are read as at least one branch matching. The spec's `oneOf` pairs closed
+	// schemas with disjoint enums, where exactly one and at least one are the same question.
+	const alternatives = schema.oneOf ?? schema.anyOf;
+	if (alternatives) {
+		const branches = alternatives.map((branch) => conforms(branch, body, path));
 		return branches.some((found) => found.length === 0)
 			? []
 			: [`the value${inside(path)} matches none of the shapes the spec allows`];

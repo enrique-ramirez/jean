@@ -2127,10 +2127,11 @@ test("a track outside the media library can be rated, and the rating lands on th
 	await ratingStars(page).getByRole("button", { name: "Rate 4 of 5" }).click();
 
 	await expectSettlesAt(player, () => tagWrites(player).length, 1);
-	expect(tagWrites(player)[0].body).toMatchObject({
-		path: DRAGGED_IN["%path%"],
-		fields: { rating: "4" },
-	});
+	// The value, not the address: which of the two a track the media library does
+	// not hold is named by is `rating-writes.spec.ts`'s question. What this case
+	// needs of it is only that the player can resolve it back to this track, and
+	// the reload below is what says it did.
+	expect(tagWrites(player)[0].body).toMatchObject({ fields: { rating: "4" } });
 
 	// Read back off the player rather than out of Jean's own optimism. A refused
 	// write rolls itself back already; what only a reload catches is a write

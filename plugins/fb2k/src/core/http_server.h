@@ -162,6 +162,22 @@ struct PlaylistArtworkRead {
 using PlaylistRowArtworkReader =
     std::function<PlaylistArtworkRead(const std::string& playlistId, uint32_t row)>;
 
+// What GET /api/library/track has to decide from: `outcome` carries the failures only the
+// player can answer, and `held` is false where the snapshot has no track at that address.
+struct LibraryTrackRead {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    bool held = false;
+    std::vector<std::string> columns;
+};
+
+// Evaluates `columns` against the one track the media library holds at `track` and `subsong`,
+// the address GET /api/artwork takes. Unlike the artwork read, which resolves on the calling
+// thread, this takes GET /api/playlists/{id}/items' shape and does its work on the player's
+// main thread: foobar2000 does not document titleformat_compiler::compile as safe anywhere
+// else, and the scripts already compiled hold only the columns the snapshot was declared with.
+using LibraryTrackReader = std::function<LibraryTrackRead(
+    const std::string& track, uint32_t subsong, const std::vector<std::string>& columns)>;
+
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.
 struct Player {
@@ -221,6 +237,7 @@ struct Player {
 
     ArtworkReader readArtwork;
     PlaylistRowArtworkReader readPlaylistRowArtwork;
+    LibraryTrackReader readLibraryTrack;
 };
 
 class HttpServer {

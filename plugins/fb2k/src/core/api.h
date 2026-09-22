@@ -89,11 +89,13 @@ std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& po
 std::string removedRowsDocument(uint64_t structure);
 
 // One row of a playlist: the columns the client declared, evaluated against the row's own
-// handle in the order it declared them, and the library path GET /api/artwork?track= takes
-// where the media library holds the track.
+// handle in the order it declared them, the library path GET /api/artwork?track= takes where
+// the media library holds the track, and the subsong of the handle itself, which foobar2000
+// carries whether the media library holds the track or not.
 struct PlaylistRow {
     std::vector<std::string> columns;
     std::optional<std::string> libraryPath;
+    uint32_t subsong = 0;
 };
 
 struct PlaylistRowsRead {
@@ -321,6 +323,10 @@ std::string stateDocument(const Library::State& state, const PlayerState& player
 
 std::string libraryRefusedDocument(const LibraryRequest& request);
 std::string libraryFailedDocument(DeltaOutcome outcome);
+
+// One track's declared columns, in the order declared. The address the caller sent is not
+// echoed back.
+std::string libraryTrackDocument(const std::vector<std::string>& columns);
 
 int httpStatusFor(LibraryRefusal refusal);
 int httpStatusFor(DeltaOutcome outcome);

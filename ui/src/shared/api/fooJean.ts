@@ -20,6 +20,7 @@ export type QueryPreview = Schema["QueryPreview"];
 export type FillPlaylistRequest = Schema["FillPlaylistRequest"];
 export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
 export type FillResult = Schema["FillResult"];
+export type LibraryTrack = Schema["LibraryTrack"];
 export type PlaylistPage = Schema["PlaylistPage"];
 export type PlaylistChanges = Schema["PlaylistChanges"];
 export type CreatePlaylistRequest = Schema["CreatePlaylistRequest"];
@@ -285,6 +286,8 @@ export async function fetchState(
 export type WriteFailure =
 	| { ok: false; reason: "not-allowed"; field: string | null; message: string }
 	| { ok: false; reason: "unknown-track"; message: string }
+	// foo_jean checks the generation inside the job that writes, so nothing was written.
+	| { ok: false; reason: "moved"; message: string }
 	// The write may still land, so it is never rolled back.
 	| { ok: false; reason: "timeout"; message: string }
 	| { ok: false; reason: "unauthorized"; message: string }
@@ -336,6 +339,7 @@ export async function writeTags(
 		noteTokenRefused(response.status);
 		return { ok: false, reason: "unauthorized", message };
 	}
+	if (response.status === 409) return { ok: false, reason: "moved", message };
 	if (response.status === 504) return { ok: false, reason: "timeout", message };
 	if (response.status === 400 || response.status === 413)
 		return { ok: false, reason: "refused", message };
@@ -647,6 +651,28 @@ export async function fillPlaylist(
 
 const columnsQuery = (columns: readonly string[]) =>
 	columns.map((column) => `columns=${encodeURIComponent(column)}`).join("&");
+
+// foo_jean sends a library delta when it notices a change rather than when a client asks, so this is
+// the only way to read one track's current values back.
+export async function fetchLibraryTrack(
+	origin: string,
+	token: string,
+	track: string,
+	subsong: number,
+	columns: readonly string[],
+): Promise<LibraryTrack> {
+	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
+		fetch(
+			`${origin}/api/library/track?track=${encodeURIComponent(track)}&subsong=${subsong}&${columnsQuery(columns)}`,
+			{ headers: bearer(token), signal },
+		),
+	);
+	if (!response.ok)
+		throw new Error(`GET library track failed: ${response.status}`, {
+			cause: response.status,
+		});
+	return (await response.json()) as LibraryTrack;
+}
 
 export async function fetchPlaylistRows(
 	origin: string,

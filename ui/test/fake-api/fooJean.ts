@@ -2,7 +2,7 @@ import type { PlaybackMode } from "../../src/shared/api/types.ts";
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { ArtworkServer } from "./routes.ts";
 import type { createState, FakePlaylist, Track } from "./state.ts";
-import { evaluate } from "./state.ts";
+import { evaluate, libraryItemsOf } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
@@ -34,6 +34,29 @@ export interface FooJeanOptions {
 	allowedFields?: string[];
 
 	failWrites?: number | null;
+
+	// The tag reaches the player and the answer does not reach the client. A 504
+	// says the component did not answer in time and says nothing about whether
+	// anything was written, so both outcomes are real; `failWrites` alone is the
+	// one where nothing was, and this is the other.
+	writesLandAnyway?: boolean;
+
+	// Refuses GET /api/library/track with this status, which is the route a client
+	// reads one value back through. Nothing else answers there, so this reaches
+	// the read-back and no other traffic.
+	failLibraryTrack?: number | null;
+
+	// Holds GET /api/library/track open and never answers it, the way a player
+	// stalled behind its own work does. Not even late: a spec waiting to see what
+	// a client does about a read that did not come back is the whole of what this
+	// is for, and an answer arriving behind its back defeats every one of them.
+	hangLibraryTrack?: boolean;
+
+	// The rating the component reports having stored, whatever it was sent. A
+	// player that keeps ratings on a scale of its own rounds the value before it
+	// reaches the tag, and the write's answer is the only place a client hears
+	// about it.
+	storesRatingAs?: string | null;
 
 	// Refuses GET /api/state with this status for a stretch, shaped like
 	// `failWrites`. Unlike it, a spec switches this one at runtime through
@@ -142,6 +165,10 @@ const DEFAULTS: FooJeanFake = {
 	token: "0123456789abcdef0123456789abcdef",
 	allowedFields: ["rating"],
 	failWrites: null,
+	writesLandAnyway: false,
+	failLibraryTrack: null,
+	hangLibraryTrack: false,
+	storesRatingAs: null,
 	failState: null,
 	failQueue: null,
 	failPlaylistWrites: null,
@@ -285,6 +312,20 @@ const reporting = (
 	};
 };
 
+// What a write answers when the position it named was read at an older
+// structure. `TagFailed` declares no `detail`, so the playlist routes' own
+// `ROWS_MOVED` takes this sentence and adds one rather than the other way round.
+const TAG_ROWS_MOVED = {
+	written: false,
+	error:
+		"the playlist's rows were added, removed or reordered; read them again",
+};
+
+const NO_SUCH_TRACK = {
+	written: false,
+	error: "foobar2000 does not know that track",
+};
+
 const FAILURES: Record<number, unknown> = {
 	403: {
 		written: false,
@@ -292,35 +333,65 @@ const FAILURES: Record<number, unknown> = {
 		detail: "rating",
 		field: "rating",
 	},
-	404: { written: false, error: "foobar2000 does not know that track" },
+	404: NO_SUCH_TRACK,
+	409: TAG_ROWS_MOVED,
 	500: { written: false, error: "the player could not write the tags" },
 	503: { written: false, error: "tag writing is not available" },
 	504: { written: false, error: "the player did not answer in time" },
 };
 
+const refuseWrite = (response: Responder, status: number) =>
+	json(
+		response,
+		FAILURES[status] ?? { written: false, error: "refused" },
+		status,
+	);
+
+const subsongOf = (track: Track) => Number(track["%subsong%"]) || 0;
+
+// Resolved against the snapshot's own relative paths rather than by the key the
+// row that named it was minted from: a fake that answers its own spelling back
+// proves nothing.
+const libraryTrackAt = (state: FakeState, address: string, subsong: number) =>
+	libraryItemsOf(state.libraryTracks).find(
+		(entry) => entry.path === address && entry.subsong === subsong,
+	)?.track ?? null;
+
+// The player holds one file's tags once, so a write reaches every copy of the
+// track the fake is holding: the playlist row it was addressed through and the
+// media library's own entry, which are separate objects whenever `withoutFields`
+// or `retagged` copied one.
 const applyTags = (
 	state: FakeState,
-	path: string,
+	target: Track,
 	fields: Record<string, string>,
 ) => {
 	const patch = (track: Track) => {
-		if (track["%path%"] !== path) return false;
+		if (track["%path%"] !== target["%path%"]) return;
+		if (subsongOf(track) !== subsongOf(target)) return;
 		for (const [field, value] of Object.entries(fields)) {
 			if (value === "") delete track[`%${field}%`];
 			else track[`%${field}%`] = value;
 		}
-		return true;
 	};
 
-	let found = false;
 	for (const playlist of state.playlists)
-		for (const track of playlist.items) found = patch(track) || found;
-	// Separate objects whenever `withoutFields` stripped them, so patch both.
-	for (const track of state.libraryTracks) found = patch(track) || found;
-	return found;
+		for (const track of playlist.items) patch(track);
+	for (const track of state.libraryTracks) patch(track);
 };
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// How long a route that stalls before answering holds the socket for. Long
+// enough that no spec outlives it, short enough that the fake never keeps one
+// for good.
+const HELD_OPEN_MS = 8000;
+
+// How long the handler for a read that never answers waits for the client to go
+// away. Jean abandons that read 35 seconds later, which no spec can sit through,
+// so a spec proving the page stayed quiet about it waits out this instead: past
+// it, nothing from the read can arrive any more.
+export const STALLED_READ_MS = 1000;
 
 // Bounded, so a client that waits forever still gets its socket back.
 const abandoned = (response: Responder, within: number) =>
@@ -511,8 +582,7 @@ const OWN_PLAYLIST = {
 };
 
 const ROWS_MOVED = {
-	error:
-		"the playlist's rows were added, removed or reordered; read them again",
+	error: TAG_ROWS_MOVED.error,
 	detail: "",
 };
 
@@ -1129,6 +1199,11 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 		playback: state.player.playbackState,
 		path: track ? String(evaluate(track, "%path%") ?? "") : "",
 		subsong: track ? Number(track["%subsong%"]) || 0 : 0,
+		// The address a write names a library track by, and `null` for a track the
+		// snapshot does not hold. A component with no library to look in holds no
+		// snapshot at all, so it answers `null` for everything.
+		libraryPath:
+			track && fake.canReadLibrary ? state.libraryPathFor(track) : null,
 		position: {
 			seconds: Math.max(seconds, 0),
 			ageSeconds: Math.max((Date.now() - takenAtMs) / 1000, 0),
@@ -1311,6 +1386,46 @@ async function handleLibrary({
 		return json(response, { error: "the media library is not available" }, 503);
 	if (method !== "GET") return json(response, { error: "not found" }, 404);
 
+	// One track's columns, addressed the way a cover is. It echoes no
+	// `libraryPath`, because the caller supplied the address.
+	if (path === "/api/library/track") {
+		if (fake.failLibraryTrack)
+			return json(
+				response,
+				{ error: "the player could not read that track", detail: "" },
+				fake.failLibraryTrack,
+			);
+		// Nothing is answered once the hold is up either, for the reason
+		// `hangLibraryTrack` gives.
+		if (fake.hangLibraryTrack) {
+			await abandoned(response, STALLED_READ_MS);
+			return true;
+		}
+
+		const asked = url.searchParams.getAll("columns");
+		const refused = refuseColumns(asked);
+		if (refused) return json(response, refused, 400);
+
+		const address = url.searchParams.get("track") ?? "";
+		if (!address || address.length > MAX_TRACK_ADDRESS)
+			return json(
+				response,
+				{ error: "unacceptable track address", detail: "" },
+				400,
+			);
+
+		const held = libraryTrackAt(
+			state,
+			address,
+			Number(url.searchParams.get("subsong")) || 0,
+		);
+		if (!held) return json(response, { error: "no such track" }, 404);
+
+		return json(response, {
+			columns: asked.map((expression) => evaluate(held, expression)),
+		});
+	}
+
 	if (path === "/api/library/export") {
 		const asked = [...new Set(url.searchParams.getAll("columns"))];
 		const refused = refuseColumns(asked);
@@ -1422,7 +1537,7 @@ export async function handleAgent({
 	if (path === "/api/status") {
 		if (fake.slowStatus > 0) {
 			fake.slowStatus -= 1;
-			if (await abandoned(response, 8000)) return true;
+			if (await abandoned(response, HELD_OPEN_MS)) return true;
 		}
 		return json(response, {
 			name: fake.agentName,
@@ -2002,6 +2117,9 @@ export async function handleAgent({
 			items: page.map((track) => ({
 				columns: columns.map((expression) => evaluate(track, expression)),
 				libraryPath: state.libraryPathFor(track),
+				// Off the handle the row was drawn from, so a row the media library
+				// does not hold carries one too.
+				subsong: subsongOf(track),
 			})),
 		});
 	}
@@ -2061,6 +2179,7 @@ export async function handleAgent({
 			items: ordered.map((position) => ({
 				position,
 				libraryPath: state.libraryPathFor(playlist.items[position]),
+				subsong: subsongOf(playlist.items[position]),
 			})),
 		});
 	}
@@ -2430,23 +2549,55 @@ export async function handleAgent({
 		// The same latency switch the beefweb fake honours.
 		if (state.latency > 0) await delay(state.latency);
 
-		if (fake.failWrites)
-			return json(
-				response,
-				FAILURES[fake.failWrites] ?? { written: false, error: "refused" },
-				fake.failWrites,
-			);
+		// A write that lands anyway is refused at the end instead, once the address
+		// has resolved and the tag has been written.
+		if (fake.failWrites && !fake.writesLandAnyway)
+			return refuseWrite(response, fake.failWrites);
 
 		const written = body as {
-			path?: string;
-			subsong?: number;
+			track?: unknown;
+			subsong?: unknown;
+			playlist?: unknown;
+			index?: unknown;
+			structure?: unknown;
 			fields?: Record<string, string>;
 		} | null;
 
-		if (!written?.path || !written.fields)
+		if (!written?.fields || Object.keys(written.fields).length === 0)
 			return json(
 				response,
-				{ written: false, error: "missing path", detail: "no path" },
+				{
+					written: false,
+					error: "no fields to write",
+					detail: "'fields' names at least one tag",
+				},
+				400,
+			);
+
+		// No filesystem path crosses this API any more, so a client still sending
+		// one is refused rather than met halfway: the component declares its
+		// members and takes nothing else.
+		if ("path" in written)
+			return json(
+				response,
+				{
+					written: false,
+					error: "unacceptable address",
+					detail: "'path' is not a member of this request",
+				},
+				400,
+			);
+
+		const namesLibrary = written.track !== undefined;
+		const namesPlaylist = written.playlist !== undefined;
+		if (namesLibrary === namesPlaylist)
+			return json(
+				response,
+				{
+					written: false,
+					error: "unacceptable address",
+					detail: "name exactly one of 'track' and 'playlist'",
+				},
 				400,
 			);
 
@@ -2468,18 +2619,75 @@ export async function handleAgent({
 				403,
 			);
 
-		if (!applyTags(state, written.path, written.fields))
+		const stored =
+			fake.storesRatingAs !== null && "rating" in written.fields
+				? { ...written.fields, rating: fake.storesRatingAs }
+				: written.fields;
+
+		if (namesLibrary) {
+			if (
+				typeof written.track !== "string" ||
+				(written.subsong !== undefined &&
+					!Number.isInteger(written.subsong as number))
+			)
+				return json(
+					response,
+					{
+						written: false,
+						error: "unacceptable address",
+						detail: "'track' is a string and 'subsong' a whole number",
+					},
+					400,
+				);
+
+			const subsong = (written.subsong as number) ?? 0;
+			const held = libraryTrackAt(state, written.track, subsong);
+			if (!held) return json(response, NO_SUCH_TRACK, 404);
+
+			applyTags(state, held, stored);
+			if (fake.failWrites) return refuseWrite(response, fake.failWrites);
+			return json(response, {
+				written: true,
+				track: written.track,
+				subsong,
+				fields: stored,
+			});
+		}
+
+		if (
+			typeof written.playlist !== "string" ||
+			!Number.isInteger(written.index as number) ||
+			typeof written.structure !== "string"
+		)
 			return json(
 				response,
-				{ written: false, error: "foobar2000 does not know that track" },
-				404,
+				{
+					written: false,
+					error: "unacceptable address",
+					detail:
+						"'playlist' and 'structure' are strings and 'index' a whole number",
+				},
+				400,
 			);
 
+		const playlist = state.playlistByGuid(written.playlist);
+		if (!playlist) return json(response, NO_SUCH_TRACK, 404);
+
+		// Before the row is read, so a write aimed at one row can never land on
+		// another.
+		if (written.structure !== generationText(playlist.structure))
+			return json(response, TAG_ROWS_MOVED, 409);
+
+		const row = playlist.items[written.index as number];
+		if (!row) return json(response, NO_SUCH_TRACK, 404);
+
+		applyTags(state, row, stored);
+		if (fake.failWrites) return refuseWrite(response, fake.failWrites);
 		return json(response, {
 			written: true,
-			path: written.path,
-			subsong: written.subsong ?? 0,
-			fields: written.fields,
+			playlist: written.playlist,
+			index: written.index,
+			fields: stored,
 		});
 	}
 

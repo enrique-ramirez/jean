@@ -62,10 +62,13 @@ export const rowsOf = (id: string, offset: number, count: number) =>
 		`/api/playlists/${id}/items?offset=${offset}&count=${count}&columns=${encodeURIComponent("%path%")}`,
 	);
 
-export const writeRating = (path: string, rating: string) =>
+export const writeRating = (
+	address: { track: string; subsong?: number },
+	rating: string,
+) =>
 	component("/api/tags", {
 		method: "POST",
-		body: JSON.stringify({ path, fields: { rating } }),
+		body: JSON.stringify({ ...address, fields: { rating } }),
 	});
 
 export const capabilities = () =>

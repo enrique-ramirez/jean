@@ -519,20 +519,23 @@ std::string asDigits(uint64_t counter) {
 struct Row {
     std::map<std::string, std::string> fields;
     std::optional<std::string> libraryPath;
+    uint32_t subsong = 0;
 };
 
 constexpr char kLibraryFolder[] = "Fictional Artist/Imaginary Album/";
 
-Row libraryRow(const std::string& title, const std::string& file) {
+Row libraryRow(const std::string& title, const std::string& file, uint32_t subsong = 0) {
     Row row;
     row.fields = {{"%title%", title}, {"%artist%", "Fictional Artist"}};
     row.libraryPath = kLibraryFolder + file;
+    row.subsong = subsong;
     return row;
 }
 
-Row strayRow(const std::string& title) {
+Row strayRow(const std::string& title, uint32_t subsong = 0) {
     Row row;
     row.fields = {{"%title%", title}, {"%artist%", "Somebody Else"}};
+    row.subsong = subsong;
     return row;
 }
 
@@ -543,9 +546,26 @@ std::vector<Row> playlistRows() {
             libraryRow("Fourth", "04.flac"), libraryRow("Fifth", "05.flac")};
 }
 
+// One file holding several tracks, which is a cue sheet or a disc image: every row of it resolves
+// to the same library path, so the subsong is the whole of what tells two of them apart.
+constexpr char kCueFile[] = "03 The Whole Set.flac";
+constexpr uint32_t kStraySubsong = 4;
+
+std::vector<Row> cueSheetRows() {
+    return {libraryRow("Opening", kCueFile, 1), libraryRow("Second Movement", kCueFile, 2),
+            strayRow("A disc image dragged in", kStraySubsong)};
+}
+
+std::map<uint32_t, Row> changedCueSheetRows() {
+    return {{0, libraryRow("Opening, five stars", kCueFile, 1)},
+            {1, libraryRow("Second Movement, five stars", kCueFile, 2)},
+            {kStrayRow, strayRow("A disc image dragged in, five stars", kStraySubsong)}};
+}
+
 PlaylistRow formatted(const Row& row, const std::vector<std::string>& columns) {
     PlaylistRow answer;
     answer.libraryPath = row.libraryPath;
+    answer.subsong = row.subsong;
 
     std::transform(columns.begin(), columns.end(), std::back_inserter(answer.columns),
                    [&row](const std::string& column) {
@@ -557,18 +577,18 @@ PlaylistRow formatted(const Row& row, const std::vector<std::string>& columns) {
 }
 
 // Stands in for fb2k/playlists.cpp.
-Player rowReadingPlayer() {
+Player rowReadingPlayer(std::vector<Row> rows = playlistRows()) {
     Player player = servingPlayer();
 
-    player.readPlaylistRows = [](const std::string& playlistId, size_t offset, size_t count,
-                                 const std::vector<std::string>& columns) {
+    player.readPlaylistRows = [rows = std::move(rows)](const std::string& playlistId, size_t offset,
+                                                       size_t count,
+                                                       const std::vector<std::string>& columns) {
         PlaylistRowsRead read;
         if (playlistId != kPlaylistId) {
             read.outcome = PlaylistOutcome::noSuchPlaylist;
             return read;
         }
 
-        const auto rows = playlistRows();
         read.structure = kRowsStructure;
         read.revision = kRowsRevision;
         read.totalCount = rows.size();
@@ -1756,6 +1776,47 @@ TEST_CASE(
     CHECK(items[kStrayRow].at("libraryPath").is_null());
 }
 
+// Every track of a cue sheet shares one library path, so the subsong is the whole of what tells
+// two of them apart. A client rating by the path alone reaches the first track of the file.
+TEST_CASE("a row says which track inside its file it holds") {
+    SUBCASE("two tracks of one cue sheet share a path and differ by subsong") {
+        const TestServer server(servingSettings(), rowReadingPlayer(cueSheetRows()));
+
+        const auto page = pageOf(server, kPlaylistId, 0, 2, {"%title%"});
+        const auto& items = page.at("items");
+        REQUIRE(items.size() == 2);
+
+        CHECK(items[0].at("libraryPath") == items[1].at("libraryPath"));
+        CHECK(items[0].at("subsong") == 1);
+        CHECK(items[1].at("subsong") == 2);
+    }
+
+    SUBCASE("an ordinary file is subsong zero") {
+        const TestServer server(servingSettings(), rowReadingPlayer());
+
+        const auto page = pageOf(server, kPlaylistId, 0, 1, {"%title%"});
+        const auto& items = page.at("items");
+        REQUIRE(items.size() == 1);
+
+        CHECK(items[0].at("subsong") == 0);
+    }
+}
+
+// The subsong comes off the handle the playlist holds rather than off a media library record, so a
+// file dragged in from outside the library still says which of its tracks the row is. An
+// implementation hanging the field off libraryPath answers zero here and looks right everywhere
+// else.
+TEST_CASE("a row the media library does not hold says which track inside its file it holds") {
+    const TestServer server(servingSettings(), rowReadingPlayer(cueSheetRows()));
+
+    const auto page = pageOf(server, kPlaylistId, kStrayRow, 1, {"%title%"});
+    const auto& items = page.at("items");
+    REQUIRE(items.size() == 1);
+
+    CHECK(items[0].at("libraryPath").is_null());
+    CHECK(items[0].at("subsong") == kStraySubsong);
+}
+
 TEST_CASE("a page says how many rows the playlist holds and which versions it was read at") {
     const TestServer server(servingSettings(), rowReadingPlayer());
 
@@ -1859,6 +1920,24 @@ TEST_CASE("a changed row resolves to the fields a page's row carries, its librar
     CHECK(rows.at(kStrayRow).at("libraryPath").is_null());
 }
 
+// A patched row loses its address unless the delta carries the subsong too: the client holds the
+// rows it drew from a page, and a change to one of them replaces what it holds at that position.
+TEST_CASE("a changed row says which track inside its file it holds") {
+    const TestServer server(servingSettings(), changeReadingPlayer(changedCueSheetRows()));
+
+    const auto rows = byPosition(deltaOf(server, kChangedSince, {"%title%"}));
+
+    REQUIRE(rows.count(0) == 1);
+    REQUIRE(rows.count(1) == 1);
+    CHECK(rows.at(0).at("libraryPath") == rows.at(1).at("libraryPath"));
+    CHECK(rows.at(0).at("subsong") == 1);
+    CHECK(rows.at(1).at("subsong") == 2);
+
+    REQUIRE(rows.count(kStrayRow) == 1);
+    CHECK(rows.at(kStrayRow).at("libraryPath").is_null());
+    CHECK(rows.at(kStrayRow).at("subsong") == kStraySubsong);
+}
+
 // A bulk retag reaches thousands of rows sharing an album or an artist, and the client appends
 // what this carries to the dictionary it holds. One entry per changed row is the growth the
 // dictionary exists to stop, so the count matters as much as the values.
@@ -1890,7 +1969,7 @@ TEST_CASE("a changed row carries where it sits and nothing else, so a value trav
     REQUIRE(delta.at("items").size() == 3);
     for (const auto& item : delta.at("items")) {
         INFO("row: ", item.dump());
-        CHECK(keysOf(item) == Keys{"position", "libraryPath"});
+        CHECK(keysOf(item) == Keys{"position", "libraryPath", "subsong"});
     }
 }
 

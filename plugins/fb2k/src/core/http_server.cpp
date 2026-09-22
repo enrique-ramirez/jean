@@ -14,6 +14,7 @@
 #include <chrono>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -55,6 +56,7 @@ constexpr char kStatePath[] = "/api/state";
 constexpr char kLibraryExportPath[] = "/api/library/export";
 constexpr char kLibraryChangesPath[] = "/api/library/changes";
 constexpr char kLibraryRefreshPath[] = "/api/library/refresh";
+constexpr char kLibraryTrackPath[] = "/api/library/track";
 constexpr char kQueuePath[] = "/api/queue";
 
 constexpr char kNoStreaming[] = "streaming is not available";
@@ -66,6 +68,10 @@ constexpr char kNoPlaylistRows[] = "the playlist's rows are not available";
 constexpr char kNoPlaylistWrites[] = "playlist changes are not available";
 
 constexpr char kNoLibrary[] = "the media library is not available";
+
+constexpr char kNoSuchLibraryTrack[] = "no such track";
+
+constexpr char kBadSubsong[] = "'subsong' must be a whole number";
 
 constexpr char kNoOwnPlaylists[] = "the component's own playlists are not available";
 
@@ -187,6 +193,18 @@ LibraryRequest missing(LibraryRefusal refusal, std::string detail) {
     request.refusal = refusal;
     request.detail = std::move(detail);
     return request;
+}
+
+std::optional<uint32_t> subsongAsked(const httplib::Request& req) {
+    if (!req.has_param("subsong"))
+        return 0;
+
+    uint64_t asked = 0;
+    if (!readDecimal(req.get_param_value("subsong"), asked) ||
+        asked > std::numeric_limits<uint32_t>::max())
+        return std::nullopt;
+
+    return static_cast<uint32_t>(asked);
 }
 
 LibraryRequest columnsDeclared(const httplib::Request& req) {
@@ -878,6 +896,45 @@ struct HttpServer::Impl {
             player.refreshLibrary(columns.empty() ? state.columns : columns,
                                   RebuildReason::dataChanged);
             respond(res, 202, libraryDocument(state));
+        });
+
+        server.Get(kLibraryTrackPath, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto track = req.get_param_value("track");
+            if (const auto refusal = trackAddressRefusal(track); !refusal.empty()) {
+                respond(res, 400, errorDocument(refusal));
+                return;
+            }
+
+            const auto subsong = subsongAsked(req);
+            if (!subsong) {
+                respond(res, 400, errorDocument(kBadSubsong));
+                return;
+            }
+
+            const auto declared = columnsDeclared(req);
+            if (!declared.ok()) {
+                respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                return;
+            }
+
+            if (!player.readLibraryTrack) {
+                respond(res, 503, errorDocument(kNoLibrary));
+                return;
+            }
+
+            const auto read = player.readLibraryTrack(track, *subsong, declared.columns);
+            if (read.outcome != PlaylistOutcome::done) {
+                respond(res, httpStatusFor(read.outcome),
+                        playlistFailedDocument(playlistFailure(read.outcome)));
+                return;
+            }
+
+            if (!read.held) {
+                respond(res, 404, errorDocument(kNoSuchLibraryTrack));
+                return;
+            }
+
+            respond(res, 200, libraryTrackDocument(read.columns));
         });
     }
 

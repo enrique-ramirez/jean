@@ -82,7 +82,7 @@ Jean's settings live in `localStorage` today and belong in beefweb's `/api/clien
 
 ## The library is one array
 
-`src/domain/track/playlistStore.ts` loads the library and publishes a `PlaylistSnapshot`: `columns`, one dictionary and one id array per field, plus `paths` and `subsongs` parallel to them on the media library source and derived `heat` and `patina` as `Float32Array`. A view is a set of **refs**, `Int32Array | number[]`, where a ref is a playlist index on one source and an ordinal in the snapshot on the other. `project()` binds a set of refs to those columns as a `TrackRows`, which is what every list, header and index takes; `refAt()` is the one place that knows a null ref list means "everything, in order".
+`src/domain/track/playlistStore.ts` loads the library and publishes a `PlaylistSnapshot`: `columns`, one dictionary and one id array per field, plus `paths` and `subsongs` parallel to them on either source and derived `heat` and `patina` as `Float32Array`. A view is a set of **refs**, `Int32Array | number[]`, where a ref is a playlist index on one source and an ordinal in the snapshot on the other. `project()` binds a set of refs to those columns as a `TrackRows`, which is what every list, header and index takes; `refAt()` is the one place that knows a null ref list means "everything, in order".
 
 It is a flat array rather than a tree for three reasons. beefweb answers ranges, not nodes. A ref into a flat array is an integer, so a filtered view is a typed array and a selection is a set of integers. And every screen in Jean is a filter over the same list, whether a shelf, a genre or a search, so a tree would be rebuilt per view and thrown away.
 
@@ -128,6 +128,8 @@ A fact the player may spell two ways gets an *alternative* rather than a branch,
 | `src/domain/player/listener.ts` | `{ kind, canListen, formats, target }` | `NO_LISTENER`, the agent listener |
 
 Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether writing is switched off at the player, the device is unpaired, or the write was declined. If anything outside these files has to branch on `kind`, the seam is in the wrong place.
+
+**`write` is handed an address, never a filesystem path.** A track is named either by its library-relative path and subsong, where the media library holds it, or by a playlist GUID, a position and the structure generation those rows were read at, where it does not. A source answers the form for its own rows out of tables it already holds, so nothing between a star and the write resolves anything, and the component matches both against what the player itself produced. A row the media library holds takes the library form even where it was read from a playlist: a relative path survives a reorder and a rebuild, a position survives neither, and what stops a stale position writing to somebody else's file is the component comparing that generation and answering `409`. No filesystem path crosses the wire at all, which is what makes a library on a UNC share rateable.
 
 Both are fed by one discovery, in `src/shared/api/fooJean.ts`, deduped through `src/shared/hooks/useFooJean.ts`. Every caller names one query key, so the second component to mount reads the first one's result rather than probing again.
 

@@ -455,6 +455,47 @@ TEST_CASE("tracks sharing a relative path still order the same way every time") 
     CHECK(identities(tracks, order) == identities(shuffled, again));
 }
 
+// A write and a one-track read are addressed by a relative path and a subsong, and
+// fb2k/library.cpp resolves that address by taking the lowest ordinal at the path and walking
+// forward while the path still matches. The walk is correct only because the tie under the
+// player's own path comparison is broken by subsong: every track of a cue sheet shares one
+// relative path, so they have to land in one unbroken run and in subsong order however
+// foobar2000 listed them. Break that and a cue-sheet track rates its neighbour.
+TEST_CASE("every subsong of one file takes an unbroken run of ordinals, in subsong order") {
+    const std::string cue = "Someone/A Record/disc.flac";
+
+    // In the order the player listed them, which is no order at all.
+    const std::vector<std::string> relativePaths{cue, "Someone/A Record/other.flac", cue,
+                                                 "Someone/A Record/01 A Song.flac", cue};
+
+    const std::vector<TrackOrder> tracks{{2, "file://music/Someone/A Record/disc.flac"},
+                                         {0, "file://music/Someone/A Record/other.flac"},
+                                         {0, "file://music/Someone/A Record/disc.flac"},
+                                         {0, "file://music/Someone/A Record/01 A Song.flac"},
+                                         {1, "file://music/Someone/A Record/disc.flac"}};
+
+    const auto comparePaths = [&relativePaths](size_t left, size_t right) {
+        return relativePaths[left].compare(relativePaths[right]);
+    };
+
+    const std::vector<size_t> order = ordinalOrder(tracks, comparePaths);
+
+    const auto pathAt = [&](size_t ordinal) { return relativePaths[order[ordinal]]; };
+
+    size_t first = 0;
+    while (first < order.size() && pathAt(first) != cue)
+        ++first;
+
+    std::vector<uint32_t> walked;
+    for (size_t ordinal = first; ordinal < order.size() && pathAt(ordinal) == cue; ++ordinal)
+        walked.push_back(tracks[order[ordinal]].subsong);
+
+    // Three of them, in subsong order: a subsong sitting past a neighbouring file's row is one
+    // the walk gives up before it sees, and the address then resolves to whichever track the
+    // walk stopped on.
+    CHECK(walked == std::vector<uint32_t>{0, 1, 2});
+}
+
 TEST_CASE("a relative path splits where the client's own path table splits it") {
     CHECK(splitRelativePath("Artist/Album/01.mp3").directory == "Artist/Album/");
     CHECK(splitRelativePath("Artist/Album/01.mp3").filename == "01.mp3");

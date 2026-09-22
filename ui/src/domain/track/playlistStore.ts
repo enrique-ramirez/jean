@@ -28,7 +28,6 @@ import {
 import { librarySnapshotOf, patchedColumns } from "./librarySnapshot";
 import { type PathTable, pathCollector } from "./pathTable";
 
-// Null rather than empty on a playlist, so reaching for them on the wrong source fails loudly.
 export interface PlaylistSnapshot {
 	columns: LibraryColumns;
 	structure: number;
@@ -48,6 +47,7 @@ interface Chunk {
 	// The empty string where the row's track is not in the library, matching how `PathTable` already
 	// answers an out-of-range ref: nothing for `artworkUrl` to draw from.
 	paths: string[];
+	subsongs: number[];
 	totalCount: number;
 	structure: string;
 	revision: string;
@@ -146,6 +146,7 @@ const fetchChunk = async (
 	return {
 		rows: page.items.map((item) => item.columns),
 		paths: page.items.map((item) => item.libraryPath ?? ""),
+		subsongs: page.items.map((item) => item.subsong),
 		totalCount: page.totalCount,
 		structure: page.structure,
 		revision: page.revision,
@@ -209,10 +210,12 @@ async function load(
 ) {
 	const collector = columnCollector(TRACK_EXPRESSIONS.length);
 	const paths = pathCollector();
+	const subsongs: number[] = [];
 
 	const addChunk = (chunk: Chunk) => {
 		collector.add(chunk.rows);
 		for (const path of chunk.paths) paths.add(path);
+		for (const subsong of chunk.subsongs) subsongs.push(subsong);
 	};
 
 	const publish = (totalCount: number, isLoading: boolean) => {
@@ -220,6 +223,7 @@ async function load(
 		emit(entry, {
 			columns,
 			paths: paths.table(),
+			subsongs: Int32Array.from(subsongs),
 			loaded: columns.trackCount,
 			total: totalCount,
 			isLoading,
@@ -458,12 +462,17 @@ function patchedPlaylistColumns(
 	return { ...held, fields };
 }
 
-function fitsHeldPaths(
+// In foobar2000 every track of one cue sheet is a subsong of one file and shares its library path,
+// so the path alone cannot tell two of those rows apart.
+function fitsHeldAddresses(
 	paths: PathTable | null,
+	subsongs: Int32Array | null,
 	items: PlaylistChanges["items"],
 ): boolean {
 	return items.every(
-		(row) => (paths?.at(row.position) ?? "") === (row.libraryPath ?? ""),
+		(row) =>
+			(paths?.at(row.position) ?? "") === (row.libraryPath ?? "") &&
+			(subsongs?.[row.position] ?? 0) === row.subsong,
 	);
 }
 
@@ -479,7 +488,8 @@ function applyPlaylistChanges(
 	feed: PlaylistFeed,
 	changes: PlaylistChanges,
 ): boolean {
-	if (!fitsHeldPaths(entry.snapshot.paths, changes.items)) return false;
+	const { paths, subsongs } = entry.snapshot;
+	if (!fitsHeldAddresses(paths, subsongs, changes.items)) return false;
 
 	if (changes.items.length === 0) {
 		feed.revision = changes.revision;

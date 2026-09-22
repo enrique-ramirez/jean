@@ -1,10 +1,5 @@
 import { translate } from "@/shared/i18n/locale";
-import type {
-	LibraryNodesResponse,
-	NowPlayingTrack,
-	PlayerState,
-	TrackColumns,
-} from "./types";
+import type { NowPlayingTrack, PlayerState, TrackColumns } from "./types";
 
 const encode = (expressions: readonly string[]) =>
 	encodeURIComponent(expressions.join(","));
@@ -24,21 +19,6 @@ const post = (path: string, body?: unknown) =>
 		headers: body ? { "Content-Type": "application/json" } : undefined,
 		body: body ? JSON.stringify(body) : undefined,
 	});
-
-// One folder of the library tree, which is how a client reaches one track by a path it holds. See
-// README.md: an ordinal is not an offset into `/library/items`.
-export async function fetchLibraryNodes(
-	directory: string,
-	columns: string[],
-): Promise<LibraryNodesResponse> {
-	const response = await request(
-		`/api/library/items/by-path?path=${encodeURIComponent(directory)}&columns=${encode(columns)}`,
-	);
-	const { libraryNodes } = (await response.json()) as {
-		libraryNodes: LibraryNodesResponse;
-	};
-	return libraryNodes;
-}
 
 export const playPause = () => post("/api/player/play-pause");
 

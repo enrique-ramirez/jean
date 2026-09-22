@@ -664,7 +664,7 @@ TEST_CASE("the playlists revision moves for every change a client has to re-read
 }
 
 TEST_CASE("the playlists revision stands still while everything else about the player moves") {
-    PlaylistVersions versions;
+    const PlaylistVersions versions;
     PlayerStateStore store;
     store.publish(playingFrom(kPlayingRow));
     store.playlistsChanged(twoPlaylists(versions));

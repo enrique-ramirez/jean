@@ -21,6 +21,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -140,8 +141,16 @@ json capabilitiesReporting(std::vector<std::string> orders) {
 // the list a client draws can be told from a list built by walking a table of names. The whole
 // set, and the Jean name each order carries, is pinned in tests/playback_modes_test.cpp; these
 // cases are about which of them an install can offer, which is the other question.
-const std::vector<std::string> kReportedOrders = {"Shuffle (albums)", "Default", "Repeat (track)"};
-const std::vector<std::string> kOfferedModes = {"shuffleAlbums", "inOrder", "repeatOne"};
+const std::vector<std::string>& reportedOrders() {
+    static const std::vector<std::string> orders = {"Shuffle (albums)", "Default",
+                                                    "Repeat (track)"};
+    return orders;
+}
+
+const std::vector<std::string>& offeredModes() {
+    static const std::vector<std::string> modes = {"shuffleAlbums", "inOrder", "repeatOne"};
+    return modes;
+}
 
 // foobar2000's playback orders are extensible, so a component can register one this component
 // has never seen.
@@ -161,7 +170,7 @@ std::string userFill() {
     return std::string("/api/playlists/") + kPlaylistId + "/items";
 }
 
-std::string nameOf(OwnPlaylistRole) {
+std::string nameOf(OwnPlaylistRole /*unused*/) {
     return "scratch";
 }
 
@@ -220,7 +229,7 @@ Player fillingPlayer(FillLog* log) {
         playlist.title = named;
 
         PlaylistResult result;
-        result.playlist = playlist;
+        result.playlist = std::move(playlist);
         return result;
     };
 
@@ -231,7 +240,7 @@ Player fillingPlayer(FillLog* log) {
         log->held[playlist.id] = 0;
 
         PlaylistResult result;
-        result.playlist = playlist;
+        result.playlist = std::move(playlist);
         return result;
     };
 
@@ -430,7 +439,7 @@ std::vector<json> foundByRole(const TestServer& server) {
     return scratch;
 }
 
-const std::string kJeanPrefix = "#Jean";
+constexpr std::string_view kJeanPrefix = "#Jean";
 
 std::string withField(const std::string& body, const std::string& field, const json& value) {
     auto document = json::parse(body);
@@ -588,6 +597,9 @@ Player countingRowReads(int* reads) {
         return read(playlistId, offset, count, columns);
     };
 
+    // The captured copy lives inside the std::function that owns it. The analyser reads
+    // std::function's inline storage as a stack temporary and calls the copy an escape.
+    // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
     return player;
 }
 
@@ -688,6 +700,9 @@ Player countingChangeReads(int* reads) {
         return read(playlistId, structure, since, columns);
     };
 
+    // The captured copy lives inside the std::function that owns it. The analyser reads
+    // std::function's inline storage as a stack temporary and calls the copy an escape.
+    // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
     return player;
 }
 
@@ -859,7 +874,7 @@ Player creatingPlayer(CreateLog* log) {
         log->playlists.push_back(made);
 
         PlaylistResult result;
-        result.playlist = made;
+        result.playlist = std::move(made);
         return result;
     };
 
@@ -1028,9 +1043,10 @@ Player editingPlayer(EditLog* log) {
         if (index >= log->playlists.size())
             return playlistFailure(PlaylistOutcome::positionPastEnd);
 
-        const auto moved = *found;
+        auto moved = std::move(*found);
         log->playlists.erase(found);
-        log->playlists.insert(log->playlists.begin() + static_cast<std::ptrdiff_t>(index), moved);
+        log->playlists.insert(log->playlists.begin() + static_cast<std::ptrdiff_t>(index),
+                              std::move(moved));
         log->renumber();
 
         PlaylistResult result;
@@ -3318,23 +3334,23 @@ TEST_CASE("one read of GET /api/capabilities answers everything static a player 
 // control that refuses the moment somebody uses it.
 TEST_CASE(
     "GET /api/capabilities offers the playback modes in Jean's names, as the player lists them") {
-    const auto body = capabilitiesReporting(kReportedOrders);
+    const auto body = capabilitiesReporting(reportedOrders());
 
-    CHECK(body["playbackModes"] == kOfferedModes);
+    CHECK(body["playbackModes"] == offeredModes());
 
-    for (const std::string& order : kReportedOrders) {
+    for (const std::string& order : reportedOrders()) {
         INFO("order: ", order);
         CHECK(body.dump().find(order) == std::string::npos);
     }
 }
 
 TEST_CASE("a playback order this component has no name for is not offered at all") {
-    auto reported = kReportedOrders;
+    auto reported = reportedOrders();
     reported.emplace_back(kOrderAddedByAComponent);
 
     const auto body = capabilitiesReporting(reported);
 
-    CHECK(body["playbackModes"] == kOfferedModes);
+    CHECK(body["playbackModes"] == offeredModes());
     CHECK(body.dump().find(kOrderAddedByAComponent) == std::string::npos);
 }
 
@@ -3620,7 +3636,10 @@ TEST_CASE("a title at the bound is accepted and reaches the player with the pref
     REQUIRE(found.size() == 1);
 
     const auto title = found.front().at("title").get<std::string>();
-    CHECK(title == kJeanPrefix + " " + asked);
+    std::string expected{kJeanPrefix};
+    expected += ' ';
+    expected += asked;
+    CHECK(title == expected);
     CHECK(title.size() > kMaxTitle);
 }
 

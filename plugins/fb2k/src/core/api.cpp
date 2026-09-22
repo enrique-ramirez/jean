@@ -310,12 +310,12 @@ Base64Bytes decodeBase64(const std::string& text) {
             return {};
 
         const auto group =
-            (static_cast<uint32_t>(values[0]) << 18) | (static_cast<uint32_t>(values[1]) << 12) |
-            (static_cast<uint32_t>(values[2]) << 6) | static_cast<uint32_t>(values[3]);
+            (static_cast<uint32_t>(values[0]) << 18U) | (static_cast<uint32_t>(values[1]) << 12U) |
+            (static_cast<uint32_t>(values[2]) << 6U) | static_cast<uint32_t>(values[3]);
 
-        result.bytes.push_back(static_cast<uint8_t>(group >> 16));
+        result.bytes.push_back(static_cast<uint8_t>(group >> 16U));
         if (padding < 2)
-            result.bytes.push_back(static_cast<uint8_t>(group >> 8));
+            result.bytes.push_back(static_cast<uint8_t>(group >> 8U));
         if (padding < 1)
             result.bytes.push_back(static_cast<uint8_t>(group));
     }
@@ -410,11 +410,11 @@ SelectionResult decodeSelection(const json& root, size_t trackCount) {
         return {PlaylistRefusal::badOrdinals, {}};
 
     for (size_t byteIndex = 0; byteIndex < decoded.bytes.size(); ++byteIndex) {
-        for (int bit = 0; bit < 8; ++bit) {
-            if (!(decoded.bytes[byteIndex] & (1u << bit)))
+        for (unsigned bit = 0; bit < 8; ++bit) {
+            if ((decoded.bytes[byteIndex] & (1U << bit)) == 0U)
                 continue;
 
-            const uint64_t ordinal = byteIndex * 8 + static_cast<uint64_t>(bit);
+            const uint64_t ordinal = (byteIndex * 8) + static_cast<uint64_t>(bit);
             if (!inRange(ordinal))
                 return {PlaylistRefusal::badOrdinals, {}};
 

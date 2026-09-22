@@ -292,7 +292,7 @@ TEST_CASE("a player with nothing playing still answers a player section a client
     const auto body = json::parse(response->body);
     REQUIRE(body.contains("player"));
 
-    const auto player = body["player"];
+    const auto& player = body["player"];
     REQUIRE(player.is_object());
 
     const std::vector<std::string> published = {"playback", "path",   "subsong", "position",
@@ -472,7 +472,7 @@ TEST_CASE("the poll document places the playing track by the GUID GET /api/playl
     const auto player = playerSection(server);
     REQUIRE(player.contains("playingLocation"));
 
-    const auto location = player["playingLocation"];
+    const auto& location = player["playingLocation"];
     REQUIRE(location.is_object());
     CHECK(location["playlistId"] == playlists[0]["id"]);
     CHECK(location["index"] == kPlayingRow);
@@ -1233,7 +1233,7 @@ TEST_CASE("a player with no media library still answers what it is playing") {
     const auto body = json::parse(response->body);
     REQUIRE(body.contains("player"));
 
-    const auto player = body["player"];
+    const auto& player = body["player"];
     CHECK(player["playback"] == "playing");
     CHECK(player["path"] == started.path);
     CHECK(player["position"]["seconds"] == started.position.seconds);

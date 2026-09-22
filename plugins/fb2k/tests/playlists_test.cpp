@@ -66,10 +66,10 @@ std::string base64(const std::vector<uint8_t>& bytes) {
 
         uint32_t group = 0;
         for (size_t part = 0; part < have; ++part)
-            group |= uint32_t{bytes[at + part]} << (16 - 8 * part);
+            group |= uint32_t{bytes[at + part]} << (16 - (8 * part));
 
         for (size_t part = 0; part < have + 1; ++part)
-            text += kAlphabet[(group >> (18 - 6 * part)) & 0x3F];
+            text += kAlphabet[(group >> (18 - (6 * part))) & 0x3FU];
 
         text.append(3 - have, '=');
     }
@@ -84,7 +84,7 @@ std::string bitsetOf(const Ordinals& ordinals, size_t trackCount) {
 
     for (const uint32_t ordinal : ordinals) {
         REQUIRE(ordinal / 8 < bytes.size());
-        bytes[ordinal / 8] |= static_cast<uint8_t>(1u << (ordinal % 8));
+        bytes[ordinal / 8] |= static_cast<uint8_t>(1U << (ordinal % 8));
     }
 
     return base64(bytes);
@@ -93,9 +93,12 @@ std::string bitsetOf(const Ordinals& ordinals, size_t trackCount) {
 // The foobar2000 SDK's pfc_infinite is ~0, which is this once it meets a size_t.
 constexpr size_t kInfinite = std::numeric_limits<size_t>::max();
 
-const std::vector<std::string> kPlaylistGuids{"45837d74-fa4f-415c-bba9-bf2db8f0dc04",
-                                              "9b1c2e30-7d4a-4f6e-8a21-3c5d6e7f8091",
-                                              "e2f4a6b8-1c3d-4e5f-9a7b-0c1d2e3f4a5b"};
+const std::vector<std::string>& playlistGuids() {
+    static const std::vector<std::string> guids{"45837d74-fa4f-415c-bba9-bf2db8f0dc04",
+                                                "9b1c2e30-7d4a-4f6e-8a21-3c5d6e7f8091",
+                                                "e2f4a6b8-1c3d-4e5f-9a7b-0c1d2e3f4a5b"};
+    return guids;
+}
 
 FillRequest filling(const std::string& form, size_t trackCount = kTracks) {
     return parseFill(R"({"structure": )" + std::to_string(kStructure) + ", " + form + "}",
@@ -113,7 +116,7 @@ RemoveRowsRequest removing(const std::string& form) {
 }
 
 SourceRowsRequest copying(const std::string& form) {
-    return parseSourceRows(R"({"source": ")" + kPlaylistGuids[0] + R"(", )" + form + "}");
+    return parseSourceRows(R"({"source": ")" + playlistGuids()[0] + R"(", )" + form + "}");
 }
 
 }  // namespace
@@ -474,13 +477,13 @@ TEST_CASE("a queued position is answered as the playlist's GUID and the row") {
     std::vector<size_t> askedFor;
     const auto guidAt = [&askedFor](size_t index) {
         askedFor.push_back(index);
-        return kPlaylistGuids.at(index);
+        return playlistGuids().at(index);
     };
 
     const auto location = queuedLocation(2, 17, guidAt);
 
     REQUIRE(location.has_value());
-    CHECK(location->playlistId == kPlaylistGuids[2]);
+    CHECK(location->playlistId == playlistGuids()[2]);
     CHECK(location->index == 17);
     CHECK(askedFor == std::vector<size_t>{2});
 }
@@ -499,7 +502,7 @@ TEST_CASE("a stale queued position is answered as no position, and no playlist i
         size_t lookups = 0;
         const auto guidAt = [&lookups](size_t index) {
             ++lookups;
-            return kPlaylistGuids.at(index);
+            return playlistGuids().at(index);
         };
 
         CHECK_FALSE(queuedLocation(playlist, item, guidAt).has_value());

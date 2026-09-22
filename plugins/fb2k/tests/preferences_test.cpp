@@ -323,7 +323,7 @@ TEST_CASE("the checkbox decides whether playlists are writable, rather than what
 }
 
 TEST_CASE("a ticked checkbox and an unticked one are not the same form") {
-    Settings writable;
+    const Settings writable;
     Settings readOnly = writable;
     readOnly.writePlaylists = false;
 

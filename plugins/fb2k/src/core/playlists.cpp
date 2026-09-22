@@ -33,7 +33,7 @@ uint64_t randomStart() {
     std::random_device entropy;
     const uint64_t high = entropy();
     const uint64_t low = entropy();
-    return (high << 32) | low;
+    return (high << 32U) | low;
 }
 
 }  // namespace
@@ -199,6 +199,9 @@ AutoPlaylistSpec parseStoredAutoPlaylist(const std::string& stored) {
 }
 
 std::string roleName(OwnPlaylistRole role) {
+    // A switch is what makes a role added later a -Wswitch warning. An if would take one
+    // silently, and nothing here is built with -Werror.
+    // NOLINTNEXTLINE(readability-trivial-switch)
     switch (role) {
         case OwnPlaylistRole::scratch:
             return "scratch";
@@ -217,7 +220,7 @@ std::string ownPlaylistTitle(const std::string& asked) {
 PlaylistVersions::PlaylistVersions(size_t retainedRevisions)
     : retainedRevisions_(retainedRevisions), untouched_(randomStart()) {}
 
-void PlaylistVersions::rowsChanged(const std::string& playlistId, RowsChanged) {
+void PlaylistVersions::rowsChanged(const std::string& playlistId, RowsChanged /*unused*/) {
     const std::lock_guard<std::mutex> held(mutex_);
 
     Tracked& tracked = trackedLocked(playlistId);

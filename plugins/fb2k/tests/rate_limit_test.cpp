@@ -164,6 +164,7 @@ TEST_CASE("connection threads asking for one address spend one bucket between th
     std::atomic<int> allowed{0};
     std::vector<std::thread> threads;
 
+    threads.reserve(8);
     for (int worker = 0; worker < 8; worker++)
         threads.emplace_back([&limiter, &allowed] {
             for (int i = 0; i < 100; i++)

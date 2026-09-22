@@ -1006,7 +1006,7 @@ struct HttpServer::Impl {
     // client learns nothing about a request the setting was always going to refuse. Never called
     // from a route addressing the component's own scratch playlist -- that stays writable in
     // both states.
-    bool writesRefused(httplib::Response& res) {
+    bool writesRefused(httplib::Response& res) const {
         if (settings.writePlaylists)
             return false;
 
@@ -1078,7 +1078,7 @@ struct HttpServer::Impl {
     }
 
     std::optional<NewPlaylistRows> newPlaylistRows(const httplib::Request& req,
-                                                   httplib::Response& res) {
+                                                   httplib::Response& res) const {
         NewPlaylistRows rows;
 
         switch (newPlaylistSetOf(req.body)) {
@@ -1341,7 +1341,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            auto request =
+            const auto request =
                 refuseFillChange(parseFill(req.body, state.trackCount, state.structure, true));
             if (!request.ok()) {
                 if (request.outcome != PlaylistOutcome::done) {
@@ -1437,7 +1437,8 @@ struct HttpServer::Impl {
             if (ownPlaylistRefused(id, res))
                 return;
 
-            auto request = refuseFillChange(parseFill(req.body, state.trackCount, state.structure));
+            const auto request =
+                refuseFillChange(parseFill(req.body, state.trackCount, state.structure));
             if (!request.ok()) {
                 if (request.outcome != PlaylistOutcome::done) {
                     respond(res, httpStatusFor(request.outcome),
@@ -1705,7 +1706,7 @@ struct HttpServer::Impl {
         constexpr char kMoveQueuePath[] = "/api/queue/move";
 
         server.Post(kMoveQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
-            auto request = refuseMoveQueueChange(parseMoveQueue(req.body));
+            const auto request = refuseMoveQueueChange(parseMoveQueue(req.body));
             if (!request.ok()) {
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
@@ -1738,7 +1739,7 @@ struct HttpServer::Impl {
         constexpr char kQueueEntryPath[] = R"(/api/queue/([^/]+))";
 
         server.Delete(kQueueEntryPath, [this](const httplib::Request& req, httplib::Response& res) {
-            auto request = refuseRemoveQueueChange(
+            const auto request = refuseRemoveQueueChange(
                 parseRemoveQueue(req.matches[1].str(), req.get_param_value("revision")));
             if (!request.ok()) {
                 if (request.refusal == PlaylistRefusal::tooFast)
@@ -1870,12 +1871,12 @@ struct HttpServer::Impl {
     // A revision only a route reading it ahead of the player can judge: the store, not the
     // job, is what a client's own next poll will see. A null store -- no install runs with
     // one, but a test may -- reads as revision 0, same as a fresh queue with nothing to name.
-    bool queueHasMoved(uint64_t revision) {
+    bool queueHasMoved(uint64_t revision) const {
         const auto current = playerState ? playerState->read().queueRevision : uint64_t{0};
         return current != revision;
     }
 
-    void respondQueueMoved(httplib::Response& res) {
+    static void respondQueueMoved(httplib::Response& res) {
         respond(res, httpStatusFor(PlaylistOutcome::queueMoved),
                 playlistFailedDocument(playlistFailure(PlaylistOutcome::queueMoved)));
     }

@@ -440,7 +440,7 @@ TEST_CASE("an answer given while the player is writing carries only rows that pl
 
         for (uint32_t change = 0; change < kChanges; ++change) {
             for (const Watched& playlist : watched) {
-                versions.contentChanged(playlist.id, {playlist.base + change % kRowsEach});
+                versions.contentChanged(playlist.id, {playlist.base + (change % kRowsEach)});
                 ++wrote.revisions[playlist.id];
 
                 if (change % kChangesPerReorder == 0) {
@@ -450,7 +450,7 @@ TEST_CASE("an answer given while the player is writing carries only rows that pl
             }
 
             const PlayingLocation next{watched.front().id,
-                                       watched.front().base + change % kRowsEach};
+                                       watched.front().base + (change % kRowsEach)};
             if (playing)
                 ++wrote.revisions[playing->playlistId];
             versions.playingRowChanged(next);

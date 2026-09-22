@@ -1,0 +1,15 @@
+# The parent .clang-tidy, minus the one check doctest defeats. InheritParentConfig keeps
+# everything else, so this file is the exception rather than a second check list.
+#
+#   bugprone-unchecked-optional-access
+#     An access guarded by REQUIRE(x.has_value()) reads as unguarded here. REQUIRE is a doctest
+#     macro that expands to a throwing call, and the check's dataflow analysis cannot follow
+#     through the expansion to learn the value is there. The only rewrite it accepts is
+#     value_or(), which supplies a fallback on a line the REQUIRE above has proved cannot need
+#     one, so every site would say something weaker than it means.
+#
+# It stays on for src/core/, where an unguarded access would be a real defect, and where the
+# tree passes clean under it.
+---
+InheritParentConfig: true
+Checks: '-bugprone-unchecked-optional-access'

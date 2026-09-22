@@ -54,7 +54,7 @@ QueuedTrack fromAPlaylistRow(std::string title, uint32_t index) {
 
 Player queueing(std::vector<QueuedTrack> entries, uint64_t revision = 1) {
     Player player = servingPlayer();
-    player.readQueue = [entries, revision] {
+    player.readQueue = [entries = std::move(entries), revision] {
         QueueRead read;
         read.revision = revision;
         read.entries = entries;
@@ -77,8 +77,11 @@ json entriesOf(const TestServer& server) {
     return body["entries"];
 }
 
-const Keys kEntryKeys = {"title",       "artist",      "duration", "album",
-                         "albumArtist", "libraryPath", "location"};
+const Keys& entryKeys() {
+    static const Keys keys = {"title",       "artist",      "duration", "album",
+                              "albumArtist", "libraryPath", "location"};
+    return keys;
+}
 
 constexpr uint32_t kQueueLimit = 1000;
 
@@ -211,7 +214,7 @@ TEST_CASE("every queue entry carries exactly its seven keys, whichever of them a
 
     for (const auto& entry : entries) {
         INFO("entry: ", entry.dump());
-        CHECK(keysOf(entry) == kEntryKeys);
+        CHECK(keysOf(entry) == entryKeys());
     }
 
     CHECK(keysOf(entries[0]["location"]) == Keys{"index", "playlistId"});

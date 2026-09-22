@@ -1,0 +1,25 @@
+# What an editor's clangd is told about this tree. README.md, *Testing*, is how the compilation
+# database it reads alongside this gets written.
+
+# clangd runs its own include cleaner, which is not the clang-tidy check of the same name that
+# .clang-tidy already turns off. Both are off for the same reason: this tree includes what a file
+# reads rather than what the compiler can prove it needs, and the suggestion fires on every
+# header that exists to be re-exported.
+Diagnostics:
+  UnusedIncludes: None
+  MissingIncludes: None
+
+---
+# src/fb2k/ has no entry in the compilation database and cannot get one: it needs the foobar2000
+# SDK and the Windows SDK, and MSBuild emits no database for clangd to read. So clangd guesses the
+# flags from a sibling, the first SDK header is a file-not-found, and every diagnostic after it is
+# cascade from that. None of them is about the code. CONTRIBUTING.md's rule 4 is what does govern
+# this half: it is reviewed here and compiled for the first time by scripts/build.ps1.
+If:
+  PathMatch: src/fb2k/.*
+# Suppress does not reach the fatal clang emits when it gives up counting, so the count is
+# lifted instead and nothing is left to give up over.
+CompileFlags:
+  Add: [-ferror-limit=0]
+Diagnostics:
+  Suppress: '*'

@@ -469,6 +469,26 @@ TEST_CASE("artwork answers no status contract/openapi.yaml does not document") {
     CHECK(undocumented.empty());
 }
 
+// foobar2000 calls its now-playing album art notification with nothing to show, against the
+// guarantee the SDK's own album_art.h makes that it never does. So an empty picture reaches this
+// store, and a validator kept for one is a cover a client would be told it still holds.
+TEST_CASE("an empty cover held leaves nothing to serve, the same as a cover let go") {
+    NowPlayingArtwork playing;
+    playing.hold(kJpeg);
+
+    playing.hold("");
+    const auto held = playing.current();
+
+    CHECK(held.picture.empty());
+    CHECK(held.tag.empty());
+
+    playing.clear();
+    const auto gone = playing.current();
+
+    CHECK(held.picture == gone.picture);
+    CHECK(held.tag == gone.tag);
+}
+
 // foobar2000's own now-playing loader takes no path, no index and no handle
 // (plugins/fb2k/ARCHITECTURE.md, *Facts about the player*), and this is the whole of what
 // separates this route from the one addressed by a track: a request with nothing in it is
@@ -502,6 +522,49 @@ TEST_CASE("a player showing no cover is refused in the words artwork already ref
     CHECK(response->status == 404);
     CHECK(json::parse(response->body)["error"] == "no artwork for that track");
     CHECK(response->get_header_value("ETag").empty());
+    CHECK(log.asked.empty());
+}
+
+// The same empty picture, one layer out: a validator standing for no bytes is how a route ends
+// up telling a client that a cover which is not there is still good.
+TEST_CASE("an empty cover held is refused rather than answered with no picture") {
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    playing.hold(kJpeg);
+    const TestServer server(servingPlaying(&playing, &log));
+
+    const auto first = get(server, kPlayingAddress);
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+    const auto tag = first->get_header_value("ETag");
+
+    playing.hold("");
+
+    SUBCASE("a client asking outright") {
+        const auto response = get(server, kPlayingAddress);
+
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body)["error"] == "no artwork for that track");
+        CHECK(response->get_header_value("ETag").empty());
+    }
+
+    SUBCASE("a client holding the cover the empty one replaced") {
+        const auto again = getHolding(server, kPlayingAddress, tag);
+
+        REQUIRE(again);
+        CHECK(again->status == 404);
+        CHECK(json::parse(again->body)["error"] == "no artwork for that track");
+    }
+
+    SUBCASE("a client that would take any cover this URL has") {
+        const auto again = getHolding(server, kPlayingAddress, "*");
+
+        REQUIRE(again);
+        CHECK(again->status == 404);
+        CHECK(json::parse(again->body)["error"] == "no artwork for that track");
+    }
+
     CHECK(log.asked.empty());
 }
 

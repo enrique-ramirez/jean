@@ -12,6 +12,9 @@ namespace jean {
 namespace {
 
 std::string bytesOf(const album_art_data_ptr& data) {
+    if (data.is_empty())
+        return {};
+
     return std::string(reinterpret_cast<const char*>(data->begin()), data->size());
 }
 

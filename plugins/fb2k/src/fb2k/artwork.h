@@ -22,8 +22,8 @@ private:
 // Registers with the core's own now-playing loader rather than resolving a cover itself, so
 // GET /api/artwork/playing answers a stream and a CD track exactly as it answers a library
 // file. Construction and destruction are main thread only, for the reason registering with any
-// player service is; `on_album_art` arrives on whichever thread the loader finished on, which
-// ARCHITECTURE.md, *Facts about the player*, says to treat as a worker and never the main one.
+// player service is; which thread `on_album_art` arrives on is not this file's to assume, and
+// ARCHITECTURE.md, *Facts about the player*, has what is known about it.
 class NowPlayingArtworkWatch : public now_playing_album_art_notify {
 public:
     explicit NowPlayingArtworkWatch(NowPlayingArtwork& store);
@@ -33,9 +33,12 @@ public:
     NowPlayingArtworkWatch& operator=(const NowPlayingArtworkWatch&) = delete;
 
 private:
-    // now_playing_album_art_notify is never called for a track with no cover, for the reason
-    // ARCHITECTURE.md, *Facts about the player*, gives, so this callback only ever hands the
-    // store a picture; PlaybackWatch::Callback::on_playback_new_track is what lets go of it.
+    // foobar2000 breaks the SDK's own album_art.h promise that this is never called with a
+    // null object, for the reason ARCHITECTURE.md, *Facts about the player*, gives. bytesOf
+    // answers an empty string for a null data, and NowPlayingArtwork::hold treats an empty
+    // picture the same as letting go of one, so this callback needs no branch of its own;
+    // PlaybackWatch::Callback::on_playback_new_track is what lets go of a picture on an
+    // ordinary track change.
     void on_album_art(album_art_data::ptr data) override;
 
     NowPlayingArtwork& store_;

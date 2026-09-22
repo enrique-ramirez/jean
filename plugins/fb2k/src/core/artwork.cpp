@@ -90,6 +90,11 @@ std::string imageTypeOf(const std::string& bytes) {
 }
 
 void NowPlayingArtwork::hold(std::string picture) {
+    if (picture.empty()) {
+        clear();
+        return;
+    }
+
     const std::lock_guard<std::mutex> held(mutex_);
     held_.tag = artworkTag(picture);
     held_.picture = std::move(picture);

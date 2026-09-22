@@ -236,3 +236,28 @@ test.describe("something else answering on the advertised port", () => {
 		await expectSettlesAt(player, () => pairRequests(player), []);
 	});
 });
+
+// The component answers every authenticated route from one token, so a token it
+// stops accepting is a fact about the connection rather than about whichever
+// route happened to meet it first.
+test.describe("a token the component stops accepting", () => {
+	test.use({ fooJeanToken: FOO_JEAN_TOKEN });
+
+	const probes = (player: FakePlayer) =>
+		requestsTo(player, "/api/clientconfig").filter(
+			(entry) => entry.method === "GET",
+		).length;
+
+	test("is looked at again once, rather than once a tick", async ({
+		page,
+		player,
+	}) => {
+		await openSettings(page);
+		await expect(settingsDialog(page)).toContainText("Connected");
+
+		const before = probes(player);
+		player.fooJean.failState = 401;
+
+		await expectSettlesAt(player, () => probes(player), before + 1);
+	});
+});

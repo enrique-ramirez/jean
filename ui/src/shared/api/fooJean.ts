@@ -140,6 +140,20 @@ const postJson = async (
 	}
 };
 
+const refusals = new Set<() => void>();
+
+export const whenTokenRefused = (listener: () => void) => {
+	refusals.add(listener);
+	return () => {
+		refusals.delete(listener);
+	};
+};
+
+export const noteTokenRefused = (status: number) => {
+	if (status !== 401) return;
+	for (const listener of [...refusals]) listener();
+};
+
 const authedJson = async <T>(
 	origin: string,
 	token: string,
@@ -155,7 +169,10 @@ const authedJson = async <T>(
 				headers: { ...bearer(token), ...init?.headers },
 				signal,
 			});
-			if (!response.ok) return null;
+			if (!response.ok) {
+				noteTokenRefused(response.status);
+				return null;
+			}
 			return (await response.json()) as T;
 		});
 	} catch {
@@ -242,6 +259,7 @@ export async function fetchState(
 
 	const refusal = STATE_REFUSALS[response.status];
 	if (refusal) {
+		noteTokenRefused(response.status);
 		const body = (await response.json().catch(() => null)) as {
 			error?: string;
 			detail?: string;
@@ -314,8 +332,10 @@ export async function writeTags(
 		return { ok: false, reason: "not-allowed", field, message };
 	if (response.status === 404)
 		return { ok: false, reason: "unknown-track", message };
-	if (response.status === 401)
+	if (response.status === 401) {
+		noteTokenRefused(response.status);
 		return { ok: false, reason: "unauthorized", message };
+	}
 	if (response.status === 504) return { ok: false, reason: "timeout", message };
 	if (response.status === 400 || response.status === 413)
 		return { ok: false, reason: "refused", message };

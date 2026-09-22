@@ -1097,3 +1097,30 @@ test.describe("dragging tracks onto a playlist", () => {
 		);
 	});
 });
+
+test.describe("a playlist deleted at the player while you are looking at it", () => {
+	const entryOf = (player: FakePlayer, title: string) => {
+		const found = player.playlists.find((one) => one.title === title);
+		if (!found) throw new Error(`no playlist ${title}`);
+		return found;
+	};
+
+	const hashOf = (page: Page) => page.evaluate(() => location.hash);
+
+	test("leaves the address bar naming a playlist that exists", async ({
+		page,
+		player,
+	}) => {
+		const gone = entryOf(player, FAVORITES);
+		await page.goto(`/#/${gone.guid}`);
+		await expect(trackRow(page, 0)).toBeVisible();
+		expect(await hashOf(page)).toContain(gone.guid);
+
+		expect(player.removePlaylist(gone.id)).toBe(true);
+
+		await expect.poll(() => hashOf(page)).not.toContain(gone.guid);
+
+		const landed = (await hashOf(page)).replace(/^#\/?/, "");
+		expect(player.playlists.some((one) => one.guid === landed)).toBe(true);
+	});
+});

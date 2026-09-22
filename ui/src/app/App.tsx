@@ -373,6 +373,17 @@ function Shell() {
 		[browsable, selectedId],
 	);
 
+	const routeNamesAVanishedPlaylist =
+		!isNowPlaying &&
+		!isLibrary &&
+		!routedId &&
+		route === lastPlaylistId.current;
+
+	useEffect(() => {
+		if (!routeNamesAVanishedPlaylist || !selectedId) return;
+		navigate(`/${selectedId}`, { replace: true });
+	}, [routeNamesAVanishedPlaylist, selectedId, navigate]);
+
 	const place = isHome
 		? t("route.home")
 		: isGenres

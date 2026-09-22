@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 import {
 	discoverFooJean,
 	type FooJeanDiscovery,
 	TOKEN_KEY,
+	whenTokenRefused,
 } from "@/shared/api/fooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
@@ -21,6 +22,7 @@ const MIN_RETRY_MS = 500;
 const MAX_RETRY_MS = 60_000;
 
 let retryMs = MIN_RETRY_MS;
+let refusedToken: string | null = null;
 
 const isRetryable = (discovery: FooJeanDiscovery | undefined) =>
 	discovery?.retryable ?? false;
@@ -54,6 +56,17 @@ export function useFooJean() {
 		retryMs = MIN_RETRY_MS;
 		queryClient.invalidateQueries({ queryKey: [KEY] });
 	}, [queryClient]);
+
+	const isReady = query.data?.state.kind === "ready";
+
+	useEffect(() => {
+		if (!isReady) return;
+		return whenTokenRefused(() => {
+			if (refusedToken === token) return;
+			refusedToken = token;
+			recheck();
+		});
+	}, [isReady, recheck, token]);
 
 	return {
 		discovery: query.data ?? ABSENT,

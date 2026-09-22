@@ -749,7 +749,8 @@ void beginReadChangedRows(const std::string& playlistId, uint64_t structure, uin
 }
 
 // plugins/fb2k/ARCHITECTURE.md, "Facts about the player": why this ignores the bool
-// playlist_execute_default_action returns.
+// playlist_execute_default_action returns, and why the row it starts is not enough on its own
+// to say which playlist the track after it comes from.
 PlaylistOutcome beginPlayRow(const std::string& playlistId, uint32_t index) {
     const auto playlist = findPlaylist(playlistId);
     if (playlist == pfc::infinite_size)
@@ -759,6 +760,7 @@ PlaylistOutcome beginPlayRow(const std::string& playlistId, uint32_t index) {
     if (index >= manager->playlist_get_item_count(playlist))
         return PlaylistOutcome::positionPastEnd;
 
+    manager->set_active_playlist(playlist);
     manager->playlist_execute_default_action(playlist, index);
     return PlaylistOutcome::done;
 }

@@ -1,7 +1,9 @@
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-
-import { recheckComponentLibrary } from "@/domain/track/playlistStore";
+import {
+	recheckComponentLibrary,
+	retryFailedPlaylistReads,
+} from "@/domain/track/playlistStore";
 import {
 	type FooJeanCapabilities,
 	fetchState,
@@ -84,7 +86,12 @@ async function applyPoll(
 	capabilities: FooJeanCapabilities | undefined,
 ): Promise<string | null> {
 	const result = await fetchState(origin, token, tag);
-	if (!result.ok || result.kind === "unchanged") return tag;
+	if (!result.ok) return tag;
+
+	// Asked on every tick the player answers, not only on one that carries a change: a quiet player
+	// answers `304` forever, and a read lost under it has nothing else coming to carry its value.
+	void retryFailedPlaylistReads(origin, token);
+	if (result.kind === "unchanged") return tag;
 
 	const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
 	const snapshot: PlayerSnapshot = {

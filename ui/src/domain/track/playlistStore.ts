@@ -87,6 +87,7 @@ interface Entry {
 	feed: Feed | null;
 	missedLibrary: LibraryGeneration | null;
 	missedPlaylist: PlaylistGeneration | null;
+	unreadPlaylist: { playlistId: string; generation: PlaylistGeneration } | null;
 }
 
 const FIRST_CHUNK = 2500;
@@ -168,6 +169,7 @@ function entryFor(key: string): Entry {
 		feed: null,
 		missedLibrary: null,
 		missedPlaylist: null,
+		unreadPlaylist: null,
 	};
 	entries.set(key, entry);
 	return entry;
@@ -605,6 +607,18 @@ async function fetchChangesOrNull(
 	}
 }
 
+export async function retryFailedPlaylistReads(origin: string, token: string) {
+	const pending = [...entries.values()].flatMap((entry) => {
+		const unread = entry.unreadPlaylist;
+		if (!unread) return [];
+		entry.unreadPlaylist = null;
+		return [unread];
+	});
+
+	for (const { playlistId, generation } of pending)
+		await recheckPlaylist(origin, token, playlistId, generation);
+}
+
 export async function recheckPlaylist(
 	origin: string,
 	token: string,
@@ -640,7 +654,10 @@ export async function recheckPlaylist(
 			feed.structure,
 			feed.revision,
 		);
-		if (!result) return;
+		if (!result) {
+			entry.unreadPlaylist = { playlistId, generation };
+			return;
+		}
 
 		if (!result.ok)
 			return void (await reloadPlaylist(entry, origin, token, playlistId));

@@ -1199,6 +1199,28 @@ test("a changes read the player is too slow for leaves the rows catching up on t
 	await expectSettlesAt(player, () => uncaught, []);
 });
 
+// A quiet player is the case the next edit cannot rescue: nothing else moves a
+// revision, so a read lost to a blip has to be asked for again on its own.
+test("a changes read lost on a quiet player catches up with no further edit", async ({
+	page,
+	player,
+}) => {
+	const uncaught: string[] = [];
+	page.on("pageerror", (error) => uncaught.push(error.message));
+
+	await openPlaylistView(page, player, WATCHED);
+	const { hasFailed } = await failTheNextChangesRead(
+		page,
+		refuseWith(PLAYER_TOO_SLOW),
+	);
+
+	await retitleTheFirstRow(page, player);
+	await hasFailed;
+
+	await expect(trackRow(page, 0)).toContainText(RETITLED);
+	await expectSettlesAt(player, () => uncaught, []);
+});
+
 test("a changes read the network drops leaves the rows catching up on the next edit, and nothing uncaught on the page", async ({
 	page,
 	player,

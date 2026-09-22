@@ -23,7 +23,7 @@ constexpr std::array<Mode, 7> kModes{{{"Default", "inOrder"},
 }  // namespace
 
 std::optional<std::string> jeanModeFor(const std::string& playerOrder) {
-    const auto* found =
+    const auto found =
         std::find_if(kModes.begin(), kModes.end(),
                      [&playerOrder](const Mode& mode) { return playerOrder == mode.order; });
 
@@ -34,7 +34,7 @@ std::optional<std::string> jeanModeFor(const std::string& playerOrder) {
 }
 
 std::optional<std::string> playerOrderFor(const std::string& jeanMode) {
-    const auto* found = std::find_if(kModes.begin(), kModes.end(), [&jeanMode](const Mode& mode) {
+    const auto found = std::find_if(kModes.begin(), kModes.end(), [&jeanMode](const Mode& mode) {
         return jeanMode == mode.mode;
     });
 

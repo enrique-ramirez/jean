@@ -374,6 +374,47 @@ TEST_CASE("an edit that moves the playing row advances the version once") {
     CHECK(store.read().state.playingLocation->index == kPlayingRow - 1);
 }
 
+TEST_CASE("the focused playlist moves without disturbing where the playing track is") {
+    PlayerStateStore store;
+    store.publish(playingFrom(kPlayingRow));
+    const auto atTheStart = store.read();
+
+    store.currentPlaylistChanged(std::string{"another-playlist"});
+    const auto focusedElsewhere = store.read();
+
+    CHECK(focusedElsewhere.version > atTheStart.version);
+    CHECK(focusedElsewhere.state.currentPlaylistId == "another-playlist");
+    CHECK(focusedElsewhere.state.playingLocation == atTheStart.state.playingLocation);
+}
+
+TEST_CASE("the focused playlist reported again unchanged leaves the version alone") {
+    PlayerStateStore store;
+    store.publish(playingFrom(kPlayingRow));
+    store.currentPlaylistChanged(std::string{kPlayingPlaylist});
+    const uint64_t before = store.read().version;
+
+    for (int edit = 0; edit < kEditsInABurst; ++edit)
+        store.currentPlaylistChanged(std::string{kPlayingPlaylist});
+
+    CHECK(store.read().version == before);
+}
+
+// A player with no focused playlist at all is a state foobar2000 can be in, and it has to read
+// as that rather than as a playlist whose id is the empty string.
+TEST_CASE("no focused playlist is distinguishable from one whose id is empty") {
+    PlayerStateStore store;
+    store.publish(playingFrom(0));
+    store.currentPlaylistChanged(std::string{});
+    const auto named = store.read();
+
+    store.currentPlaylistChanged(std::nullopt);
+    const auto none = store.read();
+
+    CHECK(named.state.currentPlaylistId.has_value());
+    CHECK_FALSE(none.state.currentPlaylistId.has_value());
+    CHECK(none.version > named.version);
+}
+
 // The two states the "Playing from" line turns on. A place that is merely empty rather than
 // absent reads as the first row of a playlist nobody can name.
 TEST_CASE("playing from nowhere is distinguishable from playing at the first row of a playlist") {

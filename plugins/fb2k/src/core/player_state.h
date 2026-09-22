@@ -43,6 +43,10 @@ struct PlayerState {
     std::optional<std::string> artist;
 
     std::optional<PlayingLocation> playingLocation;
+
+    // The playlist foobar2000 has focused, not the one the playing track sits in
+    // (`playingLocation`): ARCHITECTURE.md, *Facts about the player*.
+    std::optional<std::string> currentPlaylistId;
 };
 
 bool operator==(const PlayerState& a, const PlayerState& b);
@@ -101,6 +105,7 @@ public:
     void durationChanged(double duration);
     void playbackModeChanged(std::optional<std::string> mode);
     void playingLocationChanged(std::optional<PlayingLocation> location);
+    void currentPlaylistChanged(std::optional<std::string> playlistId);
 
     void nameChanged(std::string title, std::string artist);
 

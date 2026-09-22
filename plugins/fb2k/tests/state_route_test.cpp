@@ -801,9 +801,9 @@ TEST_CASE("the player section names the playlists revision once and carries noth
     const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
 
     const Keys published = {
-        "playback",        "path",          "subsong",          "position", "duration",
-        "volume",          "muted",         "playbackMode",     "title",    "artist",
-        "playingLocation", "queueRevision", "playlistsRevision"};
+        "playback",         "path",          "subsong",          "position", "duration",
+        "volume",           "muted",         "playbackMode",     "title",    "artist",
+        "playingLocation",  "currentPlaylistId", "queueRevision", "playlistsRevision"};
 
     CHECK(keysOf(playerSection(server)) == published);
 }

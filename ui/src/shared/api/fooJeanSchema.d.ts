@@ -1520,6 +1520,15 @@ export interface components {
             artist: string | null;
             /** @description Where the playing track sits, or `null` when it is not playing from a playlist this component can name. */
             playingLocation: components["schemas"]["PlayingLocation"] | null;
+            /**
+             * @description The playlist the player has focused, by the `id` a `PlaylistAnnotation` carries. `null` where the player has no focused playlist at all, which is a state foobar2000 can be in and not an error.
+             *
+             *     **This is not where the playing track is**, which is `playingLocation` and can name a different playlist: what is focused is a property of the player's own window. It is here rather than as a flag on `GET /playlists` because a client watching it wants it at the rate it polls playback, and because it moves when nothing about the playlist list has.
+             *
+             *     It decides more than which tab is drawn. Under foobar2000's *Playback follows cursor* it is also the playlist an advance takes its next track from, so a client that started a set and sees this naming something else is about to lose playback to it.
+             * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+             */
+            currentPlaylistId: string | null;
             /** @description Moves when the queue's contents or order change, or when a queued entry's playlist position shifts or is lost. Never moves for anything else this section reports. */
             queueRevision: number;
             /** @description Moves when a playlist is created, removed, moved in the list or retitled, and when any playlist's `structure` or `revision` moves. A client re-reads `GET /playlists` when the one it holds has moved, and not otherwise. */

@@ -7,6 +7,8 @@ Formats our own C++ to .clang-format. third_party/ is never touched.
 
   scripts/format.sh            rewrite in place
   scripts/format.sh --check    exit non-zero if anything is unformatted
+
+CLANG_FORMAT picks the binary, for a machine carrying more than one.
 USAGE
 }
 
@@ -19,7 +21,14 @@ esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if command -v clang-format >/dev/null 2>&1; then
+if [ -n "${CLANG_FORMAT:-}" ]; then
+  if ! command -v "$CLANG_FORMAT" >/dev/null 2>&1; then
+    echo "CLANG_FORMAT names '$CLANG_FORMAT', which is not on PATH. A gate that asked for one" >&2
+    echo "version must not quietly settle for another." >&2
+    exit 127
+  fi
+  formatter="$CLANG_FORMAT"
+elif command -v clang-format >/dev/null 2>&1; then
   formatter=clang-format
 elif xcrun -f clang-format >/dev/null 2>&1; then
   formatter="xcrun clang-format"

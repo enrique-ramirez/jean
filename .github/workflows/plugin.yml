@@ -2,9 +2,6 @@
 # `site.yml` builds the page. src/core/ and tests/ compile on any machine, so a runner covers them.
 # src/fb2k/ does not: it needs the foobar2000 SDK and Windows, and `plugins/fb2k/CONTRIBUTING.md`
 # says a change there is reviewed rather than tested until scripts/build.ps1 has run.
-#
-# The runner is pinned to a release rather than ubuntu-latest because apt.llvm.org publishes one
-# channel per Ubuntu codename, and the lint job installs from it.
 
 name: plugin
 
@@ -25,29 +22,44 @@ on:
 permissions:
   contents: read
 
+env:
+  # scripts/lint.sh carries the authoritative pin and refuses any other major, so this follows it.
+  llvm_major: '23'
+
 jobs:
   tests:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
+      # libopus and libogg are fetched rather than vendored, so the suite cannot link without this.
       - run: plugins/fb2k/scripts/fetch-opus.sh
 
       - run: plugins/fb2k/scripts/test.sh
+
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/apt-llvm
+        with:
+          tool: clang-format
+          major: ${{ env.llvm_major }}
+
+      # Nothing is compiled here, so this needs neither the codec sources nor a compiler.
+      - run: CLANG_FORMAT="clang-format-$llvm_major" plugins/fb2k/scripts/format.sh --check
 
   lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      # scripts/lint.sh refuses any clang-tidy but the one version this tree is clean against, and
-      # Ubuntu's own archive carries an older one.
-      - name: clang-tidy from apt.llvm.org
-        run: |
-          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 23
-          sudo apt-get install -y clang-tidy-23
+      # scripts/lint.sh finds clang-tidy-$llvm_major on its own and refuses anything else.
+      - uses: ./.github/actions/apt-llvm
+        with:
+          tool: clang-tidy
+          major: ${{ env.llvm_major }}
 
       - run: plugins/fb2k/scripts/fetch-opus.sh
 

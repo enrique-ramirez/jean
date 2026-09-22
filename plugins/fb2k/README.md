@@ -141,7 +141,12 @@ scripts/test.sh '-sf=*cors_test.cpp'      # one file
 scripts/test.sh --sanitize=thread         # ThreadSanitizer
 scripts/format.sh --check                 # clang-format, without writing
 scripts/lint.sh                           # clang-tidy over src/core/ and tests/
+scripts/compile-commands.sh               # what an editor's clangd reads
 ```
+
+`scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, falls back to compiling each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file-not-found followed by a hundred errors that are all cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine. It covers `src/core/` and `tests/`; `src/fb2k/` resolves only where the foobar2000 SDK and the Windows SDK are, which is the build machine.
+
+`.github/workflows/plugin.yml` runs `scripts/test.sh` and `scripts/lint.sh` on a Linux runner for every change under `plugins/fb2k/` or to `contract/openapi.yaml`.
 
 On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
 

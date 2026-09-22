@@ -22,6 +22,9 @@ opus="$root/third_party/opus"
 ogg="$root/third_party/ogg"
 zlib="$root/third_party/zlib"
 
+# shellcheck source=lib/compile-flags.sh
+. "$root/scripts/lib/compile-flags.sh"
+
 : "${CXX:=c++}"
 
 sanitize=""
@@ -115,13 +118,9 @@ build_zlib_archive_if_missing() {
 
 build_tests() {
   # -Wno-unused-function because doctest's SUBCASE machinery generates some.
-  # CPPHTTPLIB_ZLIB_SUPPORT is defined once for the whole build, never per file:
-  # third_party/README.md has why.
   # shellcheck disable=SC2086
-  "$CXX" -std=c++17 -g -O0 -Wall -Wextra -Wno-unused-function $instrument \
-    -DCPPHTTPLIB_ZLIB_SUPPORT \
-    -I"$root" -I"$root/src" -I"$root/tests" \
-    -I"$opus/include" -I"$ogg/include" -I"$zlib" \
+  "$CXX" -g -O0 -Wall -Wextra -Wno-unused-function $instrument \
+    "${compile_flags[@]}" \
     "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp \
     "$codec/libcodec.a" "$deflate/libz.a" \
     -o "$out/foo_jean_tests"

@@ -248,6 +248,9 @@ std::set<std::string> publishedStatePlayerExample(const std::string& example) {
     size_t end = start + 1;
     while (end < blockEnd) {
         const auto indent = indentOf(lines[end]);
+        // npos is SIZE_MAX, so the second test already excludes it. The first is what says a
+        // blank line is skipped rather than taken for the end of the block.
+        // NOLINTNEXTLINE(misc-redundant-expression)
         if (indent != std::string::npos && indent <= kExampleIndent)
             break;
         ++end;

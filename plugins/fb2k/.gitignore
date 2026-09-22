@@ -8,6 +8,10 @@ sdk/*
 third_party/opus/
 third_party/ogg/
 
+# What an editor's clangd reads, written by scripts/compile-commands.sh. Absolute paths,
+# so it belongs to one machine.
+compile_commands.json
+
 # MSBuild
 [Bb]in/
 [Oo]bj/

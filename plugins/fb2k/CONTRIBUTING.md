@@ -1,6 +1,6 @@
 # Contributing to foo_jean
 
-How to write code in this repository. `plugins/fb2k/README.md` is what the component is, how to build it and how to run its tests; `plugins/fb2k/ARCHITECTURE.md` is how the pieces fit and why the boundaries sit where they do; `src/README.md` maps the source tree file by file. Setting up is `scripts/fetch-opus.sh` once and `scripts/test.sh` thereafter. See `plugins/fb2k/README.md`, *Testing*.
+How to write code in this repository. `plugins/fb2k/README.md` is what the component is, how to build it and how to run its tests; `plugins/fb2k/ARCHITECTURE.md` is how the pieces fit and why the boundaries sit where they do; `src/README.md` maps the source tree file by file. Setting up is `scripts/fetch-opus.sh` and `scripts/compile-commands.sh` once, then `scripts/test.sh` thereafter. Skip the second and an editor is wrong about this tree. See `plugins/fb2k/README.md`, *Testing*.
 
 ## 1. The `core/` / `fb2k/` boundary
 

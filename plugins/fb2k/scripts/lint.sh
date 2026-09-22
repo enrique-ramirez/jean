@@ -60,18 +60,10 @@ if [ -z "$tidy" ]; then
   exit 127
 fi
 
-# The same flags scripts/test.sh compiles with, passed after -- because there is no compilation database.
-# Vendored headers must be -isystem or their diagnostics bury ours: --warnings-as-errors promotes anything HeaderFilterRegex filtered back into view.
-compile_flags=(
-  -std=c++17
-  -DCPPHTTPLIB_ZLIB_SUPPORT
-  -isystem "$root"
-  -isystem "$root/third_party/opus/include"
-  -isystem "$root/third_party/ogg/include"
-  -isystem "$root/third_party/zlib"
-  -I"$root/src"
-  -I"$root/tests"
-)
+# Passed after -- because clang-tidy is given no compilation database.
+vendor_include=-isystem
+# shellcheck source=lib/compile-flags.sh
+. "$root/scripts/lib/compile-flags.sh"
 
 if [ "$#" -gt 0 ]; then
   files=("$@")

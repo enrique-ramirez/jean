@@ -61,7 +61,8 @@ TEST_CASE("every playback order a stock foobar2000 has crosses to a client as a 
     }
 }
 
-TEST_CASE("a Jean name maps back to the order string the player answered, so a mode stays settable") {
+TEST_CASE(
+    "a Jean name maps back to the order string the player answered, so a mode stays settable") {
     for (const auto& stock : kStock) {
         const std::string order(stock.order);
         const std::string mode(stock.mode);
@@ -72,7 +73,8 @@ TEST_CASE("a Jean name maps back to the order string the player answered, so a m
 
 // The price the criterion names. Mapping an unknown order to the nearest stock one would tell a
 // client the player is doing something it is not, which is worse than telling it nothing.
-TEST_CASE("an order this component has no name for is absent rather than mapped to the nearest one") {
+TEST_CASE(
+    "an order this component has no name for is absent rather than mapped to the nearest one") {
     CHECK_FALSE(jeanModeFor(kAddedByAComponent).has_value());
     CHECK_FALSE(jeanModeFor("").has_value());
     CHECK_FALSE(playerOrderFor("shuffleArtists").has_value());
@@ -90,7 +92,8 @@ TEST_CASE("an order name is matched exactly, so a near miss is unknown rather th
     CHECK_FALSE(playerOrderFor("shuffle_albums").has_value());
 }
 
-TEST_CASE("the polled document names the mode in Jean's vocabulary and carries no name of foobar2000's") {
+TEST_CASE(
+    "the polled document names the mode in Jean's vocabulary and carries no name of foobar2000's") {
     for (const auto& stock : kStock) {
         const std::string order(stock.order);
         const std::string mode(stock.mode);

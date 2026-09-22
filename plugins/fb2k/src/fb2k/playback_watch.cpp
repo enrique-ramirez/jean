@@ -55,16 +55,16 @@ PlayingTrack trackOf(const metadb_handle_ptr& track) {
 // own broadcast update, since that is a currently-playing concept `playback_control` resolves
 // rather than something the track's stored tags carry.
 void publishName(PlayerStateStore& store, const titleformat_object::ptr& titleScript,
-                  const titleformat_object::ptr& artistScript, const metadb_handle_ptr& track) {
+                 const titleformat_object::ptr& artistScript, const metadb_handle_ptr& track) {
     const auto playback = playback_control::get();
 
     pfc::string8 title;
     playback->playback_format_title_ex(track, nullptr, title, titleScript, nullptr,
-                                        playback_control::display_level_titles);
+                                       playback_control::display_level_titles);
 
     pfc::string8 artist;
     playback->playback_format_title_ex(track, nullptr, artist, artistScript, nullptr,
-                                        playback_control::display_level_titles);
+                                       playback_control::display_level_titles);
 
     store.nameChanged(toStd(title), toStd(artist));
 }
@@ -95,7 +95,7 @@ std::optional<PlayingLocation> currentLocation() {
 // moved without the other. PlaylistVersions treats the row being left as changed whatever the
 // player announced, which is how a play count reaches the playing playlist at all.
 void publishLocation(PlayerStateStore& store, PlaylistVersions& versions,
-                      const std::optional<PlayingLocation>& location) {
+                     const std::optional<PlayingLocation>& location) {
     store.playingLocationChanged(location);
     versions.playingRowChanged(location);
 }
@@ -160,7 +160,8 @@ public:
 // fader at maximum until the next change. Seeding from the player at construction covers
 // whatever was already true before the first callback, and the playback order the same way: no
 // callback fires for it until it next changes.
-PlayerState initialStateOf(const OutputHold& outputHold, std::chrono::steady_clock::time_point now) {
+PlayerState initialStateOf(const OutputHold& outputHold,
+                           std::chrono::steady_clock::time_point now) {
     const auto playback = playback_control::get();
 
     PlayerState state;
@@ -194,11 +195,15 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
              OutputHold& outputHold, NowPlayingArtwork& artwork,
              titleformat_object::ptr titleScript, titleformat_object::ptr artistScript)
         : play_callback_impl_base(flag_on_playback_new_track | flag_on_playback_pause |
-                                   flag_on_playback_stop | flag_on_playback_seek |
-                                   flag_on_playback_dynamic_info |
-                                   flag_on_playback_dynamic_info_track | flag_on_volume_change),
-          mainThread_(mainThread), store_(store), versions_(versions), outputHold_(outputHold),
-          artwork_(artwork), titleScript_(std::move(titleScript)),
+                                  flag_on_playback_stop | flag_on_playback_seek |
+                                  flag_on_playback_dynamic_info |
+                                  flag_on_playback_dynamic_info_track | flag_on_volume_change),
+          mainThread_(mainThread),
+          store_(store),
+          versions_(versions),
+          outputHold_(outputHold),
+          artwork_(artwork),
+          titleScript_(std::move(titleScript)),
           artistScript_(std::move(artistScript)) {}
 
     // Reading the location inline here would race the player: see ARCHITECTURE.md, *Facts about
@@ -300,8 +305,10 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
     LocationCallback(MainThreadQueue& mainThread, PlayerStateStore& store,
                      PlaylistVersions& versions)
         : playlist_callback_impl_base(flag_on_items_added | flag_on_items_removed |
-                                       flag_on_items_reordered | flag_on_playlists_removed),
-          mainThread_(mainThread), store_(store), versions_(versions) {
+                                      flag_on_items_reordered | flag_on_playlists_removed),
+          mainThread_(mainThread),
+          store_(store),
+          versions_(versions) {
         publishQueueTarget(&mainThread_, &store_);
     }
 
@@ -311,7 +318,7 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
     ~LocationCallback() { publishQueueTarget(nullptr, nullptr); }
 
     void on_items_added(t_size playlist, t_size, metadb_handle_list_cref,
-                         const bit_array&) override {
+                        const bit_array&) override {
         updateIfPlaying(playlist);
         deferQueueRead();
     }
@@ -357,8 +364,8 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
 };
 
 PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& store,
-                              PlaylistVersions& playlistVersions, OutputHold& outputHold,
-                              NowPlayingArtwork& artwork) {
+                             PlaylistVersions& playlistVersions, OutputHold& outputHold,
+                             NowPlayingArtwork& artwork) {
     // On the main thread, once: see the class comment and ARCHITECTURE.md, *Facts about the
     // player*, for why a shared titleformat_object still has to compile here rather than on
     // whichever thread first runs it.
@@ -370,8 +377,8 @@ PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& stor
     titleformat_object::ptr artistScript;
     compiler->compile_safe_ex(artistScript, kArtistScript, "");
 
-    callback_ = std::make_unique<Callback>(mainThread, store, playlistVersions, outputHold,
-                                            artwork, titleScript, artistScript);
+    callback_ = std::make_unique<Callback>(mainThread, store, playlistVersions, outputHold, artwork,
+                                           titleScript, artistScript);
     orderCallback_ = std::make_unique<OrderCallback>(store);
     locationCallback_ = std::make_unique<LocationCallback>(mainThread, store, playlistVersions);
 

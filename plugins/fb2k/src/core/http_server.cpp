@@ -109,8 +109,8 @@ std::string quoted(const std::string& tag) {
 }
 
 std::string generationsOf(const Library::State& state, uint64_t playerVersion = 0) {
-    return "s" + std::to_string(state.structure) + "-r" + std::to_string(state.revision) +
-           "-p" + std::to_string(playerVersion);
+    return "s" + std::to_string(state.structure) + "-r" + std::to_string(state.revision) + "-p" +
+           std::to_string(playerVersion);
 }
 
 // cpp-httplib evaluates If-None-Match for its own file handler alone, so a route serving
@@ -393,8 +393,8 @@ void reportFailuresWithoutLeaking(httplib::Server& server) {
 }  // namespace
 
 struct HttpServer::Impl {
-    Impl(Settings s, Audience& a, Player p, TicketMint mint, Library* lib,
-        PlayerStateStore* state, NowPlayingArtwork* playing)
+    Impl(Settings s, Audience& a, Player p, TicketMint mint, Library* lib, PlayerStateStore* state,
+         NowPlayingArtwork* playing)
         : settings(std::move(s)),
           audience(a),
           player(std::move(p)),
@@ -790,10 +790,9 @@ struct HttpServer::Impl {
                 playerState ? playerState->read() : PlayerStateStore::Published{};
             sendIfChanged(req, res, generationsOf(state, published.version), "application/json",
                           [&state, &published] {
-                              return stateDocument(state, published.state,
-                                                   std::chrono::steady_clock::now(),
-                                                   published.queueRevision,
-                                                   published.playlistsRevision);
+                              return stateDocument(
+                                  state, published.state, std::chrono::steady_clock::now(),
+                                  published.queueRevision, published.playlistsRevision);
                           });
         });
 
@@ -929,20 +928,19 @@ struct HttpServer::Impl {
     // The picture is held rather than looked up, so a conditional request never reaches the
     // player or a file: it costs a comparison of two strings.
     void addPlayingArtworkRoute() {
-        server.Get(
-            kPlayingArtworkPath, [this](const httplib::Request& req, httplib::Response& res) {
-                if (fetchingArtworkTooFast(res))
-                    return;
+        server.Get(kPlayingArtworkPath, [this](const httplib::Request& req,
+                                               httplib::Response& res) {
+            if (fetchingArtworkTooFast(res))
+                return;
 
-                const auto source =
-                    nowPlayingArtwork ? nowPlayingArtwork->current() : ArtworkSource{};
-                if (source.picture.empty()) {
-                    respond(res, 404, errorDocument(kNoArtworkForTrack));
-                    return;
-                }
+            const auto source = nowPlayingArtwork ? nowPlayingArtwork->current() : ArtworkSource{};
+            if (source.picture.empty()) {
+                respond(res, 404, errorDocument(kNoArtworkForTrack));
+                return;
+            }
 
-                sendArtwork(req, res, source);
-            });
+            sendArtwork(req, res, source);
+        });
     }
 
     void addTagRoutes() {
@@ -1042,7 +1040,7 @@ struct HttpServer::Impl {
 
         const auto found =
             std::find_if(listed.playlists.begin(), listed.playlists.end(),
-                        [&id](const PlaylistAnnotation& playlist) { return playlist.id == id; });
+                         [&id](const PlaylistAnnotation& playlist) { return playlist.id == id; });
 
         if (found == listed.playlists.end() || !found->role)
             return false;
@@ -1439,8 +1437,7 @@ struct HttpServer::Impl {
             if (ownPlaylistRefused(id, res))
                 return;
 
-            auto request = refuseFillChange(
-                parseFill(req.body, state.trackCount, state.structure));
+            auto request = refuseFillChange(parseFill(req.body, state.trackCount, state.structure));
             if (!request.ok()) {
                 if (request.outcome != PlaylistOutcome::done) {
                     respond(res, httpStatusFor(request.outcome),
@@ -1501,53 +1498,52 @@ struct HttpServer::Impl {
             respond(res, 200, playlistRowsDocument(read));
         });
 
-        constexpr char kPlaylistItemChanges[] =
-            R"(/api/playlists/([0-9a-f-]{36})/items/changes)";
+        constexpr char kPlaylistItemChanges[] = R"(/api/playlists/([0-9a-f-]{36})/items/changes)";
 
-        server.Get(kPlaylistItemChanges, [this](const httplib::Request& req,
-                                                httplib::Response& res) {
-            const auto id = req.matches[1].str();
-            if (!isPlaylistId(id)) {
-                respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
-                return;
-            }
+        server.Get(
+            kPlaylistItemChanges, [this](const httplib::Request& req, httplib::Response& res) {
+                const auto id = req.matches[1].str();
+                if (!isPlaylistId(id)) {
+                    respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+                    return;
+                }
 
-            const auto declared = columnsAndSinceDeclared(req);
-            if (!declared.ok()) {
-                respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
-                return;
-            }
+                const auto declared = columnsAndSinceDeclared(req);
+                if (!declared.ok()) {
+                    respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                    return;
+                }
 
-            uint64_t structure = 0;
-            if (!readDecimal(req.get_param_value("structure"), structure)) {
-                respond(res, httpStatusFor(PlaylistRefusal::badOrdinals),
-                        fillRefusedDocument(PlaylistRefusal::badOrdinals));
-                return;
-            }
+                uint64_t structure = 0;
+                if (!readDecimal(req.get_param_value("structure"), structure)) {
+                    respond(res, httpStatusFor(PlaylistRefusal::badOrdinals),
+                            fillRefusedDocument(PlaylistRefusal::badOrdinals));
+                    return;
+                }
 
-            if (!player.readChangedPlaylistRows) {
-                respond(res, 503, errorDocument(kNoPlaylistRows));
-                return;
-            }
+                if (!player.readChangedPlaylistRows) {
+                    respond(res, 503, errorDocument(kNoPlaylistRows));
+                    return;
+                }
 
-            const auto read =
-                player.readChangedPlaylistRows(id, structure, declared.since, declared.columns);
+                const auto read =
+                    player.readChangedPlaylistRows(id, structure, declared.since, declared.columns);
 
-            if (read.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(read.outcome),
-                        playlistFailedDocument(playlistFailure(read.outcome)));
-                return;
-            }
+                if (read.outcome != PlaylistOutcome::done) {
+                    respond(res, httpStatusFor(read.outcome),
+                            playlistFailedDocument(playlistFailure(read.outcome)));
+                    return;
+                }
 
-            if (read.catchUp != DeltaOutcome::ok) {
-                const auto refusal = rowsRefusal(read.catchUp);
-                respond(res, httpStatusFor(refusal),
-                        playlistFailedDocument(playlistFailure(refusal)));
-                return;
-            }
+                if (read.catchUp != DeltaOutcome::ok) {
+                    const auto refusal = rowsRefusal(read.catchUp);
+                    respond(res, httpStatusFor(refusal),
+                            playlistFailedDocument(playlistFailure(refusal)));
+                    return;
+                }
 
-            respond(res, 200, playlistChangesDocument(read));
-        });
+                respond(res, 200, playlistChangesDocument(read));
+            });
 
         constexpr char kCopyPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/copy)";
 
@@ -1619,8 +1615,7 @@ struct HttpServer::Impl {
             respond(res, 200, removedRowsDocument(removed.structure));
         });
 
-        constexpr char kPlayPlaylistRow[] =
-            R"(/api/playlists/([0-9a-f-]{36})/items/([^/]+)/play)";
+        constexpr char kPlayPlaylistRow[] = R"(/api/playlists/([0-9a-f-]{36})/items/([^/]+)/play)";
 
         server.Post(kPlayPlaylistRow, [this](const httplib::Request& req, httplib::Response& res) {
             const auto request = parsePlayRow(req.matches[1].str(), req.matches[2].str());
@@ -1814,8 +1809,8 @@ struct HttpServer::Impl {
             return;
         }
 
-        auto request = refuseQueueTracksChange(
-            parseQueueTracks(req.body, state.trackCount, state.structure));
+        auto request =
+            refuseQueueTracksChange(parseQueueTracks(req.body, state.trackCount, state.structure));
         if (!request.ok()) {
             if (request.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(request.outcome),
@@ -1920,13 +1915,12 @@ ListenerStatus HttpServer::start() {
     });
 
     server.Get("/api/capabilities", [&impl](const httplib::Request&, httplib::Response& res) {
-        respond(
-            res, 200,
-            capabilitiesDocument(impl.settings, impl.player.streamFormats,
-                                 impl.player.releaseOutput != nullptr, impl.library != nullptr,
-                                 impl.player.playerName, impl.player.playerVersion,
-                                 impl.player.volumeMin, impl.player.volumeMax,
-                                 impl.player.volumeUnit, impl.player.playbackOrders));
+        respond(res, 200,
+                capabilitiesDocument(impl.settings, impl.player.streamFormats,
+                                     impl.player.releaseOutput != nullptr, impl.library != nullptr,
+                                     impl.player.playerName, impl.player.playerVersion,
+                                     impl.player.volumeMin, impl.player.volumeMax,
+                                     impl.player.volumeUnit, impl.player.playbackOrders));
     });
 
     impl.addTagRoutes();

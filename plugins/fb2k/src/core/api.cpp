@@ -83,8 +83,7 @@ const char* playbackName(PlaybackState playback) {
 
 json positionOf(const PositionMark& mark, std::chrono::steady_clock::time_point now) {
     const bool everTaken = mark.taken.time_since_epoch().count() != 0;
-    const double age =
-        everTaken ? std::chrono::duration<double>(now - mark.taken).count() : 0.0;
+    const double age = everTaken ? std::chrono::duration<double>(now - mark.taken).count() : 0.0;
     return json{{"seconds", mark.seconds}, {"ageSeconds", age}};
 }
 
@@ -100,9 +99,9 @@ json playlistRowOf(const PlaylistRow& row) {
 }
 
 json changedPlaylistRowOf(const ChangedPlaylistRow& changed) {
-    return json{{"position", changed.position},
-                {"libraryPath",
-                 changed.row.libraryPath ? json(*changed.row.libraryPath) : json(nullptr)}};
+    return json{
+        {"position", changed.position},
+        {"libraryPath", changed.row.libraryPath ? json(*changed.row.libraryPath) : json(nullptr)}};
 }
 
 json queuedTrackOf(const QueuedTrack& track) {
@@ -124,8 +123,7 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
                 {"duration", player.duration},
                 {"volume", player.volume},
                 {"muted", player.muted},
-                {"playbackMode",
-                 player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
+                {"playbackMode", player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
                 {"title", player.title ? json(*player.title) : json(nullptr)},
                 {"artist", player.artist ? json(*player.artist) : json(nullptr)},
                 {"playingLocation", playingLocationOf(player.playingLocation)},
@@ -258,8 +256,8 @@ constexpr char kIndexField[] = "index";
 constexpr std::array<const char*, 1> kMovePlaylistFields{kIndexField};
 
 constexpr std::array<const char*, 4> kQueueRowsFields{"playlistId", "positions", "at", "revision"};
-constexpr std::array<const char*, 6> kQueueTracksFields{
-    "structure", "runs", "bitset", "ordinals", "at", "revision"};
+constexpr std::array<const char*, 6> kQueueTracksFields{"structure", "runs", "bitset",
+                                                        "ordinals",  "at",   "revision"};
 constexpr std::array<const char*, 3> kMoveQueueFields{"from", "to", "revision"};
 
 int base64Value(char c) {
@@ -441,24 +439,24 @@ std::string capabilitiesDocument(const Settings& settings,
                                  const std::string& playerName, const std::string& playerVersion,
                                  double volumeMin, double volumeMax, const std::string& volumeUnit,
                                  const std::vector<std::string>& playbackOrders) {
-    const json body{{"apiVersion", kApiVersion},
-                    {"allowedFields", settings.allowedFields},
-                    {"canWrite", !settings.allowedFields.empty()},
-                    {"canWritePlaylists", settings.writePlaylists},
-                    {"canChangeOutput", settings.changeOutput},
-                    {"maxAutoPlaylists", settings.maxAutoPlaylists},
-                    {"canCreateAutoPlaylists",
-                     settings.writePlaylists && settings.maxAutoPlaylists > 0},
-                    {"canStream", !streamFormats.empty()},
-                    {"streamFormats", streamFormats},
-                    {"canMuteWhileStreaming", mutesWhileStreaming},
-                    {"canReadLibrary", servesLibrary},
-                    {"playerName", playerName},
-                    {"playerVersion", playerVersion},
-                    {"volumeMin", volumeMin},
-                    {"volumeMax", volumeMax},
-                    {"volumeUnit", volumeUnit},
-                    {"playbackModes", playbackModesOf(playbackOrders)}};
+    const json body{
+        {"apiVersion", kApiVersion},
+        {"allowedFields", settings.allowedFields},
+        {"canWrite", !settings.allowedFields.empty()},
+        {"canWritePlaylists", settings.writePlaylists},
+        {"canChangeOutput", settings.changeOutput},
+        {"maxAutoPlaylists", settings.maxAutoPlaylists},
+        {"canCreateAutoPlaylists", settings.writePlaylists && settings.maxAutoPlaylists > 0},
+        {"canStream", !streamFormats.empty()},
+        {"streamFormats", streamFormats},
+        {"canMuteWhileStreaming", mutesWhileStreaming},
+        {"canReadLibrary", servesLibrary},
+        {"playerName", playerName},
+        {"playerVersion", playerVersion},
+        {"volumeMin", volumeMin},
+        {"volumeMax", volumeMax},
+        {"volumeUnit", volumeUnit},
+        {"playbackModes", playbackModesOf(playbackOrders)}};
     return body.dump();
 }
 
@@ -573,9 +571,8 @@ std::string playlistFailedDocument(const PlaylistResult& result) {
 
 std::string fillResultDocument(const std::string& playlistId, uint64_t structure,
                                const std::vector<size_t>& positions) {
-    return json{{"playlistId", playlistId},
-                {"structure", digitsOf(structure)},
-                {"positions", positions}}
+    return json{
+        {"playlistId", playlistId}, {"structure", digitsOf(structure)}, {"positions", positions}}
         .dump();
 }
 
@@ -994,7 +991,7 @@ std::string stateDocument(const Library::State& state, const PlayerState& player
                           std::chrono::steady_clock::time_point now, uint64_t queueRevision,
                           uint64_t playlistsRevision) {
     return json{{"library", libraryFields(state)},
-               {"player", playerFields(player, now, queueRevision, playlistsRevision)}}
+                {"player", playerFields(player, now, queueRevision, playlistsRevision)}}
         .dump();
 }
 

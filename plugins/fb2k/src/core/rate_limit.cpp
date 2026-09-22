@@ -29,11 +29,12 @@ PerClientRateLimiter::PerClientRateLimiter(int burst, std::chrono::milliseconds 
     : burst_(burst), perToken_(perToken) {}
 
 bool PerClientRateLimiter::allow(const std::string& client,
-                                  std::chrono::steady_clock::time_point now) {
+                                 std::chrono::steady_clock::time_point now) {
     const std::lock_guard<std::mutex> held(mutex_);
 
-    const auto found = std::find_if(entries_.begin(), entries_.end(),
-                                     [&client](const Entry& entry) { return entry.client == client; });
+    const auto found =
+        std::find_if(entries_.begin(), entries_.end(),
+                     [&client](const Entry& entry) { return entry.client == client; });
 
     if (found != entries_.end()) {
         found->lastSeen = now;

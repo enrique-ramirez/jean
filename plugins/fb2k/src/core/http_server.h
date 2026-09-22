@@ -41,18 +41,18 @@ using PlaylistRowReader =
 // Reads the rows of `playlistId` whose content moved after `since`, each with its position, with
 // `columns` evaluated against each row's own handle. `structure` is the generation the client's
 // positions were read at.
-using PlaylistChangeReader = std::function<PlaylistChangesRead(
-    const std::string& playlistId, uint64_t structure, uint64_t since,
-    const std::vector<std::string>& columns)>;
+using PlaylistChangeReader =
+    std::function<PlaylistChangesRead(const std::string& playlistId, uint64_t structure,
+                                      uint64_t since, const std::vector<std::string>& columns)>;
 
 using PlaylistRowPlayer =
     std::function<PlaylistOutcome(const std::string& playlistId, uint32_t index)>;
 
 using QueueReader = std::function<QueueRead()>;
 
-using PlaylistRowQueuer = std::function<PlaylistOutcome(
-    const std::string& playlistId, const std::vector<uint32_t>& positions,
-    std::optional<QueuePosition> at)>;
+using PlaylistRowQueuer = std::function<PlaylistOutcome(const std::string& playlistId,
+                                                        const std::vector<uint32_t>& positions,
+                                                        std::optional<QueuePosition> at)>;
 using LibraryTrackQueuer = std::function<PlaylistOutcome(
     uint64_t structure, const std::vector<uint32_t>& ordinals, std::optional<QueuePosition> at)>;
 using MoveQueueEntry =
@@ -92,10 +92,9 @@ struct FillResult {
 // main-thread work item that checks the generation, so a refusal never lands ahead of the
 // rows it refused; an empty `title` is a user's playlist saying it is not this component's
 // to rename.
-using PlaylistFiller =
-    std::function<FillResult(const std::string& playlistId, const std::string& title,
-                             uint64_t structure, const std::vector<uint32_t>& ordinals,
-                             bool replace)>;
+using PlaylistFiller = std::function<FillResult(
+    const std::string& playlistId, const std::string& title, uint64_t structure,
+    const std::vector<uint32_t>& ordinals, bool replace)>;
 
 // The rows a new playlist is created holding, in the order they are inserted. A create with
 // no set carries neither pair: `ordinals` resolved against `structure` name media library
@@ -147,9 +146,8 @@ using PlaylistRowCopier =
 
 // Removes the rows `positions` names from `playlistId`, and answers `rowsMoved` having removed
 // nothing where `structure` is no longer the playlist's structure generation.
-using PlaylistRowRemover =
-    std::function<RowsEdited(const std::string& playlistId, uint64_t structure,
-                             const std::vector<uint32_t>& positions)>;
+using PlaylistRowRemover = std::function<RowsEdited(
+    const std::string& playlistId, uint64_t structure, const std::vector<uint32_t>& positions)>;
 
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.

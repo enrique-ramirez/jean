@@ -58,8 +58,7 @@ constexpr uint64_t kStructure = 41;
 constexpr size_t kShortLibrary = 12;
 
 std::string base64(const std::vector<uint8_t>& bytes) {
-    constexpr char kAlphabet[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    constexpr char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     std::string text;
     for (size_t at = 0; at < bytes.size(); at += 3) {
@@ -216,8 +215,8 @@ TEST_CASE("one set sent as runs, as a bitset and as a plain list names the same 
     // contract/openapi.yaml's worked example: ordinals 0, 1 and 9 of a 16-track library.
     CHECK(bitsetOf({0, 1, 9}, kTracks) == "AwI=");
 
-    for (const std::string& form : {R"("runs": [[0, 2], [9, 1]])", R"("bitset": "AwI=")",
-                                    R"("ordinals": [0, 1, 9])"}) {
+    for (const std::string& form :
+         {R"("runs": [[0, 2], [9, 1]])", R"("bitset": "AwI=")", R"("ordinals": [0, 1, 9])"}) {
         INFO("form: ", form);
         const auto request = filling(form);
 
@@ -298,8 +297,8 @@ TEST_CASE("runs resolving to more rows than the library holds are refused") {
     // Runs are the one form whose wire cost and resolved cost come apart: overlapping pairs
     // cost eight bytes each and resolve to a whole library each, and about 20,000 of them fit
     // inside kMaxBodyBytes.
-    for (const std::string& form : {R"("runs": [[0, 12], [0, 1]])",
-                                    R"("runs": [[0, 12], [0, 12], [0, 12]])"}) {
+    for (const std::string& form :
+         {R"("runs": [[0, 12], [0, 1]])", R"("runs": [[0, 12], [0, 12], [0, 12]])"}) {
         INFO("form: ", form);
         const auto request = filling(form, kShortLibrary);
 

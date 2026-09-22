@@ -108,7 +108,8 @@ bool queueHasMoved(PlayerStateStore& store, uint64_t revision) {
 
 // See ARCHITECTURE.md, *Facts about the player*, for why a dead entry is re-added by handle
 // rather than by position.
-void readdEntries(playlist_manager_v5::ptr manager, const pfc::list_t<t_playback_queue_item>& entries) {
+void readdEntries(playlist_manager_v5::ptr manager,
+                  const pfc::list_t<t_playback_queue_item>& entries) {
     for (t_size item = 0; item < entries.get_count(); ++item) {
         const auto& entry = entries[item];
         if (queuedLocationOf(entry))
@@ -154,9 +155,9 @@ PlaylistOutcome beginQueueRows(const std::string& playlistId,
     auto manager = playlist_manager_v5::get();
 
     const auto rowCount = manager->playlist_get_item_count(index);
-    const bool rowPastEnd = std::any_of(
-        positions.begin(), positions.end(),
-        [rowCount](uint32_t position) { return position >= rowCount; });
+    const bool rowPastEnd =
+        std::any_of(positions.begin(), positions.end(),
+                    [rowCount](uint32_t position) { return position >= rowCount; });
     if (rowPastEnd)
         return PlaylistOutcome::positionPastEnd;
 
@@ -274,25 +275,28 @@ QueueReader makeQueueReader(MainThreadQueue& mainThread, PlayerStateStore& store
 }
 
 PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread, PlayerStateStore& store) {
-    return [&mainThread, &store](const std::string& playlistId, const std::vector<uint32_t>& positions,
-                                 std::optional<QueuePosition> at) {
-        return askPlayer<PlaylistOutcome>(
-            mainThread, "queueing playlist rows",
-            [playlistId, positions, at, &store](const AnswerPtr<PlaylistOutcome>& answer) {
-                answer->set(beginQueueRows(playlistId, positions, at, store));
-            },
-            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
-    };
+    return
+        [&mainThread, &store](const std::string& playlistId, const std::vector<uint32_t>& positions,
+                              std::optional<QueuePosition> at) {
+            return askPlayer<PlaylistOutcome>(
+                mainThread, "queueing playlist rows",
+                [playlistId, positions, at, &store](const AnswerPtr<PlaylistOutcome>& answer) {
+                    answer->set(beginQueueRows(playlistId, positions, at, store));
+                },
+                PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+        };
 }
 
 LibraryTrackQueuer makeLibraryTrackQueuer(MainThreadQueue& mainThread,
-                                          OrdinalResolver resolveOrdinals, PlayerStateStore& store) {
+                                          OrdinalResolver resolveOrdinals,
+                                          PlayerStateStore& store) {
     return [&mainThread, resolveOrdinals, &store](uint64_t structure,
                                                   const std::vector<uint32_t>& ordinals,
                                                   std::optional<QueuePosition> at) {
         return askPlayer<PlaylistOutcome>(
             mainThread, "queueing library tracks",
-            [structure, ordinals, at, resolveOrdinals, &store](const AnswerPtr<PlaylistOutcome>& answer) {
+            [structure, ordinals, at, resolveOrdinals,
+             &store](const AnswerPtr<PlaylistOutcome>& answer) {
                 answer->set(beginQueueTracks(structure, ordinals, at, resolveOrdinals, store));
             },
             PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);

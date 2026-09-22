@@ -293,17 +293,14 @@ ChangedSince PlaylistVersions::changedSince(const std::string& playlistId, uint6
 
 std::vector<uint32_t> PlaylistVersions::positionsAfterLocked(const std::deque<Retained>& retained,
                                                              uint64_t since) {
-    const auto newer =
-        std::upper_bound(retained.begin(), retained.end(), since,
-                         [](uint64_t behind, const Retained& entry) {
-                             return behind < entry.revision;
-                         });
+    const auto newer = std::upper_bound(
+        retained.begin(), retained.end(), since,
+        [](uint64_t behind, const Retained& entry) { return behind < entry.revision; });
 
     std::vector<uint32_t> positions;
-    positions.reserve(std::accumulate(newer, retained.end(), size_t{0},
-                                      [](size_t total, const Retained& entry) {
-                                          return total + entry.positions.size();
-                                      }));
+    positions.reserve(std::accumulate(
+        newer, retained.end(), size_t{0},
+        [](size_t total, const Retained& entry) { return total + entry.positions.size(); }));
 
     for (auto entry = newer; entry != retained.end(); ++entry)
         positions.insert(positions.end(), entry->positions.begin(), entry->positions.end());

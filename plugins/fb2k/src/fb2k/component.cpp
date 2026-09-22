@@ -60,8 +60,8 @@ void explainPortCollision() {
 }
 
 Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const Streamer* streamer,
-                   OutputHold& outputHold, LibraryFeed& libraryFeed,
-                   PlayerStateStore& playerState, const PlaylistVersions& playlistVersions) {
+                   OutputHold& outputHold, LibraryFeed& libraryFeed, PlayerStateStore& playerState,
+                   const PlaylistVersions& playlistVersions) {
     Player player;
     player.writeTags = makeTagWriter(mainThread);
     player.listPlaylists = makePlaylistLister(mainThread, playlistVersions);

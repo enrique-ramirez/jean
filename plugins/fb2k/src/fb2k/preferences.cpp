@@ -79,8 +79,8 @@ struct Page {
 };
 
 constexpr Page kMainPage{kPageName, IDD_PREFERENCES, kMainControls, kMainBoolControls, false, true};
-constexpr Page kDevicesPage{kDevicesName, IDD_DEVICES, kDevicesControls, BoolControls(), true,
-                            false};
+constexpr Page kDevicesPage{kDevicesName,   IDD_DEVICES, kDevicesControls,
+                            BoolControls(), true,        false};
 
 std::string readControl(HWND dialog, int id) {
     const auto control = GetDlgItem(dialog, id);

@@ -342,10 +342,9 @@ struct Target {
 };
 
 std::vector<Target> targets(uint64_t structure) {
-    return {
-        {"the scratch role", kScratchFill, ownBody(kScratchTitle, structure), true,
-         kScratchPlaylistId},
-        {"a user's playlist", userFill(), userBody(structure), false, kPlaylistId}};
+    return {{"the scratch role", kScratchFill, ownBody(kScratchTitle, structure), true,
+             kScratchPlaylistId},
+            {"a user's playlist", userFill(), userBody(structure), false, kPlaylistId}};
 }
 
 // Whether an empty answers a document like a fill does or a bare 204 like DELETE /stream/hold is
@@ -694,8 +693,8 @@ Player countingChangeReads(int* reads) {
 
 std::string changesPath(const std::string& id, const std::string& structure,
                         const std::string& since, const std::vector<std::string>& columns) {
-    auto path = "/api/playlists/" + id + "/items/changes?structure=" + structure +
-                "&since=" + since;
+    auto path =
+        "/api/playlists/" + id + "/items/changes?structure=" + structure + "&since=" + since;
 
     for (const auto& column : columns)
         path += "&columns=" + encoded(column);
@@ -838,9 +837,7 @@ struct CreateLog {
 Player creatingPlayer(CreateLog* log) {
     Player player = servingPlayer();
 
-    player.listPlaylists = [log] {
-        return PlaylistsResult{PlaylistOutcome::done, log->playlists};
-    };
+    player.listPlaylists = [log] { return PlaylistsResult{PlaylistOutcome::done, log->playlists}; };
 
     player.createPlaylist = [log](const std::string& title, const NewPlaylistRows& rows) {
         log->jobs++;
@@ -976,9 +973,7 @@ struct EditLog {
 Player editingPlayer(EditLog* log) {
     Player player = servingPlayer();
 
-    player.listPlaylists = [log] {
-        return PlaylistsResult{PlaylistOutcome::done, log->playlists};
-    };
+    player.listPlaylists = [log] { return PlaylistsResult{PlaylistOutcome::done, log->playlists}; };
 
     player.renamePlaylist = [log](const std::string& id, const std::string& title) {
         log->renames++;
@@ -1053,13 +1048,13 @@ Player countingQueueCalls(Player player, int* calls) {
     };
 
     player.queuePlaylistRows = [calls](const std::string&, const std::vector<uint32_t>&,
-                                      std::optional<QueuePosition>) {
+                                       std::optional<QueuePosition>) {
         ++*calls;
         return PlaylistOutcome::done;
     };
 
     player.queueLibraryTracks = [calls](uint64_t, const std::vector<uint32_t>&,
-                                       std::optional<QueuePosition>) {
+                                        std::optional<QueuePosition>) {
         ++*calls;
         return PlaylistOutcome::done;
     };
@@ -1131,7 +1126,8 @@ struct RowsLog {
     std::map<std::string, Held> playlists{
         {kPlaylistId, {{"First", "Second", "Third", "Fourth"}, kRowsStructure, std::nullopt}},
         {kSecondPlaylistId,
-         {{"Source A", "Source B", "Source C", "Source D", "Source E"}, kSourceStructure,
+         {{"Source A", "Source B", "Source C", "Source D", "Source E"},
+          kSourceStructure,
           std::nullopt}}};
 
     Held* at(const std::string& id) {
@@ -1141,9 +1137,8 @@ struct RowsLog {
 };
 
 bool namesARow(const Held& held, const std::vector<uint32_t>& positions) {
-    return std::all_of(positions.begin(), positions.end(), [&held](uint32_t position) {
-        return position < held.titles.size();
-    });
+    return std::all_of(positions.begin(), positions.end(),
+                       [&held](uint32_t position) { return position < held.titles.size(); });
 }
 
 // Stands in for fb2k/playlists.cpp: rows are held per playlist, both edits move only the
@@ -1384,49 +1379,49 @@ struct Write {
 // The list is driven in order against one server, so the three playlist edits take a playlist
 // each and the copy runs before the removal that shortens the playlist it reads from.
 std::vector<Write> playlistWrites(uint64_t structure) {
-    return {
-        {"creating an autoplaylist",
-         [](const TestServer& server) { return post(server, "/api/autoplaylists", kCreate); }},
-        {"updating an autoplaylist",
-         [](const TestServer& server) {
-             return post(server, std::string("/api/autoplaylists/") + kPlaylistId,
-                         R"({"query": "%genre% IS Jazz"})");
-         }},
-        {"deleting an autoplaylist",
-         [](const TestServer& server) {
-             return server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId,
-                                           TestServer::bearer());
-         }},
-        {"filling a playlist a user owns, which is what addTo does",
-         [structure](const TestServer& server) {
-             return post(server, userFill(), userBody(structure));
-         }},
-        {"creating a playlist",
-         [](const TestServer& server) { return post(server, kCreatePlaylist, createBody()); }},
-        {"renaming a playlist",
-         [](const TestServer& server) {
-             return post(server, playlistPath(kPlaylistId), renameBody(kNewTitle));
-         },
-         204},
-        {"moving a playlist",
-         [](const TestServer& server) {
-             return post(server, movePath(kSecondPlaylistId), moveBody(0));
-         },
-         204},
-        {"deleting a playlist",
-         [](const TestServer& server) {
-             return server.client().Delete(playlistPath(kThirdPlaylistId), TestServer::bearer());
-         },
-         204},
-        {"copying rows into a playlist",
-         [](const TestServer& server) {
-             return post(server, copyPath(kPlaylistId),
-                         copyBody(kSecondPlaylistId, unorderedRuns()).dump());
-         }},
-        {"removing rows from a playlist", [](const TestServer& server) {
-             return post(server, removeRowsPath(kSecondPlaylistId),
-                         removeRowsBody(kSourceStructure, unorderedRuns()).dump());
-         }}};
+    return {{"creating an autoplaylist",
+             [](const TestServer& server) { return post(server, "/api/autoplaylists", kCreate); }},
+            {"updating an autoplaylist",
+             [](const TestServer& server) {
+                 return post(server, std::string("/api/autoplaylists/") + kPlaylistId,
+                             R"({"query": "%genre% IS Jazz"})");
+             }},
+            {"deleting an autoplaylist",
+             [](const TestServer& server) {
+                 return server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId,
+                                               TestServer::bearer());
+             }},
+            {"filling a playlist a user owns, which is what addTo does",
+             [structure](const TestServer& server) {
+                 return post(server, userFill(), userBody(structure));
+             }},
+            {"creating a playlist",
+             [](const TestServer& server) { return post(server, kCreatePlaylist, createBody()); }},
+            {"renaming a playlist",
+             [](const TestServer& server) {
+                 return post(server, playlistPath(kPlaylistId), renameBody(kNewTitle));
+             },
+             204},
+            {"moving a playlist",
+             [](const TestServer& server) {
+                 return post(server, movePath(kSecondPlaylistId), moveBody(0));
+             },
+             204},
+            {"deleting a playlist",
+             [](const TestServer& server) {
+                 return server.client().Delete(playlistPath(kThirdPlaylistId),
+                                               TestServer::bearer());
+             },
+             204},
+            {"copying rows into a playlist",
+             [](const TestServer& server) {
+                 return post(server, copyPath(kPlaylistId),
+                             copyBody(kSecondPlaylistId, unorderedRuns()).dump());
+             }},
+            {"removing rows from a playlist", [](const TestServer& server) {
+                 return post(server, removeRowsPath(kSecondPlaylistId),
+                             removeRowsBody(kSourceStructure, unorderedRuns()).dump());
+             }}};
 }
 
 // One log per fake the writes are spread across, so a write that reached the player is read off
@@ -1462,12 +1457,9 @@ Player writingPlayer(WriteLog* log) {
 // second time. The three autoplaylist routes and the fill are older and carry their own cases,
 // and the generation playlistWrites takes is the fill's alone, so nothing kept here reads it.
 std::vector<Write> theSixWrites() {
-    const std::set<std::string> six{"creating a playlist",
-                                    "renaming a playlist",
-                                    "moving a playlist",
-                                    "deleting a playlist",
-                                    "copying rows into a playlist",
-                                    "removing rows from a playlist"};
+    const std::set<std::string> six{
+        "creating a playlist", "renaming a playlist",          "moving a playlist",
+        "deleting a playlist", "copying rows into a playlist", "removing rows from a playlist"};
 
     auto writes = playlistWrites(0);
     writes.erase(std::remove_if(writes.begin(), writes.end(),
@@ -1514,7 +1506,8 @@ PlaylistAnnotation scratchEntry() {
 // The same playlist among the rows two edits address by position. Long enough for the runs
 // rowEdits() names, and at the generation its removal names.
 Held scratchRows() {
-    return {{"Result A", "Result B", "Result C", "Result D", "Result E"}, kRowsStructure,
+    return {{"Result A", "Result B", "Result C", "Result D", "Result E"},
+            kRowsStructure,
             OwnPlaylistRole::scratch};
 }
 
@@ -1697,8 +1690,9 @@ TEST_CASE("a playlist carries these keys and no others") {
     }
 }
 
-TEST_CASE("a page of rows answers the columns the client asked for, in the order it asked for "
-          "them") {
+TEST_CASE(
+    "a page of rows answers the columns the client asked for, in the order it asked for "
+    "them") {
     const TestServer server(servingSettings(), rowReadingPlayer());
 
     const auto page = pageOf(server, kPlaylistId, 0, 2, {"%artist%", "%title%"});
@@ -1728,8 +1722,9 @@ TEST_CASE("a row the media library does not hold answers its columns like every 
 
 // The library path is what a client asks GET /api/artwork for, so a row the library does not hold
 // has to say so rather than carry a key that finds no cover.
-TEST_CASE("a row carries its library path where the media library holds the track and null where "
-          "it does not") {
+TEST_CASE(
+    "a row carries its library path where the media library holds the track and null where "
+    "it does not") {
     const TestServer server(servingSettings(), rowReadingPlayer());
 
     const auto page = pageOf(server, kPlaylistId, 0, playlistRows().size(), {"%title%"});
@@ -1781,8 +1776,9 @@ TEST_CASE("a playlist the player does not hold is a 404 rather than an empty pag
     CHECK(response->status == 404);
 }
 
-TEST_CASE("a page request the component can judge for itself is a 400 and never reaches the "
-          "player") {
+TEST_CASE(
+    "a page request the component can judge for itself is a 400 and never reaches the "
+    "player") {
     int reads = 0;
     const TestServer server(servingSettings(), countingRowReads(&reads));
 
@@ -1890,7 +1886,8 @@ TEST_CASE("the dictionaries arrive in the order the request declared its columns
                                        "Fourth, five stars"};
 
     SUBCASE("the artist asked for first answers first") {
-        const auto columns = dictionariesIn(deltaOf(server, kChangedSince, {"%artist%", "%title%"}));
+        const auto columns =
+            dictionariesIn(deltaOf(server, kChangedSince, {"%artist%", "%title%"}));
 
         REQUIRE(columns.size() == 2);
         CHECK(valuesIn(columns.at(0)) == artists);
@@ -1898,7 +1895,8 @@ TEST_CASE("the dictionaries arrive in the order the request declared its columns
     }
 
     SUBCASE("the same two asked for the other way round answer the other way round") {
-        const auto columns = dictionariesIn(deltaOf(server, kChangedSince, {"%title%", "%artist%"}));
+        const auto columns =
+            dictionariesIn(deltaOf(server, kChangedSince, {"%title%", "%artist%"}));
 
         REQUIRE(columns.size() == 2);
         CHECK(valuesIn(columns.at(0)) == titles);
@@ -1926,8 +1924,9 @@ TEST_CASE("a revision nothing has changed since answers an empty delta rather th
 
 // What a client polling a quiet playlist gets every tick, so it carries no dictionary to hold a
 // place for a row that is not there.
-TEST_CASE("a delta with no changed rows carries no dictionaries rather than an empty one per "
-          "column") {
+TEST_CASE(
+    "a delta with no changed rows carries no dictionaries rather than an empty one per "
+    "column") {
     const TestServer server(servingSettings(), changeReadingPlayer());
 
     const auto delta = deltaOf(server, kRowsRevision, {"%artist%", "%title%"});
@@ -1974,8 +1973,9 @@ TEST_CASE("the two counters a page answered are read back at the values it answe
     checkRefused(server, changesPath(kPlaylistId, structure, rounded, {"%title%"}), 410);
 }
 
-TEST_CASE("a request for changes the component can judge for itself is a 400 and never reaches "
-          "the player") {
+TEST_CASE(
+    "a request for changes the component can judge for itself is a 400 and never reaches "
+    "the player") {
     int reads = 0;
     const TestServer server(servingSettings(), countingChangeReads(&reads));
 
@@ -1997,8 +1997,8 @@ TEST_CASE("a request for changes the component can judge for itself is a 400 and
              Request{kPlaylistId,
                      "structure=" + std::to_string(kRowsStructure) + "&since=" + columns},
              Request{kPlaylistId, "structure=&since=" + std::to_string(kChangedSince) + columns},
-             Request{kPlaylistId, "structure=twelve&since=" + std::to_string(kChangedSince) +
-                                      columns},
+             Request{kPlaylistId,
+                     "structure=twelve&since=" + std::to_string(kChangedSince) + columns},
              Request{kPlaylistId,
                      "structure=" + std::to_string(kRowsStructure) + "&since=yesterday" + columns},
              Request{kPlaylistId,
@@ -2033,8 +2033,9 @@ TEST_CASE("playing a row hands the player the playlist it is in and the position
     CHECK(log.index == kStrayRow);
 }
 
-TEST_CASE("a play request the component can judge for itself is a 400 and never reaches the "
-          "player") {
+TEST_CASE(
+    "a play request the component can judge for itself is a 400 and never reaches the "
+    "player") {
     PlayLog log;
     const TestServer server(servingSettings(), playingPlayer(&log));
 
@@ -2064,8 +2065,9 @@ TEST_CASE("a play request the component can judge for itself is a 400 and never 
     CHECK(log.calls == 0);
 }
 
-TEST_CASE("playing from a playlist the player does not hold is a 404, and a row past that "
-          "playlist's end is a 400") {
+TEST_CASE(
+    "playing from a playlist the player does not hold is a 404, and a row past that "
+    "playlist's end is a 400") {
     struct Case {
         PlaylistOutcome outcome;
         int status;
@@ -2118,17 +2120,18 @@ TEST_CASE("a create with no set answers a playlist at the end of the list, holdi
 // create followed by a fill: two requests, and a window in which a user's playlist list has an
 // empty playlist in it that nobody asked for. Counting every write the player offers is what
 // tells the one job from the two.
-TEST_CASE("a create filled from library rows asks the player for one job, not a create and a "
-          "fill") {
+TEST_CASE(
+    "a create filled from library rows asks the player for one job, not a create and a "
+    "fill") {
     Library library;
     buildLibrary(library);
 
     CreateLog log;
     const TestServer server(servingSettings(), creatingPlayer(&log), &library);
 
-    const auto response = post(server, kCreatePlaylist,
-                               createBody({{"structure", library.state().structure},
-                                           {"ordinals", json::array({3, 1})}}));
+    const auto response = post(
+        server, kCreatePlaylist,
+        createBody({{"structure", library.state().structure}, {"ordinals", json::array({3, 1})}}));
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -2223,8 +2226,9 @@ TEST_CASE("a create is refused by its title before the player is asked anything"
 // create. Driving the same set at both is what holds the two grammars together: a create that
 // grew its own reading of a run, or its own message for an ordinal past the end, is a second
 // thing for a caller to learn.
-TEST_CASE("a set a create cannot read is refused exactly as the fill route refuses it, and the "
-          "player is never asked") {
+TEST_CASE(
+    "a set a create cannot read is refused exactly as the fill route refuses it, and the "
+    "player is never asked") {
     Library library;
     buildLibrary(library);
     const auto structure = library.state().structure;
@@ -2242,10 +2246,9 @@ TEST_CASE("a set a create cannot read is refused exactly as the fill route refus
          json{{"structure", structure}, {"ordinals", json::array({kLibraryTracks})}}},
         {"runs reaching past the end of the library",
          json{{"structure", structure}, {"runs", json::array({json::array({0, 99})})}}},
-        {"two selection forms at once",
-         json{{"structure", structure},
-              {"ordinals", json::array({0})},
-              {"runs", json::array({json::array({0, 1})})}}},
+        {"two selection forms at once", json{{"structure", structure},
+                                             {"ordinals", json::array({0})},
+                                             {"runs", json::array({json::array({0, 1})})}}},
         {"no selection form at all", json{{"structure", structure}}},
         {"no structure to resolve the set against", json{{"ordinals", json::array({0})}}},
         {"a field neither schema declares",
@@ -2268,10 +2271,9 @@ TEST_CASE("a set a create cannot read is refused exactly as the fill route refus
     // The other half of the grammar has no fill route to be held against: only a create takes
     // a source playlist. Right length and right alphabet, so the id reaches this component's
     // own check rather than the router's.
-    const auto sourced =
-        post(server, kCreatePlaylist,
-             createBody({{kSourceField, "------------------------------------"},
-                         {"runs", json::array({json::array({0, 1})})}}));
+    const auto sourced = post(server, kCreatePlaylist,
+                              createBody({{kSourceField, "------------------------------------"},
+                                          {"runs", json::array({json::array({0, 1})})}}));
 
     REQUIRE(sourced);
     CHECK(sourced->status == 400);
@@ -2281,8 +2283,9 @@ TEST_CASE("a set a create cannot read is refused exactly as the fill route refus
     CHECK(log.jobs == 0);
 }
 
-TEST_CASE("renaming a playlist hands the player its id and the new title, and the list answers "
-          "the new one") {
+TEST_CASE(
+    "renaming a playlist hands the player its id and the new title, and the list answers "
+    "the new one") {
     EditLog log;
     const TestServer server(servingSettings(), editingPlayer(&log));
 
@@ -2337,8 +2340,9 @@ TEST_CASE("deleting a playlist asks the play queue nothing, before or after") {
     CHECK(log.queueCalls == 0);
 }
 
-TEST_CASE("moving a playlist hands the player its id and the index to move it to, and the list "
-          "answers the new order") {
+TEST_CASE(
+    "moving a playlist hands the player its id and the index to move it to, and the list "
+    "answers the new order") {
     EditLog log;
     const TestServer server(servingSettings(), editingPlayer(&log));
 
@@ -2375,8 +2379,9 @@ TEST_CASE("a move to one past the end of the list is a 400 and moves nothing") {
     CHECK(idsIn(listingOf(server)) == before);
 }
 
-TEST_CASE("an unknown playlist id is a 404 on each of the three edits, and the player is what "
-          "says so") {
+TEST_CASE(
+    "an unknown playlist id is a 404 on each of the three edits, and the player is what "
+    "says so") {
     for (const auto& edit : playlistEdits()) {
         INFO("edit: ", edit.name);
 
@@ -2394,8 +2399,9 @@ TEST_CASE("an unknown playlist id is a 404 on each of the three edits, and the p
     }
 }
 
-TEST_CASE("a request each of the three edits can judge for itself is refused before the player "
-          "is asked") {
+TEST_CASE(
+    "a request each of the three edits can judge for itself is refused before the player "
+    "is asked") {
     EditLog log;
     const TestServer server(servingSettings(), editingPlayer(&log));
     const auto before = idsIn(listingOf(server));
@@ -2427,11 +2433,11 @@ TEST_CASE("a request each of the three edits can judge for itself is refused bef
         CHECK(json::parse(renamed->body)["error"] == json::parse(created->body)["error"]);
     }
 
-    const std::vector<Body> indices{{"a body that is not JSON", "not json"},
-                                    {"no index at all", json::object().dump()},
-                                    {"an index that is not a number",
-                                     json{{kMoveIndexField, "2"}}.dump()},
-                                    {"a negative index", json{{kMoveIndexField, -1}}.dump()}};
+    const std::vector<Body> indices{
+        {"a body that is not JSON", "not json"},
+        {"no index at all", json::object().dump()},
+        {"an index that is not a number", json{{kMoveIndexField, "2"}}.dump()},
+        {"a negative index", json{{kMoveIndexField, -1}}.dump()}};
 
     for (const auto& body : indices) {
         INFO("index: ", body.name);
@@ -2465,8 +2471,9 @@ TEST_CASE("a request each of the three edits can judge for itself is refused bef
 // its body to them. A create carrying a set is held to them too, by the fill's own grammar; a
 // create carrying none reads its title and looks at nothing else, which is the hole this covers
 // along with the rename's. What a client loses is the report that a field it sent is not read.
-TEST_CASE("a field none of the three edits declares is refused, and nothing is renamed, moved or "
-          "made") {
+TEST_CASE(
+    "a field none of the three edits declares is refused, and nothing is renamed, moved or "
+    "made") {
     WriteLog log;
     const TestServer server(servingSettings(), writingPlayer(&log));
 
@@ -2499,13 +2506,14 @@ TEST_CASE("a field none of the three edits declares is refused, and nothing is r
     CHECK(playerChanges(log) == 0);
 }
 
-TEST_CASE("a copy appends a source playlist's rows to the end of the target, ascending whatever "
-          "order the runs named them in") {
+TEST_CASE(
+    "a copy appends a source playlist's rows to the end of the target, ascending whatever "
+    "order the runs named them in") {
     RowsLog log;
     const TestServer server(servingSettings(), rowEditingPlayer(&log));
 
-    const auto response = post(server, copyPath(kPlaylistId),
-                               copyBody(kSecondPlaylistId, unorderedRuns()).dump());
+    const auto response =
+        post(server, copyPath(kPlaylistId), copyBody(kSecondPlaylistId, unorderedRuns()).dump());
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -2527,8 +2535,8 @@ TEST_CASE("a copy answers where the rows landed and the generation the target is
 
     const auto before = generationOf(server, kPlaylistId);
 
-    const auto response = post(server, copyPath(kPlaylistId),
-                               copyBody(kSecondPlaylistId, unorderedRuns()).dump());
+    const auto response =
+        post(server, copyPath(kPlaylistId), copyBody(kSecondPlaylistId, unorderedRuns()).dump());
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -2548,8 +2556,8 @@ TEST_CASE("a copy asks the player once, with no item count read before or after 
     RowsLog log;
     const TestServer server(servingSettings(), rowEditingPlayer(&log));
 
-    const auto response = post(server, copyPath(kPlaylistId),
-                               copyBody(kSecondPlaylistId, unorderedRuns()).dump());
+    const auto response =
+        post(server, copyPath(kPlaylistId), copyBody(kSecondPlaylistId, unorderedRuns()).dump());
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -2567,8 +2575,8 @@ TEST_CASE("a copy naming no rows is accepted and appends nothing") {
 
     const auto before = heldTitles(server, kPlaylistId);
 
-    const auto response = post(server, copyPath(kPlaylistId),
-                               copyBody(kSecondPlaylistId, json::array()).dump());
+    const auto response =
+        post(server, copyPath(kPlaylistId), copyBody(kSecondPlaylistId, json::array()).dump());
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -2580,8 +2588,9 @@ TEST_CASE("a copy naming no rows is accepted and appends nothing") {
     CHECK(heldTitles(server, kPlaylistId) == before);
 }
 
-TEST_CASE("a removal takes the rows the runs named out of the playlist and answers the generation "
-          "they left behind") {
+TEST_CASE(
+    "a removal takes the rows the runs named out of the playlist and answers the generation "
+    "they left behind") {
     RowsLog log;
     const TestServer server(servingSettings(), rowEditingPlayer(&log));
 
@@ -2599,8 +2608,9 @@ TEST_CASE("a removal takes the rows the runs named out of the playlist and answe
     CHECK(generation != std::to_string(kRowsStructure));
 }
 
-TEST_CASE("a removal against a generation the playlist has moved past is a 409 and removes "
-          "nothing") {
+TEST_CASE(
+    "a removal against a generation the playlist has moved past is a 409 and removes "
+    "nothing") {
     RowsLog log;
     const TestServer server(servingSettings(), rowEditingPlayer(&log));
 
@@ -2624,19 +2634,19 @@ TEST_CASE("a removal against a generation the playlist has moved past is a 409 a
 // the two on a client is JSON.parse: read as a number, every generation this playlist can reach
 // comes back as kThroughADouble, a value it has never stood at, and the undo is refused every
 // time.
-TEST_CASE("a removal against the generation a page answered is accepted, and against the value a "
-          "double makes of it is not") {
+TEST_CASE(
+    "a removal against the generation a page answered is accepted, and against the value a "
+    "double makes of it is not") {
     SUBCASE("the generation handed back exactly as it arrived") {
         RowsLog log;
         const TestServer server(servingSettings(), rowEditingPlayer(&log));
 
         const auto page = pageOf(server, kPlaylistId, 0, kEveryHeldRow, {"%title%"});
 
-        const auto response =
-            post(server, removeRowsPath(kPlaylistId),
-                 json{{"structure", counterIn(page, "structure")},
-                      {"runs", json::array({json::array({1, 2})})}}
-                     .dump());
+        const auto response = post(server, removeRowsPath(kPlaylistId),
+                                   json{{"structure", counterIn(page, "structure")},
+                                        {"runs", json::array({json::array({1, 2})})}}
+                                       .dump());
 
         REQUIRE(response);
         CHECK(response->status == 200);
@@ -2647,11 +2657,10 @@ TEST_CASE("a removal against the generation a page answered is accepted, and aga
         RowsLog log;
         const TestServer server(servingSettings(), rowEditingPlayer(&log));
 
-        const auto response =
-            post(server, removeRowsPath(kPlaylistId),
-                 json{{"structure", std::to_string(kThroughADouble)},
-                      {"runs", json::array({json::array({1, 2})})}}
-                     .dump());
+        const auto response = post(server, removeRowsPath(kPlaylistId),
+                                   json{{"structure", std::to_string(kThroughADouble)},
+                                        {"runs", json::array({json::array({1, 2})})}}
+                                       .dump());
 
         REQUIRE(response);
         CHECK(response->status == 409);
@@ -2692,9 +2701,8 @@ TEST_CASE("a fill into a locked playlist is the 409 a copy into one is") {
         INFO("target: ", target.name);
 
         FillLog log;
-        const TestServer server(servingSettings(),
-                                refusingFillPlayer(&log, PlaylistOutcome::playlistLocked),
-                                &library);
+        const TestServer server(
+            servingSettings(), refusingFillPlayer(&log, PlaylistOutcome::playlistLocked), &library);
 
         const auto response = post(server, target.path, target.body);
 
@@ -2721,8 +2729,7 @@ TEST_CASE("a fill the player refused answers no positions") {
     for (const auto& refusal :
          {Refusal{PlaylistOutcome::playlistLocked, 409},
           Refusal{PlaylistOutcome::noSuchPlaylist, 404},
-          Refusal{PlaylistOutcome::playerRefused, 500},
-          Refusal{PlaylistOutcome::timedOut, 504}}) {
+          Refusal{PlaylistOutcome::playerRefused, 500}, Refusal{PlaylistOutcome::timedOut, 504}}) {
         INFO("outcome: ", describe(refusal.outcome));
 
         FillLog log;
@@ -2737,8 +2744,9 @@ TEST_CASE("a fill the player refused answers no positions") {
     }
 }
 
-TEST_CASE("a copy the component can judge for itself is refused exactly as a create from the same "
-          "source is, and the player is never asked") {
+TEST_CASE(
+    "a copy the component can judge for itself is refused exactly as a create from the same "
+    "source is, and the player is never asked") {
     RowsLog log;
     CreateLog creates;
     const TestServer server(servingSettings(), rowEditingPlayerCreating(&log, &creates));
@@ -2752,8 +2760,7 @@ TEST_CASE("a copy the component can judge for itself is refused exactly as a cre
         {"runs that are not pairs",
          json{{kSourceField, kSecondPlaylistId}, {"runs", json::array({1, 2})}}},
         {"a run whose count is not a number",
-         json{{kSourceField, kSecondPlaylistId},
-              {"runs", json::array({json::array({0, "2"})})}}},
+         json{{kSourceField, kSecondPlaylistId}, {"runs", json::array({json::array({0, "2"})})}}},
         {"a run starting before the first row",
          json{{kSourceField, kSecondPlaylistId}, {"runs", json::array({json::array({-1, 2})})}}},
         {"a source that is not a playlist id this component issued",
@@ -2792,8 +2799,9 @@ TEST_CASE("a copy the component can judge for itself is refused exactly as a cre
     CHECK(heldTitles(server, kPlaylistId) == json::array({"First", "Second", "Third", "Fourth"}));
 }
 
-TEST_CASE("a removal the component can judge for itself is refused exactly as a fill of the same "
-          "set is, and the player is never asked") {
+TEST_CASE(
+    "a removal the component can judge for itself is refused exactly as a fill of the same "
+    "set is, and the player is never asked") {
     Library library;
     buildLibrary(library);
 
@@ -2807,8 +2815,7 @@ TEST_CASE("a removal the component can judge for itself is refused exactly as a 
 
     const std::vector<BadSet> sets{
         {"runs that are not pairs", json{{"runs", json::array({0})}}},
-        {"a run whose count is not a number",
-         json{{"runs", json::array({json::array({0, "2"})})}}},
+        {"a run whose count is not a number", json{{"runs", json::array({json::array({0, "2"})})}}},
         {"a run starting before the first row",
          json{{"runs", json::array({json::array({-1, 2})})}}},
         {"no set at all", json::object()},
@@ -2853,8 +2860,9 @@ TEST_CASE("a removal the component can judge for itself is refused exactly as a 
     CHECK(heldTitles(server, kPlaylistId) == json::array({"First", "Second", "Third", "Fourth"}));
 }
 
-TEST_CASE("a removal names a generation as a run of decimal digits, and anything else is a 400 "
-          "the player never sees") {
+TEST_CASE(
+    "a removal names a generation as a run of decimal digits, and anything else is a 400 "
+    "the player never sees") {
     RowsLog log;
     const TestServer server(servingSettings(), rowEditingPlayer(&log));
 
@@ -2876,10 +2884,9 @@ TEST_CASE("a removal names a generation as a run of decimal digits, and anything
     for (const auto& bad : generations) {
         INFO("structure: ", bad.name);
 
-        const auto response =
-            post(server, removeRowsPath(kPlaylistId),
-                 json{{"structure", bad.value}, {"runs", json::array({json::array({1, 2})})}}
-                     .dump());
+        const auto response = post(
+            server, removeRowsPath(kPlaylistId),
+            json{{"structure", bad.value}, {"runs", json::array({json::array({1, 2})})}}.dump());
 
         REQUIRE(response);
         CHECK(response->status == 400);
@@ -2910,10 +2917,9 @@ TEST_CASE("a fill's structure is still a number and refuses the digits a removal
     CHECK(sentAsDigits->status == 400);
     CHECK(log.fills == 0);
 
-    const auto sentAsANumber = post(server, userFill(),
-                                    json{{"structure", library.state().structure},
-                                         {"ordinals", json::array({0})}}
-                                        .dump());
+    const auto sentAsANumber =
+        post(server, userFill(),
+             json{{"structure", library.state().structure}, {"ordinals", json::array({0})}}.dump());
 
     REQUIRE(sentAsANumber);
     INFO("status: ", sentAsANumber->status);
@@ -2921,8 +2927,9 @@ TEST_CASE("a fill's structure is still a number and refuses the digits a removal
     CHECK(log.fills == 1);
 }
 
-TEST_CASE("a row edit naming a playlist the player does not hold is a 404, and the player is what "
-          "says so") {
+TEST_CASE(
+    "a row edit naming a playlist the player does not hold is a 404, and the player is what "
+    "says so") {
     for (const auto& edit : rowEdits()) {
         INFO("edit: ", edit.name);
 
@@ -2939,8 +2946,8 @@ TEST_CASE("a row edit naming a playlist the player does not hold is a 404, and t
     RowsLog log;
     const TestServer server(servingSettings(), rowEditingPlayer(&log));
 
-    const auto response = post(server, copyPath(kPlaylistId),
-                               copyBody(kUnknownPlaylistId, unorderedRuns()).dump());
+    const auto response =
+        post(server, copyPath(kPlaylistId), copyBody(kUnknownPlaylistId, unorderedRuns()).dump());
 
     REQUIRE(response);
     CHECK(response->status == 404);
@@ -3211,10 +3218,9 @@ TEST_CASE("a client looping any of the six playlist writes is slowed down rather
         CHECK(std::all_of(replies.begin(), replies.end(),
                           [](const httplib::Result& reply) { return static_cast<bool>(reply); }));
 
-        const auto refused =
-            std::count_if(replies.begin(), replies.end(), [](const httplib::Result& reply) {
-                return reply && reply->status == 429;
-            });
+        const auto refused = std::count_if(
+            replies.begin(), replies.end(),
+            [](const httplib::Result& reply) { return reply && reply->status == 429; });
 
         // Each route sets its own Retry-After, so one carrying the limit and still leaving a
         // client with nothing to back off by is a state this can reach.
@@ -3286,10 +3292,9 @@ TEST_CASE("GET /api/capabilities says whether this install permits playlist writ
 TEST_CASE("one read of GET /api/capabilities answers everything static a player UI needs") {
     const auto body = capabilitiesOf(servingSettings());
 
-    const std::vector<std::string> published = {"playerName",     "playerVersion",
-                                                "volumeMin",      "volumeMax",
-                                                "volumeUnit",     "canWritePlaylists",
-                                                "canChangeOutput"};
+    const std::vector<std::string> published = {
+        "playerName", "playerVersion",     "volumeMin",      "volumeMax",
+        "volumeUnit", "canWritePlaylists", "canChangeOutput"};
 
     for (const std::string& field : published) {
         INFO("field: ", field);
@@ -3311,7 +3316,8 @@ TEST_CASE("one read of GET /api/capabilities answers everything static a player 
 // A client draws the playback-mode control from this and can send any name back, so a mode
 // offered here that GET /state cannot publish, or one the player cannot be put into, is a
 // control that refuses the moment somebody uses it.
-TEST_CASE("GET /api/capabilities offers the playback modes in Jean's names, as the player lists them") {
+TEST_CASE(
+    "GET /api/capabilities offers the playback modes in Jean's names, as the player lists them") {
     const auto body = capabilitiesReporting(kReportedOrders);
 
     CHECK(body["playbackModes"] == kOfferedModes);
@@ -3334,7 +3340,8 @@ TEST_CASE("a playback order this component has no name for is not offered at all
 
 // The offer is what this player answers rather than what foobar2000 usually answers, so a client
 // never draws a control for a mode this install cannot be put into.
-TEST_CASE("an order the player does not report is not offered, even though Jean has a name for it") {
+TEST_CASE(
+    "an order the player does not report is not offered, even though Jean has a name for it") {
     const auto body = capabilitiesReporting({"Default", "Random"});
 
     CHECK(body["playbackModes"] == std::vector<std::string>{"inOrder", "random"});
@@ -3571,9 +3578,9 @@ TEST_CASE("the scratch's title is prefixed on an exact-case match and separated 
         std::string atThePlayer;
     };
 
-    for (const auto& titling : {Titling{"Party mix", "#Jean Party mix"},
-                                Titling{"#Jean Party mix", "#Jean Party mix"},
-                                Titling{"#jean mix", "#Jean #jean mix"}}) {
+    for (const auto& titling :
+         {Titling{"Party mix", "#Jean Party mix"}, Titling{"#Jean Party mix", "#Jean Party mix"},
+          Titling{"#jean mix", "#Jean #jean mix"}}) {
         INFO("title the fill asked for: ", titling.asked);
 
         FillLog log;
@@ -3803,8 +3810,9 @@ TEST_CASE("a title on the component's own playlist is held to the limit an autop
     const TestServer server(servingSettings(), fillingPlayer(&log), &library);
 
     SUBCASE("a control character is refused rather than reaching the player") {
-        const auto response = post(
-            server, kScratchFill, withField(ownBody(kScratchTitle, log.structure), "title", "a\nb"));
+        const auto response =
+            post(server, kScratchFill,
+                 withField(ownBody(kScratchTitle, log.structure), "title", "a\nb"));
 
         REQUIRE(response);
         CHECK(response->status == 400);
@@ -3814,9 +3822,9 @@ TEST_CASE("a title on the component's own playlist is held to the limit an autop
     }
 
     SUBCASE("longer than 256 characters is refused rather than truncated") {
-        const auto response = post(server, kScratchFill,
-                                   withField(ownBody(kScratchTitle, log.structure), "title",
-                                             std::string(257, 'a')));
+        const auto response =
+            post(server, kScratchFill,
+                 withField(ownBody(kScratchTitle, log.structure), "title", std::string(257, 'a')));
 
         REQUIRE(response);
         CHECK(response->status == 400);
@@ -3900,8 +3908,9 @@ TEST_CASE("a fill answers the id of the playlist the rows landed in") {
     }
 }
 
-TEST_CASE("a fill answers exactly the playlist, its generation and the positions, from either "
-          "route") {
+TEST_CASE(
+    "a fill answers exactly the playlist, its generation and the positions, from either "
+    "route") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -3951,8 +3960,9 @@ TEST_CASE("a fill answers the generation the target landed at, whole and moving 
     }
 }
 
-TEST_CASE("with writePlaylists off, every write but the component's own is refused and never "
-          "reaches the player") {
+TEST_CASE(
+    "with writePlaylists off, every write but the component's own is refused and never "
+    "reaches the player") {
     Library library;
     buildLibrary(library);
 
@@ -3989,8 +3999,9 @@ TEST_CASE("with writePlaylists off, every write but the component's own is refus
 // setting is decided here before the player is asked; a playlist this component did not create
 // is something only the player can report, and it is refused whatever the setting says. Naming
 // the setting on both sends a player owner to config.json to turn on something already on.
-TEST_CASE("a write refused by the setting and one refused for a playlist this component did not "
-          "create say different things") {
+TEST_CASE(
+    "a write refused by the setting and one refused for a playlist this component did not "
+    "create say different things") {
     const auto update = [](const TestServer& server) {
         return post(server, std::string("/api/autoplaylists/") + kPlaylistId,
                     R"({"query": "%genre% IS Jazz"})");
@@ -4061,8 +4072,9 @@ TEST_CASE("the component's own playlist fills whether writePlaylists is on or of
 // The scratch is Jean's own working space, addressed by role and never by GUID. An edit reaching
 // it by GUID would rename, delete or empty the playlist somebody is listening from, so the switch
 // being on does not buy one: the refusal is structural, as notOurs is, rather than the setting's.
-TEST_CASE("an edit addressing the component's own scratch playlist is refused whether "
-          "writePlaylists is on or off") {
+TEST_CASE(
+    "an edit addressing the component's own scratch playlist is refused whether "
+    "writePlaylists is on or off") {
     for (const bool writePlaylists : {true, false}) {
         INFO("writePlaylists: ", writePlaylists);
         const auto settings = writePlaylists ? servingSettings() : readOnlyPlaylists();
@@ -4156,8 +4168,9 @@ TEST_CASE("a fill addressing the scratch by its id is refused, and the role rout
 // player never said. A fill let through here is a client with the scratch's GUID replacing the
 // rows Jean is playing from, at exactly the moment nothing else is working. The status is the
 // listing's own, because 403 would claim the component knew whose playlist this was.
-TEST_CASE("a fill by id the component could not check against the listing is refused with the "
-          "listing's own outcome") {
+TEST_CASE(
+    "a fill by id the component could not check against the listing is refused with the "
+    "listing's own outcome") {
     struct Unanswered {
         PlaylistOutcome outcome;
         int status;
@@ -4172,8 +4185,8 @@ TEST_CASE("a fill by id the component could not check against the listing is ref
 
         FillLog log;
         log.structure = library.state().structure;
-        const TestServer server(servingSettings(),
-                                refusingListingPlayer(&log, listing.outcome), &library);
+        const TestServer server(servingSettings(), refusingListingPlayer(&log, listing.outcome),
+                                &library);
 
         const auto response = post(server, userFill(), userBody(log.structure));
 
@@ -4209,8 +4222,9 @@ TEST_CASE("a copy whose source is the scratch lands the rows in the playlist it 
 // The other half of that rule, and the one *Save as playlist* rides on: a create takes a source
 // playlist and runs of its positions, so the results Jean played through the scratch reach a
 // playlist of the user's in one request.
-TEST_CASE("a create whose source is the scratch fills the new playlist and leaves the scratch "
-          "standing") {
+TEST_CASE(
+    "a create whose source is the scratch fills the new playlist and leaves the scratch "
+    "standing") {
     RowsLog log;
     log.playlists[kScratchPlaylistId] = scratchRows();
 
@@ -4231,8 +4245,9 @@ TEST_CASE("a create whose source is the scratch fills the new playlist and leave
     CHECK(heldTitles(server, kScratchPlaylistId) == before);
 }
 
-TEST_CASE("an install that never set writePlaylists permits every write the setting would "
-          "refuse") {
+TEST_CASE(
+    "an install that never set writePlaylists permits every write the setting would "
+    "refuse") {
     Library library;
     buildLibrary(library);
 
@@ -4380,10 +4395,9 @@ TEST_CASE("the contract publishes a 403 on exactly the writes the setting can re
     const auto published = publishedRoutes();
 
     const auto answers403 = [&published](const std::string& name) {
-        const auto found =
-            std::find_if(published.begin(), published.end(), [&name](const SpecRoute& route) {
-                return route.method + " " + route.path == name;
-            });
+        const auto found = std::find_if(
+            published.begin(), published.end(),
+            [&name](const SpecRoute& route) { return route.method + " " + route.path == name; });
 
         REQUIRE_MESSAGE(found != published.end(), "contract/openapi.yaml publishes no ", name);
         return found->statuses.count(403) == 1;
@@ -4404,10 +4418,9 @@ TEST_CASE("the contract publishes a 429 on every write the playlist limit can re
     const auto published = publishedRoutes();
 
     const auto statusesOf = [&published](const std::string& name) {
-        const auto found =
-            std::find_if(published.begin(), published.end(), [&name](const SpecRoute& route) {
-                return route.method + " " + route.path == name;
-            });
+        const auto found = std::find_if(
+            published.begin(), published.end(),
+            [&name](const SpecRoute& route) { return route.method + " " + route.path == name; });
 
         REQUIRE_MESSAGE(found != published.end(), "contract/openapi.yaml publishes no ", name);
         return found->statuses;

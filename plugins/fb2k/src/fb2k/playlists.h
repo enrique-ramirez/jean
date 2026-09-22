@@ -32,8 +32,7 @@ std::optional<PlayingLocation> queuedLocationOf(const t_playback_queue_item& ite
 // callback it registers fires only on the next change.
 class PlaylistWatch {
 public:
-    PlaylistWatch(MainThreadQueue& mainThread, PlaylistVersions& versions,
-                  PlayerStateStore& store);
+    PlaylistWatch(MainThreadQueue& mainThread, PlaylistVersions& versions, PlayerStateStore& store);
     ~PlaylistWatch();
 
     PlaylistWatch(const PlaylistWatch&) = delete;
@@ -51,8 +50,7 @@ PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
                                                   const PlaylistVersions& versions);
 PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread);
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
-                                            const PlaylistVersions& versions,
-                                            int maxAutoPlaylists);
+                                            const PlaylistVersions& versions, int maxAutoPlaylists);
 AutoPlaylistUpdater makeAutoPlaylistUpdater(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions);
 AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread);

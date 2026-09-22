@@ -124,8 +124,8 @@ TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
 
 TEST_CASE("GET /capabilities is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
-    CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true, true,
-                                      "foobar2000", "2.25.3", -100, 0, "db", {"Default"})) ==
+    CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true, true, "foobar2000",
+                                      "2.25.3", -100, 0, "db", {"Default"})) ==
           Keys{"apiVersion", "allowedFields", "canWrite", "canWritePlaylists", "canChangeOutput",
                "maxAutoPlaylists", "canCreateAutoPlaylists", "canStream", "streamFormats",
                "canMuteWhileStreaming", "canReadLibrary", "playerName", "playerVersion",
@@ -566,8 +566,9 @@ TEST_CASE("every playlist error contract/openapi.yaml publishes is one this comp
     }
 
     SUBCASE("PlaylistFailed") {
-        INFO("the spec follows the component's wording: correct the value in "
-             "contract/openapi.yaml, or add the enumerator to PlaylistOutcome in core/playlists.h");
+        INFO(
+            "the spec follows the component's wording: correct the value in "
+            "contract/openapi.yaml, or add the enumerator to PlaylistOutcome in core/playlists.h");
         CHECK(unsendable("PlaylistFailed", everyDescribed<PlaylistOutcome>()) == std::string());
     }
 }

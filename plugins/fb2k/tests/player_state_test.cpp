@@ -210,8 +210,7 @@ TEST_CASE("a pause keeps the track, its duration and where playback had reached"
     CHECK(published.state.path == R"(X:\music\a.flac)");
     CHECK(published.state.subsong == 0);
     CHECK(published.state.duration == doctest::Approx(210.0));
-    CHECK(published.state.position.seconds ==
-          doctest::Approx(kReachedSeconds + kRanOnFor.count()));
+    CHECK(published.state.position.seconds == doctest::Approx(kReachedSeconds + kRanOnFor.count()));
     CHECK(published.version > before);
 }
 
@@ -230,8 +229,7 @@ TEST_CASE("a resume carries the position through the pause rather than through t
     const auto published = store.read();
     CHECK(published.state.playback == PlaybackState::playing);
     CHECK(published.state.path == R"(X:\music\a.flac)");
-    CHECK(published.state.position.seconds ==
-          doctest::Approx(kReachedSeconds + kRanOnFor.count()));
+    CHECK(published.state.position.seconds == doctest::Approx(kReachedSeconds + kRanOnFor.count()));
     CHECK(published.state.position.taken == resumedAt);
     CHECK(published.version > whilePaused);
 }

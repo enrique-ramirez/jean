@@ -85,10 +85,18 @@ TEST_CASE("every kind of row change moves the structure generation and leaves th
     const PlaylistVersion before = versions.of(kAlbums);
 
     RowsChanged how = RowsChanged::added;
-    SUBCASE("rows added") { how = RowsChanged::added; }
-    SUBCASE("rows removed") { how = RowsChanged::removed; }
-    SUBCASE("rows reordered") { how = RowsChanged::reordered; }
-    SUBCASE("rows replaced") { how = RowsChanged::replaced; }
+    SUBCASE("rows added") {
+        how = RowsChanged::added;
+    }
+    SUBCASE("rows removed") {
+        how = RowsChanged::removed;
+    }
+    SUBCASE("rows reordered") {
+        how = RowsChanged::reordered;
+    }
+    SUBCASE("rows replaced") {
+        how = RowsChanged::replaced;
+    }
 
     versions.rowsChanged(kAlbums, how);
 
@@ -270,7 +278,9 @@ TEST_CASE("the row a track stops playing at is recorded though nothing announced
     SUBCASE("the next track is in another playlist") {
         versions.playingRowChanged(PlayingLocation{kSingles, 0});
     }
-    SUBCASE("playback stops") { versions.playingRowChanged(std::nullopt); }
+    SUBCASE("playback stops") {
+        versions.playingRowChanged(std::nullopt);
+    }
 
     const ChangedSince changed =
         versions.changedSince(kAlbums, playing.structure, playing.revision);
@@ -490,12 +500,9 @@ TEST_CASE("an answer given while the player is writing carries only rows that pl
 
             if (changed.revision < state.cursor)
                 ++strange.numbersGoingBackwards;
-            strange.positionsFromNowhere +=
-                static_cast<size_t>(std::count_if(changed.positions.begin(),
-                                                  changed.positions.end(),
-                                                  [&playlist](uint32_t position) {
-                                                      return !playlist.holds(position);
-                                                  }));
+            strange.positionsFromNowhere += static_cast<size_t>(std::count_if(
+                changed.positions.begin(), changed.positions.end(),
+                [&playlist](uint32_t position) { return !playlist.holds(position); }));
             state.cursor = changed.revision;
         };
 

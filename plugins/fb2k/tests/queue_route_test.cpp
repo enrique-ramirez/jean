@@ -94,8 +94,7 @@ void changeTheQueueUntil(PlayerStateStore& store, uint64_t revision) {
     REQUIRE(store.read().queueRevision == revision);
 }
 
-TestServer servingQueue(const Player& player, PlayerStateStore* store,
-                        Library* library = nullptr) {
+TestServer servingQueue(const Player& player, PlayerStateStore* store, Library* library = nullptr) {
     return TestServer(servingSettings(), player, library, countingMint(), store);
 }
 
@@ -108,8 +107,7 @@ TEST_CASE("GET /api/queue answers every entry in the player's order with the fie
     second.albumArtist = "Another Artist";
     second.duration = 61.25;
 
-    const TestServer server(servingSettings(),
-                            queueing({track("First"), second, track("Third")}));
+    const TestServer server(servingSettings(), queueing({track("First"), second, track("Third")}));
 
     const auto entries = entriesOf(server);
     REQUIRE(entries.size() == 3);
@@ -131,8 +129,9 @@ TEST_CASE("GET /api/queue answers every entry in the player's order with the fie
 
 // A move names the revision it was planned against, so the revision has to be the one these
 // entries were read at. One read separately from /state could belong to a different queue.
-TEST_CASE("GET /api/queue answers the queue revision its entries were read at, and nothing else "
-          "beside them") {
+TEST_CASE(
+    "GET /api/queue answers the queue revision its entries were read at, and nothing else "
+    "beside them") {
     constexpr uint64_t kReadAt = 42;
     const TestServer server(servingSettings(), queueing({track("Only")}, kReadAt));
 
@@ -166,8 +165,9 @@ TEST_CASE("a queued track missing its tags answers an empty string for each, nev
 
 // The library path is what a client asks GET /api/artwork for, so an entry the library does not
 // hold has to say so rather than carry a key that finds no cover.
-TEST_CASE("a queued track the media library holds carries its library path, and one it does not "
-          "carries null") {
+TEST_CASE(
+    "a queued track the media library holds carries its library path, and one it does not "
+    "carries null") {
     const TestServer server(servingSettings(),
                             queueing({fromTheLibrary("Held"), track("Not held")}));
 
@@ -180,8 +180,9 @@ TEST_CASE("a queued track the media library holds carries its library path, and 
     CHECK(entries[1]["libraryPath"].is_null());
 }
 
-TEST_CASE("a queued playlist row carries its playlist's GUID and position, and a track queued "
-          "with no playlist carries null") {
+TEST_CASE(
+    "a queued playlist row carries its playlist's GUID and position, and a track queued "
+    "with no playlist carries null") {
     constexpr uint32_t kRow = 7;
     const TestServer server(servingSettings(),
                             queueing({fromAPlaylistRow("Row", kRow), fromTheLibrary("Handle")}));
@@ -201,9 +202,9 @@ TEST_CASE("a queued playlist row carries its playlist's GUID and position, and a
 // A field past these is one a client may start reading, and the queue read is bounded to what
 // Jean draws. A beefweb id or an absolute path creeping in is the likely one.
 TEST_CASE("every queue entry carries exactly its seven keys, whichever of them are null") {
-    const TestServer server(servingSettings(),
-                            queueing({fromAPlaylistRow("Row", 0), fromTheLibrary("Handle"),
-                                      track("Neither")}));
+    const TestServer server(
+        servingSettings(),
+        queueing({fromAPlaylistRow("Row", 0), fromTheLibrary("Handle"), track("Neither")}));
 
     const auto entries = entriesOf(server);
     REQUIRE(entries.size() == 3);
@@ -273,8 +274,9 @@ bool accepted(const httplib::Result& response) {
 
 // A multi-select is queued in the order it was clicked, so a route that sorted the positions, or
 // queued them as a range, would play them in an order nobody chose.
-TEST_CASE("queueing playlist rows hands the player the playlist and every position in the order "
-          "given, once, at the end of the queue") {
+TEST_CASE(
+    "queueing playlist rows hands the player the playlist and every position in the order "
+    "given, once, at the end of the queue") {
     RowQueueLog log;
     const TestServer server(servingSettings(), queueingRows(&log));
 
@@ -291,8 +293,9 @@ TEST_CASE("queueing playlist rows hands the player the playlist and every positi
 
 // Zero is the head of the queue, and the one position a parse reading a missing field as zero
 // would confuse with the end.
-TEST_CASE("queueing playlist rows at a queue position hands the player that position and the "
-          "queue revision the client planned it against") {
+TEST_CASE(
+    "queueing playlist rows at a queue position hands the player that position and the "
+    "queue revision the client planned it against") {
     for (const uint32_t at : {uint32_t{0}, uint32_t{2}}) {
         INFO("at: ", at);
         PlayerStateStore store;
@@ -317,8 +320,9 @@ TEST_CASE("queueing playlist rows at a queue position hands the player that posi
     }
 }
 
-TEST_CASE("a queue request the component can judge for itself is a 400 and never reaches the "
-          "player") {
+TEST_CASE(
+    "a queue request the component can judge for itself is a 400 and never reaches the "
+    "player") {
     RowQueueLog log;
     const TestServer server(servingSettings(), queueingRows(&log));
 
@@ -361,8 +365,9 @@ TEST_CASE("a queue request the component can judge for itself is a 400 and never
 
 // Only the player knows which playlists exist and how many rows each holds, so these two are
 // answered from inside the job rather than judged at the route.
-TEST_CASE("queueing from a playlist the player does not have is a 404, and a position past that "
-          "playlist's end is a 400") {
+TEST_CASE(
+    "queueing from a playlist the player does not have is a 404, and a position past that "
+    "playlist's end is a 400") {
     struct Case {
         PlaylistOutcome outcome;
         int status;
@@ -430,8 +435,9 @@ json tracksOf(uint64_t structure, const char* form, const json& selection) {
 
 // A multi-select from the library is queued in the order it was clicked, which only the
 // `ordinals` form can carry.
-TEST_CASE("queueing library tracks by ordinals hands the player the structure and every ordinal "
-          "in the order given, once, at the end of the queue, and no playlist row") {
+TEST_CASE(
+    "queueing library tracks by ordinals hands the player the structure and every ordinal "
+    "in the order given, once, at the end of the queue, and no playlist row") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -455,8 +461,9 @@ TEST_CASE("queueing library tracks by ordinals hands the player the structure an
 
 // contract/openapi.yaml's `Runs` and `Bitset` are ascending by definition, for a queue as for a
 // fill. Runs listed out of order are the case that tells ascending apart from as-listed.
-TEST_CASE("library tracks queued as runs or as a bitset reach the player in ascending ordinal "
-          "order") {
+TEST_CASE(
+    "library tracks queued as runs or as a bitset reach the player in ascending ordinal "
+    "order") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -484,8 +491,9 @@ TEST_CASE("library tracks queued as runs or as a bitset reach the player in asce
     }
 }
 
-TEST_CASE("queueing library tracks at a queue position hands the player that position and the "
-          "queue revision the client planned it against") {
+TEST_CASE(
+    "queueing library tracks at a queue position hands the player that position and the "
+    "queue revision the client planned it against") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -518,8 +526,9 @@ TEST_CASE("queueing library tracks at a queue position hands the player that pos
 
 // A body naming both would be queued from whichever source the parse happened to read first,
 // and the client could not tell which.
-TEST_CASE("a queue request naming both a playlist and the library, or neither, is a 400 and "
-          "reaches neither queue") {
+TEST_CASE(
+    "a queue request naming both a playlist and the library, or neither, is a 400 and "
+    "reaches neither queue") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -556,8 +565,9 @@ TEST_CASE("a queue request naming both a playlist and the library, or neither, i
     CHECK(tracks.calls == 0);
 }
 
-TEST_CASE("a library selection the component can judge for itself is a 400 and never reaches the "
-          "player") {
+TEST_CASE(
+    "a library selection the component can judge for itself is a 400 and never reaches the "
+    "player") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -615,8 +625,9 @@ TEST_CASE("a library selection the component can judge for itself is a 400 and n
 // An ordinal means a track only within the structure it was exported at. The shrunken library
 // makes one of these ordinals past the end, which is still a moved structure rather than a 400:
 // the client's remedy is to export again, not to fix the set.
-TEST_CASE("queueing library tracks against a structure the library has moved past is a 409 and "
-          "never reaches the player") {
+TEST_CASE(
+    "queueing library tracks against a structure the library has moved past is a 409 and "
+    "never reaches the player") {
     Library library;
     buildLibrary(library);
     const uint64_t exported = library.state().structure;
@@ -663,8 +674,9 @@ TEST_CASE("a structure the library moves past before the player's job runs is a 
 
 // A request that queues nothing is a client bug, the same reason an empty `positions` is
 // refused for a playlist row. An all-zero bitset is the same empty set in the third form.
-TEST_CASE("an empty library selection is a 400 and never reaches the player, whichever form "
-          "carries it") {
+TEST_CASE(
+    "an empty library selection is a 400 and never reaches the player, whichever form "
+    "carries it") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -673,9 +685,9 @@ TEST_CASE("an empty library selection is a 400 and never reaches the player, whi
     TrackQueueLog tracks;
     const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
 
-    for (const auto& body : {tracksOf(structure, "ordinals", json::array()),
-                             tracksOf(structure, "runs", json::array()),
-                             tracksOf(structure, "bitset", "AA==")}) {
+    for (const auto& body :
+         {tracksOf(structure, "ordinals", json::array()),
+          tracksOf(structure, "runs", json::array()), tracksOf(structure, "bitset", "AA==")}) {
         INFO("body: ", body.dump());
         const auto response = post(server, kQueueRows, body.dump());
         REQUIRE(response);
@@ -689,8 +701,9 @@ TEST_CASE("an empty library selection is a 400 and never reaches the player, whi
 
 // The ordinals are the client's own export, so the error has to name what is missing rather than
 // blame the set, or the client retries with a set that cannot land either.
-TEST_CASE("queueing library tracks with nothing to resolve them against is a 503 naming what is "
-          "missing") {
+TEST_CASE(
+    "queueing library tracks with nothing to resolve them against is a 503 naming what is "
+    "missing") {
     TrackQueueLog tracks;
     Library unbuilt;
 
@@ -739,8 +752,9 @@ TEST_CASE("an ordinal repeated in the request is queued twice") {
 // that it fits in the body the server will read. Descending ordinals are the order only that form
 // can carry and the widest ordinals in the library; one run per track is the longest a selection
 // of that size can be written as runs.
-TEST_CASE("a selection of QUEUE_LIMIT library tracks reaches the player whole, in a body inside "
-          "kMaxBodyBytes") {
+TEST_CASE(
+    "a selection of QUEUE_LIMIT library tracks reaches the player whole, in a body inside "
+    "kMaxBodyBytes") {
     constexpr size_t kLibrarySize = size_t{kQueueLimit} * 2;
 
     Library library;
@@ -762,8 +776,7 @@ TEST_CASE("a selection of QUEUE_LIMIT library tracks reaches the player whole, i
         std::vector<uint32_t> queued;
     };
 
-    for (const auto& form :
-         {Form{"ordinals", clicked, clicked}, Form{"runs", runs, everyOther}}) {
+    for (const auto& form : {Form{"ordinals", clicked, clicked}, Form{"runs", runs, everyOther}}) {
         INFO("form: ", form.name);
         RowQueueLog rows;
         TrackQueueLog tracks;
@@ -877,8 +890,9 @@ httplib::Result clearTheQueue(const TestServer& server) {
 
 // A position is only a position in the queue it was read from. A revision ahead of the store is
 // what a client holds across a component restart, which counts from the start again.
-TEST_CASE("queueing at a queue position against a revision the queue has moved past, or never "
-          "reached, is a 409 and reaches neither queue") {
+TEST_CASE(
+    "queueing at a queue position against a revision the queue has moved past, or never "
+    "reached, is a 409 and reaches neither queue") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -915,8 +929,9 @@ TEST_CASE("queueing at a queue position against a revision the queue has moved p
     CHECK(tracks.calls == 0);
 }
 
-TEST_CASE("queueing at a queue position against the queue's current revision reaches the player "
-          "with that revision") {
+TEST_CASE(
+    "queueing at a queue position against the queue's current revision reaches the player "
+    "with that revision") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -979,8 +994,9 @@ TEST_CASE("queueing at the end of a queue that has moved on is never refused for
 // queue without it, as Jean's queue panel plans a move. Zero both ways, since a parse reading a
 // missing field as zero would get one of the two right, and a move to where the entry already is
 // goes to the player like any other.
-TEST_CASE("moving a queue entry hands the player where it is, where it goes and the revision the "
-          "client planned it against, once") {
+TEST_CASE(
+    "moving a queue entry hands the player where it is, where it goes and the revision the "
+    "client planned it against, once") {
     struct Move {
         uint32_t from;
         uint32_t to;
@@ -1007,8 +1023,9 @@ TEST_CASE("moving a queue entry hands the player where it is, where it goes and 
     }
 }
 
-TEST_CASE("moving a queue entry against a revision the queue has moved past, or never reached, is "
-          "a 409 and never reaches the player") {
+TEST_CASE(
+    "moving a queue entry against a revision the queue has moved past, or never reached, is "
+    "a 409 and never reaches the player") {
     PlayerStateStore store;
     changeTheQueueTwice(store);
     const uint64_t current = store.read().queueRevision;
@@ -1141,8 +1158,9 @@ TEST_CASE("moving an entry from or to past the end of the queue is a 400") {
 // See ARCHITECTURE.md, *Threads, and what may block*, for the race between the route's own
 // check and the job's. The job answers the same 409 a stale revision gets at the route, so a
 // client has one remedy for either.
-TEST_CASE("a queue that moves before the player's job runs is the same 409 the route answers for "
-          "a stale revision") {
+TEST_CASE(
+    "a queue that moves before the player's job runs is the same 409 the route answers for "
+    "a stale revision") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -1191,8 +1209,9 @@ TEST_CASE("a queue that moves before the player's job runs is the same 409 the r
 
 // Zero is the head of the queue, and the index a parse reading a missing segment as zero would
 // also produce.
-TEST_CASE("removing a queue entry hands the player its index and the revision the client read it "
-          "at, once") {
+TEST_CASE(
+    "removing a queue entry hands the player its index and the revision the client read it "
+    "at, once") {
     for (const uint32_t index : {uint32_t{0}, uint32_t{3}}) {
         INFO("index: ", index);
         PlayerStateStore store;
@@ -1214,8 +1233,9 @@ TEST_CASE("removing a queue entry hands the player its index and the revision th
 }
 
 // An index read from an older queue names whichever entry has since slid into that place.
-TEST_CASE("removing a queue entry against a revision the queue has moved past, or never reached, "
-          "is a 409 and never reaches the player") {
+TEST_CASE(
+    "removing a queue entry against a revision the queue has moved past, or never reached, "
+    "is a 409 and never reaches the player") {
     PlayerStateStore store;
     changeTheQueueTwice(store);
     const uint64_t current = store.read().queueRevision;
@@ -1274,8 +1294,9 @@ TEST_CASE("a remove the component can judge for itself is a 400 and never reache
 // Only the player knows how long the queue is, so a past-the-end index is answered from inside
 // the job; a queue that moves before the job runs (ARCHITECTURE.md, *Threads, and what may
 // block*) is answered from there too, with the route's own 409.
-TEST_CASE("removing past the end of the queue is a 400, and a queue that moves before the player's "
-          "job runs is the 409 a stale revision gets") {
+TEST_CASE(
+    "removing past the end of the queue is a 400, and a queue that moves before the player's "
+    "job runs is the 409 a stale revision gets") {
     PlayerStateStore store;
     changeTheQueueTwice(store);
     const uint64_t current = store.read().queueRevision;

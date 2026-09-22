@@ -801,10 +801,9 @@ TEST_CASE("the player section names the playlists revision once and carries noth
     const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
 
     const Keys published = {
-        "playback",        "path",          "subsong",           "position",
-        "duration",        "volume",        "muted",             "playbackMode",
-        "title",           "artist",        "playingLocation",   "queueRevision",
-        "playlistsRevision"};
+        "playback",        "path",          "subsong",          "position", "duration",
+        "volume",          "muted",         "playbackMode",     "title",    "artist",
+        "playingLocation", "queueRevision", "playlistsRevision"};
 
     CHECK(keysOf(playerSection(server)) == published);
 }
@@ -1474,7 +1473,8 @@ TEST_CASE("a refused poll says how long to wait and why, where a browser can rea
 
 // The reason the bucket is keyed on the source address rather than held once for the route: a phone
 // left looping in a pocket must not stop the laptop in the next room from seeing the player. One
-// socket serves both stacks here, so the two clients arrive on two addresses over a real connection.
+// socket serves both stacks here, so the two clients arrive on two addresses over a real
+// connection.
 TEST_CASE("a client on another address polls on while one is being refused") {
     Library library;
     fill(library);

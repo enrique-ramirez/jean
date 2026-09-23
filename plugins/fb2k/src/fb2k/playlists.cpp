@@ -6,6 +6,7 @@
 #include "core/log.h"
 #include "core/text.h"
 #include "fb2k/ask_player.h"
+#include "fb2k/columns.h"
 #include "fb2k/strings.h"
 
 #include <algorithm>
@@ -658,20 +659,6 @@ CopiedPage pageFailure(PlaylistOutcome outcome) {
     return page;
 }
 
-std::vector<titleformat_object::ptr> compiledColumns(const std::vector<std::string>& columns) {
-    const auto compiler = titleformat_compiler::get();
-
-    std::vector<titleformat_object::ptr> scripts;
-    scripts.reserve(columns.size());
-    for (const std::string& column : columns) {
-        titleformat_object::ptr script;
-        compiler->compile_safe_ex(script, column.c_str(), kUnresolved);
-        scripts.push_back(std::move(script));
-    }
-
-    return scripts;
-}
-
 void beginReadRows(const std::string& playlistId, size_t offset, size_t count,
                    const std::vector<std::string>& columns, const PlaylistVersions& versions,
                    const AnswerPtr<CopiedPage>& answer) {
@@ -694,7 +681,7 @@ void beginReadRows(const std::string& playlistId, size_t offset, size_t count,
     playlist_manager::get()->playlist_get_items(index, page.handles,
                                                 bit_array_range(from, taken, true));
 
-    page.scripts = compiledColumns(columns);
+    page.scripts = compiledColumns(titleformat_compiler::get(), columns);
     answer->set(std::move(page));
 }
 
@@ -744,7 +731,7 @@ void beginReadChangedRows(const std::string& playlistId, uint64_t structure, uin
         copied.handles.add_item(handle);
     }
 
-    copied.scripts = compiledColumns(columns);
+    copied.scripts = compiledColumns(titleformat_compiler::get(), columns);
     answer->set(std::move(copied));
 }
 
@@ -812,16 +799,7 @@ PlaylistRow formattedRow(const metadb_handle_ptr& handle,
         return row;
 
     row.subsong = handle->get_subsong_index();
-
-    metadb_info_container::ptr info;
-    if (handle->get_info_ref(info)) {
-        pfc::string8 text;
-        for (size_t column = 0; column < scripts.size(); ++column) {
-            handle->format_title_from_external_info(info->info(), nullptr, text, scripts[column],
-                                                    nullptr);
-            row.columns[column] = toStd(text);
-        }
-    }
+    row.columns = formattedColumns(handle, scripts);
 
     pfc::string8 relative;
     if (libraryManager->get_relative_path(handle, relative))

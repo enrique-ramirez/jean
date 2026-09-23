@@ -203,6 +203,27 @@ PlayRowRequest refusePlayRow(PlaylistRefusal refusal) {
     return request;
 }
 
+SeekRequest refuseSeek(std::string detail) {
+    SeekRequest request;
+    request.refusal = PlaybackRefusal::badSeek;
+    request.detail = std::move(detail);
+    return request;
+}
+
+PlaybackModeRequest refusePlaybackMode(std::string detail) {
+    PlaybackModeRequest request;
+    request.refusal = PlaybackRefusal::badMode;
+    request.detail = std::move(detail);
+    return request;
+}
+
+VolumeRequest refuseVolume(std::string detail) {
+    VolumeRequest request;
+    request.refusal = PlaybackRefusal::badVolume;
+    request.detail = std::move(detail);
+    return request;
+}
+
 bool fitsUint32(uint64_t value) {
     return value <= std::numeric_limits<uint32_t>::max();
 }
@@ -261,6 +282,11 @@ constexpr std::array<const char*, 2> kSourceRowsFields{kSourceField, "runs"};
 
 constexpr char kIndexField[] = "index";
 constexpr std::array<const char*, 1> kMovePlaylistFields{kIndexField};
+
+constexpr std::array<const char*, 2> kSeekFields{"seconds", "relativeSeconds"};
+constexpr char kModeField[] = "mode";
+constexpr std::array<const char*, 1> kPlaybackModeFields{kModeField};
+constexpr std::array<const char*, 3> kVolumeFields{"value", "step", "muted"};
 
 constexpr std::array<const char*, 4> kQueueRowsFields{"playlistId", "positions", "at", "revision"};
 constexpr std::array<const char*, 6> kQueueTracksFields{"structure", "runs", "bitset",
@@ -662,6 +688,129 @@ PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText)
     PlayRowRequest request;
     request.playlistId = id;
     request.index = static_cast<uint32_t>(index);
+    return request;
+}
+
+std::string describe(PlaybackRefusal refusal) {
+    switch (refusal) {
+        case PlaybackRefusal::none:
+            return "ok";
+        case PlaybackRefusal::badSeek:
+            return "unacceptable seek";
+        case PlaybackRefusal::badMode:
+            return "unacceptable mode";
+        case PlaybackRefusal::badVolume:
+            return "unacceptable volume";
+    }
+    return "unknown";
+}
+
+int httpStatusFor(PlaybackRefusal refusal) {
+    switch (refusal) {
+        case PlaybackRefusal::none:
+            return 200;
+        case PlaybackRefusal::badSeek:
+        case PlaybackRefusal::badMode:
+        case PlaybackRefusal::badVolume:
+            return 400;
+    }
+    return 400;
+}
+
+std::string playbackRefusedDocument(PlaybackRefusal refusal, const std::string& detail) {
+    return json{{"error", describe(refusal)}, {"detail", detail}}.dump();
+}
+
+SeekRequest parseSeek(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseSeek(document.error);
+
+    const auto& root = document.value;
+    if (!declaresOnly(root, kSeekFields))
+        return refuseSeek("a field this route does not take was named");
+
+    const bool absolute = root.contains("seconds");
+    const bool relative = root.contains("relativeSeconds");
+    if (absolute && relative)
+        return refuseSeek("'seconds' and 'relativeSeconds' were both present; send exactly one");
+    if (!absolute && !relative)
+        return refuseSeek("send exactly one of 'seconds' and 'relativeSeconds'");
+
+    const auto& field = root.at(absolute ? "seconds" : "relativeSeconds");
+    if (!field.is_number()) {
+        return refuseSeek("'" + std::string(absolute ? "seconds" : "relativeSeconds") +
+                          "' must be a number");
+    }
+
+    SeekRequest request;
+    request.seconds = field.get<double>();
+    request.relative = relative;
+    return request;
+}
+
+PlaybackModeRequest parsePlaybackMode(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refusePlaybackMode(document.error);
+
+    const auto& root = document.value;
+    if (!declaresOnly(root, kPlaybackModeFields))
+        return refusePlaybackMode("a field this route does not take was named");
+
+    const auto mode = root.find(kModeField);
+    if (mode == root.end() || !mode->is_string())
+        return refusePlaybackMode("'mode' is required and must be a string");
+
+    PlaybackModeRequest request;
+    request.mode = mode->get<std::string>();
+    return request;
+}
+
+VolumeRequest parseVolume(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseVolume(document.error);
+
+    const auto& root = document.value;
+    if (!declaresOnly(root, kVolumeFields))
+        return refuseVolume("a field this route does not take was named");
+
+    const int forms = (root.contains("value") ? 1 : 0) + (root.contains("step") ? 1 : 0) +
+                      (root.contains("muted") ? 1 : 0);
+    if (forms != 1)
+        return refuseVolume("send exactly one of 'value', 'step' and 'muted'");
+
+    VolumeRequest request;
+
+    if (const auto value = root.find("value"); value != root.end()) {
+        if (!value->is_number())
+            return refuseVolume("'value' must be a number");
+
+        request.form = VolumeRequest::Form::value;
+        request.value = value->get<double>();
+        return request;
+    }
+
+    if (const auto step = root.find("step"); step != root.end()) {
+        if (!step->is_string())
+            return refuseVolume("'step' must be 'up' or 'down'");
+
+        const auto direction = step->get<std::string>();
+        if (direction != "up" && direction != "down")
+            return refuseVolume("'step' must be 'up' or 'down'");
+
+        request.form = VolumeRequest::Form::step;
+        request.step = direction;
+        return request;
+    }
+
+    const auto muted = root.find("muted");
+    if (!muted->is_boolean())
+        return refuseVolume("'muted' must be a boolean");
+
+    request.form = VolumeRequest::Form::muted;
+    request.muted = muted->get<bool>();
     return request;
 }
 

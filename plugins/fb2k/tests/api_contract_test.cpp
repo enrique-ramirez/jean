@@ -808,3 +808,43 @@ TEST_CASE("no stream route answers a status contract/openapi.yaml does not docum
         CHECK(listed(undocumented) == std::string());
     }
 }
+
+// Every other case here compares the spec with a document or a status table, and each passes
+// just as happily for an operation that was published and never given a handler. What the router
+// answers for a path nothing serves is learned rather than restated, so rewording it cannot turn
+// this into a check that never fires.
+TEST_CASE("every operation contract/openapi.yaml publishes has a route behind it") {
+    const TestServer server;
+
+    const auto ask = [&server](const std::string& method, const std::string& path) {
+        auto client = server.client();
+        if (method == "GET")
+            return client.Get(path, TestServer::bearer());
+        if (method == "DELETE")
+            return client.Delete(path, TestServer::bearer());
+
+        return client.Post(path, TestServer::bearer(), "{}", "application/json");
+    };
+
+    const auto dialable = [](const std::string& path) {
+        std::string filled = "/api" + path;
+        for (auto open = filled.find('{'); open != std::string::npos; open = filled.find('{')) {
+            const auto close = filled.find('}', open);
+            const auto name = filled.substr(open, close - open + 1);
+            filled.replace(open, name.size(), name == "{id}" ? kPlaylistId : "0");
+        }
+        return filled;
+    };
+
+    for (const auto& route : publishedRoutes()) {
+        const auto name = route.method + " " + route.path;
+        INFO("route: ", name);
+
+        const auto unrouted = ask(route.method, "/api/no-route-is-published-here");
+        const auto answered = ask(route.method, dialable(route.path));
+
+        REQUIRE(unrouted);
+        REQUIRE(answered);
+        CHECK_FALSE((answered->status == unrouted->status && answered->body == unrouted->body));
+    }
+}

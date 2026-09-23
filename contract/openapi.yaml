@@ -21,7 +21,7 @@ info:
 
     Playlists are read and edited here and nowhere else. `GET /playlists` is the listing: every playlist the player holds, with its title, its item count, its position in the player's list, whether it is an autoplaylist, and the two generations that say what a client has to read again. There is no second answer to join it against. See `PlaylistAnnotation`.
 
-    What [beefweb](https://github.com/hyperblast/beefweb) is still for is the playback commands, pause, next, previous, stop, seek, volume and playback order, and serving a client its own page. Starting playback is here, because a row is addressed by playlist: `POST /playlists/{id}/items/{index}/play`. The discovery record a client finds this component through is beefweb's too; see `DiscoveryRecord`.
+    [beefweb](https://github.com/hyperblast/beefweb) is for serving a client its own page, and for the discovery record a client finds this component through; see `DiscoveryRecord`. The playback commands are here: `/playback/*` for pause, next, previous, stop, seek and the playback mode, `/volume` for the level, a step and mute, and `POST /playlists/{id}/items/{index}/play` for starting a row, because a row is addressed by playlist.
 
     ## Versioning
 
@@ -1455,6 +1455,182 @@ paths:
         "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
+  /playback/play-pause:
+    post:
+      tags: [player]
+      operationId: playPause
+      summary: Toggle between playing and paused.
+      description: |
+        Whether that means resuming a paused track or starting one again from a stop is foobar2000's own call; this route asks for the toggle and does not choose. The answer comes once the player has been handed this command and run it, and nothing comes back beyond the status. Where playback landed reaches a client through `GET /state`'s `playback`, not this answer.
+
+        Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+      responses:
+        "204":
+          description: Toggled.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+
+  /playback/next:
+    post:
+      tags: [player]
+      operationId: nextTrack
+      summary: Advance to the next track.
+      description: |
+        Which track that is, and in what order, is foobar2000's own current playback mode; this route does not read or choose one. The answer comes once the player has been handed this command and run it. Where playback landed reaches a client through `GET /state`'s `playingLocation`, not this answer.
+
+        Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+      responses:
+        "204":
+          description: Advanced.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+
+  /playback/previous:
+    post:
+      tags: [player]
+      operationId: previousTrack
+      summary: Move to the previous track.
+      description: |
+        The answer comes once the player has been handed this command and run it. Where playback landed reaches a client through `GET /state`'s `playingLocation`, not this answer.
+
+        Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+      responses:
+        "204":
+          description: Moved.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+
+  /playback/stop:
+    post:
+      tags: [player]
+      operationId: stop
+      summary: Stop playback.
+      description: |
+        The answer comes once the player has been handed this command and run it. `GET /state`'s `playback` reports `stopped` once the player has caught up.
+      responses:
+        "204":
+          description: Stopped.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+
+  /playback/seek:
+    post:
+      tags: [player]
+      operationId: seek
+      summary: Move the playing track's position.
+      description: |
+        Exactly one of `seconds`, an absolute position, and `relativeSeconds`, an offset from wherever the player is now. Naming both or naming neither is a `400`, read off which field is present and never off what it holds: `{"seconds": 0}` is a seek to the start and is not the same as sending nothing.
+
+        The answer comes once the player has been handed this command and run it. Where the seek landed reaches a client through `GET /state`'s `position`, not this answer.
+
+        Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaybackSeekRequest" }
+            examples:
+              absolute:
+                summary: Jump to 90 seconds in.
+                value: { seconds: 90 }
+              relative:
+                summary: Back up ten seconds.
+                value: { relativeSeconds: -10 }
+      responses:
+        "204":
+          description: Sought.
+        "400":
+          description: |
+            The body is not JSON, names neither `seconds` nor `relativeSeconds`, names both, or carries one of them with the wrong type.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaybackSeekRefusal" }
+              examples:
+                twoForms:
+                  value: { error: unacceptable seek, detail: "'seconds' and 'relativeSeconds' were both present; send exactly one" }
+                neitherForm:
+                  value: { error: unacceptable seek, detail: "send exactly one of 'seconds' and 'relativeSeconds'" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+
+  /playback/mode:
+    post:
+      tags: [player]
+      operationId: setPlaybackMode
+      summary: Put the player into a playback order, by name.
+      description: |
+        `mode` is one of the seven names `PlaybackMode` publishes. Neither foobar2000's own string nor its ordinal ever crosses this API in either direction: the name is resolved to the player's own order index inside the component, off the same list `GET /capabilities`'s `playbackModes` is built from.
+
+        A name outside `PlaybackMode` is a `400`. A name inside it that this install does not offer, because it is missing from `GET /capabilities`'s `playbackModes`, is a `409`: the request is well formed and the player is the reason it cannot be met, the same reading `POST /tags` already gives an address it cannot place.
+
+        The answer comes once the player has been handed this command and run it. Where the mode landed reaches a client through `GET /state`'s `playbackMode`, not this answer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaybackModeRequest" }
+            examples:
+              shuffle:
+                value: { mode: shuffleTracks }
+      responses:
+        "204":
+          description: Set.
+        "400":
+          description: |
+            The body is not JSON, carries no `mode`, or names something that is not one of `PlaybackMode`'s own values.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaybackModeRefusal" }
+              examples:
+                unknownName:
+                  value: { error: unacceptable mode, detail: "'shuffleRecords' is not a playback mode this API knows" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/PlaybackModeUnavailable" }
+        "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+
+  /volume:
+    post:
+      tags: [player]
+      operationId: setVolume
+      summary: Set the player's level, step it, or mute it.
+      description: |
+        Exactly one of `value`, a level in `GET /capabilities`'s `volumeMin`..`volumeMax`; `step`, one player-defined nudge in the direction named; and `muted`, set rather than toggled. Naming two of them or naming none is a `400`, read off which field is present and never off what it holds: `{"value": 0}` is a legal level and `{"muted": false}` is a legal unmute, and a check written against truthiness refuses both.
+
+        `step`'s size is whatever foobar2000 is configured to step by; this route does not invent one, through `playback_control::volume_up`/`volume_down`.
+
+        The answer comes once the player has been handed this command and run it. Where the level and the mute flag landed reach a client through `GET /state`'s `volume` and `muted`, not this answer.
+
+        Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VolumeRequest" }
+            examples:
+              level:
+                summary: Set the level directly, at the mute floor.
+                value: { value: -100 }
+              stepUp:
+                value: { step: up }
+              mute:
+                value: { muted: true }
+      responses:
+        "204":
+          description: Set.
+        "400":
+          description: |
+            The body is not JSON, names none of `value`, `step` and `muted`, names more than one of them, `step` is anything but `"up"` or `"down"`, or a named field carries the wrong type.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VolumeRefusal" }
+              examples:
+                twoForms:
+                  value: { error: unacceptable volume, detail: "send exactly one of 'value', 'step' and 'muted'" }
+                badStep:
+                  value: { error: unacceptable volume, detail: "'step' must be 'up' or 'down'" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/VolumeUnavailable" }
+
   /state:
     get:
       tags: [player, library]
@@ -2741,6 +2917,36 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
 
+    PlaybackUnavailable:
+      description: |
+        The component could not reach the part of the player these transport commands run through.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: playback commands are not available }
+
+    PlaybackModeUnavailable:
+      description: |
+        `mode` is a `PlaybackMode` this API knows, but this install's own order list, `GET /capabilities`'s `playbackModes`, does not carry it. The request is well formed and the player is the reason it cannot be met; nothing was changed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            notOffered:
+              value: { error: this install does not offer that playback mode }
+
+    VolumeUnavailable:
+      description: |
+        The component could not reach the part of the player the level and the mute flag are read from and written to.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: volume is not available }
+
     LibraryRefused:
       description: |
         The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, or a `since` that is missing or not a whole number.
@@ -3098,6 +3304,96 @@ components:
       description: |
         Jean's own name for a playback order. `foo_jean` maps it both ways against whatever the player calls its own orders; neither foobar2000's own string nor its ordinal ever crosses this API.
       enum: [inOrder, repeatAll, repeatOne, random, shuffleTracks, shuffleAlbums, shuffleFolders]
+
+    PlaybackSeekRequest:
+      description: |
+        Exactly one of `seconds` and `relativeSeconds`. Naming both or naming neither is a `400`.
+      type: object
+      additionalProperties: false
+      properties:
+        seconds:
+          type: number
+          description: An absolute position in the playing track, in seconds from its start.
+          examples: [90]
+        relativeSeconds:
+          type: number
+          description: An offset from wherever the player is now, in seconds. Negative moves backward.
+          examples: [-10]
+
+    PlaybackModeRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { $ref: "#/components/schemas/PlaybackMode" }
+
+    VolumeRequest:
+      description: |
+        Exactly one of `value`, `step` and `muted`. Naming two of them or naming none is a `400`, read off which field is present and never off what it holds.
+      type: object
+      additionalProperties: false
+      properties:
+        value:
+          type: number
+          description: |
+            A level in `GET /capabilities`'s `volumeMin`..`volumeMax`, in `volumeUnit`. `0` is a legal level like any other in that range, read off its presence rather than its truth, and never the absence of one.
+          examples: [-8.5]
+        step:
+          type: string
+          enum: [up, down]
+          description: |
+            One player-defined nudge, sized however foobar2000 is configured to step: never a number, so the size stays the player's.
+          examples: [up]
+        muted:
+          type: boolean
+          description: |
+            Set rather than toggled: `true` mutes and `false` unmutes, whatever the player's mute state was before this arrived.
+          examples: [true]
+
+    PlaybackSeekRefusal:
+      description: |
+        A refusal the client can act on. The request was understood and declined before the player was involved.
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          enum: [unacceptable seek]
+        detail:
+          type: string
+          description: |
+            What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text.
+
+    PlaybackModeRefusal:
+      description: |
+        A refusal the client can act on. The request was understood and declined before the player was involved.
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          enum: [unacceptable mode]
+        detail:
+          type: string
+          description: |
+            What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text.
+
+    VolumeRefusal:
+      description: |
+        A refusal the client can act on. The request was understood and declined before the player was involved.
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          enum: [unacceptable volume]
+        detail:
+          type: string
+          description: |
+            What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text.
 
     StreamTimeline:
       type: object

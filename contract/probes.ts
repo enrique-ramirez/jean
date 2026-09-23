@@ -81,6 +81,42 @@ export const drives: Drive[] = [
 		probe: () => ({}),
 	},
 	{
+		// No body, no address, and so no shape of this request that both reaches the player
+		// and leaves it untouched: this toggles whatever a real listener's player is doing.
+		id: "playPause",
+		probe: () => ({}),
+	},
+	{
+		id: "nextTrack",
+		probe: () => ({}),
+	},
+	{
+		id: "previousTrack",
+		probe: () => ({}),
+	},
+	{
+		id: "stop",
+		probe: () => ({}),
+	},
+	{
+		// Naming neither `seconds` nor `relativeSeconds` is refused before the player is
+		// asked, so this pins the 400 shape without moving a real listener's position.
+		id: "seek",
+		probe: () => ({ body: {} }),
+	},
+	{
+		// Naming no `mode` is refused before the player is asked, so this pins the 400 shape
+		// without changing the order a real listener's next track comes from.
+		id: "setPlaybackMode",
+		probe: () => ({ body: {} }),
+	},
+	{
+		// Naming none of `value`, `step` and `muted` is refused before the player is asked,
+		// so this pins the 400 shape without moving a real listener's level.
+		id: "setVolume",
+		probe: () => ({ body: {} }),
+	},
+	{
 		id: "getState",
 		probe: () => ({}),
 		learns: (body, context) => {

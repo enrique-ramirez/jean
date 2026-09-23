@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <iterator>
 
 namespace jean {
 
@@ -42,6 +43,20 @@ std::optional<std::string> playerOrderFor(const std::string& jeanMode) {
         return std::nullopt;
 
     return std::string(found->order);
+}
+
+PlaybackModeIndex resolvePlaybackMode(const std::string& jeanMode,
+                                      const std::vector<std::string>& playbackOrders) {
+    const auto order = playerOrderFor(jeanMode);
+    if (!order)
+        return {PlaybackModeResolution::unknownMode, 0};
+
+    const auto found = std::find(playbackOrders.begin(), playbackOrders.end(), *order);
+    if (found == playbackOrders.end())
+        return {PlaybackModeResolution::notOffered, 0};
+
+    return {PlaybackModeResolution::ok,
+           static_cast<size_t>(std::distance(playbackOrders.begin(), found))};
 }
 
 }  // namespace jean

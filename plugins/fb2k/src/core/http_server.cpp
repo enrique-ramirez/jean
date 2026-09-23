@@ -5,6 +5,7 @@
 #include "core/json.h"
 #include "core/log.h"
 #include "core/pairing.h"
+#include "core/playback_modes.h"
 #include "core/rate_limit.h"
 #include "core/stream_ticket.h"
 #include "core/text.h"
@@ -59,6 +60,20 @@ constexpr char kLibraryRefreshPath[] = "/api/library/refresh";
 constexpr char kLibraryTrackPath[] = "/api/track/library";
 constexpr char kPlayingTrackPath[] = "/api/track/playing";
 constexpr char kQueuePath[] = "/api/queue";
+
+constexpr char kPlaybackPlayPausePath[] = "/api/playback/play-pause";
+constexpr char kPlaybackNextPath[] = "/api/playback/next";
+constexpr char kPlaybackPreviousPath[] = "/api/playback/previous";
+constexpr char kPlaybackStopPath[] = "/api/playback/stop";
+constexpr char kPlaybackSeekPath[] = "/api/playback/seek";
+constexpr char kPlaybackModePath[] = "/api/playback/mode";
+constexpr char kVolumePath[] = "/api/volume";
+
+constexpr char kNoPlayback[] = "playback commands are not available";
+
+constexpr char kModeNotOffered[] = "this install does not offer that playback mode";
+
+constexpr char kNoVolume[] = "volume is not available";
 
 constexpr char kNoStreaming[] = "streaming is not available";
 
@@ -2120,6 +2135,112 @@ struct HttpServer::Impl {
         respond(res, httpStatusFor(PlaylistOutcome::queueMoved),
                 playlistFailedDocument(playlistFailure(PlaylistOutcome::queueMoved)));
     }
+
+    void addTransportRoute(const char* path, Transport command) {
+        server.Post(path, [this, command](const httplib::Request&, httplib::Response& res) {
+            if (!player.commandTransport) {
+                respond(res, 503, errorDocument(kNoPlayback));
+                return;
+            }
+
+            player.commandTransport(command);
+            res.status = 204;
+        });
+    }
+
+    void addPlaybackRoutes() {
+        addTransportRoute(kPlaybackPlayPausePath, Transport::PlayPause);
+        addTransportRoute(kPlaybackNextPath, Transport::Next);
+        addTransportRoute(kPlaybackPreviousPath, Transport::Previous);
+        addTransportRoute(kPlaybackStopPath, Transport::Stop);
+
+        server.Post(kPlaybackSeekPath, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto request = parseSeek(req.body);
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal),
+                        playbackRefusedDocument(request.refusal, request.detail));
+                return;
+            }
+
+            if (!player.seek) {
+                respond(res, 503, errorDocument(kNoPlayback));
+                return;
+            }
+
+            player.seek(request.seconds, request.relative);
+            res.status = 204;
+        });
+
+        server.Post(kPlaybackModePath, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto request = parsePlaybackMode(req.body);
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal),
+                        playbackRefusedDocument(request.refusal, request.detail));
+                return;
+            }
+
+            const auto resolved = resolvePlaybackMode(request.mode, player.playbackOrders);
+            if (resolved.resolution == PlaybackModeResolution::unknownMode) {
+                respond(res, httpStatusFor(PlaybackRefusal::badMode),
+                        playbackRefusedDocument(PlaybackRefusal::badMode,
+                                                "'" + request.mode +
+                                                    "' is not a playback mode this API knows"));
+                return;
+            }
+
+            if (resolved.resolution == PlaybackModeResolution::notOffered) {
+                respond(res, 409, errorDocument(kModeNotOffered));
+                return;
+            }
+
+            if (!player.setPlaybackOrder) {
+                respond(res, 503, errorDocument(kNoPlayback));
+                return;
+            }
+
+            player.setPlaybackOrder(resolved.index);
+            res.status = 204;
+        });
+    }
+
+    void addVolumeRoute() {
+        server.Post(kVolumePath, [this](const httplib::Request& req, httplib::Response& res) {
+            const auto request = parseVolume(req.body);
+            if (!request.ok()) {
+                respond(res, httpStatusFor(request.refusal),
+                        playbackRefusedDocument(request.refusal, request.detail));
+                return;
+            }
+
+            switch (request.form) {
+                case VolumeRequest::Form::value:
+                    if (!player.setVolume) {
+                        respond(res, 503, errorDocument(kNoVolume));
+                        return;
+                    }
+                    player.setVolume(request.value);
+                    break;
+
+                case VolumeRequest::Form::step:
+                    if (!player.stepVolume) {
+                        respond(res, 503, errorDocument(kNoVolume));
+                        return;
+                    }
+                    player.stepVolume(request.step == "up" ? VolumeStep::Up : VolumeStep::Down);
+                    break;
+
+                case VolumeRequest::Form::muted:
+                    if (!player.setMuted) {
+                        respond(res, 503, errorDocument(kNoVolume));
+                        return;
+                    }
+                    player.setMuted(request.muted);
+                    break;
+            }
+
+            res.status = 204;
+        });
+    }
 };
 
 HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint,
@@ -2167,6 +2288,8 @@ ListenerStatus HttpServer::start() {
     impl.addTagRoutes();
     impl.addPlaylistRoutes();
     impl.addQueueRoutes();
+    impl.addPlaybackRoutes();
+    impl.addVolumeRoute();
     impl.addStreamRoutes();
     impl.addStateRoutes();
     impl.addArtworkRoute();

@@ -14,6 +14,7 @@
 #include "fb2k/library.h"
 #include "fb2k/main_thread.h"
 #include "fb2k/paths.h"
+#include "fb2k/playback_commands.h"
 #include "fb2k/playback_watch.h"
 #include "fb2k/player_mute.h"
 #include "fb2k/playlists.h"
@@ -69,6 +70,12 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.readPlaylistRows = makePlaylistRowReader(mainThread, playlistVersions);
     player.readChangedPlaylistRows = makeChangedPlaylistRowReader(mainThread, playlistVersions);
     player.playPlaylistRow = makePlaylistRowPlayer(mainThread);
+    player.commandTransport = makeTransportCommander(mainThread);
+    player.seek = makePlaybackSeeker(mainThread);
+    player.setPlaybackOrder = makePlaybackOrderSetter(mainThread);
+    player.setVolume = makeVolumeSetter(mainThread);
+    player.stepVolume = makeVolumeStepper(mainThread);
+    player.setMuted = makeMuteSetter(mainThread);
     player.readQueue = makeQueueReader(mainThread, playerState);
     player.queuePlaylistRows = makePlaylistRowQueuer(mainThread, playerState);
     player.queueLibraryTracks =

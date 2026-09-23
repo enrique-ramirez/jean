@@ -149,6 +149,56 @@ struct PlayRowRequest {
 // answer, since nothing in core/ knows how many rows a playlist holds.
 PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText);
 
+// The category `POST /playback/seek`, `POST /playback/mode` and `POST /volume` each refuse a
+// malformed body under, one apiece: contract/openapi.yaml's PlaybackSeekRefusal,
+// PlaybackModeRefusal and VolumeRefusal.
+enum class PlaybackRefusal { none, badSeek, badMode, badVolume };
+
+std::string describe(PlaybackRefusal refusal);
+
+int httpStatusFor(PlaybackRefusal refusal);
+
+std::string playbackRefusedDocument(PlaybackRefusal refusal, const std::string& detail);
+
+struct SeekRequest {
+    PlaybackRefusal refusal = PlaybackRefusal::none;
+    std::string detail;
+
+    double seconds = 0;
+    bool relative = false;
+
+    bool ok() const { return refusal == PlaybackRefusal::none; }
+};
+
+SeekRequest parseSeek(const std::string& body);
+
+struct PlaybackModeRequest {
+    PlaybackRefusal refusal = PlaybackRefusal::none;
+    std::string detail;
+
+    std::string mode;
+
+    bool ok() const { return refusal == PlaybackRefusal::none; }
+};
+
+PlaybackModeRequest parsePlaybackMode(const std::string& body);
+
+struct VolumeRequest {
+    enum class Form { value, step, muted };
+
+    PlaybackRefusal refusal = PlaybackRefusal::none;
+    std::string detail;
+
+    Form form = Form::value;
+    double value = 0;
+    std::string step;
+    bool muted = false;
+
+    bool ok() const { return refusal == PlaybackRefusal::none; }
+};
+
+VolumeRequest parseVolume(const std::string& body);
+
 // One entry in the play queue, as a client draws a row: the fixed fields a row shows, the
 // library path GET /api/artwork?track= takes where the media library holds the track, and
 // where the track sits in a playlist where it still has a position. `location` is unset for a

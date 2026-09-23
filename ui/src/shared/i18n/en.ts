@@ -365,7 +365,7 @@ export const en = {
 	"player.pause": "Pause",
 	"player.paused": "Paused",
 	"player.play": "Play",
-	"player.playbackOrder": "Playback order: {order}",
+	"player.playbackMode": "Playback order: {order}",
 	"player.playing": "Playing",
 	"player.position": "Playback position",
 	"player.showCurrentTrack": "Show current track",

@@ -296,7 +296,7 @@
 	"player.pause": "Pausar",
 	"player.paused": "En pausa",
 	"player.play": "Reproducir",
-	"player.playbackOrder": "Orden de reproducción: {order}",
+	"player.playbackMode": "Orden de reproducción: {order}",
 	"player.playing": "Sonando",
 	"player.position": "Posición de reproducción",
 	"player.showCurrentTrack": "Mostrar la pista actual",

@@ -1441,9 +1441,30 @@ function parseSeek(body: unknown): ParsedSeek {
 			},
 		};
 
+	const value = record[field] as number;
+	if (!Number.isFinite(value))
+		return {
+			ok: false,
+			status: 400,
+			body: {
+				error: "unacceptable seek",
+				detail: `'${field}' must be a number this can hold`,
+			},
+		};
+
+	if (field === "seconds" && value < 0)
+		return {
+			ok: false,
+			status: 400,
+			body: {
+				error: "unacceptable seek",
+				detail: "'seconds' must not be negative",
+			},
+		};
+
 	return field === "seconds"
-		? { ok: true, seconds: record.seconds as number }
-		: { ok: true, relativeSeconds: record.relativeSeconds as number };
+		? { ok: true, seconds: value }
+		: { ok: true, relativeSeconds: value };
 }
 
 const VOLUME_FIELDS = ["value", "step", "muted"] as const;
@@ -1452,7 +1473,10 @@ type ParsedVolume =
 	| { ok: true; value?: number; step?: "up" | "down"; muted?: boolean }
 	| { ok: false; status: number; body: { error: string; detail: string } };
 
-function parseVolume(body: unknown): ParsedVolume {
+function parseVolume(
+	body: unknown,
+	range: { min: number; max: number },
+): ParsedVolume {
 	if (typeof body !== "object" || body === null || Array.isArray(body))
 		return {
 			ok: false,
@@ -1491,6 +1515,24 @@ function parseVolume(body: unknown): ParsedVolume {
 				body: {
 					error: "unacceptable volume",
 					detail: "'value' must be a number",
+				},
+			};
+		if (!Number.isFinite(record.value))
+			return {
+				ok: false,
+				status: 400,
+				body: {
+					error: "unacceptable volume",
+					detail: "'value' must be a number this can hold",
+				},
+			};
+		if (record.value < range.min || record.value > range.max)
+			return {
+				ok: false,
+				status: 400,
+				body: {
+					error: "unacceptable volume",
+					detail: `'value' must be between ${range.min} and ${range.max}`,
 				},
 			};
 		return { ok: true, value: record.value };
@@ -1993,7 +2035,10 @@ export async function handleAgent({
 
 	if (method === "POST" && path === "/api/volume") {
 		if (state.latency > 0) await delay(state.latency);
-		const parsed = parseVolume(body);
+		const parsed = parseVolume(body, {
+			min: state.player.volume.min,
+			max: state.player.volume.max,
+		});
 		if (!parsed.ok) return json(response, parsed.body, parsed.status);
 		if (parsed.value !== undefined) state.patchPlayer({ volume: parsed.value });
 		else if (parsed.step !== undefined)

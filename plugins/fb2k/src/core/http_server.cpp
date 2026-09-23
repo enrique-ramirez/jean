@@ -1885,14 +1885,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            const auto outcome = player.playPlaylistRow(request.playlistId, request.index);
-            if (outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(outcome),
-                        playlistFailedDocument(playlistFailure(outcome)));
-                return;
-            }
-
-            res.status = 204;
+            answerCommand(res, player.playPlaylistRow(request.playlistId, request.index));
         });
     }
 
@@ -2136,6 +2129,15 @@ struct HttpServer::Impl {
                 playlistFailedDocument(playlistFailure(PlaylistOutcome::queueMoved)));
     }
 
+    static void answerCommand(httplib::Response& res, PlaylistOutcome outcome) {
+        if (outcome == PlaylistOutcome::done) {
+            res.status = 204;
+            return;
+        }
+
+        respond(res, httpStatusFor(outcome), playlistFailedDocument(playlistFailure(outcome)));
+    }
+
     void addTransportRoute(const char* path, Transport command) {
         server.Post(path, [this, command](const httplib::Request&, httplib::Response& res) {
             if (!player.commandTransport) {
@@ -2143,8 +2145,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            player.commandTransport(command);
-            res.status = 204;
+            answerCommand(res, player.commandTransport(command));
         });
     }
 
@@ -2167,8 +2168,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            player.seek(request.seconds, request.relative);
-            res.status = 204;
+            answerCommand(res, player.seek(request.seconds, request.relative));
         });
 
         server.Post(kPlaybackModePath, [this](const httplib::Request& req, httplib::Response& res) {
@@ -2198,14 +2198,13 @@ struct HttpServer::Impl {
                 return;
             }
 
-            player.setPlaybackOrder(resolved.index);
-            res.status = 204;
+            answerCommand(res, player.setPlaybackOrder(resolved.index));
         });
     }
 
     void addVolumeRoute() {
         server.Post(kVolumePath, [this](const httplib::Request& req, httplib::Response& res) {
-            const auto request = parseVolume(req.body);
+            const auto request = parseVolume(req.body, player.volumeMin, player.volumeMax);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal),
                         playbackRefusedDocument(request.refusal, request.detail));
@@ -2218,27 +2217,26 @@ struct HttpServer::Impl {
                         respond(res, 503, errorDocument(kNoVolume));
                         return;
                     }
-                    player.setVolume(request.value);
-                    break;
+                    answerCommand(res, player.setVolume(request.value));
+                    return;
 
                 case VolumeRequest::Form::step:
                     if (!player.stepVolume) {
                         respond(res, 503, errorDocument(kNoVolume));
                         return;
                     }
-                    player.stepVolume(request.step == "up" ? VolumeStep::Up : VolumeStep::Down);
-                    break;
+                    answerCommand(res, player.stepVolume(request.step == "up" ? VolumeStep::Up
+                                                                             : VolumeStep::Down));
+                    return;
 
                 case VolumeRequest::Form::muted:
                     if (!player.setMuted) {
                         respond(res, 503, errorDocument(kNoVolume));
                         return;
                     }
-                    player.setMuted(request.muted);
-                    break;
+                    answerCommand(res, player.setMuted(request.muted));
+                    return;
             }
-
-            res.status = 204;
         });
     }
 };

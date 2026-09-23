@@ -29,7 +29,7 @@ flowchart TB
   end
 
   bw -->|"discovery record"| shared
-  fj -->|"the library, REST and audio, same origin"| shared
+  fj -->|"the library, REST and audio"| shared
 ```
 
 Arrows inside the browser are import direction, and they point one way only.

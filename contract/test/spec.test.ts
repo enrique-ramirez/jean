@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+
+import { parse } from "yaml";
 
 import { type Context, drives } from "../probes.ts";
 import { conforms } from "../shape.ts";
@@ -120,6 +123,93 @@ test("playing a row is not one of the writes the read-only-playlists setting ref
 	assert.ok(
 		!play.published.has(403),
 		"a read-only instance now refuses a playback command as though it were an edit",
+	);
+});
+
+// Read uninlined, because the two 504s carry one body and only the reference tells them apart.
+const document = parse(
+	readFileSync(new URL("../openapi.yaml", import.meta.url), "utf8"),
+);
+
+const RESPONSES = "#/components/responses/";
+
+const responseNamed = (id: string, status: number) => {
+	for (const entry of Object.values(document.paths))
+		for (const one of Object.values(entry as Record<string, unknown>)) {
+			const found = one as {
+				operationId?: string;
+				responses?: Record<string, { $ref?: string }>;
+			};
+			if (found.operationId !== id) continue;
+
+			const ref = found.responses?.[status]?.$ref;
+			if (!ref?.startsWith(RESPONSES))
+				assert.fail(`${id} publishes no shared ${status}`);
+			return ref.slice(RESPONSES.length);
+		}
+
+	assert.fail(`the contract no longer publishes ${id}`);
+};
+
+const playerCommands = [
+	"playPause",
+	"nextTrack",
+	"previousTrack",
+	"stop",
+	"seek",
+	"setPlaybackMode",
+	"setVolume",
+];
+
+test("each player command says when the player refused it and when it ran out of time", () => {
+	for (const id of playerCommands) {
+		assert.equal(
+			responseNamed(id, 500),
+			"PlayerRefused",
+			`${id} does not say the player refused it`,
+		);
+
+		const tooSlow = responseNamed(id, 504);
+		assert.notEqual(
+			tooSlow,
+			"PlayerTooSlow",
+			`${id} tells a client to re-read the playlists for a command that moves playback`,
+		);
+
+		const published = document.components.responses[tooSlow];
+		assert.equal(
+			published.content["application/json"].schema.$ref,
+			"#/components/schemas/PlaylistFailed",
+			`${id}'s 504 is not the PlaylistFailed body the play-row route answers`,
+		);
+		assert.match(
+			published.description,
+			/GET \/state/,
+			`${id}'s 504 does not say GET /state is where a late command shows`,
+		);
+	}
+});
+
+test("a seek publishes that an absolute position is never negative, and an offset may be", () => {
+	const fields = operation("seek").body?.properties;
+	assert.ok(fields, "a seek publishes no request schema to read");
+
+	const seconds = fields.seconds as {
+		minimum?: number;
+		exclusiveMinimum?: number;
+	};
+	assert.equal(seconds.minimum, 0, "a negative seconds is published as a seek");
+	assert.equal(
+		seconds.exclusiveMinimum,
+		undefined,
+		"a seek to the start is published as refused",
+	);
+
+	const relative = fields.relativeSeconds as { minimum?: number };
+	assert.equal(
+		relative.minimum,
+		undefined,
+		"a seek backward is published as refused",
 	);
 });
 

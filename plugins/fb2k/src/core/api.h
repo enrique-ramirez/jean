@@ -197,7 +197,7 @@ struct VolumeRequest {
     bool ok() const { return refusal == PlaybackRefusal::none; }
 };
 
-VolumeRequest parseVolume(const std::string& body);
+VolumeRequest parseVolume(const std::string& body, double volumeMin, double volumeMax);
 
 // One entry in the play queue, as a client draws a row: the fixed fields a row shows, the
 // library path GET /api/artwork?track= takes where the media library holds the track, and

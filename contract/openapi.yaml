@@ -1463,12 +1463,16 @@ paths:
       description: |
         Whether that means resuming a paused track or starting one again from a stop is foobar2000's own call; this route asks for the toggle and does not choose. The answer comes once the player has been handed this command and run it, and nothing comes back beyond the status. Where playback landed reaches a client through `GET /state`'s `playback`, not this answer.
 
+        This route takes no body. One sent is ignored.
+
         Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
       responses:
         "204":
           description: Toggled.
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
   /playback/next:
     post:
@@ -1478,12 +1482,16 @@ paths:
       description: |
         Which track that is, and in what order, is foobar2000's own current playback mode; this route does not read or choose one. The answer comes once the player has been handed this command and run it. Where playback landed reaches a client through `GET /state`'s `playingLocation`, not this answer.
 
+        This route takes no body. One sent is ignored.
+
         Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
       responses:
         "204":
           description: Advanced.
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
   /playback/previous:
     post:
@@ -1493,12 +1501,16 @@ paths:
       description: |
         The answer comes once the player has been handed this command and run it. Where playback landed reaches a client through `GET /state`'s `playingLocation`, not this answer.
 
+        This route takes no body. One sent is ignored.
+
         Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
       responses:
         "204":
           description: Moved.
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
   /playback/stop:
     post:
@@ -1507,11 +1519,15 @@ paths:
       summary: Stop playback.
       description: |
         The answer comes once the player has been handed this command and run it. `GET /state`'s `playback` reports `stopped` once the player has caught up.
+
+        This route takes no body. One sent is ignored.
       responses:
         "204":
           description: Stopped.
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
   /playback/seek:
     post:
@@ -1541,7 +1557,7 @@ paths:
           description: Sought.
         "400":
           description: |
-            The body is not JSON, names neither `seconds` nor `relativeSeconds`, names both, or carries one of them with the wrong type.
+            The body is not JSON, names neither `seconds` nor `relativeSeconds`, names both, carries one of them with the wrong type, carries a negative `seconds`, or carries a `seconds` or `relativeSeconds` too large for the body to hold, such as `1e999`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PlaybackSeekRefusal" }
@@ -1551,7 +1567,9 @@ paths:
                 neitherForm:
                   value: { error: unacceptable seek, detail: "send exactly one of 'seconds' and 'relativeSeconds'" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
   /playback/mode:
     post:
@@ -1586,7 +1604,9 @@ paths:
                   value: { error: unacceptable mode, detail: "'shuffleRecords' is not a playback mode this API knows" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/PlaybackModeUnavailable" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
   /volume:
     post:
@@ -1619,7 +1639,7 @@ paths:
           description: Set.
         "400":
           description: |
-            The body is not JSON, names none of `value`, `step` and `muted`, names more than one of them, `step` is anything but `"up"` or `"down"`, or a named field carries the wrong type.
+            The body is not JSON, names none of `value`, `step` and `muted`, names more than one of them, `step` is anything but `"up"` or `"down"`, a named field carries the wrong type, `value` is outside `volumeMin`..`volumeMax`, or `value` is too large for the body to hold, such as `1e999`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/VolumeRefusal" }
@@ -1629,7 +1649,9 @@ paths:
                 badStep:
                   value: { error: unacceptable volume, detail: "'step' must be 'up' or 'down'" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/VolumeUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
   /state:
     get:
@@ -2927,6 +2949,13 @@ components:
             off:
               value: { error: playback commands are not available }
 
+    PlaybackTooSlow:
+      description: |
+        The player did not finish within 30 seconds. The command MAY still land afterwards, so a client MUST read `GET /state` rather than assume it did not.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
     PlaybackModeUnavailable:
       description: |
         `mode` is a `PlaybackMode` this API knows, but this install's own order list, `GET /capabilities`'s `playbackModes`, does not carry it. The request is well formed and the player is the reason it cannot be met; nothing was changed.
@@ -3313,6 +3342,7 @@ components:
       properties:
         seconds:
           type: number
+          minimum: 0
           description: An absolute position in the playing track, in seconds from its start.
           examples: [90]
         relativeSeconds:
@@ -3336,7 +3366,7 @@ components:
         value:
           type: number
           description: |
-            A level in `GET /capabilities`'s `volumeMin`..`volumeMax`, in `volumeUnit`. `0` is a legal level like any other in that range, read off its presence rather than its truth, and never the absence of one.
+            A level in `GET /capabilities`'s `volumeMin`..`volumeMax`, in `volumeUnit`. `0` is a legal level like any other in that range, read off its presence rather than its truth, and never the absence of one. A level outside that range is refused, never clamped onto it.
           examples: [-8.5]
         step:
           type: string

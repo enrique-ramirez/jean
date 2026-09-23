@@ -78,7 +78,7 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 | `POST /player/stop` · `/pause` · `/pause/toggle` · `/play-pause` | — | |
 | `POST /player/volume/up` · `/down` | — | one player-defined step |
 
-> **Nothing may address a playback mode by index.** The ordinal in `{ playbackMode }`, and in `options`' `playbackOrder` value, means whatever this install's enum says it means: order and wording both vary. `foo_jean` maps it to its own names instead, `contract/openapi.yaml`'s `PlaybackMode`.
+> **Nothing may address a playback mode by index.** The ordinal in `{ playbackMode }`, and the value `options` carries for the playback order, means whatever this install's enum says it means: order and wording both vary. `foo_jean` maps it to its own names instead, `contract/openapi.yaml`'s `PlaybackMode`.
 
 ### Playlists
 

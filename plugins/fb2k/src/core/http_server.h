@@ -198,13 +198,13 @@ using PlayingTrackReader =
 
 enum class Transport { PlayPause, Next, Previous, Stop };
 enum class VolumeStep { Up, Down };
-using TransportCommander = std::function<void(Transport)>;
-using PlaybackSeeker = std::function<void(double seconds, bool relative)>;
+using TransportCommander = std::function<PlaylistOutcome(Transport)>;
+using PlaybackSeeker = std::function<PlaylistOutcome(double seconds, bool relative)>;
 // `index` is a position in Player::playbackOrders.
-using PlaybackOrderSetter = std::function<void(size_t index)>;
-using VolumeSetter = std::function<void(double level)>;
-using VolumeStepper = std::function<void(VolumeStep)>;
-using MuteSetter = std::function<void(bool muted)>;
+using PlaybackOrderSetter = std::function<PlaylistOutcome(size_t index)>;
+using VolumeSetter = std::function<PlaylistOutcome(double level)>;
+using VolumeStepper = std::function<PlaylistOutcome(VolumeStep)>;
+using MuteSetter = std::function<PlaylistOutcome(bool muted)>;
 
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.

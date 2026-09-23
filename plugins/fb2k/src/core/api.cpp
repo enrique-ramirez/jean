@@ -743,8 +743,12 @@ SeekRequest parseSeek(const std::string& body) {
                           "' must be a number");
     }
 
+    const auto seconds = field.get<double>();
+    if (absolute && seconds < 0)
+        return refuseSeek("'seconds' must not be negative");
+
     SeekRequest request;
-    request.seconds = field.get<double>();
+    request.seconds = seconds;
     request.relative = relative;
     return request;
 }
@@ -767,7 +771,7 @@ PlaybackModeRequest parsePlaybackMode(const std::string& body) {
     return request;
 }
 
-VolumeRequest parseVolume(const std::string& body) {
+VolumeRequest parseVolume(const std::string& body, double volumeMin, double volumeMax) {
     const auto document = parseJsonObject(body);
     if (!document.ok())
         return refuseVolume(document.error);
@@ -787,8 +791,12 @@ VolumeRequest parseVolume(const std::string& body) {
         if (!value->is_number())
             return refuseVolume("'value' must be a number");
 
+        const auto level = value->get<double>();
+        if (level < volumeMin || level > volumeMax)
+            return refuseVolume("'value' must be between this install's volumeMin and volumeMax");
+
         request.form = VolumeRequest::Form::value;
-        request.value = value->get<double>();
+        request.value = level;
         return request;
     }
 

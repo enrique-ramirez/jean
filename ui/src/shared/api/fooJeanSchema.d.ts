@@ -538,6 +538,8 @@ export interface paths {
          * Toggle between playing and paused.
          * @description Whether that means resuming a paused track or starting one again from a stop is foobar2000's own call; this route asks for the toggle and does not choose. The answer comes once the player has been handed this command and run it, and nothing comes back beyond the status. Where playback landed reaches a client through `GET /state`'s `playback`, not this answer.
          *
+         *     This route takes no body. One sent is ignored.
+         *
          *     Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
          */
         post: operations["playPause"];
@@ -559,6 +561,8 @@ export interface paths {
         /**
          * Advance to the next track.
          * @description Which track that is, and in what order, is foobar2000's own current playback mode; this route does not read or choose one. The answer comes once the player has been handed this command and run it. Where playback landed reaches a client through `GET /state`'s `playingLocation`, not this answer.
+         *
+         *     This route takes no body. One sent is ignored.
          *
          *     Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
          */
@@ -582,6 +586,8 @@ export interface paths {
          * Move to the previous track.
          * @description The answer comes once the player has been handed this command and run it. Where playback landed reaches a client through `GET /state`'s `playingLocation`, not this answer.
          *
+         *     This route takes no body. One sent is ignored.
+         *
          *     Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
          */
         post: operations["previousTrack"];
@@ -603,6 +609,8 @@ export interface paths {
         /**
          * Stop playback.
          * @description The answer comes once the player has been handed this command and run it. `GET /state`'s `playback` reports `stopped` once the player has caught up.
+         *
+         *     This route takes no body. One sent is ignored.
          */
         post: operations["stop"];
         delete?: never;
@@ -1309,7 +1317,7 @@ export interface components {
         /** @description Exactly one of `value`, `step` and `muted`. Naming two of them or naming none is a `400`, read off which field is present and never off what it holds. */
         VolumeRequest: {
             /**
-             * @description A level in `GET /capabilities`'s `volumeMin`..`volumeMax`, in `volumeUnit`. `0` is a legal level like any other in that range, read off its presence rather than its truth, and never the absence of one.
+             * @description A level in `GET /capabilities`'s `volumeMin`..`volumeMax`, in `volumeUnit`. `0` is a legal level like any other in that range, read off its presence rather than its truth, and never the absence of one. A level outside that range is refused, never clamped onto it.
              * @example -8.5
              */
             value?: number;
@@ -2481,6 +2489,15 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The player did not finish within 30 seconds. The command MAY still land afterwards, so a client MUST read `GET /state` rather than assume it did not. */
+        PlaybackTooSlow: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
         /** @description `mode` is a `PlaybackMode` this API knows, but this install's own order list, `GET /capabilities`'s `playbackModes`, does not carry it. The request is well formed and the player is the reason it cannot be met; nothing was changed. */
@@ -3693,7 +3710,9 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
         };
     };
     nextTrack: {
@@ -3713,7 +3732,9 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
         };
     };
     previousTrack: {
@@ -3733,7 +3754,9 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
         };
     };
     stop: {
@@ -3753,7 +3776,9 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
         };
     };
     seek: {
@@ -3776,7 +3801,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The body is not JSON, names neither `seconds` nor `relativeSeconds`, names both, or carries one of them with the wrong type. */
+            /** @description The body is not JSON, names neither `seconds` nor `relativeSeconds`, names both, carries one of them with the wrong type, carries a negative `seconds`, or carries a `seconds` or `relativeSeconds` too large for the body to hold, such as `1e999`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3786,7 +3811,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
         };
     };
     setPlaybackMode: {
@@ -3820,7 +3847,9 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["PlaybackModeUnavailable"];
+            500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
         };
     };
     setVolume: {
@@ -3843,7 +3872,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The body is not JSON, names none of `value`, `step` and `muted`, names more than one of them, `step` is anything but `"up"` or `"down"`, or a named field carries the wrong type. */
+            /** @description The body is not JSON, names none of `value`, `step` and `muted`, names more than one of them, `step` is anything but `"up"` or `"down"`, a named field carries the wrong type, `value` is outside `volumeMin`..`volumeMax`, or `value` is too large for the body to hold, such as `1e999`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3853,7 +3882,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["PlayerRefused"];
             503: components["responses"]["VolumeUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
         };
     };
     getState: {

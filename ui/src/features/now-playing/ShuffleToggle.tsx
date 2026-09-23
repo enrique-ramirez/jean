@@ -22,7 +22,7 @@ export function ShuffleToggle({
 			disabled={!order.canShuffle}
 			title={
 				order.orderName
-					? t("player.playbackOrder", { order: order.orderName })
+					? t("player.playbackMode", { order: order.orderName })
 					: t("player.shuffle")
 			}
 			onClick={order.toggleShuffle}

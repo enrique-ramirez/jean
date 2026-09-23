@@ -85,6 +85,16 @@ constexpr std::array<Command, 7> kOneOfEach{{{kPlayPause, ""},
                                              {kMode, R"({"mode": "random"})"},
                                              {kVolume, R"({"step": "up"})"}}};
 
+constexpr std::array<Command, 9> kEveryForm{{{kPlayPause, ""},
+                                             {kNext, ""},
+                                             {kPrevious, ""},
+                                             {kStop, ""},
+                                             {kSeek, R"({"seconds": 30})"},
+                                             {kMode, R"({"mode": "random"})"},
+                                             {kVolume, R"({"value": -30})"},
+                                             {kVolume, R"({"step": "up"})"},
+                                             {kVolume, R"({"muted": true})"}}};
+
 constexpr std::array<const char*, 3> kRoutesWithABody{{kSeek, kMode, kVolume}};
 
 struct StockMode {
@@ -131,6 +141,8 @@ struct Commands {
     std::vector<VolumeStep> steps;
     std::vector<bool> mutes;
 
+    PlaylistOutcome answer = PlaylistOutcome::done;
+
     size_t count() const {
         return transports.size() + seeks.size() + orders.size() + levels.size() + steps.size() +
                mutes.size();
@@ -146,16 +158,35 @@ Player commanding(Commands* commands,
 
     player.commandTransport = [commands](Transport command) {
         commands->transports.push_back(command);
+        return commands->answer;
     };
     player.seek = [commands](double seconds, bool relative) {
         commands->seeks.push_back({seconds, relative});
+        return commands->answer;
     };
-    player.setPlaybackOrder = [commands](size_t index) { commands->orders.push_back(index); };
-    player.setVolume = [commands](double level) { commands->levels.push_back(level); };
-    player.stepVolume = [commands](VolumeStep step) { commands->steps.push_back(step); };
-    player.setMuted = [commands](bool muted) { commands->mutes.push_back(muted); };
+    player.setPlaybackOrder = [commands](size_t index) {
+        commands->orders.push_back(index);
+        return commands->answer;
+    };
+    player.setVolume = [commands](double level) {
+        commands->levels.push_back(level);
+        return commands->answer;
+    };
+    player.stepVolume = [commands](VolumeStep step) {
+        commands->steps.push_back(step);
+        return commands->answer;
+    };
+    player.setMuted = [commands](bool muted) {
+        commands->mutes.push_back(muted);
+        return commands->answer;
+    };
 
     return player;
+}
+
+json errorOf(const httplib::Response& response) {
+    const auto document = json::parse(response.body, nullptr, false);
+    return document.is_object() ? document.value("error", json()) : json();
 }
 
 void checkAnswered(const httplib::Result& response) {
@@ -164,7 +195,7 @@ void checkAnswered(const httplib::Result& response) {
     CHECK(response->body.empty());
 }
 
-void checkRefused(const TestServer& server, const Commands& commands, const std::string& path,
+json checkRefused(const TestServer& server, const Commands& commands, const std::string& path,
                   const std::string& body, int status) {
     const auto before = commands.count();
     const auto response = post(server, path, body);
@@ -172,8 +203,22 @@ void checkRefused(const TestServer& server, const Commands& commands, const std:
     INFO("POST ", path, " ", body);
     REQUIRE(response);
     CHECK(response->status == status);
-    CHECK(json::parse(response->body)["error"].is_string());
+    const auto error = errorOf(*response);
+    CHECK(error.is_string());
     CHECK(commands.count() == before);
+    return error;
+}
+
+void checkUnfinished(const TestServer& server, const Commands& commands, const Command& command,
+                     int status, const std::string& error) {
+    const auto before = commands.count();
+    const auto response = post(server, command.path, command.body);
+
+    INFO("POST ", command.path, " ", command.body);
+    REQUIRE(response);
+    CHECK(response->status == status);
+    CHECK(errorOf(*response) == error);
+    CHECK(commands.count() == before + 1);
 }
 
 json capabilitiesOf(const TestServer& server) {
@@ -200,6 +245,25 @@ TEST_CASE("each transport command is a 204 with no body, and reaches the player 
 
     CHECK(commands.transports.size() == kTransportRoutes.size());
     CHECK(commands.count() == kTransportRoutes.size());
+}
+
+TEST_CASE("a body sent to a transport command is ignored, and the player is asked for that command "
+          "alone") {
+    Commands commands;
+    const TestServer server(servingSettings(), commanding(&commands));
+
+    for (const auto& route : kTransportRoutes) {
+        INFO("POST ", route.path);
+        const auto before = commands.count();
+        checkAnswered(post(server, route.path, R"({"seconds": 5})"));
+
+        REQUIRE_FALSE(commands.transports.empty());
+        CHECK(commands.transports.back() == route.sent);
+        CHECK(commands.count() == before + 1);
+    }
+
+    CHECK(commands.transports.size() == kTransportRoutes.size());
+    CHECK(commands.seeks.empty());
 }
 
 TEST_CASE("a seek reaches the player as the seconds it named, and says whether they are relative") {
@@ -247,6 +311,66 @@ TEST_CASE("a seek naming both forms, or neither, is a 400 and never reaches the 
         checkRefused(server, commands, kSeek, body, 400);
 
     CHECK(commands.count() == 0);
+}
+
+TEST_CASE("a seek to a negative position is a 400 while a seek to 0 or a relative seek backward "
+          "lands") {
+    Commands commands;
+    const TestServer server(servingSettings(), commanding(&commands));
+
+    CHECK(checkRefused(server, commands, kSeek, R"({"seconds": -1})", 400) == "unacceptable seek");
+    CHECK(commands.count() == 0);
+
+    checkAnswered(post(server, kSeek, R"({"seconds": 0})"));
+    checkAnswered(post(server, kSeek, R"({"relativeSeconds": -10})"));
+
+    CHECK(commands.seeks.size() == 2);
+}
+
+TEST_CASE("a seek or a volume level too large to be a finite number is a 400") {
+    Commands commands;
+    const TestServer server(servingSettings(), commanding(&commands));
+
+    checkRefused(server, commands, kSeek, R"({"seconds": 1e999})", 400);
+    checkRefused(server, commands, kSeek, R"({"relativeSeconds": -1e999})", 400);
+    checkRefused(server, commands, kVolume, R"({"value": 1e999})", 400);
+
+    CHECK(commands.count() == 0);
+}
+
+TEST_CASE("a volume level at either end of the player's own range is a 204") {
+    Commands commands;
+    const TestServer server(servingSettings(), commanding(&commands));
+
+    checkAnswered(post(server, kVolume, R"({"value": -100})"));
+    checkAnswered(post(server, kVolume, R"({"value": 0})"));
+
+    CHECK(commands.levels == std::vector<double>{-100, 0});
+}
+
+TEST_CASE("a volume level past either end of the player's own range is a 400") {
+    Commands commands;
+    const TestServer server(servingSettings(), commanding(&commands));
+
+    for (const char* body : {R"({"value": -100.5})", R"({"value": 0.5})"})
+        CHECK(checkRefused(server, commands, kVolume, body, 400) == "unacceptable volume");
+
+    CHECK(commands.count() == 0);
+}
+
+TEST_CASE("a volume level is judged against the range this player publishes, not a fixed one") {
+    Commands commands;
+    Player player = commanding(&commands);
+    player.volumeMin = -50;
+    const TestServer server(servingSettings(), player);
+
+    REQUIRE(capabilitiesOf(server)["volumeMin"] == -50);
+
+    CHECK(checkRefused(server, commands, kVolume, R"({"value": -60})", 400) ==
+          "unacceptable volume");
+    checkAnswered(post(server, kVolume, R"({"value": -50})"));
+
+    CHECK(commands.levels == std::vector<double>{-50});
 }
 
 TEST_CASE("a volume level of 0 and an unmute are 204, and reach the player as those values") {
@@ -508,6 +632,24 @@ TEST_CASE("a run of commands faster than the playlist limit allows is answered e
     }
 
     CHECK(commands.count() == kHeldKey * kOneOfEach.size());
+}
+
+TEST_CASE("every command the player did not finish in time is a 504 saying so") {
+    Commands commands;
+    commands.answer = PlaylistOutcome::timedOut;
+    const TestServer server(servingSettings(), commanding(&commands));
+
+    for (const auto& command : kEveryForm)
+        checkUnfinished(server, commands, command, 504, "the player did not answer in time");
+}
+
+TEST_CASE("every command the player refused is a 500 saying so") {
+    Commands commands;
+    commands.answer = PlaylistOutcome::playerRefused;
+    const TestServer server(servingSettings(), commanding(&commands));
+
+    for (const auto& command : kEveryForm)
+        checkUnfinished(server, commands, command, 500, "the player could not do that");
 }
 
 // A null seam is how src/fb2k/ says an install switched a feature off.

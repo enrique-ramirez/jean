@@ -3,11 +3,15 @@ import {
 	expectSettlesAt,
 	type FakePlayer,
 	FOO_JEAN_TOKEN,
+	nowPlayingScreen,
+	openLibrary,
+	openNowPlaying,
 	openSettings,
 	type Page,
 	requestsTo,
 	settingsDialog,
 	test,
+	trackRow,
 } from "./fixtures.ts";
 
 const pairButton = (page: Page) =>
@@ -259,5 +263,38 @@ test.describe("a token the component stops accepting", () => {
 		player.fooJean.failState = 401;
 
 		await expectSettlesAt(player, () => probes(player), before + 1);
+	});
+
+	// The read after a timed-out rating is the one request that meets this
+	// route, so it is the only way a refusal there can be the first one Jean hears.
+	test.describe("and says so first on the read after a timed-out rating", () => {
+		test.use({ fooJean: { failWrites: 504, failLibraryTrack: 401 } });
+
+		test("is looked at again once, as a refused poll is", async ({
+			page,
+			player,
+		}) => {
+			const readBacks = () =>
+				requestsTo(player, "/api/track/library").filter(
+					(entry) => entry.method === "GET",
+				).length;
+
+			await openLibrary(page);
+			await trackRow(page, 2).dblclick();
+			await expect(page.locator("footer")).toContainText("Deléctrico");
+			await openNowPlaying(page);
+			const stars = nowPlayingScreen(page).getByRole("group", {
+				name: /stars|Unrated/,
+			});
+			await expect(stars).toBeVisible();
+
+			const before = probes(player);
+			await stars.getByRole("button", { name: "Rate 4 of 5" }).click();
+
+			await expectSettlesAt(player, () => [readBacks(), probes(player)], [
+				1,
+				before + 1,
+			]);
+		});
 	});
 });

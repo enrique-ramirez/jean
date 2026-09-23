@@ -38,7 +38,7 @@ Arrows inside the browser are import direction, and they point one way only.
 
 | Tier | Knows about |
 |---|---|
-| `shared/` | nothing about Jean. The beefweb client and wire types, generic UI, pure helpers, hooks, the keymap, the token layer |
+| `shared/` | nothing about Jean. The `foo_jean` client and wire types, player-state reading, the playback commands still sent to beefweb, generic UI, pure helpers, hooks, the keymap, the token layer |
 | `domain/` | what Jean is about, as data and behaviour with no route of its own |
 | `features/` | one folder per thing a user can do, each owning its own views |
 | `app/` | the shell that composes features: `App`, `Sidebar`, `CommandPalette`, theme, hash routing |

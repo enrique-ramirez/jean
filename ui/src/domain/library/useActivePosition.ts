@@ -5,7 +5,7 @@ import {
 } from "@/domain/player/usePlayer";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
-import { readTrack } from "@/shared/api/beefweb";
+import { readTrack } from "@/shared/api/playerState";
 import type { useScratchPlaylist } from "./useScratchPlaylist";
 
 export function useActivePosition({

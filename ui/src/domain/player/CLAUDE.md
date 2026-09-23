@@ -147,9 +147,7 @@ Three facts this rests on, all properties of the component rather than of one ne
 
 ## The gap a skip leaves
 
-**That gap is beefweb's, and `foo_jean`'s own state never had it.** `on_playback_stop` in `plugins/fb2k/src/fb2k/playback_watch.cpp` returns early for the outgoing track of a change, so the identity the poll answers, title, path, artwork, stands until the next track's `on_playback_new_track` replaces it, with nothing empty in between. `../../shared/api/README.md` has beefweb's own version of the trap, which is still real for anything that reads beefweb's `activeItem` directly.
-
-**`fetchActiveItemColumns` still does, since it still asks beefweb.** The per-track fetch behind the lyric and the details panel can answer with an empty row for the width of a manual skip even while the poll's own identity holds steady; `useNowPlayingTrack` treats that as no answer yet rather than as the track having changed.
+**That gap is beefweb's, and `foo_jean`'s own state never had it.** `on_playback_stop` in `plugins/fb2k/src/fb2k/playback_watch.cpp` returns early for the outgoing track of a change, so the identity the poll answers, title, path, artwork, stands until the next track's `on_playback_new_track` replaces it, with nothing empty in between. `../../shared/api/README.md` has beefweb's own version of the trap, real for a client reading `activeItem` from beefweb directly; nothing in `ui/src` does.
 
 ## Position
 

@@ -1,25 +1,25 @@
 import { useEffect } from "react";
 
 import { readValue } from "@/domain/track/fields";
-import { fetchActiveItemColumns } from "@/shared/api/beefweb";
-import {
-	LYRICS_EXPRESSIONS,
-	LYRICS_FIELD,
-	NOW_PLAYING_FIELD,
-} from "./nowPlayingFields";
+import { fetchPlayingTrack } from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
+import { LYRICS_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 
 const LOOK_AT = [2_000, 5_000, 10_000, 20_000];
 
 export function useLyricsRecheck() {
-	const { details, setLyrics } = useNowPlayingTrack();
-	const path = details?.path ?? null;
+	const { track, details, setLyrics } = useNowPlayingTrack();
+	const { discovery } = useFooJean();
+	const { origin, token } = discovery;
+	const path = track?.path ?? null;
+	const subsong = track?.subsong ?? 0;
 	const isBare =
 		details !== null &&
 		readValue(details.row[NOW_PLAYING_FIELD.lyrics]) === null;
 
 	useEffect(() => {
-		if (!isBare || path === null) return;
+		if (!isBare || path === null || !origin || !token) return;
 
 		const from = Date.now();
 		let look = 0;
@@ -27,14 +27,16 @@ export function useLyricsRecheck() {
 		let isCancelled = false;
 
 		const read = async () => {
-			const row = await fetchActiveItemColumns(LYRICS_EXPRESSIONS).catch(
-				() => null,
-			);
+			const answer = await fetchPlayingTrack(
+				origin,
+				token,
+				LYRICS_EXPRESSIONS,
+			).catch(() => null);
 			if (isCancelled) return;
 
 			const found =
-				row && row[LYRICS_FIELD.path] === path
-					? readValue(row[LYRICS_FIELD.lyrics])
+				answer && answer.path === path && answer.subsong === subsong
+					? readValue(answer.columns[0])
 					: null;
 
 			if (found === null) schedule();
@@ -56,5 +58,5 @@ export function useLyricsRecheck() {
 			isCancelled = true;
 			clearTimeout(timer);
 		};
-	}, [isBare, path, setLyrics]);
+	}, [isBare, path, subsong, origin, token, setLyrics]);
 }

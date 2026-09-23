@@ -24,6 +24,7 @@ import {
 	test,
 	trackRow,
 } from "./fixtures.ts";
+import { openPanels, panelTab, writeLyric } from "./nowPlaying.ts";
 
 // The fake serves `foo_jean` on a second port, so everything here crosses a
 // real origin boundary.
@@ -839,6 +840,49 @@ test.describe("when a library address names more than one track", () => {
 		});
 	});
 
+	// After the path form was refused, the ordinal is the only address that
+	// names the track the write went to, so it is the only one the read after a
+	// timeout can go back with. Without it the rating is unreadable for the rest
+	// of the session and a write that never landed goes unmentioned.
+	test.describe("a row whose retry by ordinal then times out", () => {
+		test.use({ fooJean: { twoRootsHold: I_STAY_AWAY, failWrites: 504 } });
+		test.skip(({ isMobile }) => Boolean(isMobile), ROWS_ARE_A_POINTER_CONTROL);
+
+		test("is read back by the same ordinal, and the track the rating did not reach is named", async ({
+			page,
+			player,
+		}) => {
+			await openAllMusic(page);
+			await expect(trackRow(page, 2)).toContainText("I Stay Away");
+			await nothingWrittenYet(player);
+			const said = await watchWhatIsSaid(page);
+
+			const before = player.requests.length;
+			await star(page, 2, 4).click();
+
+			await expectSettlesAt(player, () => asksSince(player, before), [
+				"POST /api/tags",
+				"POST /api/tags",
+				"GET /api/track/library",
+			]);
+			const read = player.requests
+				.slice(before)
+				.find((entry) => routeOf(entry.path) === "/api/track/library");
+			const asked = new URLSearchParams(read?.path.split("?")[1] ?? "");
+			expect({
+				track: asked.get("track"),
+				ordinal: asked.get("ordinal"),
+				structure: asked.get("structure"),
+			}).toEqual({
+				track: null,
+				ordinal: String(ordinalOf(player, I_STAY_AWAY)),
+				structure: String(player.libraryFeed.structure),
+			});
+
+			await expect.poll(said).toEqual([didNotLand("I Stay Away", 4)]);
+		});
+	});
+
 	test.describe("a row read from a playlist", () => {
 		test.use({ fooJean: { twoRootsHold: DELECTRICO } });
 		test.skip(({ isMobile }) => Boolean(isMobile), ROWS_ARE_A_POINTER_CONTROL);
@@ -984,7 +1028,7 @@ test.describe("a refusal that is not about the address", () => {
 		{ status: 500, costs: ["POST /api/tags"] },
 		// A `504` says nothing about whether the tag was written, so the one read
 		// back rides with it. The write itself still goes out once.
-		{ status: 504, costs: ["POST /api/tags", "GET /api/library/track"] },
+		{ status: 504, costs: ["POST /api/tags", "GET /api/track/library"] },
 	])
 		test.describe(`a ${status}`, () => {
 			test.use({ fooJean: { failWrites: status } });
@@ -1023,7 +1067,7 @@ test.describe("when a rating write times out", () => {
 	// read. A second of either is the defect these tests exist to rule out.
 	const WROTE_THEN_READ_THE_LIBRARY = [
 		"POST /api/tags",
-		"GET /api/library/track",
+		"GET /api/track/library",
 	];
 
 	const rateDelectrico = async (page: Page, player: FakePlayer) => {
@@ -1061,7 +1105,7 @@ test.describe("when a rating write times out", () => {
 			);
 			// The row's own address, not its album's: a read of the neighbour that
 			// happens to hold four stars would go quiet for the wrong reason.
-			expect(askedBy(player, before, "/api/library/track").get("track")).toBe(
+			expect(askedBy(player, before, "/api/track/library").get("track")).toBe(
 				DELECTRICO,
 			);
 
@@ -1088,7 +1132,7 @@ test.describe("when a rating write times out", () => {
 				() => asksSince(player, before),
 				WROTE_THEN_READ_THE_LIBRARY,
 			);
-			expect(askedBy(player, before, "/api/library/track").get("track")).toBe(
+			expect(askedBy(player, before, "/api/track/library").get("track")).toBe(
 				DELECTRICO,
 			);
 
@@ -1119,7 +1163,7 @@ test.describe("when a rating write times out", () => {
 				() => asksSince(player, before),
 				WROTE_THEN_READ_THE_LIBRARY,
 			);
-			expect(askedBy(player, before, "/api/library/track").get("track")).toBe(
+			expect(askedBy(player, before, "/api/track/library").get("track")).toBe(
 				FIZZ,
 			);
 
@@ -1762,7 +1806,7 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 			// ordering rather than about what the player agreed to.
 			await expectSettlesAt(player, () => asksSince(player, before), [
 				"POST /api/tags",
-				"GET /api/library/track",
+				"GET /api/track/library",
 			]);
 			expect(libraryRatingOf(player, DELECTRICO)).toBe("4");
 
@@ -1785,6 +1829,42 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 				saying(en["rate.failed"], { label: "Deléctrico", message: refusal }),
 			]);
 		});
+	});
+});
+
+test.describe("a lyric that lands while a rating is still being written", () => {
+	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+
+	test("leaves the star where it was put", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const writes = await holdTheWrites(page);
+		await openLibrary(page);
+		await trackRow(page, 3).dblclick();
+		await expect(page.locator("footer")).toContainText("Soy Rock");
+		await openNowPlaying(page);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("Unrated");
+
+		await starsOnScreen(page)
+			.getByRole("button", { name: "Rate 4 of 5" })
+			.click();
+		await expectSettlesAt(player, () => writes.sent.length, 1);
+
+		writeLyric(player, "Found while the rating was on its way");
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+		await expect(panel).toContainText("Found while the rating was on its way", {
+			timeout: 15_000,
+		});
+
+		// Settled first, so a re-read the lyric set off has had its chance to land.
+		await expectSettlesAt(player, () => libraryRatingOf(player, SOY_ROCK), "0");
+		await expect(starsOnScreen(page)).toHaveAccessibleName("4 of 5 stars");
+
+		writes.openTheDoor();
+		await expect.poll(() => libraryRatingOf(player, SOY_ROCK)).toBe("4");
 	});
 });
 
@@ -1831,13 +1911,10 @@ test.describe("the track actions on the now-playing screen", () => {
 		const answered = new Promise<void>((resolve) => {
 			answer = resolve;
 		});
-		// The screen's own read of the track. The update stream carries `trcolumns`
-		// too and must go on flowing, so the path has to be matched exactly.
 		await page.route(
-			(url) =>
-				url.pathname === "/api/query" && url.searchParams.has("trcolumns"),
+			(url) => url.pathname === "/api/track/playing",
 			async (route) => {
-				await answered;
+				if (route.request().method() === "GET") await answered;
 				await route.continue();
 			},
 		);

@@ -1,12 +1,14 @@
 import {
 	expect,
 	expectSettlesAt,
+	openNowPlaying,
 	openSidebar,
 	playRequests,
 	sidebar,
 	test,
 	viewHeader,
 } from "./fixtures.ts";
+import { openPanels, panelTab } from "./nowPlaying.ts";
 
 // Three states nothing else in the suite loads: a library with no tracks in it,
 // a library carrying no genre tags at all, and a library read that fails. All
@@ -130,5 +132,30 @@ test.describe("a library read that fails", () => {
 		await page.goto("/");
 
 		await expect(page.getByText(/Could not read your library/)).toBeVisible();
+	});
+});
+
+test.describe("a component that does not serve the library", () => {
+	test.use({
+		fooJean: { canReadLibrary: false },
+		retagged: { "Los Calientes": { "%publisher%": "Discos Manzana" } },
+	});
+
+	test("still fills the details of the track that is playing", async ({
+		page,
+		isMobile,
+	}) => {
+		await page.goto("/");
+		await page.request.post("/__control/play", {
+			data: { playlistId: "p5", index: 0 },
+		});
+		// Opened only once Jean has the track: it follows playback to the set it
+		// is playing from, and that navigation would close a screen opened sooner.
+		await expect(page).toHaveTitle(/^Los Calientes/);
+		await openNowPlaying(page);
+
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Details").click();
+		await expect(panel).toContainText("Discos Manzana");
 	});
 });

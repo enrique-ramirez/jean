@@ -1,4 +1,4 @@
-import { readTrack } from "@/shared/api/beefweb";
+import { readTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { listeningPosition } from "./listenerStore";
 

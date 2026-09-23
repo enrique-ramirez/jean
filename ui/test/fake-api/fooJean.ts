@@ -47,16 +47,30 @@ export interface FooJeanOptions {
 	// client's one retry is aimed at.
 	twoRootsHold?: string | null;
 
-	// Refuses GET /api/library/track with this status, which is the route a client
+	// Refuses GET /api/track/library with this status, which is the route a client
 	// reads one value back through. Nothing else answers there, so this reaches
 	// the read-back and no other traffic.
 	failLibraryTrack?: number | null;
 
-	// Holds GET /api/library/track open and never answers it, the way a player
+	// Holds GET /api/track/library open and never answers it, the way a player
 	// stalled behind its own work does. Not even late: a spec waiting to see what
 	// a client does about a read that did not come back is the whole of what this
 	// is for, and an answer arriving behind its back defeats every one of them.
 	hangLibraryTrack?: boolean;
+
+	// Refuses GET /api/track/playing with this status, shaped like `failLibraryTrack`.
+	failPlayingTrack?: number | null;
+
+	// Holds GET /api/track/playing open and never answers it, shaped like `hangLibraryTrack`.
+	hangPlayingTrack?: boolean;
+
+	// GET /api/track/playing answers this path rather than the playing track's own,
+	// leaving `subsong` and `columns` untouched.
+	playingTrackAnswersPath?: string | null;
+
+	// GET /api/track/playing answers this subsong rather than the playing track's own,
+	// leaving `path` and `columns` untouched.
+	playingTrackAnswersSubsong?: number | null;
 
 	// The rating the component reports having stored, whatever it was sent. A
 	// player that keeps ratings on a scale of its own rounds the value before it
@@ -176,6 +190,10 @@ const DEFAULTS: FooJeanFake = {
 	twoRootsHold: null,
 	failLibraryTrack: null,
 	hangLibraryTrack: false,
+	failPlayingTrack: null,
+	hangPlayingTrack: false,
+	playingTrackAnswersPath: null,
+	playingTrackAnswersSubsong: null,
 	storesRatingAs: null,
 	failState: null,
 	failQueue: null,
@@ -1420,7 +1438,7 @@ async function handleLibrary({
 
 	// One track's columns, addressed the way a cover is. It echoes no
 	// `libraryPath`, because the caller supplied the address.
-	if (path === "/api/library/track") {
+	if (path === "/api/track/library") {
 		if (fake.failLibraryTrack)
 			return json(
 				response,
@@ -1433,6 +1451,62 @@ async function handleLibrary({
 			await abandoned(response, STALLED_READ_MS);
 			return true;
 		}
+
+		const namesTrack =
+			url.searchParams.has("track") || url.searchParams.has("subsong");
+		const namesOrdinal = url.searchParams.has("ordinal");
+		if (namesTrack && namesOrdinal)
+			return json(
+				response,
+				{
+					error: "a request names one of 'track' and 'ordinal', never both",
+					detail: "",
+				},
+				400,
+			);
+
+		if (namesOrdinal) {
+			const ordinal = url.searchParams.get("ordinal") ?? "";
+			if (!/^\d+$/.test(ordinal) || Number(ordinal) > 0xffff_ffff)
+				return json(
+					response,
+					{ error: "'ordinal' must be a non-negative number", detail: "" },
+					400,
+				);
+			const structure = url.searchParams.get("structure") ?? "";
+			if (!/^\d+$/.test(structure))
+				return json(
+					response,
+					{
+						error: "'structure' is required and must be a non-negative number",
+						detail: "",
+					},
+					400,
+				);
+
+			const asked = url.searchParams.getAll("columns");
+			const refused = refuseColumns(asked);
+			if (refused) return json(response, refused, 400);
+
+			if (Number(structure) !== state.libraryFeed.structure)
+				return json(response, STRUCTURE_MOVED, 409);
+
+			const held = hasLibrarySnapshot(state)
+				? state.ordinalOrder()[Number(ordinal)]?.track
+				: null;
+			if (!held) return json(response, { error: "no such track" }, 404);
+
+			return json(response, {
+				columns: asked.map((expression) => evaluate(held, expression)),
+			});
+		}
+
+		if (!namesTrack)
+			return json(
+				response,
+				{ error: "'track' or 'ordinal' is required", detail: "" },
+				400,
+			);
 
 		const asked = url.searchParams.getAll("columns");
 		const refused = refuseColumns(asked);
@@ -1858,8 +1932,41 @@ export async function handleAgent({
 		return queueChanged();
 	}
 
-	if (path.startsWith("/api/library/"))
+	if (path.startsWith("/api/library/") || path === "/api/track/library")
 		return handleLibrary({ state, fake, method, path, url, headers, response });
+
+	// Outside handleLibrary on purpose: this route answers even in the window
+	// canReadLibrary gates every /api/library/ route behind.
+	if (path === "/api/track/playing") {
+		response.setHeader("Cache-Control", ASK_EVERY_TIME);
+
+		if (fake.failPlayingTrack)
+			return json(
+				response,
+				{ error: "the player could not read the playing track", detail: "" },
+				fake.failPlayingTrack,
+			);
+
+		if (fake.hangPlayingTrack) {
+			await abandoned(response, STALLED_READ_MS);
+			return true;
+		}
+
+		const asked = url.searchParams.getAll("columns");
+		const refused = refuseColumns(asked);
+		if (refused) return json(response, refused, 400);
+
+		const track = state.playingTrack();
+		if (!track) return json(response, { error: "nothing is playing" }, 404);
+
+		return json(response, {
+			path:
+				fake.playingTrackAnswersPath ?? String(evaluate(track, "%path%") ?? ""),
+			subsong:
+				fake.playingTrackAnswersSubsong ?? (Number(track["%subsong%"]) || 0),
+			columns: asked.map((expression) => evaluate(track, expression)),
+		});
+	}
 
 	if (path === "/api/artwork") {
 		const track = url.searchParams.get("track") ?? "";

@@ -1,4 +1,4 @@
-import type { Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	FOO_JEAN_TOKEN,
@@ -22,6 +22,65 @@ import {
 	TAGGED,
 	writeLyric,
 } from "./nowPlaying.ts";
+
+interface PlayingRead {
+	sentAt: number;
+	answeredAt?: number;
+}
+
+const recordPlayingReads = (page: Page) =>
+	page.addInitScript(() => {
+		const reads: { sentAt: number; answeredAt?: number }[] = [];
+		Object.assign(window, { playingReads: reads });
+		const send = window.fetch.bind(window);
+		window.fetch = (input, init) => {
+			const asked = new URL(String(input), location.href);
+			if (asked.pathname !== "/api/track/playing") return send(input, init);
+			const read: { sentAt: number; answeredAt?: number } = {
+				sentAt: Date.now(),
+			};
+			reads.push(read);
+			return send(input, init).then((response) => {
+				read.answeredAt = Date.now();
+				return response;
+			});
+		};
+	});
+
+const playingReads = (page: Page) =>
+	page.evaluate(
+		() => (window as unknown as { playingReads: PlayingRead[] }).playingReads,
+	);
+
+const firstReadAnswered = async (page: Page) => {
+	await expect
+		.poll(async () => (await playingReads(page))[0]?.answeredAt)
+		.toBeDefined();
+	return (await playingReads(page))[0].answeredAt as number;
+};
+
+const looksAt = async (page: Page) => {
+	const [first, ...looks] = await playingReads(page);
+	return looks.map((look) =>
+		Math.floor((look.sentAt - (first.answeredAt as number)) / 1_000),
+	);
+};
+
+const recheckColumnCounts = (player: FakePlayer) =>
+	requestsTo(player, "/api/track/playing")
+		.filter((entry) => entry.method === "GET")
+		.slice(1)
+		.map(
+			(entry) =>
+				new URLSearchParams(entry.path.split("?")[1] ?? "").getAll("columns")
+					.length,
+		);
+
+// See "A fake clock advances honestly only in small steps" in test/README.md.
+const runClockTo = async (page: Page, until: number) => {
+	while ((await page.evaluate(() => Date.now())) < until)
+		await page.clock.runFor(250);
+};
 
 test.describe("reading the lyric tag", () => {
 	test.use(TAGGED);
@@ -112,16 +171,74 @@ test.describe("reading the lyric tag", () => {
 		player,
 		isMobile,
 	}) => {
+		await page.clock.install();
+		await recordPlayingReads(page);
 		await playRow(page, 3);
 		const panel = await openPanels(page, isMobile);
 		await panelTab(panel, "Lyrics").click();
 		await expect(panel).toContainText("No lyrics found");
 
+		const from = await firstReadAnswered(page);
+		await runClockTo(page, from + 6_000);
 		writeLyric(player, "Searched for, and found");
+		await runClockTo(page, from + 30_000);
 
-		await expect(panel).toContainText("Searched for, and found", {
-			timeout: 15_000,
-		});
+		await expect(panel).toContainText("Searched for, and found");
+		expect(await looksAt(page)).toEqual([2, 5, 10]);
+		expect(recheckColumnCounts(player)).toEqual([1, 1, 1]);
+		expect(
+			player.requests.filter(
+				(entry) => entry.path.split("?")[0] === "/api/query",
+			),
+		).toEqual([]);
+	});
+
+	test("a lyric that never arrives is looked for four times and then left alone", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.clock.install();
+		await recordPlayingReads(page);
+		await playRow(page, 3);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+		await expect(panel).toContainText("No lyrics found");
+
+		const from = await firstReadAnswered(page);
+		await runClockTo(page, from + 45_000);
+
+		expect(await looksAt(page)).toEqual([2, 5, 10, 20]);
+		expect(recheckColumnCounts(player)).toEqual([1, 1, 1, 1]);
+		await expect(panel).toContainText("No lyrics found");
+	});
+
+	// A look still scheduled for the track that was left would ask the player
+	// about whatever is playing now, which is some other track entirely.
+	test("a track change ends the looks for the track it left", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.clock.install();
+		await recordPlayingReads(page);
+		await playRow(page, 3);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+		await expect(panel).toContainText("No lyrics found");
+
+		const from = await firstReadAnswered(page);
+		await runClockTo(page, from + 3_000);
+		expect(await looksAt(page)).toEqual([2]);
+
+		// Pendejo, which carries a lyric, so nothing after the change has a
+		// reason of its own to look again.
+		player.next();
+		await expect(panel).toContainText("Line 1");
+		const readsAtChange = (await playingReads(page)).length;
+
+		await runClockTo(page, from + 30_000);
+		expect(await playingReads(page)).toHaveLength(readsAtChange);
 	});
 });
 

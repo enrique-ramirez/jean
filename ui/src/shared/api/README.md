@@ -23,6 +23,8 @@ Verified against foobar2000 with the beefweb plugin. Where behaviour differs by 
 
 ## Reading state
 
+**Jean does not call either route on this page.** Player state and the library generations come from `foo_jean`'s own `GET /api/state`, a track's own columns from `foo_jean`'s `GET /api/track/playing`, and the playlist list and the queue from `foo_jean`'s own routes; what follows is a fact about beefweb, real for any client that has no other API to reach for them.
+
 ### `GET /api/query`
 
 One composite read. Any combination in one request.
@@ -307,7 +309,7 @@ Folder nodes carry `itemCount` and no columns; track nodes carry `subsong` and `
 
 > **Library paths are `/`-separated on every platform** and relative to the media library folders, even on Windows where `pathSeparator` from `/browser/roots` is `\`. Do not build them with `pathSeparator`.
 >
-> **The player and the library disagree about what a path is.** `activeItem`'s `%path%` is absolute and platform-separated; a library item's is relative and forward-slashed. Nothing tells a client where the library folders are, so the two are matched **by suffix** after normalising separators. A relative path is unique within the library, so it cannot collide. `libraryPathMatcher()` in `src/shared/api/beefweb.ts`.
+> **The player and the library disagree about what a path is.** `activeItem`'s `%path%` is absolute and platform-separated; a library item's is relative and forward-slashed. Nothing tells a client where the library folders are, so the two are matched **by suffix** after normalising separators. A relative path is unique within the library, so it cannot collide. `libraryPathMatcher()` in `src/shared/api/playerState.ts`.
 
 ### `GET /artwork/library?path=&subsong=`
 

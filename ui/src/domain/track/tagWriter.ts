@@ -71,17 +71,13 @@ const agentWriter = (
 		write: async (address, fields) =>
 			writeTags(origin, token, { ...addressFields(address), fields }),
 		read: async (address, column) => {
-			// `GET /api/library/track` names a track by the path form, so a write sent by an ordinal
-			// has no route to be read back through.
-			if (address.kind === "ordinal") return null;
-
-			const held = await (address.kind === "library"
-				? fetchLibraryTrack(origin, token, address.track, address.subsong, [
-						column,
-					]).then(({ columns }) => columns[0])
-				: fetchPlaylistRows(origin, token, address.playlist, address.index, 1, [
+			const held = await (address.kind === "playlist"
+				? fetchPlaylistRows(origin, token, address.playlist, address.index, 1, [
 						column,
 					]).then(({ items }) => items[0]?.columns[0])
+				: fetchLibraryTrack(origin, token, address, [column]).then(
+						({ columns }) => columns[0],
+					)
 			).catch(() => undefined);
 
 			// README.md: `?` is foobar2000 saying the field is absent, never a null.

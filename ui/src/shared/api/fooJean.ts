@@ -1,4 +1,5 @@
 import type { components } from "./fooJeanSchema";
+import type { TrackAddress } from "./types";
 
 type Schema = components["schemas"];
 
@@ -21,6 +22,7 @@ export type FillPlaylistRequest = Schema["FillPlaylistRequest"];
 export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
 export type FillResult = Schema["FillResult"];
 export type LibraryTrack = Schema["LibraryTrack"];
+export type PlayingTrackColumns = Schema["PlayingTrackColumns"];
 export type PlaylistPage = Schema["PlaylistPage"];
 export type PlaylistChanges = Schema["PlaylistChanges"];
 export type CreatePlaylistRequest = Schema["CreatePlaylistRequest"];
@@ -664,26 +666,60 @@ export async function fillPlaylist(
 const columnsQuery = (columns: readonly string[]) =>
 	columns.map((column) => `columns=${encodeURIComponent(column)}`).join("&");
 
+export type LibraryTrackAddress = Extract<
+	TrackAddress,
+	{ kind: "library" | "ordinal" }
+>;
+
+const libraryTrackAddressQuery = (address: LibraryTrackAddress) =>
+	address.kind === "library"
+		? `track=${encodeURIComponent(address.track)}&subsong=${address.subsong}`
+		: `ordinal=${address.ordinal}&structure=${address.structure}`;
+
 // foo_jean sends a library delta when it notices a change rather than when a client asks, so this is
 // the only way to read one track's current values back.
 export async function fetchLibraryTrack(
 	origin: string,
 	token: string,
-	track: string,
-	subsong: number,
+	address: LibraryTrackAddress,
 	columns: readonly string[],
 ): Promise<LibraryTrack> {
 	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
 		fetch(
-			`${origin}/api/library/track?track=${encodeURIComponent(track)}&subsong=${subsong}&${columnsQuery(columns)}`,
+			`${origin}/api/track/library?${libraryTrackAddressQuery(address)}&${columnsQuery(columns)}`,
 			{ headers: bearer(token), signal },
 		),
 	);
-	if (!response.ok)
+	if (!response.ok) {
+		noteTokenRefused(response.status);
 		throw new Error(`GET library track failed: ${response.status}`, {
 			cause: response.status,
 		});
+	}
 	return (await response.json()) as LibraryTrack;
+}
+
+// A read behind a visible panel is not sized for foobar2000 writing tags to disk.
+const READ_TIMEOUT_MS = 8_000;
+
+export async function fetchPlayingTrack(
+	origin: string,
+	token: string,
+	columns: readonly string[],
+): Promise<PlayingTrackColumns> {
+	const response = await withTimeout(READ_TIMEOUT_MS, (signal) =>
+		fetch(`${origin}/api/track/playing?${columnsQuery(columns)}`, {
+			headers: bearer(token),
+			signal,
+		}),
+	);
+	if (!response.ok) {
+		noteTokenRefused(response.status);
+		throw new Error(`GET playing track failed: ${response.status}`, {
+			cause: response.status,
+		});
+	}
+	return (await response.json()) as PlayingTrackColumns;
 }
 
 export async function fetchPlaylistRows(

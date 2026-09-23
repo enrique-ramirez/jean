@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
-import { readTrack } from "@/shared/api/beefweb";
+import { readTrack } from "@/shared/api/playerState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { type PlaybackBadge, setFavicon } from "./favicon";
 import { useMediaSession } from "./useMediaSession";

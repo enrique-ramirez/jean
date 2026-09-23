@@ -63,26 +63,9 @@ export async function handleApi({
 		return streamUpdates({ state, url, response });
 	}
 
-	if (method === "GET" && head === "query") {
-		const trcolumns = parseColumns(url.searchParams.get("trcolumns"));
-		const qcolumns = parseColumns(url.searchParams.get("qcolumns"));
-		const payload: UpdatePayload = {};
-		if (url.searchParams.get("player") === "true")
-			payload.player = state.playerPayload(trcolumns);
-		if (url.searchParams.get("playlists") === "true")
-			payload.playlists = state.playlistsPayload();
-		if (url.searchParams.get("playQueue") === "true")
-			payload.playQueue = state.queuePayload(qcolumns);
-		return json(response, payload);
-	}
-
 	if (head === "player") {
 		if (method === "GET") {
-			// Ignores trcolumns and always returns an empty columns array. The real
-			// endpoint does the same, so now-playing text has to come from /api/query
-			// instead. Not obviously intentional from this route alone; do not "fix"
-			// it to honour trcolumns without checking a real player first.
-			return json(response, { player: { ...state.playerPayload([]) } });
+			return json(response, { player: { ...state.playerPayload() } });
 		}
 		if (method === "POST" && rest.length === 0) {
 			state.patchPlayer(body ?? {});
@@ -251,7 +234,6 @@ function streamUpdates({
 	url,
 	response,
 }: Pick<ApiRequest, "state" | "url" | "response">) {
-	const trcolumns = parseColumns(url.searchParams.get("trcolumns"));
 	const qcolumns = parseColumns(url.searchParams.get("qcolumns"));
 	const wantsPlayer = url.searchParams.get("player") === "true";
 	const wantsQueue = url.searchParams.get("playQueue") === "true";
@@ -267,14 +249,13 @@ function streamUpdates({
 		response.write(`data: ${JSON.stringify(payload)}\n\n`);
 
 	const snapshot: UpdatePayload = {};
-	if (wantsPlayer) snapshot.player = state.playerPayload(trcolumns);
+	if (wantsPlayer) snapshot.player = state.playerPayload();
 	if (wantsQueue) snapshot.playQueue = state.queuePayload(qcolumns);
 	send(snapshot);
 
 	const unsubscribe = state.subscribe((changed) => {
 		const payload: UpdatePayload = {};
-		if (changed.player && wantsPlayer)
-			payload.player = state.playerPayload(trcolumns);
+		if (changed.player && wantsPlayer) payload.player = state.playerPayload();
 		if (changed.playQueue && wantsQueue)
 			payload.playQueue = state.queuePayload(qcolumns);
 		if (Object.keys(payload).length > 0) send(payload);

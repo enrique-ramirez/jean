@@ -1,10 +1,12 @@
 import { KEYMAP } from "../../src/shared/keyboard/keymap.ts";
-import type { Page } from "./fixtures.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	requestsTo,
 	test,
 	touchDrag,
 	trackRow,
@@ -452,5 +454,250 @@ test.describe("a title wider than the screen", () => {
 				`${await inside.textContent()} runs past the right edge`,
 			).toBeLessThanOrEqual(edge + 1);
 		}
+	});
+});
+
+const PUBLISHED = {
+	retagged: {
+		"Los Calientes": { "%publisher%": "Discos Uno" },
+		Fizz: { "%publisher%": "Discos Dos" },
+		Deléctrico: { "%publisher%": "Discos Tres" },
+	},
+};
+
+const READING = "Reading the tags…";
+
+const openDetails = async (page: Page, isMobile: boolean) => {
+	const panel = await openPanels(page, isMobile);
+	await panelTab(panel, "Details").click();
+	await expectPanelOpen(panel, "Details");
+	return panel;
+};
+
+const detailRows = (panel: Locator) => panel.getByRole("term");
+
+const playingReads = (player: FakePlayer) =>
+	requestsTo(player, "/api/track/playing").filter(
+		(entry) => entry.method === "GET",
+	);
+
+const watchWhatIsSaid = async (page: Page) => {
+	await page.evaluate(() => {
+		const said: string[] = [];
+		(window as unknown as { said: string[] }).said = said;
+		new MutationObserver(() => {
+			for (const layer of document.querySelectorAll('[role="status"]')) {
+				const text = layer.textContent ?? "";
+				if (text && !said.includes(text)) said.push(text);
+			}
+		}).observe(document.body, {
+			childList: true,
+			subtree: true,
+			characterData: true,
+		});
+	});
+
+	return () =>
+		page.evaluate(() => (window as unknown as { said: string[] }).said);
+};
+
+test.describe("the details read", () => {
+	test.use(PUBLISHED);
+
+	test("fills the panel from foo_jean and asks beefweb nothing", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await playRow(page, 0);
+		const panel = await openDetails(page, isMobile);
+
+		await expect(panel).toContainText("Discos Uno");
+		expect(playingReads(player).length).toBeGreaterThan(0);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/api/query").length,
+			0,
+		);
+	});
+
+	test("an answer for another track is never drawn, and the track is read again when it plays again", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		player.fooJean.playingTrackAnswersPath = "Elsewhere/Overtaken.flac";
+
+		await playRow(page, 0);
+		const panel = await openDetails(page, isMobile);
+
+		await expectSettlesAt(player, () => playingReads(player).length > 0, true);
+		await expect(detailRows(panel)).toHaveCount(0);
+		await expect(panel).not.toContainText("Discos Uno");
+
+		player.fooJean.playingTrackAnswersPath = null;
+		player.next();
+		await expect(panel).toContainText("Discos Dos");
+		player.previous();
+		await expect(panel).toContainText("Discos Uno");
+	});
+
+	test("an answer for another track in the same file is never drawn", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		player.fooJean.playingTrackAnswersSubsong = 1;
+
+		await playRow(page, 0);
+		const panel = await openDetails(page, isMobile);
+
+		await expectSettlesAt(player, () => playingReads(player).length > 0, true);
+		await expect(detailRows(panel)).toHaveCount(0);
+		await expect(panel).not.toContainText("Discos Uno");
+	});
+});
+
+test.describe("while the read is in flight", () => {
+	test.use({ ...PUBLISHED, fooJean: { hangPlayingTrack: true } });
+
+	test("both panels say they are reading, and draw nothing else", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await playRow(page, 0);
+		const panel = await openDetails(page, isMobile);
+
+		await expect(panel).toContainText(READING);
+		await expectSettlesAt(player, () => playingReads(player).length > 0, true);
+		await expect(panel).toContainText(READING);
+		await expect(detailRows(panel)).toHaveCount(0);
+
+		await panelTab(panel, "Lyrics").click();
+		await expect(panel).toContainText("Reading the tag…");
+	});
+
+	test("an unanswered read is given up inside eight seconds", async ({
+		page,
+		isMobile,
+	}) => {
+		await page.clock.install();
+		await page.addInitScript(() => {
+			const send = window.fetch.bind(window);
+			window.fetch = (input, init) => {
+				if (String(input).includes("/api/track/playing"))
+					Object.assign(window, { readSentAt: Date.now() });
+				return send(input, init);
+			};
+		});
+		await playRow(page, 0);
+		const panel = await openDetails(page, isMobile);
+		await expect(panel).toContainText(READING);
+
+		const sentAt = await page.evaluate(
+			() => (window as unknown as { readSentAt: number }).readSentAt,
+		);
+		// See "A fake clock advances honestly only in small steps" in test/README.md.
+		await page.clock.pauseAt(sentAt + 8_250);
+		await expect
+			.poll(async () => {
+				await page.clock.runFor(10);
+				return panel.textContent();
+			})
+			.not.toContain(READING);
+		await expect(detailRows(panel)).toHaveCount(0);
+	});
+});
+
+test.describe("the reading notice", () => {
+	test.use(PUBLISHED);
+
+	test("is drawn once for each track change and not again", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await playRow(page, 0);
+		const panel = await openDetails(page, isMobile);
+		await expect(panel).toContainText("Discos Uno");
+
+		await page.evaluate((reading) => {
+			const counted = { times: 0 };
+			(window as unknown as { notices: typeof counted }).notices = counted;
+			let showing = false;
+			const look = () => {
+				const now = document.body.innerText.includes(reading);
+				if (now && !showing) counted.times += 1;
+				showing = now;
+			};
+			new MutationObserver(look).observe(document.body, {
+				childList: true,
+				subtree: true,
+				characterData: true,
+			});
+		}, READING);
+		const noticesDrawn = () =>
+			page.evaluate(
+				() =>
+					(window as unknown as { notices: { times: number } }).notices.times,
+			);
+
+		player.next();
+		await expect(panel).toContainText("Discos Dos");
+		player.next();
+		await expect(panel).toContainText("Discos Tres");
+
+		await page.waitForTimeout(2_500);
+		expect(await noticesDrawn()).toBe(2);
+	});
+});
+
+// The query itself retries nothing (`retry: false` in useNowPlayingTrack.ts);
+// what a remount could still cause is a fresh fetch, so the window below has
+// to outlast that rather than react-query's own backoff.
+const RETRY_WINDOW_MS = 3_000;
+
+for (const status of [404, 500, 504]) {
+	test.describe(`a read refused with ${status}`, () => {
+		test.use({ ...PUBLISHED, fooJean: { failPlayingTrack: status } });
+
+		test("draws no rows, says nothing, and is not tried again", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await openLibrary(page);
+			const said = await watchWhatIsSaid(page);
+			// Counted before the screen opens: a panel mounting over a failed read
+			// may read again, which is react-query's own and not a schedule.
+			await trackRow(page, 0).dblclick();
+
+			await expectSettlesAt(player, () => playingReads(player).length, 1);
+			await page.waitForTimeout(RETRY_WINDOW_MS);
+			expect(playingReads(player)).toHaveLength(1);
+
+			await openNowPlaying(page);
+			const panel = await openDetails(page, isMobile);
+			await expect(detailRows(panel)).toHaveCount(0);
+			await expect(panel).not.toContainText("Discos Uno");
+			expect(await said()).toEqual([]);
+		});
+	});
+}
+
+// Most tracks in a real library carry no rating tag, and the player answers `?`
+// for every one of them: a rating nobody has given yet, not one that cannot be.
+test.describe("a playing track with no rating tag", () => {
+	test.use({ withoutFields: ["%rating%"] });
+
+	test("draws stars that take a first rating", async ({ page }) => {
+		await playRow(page, 0);
+		const screen = nowPlayingScreen(page);
+
+		await expect(screen.getByRole("group", { name: "Unrated" })).toBeVisible();
+		await expect(
+			screen.getByRole("button", { name: "Rate 4 of 5" }),
+		).toBeVisible();
 	});
 });

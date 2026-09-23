@@ -1,14 +1,11 @@
 import { alternativeReader } from "@/domain/track/fields";
 import { fieldTable } from "@/shared/api/fieldTable";
 
-// beefweb splits `trcolumns` on commas before evaluating, so no multi-argument title-format function may appear here.
-
 const LYRICS_EXPRESSION = "$meta(unsynced lyrics)";
 
-const FIELDS = [
-	["path", "%path%"],
-	["subsong", "%subsong%"],
+export const LYRICS_EXPRESSIONS = [LYRICS_EXPRESSION];
 
+const FIELDS = [
 	["lyrics", LYRICS_EXPRESSION],
 	["rating", "%rating%"],
 
@@ -53,12 +50,6 @@ export const {
 	expressions: NOW_PLAYING_EXPRESSIONS,
 	index: NOW_PLAYING_FIELD,
 } = fieldTable(FIELDS);
-
-export const { expressions: LYRICS_EXPRESSIONS, index: LYRICS_FIELD } =
-	fieldTable([
-		["path", "%path%"],
-		["lyrics", LYRICS_EXPRESSION],
-	] as const);
 
 export const readNowPlaying = alternativeReader({
 	[NOW_PLAYING_FIELD.playCount]: NOW_PLAYING_FIELD.playCountLocal,

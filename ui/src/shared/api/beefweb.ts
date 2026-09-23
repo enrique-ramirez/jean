@@ -1,9 +1,3 @@
-import { translate } from "@/shared/i18n/locale";
-import type { NowPlayingTrack, PlayerState, TrackColumns } from "./types";
-
-const encode = (expressions: readonly string[]) =>
-	encodeURIComponent(expressions.join(","));
-
 async function request(path: string, options?: RequestInit) {
 	const response = await fetch(path, options);
 	if (!response.ok)
@@ -59,35 +53,3 @@ export const volumeDown = () => post("/api/player/volume/down");
 // foobar2000 carries the order as an option named `playbackOrder`.
 export const setPlaybackOrder = (value: number) =>
 	post("/api/player", { options: [{ id: "playbackOrder", value }] });
-
-export function readTrack(
-	player: PlayerState | null | undefined,
-): NowPlayingTrack | null {
-	const path = player?.activeItem?.path;
-	if (!path) return null;
-	const [artist, title] = player?.activeItem?.columns ?? [];
-	return {
-		artist: artist || translate("track.unknownArtist"),
-		title: title || translate("track.unknownTitle"),
-		path,
-		subsong: player?.activeItem?.subsong ?? 0,
-	};
-}
-
-export function libraryPathMatcher(absolute: string | null | undefined) {
-	if (!absolute) return () => false;
-	const flat = absolute.replaceAll("\\", "/");
-	return (relative: string | null | undefined) =>
-		Boolean(relative) && (flat === relative || flat.endsWith(`/${relative}`));
-}
-
-export async function fetchActiveItemColumns(
-	expressions: string[],
-): Promise<TrackColumns | null> {
-	const response = await request(
-		`/api/query?player=true&trcolumns=${encode(expressions)}`,
-	);
-	const { player } = (await response.json()) as { player: PlayerState };
-	const item = player.activeItem;
-	return item && item.index >= 0 ? (item.columns ?? null) : null;
-}

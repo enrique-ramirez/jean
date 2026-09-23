@@ -9,11 +9,11 @@ import {
 	VOLUME_SETTLE_MS,
 } from "../../src/domain/player/playerPoll.ts";
 import { volumePercent } from "../../src/domain/player/volumeScale.ts";
-import { readTrack } from "../../src/shared/api/beefweb.ts";
 import type {
 	FooJeanCapabilities,
 	StateDocument,
 } from "../../src/shared/api/fooJean.ts";
+import { readTrack } from "../../src/shared/api/playerState.ts";
 import type {
 	PlayerSnapshot,
 	PlayerState,

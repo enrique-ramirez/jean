@@ -64,7 +64,7 @@ const rate = (address: Record<string, unknown>) =>
 const readRating = (track: string, subsong?: number) => {
 	const query = new URLSearchParams({ track, columns: "%rating%" });
 	if (subsong !== undefined) query.set("subsong", String(subsong));
-	return fetch(`${origin}/api/library/track?${query}`, {
+	return fetch(`${origin}/api/track/library?${query}`, {
 		headers: { Authorization: `Bearer ${TOKEN}` },
 	});
 };

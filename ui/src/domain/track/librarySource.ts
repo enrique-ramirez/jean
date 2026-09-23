@@ -1,5 +1,4 @@
 import type { QueueSource } from "@/domain/player/queue";
-import { libraryPathMatcher } from "@/shared/api/beefweb";
 import type {
 	FillOwnPlaylistRequest,
 	FillPlaylistRequest,
@@ -14,6 +13,7 @@ import {
 	requireFooJean,
 	runsOf,
 } from "@/shared/api/fooJean";
+import { libraryPathMatcher } from "@/shared/api/playerState";
 import type {
 	PlaybackPosition,
 	TrackAddress,

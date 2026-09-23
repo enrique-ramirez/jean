@@ -1,4 +1,5 @@
 import type { Route } from "@playwright/test";
+import { tagKey } from "../../src/domain/track/fields.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import {
 	evaluate,
@@ -62,25 +63,6 @@ const readsPlayerStateOffBeefweb = (one: RecordedRequest) => {
 		new URLSearchParams(query).get("player") === "true"
 	);
 };
-
-// Every beefweb request rather than the subscription alone, and with nothing
-// excluded: one read survives, the now-playing panel's per-track columns
-// (`fetchActiveItemColumns` in `shared/api/beefweb.ts`), and it is told apart by
-// how many there are and by asking for a track's columns. A predicate naming the
-// columns it happens to ask for lets a read of one other field past, and goes
-// red the day somebody adds a field to the panel.
-const beefwebPlayerReads = (player: FakePlayer) =>
-	player.requests.filter(readsPlayerStateOffBeefweb).map((one) => one.path);
-
-// The panel's read is the only thing left that asks beefweb for a track's
-// columns, so anything else asking for player state shows up here.
-const withoutTrackColumns = (paths: string[]) =>
-	paths.filter((path) => !path.includes("trcolumns="));
-
-// Tracks played by the case those two are for, and so how many reads the panel
-// makes: it draws whatever is playing whether it is on screen or not, and holds
-// a track's columns for as long as that track plays.
-const TRACKS_PLAYED = 2;
 
 const routeOf = (path: string) => path.split("?")[0];
 
@@ -402,11 +384,7 @@ test("shows what the player is actually doing on the next tick after several wer
 
 	player.fooJean.failState = 503;
 	const refusedFrom = ticksTaken(player);
-	// The panel's per-track columns read is a beefweb call the track change below legitimately
-	// makes, whatever the component is doing; what stays flat is everything else.
-	const beefwebAtDrop = withoutTrackColumns(
-		requestsTo(player, "/api/query").map((one) => one.path),
-	).length;
+	const beefwebAtDrop = requestsTo(player, "/api/query").length;
 
 	// Driven at the desktop while the client is blind: a different track and a
 	// different transport state, so following one of the two cannot pass by luck.
@@ -424,14 +402,11 @@ test("shows what the player is actually doing on the next tick after several wer
 	await expect(playToggle(page, "Play")).toBeVisible();
 	await expect(seekBar(page)).toHaveAttribute("aria-valuemax", FIZZ);
 
-	// And the poll is what caught up: beefweb answered nothing but the panel's own columns between
-	// the outage and the status bar being right again.
+	// And the poll is what caught up: beefweb answered nothing between the outage
+	// and the status bar being right again.
 	await expectSettlesAt(
 		player,
-		() =>
-			withoutTrackColumns(
-				requestsTo(player, "/api/query").map((one) => one.path),
-			).length,
+		() => requestsTo(player, "/api/query").length,
 		beefwebAtDrop,
 	);
 });
@@ -457,12 +432,6 @@ test("the status bar names the track with no columns from beefweb to name it fro
 	page,
 	player,
 }) => {
-	// The case above passes whichever source the name came from, since beefweb's
-	// subscription is still live and still carries `activeItem.columns`. With the
-	// columns emptied the tick is the only place a name can arrive from, and the
-	// rest of the subscription, the playlist list and the play queue, is untouched.
-	player.answersTrackColumns = false;
-
 	await openLibrary(page);
 	await trackRow(page, 0).dblclick();
 	await expect(statusBar(page)).toContainText("Los Calientes");
@@ -477,12 +446,6 @@ test("the status bar follows a song a station announces, with the track never ch
 	page,
 	player,
 }) => {
-	// Emptied for the reason the case above gives, and for a second one: beefweb
-	// evaluates its columns against whatever is playing, announcement included, so
-	// a subscription left carrying them names the new song whether or not the poll
-	// ever learns of it.
-	player.answersTrackColumns = false;
-
 	await addAndPlay(page, player, RADIO_STATION);
 
 	player.announceSong(ANNOUNCED);
@@ -503,12 +466,39 @@ test("the status bar follows a song a station announces, with the track never ch
 	);
 });
 
+test("a tab opened while a station announces a song reads the song into the details panel", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	// Details draws no title or artist row. The artist reaches the panel only
+	// through the album's address, which falls back to it where there is no
+	// album artist, so the station carries an album and no album artist.
+	const album = "Late Transmissions";
+	await addAndPlay(page, player, { ...RADIO_STATION, "%album%": album });
+
+	// The read is made once per playing path and an announcement keeps the path,
+	// so a fresh tab is what puts a read after the announcement.
+	player.announceSong(ANNOUNCED);
+	await page.reload();
+	await expect(statusBar(page)).toContainText(ANNOUNCED.artist);
+
+	await openNowPlaying(page);
+	const panel = await openPanels(page, isMobile);
+	await panelTab(panel, "Details").click();
+
+	await expect(
+		panel.getByRole("definition").getByRole("link", { name: album }),
+	).toHaveAttribute(
+		"href",
+		`#/album/${encodeURIComponent(tagKey(ANNOUNCED.artist))}/${encodeURIComponent(tagKey(album))}`,
+	);
+});
+
 test("a station announcing a title alone drops the artist it announced before", async ({
 	page,
 	player,
 }) => {
-	player.answersTrackColumns = false;
-
 	await addAndPlay(page, player, RADIO_STATION);
 	player.announceSong(ANNOUNCED);
 	await expect(statusBar(page)).toContainText(ANNOUNCED.artist);
@@ -1726,7 +1716,7 @@ test("the queue panel follows a track queued at the player", async ({
 	await expect(row).toContainText("Babasónicos");
 });
 
-test("takes no player state off beefweb beyond the now-playing panel's own columns", async ({
+test("takes no player state off beefweb, and asks nobody for a track's columns", async ({
 	page,
 	player,
 }) => {
@@ -1736,22 +1726,17 @@ test("takes no player state off beefweb beyond the now-playing panel's own colum
 	player.playItem("p7", 1);
 	await expect(statusBar(page)).toContainText("Fizz");
 
-	// A third read is a second source of player state whatever it asks for: a
+	// Any read at all is a second source of player state whatever it asks for: a
 	// stall check wanting `playbackState` alone is one, and so is `GET /api/player`,
-	// which asks for nothing at all.
+	// which asks for nothing.
 	await expectSettlesAt(
 		player,
-		() => beefwebPlayerReads(player).length,
-		TRACKS_PLAYED,
-	);
-
-	// And each of the two is a read of a track's columns rather than of the
-	// player's own fields, which is the half of the promise a count cannot make.
-	await expectSettlesAt(
-		player,
-		() => withoutTrackColumns(beefwebPlayerReads(player)),
+		() =>
+			player.requests.filter(readsPlayerStateOffBeefweb).map((one) => one.path),
 		[],
 	);
+
+	expect(requestsTo(player, "trcolumns=").map((one) => one.path)).toEqual([]);
 
 	// The subscription is gone rather than narrowed, and takes the playlist list with it: nothing
 	// here reaches beefweb's stream at all.

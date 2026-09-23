@@ -984,6 +984,88 @@ test.describe("the gap a skip leaves", () => {
 		await expect(header).toContainText("Playing from");
 		expect(await titlesSeen(page)).not.toContain("Nothing playing");
 	});
+
+	const watchPanelsSay = (page: Page, phrases: string[]) =>
+		page.evaluate((watched) => {
+			const said: string[] = [];
+			const look = () => {
+				const text = document.body.innerText;
+				for (const phrase of watched)
+					if (text.includes(phrase) && !said.includes(phrase))
+						said.push(phrase);
+			};
+			look();
+			new MutationObserver(look).observe(document.body, {
+				subtree: true,
+				childList: true,
+				characterData: true,
+			});
+			Object.assign(window, { __panelsSaid: said });
+		}, phrases);
+
+	const panelsSaid = (page: Page) =>
+		page.evaluate(
+			() => (window as { __panelsSaid?: string[] }).__panelsSaid ?? [],
+		);
+
+	const openPanel = async (page: Page, isMobile: boolean, name: string) => {
+		if (isMobile)
+			await nowPlayingScreen(page)
+				.getByRole("button", { name: "Lyrics" })
+				.click();
+		const panel = isMobile ? trackInfo(page) : nowPlayingScreen(page);
+		await panelTab(panel, name).click();
+		await expectPanelOpen(panel, name);
+		return panel;
+	};
+
+	test.describe("and the details panel under it", () => {
+		// No lyric on either track, or the gatefold turns to Lyrics for the second.
+		test.use({
+			retagged: {
+				"Los Calientes": { "%publisher%": "Discos Uno" },
+				Fizz: { "%publisher%": "Discos Dos" },
+			},
+		});
+
+		test("the details keep rows for the track that is playing", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await playRow(page, 0);
+			const panel = await openPanel(page, isMobile, "Details");
+			await expect(panel).toContainText("Discos Uno");
+
+			await page.request.post("/__control/skipGap", { data: { ms: GAP_MS } });
+			await watchPanelsSay(page, ["Nothing playing."]);
+			player.next();
+
+			await expect(panel).toContainText("Discos Dos");
+			expect(await panelsSaid(page)).toEqual([]);
+		});
+	});
+
+	test.describe("and the lyric panel under it", () => {
+		test.use(TAGGED);
+
+		test("the lyric never falls to its empty state", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await playRow(page, 0);
+			const panel = await openPanel(page, isMobile, "Lyrics");
+			await expect(panel).toContainText("Dancing in the dark");
+
+			await page.request.post("/__control/skipGap", { data: { ms: GAP_MS } });
+			await watchPanelsSay(page, ["No lyrics found"]);
+			player.next();
+
+			await expect(panel).toContainText("Wait a minute, let me finish");
+			expect(await panelsSaid(page)).toEqual([]);
+		});
+	});
 });
 
 test.describe("the panel is part of the address", () => {

@@ -714,7 +714,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/library/track": {
+    "/track/library": {
         parameters: {
             query?: never;
             header?: never;
@@ -722,16 +722,48 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * One track's columns, addressed the way a cover is.
-         * @description The columns a client declares, evaluated against the one track that address names. The address is `GET /artwork?track=`'s, word for word, and the answer is the positional `columns` array `GET /playlists/{id}/items` gives a row.
+         * One track's columns, addressed the way a cover is, or by its position.
+         * @description The columns a client declares, evaluated against the one track the address names. The address is exactly one of two: `track` with `subsong`, `GET /artwork?track=`'s address word for word, or `ordinal` with `structure`, a position in the media library snapshot, resolved the way `POST /tags` resolves the same pair because it names one track where a relative path can name two. Sending both forms, or neither, is a `400`, and so is sending half of the ordinal form. The answer is the positional `columns` array `GET /playlists/{id}/items` gives a row.
          *
-         *     This is what reads one value back. The library arrives in bulk and is patched by delta, so a client that has just written a tag and wants to know what landed has nothing else to ask: a delta carries the change when the player notices it, which is not when the client is asking.
+         *     This is what reads one value back. The library arrives in bulk and is patched by delta, so a client that has just written a tag and wants to know what landed has nothing else to ask: a delta carries the change when the player notices it, which is not when the client is asking. The ordinal form is what that read-back sends after a write the library form answered `409` for, or after a write retried by ordinal and then timed out.
          *
          *     `libraryPath` is not echoed. The caller supplied the address, so the answer carries only what it did not already have.
          *
          *     The player compiles and evaluates these columns itself, so a set the snapshot was never built with is answered here without rebuilding anything and without disturbing what the snapshot holds. It answers one track, and reading many this way costs a request and a job at the player each, where the snapshot costs neither.
          */
         get: operations["getLibraryTrack"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/track/playing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The playing track's columns, addressed by nothing.
+         * @description The columns a client declares, evaluated against whatever the player is playing right now: no path, no index, no handle. `GET /artwork/playing` is why this exists beside `GET /track/library`, in the same words: there is no library-relative path to address a stream, a CD track or a file the library has never indexed by, so a client that wants a value from one of those has nothing else to ask.
+         *
+         *     The request named no track, so the answer carries `path` and `subsong` beside `columns`, spelled and valued exactly as `GET /state`'s `player.path` and `player.subsong`. A client checks the two against the track it asked about before drawing anything the answer carries: an answer that lands after the next track started still names the track that was playing when this component read it, and never the one the client now cares about.
+         *
+         *     The columns are evaluated through the player's own now-playing formatting rather than against the playing file's stored tags, so a station announcing a song answers the song.
+         *
+         *     This route reads nothing from the media library snapshot. It answers while `library.ready` is false, and for a track the library holds no path for, and it never answers `503`, unlike every route under `/library/`, which does answer that status in the same window.
+         *
+         *     A paused player is answered like a playing one; only a stopped player is a `404`.
+         *
+         *     Unlike `GET /artwork/playing`, this route sets no `ETag` and never answers `304`: there is nothing held here to fold a validator from, so a conditional request would cost the same job at the player as a fresh one.
+         *
+         *     Every response carries `Cache-Control: private, no-cache`, refusals included: the address names nothing durable, so what sits behind it changes without the URL changing.
+         */
+        get: operations["getPlayingTrack"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1904,8 +1936,23 @@ export interface components {
              */
             width: 1 | 2 | 4;
         };
-        /** @description `GET /library/track`'s whole answer: one row, in the columns the request declared. No address comes back, because the request carried it. */
+        /** @description `GET /track/library`'s whole answer: one row, in the columns the request declared. No address comes back, because the request carried it. */
         LibraryTrack: {
+            /**
+             * @description One value per declared column, in the order declared. A field the player cannot resolve is `?`, which is how a client tells an unresolved field from an empty one.
+             * @example [
+             *       "Imaginary Track",
+             *       "Fictional Artist"
+             *     ]
+             */
+            columns: string[];
+        };
+        /** @description `GET /track/playing`'s whole answer: the columns the request declared, evaluated against whatever the player is playing right now, beside the identity of the track that answered. The request named no track, so `path` and `subsong` come back spelled and valued exactly as `GET /state`'s `player.path` and `player.subsong`, and a client checks them against the track it asked about before drawing anything else this answer carries. */
+        PlayingTrackColumns: {
+            /** @description foobar2000's own absolute display path of the track that answered, in the player's own separator. Spelled and valued exactly as `GET /state`'s `player.path`. */
+            path: string;
+            /** @description The player's own subsong number for the track that answered, for a cue sheet or a disc image, `0` for an ordinary file. Spelled and valued exactly as `GET /state`'s `player.subsong`. */
+            subsong: number;
             /**
              * @description One value per declared column, in the order declared. A field the player cannot resolve is `?`, which is how a client tells an unresolved field from an empty one.
              * @example [
@@ -2283,9 +2330,20 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The snapshot holds no track at that address, which is what a client sees after tracks moved on disk or after a rebuild it has not read yet, and never another track's values. */
+        /** @description The snapshot holds no track at that address, which is what a client sees after tracks moved on disk or after a rebuild it has not read yet, and never another track's values. An `ordinal` past the end of the snapshot at the `structure` it named answers the same way. */
         NoSuchLibraryTrack: {
             headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The player is stopped. `GET /artwork/playing` answers `404` the same way for the same reason, and a paused player is answered like a playing one, here as there. */
+        NoTrackPlaying: {
+            headers: {
+                /** @description `private, no-cache`: revalidate on every request, since this URL names a different track once the player does. */
+                "Cache-Control"?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -3833,19 +3891,31 @@ export interface operations {
         parameters: {
             query: {
                 /**
-                 * @description The track's path relative to the media library root, forward-slashed on every platform: the snapshot's `directory` and `filename` for that row, concatenated, or a playlist row's `libraryPath`. Percent-encode it.
+                 * @description The library form's address: the track's path relative to the media library root, forward-slashed on every platform: the snapshot's `directory` and `filename` for that row, concatenated, or a playlist row's `libraryPath`. Percent-encode it.
                  *
-                 *     At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it matches nothing.
+                 *     At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it matches nothing. Required unless `ordinal` is sent, and sending both is a `400`.
                  * @example Artist/Album/01 A Title.flac
                  */
-                track: string;
+                track?: string;
                 /**
-                 * @description Which track inside the file, for cue sheets and disc images: the number the player assigned it, never a position among the tracks at one path. Every subsong of one file shares an address, so this is what tells them apart.
+                 * @description Which track inside the file, for cue sheets and disc images: the number the player assigned it, never a position among the tracks at one path. Every subsong of one file shares a `track` address, so this is what tells them apart. Meaningful only with `track`; an ordinal already names a subsong.
                  *
                  *     Omitted is read as `0`, which is an ordinary file. A cue sheet's subsongs number from 1, so omitting it for a file the player splits is a `404` rather than that file's first track. Send the `subsong` the row carries.
                  * @example 0
                  */
                 subsong?: number;
+                /**
+                 * @description The precise form's address: the track's position in the media library snapshot `structure` names, from `GET /library/export` or a delta. It names one track and one subsong, where a `track` address can name one under each of two media library roots.
+                 *
+                 *     Requires `structure`; sending `track` as well is a `400`. A `structure` the player has moved past is a `409`; an ordinal past the end of the snapshot at that generation is the `404` an unknown address gets.
+                 * @example 1904
+                 */
+                ordinal?: number;
+                /**
+                 * @description The media library's own generation the `ordinal` was read at: `library.structure` in `GET /state`, or the `structure` an export or a delta carried. Required with `ordinal`, and meaningless without it.
+                 * @example 41
+                 */
+                structure?: number;
                 /**
                  * @description The columns to evaluate, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. The answer carries one value per column, in the order declared.
                  *
@@ -3868,7 +3938,7 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryTrack"];
                 };
             };
-            /** @description The request was understood and declined before the player was asked: no `track` at all, one longer than 4096 characters or carrying a control character, a `subsong` that is not a whole number, no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, or the same column twice. The schemas below tell the column refusals from the address ones. They are `anyOf` rather than the `oneOf` this document pairs schemas with elsewhere, because `Error` is open and a `LibraryRefusal` body satisfies both. */
+            /** @description The request was understood and declined before the player was asked: neither `track` nor `ordinal` (a `structure` sent alone answers as neither), both of them, a `track` longer than 4096 characters or carrying a control character, a `subsong` that is not a whole number, `ordinal` sent without `structure`, an `ordinal` that is not a whole number or is past what 32 bits hold, no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, or the same column twice. A `track` sent alongside a `structure` with no `ordinal` is the library form and `structure` is ignored, the way `POST /tags` also ignores it there: that is a `200`, not this. The schemas below tell the column refusals from the address ones. They are `anyOf` rather than the `oneOf` this document pairs schemas with elsewhere, because `Error` is open and a `LibraryRefusal` body satisfies both. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3880,9 +3950,11 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoSuchLibraryTrack"];
             /**
-             * @description The address names a track under more than one media library root, so answering one of them would confirm a value that may belong to the other. The client asked this route to find out what a write did, so the wrong track's columns are worse than none.
+             * @description The address no longer names one definite track, and nothing was answered. The `error` string says which of two.
              *
-             *     `POST /tags` refuses the same address in the same words, and a client that read the row from an export holds the `ordinal` that names one track. This route takes no ordinal; a client holding one MAY read the value back through a delta instead.
+             *     An address given without an ordinal names a track under more than one media library root, so answering one of them would confirm a value that may belong to the other. The client asked this route to find out what a write did, so the wrong track's columns are worse than none. `POST /tags` refuses the same address in the same words, and a client that read the row from an export holds the `ordinal` that names one track instead.
+             *
+             *     Or the `ordinal` form's `structure` is no longer the media library's current one, which is also the answer while no snapshot has been built at all: tracks were added or removed since the generation it names, so every ordinal read against it has shifted. Export the library again and send the ordinal that names. An ordinal past the end of that generation is the `404` an unknown address gets, not this.
              */
             409: {
                 headers: {
@@ -3894,6 +3966,50 @@ export interface operations {
             };
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["LibraryUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    getPlayingTrack: {
+        parameters: {
+            query: {
+                /**
+                 * @description The columns to evaluate, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. The answer carries one value per column, in the order declared.
+                 *
+                 *     Passed to foobar2000's title-formatting compiler untouched, under the same gate `GET /track/library` puts on a declaration: at most 64, each 1 to 1024 printable characters, and no repeats.
+                 */
+                columns: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The playing track, in the columns the request declared, beside the identity of the track that answered. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`: revalidate on every request, since this URL names a different track once the player does. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayingTrackColumns"];
+                };
+            };
+            /** @description The request was understood and declined before the player was asked: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, or the same column twice. */
+            400: {
+                headers: {
+                    /** @description `private, no-cache`, as on the `200`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryRefusal"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoTrackPlaying"];
+            500: components["responses"]["PlayerRefused"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };

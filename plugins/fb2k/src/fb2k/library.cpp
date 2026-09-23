@@ -208,6 +208,34 @@ struct LibraryFeed::State {
             trackReadFailure(PlaylistOutcome::playerRefused));
     }
 
+    // On a connection thread like readTrackColumns, and for the same reason. Checked against
+    // the current structure and count directly, rather than through resolveOrdinals: that
+    // resolver folds a stale structure and an ordinal past the end into the same empty answer,
+    // which is right for its five other callers and wrong here, where GET /api/track/library
+    // must tell a client which one happened.
+    LibraryTrackRead readOrdinalColumns(const OrdinalTrackRef& at,
+                                        const std::vector<std::string>& columns) const {
+        const OrderedPtr ordered = order();
+        if (!ordered || ordered->structure != at.structure)
+            return trackReadFailure(PlaylistOutcome::structureMoved);
+
+        if (at.ordinal >= ordered->items.get_count())
+            return {};
+
+        const metadb_handle_ptr handle = ordered->items[at.ordinal];
+
+        return askPlayer<LibraryTrackRead>(
+            mainThread_, "reading one library track's columns by ordinal",
+            [handle, columns, compiler = compiler_](const AnswerPtr<LibraryTrackRead>& answer) {
+                LibraryTrackRead read;
+                read.held = true;
+                read.columns = formattedColumns(handle, compiledColumns(compiler, columns));
+                answer->set(std::move(read));
+            },
+            trackReadFailure(PlaylistOutcome::timedOut),
+            trackReadFailure(PlaylistOutcome::playerRefused));
+    }
+
     OrdinalResolution resolveOrdinals(uint64_t structure,
                                       const std::vector<uint32_t>& ordinals) const {
         const OrderedPtr ordered = order();
@@ -632,6 +660,15 @@ LibraryTrackReader LibraryFeed::trackColumnReader() {
     return [state = state_](const std::string& track, uint32_t subsong,
                             const std::vector<std::string>& columns) {
         return state->readTrackColumns(track, subsong, columns);
+    };
+}
+
+LibraryOrdinalReader LibraryFeed::ordinalTrackColumnReader() {
+    if (!state_)
+        return {};
+
+    return [state = state_](const OrdinalTrackRef& at, const std::vector<std::string>& columns) {
+        return state->readOrdinalColumns(at, columns);
     };
 }
 

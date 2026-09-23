@@ -42,4 +42,19 @@ inline std::vector<std::string> formattedColumns(
     return values;
 }
 
+inline std::vector<std::string> formattedPlayingColumns(
+    const metadb_handle_ptr& track, const std::vector<titleformat_object::ptr>& scripts) {
+    std::vector<std::string> values(scripts.size(), kUnresolved);
+
+    const auto playback = playback_control::get();
+    pfc::string8 text;
+    for (size_t column = 0; column < scripts.size(); ++column) {
+        playback->playback_format_title_ex(track, nullptr, text, scripts[column], nullptr,
+                                           playback_control::display_level_titles);
+        values[column] = toStd(text);
+    }
+
+    return values;
+}
+
 }  // namespace jean

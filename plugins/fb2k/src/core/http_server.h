@@ -162,7 +162,7 @@ struct PlaylistArtworkRead {
 using PlaylistRowArtworkReader =
     std::function<PlaylistArtworkRead(const std::string& playlistId, uint32_t row)>;
 
-// What GET /api/library/track has to decide from: `outcome` carries the failures only the
+// What GET /api/track/library has to decide from: `outcome` carries the failures only the
 // player can answer, and `held` is false where the snapshot has no track at that address.
 struct LibraryTrackRead {
     PlaylistOutcome outcome = PlaylistOutcome::done;
@@ -177,6 +177,24 @@ struct LibraryTrackRead {
 // else, and the scripts already compiled hold only the columns the snapshot was declared with.
 using LibraryTrackReader = std::function<LibraryTrackRead(
     const std::string& track, uint32_t subsong, const std::vector<std::string>& columns)>;
+
+// Evaluates `columns` against the one track the media library holds at `at`, the precise
+// address POST /api/tags' ordinal form also resolves through. Same main-thread hop as
+// LibraryTrackReader, and the same shape of failure: `outcome` carries structureMoved for a
+// stale generation, and `held` false is an ordinal past the end of the current one.
+using LibraryOrdinalReader = std::function<LibraryTrackRead(
+    const OrdinalTrackRef& at, const std::vector<std::string>& columns)>;
+
+struct PlayingTrackRead {
+    PlaylistOutcome outcome = PlaylistOutcome::done;
+    bool playing = false;
+    std::string path;
+    uint32_t subsong = 0;
+    std::vector<std::string> columns;
+};
+
+using PlayingTrackReader =
+    std::function<PlayingTrackRead(const std::vector<std::string>& columns)>;
 
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.
@@ -238,6 +256,8 @@ struct Player {
     ArtworkReader readArtwork;
     PlaylistRowArtworkReader readPlaylistRowArtwork;
     LibraryTrackReader readLibraryTrack;
+    LibraryOrdinalReader readLibraryOrdinal;
+    PlayingTrackReader readPlayingTrack;
 };
 
 class HttpServer {

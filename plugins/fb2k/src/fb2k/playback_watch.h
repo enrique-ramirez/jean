@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/artwork.h"
+#include "core/http_server.h"
 #include "core/player_state.h"
 
 #include <memory>
@@ -37,5 +38,7 @@ private:
     std::unique_ptr<CurrentCallback> currentCallback_;
     std::unique_ptr<LocationCallback> locationCallback_;
 };
+
+PlayingTrackReader playingTrackReader(MainThreadQueue& mainThread);
 
 }  // namespace jean

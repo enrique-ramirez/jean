@@ -60,6 +60,8 @@ public:
 
     LibraryTrackReader trackColumnReader();
 
+    LibraryOrdinalReader ordinalTrackColumnReader();
+
     LibraryFeed(const LibraryFeed&) = delete;
     LibraryFeed& operator=(const LibraryFeed&) = delete;
 

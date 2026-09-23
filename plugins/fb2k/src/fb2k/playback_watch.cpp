@@ -4,6 +4,8 @@
 
 #include "core/output_hold.h"
 #include "core/playback_modes.h"
+#include "fb2k/ask_player.h"
+#include "fb2k/columns.h"
 #include "fb2k/main_thread.h"
 #include "fb2k/playlists.h"
 #include "fb2k/strings.h"
@@ -96,6 +98,12 @@ void publishName(PlayerStateStore& store, const titleformat_object::ptr& titleSc
                                        playback_control::display_level_titles);
 
     store.nameChanged(toStd(title), toStd(artist), toStd(album), toStd(albumArtist));
+}
+
+PlayingTrackRead playingTrackReadFailure(PlaylistOutcome outcome) {
+    PlayingTrackRead read;
+    read.outcome = outcome;
+    return read;
 }
 
 // `output_hold`'s mute and the player's own look identical to foobar2000, since it has no
@@ -456,5 +464,30 @@ PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& stor
 }
 
 PlaybackWatch::~PlaybackWatch() = default;
+
+PlayingTrackReader playingTrackReader(MainThreadQueue& mainThread) {
+    const auto compiler = titleformat_compiler::get();
+
+    return [&mainThread, compiler](const std::vector<std::string>& columns) {
+        return askPlayer<PlayingTrackRead>(
+            mainThread, "reading the playing track's columns",
+            [compiler, columns](const AnswerPtr<PlayingTrackRead>& answer) {
+                metadb_handle_ptr track;
+                if (!playback_control::get()->get_now_playing(track)) {
+                    answer->set(PlayingTrackRead{});
+                    return;
+                }
+
+                PlayingTrackRead read;
+                read.playing = true;
+                read.path = displayPathOf(track);
+                read.subsong = track->get_subsong_index();
+                read.columns = formattedPlayingColumns(track, compiledColumns(compiler, columns));
+                answer->set(std::move(read));
+            },
+            playingTrackReadFailure(PlaylistOutcome::timedOut),
+            playingTrackReadFailure(PlaylistOutcome::playerRefused));
+    };
+}
 
 }  // namespace jean

@@ -435,6 +435,16 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
     CHECK(keysOf(libraryTrackDocument({"Imaginary Track", "Fictional Artist"})) == Keys{"columns"});
 }
 
+// PlayingTrackColumns. The caller named no track, so the answer says which one it was read from,
+// and nothing past that: libraryPath is already the poll's to carry.
+TEST_CASE("the playing track's columns are the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    CHECK(keysOf(playingTrackDocument(R"(C:\Music\Fictional Artist\Imaginary Album\01 Track.flac)",
+                                      0, {"Imaginary Track", "Fictional Artist"})) ==
+          Keys{"path", "subsong", "columns"});
+}
+
 // api_contract_test.cpp's other cases compare an emitted document with a key set written by
 // hand; this one is the check nothing else here makes, that the specification's own examples
 // agree with the schema they illustrate. `PlayerState` is `additionalProperties: false`, so
@@ -675,7 +685,7 @@ TEST_CASE("an address naming more than one track is one 409 both library routes 
     CHECK(publishesError("PlaylistFailed", fromColumns.front()));
 
     CHECK(publishes("POST", "/tags", 409));
-    CHECK(publishes("GET", "/library/track", 409));
+    CHECK(publishes("GET", "/track/library", 409));
 }
 
 // Both generations are a 409 and the remedies differ. The playlist sentence tells a client to

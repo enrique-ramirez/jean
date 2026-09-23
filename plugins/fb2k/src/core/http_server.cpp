@@ -56,7 +56,8 @@ constexpr char kStatePath[] = "/api/state";
 constexpr char kLibraryExportPath[] = "/api/library/export";
 constexpr char kLibraryChangesPath[] = "/api/library/changes";
 constexpr char kLibraryRefreshPath[] = "/api/library/refresh";
-constexpr char kLibraryTrackPath[] = "/api/library/track";
+constexpr char kLibraryTrackPath[] = "/api/track/library";
+constexpr char kPlayingTrackPath[] = "/api/track/playing";
 constexpr char kQueuePath[] = "/api/queue";
 
 constexpr char kNoStreaming[] = "streaming is not available";
@@ -71,7 +72,13 @@ constexpr char kNoLibrary[] = "the media library is not available";
 
 constexpr char kNoSuchLibraryTrack[] = "no such track";
 
+constexpr char kNothingPlaying[] = "nothing is playing";
+
 constexpr char kBadSubsong[] = "'subsong' must be a whole number";
+
+constexpr char kTwoTrackAddressForms[] = "a request names one of 'track' and 'ordinal', never both";
+
+constexpr char kNoTrackAddressForm[] = "'track' or 'ordinal' is required";
 
 constexpr char kNoOwnPlaylists[] = "the component's own playlists are not available";
 
@@ -207,10 +214,53 @@ std::optional<uint32_t> subsongAsked(const httplib::Request& req) {
     return static_cast<uint32_t>(asked);
 }
 
+struct OrdinalAsked {
+    OrdinalTrackRef ref;
+    std::string refusal;
+
+    bool ok() const { return refusal.empty(); }
+};
+
+// The query-string reading of the pair core/tag_write.cpp's readOrdinalAddress parses from a
+// JSON body; kBadOrdinal and kBadOrdinalStructure are the one refusal text for both.
+OrdinalAsked ordinalAsked(const httplib::Request& req) {
+    OrdinalAsked asked;
+
+    uint64_t ordinal = 0;
+    if (!readDecimal(req.get_param_value("ordinal"), ordinal) ||
+        ordinal > std::numeric_limits<uint32_t>::max()) {
+        asked.refusal = kBadOrdinal;
+        return asked;
+    }
+    asked.ref.ordinal = static_cast<uint32_t>(ordinal);
+
+    if (!req.has_param("structure") ||
+        !readDecimal(req.get_param_value("structure"), asked.ref.structure)) {
+        asked.refusal = kBadOrdinalStructure;
+        return asked;
+    }
+
+    return asked;
+}
+
 LibraryRequest columnsDeclared(const httplib::Request& req) {
     const auto asked = columnsAsked(req);
     return asked.empty() ? missing(LibraryRefusal::badColumn, "'columns' is required")
                          : parseLibraryRequest(asked, std::string());
+}
+
+void respondLibraryTrackRead(httplib::Response& res, const LibraryTrackRead& read) {
+    if (read.outcome != PlaylistOutcome::done) {
+        respond(res, httpStatusFor(read.outcome), playlistFailedDocument(playlistFailure(read.outcome)));
+        return;
+    }
+
+    if (!read.held) {
+        respond(res, 404, errorDocument(kNoSuchLibraryTrack));
+        return;
+    }
+
+    respond(res, 200, libraryTrackDocument(read.columns));
 }
 
 // The same gate with the revision the client is catching up from. Unlike
@@ -899,6 +949,45 @@ struct HttpServer::Impl {
         });
 
         server.Get(kLibraryTrackPath, [this](const httplib::Request& req, httplib::Response& res) {
+            // 'subsong' names a track only alongside 'track', but on its own it still
+            // announces the library form the way POST /api/tags' kLibraryAddressFields does,
+            // so an ordinal sent beside it is refused as two forms rather than silently
+            // picked over.
+            const bool namesTrack = req.has_param("track") || req.has_param("subsong");
+            const bool namesOrdinal = req.has_param("ordinal");
+
+            if (namesTrack && namesOrdinal) {
+                respond(res, 400, errorDocument(kTwoTrackAddressForms));
+                return;
+            }
+
+            if (namesOrdinal) {
+                const auto asked = ordinalAsked(req);
+                if (!asked.ok()) {
+                    respond(res, 400, errorDocument(asked.refusal));
+                    return;
+                }
+
+                const auto declared = columnsDeclared(req);
+                if (!declared.ok()) {
+                    respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                    return;
+                }
+
+                if (!player.readLibraryOrdinal) {
+                    respond(res, 503, errorDocument(kNoLibrary));
+                    return;
+                }
+
+                respondLibraryTrackRead(res, player.readLibraryOrdinal(asked.ref, declared.columns));
+                return;
+            }
+
+            if (!namesTrack) {
+                respond(res, 400, errorDocument(kNoTrackAddressForm));
+                return;
+            }
+
             const auto track = req.get_param_value("track");
             if (const auto refusal = trackAddressRefusal(track); !refusal.empty()) {
                 respond(res, 400, errorDocument(refusal));
@@ -922,19 +1011,36 @@ struct HttpServer::Impl {
                 return;
             }
 
-            const auto read = player.readLibraryTrack(track, *subsong, declared.columns);
+            respondLibraryTrackRead(res, player.readLibraryTrack(track, *subsong, declared.columns));
+        });
+
+        server.Get(kPlayingTrackPath, [this](const httplib::Request& req, httplib::Response& res) {
+            res.set_header("Cache-Control", kAskEveryTime);
+
+            const auto declared = columnsDeclared(req);
+            if (!declared.ok()) {
+                respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                return;
+            }
+
+            if (!player.readPlayingTrack) {
+                respond(res, 404, errorDocument(kNothingPlaying));
+                return;
+            }
+
+            const auto read = player.readPlayingTrack(declared.columns);
             if (read.outcome != PlaylistOutcome::done) {
                 respond(res, httpStatusFor(read.outcome),
                         playlistFailedDocument(playlistFailure(read.outcome)));
                 return;
             }
 
-            if (!read.held) {
-                respond(res, 404, errorDocument(kNoSuchLibraryTrack));
+            if (!read.playing) {
+                respond(res, 404, errorDocument(kNothingPlaying));
                 return;
             }
 
-            respond(res, 200, libraryTrackDocument(read.columns));
+            respond(res, 200, playingTrackDocument(read.path, read.subsong, read.columns));
         });
     }
 

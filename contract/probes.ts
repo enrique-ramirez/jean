@@ -122,6 +122,13 @@ export const drives: Drive[] = [
 			query: { track: `contract check ${context.run}/no such track.flac` },
 		}),
 	},
+	{
+		// Whether anything is playing is not this run's to arrange, so this drives the route
+		// with an acceptable declaration and lets a conformant implementation answer either
+		// the track or the 404 `getPlayingArtwork` answers for the same reason.
+		id: "getPlayingTrack",
+		probe: () => ({ query: { columns: "%title%" } }),
+	},
 	{ id: "getPlayingArtwork", probe: () => ({}) },
 	{
 		id: "getPlaylistRowArtwork",

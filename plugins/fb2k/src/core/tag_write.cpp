@@ -97,14 +97,14 @@ AddressField readOrdinalAddress(const json& root) {
     const auto ordinal = root.find("ordinal");
     if (ordinal == root.end() || !ordinal->is_number_unsigned() ||
         ordinal->get<uint64_t>() > std::numeric_limits<uint32_t>::max())
-        return unreadable("'ordinal' must be a non-negative number");
+        return unreadable(kBadOrdinal);
     ref.ordinal = ordinal->get<uint32_t>();
 
     // A number where the playlist form's generation is a string: the media library's own
     // counter fits a JSON number exactly and a playlist's nineteen-digit one does not.
     const auto structure = root.find("structure");
     if (structure == root.end() || !structure->is_number_unsigned())
-        return unreadable("'structure' is required and must be a non-negative number");
+        return unreadable(kBadOrdinalStructure);
     ref.structure = structure->get<uint64_t>();
 
     AddressField address;

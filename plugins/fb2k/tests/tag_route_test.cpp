@@ -23,7 +23,7 @@ httplib::Result write(const TestServer& server, const std::string& body) {
 }
 
 // What the client acts on, which is the sentence rather than the enumerator carrying it: the
-// same refusal reaches a client from GET /api/library/track, and that route answers out of
+// same refusal reaches a client from GET /api/track/library, and that route answers out of
 // PlaylistOutcome instead.
 constexpr char kNamesMoreThanOneTrack[] = "more than one track";
 
@@ -184,7 +184,7 @@ TEST_CASE("an address the writer does not know is a 404, `..` and all") {
 
 // Two media library roots can hold one library-relative path, so an address can name a track
 // under each. Writing to whichever sorts first would rate the other copy, the same way every
-// time and with nothing to see, and GET /api/library/track would read that same wrong one back.
+// time and with nothing to see, and GET /api/track/library would read that same wrong one back.
 // A client refused here retries once with an ordinal, so the reason has to be its own.
 TEST_CASE("an address the snapshot holds under two roots is a 409 saying so, and writes nothing") {
     const auto ambiguous = outcomeForAnAddressNamingTwoTracks();

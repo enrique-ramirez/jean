@@ -328,6 +328,9 @@ std::string libraryFailedDocument(DeltaOutcome outcome);
 // echoed back.
 std::string libraryTrackDocument(const std::vector<std::string>& columns);
 
+std::string playingTrackDocument(const std::string& path, uint32_t subsong,
+                                 const std::vector<std::string>& columns);
+
 int httpStatusFor(LibraryRefusal refusal);
 int httpStatusFor(DeltaOutcome outcome);
 

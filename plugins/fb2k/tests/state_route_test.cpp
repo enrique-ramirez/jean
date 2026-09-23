@@ -250,7 +250,7 @@ constexpr char kTrackTheJobRefuses[] = "Artist/Album/refused.flac";
 constexpr char kTrackTheJobIsTooSlowFor[] = "Artist/Album/slow.flac";
 
 // Stands in for fb2k/library.cpp's one-track read. The address it is given decides the answer, so
-// one server drives every status the player half of GET /api/library/track can produce.
+// one server drives every status the player half of GET /api/track/library can produce.
 Player readingOneTrack() {
     Player player;
     player.readLibraryTrack = [](const std::string& track, uint32_t,
@@ -271,7 +271,37 @@ Player readingOneTrack() {
 }
 
 std::string oneTrackPath(const std::string& track) {
-    return "/api/library/track?track=" + track + "&columns=%25title%25";
+    return "/api/track/library?track=" + track + "&columns=%25title%25";
+}
+
+constexpr char kColumnThePlayerRefuses[] = "refused";
+constexpr char kColumnThePlayerIsTooSlowFor[] = "slow";
+constexpr char kColumnAskedWithNothingPlaying[] = "stopped";
+
+// Stands in for fb2k/'s now-playing read. The request names no track, so the column it asks for
+// decides the answer, and one server drives every status the player half of GET
+// /api/track/playing can produce.
+Player readingThePlayingTrack() {
+    Player player;
+    player.readPlayingTrack = [](const std::vector<std::string>& columns) {
+        PlayingTrackRead read;
+        if (columns.front() == kColumnThePlayerRefuses)
+            read.outcome = PlaylistOutcome::playerRefused;
+        else if (columns.front() == kColumnThePlayerIsTooSlowFor)
+            read.outcome = PlaylistOutcome::timedOut;
+        else if (columns.front() != kColumnAskedWithNothingPlaying) {
+            read.playing = true;
+            read.path = R"(C:\Music\Artist\Album\one.flac)";
+            read.columns.assign(columns.size(), "One");
+        }
+
+        return read;
+    };
+    return player;
+}
+
+std::string playingTrackPath(const std::string& column) {
+    return "/api/track/playing?columns=" + column;
 }
 
 }  // namespace
@@ -1770,7 +1800,7 @@ TEST_CASE("the library is reported as a capability rather than discovered by a 5
 
 // The same comparison api_contract_test.cpp makes for the stream routes: every refusal these
 // routes can make is driven, and the answer compared with what the specification publishes.
-TEST_CASE("no library route answers a status contract/openapi.yaml does not document") {
+TEST_CASE("no library or track route answers a status contract/openapi.yaml does not document") {
     INFO("shape changed -- update contract/openapi.yaml to match");
 
     BuildLog log;
@@ -1824,16 +1854,29 @@ TEST_CASE("no library route answers a status contract/openapi.yaml does not docu
 
     const TestServer reading = serving(&library, readingOneTrack());
 
-    note("GET /library/track", get(reading, oneTrackPath(kTrackTheLibraryHolds)));
-    note("GET /library/track", get(reading, oneTrackPath(kTrackTheLibraryDoesNotHold)));
-    note("GET /library/track", get(reading, oneTrackPath(kTrackTheJobRefuses)));
-    note("GET /library/track", get(reading, oneTrackPath(kTrackTheJobIsTooSlowFor)));
-    note("GET /library/track", get(reading, oneTrackPath(kTrackTheLibraryHolds) + "&subsong=two"));
-    note("GET /library/track", get(reading, "/api/library/track?columns=%25title%25"));
-    note("GET /library/track",
-         get(reading, "/api/library/track?track=" + std::string(kTrackTheLibraryHolds)));
-    note("GET /library/track", reading.client().Get(oneTrackPath(kTrackTheLibraryHolds)));
-    note("GET /library/track", get(off, oneTrackPath(kTrackTheLibraryHolds)));
+    note("GET /track/library", get(reading, oneTrackPath(kTrackTheLibraryHolds)));
+    note("GET /track/library", get(reading, oneTrackPath(kTrackTheLibraryDoesNotHold)));
+    note("GET /track/library", get(reading, oneTrackPath(kTrackTheJobRefuses)));
+    note("GET /track/library", get(reading, oneTrackPath(kTrackTheJobIsTooSlowFor)));
+    note("GET /track/library", get(reading, oneTrackPath(kTrackTheLibraryHolds) + "&subsong=two"));
+    note("GET /track/library", get(reading, "/api/track/library?columns=%25title%25"));
+    note("GET /track/library",
+         get(reading, "/api/track/library?track=" + std::string(kTrackTheLibraryHolds)));
+    note("GET /track/library", reading.client().Get(oneTrackPath(kTrackTheLibraryHolds)));
+    note("GET /track/library", get(off, oneTrackPath(kTrackTheLibraryHolds)));
+
+    const TestServer playing = serving(nullptr, readingThePlayingTrack());
+
+    note("GET /track/playing", get(playing, playingTrackPath("%25title%25")));
+    note("GET /track/playing", get(playing, playingTrackPath(kColumnAskedWithNothingPlaying)));
+    note("GET /track/playing", get(playing, playingTrackPath(kColumnThePlayerRefuses)));
+    note("GET /track/playing", get(playing, playingTrackPath(kColumnThePlayerIsTooSlowFor)));
+    note("GET /track/playing", get(playing, "/api/track/playing"));
+    note("GET /track/playing", get(playing, playingTrackPath("")));
+    note("GET /track/playing",
+         get(playing, playingTrackPath(std::string(kMaxColumnLength + 1, 'x'))));
+    note("GET /track/playing", playing.client().Get(playingTrackPath("%25title%25")));
+    note("GET /track/playing", get(off, playingTrackPath("%25title%25")));
 
     for (int attempt = 0; attempt < 8; ++attempt) {
         note("POST /library/refresh", refresh(server));
@@ -1842,7 +1885,8 @@ TEST_CASE("no library route answers a status contract/openapi.yaml does not docu
     }
 
     for (const auto& route : publishedRoutes()) {
-        if (route.path.rfind("/library", 0) != 0 && route.path != "/state")
+        if (route.path.rfind("/library", 0) != 0 && route.path != "/state" &&
+            route.path != "/track/library" && route.path != "/track/playing")
             continue;
 
         const auto name = route.method + " " + route.path;

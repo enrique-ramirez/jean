@@ -1022,6 +1022,11 @@ std::string libraryTrackDocument(const std::vector<std::string>& columns) {
     return json{{"columns", columns}}.dump();
 }
 
+std::string playingTrackDocument(const std::string& path, uint32_t subsong,
+                                 const std::vector<std::string>& columns) {
+    return json{{"path", path}, {"subsong", subsong}, {"columns", columns}}.dump();
+}
+
 int httpStatusFor(LibraryRefusal refusal) {
     switch (refusal) {
         case LibraryRefusal::none:

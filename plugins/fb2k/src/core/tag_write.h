@@ -26,6 +26,12 @@ struct OrdinalTrackRef {
     uint64_t structure = 0;
 };
 
+// The refusal text for an OrdinalTrackRef that fails to parse, shared with GET
+// /api/track/library's ordinal form: the same address read from a query string rather than a
+// JSON body.
+constexpr char kBadOrdinal[] = "'ordinal' must be a non-negative number";
+constexpr char kBadOrdinalStructure[] = "'structure' is required and must be a non-negative number";
+
 // A row the media library does not hold, addressed by where a playlist holds it and by the
 // structure generation the client read that position at.
 struct PlaylistTrackRef {

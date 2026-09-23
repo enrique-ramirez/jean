@@ -95,6 +95,8 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.readArtwork = libraryFeed.artworkReader();
     player.readPlaylistRowArtwork = makePlaylistRowArtworkReader(mainThread, rowArt);
     player.readLibraryTrack = libraryFeed.trackColumnReader();
+    player.readLibraryOrdinal = libraryFeed.ordinalTrackColumnReader();
+    player.readPlayingTrack = playingTrackReader(mainThread);
 
     if (streamer != nullptr) {
         player.openStream = streamer->opener();

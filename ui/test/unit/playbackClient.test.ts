@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import * as beefweb from "../../src/shared/api/beefweb.ts";
 
 const PLAYBACK_COMMANDS = [
 	"nextTrack",
@@ -17,8 +16,16 @@ const PLAYBACK_COMMANDS = [
 	"volumeUp",
 ];
 
-test("the beefweb client exports the playback commands and nothing else", () => {
-	assert.deepEqual(Object.keys(beefweb).sort(), PLAYBACK_COMMANDS);
+test("the playback client exports the playback commands and no other function", async () => {
+	const playback: Record<string, unknown> = await import(
+		"../../src/shared/api/playback.ts"
+	).catch(() => ({}));
+	assert.deepEqual(
+		Object.keys(playback)
+			.filter((name) => typeof playback[name] === "function")
+			.sort(),
+		PLAYBACK_COMMANDS,
+	);
 });
 
 test("the player state module exports readTrack and libraryPathMatcher", async () => {

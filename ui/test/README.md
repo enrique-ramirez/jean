@@ -148,6 +148,8 @@ The routes model the declaration the contract describes rather than answering fr
 
 **There is one play queue and both servers act on it**, since the player has only one. An entry is a track with the playlist row it was queued from, and a track queued by handle has no row at all: `player.queueInsert([{ playlistId: null, track }])` is the desktop queueing one, which beefweb's read and its subscription can only report as `-1`. `player.queueRevision` moves when the contents, the order or a queued row's position moves, and never otherwise, and it carries the player's own version with it so `GET /api/state`'s validator moves too.
 
+**Playback and volume are driven from one host now, and read from another.** `fooJean.ts`'s `handleAgent` answers `POST /api/playback/play-pause`, `/next`, `/previous`, `/stop`, `/seek` and `/mode`, plus `POST /api/volume`, by calling the same state methods a desktop press would: `playPause`, `next`, `previous`, `stop`, `patchPlayer` and `nudgeVolume`. beefweb's own `/player` routes are gone from `routes.ts`, since nothing calls them there anymore; `/api/query` and its SSE companion still answer off `state.player` on the beefweb host, the way a real beefweb goes on doing beside a running `foo_jean`.
+
 ### What the fake gets wrong on purpose
 
 A fake kinder than the player it stands in for makes the suite agree with itself and disagree with reality.

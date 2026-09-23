@@ -26,6 +26,7 @@ import {
 	usePrevious,
 	useResolvedPlaylistId,
 	useSeekBy,
+	useTransport,
 } from "@/domain/player/usePlayer";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
@@ -69,7 +70,6 @@ import {
 	SETTINGS_KEYBOARD,
 	SettingsDialog,
 } from "@/features/settings/SettingsDialog";
-import { nextTrack, stop } from "@/shared/api/beefweb";
 import { bearer } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
@@ -142,6 +142,7 @@ function Shell() {
 	const playPause = usePlayPause();
 	const seekBy = useSeekBy();
 	const previous = usePrevious();
+	const transport = useTransport();
 	const volume = useAudibleVolume();
 	const { theme, toggle: toggleTheme } = useTheme();
 	const isCompactViewport = useIsCompactViewport();
@@ -204,7 +205,7 @@ function Shell() {
 	const library = useLibrary();
 	const search = useLibrarySearch(library, playlists);
 	const { play: playSet } = usePlaySet({ library, playlists });
-	const playbackOrder = usePlaybackOrder();
+	const playbackMode = usePlaybackOrder();
 	const home = useHomePlayback({ library, playlists, navigate });
 
 	const { write: ratePlaying } = useNowPlayingRating();
@@ -634,9 +635,9 @@ function Shell() {
 
 	useKeymap(SCOPE.global, {
 		playPause: () => playPause.mutate(),
-		nextTrack: () => nextTrack(),
+		nextTrack: () => transport.next.mutate(),
 		previousTrack: () => previous(),
-		stop: () => stop(),
+		stop: () => transport.stop.mutate(),
 		seekBack: () => seekBy.mutate(-SEEK_STEP),
 		seekForward: () => seekBy.mutate(SEEK_STEP),
 		volumeUp: () => volume.up(),
@@ -886,7 +887,7 @@ function Shell() {
 										tracks={artistTracks}
 										onPlay={playArtist}
 										onShuffle={(refs) => {
-											playbackOrder.enableShuffle();
+											playbackMode.enableShuffle();
 											playArtist(refs, Math.floor(Math.random() * refs.length));
 										}}
 										onOpenAlbum={(refs) => {

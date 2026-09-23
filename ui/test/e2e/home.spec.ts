@@ -1,4 +1,3 @@
-import type { FakePlayerOption } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
@@ -9,7 +8,6 @@ import {
 	openSidebar,
 	playedFrom,
 	playRequests,
-	requestsTo,
 	scratchOf,
 	sidebar,
 	test,
@@ -193,12 +191,13 @@ test.describe("starting the library from the front door", () => {
 	const headerButton = (page: Page, name: string) =>
 		viewHeader(page).getByRole("button", { name, exact: true });
 
-	const orderRequests = (player: FakePlayer) =>
-		requestsTo(player, "/api/player").flatMap((entry) =>
-			(entry.body?.options ?? [])
-				.filter((option: FakePlayerOption) => option.id === "playbackOrder")
-				.map((option: FakePlayerOption) => option.value),
-		);
+	const modesSent = (player: FakePlayer) =>
+		player.requests
+			.filter(
+				(entry) =>
+					entry.method === "POST" && entry.path === "/api/playback/mode",
+			)
+			.map((entry) => entry.body?.mode);
 
 	test("Play opens All music and starts at the beginning", async ({
 		page,
@@ -221,7 +220,7 @@ test.describe("starting the library from the front door", () => {
 		await expect.poll(() => playedFrom(player)?.index).toBe(0);
 
 		// The playback order is global player state, and Play leaves it alone.
-		await expectSettlesAt(player, () => orderRequests(player).length, 0);
+		await expectSettlesAt(player, () => modesSent(player), []);
 	});
 
 	test("Shuffle opens All music and turns the mode on", async ({
@@ -240,7 +239,7 @@ test.describe("starting the library from the front door", () => {
 			54,
 		);
 
-		await expect.poll(() => orderRequests(player).length).toBeGreaterThan(0);
+		await expect.poll(() => modesSent(player)).toContain("shuffleTracks");
 		await expect
 			.poll(() => playedFrom(player)?.id)
 			.toBe(scratchOf(player)!.guid);

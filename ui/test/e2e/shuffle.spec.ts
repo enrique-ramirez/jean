@@ -1,4 +1,3 @@
-import type { FakePlayerOption } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
@@ -20,6 +19,7 @@ import {
 	viewHeader,
 } from "./fixtures.ts";
 
+// The fake player's own order indices, which is how it stores the mode.
 const SHUFFLE_TRACKS = 4;
 const REPEAT_PLAYLIST = 1;
 
@@ -54,12 +54,12 @@ const modeShuffle = async (page: Page, isMobile: boolean) => {
 	return switched;
 };
 
-const orderRequests = (player: FakePlayer) =>
-	requestsTo(player, "/api/player").flatMap((entry) =>
-		(entry.body?.options ?? [])
-			.filter((option: FakePlayerOption) => option.id === "playbackOrder")
-			.map((option: FakePlayerOption) => option.value),
-	);
+const modesSent = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) => entry.method === "POST" && entry.path === "/api/playback/mode",
+		)
+		.map((entry) => entry.body?.mode);
 
 test.describe("the header shuffle starts a shuffled run", () => {
 	test.beforeEach(async ({ page, player }) => {
@@ -82,9 +82,7 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		expect(playedFrom(player)?.id).toBe(albumGuid(player));
 		await expect(rowByTitle(page, trackPlayed(player) as string)).toBeVisible();
 
-		await expectSettlesAt(player, () => orderRequests(player), [
-			SHUFFLE_TRACKS,
-		]);
+		await expectSettlesAt(player, () => modesSent(player), ["shuffleTracks"]);
 		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
@@ -106,9 +104,7 @@ test.describe("the header shuffle starts a shuffled run", () => {
 		await expect.poll(() => trackPlayed(player)).not.toBeNull();
 		expect(playedFrom(player)?.id).toBe(albumGuid(player));
 		await expect(rowByTitle(page, trackPlayed(player) as string)).toBeVisible();
-		await expectSettlesAt(player, () => orderRequests(player), [
-			SHUFFLE_TRACKS,
-		]);
+		await expectSettlesAt(player, () => modesSent(player), ["shuffleTracks"]);
 		expect(playRequests(player)).toHaveLength(1);
 	});
 
@@ -142,9 +138,9 @@ test.describe("the header shuffle starts a shuffled run", () => {
 			"aria-pressed",
 			"true",
 		);
-		expect(
-			orderRequests(player).every((value) => value === SHUFFLE_TRACKS),
-		).toBe(true);
+		expect(modesSent(player).every((mode) => mode === "shuffleTracks")).toBe(
+			true,
+		);
 		expect(player.player.playbackMode).toBe(SHUFFLE_TRACKS);
 	});
 });
@@ -223,9 +219,7 @@ test.describe("the status bar shuffle is the mode", () => {
 
 		await (await modeShuffle(page, isMobile)).click();
 
-		await expectSettlesAt(player, () => orderRequests(player), [
-			SHUFFLE_TRACKS,
-		]);
+		await expectSettlesAt(player, () => modesSent(player), ["shuffleTracks"]);
 		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
 			"true",
@@ -305,9 +299,9 @@ test.describe("shuffle remembers the order it interrupted", () => {
 
 		await (await modeShuffle(page, isMobile)).click();
 
-		await expectSettlesAt(player, () => orderRequests(player), [
-			SHUFFLE_TRACKS,
-			REPEAT_PLAYLIST,
+		await expectSettlesAt(player, () => modesSent(player), [
+			"shuffleTracks",
+			"repeatAll",
 		]);
 		await expect(await modeShuffle(page, isMobile)).toHaveAttribute(
 			"aria-pressed",
@@ -338,10 +332,42 @@ test.describe("shuffle remembers the order it interrupted", () => {
 
 		await (await modeShuffle(page, isMobile)).click();
 
-		await expectSettlesAt(player, () => orderRequests(player), [
-			SHUFFLE_TRACKS,
-			REPEAT_PLAYLIST,
+		await expectSettlesAt(player, () => modesSent(player), [
+			"shuffleTracks",
+			"repeatAll",
 		]);
+	});
+});
+
+// An install whose player declares fewer orders than the stock seven shifts
+// every position after the gap: Random is this player's second order, where the
+// stock list puts it fourth.
+test.describe("a player that offers Random and no other shuffle", () => {
+	test.use({
+		playerState: {
+			playbackMode: 0,
+			options: [
+				{
+					id: "playbackOrder",
+					name: "Playback order",
+					type: "enum",
+					value: 0,
+					enumNames: ["Default", "Random"],
+				},
+			],
+		},
+	});
+
+	test("the switch shuffles with Random, and the player lands on its own Random", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await (await modeShuffle(page, isMobile)).click();
+
+		await expectSettlesAt(player, () => modesSent(player), ["random"]);
+		expect(player.player.playbackMode).toBe(1);
 	});
 });
 

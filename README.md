@@ -56,9 +56,9 @@ Jean is not a music player, and on its own it does nothing at all. It draws a pl
 
 **A player that beefweb runs in.** foobar2000 on Windows, or DeaDBeeF on Linux, macOS or BSD. There is no foobar2000 build of beefweb for macOS, so a Mac means DeaDBeeF.
 
-**[beefweb](https://github.com/hyperblast/beefweb), installed and enabled in it.** This is the piece that answers a browser at all. Playback, playlists and the queue arrive through it, and Jean is a face drawn on top.
+**[beefweb](https://github.com/hyperblast/beefweb), installed and enabled in it.** This is the piece that answers a browser at all: it serves Jean itself and is how Jean finds `foo_jean` on your network.
 
-**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed beside it.** Your library, its covers, ratings written back to your tags, and the sound sent to this device all come from here. It pairs with Jean once, on your own network.
+**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed beside it.** Playback, playlists, the queue, your library, its covers, ratings written back to your tags, and the sound sent to this device all come from here. It pairs with Jean once, on your own network.
 
 One more is optional:
 
@@ -120,7 +120,7 @@ The portable case catches people out. Copying to `%APPDATA%` there fails quietly
 
 ### You do not have to tell Jean your port
 
-Jean asks beefweb for everything by a root-relative path, which the browser resolves against whatever origin served the page. Change the port in the player's settings and nothing here needs touching. The one arrangement this does not survive is hosting Jean somewhere *other* than beefweb. There is no same-origin API then, and beefweb has CORS off by default.
+Jean asks beefweb for the one thing it still needs, `foo_jean`'s discovery record, by a root-relative path, which the browser resolves against whatever origin served the page. Change the port in the player's settings and nothing here needs touching. The one arrangement this does not survive is hosting Jean somewhere *other* than beefweb. There is no same-origin API then, and beefweb has CORS off by default.
 
 ## Language
 

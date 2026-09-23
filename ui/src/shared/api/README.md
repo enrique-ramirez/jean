@@ -1,6 +1,6 @@
 # API reference
 
-Two HTTP APIs sit under Jean. **beefweb** takes the playback commands: play, pause, seek, volume, skip and the playback order. **`foo_jean`** listens on a port of its own and answers everything else: the player's own state, the playlist list and every edit to it, the queue, the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
+Two HTTP APIs sit under Jean. **beefweb** serves the bundle and hosts the discovery record at `GET /api/clientconfig/foo_jean`, and nothing else on this page is a route Jean calls. **`foo_jean`** listens on a port of its own and answers everything else: playback, the player's own state, the playlist list and every edit to it, the queue, the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
 
 Verified against foobar2000 with the beefweb plugin. Where behaviour differs by plugin version it says so: **0.10** is the current release, **0.11** adds the media library API.
 
@@ -64,6 +64,8 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 `docs/player-api.yml` in the beefweb repository is the authority on the route list, the bodies and the schemas.
 
 ### Player
+
+**Jean does not call any route on this page.** Every playback command goes through `foo_jean`'s own routes instead, *What Jean does about playback* below; what follows is a fact about beefweb, real for any client that has no other playback API to reach for.
 
 | Route | Body | Notes |
 |---|---|---|
@@ -402,6 +404,13 @@ This is the one part of the component's surface the spec does not describe, beca
 - **`player.position` is a mark, not a moving number.** It carries `seconds`, the position at the moment the component last looked, and `ageSeconds`, how long ago that was. A client adds the two to place the mark and then keeps counting on its own while `player.playback` is `playing`, exactly as it already does with beefweb's `activeItem.position`.
 - **`player` carries no `info` block.** The player's name and version do not change while it runs, so the poll does not repeat them; they come off a startup read of `GET /api/capabilities` instead, alongside the volume range (`volumeMin`, `volumeMax`, `volumeUnit`), the permissions (`canWritePlaylists`, `canChangeOutput`) and the list of playback modes this install can be put into.
 - **`player.playbackMode` crosses the wire as Jean's own name**, one of `inOrder`, `repeatAll`, `repeatOne`, `random`, `shuffleTracks`, `shuffleAlbums` or `shuffleFolders`, mapped from whatever the player calls its own orders. `null` means the player is in an order this component has no name for, never a wrong one.
+
+## What Jean does about playback
+
+`shared/api/playback.ts` sends every transport, seek, mode and volume command to `foo_jean` rather than to beefweb: `POST /api/playback/play-pause`, `/next`, `/previous`, `/stop`, `/seek` and `/mode`, plus `POST /api/volume`. `contract/openapi.yaml` is the reference for each body, its statuses and the "exactly one of" rule the seek and volume routes read off which fields are present rather than off what they hold.
+
+- **A mode travels by name, never by ordinal.** `POST /api/playback/mode` takes one of the seven `PlaybackMode` names off `GET /api/capabilities`'s `playbackModes`; a name this install does not offer answers `409` rather than being guessed at.
+- **`playback.ts` also holds `takeSkipAsked`**, the record of which way a skip was asked for. foobar2000 never says which direction a track change moved, and the cover wheel needs the direction before the player has answered anything.
 
 ## What Jean does about the library
 

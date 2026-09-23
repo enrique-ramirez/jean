@@ -901,7 +901,7 @@ test.describe("what the player does with it", () => {
 		await queueTracks(page, isMobile, 9);
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(1);
 
-		await page.evaluate(() => fetch("/api/player/next", { method: "POST" }));
+		player.next();
 
 		await expect.poll(() => player.playQueue.length, { timeout: 5000 }).toBe(0);
 		expect(player.player.activeItem.index).toBe(9);

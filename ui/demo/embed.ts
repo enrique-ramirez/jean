@@ -1,3 +1,13 @@
+import {
+	fetchDiscoveryRecord,
+	fetchPlaylistAnnotations,
+	fetchState,
+	originOfPort,
+	playPlaylistItem,
+	TOKEN_KEY,
+} from "../src/shared/api/fooJean";
+import { seekTo } from "../src/shared/api/playback";
+
 export const isEmbed = (params: URLSearchParams) => params.has("embed");
 
 export const isolateStorage = () => {
@@ -29,30 +39,46 @@ export const applySettings = (params: URLSearchParams) => {
 const SEED_PLAYLIST = "Library";
 const SEED_POSITION_SECONDS = 47;
 
-interface Seeded {
-	player?: { activeItem?: { index: number } };
-	playlists?: { id: string; title: string; itemCount: number }[];
-}
+const agentOrigin = async () => {
+	const record = await fetchDiscoveryRecord().catch(() => null);
+	return record ? originOfPort(record.port) : null;
+};
+
+const demoToken = (): string | null => {
+	const raw = localStorage.getItem(TOKEN_KEY);
+	if (!raw) return null;
+	try {
+		return JSON.parse(raw) as string;
+	} catch {
+		return null;
+	}
+};
 
 export const seedPlayback = async () => {
-	const state: Seeded | null = await fetch(
-		"/api/query?player=true&playlists=true",
-	)
-		.then((response) => response.json())
-		.catch(() => null);
-	const playing = state?.player?.activeItem?.index ?? -1;
-	if (!state || playing >= 0) return;
+	const origin = await agentOrigin();
+	const token = demoToken();
+	if (!origin || !token) return;
 
-	const from = state.playlists?.find(
+	const state = await fetchState(origin, token, null);
+	if (
+		state.ok &&
+		state.kind === "state" &&
+		state.state.player.playingLocation !== null
+	)
+		return;
+
+	const playlists = await fetchPlaylistAnnotations(origin, token);
+	const from = playlists?.find(
 		(playlist) => playlist.title === SEED_PLAYLIST && playlist.itemCount > 0,
 	);
 	if (!from) return;
 
-	await fetch(`/api/player/play/${from.id}/0`, { method: "POST" });
-	await fetch("/api/player", {
-		method: "POST",
-		body: JSON.stringify({ position: SEED_POSITION_SECONDS }),
-	});
+	try {
+		await playPlaylistItem(origin, token, from.id, 0);
+		await seekTo(origin, token, SEED_POSITION_SECONDS);
+	} catch {
+		// A frame opens on a stopped player rather than not opening at all.
+	}
 };
 
 export const focusSearch = () => {

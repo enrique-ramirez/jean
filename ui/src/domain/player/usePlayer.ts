@@ -9,6 +9,17 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+	createPlaylist,
+	type FooJeanDiscovery,
+	fetchPlaylistAnnotations,
+	movePlaylist,
+	type PlaylistAnnotation,
+	playPlaylistItem,
+	removePlaylist,
+	renamePlaylist,
+	requireFooJean,
+} from "@/shared/api/fooJean";
+import {
 	nextTrack,
 	playPause,
 	previousTrack,
@@ -20,17 +31,7 @@ import {
 	stop,
 	volumeDown,
 	volumeUp,
-} from "@/shared/api/beefweb";
-import {
-	createPlaylist,
-	fetchPlaylistAnnotations,
-	movePlaylist,
-	type PlaylistAnnotation,
-	playPlaylistItem,
-	removePlaylist,
-	renamePlaylist,
-	requireFooJean,
-} from "@/shared/api/fooJean";
+} from "@/shared/api/playback";
 import type {
 	ActiveItem,
 	PlaybackMode,
@@ -228,6 +229,20 @@ const usePlayerPatch = <TInput>(
 		},
 	);
 
+const useCommand = (
+	discovery: FooJeanDiscovery,
+	command: (origin: string, token: string) => Promise<void>,
+) =>
+	useMutation({
+		mutationFn: async () => {
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			await command(origin, token);
+		},
+	});
+
 // `index` is positional, and the player renumbers the whole list when any playlist moves or goes away.
 const renumber = (playlists: PlaylistInfo[]) =>
 	playlists.map((entry, index) => ({ ...entry, index }));
@@ -381,49 +396,69 @@ export const usePlayItem = () => {
 	);
 };
 
-export const usePlayPause = () =>
-	usePlayerPatch<void>(playPause, (player, _input, previous) => ({
-		playbackState: player.playbackState === "playing" ? "paused" : "playing",
-		// The interpolated position, not the stale one from the last update, or pausing snaps the bar
-		// back by however long the track has been running.
-		activeItem: {
-			...player.activeItem,
-			position: positionAt(previous, performance.now()),
+export const usePlayPause = () => {
+	const { discovery } = useFooJean();
+	return usePlayerPatch<void>(
+		async () => {
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			await playPause(origin, token);
 		},
-	}));
+		(player, _input, previous) => ({
+			playbackState: player.playbackState === "playing" ? "paused" : "playing",
+			// The interpolated position, not the stale one from the last update, or pausing snaps the bar
+			// back by however long the track has been running.
+			activeItem: {
+				...player.activeItem,
+				position: positionAt(previous, performance.now()),
+			},
+		}),
+	);
+};
 
-export const useSeek = () =>
-	usePlayerPatch(seekTo, (player, position: number) => {
-		if (!player.activeItem) return null;
-		beginSeek(position);
-		return { activeItem: { ...player.activeItem, position } };
-	});
+export const useSeek = () => {
+	const { discovery } = useFooJean();
+	return usePlayerPatch(
+		async (position: number) => {
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			await seekTo(origin, token, position);
+		},
+		(player, position: number) => {
+			if (!player.activeItem) return null;
+			beginSeek(position);
+			return { activeItem: { ...player.activeItem, position } };
+		},
+	);
+};
 
-export const useSeekBy = () =>
-	usePlayerPatch(seekBy, (player, offset: number, previous) => {
-		const item = player.activeItem;
-		if (!item) return null;
-		const position = clamp(
-			positionAt(previous, performance.now()) + offset,
-			0,
-			item.duration ?? 0,
-		);
-		beginSeek(position);
-		return { activeItem: { ...item, position } };
-	});
-
-// `foo_jean`'s own vocabulary, in the fixed order that matches foobar2000's stock `playbackOrder`
-// enum. `usePlaybackOrder` reads it both ways: a mode's index is the ordinal `setPlaybackOrder`
-// sends beefweb, and the ordinal it echoes back indexes into this array for the optimistic patch.
-const JEAN_ORDER: PlaybackMode[] = [
-	"inOrder",
-	"repeatAll",
-	"repeatOne",
-	"random",
-	"shuffleTracks",
-	"shuffleAlbums",
-	"shuffleFolders",
-];
+export const useSeekBy = () => {
+	const { discovery } = useFooJean();
+	return usePlayerPatch(
+		async (offset: number) => {
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			await seekBy(origin, token, offset);
+		},
+		(player, offset: number, previous) => {
+			const item = player.activeItem;
+			if (!item) return null;
+			const position = clamp(
+				positionAt(previous, performance.now()) + offset,
+				0,
+				item.duration ?? 0,
+			);
+			beginSeek(position);
+			return { activeItem: { ...item, position } };
+		},
+	);
+};
 
 const SHUFFLE_PRIORITY: PlaybackMode[] = [
 	"shuffleTracks",
@@ -457,8 +492,6 @@ export function usePlaybackOrder() {
 		discovery.state.kind === "ready" ? discovery.state.capabilities : null;
 
 	const mode = player?.jeanPlaybackMode ?? null;
-	const modeOrdinal = mode !== null ? JEAN_ORDER.indexOf(mode) : -1;
-	const value = modeOrdinal >= 0 ? modeOrdinal : 0;
 
 	const offeredModes = capabilities?.playbackModes ?? [];
 	const shuffleMode = useMemo(
@@ -469,24 +502,32 @@ export function usePlaybackOrder() {
 
 	const isInOrder = mode === "inOrder";
 
-	const previousOrder = useRef(0);
-	if (!isShuffle && value !== previousOrder.current)
-		previousOrder.current = value;
+	const previousOrder = useRef<PlaybackMode>("inOrder");
+	const effectiveMode = mode ?? "inOrder";
+	if (!isShuffle && effectiveMode !== previousOrder.current)
+		previousOrder.current = effectiveMode;
 
-	const mutation = usePlayerPatch(setPlaybackOrder, (player, next: number) => ({
-		jeanPlaybackMode: JEAN_ORDER[next] ?? player.jeanPlaybackMode,
-	}));
+	const mutation = usePlayerPatch(
+		async (next: PlaybackMode) => {
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			await setPlaybackOrder(origin, token, next);
+		},
+		(_player, next: PlaybackMode) => ({ jeanPlaybackMode: next }),
+	);
 
 	const { mutate } = mutation;
 
 	const toggleShuffle = useCallback(() => {
 		if (shuffleMode === null) return;
-		mutate(isShuffle ? previousOrder.current : JEAN_ORDER.indexOf(shuffleMode));
+		mutate(isShuffle ? previousOrder.current : shuffleMode);
 	}, [isShuffle, shuffleMode, mutate]);
 
 	const enableShuffle = useCallback(() => {
 		if (shuffleMode === null || isShuffle) return;
-		mutate(JEAN_ORDER.indexOf(shuffleMode));
+		mutate(shuffleMode);
 	}, [isShuffle, shuffleMode, mutate]);
 
 	return {
@@ -503,12 +544,25 @@ const VOLUME_EPSILON = 0.5;
 
 export function useVolume() {
 	const { data } = usePlayer();
-	const send = useCoalescedWrite(setVolume);
-	const mute = usePlayerPatch(setMuted, (player, isMuted: boolean) => ({
-		volume: { ...player.volume, isMuted },
-	}));
-	const nudgeUp = useMutation({ mutationFn: volumeUp });
-	const nudgeDown = useMutation({ mutationFn: volumeDown });
+	const { discovery } = useFooJean();
+	const send = useCoalescedWrite((value: number) => {
+		const { origin, token } = requireFooJean(discovery.origin, discovery.token);
+		return setVolume(origin, token, value);
+	});
+	const mute = usePlayerPatch(
+		async (isMuted: boolean) => {
+			const { origin, token } = requireFooJean(
+				discovery.origin,
+				discovery.token,
+			);
+			await setMuted(origin, token, isMuted);
+		},
+		(player, isMuted: boolean) => ({
+			volume: { ...player.volume, isMuted },
+		}),
+	);
+	const nudgeUp = useCommand(discovery, volumeUp);
+	const nudgeDown = useCommand(discovery, volumeDown);
 
 	// State rather than a ref, or the control snaps back to the player's last reported value the
 	// moment a drag ends. Out of the query cache, whose writes re-render every subscriber of player
@@ -562,8 +616,9 @@ const RESTART_AFTER_SECONDS = 5;
 
 export function usePrevious() {
 	const queryClient = useQueryClient();
+	const { discovery } = useFooJean();
 	const seek = useSeek().mutate;
-	const skip = useMutation({ mutationFn: previousTrack }).mutate;
+	const skip = useCommand(discovery, previousTrack).mutate;
 
 	return useCallback(
 		(stepBack: () => void = () => skip()) => {
@@ -575,8 +630,11 @@ export function usePrevious() {
 	);
 }
 
-export const useTransport = () => ({
-	next: useMutation({ mutationFn: nextTrack }),
-	previous: useMutation({ mutationFn: previousTrack }),
-	stop: useMutation({ mutationFn: stop }),
-});
+export const useTransport = () => {
+	const { discovery } = useFooJean();
+	return {
+		next: useCommand(discovery, nextTrack),
+		previous: useCommand(discovery, previousTrack),
+		stop: useCommand(discovery, stop),
+	};
+};

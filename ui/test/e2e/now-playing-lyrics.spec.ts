@@ -105,8 +105,8 @@ test.describe("reading the lyric tag", () => {
 		await line.click();
 		await expect
 			.poll(() =>
-				requestsTo(player, "/api/player").flatMap((entry) =>
-					entry.body && "position" in entry.body ? [entry.body.position] : [],
+				requestsTo(player, "/api/playback/seek").flatMap((entry) =>
+					entry.body && "seconds" in entry.body ? [entry.body.seconds] : [],
 				),
 			)
 			.toContain(24);

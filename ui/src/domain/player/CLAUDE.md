@@ -149,6 +149,10 @@ Three facts this rests on, all properties of the component rather than of one ne
 
 **That gap is beefweb's, and `foo_jean`'s own state never had it.** `on_playback_stop` in `plugins/fb2k/src/fb2k/playback_watch.cpp` returns early for the outgoing track of a change, so the identity the poll answers, title, path, artwork, stands until the next track's `on_playback_new_track` replaces it, with nothing empty in between. `../../shared/api/README.md` has beefweb's own version of the trap, real for a client reading `activeItem` from beefweb directly; nothing in `ui/src` does.
 
+## Which way a skip went
+
+**foobar2000 never says which way a track change moved.** `on_playback_new_track` hands over only the new handle, and `on_playback_stop`'s `stop_reason_starting_another` says a change is happening and not which way, so `foo_jean` has nothing to relay. `shared/api/playback.ts`'s `takeSkipAsked` holds the direction from the moment a caller asks for a skip until the cover wheel reads it back, because the wheel has to turn before the player has answered anything.
+
 ## Position
 
 **Position updates arrive only on change events, so the progress display interpolates locally** (`position.ts`). The seek bar runs the animation-frame loop and is deliberately a leaf. That state must never be lifted, or it will repaint a virtualised list on every frame.

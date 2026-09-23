@@ -1,8 +1,12 @@
 import {
+	componentOrigin,
+	dragTo,
 	expect,
 	expectSettlesAt,
 	type FakePlayer,
 	FOO_JEAN_TOKEN,
+	globalControls,
+	inSequence,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
@@ -10,6 +14,7 @@ import {
 	type Page,
 	requestsTo,
 	settingsDialog,
+	statusBar,
 	test,
 	trackRow,
 } from "./fixtures.ts";
@@ -266,6 +271,35 @@ test.describe("a token the component stops accepting", () => {
 		await expectSettlesAt(player, () => probes(player), before + 1);
 	});
 
+	test("is looked at again once when a command meets it first", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		const transport = await globalControls(page, isMobile);
+		const play = transport.getByRole("button", { name: "Play", exact: true });
+		await expect(play).toBeVisible();
+
+		await page.route(
+			`${await componentOrigin(page.request)}/api/playback/play-pause`,
+			(route) =>
+				route.fulfill({
+					status: 401,
+					headers: {
+						"Access-Control-Allow-Origin": new URL(page.url()).origin,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ error: "authentication required" }),
+				}),
+		);
+
+		const before = probes(player);
+		await play.click();
+
+		await expectSettlesAt(player, () => probes(player), before + 1);
+	});
+
 	// The read after a timed-out rating is the one request that meets this
 	// route, so it is the only way a refusal there can be the first one Jean hears.
 	test.describe("and says so first on the read after a timed-out rating", () => {
@@ -400,5 +434,180 @@ test.describe("a token the component stops accepting", () => {
 				),
 			).toEqual({ times: 1, gaps: 0 });
 		});
+	});
+});
+
+// The poll is refused as well, or its next answer would put the control back
+// whether or not the failed command did, and the case would pass either way.
+test.describe("a component that hangs up on every command", () => {
+	test.use({ fooJeanToken: FOO_JEAN_TOKEN });
+	test.skip(
+		({ isMobile }) => isMobile,
+		"the fader and the seek bar are mouse gestures, and the status bar is where the controls sit side by side",
+	);
+
+	const hangUpOnCommands = async (
+		page: Page,
+		player: FakePlayer,
+		drawsThePress: () => Promise<unknown>,
+	) => {
+		player.fooJean.failState = 503;
+		const origin = await componentOrigin(page.request);
+		const hungUp: string[] = [];
+		await page.route(
+			(url) =>
+				url.origin === origin &&
+				/^\/api\/(playback\/[a-z-]+|volume)$/.test(url.pathname),
+			async (route) => {
+				const drawn = await drawsThePress().then(
+					() => true,
+					() => false,
+				);
+				if (drawn) hungUp.push(new URL(route.request().url()).pathname);
+				return route.abort("connectionreset");
+			},
+		);
+		return hungUp;
+	};
+
+	const DRAWN = { timeout: 5_000 };
+
+	test.beforeEach(async ({ page }) => {
+		await openLibrary(page);
+		await expect(
+			statusBar(page).getByRole("button", { name: "Shuffle" }),
+		).toBeVisible();
+	});
+
+	test("Pause goes back to Pause", async ({ page, player }) => {
+		await trackRow(page, 0).dblclick();
+		const button = (name: string) =>
+			statusBar(page).getByRole("button", { name, exact: true });
+		await expect(button("Pause")).toBeVisible();
+		const hungUp = await hangUpOnCommands(page, player, () =>
+			expect(button("Play")).toBeVisible(DRAWN),
+		);
+
+		await button("Pause").click();
+
+		await expect.poll(() => hungUp).toContain("/api/playback/play-pause");
+		await expect(button("Pause")).toBeVisible();
+		expect(player.player.playbackState).toBe("playing");
+	});
+
+	test("Shuffle goes back to off", async ({ page, player }) => {
+		const shuffle = statusBar(page).getByRole("button", { name: "Shuffle" });
+		await expect(shuffle).toHaveAttribute("aria-pressed", "false");
+		const hungUp = await hangUpOnCommands(page, player, () =>
+			expect(shuffle).toHaveAttribute("aria-pressed", "true", DRAWN),
+		);
+
+		await shuffle.click();
+
+		await expect.poll(() => hungUp).toContain("/api/playback/mode");
+		await expect(shuffle).toHaveAttribute("aria-pressed", "false");
+		expect(player.player.playbackMode).toBe(0);
+	});
+
+	test("Mute goes back to Mute", async ({ page, player }) => {
+		const button = (name: string) =>
+			statusBar(page).getByRole("button", { name, exact: true });
+		await expect(button("Mute")).toBeVisible();
+		const hungUp = await hangUpOnCommands(page, player, () =>
+			expect(button("Unmute")).toBeVisible(DRAWN),
+		);
+
+		await button("Mute").click();
+
+		await expect.poll(() => hungUp).toContain("/api/volume");
+		await expect(button("Mute")).toBeVisible();
+		expect(player.player.volume.isMuted).toBe(false);
+	});
+
+	test("the fader goes back to the player's level", async ({
+		page,
+		player,
+	}) => {
+		const fader = statusBar(page).getByRole("slider", { name: "Volume" });
+		const level = (await fader.getAttribute("aria-valuenow"))!;
+		const held = player.player.volume.value;
+		const hungUp = await hangUpOnCommands(page, player, () =>
+			expect(fader).not.toHaveAttribute("aria-valuenow", level, DRAWN),
+		);
+
+		await dragTo(page, fader, 0.1);
+
+		await expect.poll(() => hungUp).toContain("/api/volume");
+		await expect(fader).toHaveAttribute("aria-valuenow", level);
+		expect(player.player.volume.value).toBe(held);
+	});
+
+	test("the seek bar goes back to where the track is", async ({
+		page,
+		player,
+	}) => {
+		await trackRow(page, 0).dblclick();
+		const bar = statusBar(page).getByRole("slider", {
+			name: "Playback position",
+		});
+		await expect(bar).toHaveAttribute("data-seekable", "true");
+		const at = () => bar.getAttribute("aria-valuenow").then(Number);
+		const hungUp = await hangUpOnCommands(page, player, () =>
+			expect.poll(at, DRAWN).toBeGreaterThan(180),
+		);
+
+		await dragTo(page, bar, 0.8, 10);
+
+		await expect.poll(() => hungUp).toContain("/api/playback/seek");
+		await expect.poll(at).toBeLessThan(60);
+		expect(player.player.activeItem.position).toBeLessThan(60);
+	});
+});
+
+test.describe("a component that cannot be reached, at the transport", () => {
+	test.use({ fooJeanToken: FOO_JEAN_TOKEN, fooJean: { reachable: false } });
+	test.skip(({ isMobile }) => isMobile, "no keyboard on the phone");
+
+	test("every command key does nothing, and nothing throws", async ({
+		page,
+		player,
+	}) => {
+		const thrown: string[] = [];
+		page.on("pageerror", (error) => thrown.push(error.message));
+		const before = structuredClone(player.player);
+
+		await openSettings(page);
+		await expect(settingsDialog(page)).toContainText("cannot reach it");
+		await page.keyboard.press("Escape");
+		await expect(settingsDialog(page)).toBeHidden();
+
+		await inSequence(
+			[
+				"Space",
+				"ControlOrMeta+ArrowRight",
+				"ControlOrMeta+ArrowLeft",
+				"ControlOrMeta+.",
+				"ArrowRight",
+				"=",
+				"-",
+				"m",
+			],
+			(key) => page.keyboard.press(key),
+		);
+
+		await expectSettlesAt(
+			player,
+			() => ({
+				playbackState: player.player.playbackState,
+				activeItem: player.player.activeItem,
+				volume: player.player.volume,
+			}),
+			{
+				playbackState: before.playbackState,
+				activeItem: before.activeItem,
+				volume: before.volume,
+			},
+		);
+		expect(thrown).toEqual([]);
 	});
 });

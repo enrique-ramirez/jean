@@ -2,7 +2,7 @@
 
 For someone about to build on Jean. Structure, boundaries and contracts: the things a file listing does not tell you. [CONTRIBUTING.md](./CONTRIBUTING.md) is how to write the code; [src/shared/api/README.md](src/shared/api/README.md) is what the player answers.
 
-Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./CONTRIBUTING.md), *Stack*, is what it is built out of. **Jean is served same-origin with beefweb**, whose requests are all root-relative `/api/…` paths the browser resolves against whatever origin served the page: beefweb in a build, the Vite proxy in development. `foo_jean` listens on a port of its own, so the library, its covers and every tag write are cross-origin and carry a bearer token through a preflight the component answers with a 600 second `Access-Control-Max-Age`.
+Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./CONTRIBUTING.md), *Stack*, is what it is built out of. **Jean is served same-origin with beefweb**, which is what the two things Jean still asks it for rest on: it serves the bundle itself, and it hosts `foo_jean`'s discovery record at `GET /api/clientconfig/foo_jean`, root-relative and resolved against whatever origin served the page, so discovery needs no CORS and no port scanning. `foo_jean` listens on a port of its own, so playback, the library, its covers and every tag write are cross-origin and carry a bearer token through a preflight the component answers with a 600 second `Access-Control-Max-Age`.
 
 ## The shape of it
 
@@ -28,7 +28,7 @@ flowchart TB
     domain --> shared
   end
 
-  bw -->|"REST + SSE"| shared
+  bw -->|"discovery record"| shared
   fj -->|"the library, REST and audio, same origin"| shared
 ```
 
@@ -38,7 +38,7 @@ Arrows inside the browser are import direction, and they point one way only.
 
 | Tier | Knows about |
 |---|---|
-| `shared/` | nothing about Jean. The `foo_jean` client and wire types, player-state reading, the playback commands still sent to beefweb, generic UI, pure helpers, hooks, the keymap, the token layer |
+| `shared/` | nothing about Jean. The `foo_jean` client and wire types, player-state reading, the playback commands, generic UI, pure helpers, hooks, the keymap, the token layer |
 | `domain/` | what Jean is about, as data and behaviour with no route of its own |
 | `features/` | one folder per thing a user can do, each owning its own views |
 | `app/` | the shell that composes features: `App`, `Sidebar`, `CommandPalette`, theme, hash routing |

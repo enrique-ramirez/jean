@@ -1217,6 +1217,20 @@ const playbackModesOf = (state: FakeState): PlaybackMode[] =>
 		.map(jeanModeFor)
 		.filter((mode): mode is PlaybackMode => mode !== null);
 
+const PLAYBACK_MODES = new Set<PlaybackMode>(Object.values(JEAN_MODE_BY_ORDER));
+
+const orderIndexForMode = (
+	state: FakeState,
+	mode: PlaybackMode,
+): number | null => {
+	const orderName = Object.entries(JEAN_MODE_BY_ORDER).find(
+		([, jeanMode]) => jeanMode === mode,
+	)?.[0];
+	if (orderName === undefined) return null;
+	const index = declaredOrders(state).indexOf(orderName);
+	return index === -1 ? null : index;
+};
+
 const fileNameOf = (path: string) => path.split(/[\\/]/).pop() ?? "";
 
 // Mirrors the title-formatting scripts in `plugins/fb2k/src/fb2k/playback_watch.cpp`: only the
@@ -1368,6 +1382,142 @@ const changedColumnDictionaries = (columns: string[], rows: Track[]) =>
 		});
 		return { text, ids };
 	});
+
+// Word for word what core/api.cpp's parseJsonObject and declaresOnly answer for every playback
+// route. The JSON-parse exception text a body that fails to parse at all gets there cannot be
+// reproduced here: by the time a body reaches this handler it has already been reduced to `null`,
+// so that case collapses into the one static string parseJsonObject also answers for a body that
+// parsed but was not an object.
+const NOT_A_JSON_OBJECT = "expected a JSON object";
+const FIELD_NOT_TAKEN = "a field this route does not take was named";
+
+const SEEK_FIELDS = ["seconds", "relativeSeconds"] as const;
+
+type ParsedSeek =
+	| { ok: true; seconds?: number; relativeSeconds?: number }
+	| { ok: false; status: number; body: { error: string; detail: string } };
+
+function parseSeek(body: unknown): ParsedSeek {
+	if (typeof body !== "object" || body === null || Array.isArray(body))
+		return {
+			ok: false,
+			status: 400,
+			body: { error: "unacceptable seek", detail: NOT_A_JSON_OBJECT },
+		};
+
+	const record = body as Record<string, unknown>;
+	const stray = Object.keys(record).find(
+		(key) => !SEEK_FIELDS.includes(key as (typeof SEEK_FIELDS)[number]),
+	);
+	if (stray)
+		return {
+			ok: false,
+			status: 400,
+			body: { error: "unacceptable seek", detail: FIELD_NOT_TAKEN },
+		};
+
+	const forms = SEEK_FIELDS.filter((key) => record[key] !== undefined);
+	if (forms.length !== 1)
+		return {
+			ok: false,
+			status: 400,
+			body: {
+				error: "unacceptable seek",
+				detail:
+					forms.length === 0
+						? "send exactly one of 'seconds' and 'relativeSeconds'"
+						: "'seconds' and 'relativeSeconds' were both present; send exactly one",
+			},
+		};
+
+	const [field] = forms;
+	if (typeof record[field] !== "number")
+		return {
+			ok: false,
+			status: 400,
+			body: {
+				error: "unacceptable seek",
+				detail: `'${field}' must be a number`,
+			},
+		};
+
+	return field === "seconds"
+		? { ok: true, seconds: record.seconds as number }
+		: { ok: true, relativeSeconds: record.relativeSeconds as number };
+}
+
+const VOLUME_FIELDS = ["value", "step", "muted"] as const;
+
+type ParsedVolume =
+	| { ok: true; value?: number; step?: "up" | "down"; muted?: boolean }
+	| { ok: false; status: number; body: { error: string; detail: string } };
+
+function parseVolume(body: unknown): ParsedVolume {
+	if (typeof body !== "object" || body === null || Array.isArray(body))
+		return {
+			ok: false,
+			status: 400,
+			body: { error: "unacceptable volume", detail: NOT_A_JSON_OBJECT },
+		};
+
+	const record = body as Record<string, unknown>;
+	const stray = Object.keys(record).find(
+		(key) => !VOLUME_FIELDS.includes(key as (typeof VOLUME_FIELDS)[number]),
+	);
+	if (stray)
+		return {
+			ok: false,
+			status: 400,
+			body: { error: "unacceptable volume", detail: FIELD_NOT_TAKEN },
+		};
+
+	const forms = VOLUME_FIELDS.filter((key) => record[key] !== undefined);
+	if (forms.length !== 1)
+		return {
+			ok: false,
+			status: 400,
+			body: {
+				error: "unacceptable volume",
+				detail: "send exactly one of 'value', 'step' and 'muted'",
+			},
+		};
+
+	const [field] = forms;
+	if (field === "value") {
+		if (typeof record.value !== "number")
+			return {
+				ok: false,
+				status: 400,
+				body: {
+					error: "unacceptable volume",
+					detail: "'value' must be a number",
+				},
+			};
+		return { ok: true, value: record.value };
+	}
+	if (field === "step") {
+		if (record.step !== "up" && record.step !== "down")
+			return {
+				ok: false,
+				status: 400,
+				body: {
+					error: "unacceptable volume",
+					detail: "'step' must be 'up' or 'down'",
+				},
+			};
+		return { ok: true, step: record.step };
+	}
+	if (typeof record.muted !== "boolean")
+		return {
+			ok: false,
+			status: 400,
+			body: {
+				error: "unacceptable volume",
+				detail: "'muted' must be a boolean",
+			},
+		};
+	return { ok: true, muted: record.muted };
+}
 
 // A player with no media library at all still answers what it is playing: this
 // route never 503s on that account, unlike the three `handleLibrary` routes,
@@ -1754,6 +1904,103 @@ export async function handleAgent({
 
 	if (path === "/api/state")
 		return handleState({ state, fake, method, headers, response });
+
+	if (method === "POST" && path === "/api/playback/play-pause") {
+		if (state.latency > 0) await delay(state.latency);
+		state.playPause();
+		return empty(response);
+	}
+
+	if (method === "POST" && path === "/api/playback/next") {
+		if (state.latency > 0) await delay(state.latency);
+		state.next();
+		return empty(response);
+	}
+
+	if (method === "POST" && path === "/api/playback/previous") {
+		if (state.latency > 0) await delay(state.latency);
+		state.previous();
+		return empty(response);
+	}
+
+	if (method === "POST" && path === "/api/playback/stop") {
+		if (state.latency > 0) await delay(state.latency);
+		state.stop();
+		return empty(response);
+	}
+
+	if (method === "POST" && path === "/api/playback/seek") {
+		if (state.latency > 0) await delay(state.latency);
+		const parsed = parseSeek(body);
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
+		state.patchPlayer(
+			parsed.seconds !== undefined
+				? { position: parsed.seconds }
+				: { relativePosition: parsed.relativeSeconds },
+		);
+		return empty(response);
+	}
+
+	if (method === "POST" && path === "/api/playback/mode") {
+		if (state.latency > 0) await delay(state.latency);
+		if (typeof body !== "object" || body === null || Array.isArray(body))
+			return json(
+				response,
+				{ error: "unacceptable mode", detail: NOT_A_JSON_OBJECT },
+				400,
+			);
+
+		const record = body as Record<string, unknown>;
+		const stray = Object.keys(record).find((key) => key !== "mode");
+		if (stray)
+			return json(
+				response,
+				{ error: "unacceptable mode", detail: FIELD_NOT_TAKEN },
+				400,
+			);
+
+		if (typeof record.mode !== "string")
+			return json(
+				response,
+				{
+					error: "unacceptable mode",
+					detail: "'mode' is required and must be a string",
+				},
+				400,
+			);
+
+		if (!PLAYBACK_MODES.has(record.mode as PlaybackMode))
+			return json(
+				response,
+				{
+					error: "unacceptable mode",
+					detail: `'${record.mode}' is not a playback mode this API knows`,
+				},
+				400,
+			);
+
+		const index = orderIndexForMode(state, record.mode as PlaybackMode);
+		if (index === null)
+			return json(
+				response,
+				{ error: "this install does not offer that playback mode" },
+				409,
+			);
+
+		state.patchPlayer({ options: [{ id: "playbackOrder", value: index }] });
+		return empty(response);
+	}
+
+	if (method === "POST" && path === "/api/volume") {
+		if (state.latency > 0) await delay(state.latency);
+		const parsed = parseVolume(body);
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
+		if (parsed.value !== undefined) state.patchPlayer({ volume: parsed.value });
+		else if (parsed.step !== undefined)
+			state.nudgeVolume(parsed.step === "up" ? 1 : -1);
+		else state.patchPlayer({ isMuted: parsed.muted });
+		return empty(response);
+	}
 
 	if (fake.failQueue && method !== "GET" && path.startsWith("/api/queue")) {
 		if (fake.failQueue === 429) response.setHeader("Retry-After", "1");

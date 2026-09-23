@@ -63,40 +63,6 @@ export async function handleApi({
 		return streamUpdates({ state, url, response });
 	}
 
-	if (head === "player") {
-		if (method === "GET") {
-			return json(response, { player: { ...state.playerPayload() } });
-		}
-		if (method === "POST" && rest.length === 0) {
-			state.patchPlayer(body ?? {});
-			return empty(response);
-		}
-		if (method === "POST" && rest[0] === "play" && rest.length === 3) {
-			state.playItem(rest[1], Number(rest[2]));
-			return empty(response);
-		}
-		if (method === "POST" && rest[0] === "play-pause") {
-			state.playPause();
-			return empty(response);
-		}
-		if (method === "POST" && rest[0] === "next") {
-			state.next();
-			return empty(response);
-		}
-		if (method === "POST" && rest[0] === "previous") {
-			state.previous();
-			return empty(response);
-		}
-		if (method === "POST" && rest[0] === "stop") {
-			state.stop();
-			return empty(response);
-		}
-		if (method === "POST" && rest[0] === "volume") {
-			state.nudgeVolume(rest[1] === "up" ? 1 : -1);
-			return empty(response);
-		}
-	}
-
 	if (head === "library") {
 		if (method === "GET" && rest[0] === "info")
 			return json(response, state.libraryInfo());

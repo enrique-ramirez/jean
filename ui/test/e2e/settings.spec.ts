@@ -102,7 +102,7 @@ test.describe("the settings dialog", () => {
 		await expect(settingsDialog(page)).toBeVisible();
 		await expectSettlesAt(
 			player,
-			() => requestsTo(player, "/player/play-pause"),
+			() => requestsTo(player, "/api/playback/play-pause"),
 			[],
 		);
 		expect(playRequests(player).length).toBe(played);

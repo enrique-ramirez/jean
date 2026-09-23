@@ -7,7 +7,7 @@ import {
 	expect,
 	expectSettlesAt,
 	openLibrary,
-	requestsTo,
+	statusBar,
 	test,
 	touchDrag,
 	trackRow,
@@ -31,9 +31,14 @@ const showVolume = async (page: Page) => {
 	await expect(volume(page)).toBeVisible();
 };
 
+const bodiesTo = (player: FakePlayer, route: string) =>
+	player.requests
+		.filter((entry) => entry.method === "POST" && entry.path === route)
+		.map((entry) => entry.body ?? {});
+
 const volumesSent = (player: FakePlayer) =>
-	requestsTo(player, "/api/player")
-		.map((entry) => entry.body?.volume)
+	bodiesTo(player, "/api/volume")
+		.map((body) => body.value)
 		.filter((value) => value !== undefined);
 
 test.describe("the volume slider", () => {
@@ -146,6 +151,37 @@ test.describe("the volume slider", () => {
 	});
 });
 
+test.describe("the mute button", () => {
+	test.skip(
+		({ isMobile }) => isMobile,
+		"the phone keeps the mute button in the volume popover",
+	);
+
+	test("two presses before the first is drawn mute and then unmute", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		const mute = statusBar(page).getByRole("button", {
+			name: "Mute",
+			exact: true,
+		});
+		await expect(mute).toBeVisible();
+
+		await mute.evaluate((button: HTMLElement) => {
+			button.click();
+			button.click();
+		});
+
+		await expectSettlesAt(player, () => bodiesTo(player, "/api/volume"), [
+			{ muted: true },
+			{ muted: false },
+		]);
+		expect(player.player.volume.isMuted).toBe(false);
+		await expect(mute).toBeVisible();
+	});
+});
+
 test.describe("the seek bar", () => {
 	test.skip(({ isMobile }) => isMobile, "scrubbing is a mouse gesture");
 
@@ -159,10 +195,7 @@ test.describe("the seek bar", () => {
 
 		await expectSettlesAt(
 			player,
-			() =>
-				requestsTo(player, "/api/player").filter(
-					(entry) => entry.body?.position !== undefined,
-				),
+			() => bodiesTo(player, "/api/playback/seek"),
 			[],
 		);
 		await expect(seekBar(page)).toHaveAttribute("aria-valuenow", "0");
@@ -174,8 +207,8 @@ test.describe("the seek bar", () => {
 		await expect(seekBar(page)).toHaveAttribute("data-seekable", "true");
 
 		const positions = () =>
-			requestsTo(player, "/api/player")
-				.map((entry) => entry.body?.position)
+			bodiesTo(player, "/api/playback/seek")
+				.map((body) => body.seconds)
 				.filter((value) => value !== undefined);
 
 		await dragTo(page, seekBar(page), 0.5, 30);

@@ -67,7 +67,7 @@ The Android lock screen, macOS Now Playing and the media keys, iOS Control Centr
 
 **Everything it publishes is the audible copy**, so the lock screen changes track when the speaker does rather than early. Position is published on a push and never per frame. The OS interpolates from `playbackRate` between calls, so a frame loop would buy nothing and cost everything.
 
-**The handlers drive the player, never the element.** Pausing the element would cut the sound still draining out of the buffer; see `src/domain/player/CLAUDE.md`. `play` and `pause` each check before pressing beefweb's single `play-pause`, since the OS sends `play` freely including when it already is playing. Stopping ends the listening session as well: a stopped player with the stream still attached would hold the component's mute for audio nobody is hearing.
+**The handlers drive the player, never the element.** Pausing the element would cut the sound still draining out of the buffer; see `src/domain/player/CLAUDE.md`. `play` and `pause` each check before pressing `foo_jean`'s single `POST /api/playback/play-pause`, since the OS sends `play` freely including when it already is playing. Stopping ends the listening session as well: a stopped player with the stream still attached would hold the component's mute for audio nobody is hearing.
 
 Two traps worth keeping: Chrome throws a **`TypeError` on a position past the duration**, which a live stream's own clock will produce, and `setActionHandler` **throws for an action the browser does not know** rather than ignoring it. Both are caught: losing the scrubber is not worth losing the session.
 

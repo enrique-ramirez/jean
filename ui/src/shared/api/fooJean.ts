@@ -602,6 +602,7 @@ const requestThrowing = async (
 	token: string,
 	method: string,
 	body?: unknown,
+	notifyRefusal = false,
 ): Promise<Response> => {
 	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
 		fetch(url, {
@@ -612,15 +613,26 @@ const requestThrowing = async (
 			signal,
 		}),
 	);
-	if (!response.ok)
+	if (!response.ok) {
+		if (notifyRefusal) noteTokenRefused(response.status);
 		throw new Error(`${method} ${url} failed: ${response.status}`, {
 			cause: response.status,
 		});
+	}
 	return response;
 };
 
 const postThrowing = (url: string, token: string, body: unknown) =>
 	requestThrowing(url, token, "POST", body);
+
+export async function postFooJeanCommand(
+	origin: string,
+	token: string,
+	path: string,
+	body?: unknown,
+): Promise<void> {
+	await requestThrowing(`${origin}${path}`, token, "POST", body, true);
+}
 
 const playlistUrl = (origin: string, id: string) =>
 	`${origin}/api/playlists/${encodeURIComponent(id)}`;

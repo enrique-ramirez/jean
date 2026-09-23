@@ -6,7 +6,7 @@ import {
 	useState,
 } from "react";
 
-import { takeSkipAsked } from "@/shared/api/beefweb";
+import { ASKED_MS, takeSkipAsked } from "@/shared/api/playback";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./CoverWheel.module.css";
 
@@ -14,7 +14,6 @@ const STEP = 22;
 const REACH = 0.45;
 const GIVE = 0.15;
 const FLICK_PX = 50;
-const UNANSWERED_MS = 4000;
 
 interface Sleeve {
 	src: string;
@@ -200,7 +199,7 @@ export function useCoverWheel({
 				unanswered.current = null;
 				setIsAwaiting(false);
 				turnTo(pending.from);
-			}, UNANSWERED_MS);
+			}, ASKED_MS);
 
 			onSkip(by);
 		},

@@ -36,6 +36,9 @@ const openTargets = async (page: Page, isMobile: boolean) => {
 const filterField = (page: Page) =>
 	page.getByRole("textbox", { name: "Find a playlist" });
 
+const isTransportCommand = (path: string) =>
+	path.startsWith("/api/playback/") || path === "/api/volume";
+
 test.describe("the menu names what it is about", () => {
 	test("a single row is headed by the track", async ({ page, isMobile }) => {
 		await openLibrary(page);
@@ -189,8 +192,7 @@ test.describe("while a menu is open", () => {
 
 		await expectSettlesAt(
 			player,
-			() =>
-				player.requests.filter((entry) => entry.path.startsWith("/api/player")),
+			() => player.requests.filter((entry) => isTransportCommand(entry.path)),
 			[],
 		);
 	});
@@ -271,8 +273,7 @@ test.describe("a dropdown owns the keyboard too", () => {
 		await page.keyboard.press("ArrowRight");
 		await expectSettlesAt(
 			player,
-			() =>
-				player.requests.filter((entry) => entry.path.startsWith("/api/player")),
+			() => player.requests.filter((entry) => isTransportCommand(entry.path)),
 			[],
 		);
 	});

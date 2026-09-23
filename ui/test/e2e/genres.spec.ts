@@ -134,8 +134,8 @@ test.describe("the genres index", () => {
 			// The same trap as Space: left and right seek five seconds everywhere else,
 			// and a grid you can walk must not scrub the track under you.
 			expect(
-				requestsTo(player, "/api/player").filter(
-					(entry) => entry.body?.relativePosition !== undefined,
+				requestsTo(player, "/api/playback/seek").filter(
+					(entry) => entry.body?.relativeSeconds !== undefined,
 				),
 			).toHaveLength(0);
 		});

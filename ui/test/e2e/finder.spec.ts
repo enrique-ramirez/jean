@@ -5,7 +5,6 @@ import {
 	openLibrary,
 	playedFrom,
 	playRequests,
-	requestsTo,
 	statusBar,
 	test,
 	times,
@@ -567,7 +566,12 @@ test.describe("finding in the library views", () => {
 		await page.keyboard.press("ArrowRight");
 		await expectSettlesAt(
 			player,
-			() => requestsTo(player, "/player").length,
+			() =>
+				player.requests.filter(
+					(entry) =>
+						entry.path.startsWith("/api/playback/") ||
+						entry.path === "/api/volume",
+				).length,
 			0,
 		);
 	});

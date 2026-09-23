@@ -803,8 +803,9 @@ test.describe("a control that follows the finger keeps the gesture", () => {
 		expect(player.player.activeItem.index).toBe(playing);
 		await expect
 			.poll(() =>
-				requestsTo(player, "/api/player").filter(
-					(entry) => entry.body?.position !== undefined,
+				requestsTo(player, "/api/playback/seek").filter(
+					(entry) =>
+						entry.method === "POST" && entry.body?.seconds !== undefined,
 				),
 			)
 			.toHaveLength(1);
@@ -880,7 +881,7 @@ test.describe("Previous", () => {
 
 		await expect.poll(() => at(page)).toBeLessThan(5);
 		expect(player.player.activeItem.index).toBe(1);
-		expect(requestsTo(player, "/player/previous")).toHaveLength(0);
+		expect(requestsTo(player, "/api/playback/previous")).toHaveLength(0);
 	});
 
 	test("steps back from a track that has only just started", async ({

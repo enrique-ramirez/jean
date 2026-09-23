@@ -4,6 +4,7 @@ import {
 	expectPlayingFrom,
 	expectSettlesAt,
 	expectTheScreenIsStillOpen,
+	FOO_JEAN_TOKEN,
 	inSequence,
 	nowPlayingScreen,
 	openAllMusic,
@@ -17,6 +18,7 @@ import {
 	searchFor,
 	sidebar,
 	sidebarToggle,
+	statusBar,
 	test,
 	trackRow,
 } from "./fixtures.ts";
@@ -54,8 +56,13 @@ const sidebarLink = (page: Page, title: string) =>
 const currentSidebarRow = (page: Page) =>
 	sidebar(page).locator('button[aria-current="true"]');
 
-const paths = (player: FakePlayer, fragment: string) =>
-	requestsTo(player, fragment).map((entry) => entry.path);
+const commandsTo = (player: FakePlayer, route: string) =>
+	player.requests.filter(
+		(entry) => entry.method === "POST" && entry.path === route,
+	);
+
+const bodiesTo = (player: FakePlayer, route: string) =>
+	commandsTo(player, route).map((entry) => entry.body ?? {});
 
 test.skip(({ isMobile }) => isMobile, "no keyboard on the phone");
 
@@ -67,7 +74,7 @@ test.describe("playback", () => {
 		// instead.
 		await page.keyboard.press("Space");
 		await expect
-			.poll(() => paths(player, "/player/play-pause"))
+			.poll(() => commandsTo(player, "/api/playback/play-pause"))
 			.toHaveLength(1);
 	});
 
@@ -76,10 +83,14 @@ test.describe("playback", () => {
 		player,
 	}) => {
 		await page.keyboard.press("ControlOrMeta+ArrowRight");
-		await expect.poll(() => paths(player, "/player/next")).toHaveLength(1);
+		await expect
+			.poll(() => commandsTo(player, "/api/playback/next"))
+			.toHaveLength(1);
 
 		await page.keyboard.press("ControlOrMeta+ArrowLeft");
-		await expect.poll(() => paths(player, "/player/previous")).toHaveLength(1);
+		await expect
+			.poll(() => commandsTo(player, "/api/playback/previous"))
+			.toHaveLength(1);
 	});
 
 	test("Mod+ArrowLeft restarts a track that has been playing a while", async ({
@@ -101,17 +112,19 @@ test.describe("playback", () => {
 
 		await expect
 			.poll(() =>
-				requestsTo(player, "/api/player").filter(
-					(entry) => entry.body?.position === 0,
+				bodiesTo(player, "/api/playback/seek").filter(
+					(body) => body.seconds === 0,
 				),
 			)
 			.toHaveLength(1);
-		expect(paths(player, "/player/previous")).toHaveLength(0);
+		expect(commandsTo(player, "/api/playback/previous")).toHaveLength(0);
 	});
 
 	test("Mod+. stops", async ({ page, player }) => {
 		await page.keyboard.press("ControlOrMeta+.");
-		await expect.poll(() => paths(player, "/player/stop")).toHaveLength(1);
+		await expect
+			.poll(() => commandsTo(player, "/api/playback/stop"))
+			.toHaveLength(1);
 	});
 
 	test("the bare horizontal arrows seek instead", async ({ page, player }) => {
@@ -121,19 +134,15 @@ test.describe("playback", () => {
 		await page.keyboard.press("ArrowLeft");
 
 		await expect
-			.poll(() =>
-				requestsTo(player, "/api/player").filter(
-					(entry) => entry.body?.relativePosition,
-				),
-			)
+			.poll(() => bodiesTo(player, "/api/playback/seek"))
 			.toHaveLength(2);
 
-		const seeks = requestsTo(player, "/api/player")
-			.map((entry) => entry.body?.relativePosition)
-			.filter((value) => value !== undefined);
-		expect(seeks).toEqual([5, -5]);
-		expect(paths(player, "/player/next")).toHaveLength(0);
-		expect(paths(player, "/player/previous")).toHaveLength(0);
+		expect(bodiesTo(player, "/api/playback/seek")).toEqual([
+			{ relativeSeconds: 5 },
+			{ relativeSeconds: -5 },
+		]);
+		expect(commandsTo(player, "/api/playback/next")).toHaveLength(0);
+		expect(commandsTo(player, "/api/playback/previous")).toHaveLength(0);
 	});
 
 	test("= and - move the volume", async ({ page, player }) => {
@@ -142,12 +151,14 @@ test.describe("playback", () => {
 		// event.code finds Digit0 rather than Equal, so volume up is unreachable
 		// there. The test asserts the layout it can drive.
 		await page.keyboard.press("=");
-		await expect.poll(() => paths(player, "/player/volume/up")).toHaveLength(1);
+		await expect
+			.poll(() => bodiesTo(player, "/api/volume"))
+			.toEqual([{ step: "up" }]);
 
 		await page.keyboard.press("-");
 		await expect
-			.poll(() => paths(player, "/player/volume/down"))
-			.toHaveLength(1);
+			.poll(() => bodiesTo(player, "/api/volume"))
+			.toEqual([{ step: "up" }, { step: "down" }]);
 	});
 
 	test("m mutes and unmutes", async ({ page, player }) => {
@@ -156,6 +167,82 @@ test.describe("playback", () => {
 
 		await page.keyboard.press("m");
 		await expect.poll(() => player.player.volume.isMuted).toBe(false);
+		expect(bodiesTo(player, "/api/volume")).toEqual([
+			{ muted: true },
+			{ muted: false },
+		]);
+	});
+});
+
+test.describe("a transport command, as the component sees it", () => {
+	test.beforeEach(({ page }) => openLibrary(page));
+
+	const COMMAND = /^\/api\/(playback\/[a-z-]+|volume)$/;
+
+	test("every one carries the paired token", async ({ page }) => {
+		const sent: Promise<{ route: string; authorization?: string }>[] = [];
+		page.on("request", (request) => {
+			const { pathname } = new URL(request.url());
+			if (request.method() !== "POST" || !COMMAND.test(pathname)) return;
+			sent.push(
+				request.allHeaders().then((headers) => ({
+					route: pathname,
+					authorization: headers.authorization,
+				})),
+			);
+		});
+
+		await inSequence(
+			[
+				"Space",
+				"ControlOrMeta+ArrowRight",
+				"ControlOrMeta+ArrowLeft",
+				"ControlOrMeta+.",
+				"ArrowRight",
+				"=",
+				"m",
+			],
+			(key) => page.keyboard.press(key),
+		);
+		// Last, since Space on a focused button presses the button instead.
+		await statusBar(page).getByRole("button", { name: "Shuffle" }).click();
+
+		const routes = async () =>
+			[...new Set((await Promise.all(sent)).map((one) => one.route))].sort();
+		await expect
+			.poll(routes)
+			.toEqual([
+				"/api/playback/mode",
+				"/api/playback/next",
+				"/api/playback/play-pause",
+				"/api/playback/previous",
+				"/api/playback/seek",
+				"/api/playback/stop",
+				"/api/volume",
+			]);
+		for (const one of await Promise.all(sent))
+			expect(one, one.route).toMatchObject({
+				authorization: `Bearer ${FOO_JEAN_TOKEN}`,
+			});
+	});
+
+	// The component answers a preflight with a 600 second `Access-Control-Max-Age`,
+	// so only the first press in a session pays the extra round trip.
+	test("the first command is preflighted and the second is not", async ({
+		page,
+		player,
+	}) => {
+		const route = "/api/playback/play-pause";
+
+		await page.keyboard.press("Space");
+		await expect.poll(() => commandsTo(player, route)).toHaveLength(1);
+		await page.keyboard.press("Space");
+
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, route).map((entry) => entry.method),
+			["OPTIONS", "POST", "POST"],
+		);
 	});
 });
 
@@ -365,7 +452,7 @@ test.describe("navigation and appearance", () => {
 		await page.keyboard.press("Space");
 		await page.keyboard.press("v");
 		await expect
-			.poll(() => paths(player, "/player/play-pause"))
+			.poll(() => commandsTo(player, "/api/playback/play-pause"))
 			.toHaveLength(0);
 	});
 
@@ -653,7 +740,7 @@ test.describe("with the full-screen lyric open", () => {
 		await closeTheLyricScreen(page);
 		await expectSettlesAt(
 			player,
-			() => paths(player, "/player/play-pause"),
+			() => commandsTo(player, "/api/playback/play-pause"),
 			[],
 		);
 		// The player as well as the wire, because a miss here is the music stopping.

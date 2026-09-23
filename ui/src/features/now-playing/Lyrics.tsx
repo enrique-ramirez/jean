@@ -130,9 +130,10 @@ export function Lyrics({
 	onSeek: (at: number) => void;
 }) {
 	const t = useTranslate();
-	const { isPending } = useNowPlayingTrack();
+	const { isPending, track, details } = useNowPlayingTrack();
 
 	if (isPending) return <p className={styles.notice}>{t("lyrics.reading")}</p>;
+	if (track && !details) return null;
 
 	if (lyrics.kind === "none")
 		return (

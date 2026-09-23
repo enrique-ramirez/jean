@@ -26,18 +26,21 @@ import {
 interface PlayingRead {
 	sentAt: number;
 	answeredAt?: number;
+	columns: number;
 }
 
 const recordPlayingReads = (page: Page) =>
 	page.addInitScript(() => {
-		const reads: { sentAt: number; answeredAt?: number }[] = [];
+		const reads: { sentAt: number; answeredAt?: number; columns: number }[] =
+			[];
 		Object.assign(window, { playingReads: reads });
 		const send = window.fetch.bind(window);
 		window.fetch = (input, init) => {
 			const asked = new URL(String(input), location.href);
 			if (asked.pathname !== "/api/track/playing") return send(input, init);
-			const read: { sentAt: number; answeredAt?: number } = {
+			const read: { sentAt: number; answeredAt?: number; columns: number } = {
 				sentAt: Date.now(),
+				columns: asked.searchParams.getAll("columns").length,
 			};
 			reads.push(read);
 			return send(input, init).then((response) => {
@@ -211,6 +214,37 @@ test.describe("reading the lyric tag", () => {
 		expect(await looksAt(page)).toEqual([2, 5, 10, 20]);
 		expect(recheckColumnCounts(player)).toEqual([1, 1, 1, 1]);
 		await expect(panel).toContainText("No lyrics found");
+	});
+
+	// A station announcing a song keeps the path, so it is not a track change:
+	// the looks keep the schedule they started at the track's own read.
+	test("a song a station announces neither restarts the looks nor ends them", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.clock.install();
+		await recordPlayingReads(page);
+		await playRow(page, 3);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+		await expect(panel).toContainText("No lyrics found");
+
+		const from = await firstReadAnswered(page);
+		await runClockTo(page, from + 3_000);
+		player.announceSong({ title: "Ocean Floor", artist: "Gravity Wave" });
+		await runClockTo(page, from + 45_000);
+
+		const [, ...after] = await playingReads(page);
+		const secondsIn = (read: PlayingRead) =>
+			Math.floor((read.sentAt - from) / 1_000);
+		expect(
+			after.filter((read) => read.columns > 1).map(secondsIn),
+			"the announcement's own read of the song",
+		).toHaveLength(1);
+		expect(after.filter((read) => read.columns === 1).map(secondsIn)).toEqual([
+			2, 5, 10, 20,
+		]);
 	});
 
 	// A look still scheduled for the track that was left would ask the player

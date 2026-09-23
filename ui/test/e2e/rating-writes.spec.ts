@@ -1868,6 +1868,42 @@ test.describe("a lyric that lands while a rating is still being written", () => 
 	});
 });
 
+test.describe("a song a station announces while a rating is still being written", () => {
+	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+
+	test("leaves the star where it was put", async ({ page, player }) => {
+		const writes = await holdTheWrites(page);
+		await openLibrary(page);
+		await trackRow(page, 3).dblclick();
+		await expect(page.locator("footer")).toContainText("Soy Rock");
+		await openNowPlaying(page);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("Unrated");
+
+		await starsOnScreen(page)
+			.getByRole("button", { name: "Rate 4 of 5" })
+			.click();
+		await expectSettlesAt(player, () => writes.sent.length, 1);
+
+		// Counted by their columns: a lyric look at this bare track asks for one,
+		// and the announcement's read of the song asks for the whole row.
+		const songReads = () =>
+			requestsTo(player, "/api/track/playing").filter(
+				(entry) =>
+					entry.method === "GET" &&
+					new URLSearchParams(entry.path.split("?")[1]).getAll("columns")
+						.length > 1,
+			).length;
+		const readsBefore = songReads();
+		player.announceSong({ title: "Ocean Floor", artist: "Gravity Wave" });
+
+		await expectSettlesAt(player, () => songReads() > readsBefore, true);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("4 of 5 stars");
+
+		writes.openTheDoor();
+		await expect.poll(() => libraryRatingOf(player, SOY_ROCK)).toBe("4");
+	});
+});
+
 // A refusal is the component saying this install writes no ratings at all, which
 // is as true of the screen as it is of a row. A row stops offering its stars
 // after one; this is the other surface the same answer has to reach.

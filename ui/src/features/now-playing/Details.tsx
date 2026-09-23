@@ -148,11 +148,12 @@ function groupsOf(row: TrackColumns, format: Formats): Group[] {
 export function Details() {
 	const t = useTranslate();
 	const format = useFormats();
-	const { details, isPending } = useNowPlayingTrack();
+	const { details, isPending, nothingPlaying } = useNowPlayingTrack();
 
-	if (isPending) return <p className={styles.notice}>{t("details.reading")}</p>;
-	if (!details)
+	if (nothingPlaying)
 		return <p className={styles.notice}>{t("details.nothingPlaying")}</p>;
+	if (isPending) return <p className={styles.notice}>{t("details.reading")}</p>;
+	if (!details) return null;
 
 	const groups = groupsOf(details.row, format)
 		.map((group) => ({

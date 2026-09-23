@@ -706,12 +706,16 @@ export async function fetchPlayingTrack(
 	origin: string,
 	token: string,
 	columns: readonly string[],
+	{ signal }: { signal?: AbortSignal } = {},
 ): Promise<PlayingTrackColumns> {
-	const response = await withTimeout(READ_TIMEOUT_MS, (signal) =>
-		fetch(`${origin}/api/track/playing?${columnsQuery(columns)}`, {
-			headers: bearer(token),
-			signal,
-		}),
+	const response = await withTimeout(
+		READ_TIMEOUT_MS,
+		(inner) =>
+			fetch(`${origin}/api/track/playing?${columnsQuery(columns)}`, {
+				headers: bearer(token),
+				signal: inner,
+			}),
+		signal,
 	);
 	if (!response.ok) {
 		noteTokenRefused(response.status);

@@ -72,6 +72,8 @@ export interface FooJeanOptions {
 	// leaving `path` and `columns` untouched.
 	playingTrackAnswersSubsong?: number | null;
 
+	playingTrackKnobsFor?: number | null;
+
 	// The rating the component reports having stored, whatever it was sent. A
 	// player that keeps ratings on a scale of its own rounds the value before it
 	// reaches the tag, and the write's answer is the only place a client hears
@@ -194,6 +196,7 @@ const DEFAULTS: FooJeanFake = {
 	hangPlayingTrack: false,
 	playingTrackAnswersPath: null,
 	playingTrackAnswersSubsong: null,
+	playingTrackKnobsFor: null,
 	storesRatingAs: null,
 	failState: null,
 	failQueue: null,
@@ -1940,14 +1943,18 @@ export async function handleAgent({
 	if (path === "/api/track/playing") {
 		response.setHeader("Cache-Control", ASK_EVERY_TIME);
 
-		if (fake.failPlayingTrack)
+		const knobsApply =
+			fake.playingTrackKnobsFor === null || fake.playingTrackKnobsFor > 0;
+		if (fake.playingTrackKnobsFor) fake.playingTrackKnobsFor -= 1;
+
+		if (knobsApply && fake.failPlayingTrack)
 			return json(
 				response,
 				{ error: "the player could not read the playing track", detail: "" },
 				fake.failPlayingTrack,
 			);
 
-		if (fake.hangPlayingTrack) {
+		if (knobsApply && fake.hangPlayingTrack) {
 			await abandoned(response, STALLED_READ_MS);
 			return true;
 		}
@@ -1961,9 +1968,11 @@ export async function handleAgent({
 
 		return json(response, {
 			path:
-				fake.playingTrackAnswersPath ?? String(evaluate(track, "%path%") ?? ""),
+				(knobsApply ? fake.playingTrackAnswersPath : null) ??
+				String(evaluate(track, "%path%") ?? ""),
 			subsong:
-				fake.playingTrackAnswersSubsong ?? (Number(track["%subsong%"]) || 0),
+				(knobsApply ? fake.playingTrackAnswersSubsong : null) ??
+				(Number(track["%subsong%"]) || 0),
 			columns: asked.map((expression) => evaluate(track, expression)),
 		});
 	}

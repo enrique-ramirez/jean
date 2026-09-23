@@ -466,33 +466,222 @@ test("the status bar follows a song a station announces, with the track never ch
 	);
 });
 
-test("a tab opened while a station announces a song reads the song into the details panel", async ({
+// Details draws no title or artist row. The artist reaches the panel only
+// through the album's address, which falls back to it where there is no album
+// artist, so the station carries an album and no album artist. It carries a
+// lyric too, so the lyric's own looks at a bare track add no read to a count.
+const STATION_ALBUM = "Late Transmissions";
+const ANNOUNCING_STATION = {
+	...RADIO_STATION,
+	"%album%": STATION_ALBUM,
+	"$meta(unsynced lyrics)": "Night shift, all night",
+};
+
+const ANNOUNCED_NEXT = { title: "Undertow", artist: "Pale Harbour" };
+
+const READING_DETAILS = en["details.reading"];
+
+const stationAlbum = (panel: Locator) =>
+	panel.getByRole("definition").getByRole("link", { name: STATION_ALBUM });
+
+const albumBy = (artist: string) =>
+	`#/album/${encodeURIComponent(tagKey(artist))}/${encodeURIComponent(tagKey(STATION_ALBUM))}`;
+
+const detailsReadsFromNow = (player: FakePlayer) => {
+	const before = requestsTo(player, "/api/track/playing").length;
+	return () =>
+		requestsTo(player, "/api/track/playing")
+			.slice(before)
+			.filter((one) => one.method === "GET");
+};
+
+const openStationDetails = async (
+	page: Page,
+	player: FakePlayer,
+	isMobile: boolean,
+) => {
+	await addAndPlay(page, player, ANNOUNCING_STATION);
+	await openNowPlaying(page);
+	const panel = await openPanels(page, isMobile);
+	await panelTab(panel, "Details").click();
+	await expect(stationAlbum(panel)).toHaveAttribute(
+		"href",
+		albumBy(RADIO_STATION["%artist%"]),
+	);
+	return panel;
+};
+
+test("a station announcing a song reads it into the details panel, with the screen left open", async ({
 	page,
 	player,
 	isMobile,
 }) => {
-	// Details draws no title or artist row. The artist reaches the panel only
-	// through the album's address, which falls back to it where there is no
-	// album artist, so the station carries an album and no album artist.
-	const album = "Late Transmissions";
-	await addAndPlay(page, player, { ...RADIO_STATION, "%album%": album });
+	const panel = await openStationDetails(page, player, isMobile);
 
-	// The read is made once per playing path and an announcement keeps the path,
-	// so a fresh tab is what puts a read after the announcement.
 	player.announceSong(ANNOUNCED);
-	await page.reload();
-	await expect(statusBar(page)).toContainText(ANNOUNCED.artist);
 
+	await expect(stationAlbum(panel)).toHaveAttribute(
+		"href",
+		albumBy(ANNOUNCED.artist),
+	);
+});
+
+test("an announcement never draws the reading notice, and the previous song's rows stay up until the answer lands", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	const panel = await openStationDetails(page, player, isMobile);
+	await page.evaluate(
+		({ reading, album }) => {
+			const seen = { notice: 0, withoutRows: 0 };
+			(window as unknown as { seen: typeof seen }).seen = seen;
+			new MutationObserver(() => {
+				const text = document.body.innerText;
+				if (text.includes(reading)) seen.notice += 1;
+				if (!text.includes(album)) seen.withoutRows += 1;
+			}).observe(document.body, {
+				childList: true,
+				subtree: true,
+				characterData: true,
+			});
+		},
+		{ reading: READING_DETAILS, album: STATION_ALBUM },
+	);
+
+	const held: { release?: () => void } = {};
+	await page.route("**/api/track/playing**", (route) => {
+		held.release = () => void route.continue();
+	});
+	player.announceSong(ANNOUNCED);
+	await expect.poll(() => held.release !== undefined).toBe(true);
+
+	await expect(stationAlbum(panel)).toHaveAttribute(
+		"href",
+		albumBy(RADIO_STATION["%artist%"]),
+	);
+
+	held.release?.();
+	await expect(stationAlbum(panel)).toHaveAttribute(
+		"href",
+		albumBy(ANNOUNCED.artist),
+	);
+	expect(
+		await page.evaluate(() => (window as unknown as { seen: object }).seen),
+	).toEqual({ notice: 0, withoutRows: 0 });
+});
+
+test("a second announcement while the first one's read hangs replaces it, and the panel settles on the second song", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	const panel = await openStationDetails(page, player, isMobile);
+	const reads = detailsReadsFromNow(player);
+	Object.assign(player.fooJean, {
+		hangPlayingTrack: true,
+		playingTrackKnobsFor: 1,
+	});
+
+	player.announceSong(ANNOUNCED);
+	await expect.poll(() => reads().length).toBe(1);
+	player.announceSong(ANNOUNCED_NEXT);
+
+	// Well inside the eight seconds the hung read is given: a panel that waited it
+	// out before reading again would land on the same song, only late.
+	await expect(stationAlbum(panel)).toHaveAttribute(
+		"href",
+		albumBy(ANNOUNCED_NEXT.artist),
+		{ timeout: 4_000 },
+	);
+	await page.waitForTimeout(3_000);
+	await expect(stationAlbum(panel)).toHaveAttribute(
+		"href",
+		albumBy(ANNOUNCED_NEXT.artist),
+	);
+});
+
+test("each announcement asks for its song once, lyric included", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	const panel = await openStationDetails(page, player, isMobile);
+	const reads = detailsReadsFromNow(player);
+
+	player.announceSong(ANNOUNCED);
+	await expect(stationAlbum(panel)).toHaveAttribute(
+		"href",
+		albumBy(ANNOUNCED.artist),
+	);
+	player.announceSong(ANNOUNCED_NEXT);
+	await expect(stationAlbum(panel)).toHaveAttribute(
+		"href",
+		albumBy(ANNOUNCED_NEXT.artist),
+	);
+
+	await expectSettlesAt(player, () => reads().length, 2);
+	for (const one of reads())
+		expect(
+			new URLSearchParams(one.path.split("?")[1]).getAll("columns"),
+		).toContain("$meta(unsynced lyrics)");
+});
+
+// react-query keeps the data a failed refetch leaves behind, and here that is
+// the song the station has already moved past.
+test("an announcement's read that fails twice leaves no rows, and not the previous song's", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	const panel = await openStationDetails(page, player, isMobile);
+	const reads = detailsReadsFromNow(player);
+	player.fooJean.failPlayingTrack = 500;
+
+	player.announceSong(ANNOUNCED);
+	await expectSettlesAt(player, () => reads().length, 2);
+	await page.waitForTimeout(3_000);
+	expect(reads()).toHaveLength(2);
+
+	await expect(panel.getByRole("term")).toHaveCount(0);
+	await expect(panel).not.toContainText(STATION_ALBUM);
+	await expect(panel).not.toContainText(READING_DETAILS);
+	await expect(panel).not.toContainText(en["details.nothingPlaying"]);
+});
+
+test("an announcement over a panel left empty by two failed reads says it is reading, then draws the song", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	const reads = detailsReadsFromNow(player);
+	player.fooJean.failPlayingTrack = 500;
+	await addAndPlay(page, player, ANNOUNCING_STATION);
 	await openNowPlaying(page);
 	const panel = await openPanels(page, isMobile);
 	await panelTab(panel, "Details").click();
+	await expectSettlesAt(player, () => reads().length >= 2, true);
+	await expect(panel.getByRole("term")).toHaveCount(0);
 
-	await expect(
-		panel.getByRole("definition").getByRole("link", { name: album }),
-	).toHaveAttribute(
-		"href",
-		`#/album/${encodeURIComponent(tagKey(ANNOUNCED.artist))}/${encodeURIComponent(tagKey(album))}`,
-	);
+	player.fooJean.failPlayingTrack = null;
+	const held: { release?: () => void } = {};
+	await page.route("**/api/track/playing**", (route) => {
+		held.release = () => void route.continue();
+	});
+	player.announceSong(ANNOUNCED);
+	await expect.poll(() => held.release !== undefined).toBe(true);
+
+	await expect(panel).toContainText(READING_DETAILS);
+	held.release?.();
+	// A gatefold turns to Lyrics when the answer carries one.
+	await expect(async () => {
+		await panelTab(panel, "Details").click();
+		await expect(stationAlbum(panel)).toHaveAttribute(
+			"href",
+			albumBy(ANNOUNCED.artist),
+			{ timeout: 1_000 },
+		);
+	}).toPass();
 });
 
 test("a station announcing a title alone drops the artist it announced before", async ({

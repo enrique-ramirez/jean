@@ -466,6 +466,11 @@ const PUBLISHED = {
 };
 
 const READING = "Reading the tags…";
+const READING_LYRIC = "Reading the tag…";
+const NOTHING_PLAYING = "Nothing playing.";
+const NO_LYRIC = "No lyrics found";
+
+const READ_BUDGET_MS = 8_000;
 
 const openDetails = async (page: Page, isMobile: boolean) => {
 	const panel = await openPanels(page, isMobile);
@@ -480,6 +485,88 @@ const playingReads = (player: FakePlayer) =>
 	requestsTo(player, "/api/track/playing").filter(
 		(entry) => entry.method === "GET",
 	);
+
+// The panel is open before the track changes under it, so every read counted
+// after this is one the track change caused, and none is a panel mounting over
+// a failed query and asking again.
+const detailsOpenOnFirstTrack = async (page: Page, isMobile: boolean) => {
+	await playRow(page, 0);
+	const panel = await openDetails(page, isMobile);
+	await expect(panel).toContainText("Discos Uno");
+	return panel;
+};
+
+const readsFromNow = (player: FakePlayer) => {
+	const before = playingReads(player).length;
+	return () => playingReads(player).length - before;
+};
+
+const stampReadsSent = (page: Page) =>
+	page.addInitScript(() => {
+		const sent: number[] = [];
+		Object.assign(window, { readsSentAt: sent });
+		const send = window.fetch.bind(window);
+		window.fetch = (input, init) => {
+			if (String(input).includes("/api/track/playing")) sent.push(Date.now());
+			return send(input, init);
+		};
+	});
+
+const readsSent = (page: Page) =>
+	page.evaluate(
+		() => (window as unknown as { readsSentAt: number[] }).readsSentAt,
+	);
+
+// See "A fake clock advances honestly only in small steps" in test/README.md.
+const ticking =
+	<T>(page: Page, read: () => T | Promise<T>) =>
+	async () => {
+		await page.clock.runFor(10);
+		return read();
+	};
+
+const outlastBudgetOfRead = async (page: Page, index: number) => {
+	await expect
+		.poll(ticking(page, async () => (await readsSent(page)).length))
+		.toBeGreaterThan(index);
+	const sentAt = (await readsSent(page))[index];
+	await page.clock.pauseAt(sentAt + READ_BUDGET_MS + 250);
+};
+
+const letTimePass = async (page: Page, ms: number) => {
+	for (let passed = 0; passed < ms; passed += 250) await page.clock.runFor(250);
+};
+
+const watchTheNotice = async (page: Page, landed: string | null = null) => {
+	await page.evaluate(
+		({ reading, landed }) => {
+			const counted = { times: 0, gaps: 0 };
+			(window as unknown as { notices: typeof counted }).notices = counted;
+			let showing = false;
+			let seen = false;
+			const look = () => {
+				const text = document.body.innerText;
+				const now = text.includes(reading);
+				if (now && !showing) counted.times += 1;
+				if (seen && !now && landed && !text.includes(landed)) counted.gaps += 1;
+				showing = now;
+				seen ||= now;
+			};
+			new MutationObserver(look).observe(document.body, {
+				childList: true,
+				subtree: true,
+				characterData: true,
+			});
+		},
+		{ reading: READING, landed },
+	);
+	return () =>
+		page.evaluate(
+			() =>
+				(window as unknown as { notices: { times: number; gaps: number } })
+					.notices,
+		);
+};
 
 const watchWhatIsSaid = async (page: Page) => {
 	await page.evaluate(() => {
@@ -575,38 +662,7 @@ test.describe("while the read is in flight", () => {
 		await expect(detailRows(panel)).toHaveCount(0);
 
 		await panelTab(panel, "Lyrics").click();
-		await expect(panel).toContainText("Reading the tag…");
-	});
-
-	test("an unanswered read is given up inside eight seconds", async ({
-		page,
-		isMobile,
-	}) => {
-		await page.clock.install();
-		await page.addInitScript(() => {
-			const send = window.fetch.bind(window);
-			window.fetch = (input, init) => {
-				if (String(input).includes("/api/track/playing"))
-					Object.assign(window, { readSentAt: Date.now() });
-				return send(input, init);
-			};
-		});
-		await playRow(page, 0);
-		const panel = await openDetails(page, isMobile);
-		await expect(panel).toContainText(READING);
-
-		const sentAt = await page.evaluate(
-			() => (window as unknown as { readSentAt: number }).readSentAt,
-		);
-		// See "A fake clock advances honestly only in small steps" in test/README.md.
-		await page.clock.pauseAt(sentAt + 8_250);
-		await expect
-			.poll(async () => {
-				await page.clock.runFor(10);
-				return panel.textContent();
-			})
-			.not.toContain(READING);
-		await expect(detailRows(panel)).toHaveCount(0);
+		await expect(panel).toContainText(READING_LYRIC);
 	});
 });
 
@@ -622,26 +678,7 @@ test.describe("the reading notice", () => {
 		const panel = await openDetails(page, isMobile);
 		await expect(panel).toContainText("Discos Uno");
 
-		await page.evaluate((reading) => {
-			const counted = { times: 0 };
-			(window as unknown as { notices: typeof counted }).notices = counted;
-			let showing = false;
-			const look = () => {
-				const now = document.body.innerText.includes(reading);
-				if (now && !showing) counted.times += 1;
-				showing = now;
-			};
-			new MutationObserver(look).observe(document.body, {
-				childList: true,
-				subtree: true,
-				characterData: true,
-			});
-		}, READING);
-		const noticesDrawn = () =>
-			page.evaluate(
-				() =>
-					(window as unknown as { notices: { times: number } }).notices.times,
-			);
+		const notices = await watchTheNotice(page);
 
 		player.next();
 		await expect(panel).toContainText("Discos Dos");
@@ -649,42 +686,217 @@ test.describe("the reading notice", () => {
 		await expect(panel).toContainText("Discos Tres");
 
 		await page.waitForTimeout(2_500);
-		expect(await noticesDrawn()).toBe(2);
+		expect((await notices()).times).toBe(2);
+	});
+
+	test("stays up across a failed first read and the one after it, and counts once", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const panel = await detailsOpenOnFirstTrack(page, isMobile);
+		const notices = await watchTheNotice(page, "Discos Dos");
+		Object.assign(player.fooJean, {
+			failPlayingTrack: 500,
+			playingTrackKnobsFor: 1,
+		});
+
+		player.next();
+		await expect(panel).toContainText("Discos Dos");
+
+		await page.waitForTimeout(2_500);
+		expect(await notices()).toEqual({ times: 1, gaps: 0 });
 	});
 });
 
-// The query itself retries nothing (`retry: false` in useNowPlayingTrack.ts);
-// what a remount could still cause is a fresh fetch, so the window below has
-// to outlast that rather than react-query's own backoff.
 const RETRY_WINDOW_MS = 3_000;
 
 for (const status of [404, 500, 504]) {
-	test.describe(`a read refused with ${status}`, () => {
-		test.use({ ...PUBLISHED, fooJean: { failPlayingTrack: status } });
+	test.describe(`a read refused with ${status} every time`, () => {
+		test.use(PUBLISHED);
 
-		test("draws no rows, says nothing, and is not tried again", async ({
+		test("is read once more, then draws nothing and says nothing", async ({
 			page,
 			player,
 			isMobile,
 		}) => {
-			await openLibrary(page);
+			const panel = await detailsOpenOnFirstTrack(page, isMobile);
 			const said = await watchWhatIsSaid(page);
-			// Counted before the screen opens: a panel mounting over a failed read
-			// may read again, which is react-query's own and not a schedule.
-			await trackRow(page, 0).dblclick();
+			const reads = readsFromNow(player);
+			player.fooJean.failPlayingTrack = status;
 
-			await expectSettlesAt(player, () => playingReads(player).length, 1);
+			player.next();
+			await expectSettlesAt(player, reads, 2);
 			await page.waitForTimeout(RETRY_WINDOW_MS);
-			expect(playingReads(player)).toHaveLength(1);
+			expect(reads()).toBe(2);
 
-			await openNowPlaying(page);
-			const panel = await openDetails(page, isMobile);
 			await expect(detailRows(panel)).toHaveCount(0);
-			await expect(panel).not.toContainText("Discos Uno");
+			await expect(panel).not.toContainText(READING);
+			await expect(panel).not.toContainText(NOTHING_PLAYING);
 			expect(await said()).toEqual([]);
 		});
 	});
 }
+
+test.describe("a read that never answers, every time", () => {
+	test.use(PUBLISHED);
+
+	test("is given up after eight seconds and read once more, then draws nothing and says nothing", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.clock.install();
+		await stampReadsSent(page);
+		const panel = await detailsOpenOnFirstTrack(page, isMobile);
+		const said = await watchWhatIsSaid(page);
+		const reads = readsFromNow(player);
+		const first = (await readsSent(page)).length;
+		player.fooJean.hangPlayingTrack = true;
+
+		player.next();
+		await outlastBudgetOfRead(page, first);
+		await outlastBudgetOfRead(page, first + 1);
+		await expect
+			.poll(ticking(page, () => panel.textContent()))
+			.not.toContain(READING);
+		await letTimePass(page, RETRY_WINDOW_MS);
+		await expectSettlesAt(player, reads, 2);
+
+		await expect(detailRows(panel)).toHaveCount(0);
+		await expect(panel).not.toContainText(NOTHING_PLAYING);
+		expect(await said()).toEqual([]);
+	});
+});
+
+// Fizz carries a lyric, so the lyric's own look at a bare track two seconds
+// after its details land cannot add a read to the count.
+const PUBLISHED_WITH_LYRIC = {
+	retagged: {
+		...PUBLISHED.retagged,
+		Fizz: { ...PUBLISHED.retagged.Fizz, "$meta(unsynced lyrics)": "Dos" },
+	},
+};
+
+const FIRST_READ_ONLY = [
+	["refused with 404", { failPlayingTrack: 404 }],
+	["refused with 500", { failPlayingTrack: 500 }],
+	["refused with 504", { failPlayingTrack: 504 }],
+	[
+		"answered for another file",
+		{ playingTrackAnswersPath: "Elsewhere/Overtaken.flac" },
+	],
+	[
+		"answered for another track in the same file",
+		{ playingTrackAnswersSubsong: 1 },
+	],
+] as const;
+
+for (const [what, knob] of FIRST_READ_ONLY) {
+	test.describe(`a first read ${what}`, () => {
+		test.use(PUBLISHED_WITH_LYRIC);
+
+		test("is read once more, and the second answer drawn", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			const panel = await detailsOpenOnFirstTrack(page, isMobile);
+			const reads = readsFromNow(player);
+			Object.assign(player.fooJean, knob, { playingTrackKnobsFor: 1 });
+
+			player.next();
+			await expect(async () => {
+				await panelTab(panel, "Details").click();
+				await expect(panel).toContainText("Discos Dos", { timeout: 1_000 });
+			}).toPass();
+			await expectSettlesAt(player, reads, 2);
+		});
+	});
+}
+
+test.describe("a first read that never answers", () => {
+	test.use(PUBLISHED_WITH_LYRIC);
+
+	test("is given up after eight seconds, read once more, and the second answer drawn", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.clock.install();
+		await stampReadsSent(page);
+		const panel = await detailsOpenOnFirstTrack(page, isMobile);
+		const reads = readsFromNow(player);
+		const first = (await readsSent(page)).length;
+		Object.assign(player.fooJean, {
+			hangPlayingTrack: true,
+			playingTrackKnobsFor: 1,
+		});
+
+		player.next();
+		await outlastBudgetOfRead(page, first);
+		await expect
+			.poll(
+				ticking(page, async () => {
+					await panelTab(panel, "Details").click();
+					return panel.textContent();
+				}),
+			)
+			.toContain("Discos Dos");
+		await expectSettlesAt(player, reads, 2);
+	});
+});
+
+test.describe("what the panels say while a track plays", () => {
+	test.use(PUBLISHED);
+
+	test("after both reads fail, the lyric says neither that it is reading nor that there is none", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const panel = await detailsOpenOnFirstTrack(page, isMobile);
+		const reads = readsFromNow(player);
+		player.fooJean.failPlayingTrack = 500;
+
+		player.next();
+		await expectSettlesAt(player, reads, 2);
+
+		await panelTab(panel, "Lyrics").click();
+		await expectPanelOpen(panel, "Lyrics");
+		await expect(panel).not.toContainText(READING_LYRIC);
+		await expect(panel).not.toContainText(NO_LYRIC);
+	});
+
+	test("once the player stops, the details panel says nothing is playing", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const panel = await detailsOpenOnFirstTrack(page, isMobile);
+
+		player.stop();
+		await expect(panel).toContainText(NOTHING_PLAYING);
+		await expect(detailRows(panel)).toHaveCount(0);
+	});
+
+	test("on a page load, before foo_jean is found, the details panel does not say nothing is playing", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.route("**/api/clientconfig/foo_jean", () => {});
+		player.playItem(player.playlists[0].id, 0);
+
+		await page.goto("/#/playing/details");
+		const details = (await openDetails(page, isMobile)).locator(
+			'[data-tab="details"]',
+		);
+		await expect(details).toBeAttached();
+		await expect(details).not.toContainText(NOTHING_PLAYING);
+		await expect(detailRows(details)).toHaveCount(0);
+	});
+});
 
 // Most tracks in a real library carry no rating tag, and the player answers `?`
 // for every one of them: a rating nobody has given yet, not one that cannot be.

@@ -13,6 +13,7 @@ import {
 	test,
 	trackRow,
 } from "./fixtures.ts";
+import { expectPanelOpen, openPanels, panelTab } from "./nowPlaying.ts";
 
 const pairButton = (page: Page) =>
 	settingsDialog(page).getByRole("button", { name: /^Pair$/ });
@@ -295,6 +296,109 @@ test.describe("a token the component stops accepting", () => {
 				1,
 				before + 1,
 			]);
+		});
+	});
+
+	test.describe("and says so first on the details read", () => {
+		const FIZZ_LYRIC = "Sung over the fizz";
+
+		// Each track carries a lyric, so the lyric's own looks at a bare track
+		// stay out of the count.
+		test.use({
+			retagged: {
+				"Los Calientes": {
+					"%publisher%": "Discos Uno",
+					"$meta(unsynced lyrics)": "Uno",
+				},
+				Fizz: {
+					"%publisher%": "Discos Dos",
+					"$meta(unsynced lyrics)": FIZZ_LYRIC,
+				},
+			},
+		});
+
+		test("reads the track once more after pairing recovers, and draws it", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await openLibrary(page);
+			await trackRow(page, 0).dblclick();
+			await openNowPlaying(page);
+			const panel = await openPanels(page, isMobile);
+			await panelTab(panel, "Details").click();
+			await expectPanelOpen(panel, "Details");
+			await expect(panel).toContainText("Discos Uno");
+
+			// Watched inside the panel, frame by frame: a notice that drops while
+			// discovery rechecks and returns for the second read is two appearances
+			// and a gap, which a poll of the text steps straight over.
+			await panel.evaluate(
+				(root, { reading, landed }) => {
+					const counted = { times: 0, gaps: 0 };
+					(window as unknown as { notices: typeof counted }).notices = counted;
+					let showing = false;
+					let seen = false;
+					let done = false;
+					new MutationObserver(() => {
+						if (done) return;
+						const text = (root as HTMLElement).innerText;
+						if (landed.some((marker) => text.includes(marker))) {
+							done = true;
+							return;
+						}
+						const now = text.includes(reading);
+						if (now && !showing) counted.times += 1;
+						if (seen && !now) counted.gaps += 1;
+						showing = now;
+						seen ||= now;
+					}).observe(root, {
+						childList: true,
+						subtree: true,
+						characterData: true,
+					});
+				},
+				{ reading: "Reading the tags…", landed: ["Discos Dos", FIZZ_LYRIC] },
+			);
+
+			const from = player.requests.length;
+			const readsAndRecovery = () => {
+				const since = player.requests.slice(from);
+				const reads = since.flatMap((entry, at) =>
+					entry.method === "GET" && entry.path.includes("/api/track/playing")
+						? [at]
+						: [],
+				);
+				const recovered = since.findIndex(
+					(entry, at) =>
+						at > reads[0] && entry.path.includes("/api/capabilities"),
+				);
+				return {
+					reads: reads.length,
+					secondAfterRecovery: recovered >= 0 && reads[1] > recovered,
+				};
+			};
+			Object.assign(player.fooJean, {
+				failPlayingTrack: 401,
+				playingTrackKnobsFor: 1,
+			});
+
+			player.next();
+			await expect(async () => {
+				await panelTab(panel, "Details").click();
+				await expect(panel).toContainText("Discos Dos", { timeout: 1_000 });
+			}).toPass();
+			await expectSettlesAt(player, readsAndRecovery, {
+				reads: 2,
+				secondAfterRecovery: true,
+			});
+			await page.waitForTimeout(3_000);
+			expect(readsAndRecovery().reads).toBe(2);
+			expect(
+				await page.evaluate(
+					() => (window as unknown as { notices: object }).notices,
+				),
+			).toEqual({ times: 1, gaps: 0 });
 		});
 	});
 });

@@ -459,9 +459,10 @@ private:
         for (const metadb_handle_ptr& mark : marks) {
             const auto found = ordered->ordinals.find(mark.get_ptr());
             if (found == ordered->ordinals.end()) {
-                if (libraryManager_->is_item_in_library(mark))
-                    ++unmatched;
-
+                // Every mark reaching here was a library item when it was queued, per
+                // Playback::retire(). A miss is counted rather than rechecked: asking
+                // is_item_in_library again would repeat it off the main thread.
+                ++unmatched;
                 continue;
             }
 
@@ -510,9 +511,10 @@ private:
     Library& library_;
 
     // Resolved on the main thread at construction: whether fb2k::std_api_get is safe from a
-    // worker thread is undocumented. library_manager::get_relative_path and
-    // is_item_in_library are then any-thread, which foobar2000 documents from v2.0 and this
-    // feed already requires.
+    // worker thread is undocumented. library_manager::get_relative_path is then any-thread,
+    // which foobar2000 documents from v2.0 and this feed already requires. is_item_in_library
+    // is not, despite the header: see ARCHITECTURE.md, *Facts about the player*. Every call
+    // to it stays in Playback::retire().
     const metadb_v2::ptr metadb_;
     const library_manager::ptr libraryManager_;
     const titleformat_compiler::ptr compiler_;
@@ -570,11 +572,14 @@ struct LibraryFeed::Playback : play_callback_impl_base {
     void on_playback_stop(play_control::t_stop_reason) override { retire(); }
 
 private:
-    // Unconditionally, because a play count moving is the commonest change and the one a
-    // component may not announce: foo_enhanced_playcount writes a local play through
-    // metadb_index_manager::set_user_data and dispatches no refresh at all.
+    // Unconditionally for a library item, because a play count moving is the commonest
+    // change and the one a component may not announce: foo_enhanced_playcount writes a
+    // local play through metadb_index_manager::set_user_data and dispatches no refresh at
+    // all. is_item_in_library runs here, on the main thread this callback already owns, so
+    // a stream or a file outside the library folders is never queued for the worker to ask
+    // about again off it.
     void retire() {
-        if (playing_.is_valid())
+        if (playing_.is_valid() && library_manager::get()->is_item_in_library(playing_))
             state_->markDirty(playing_);
 
         playing_.release();

@@ -395,8 +395,17 @@ test.describe("the sleeves either side of the playing row", () => {
 	// component has no library path to name either neighbour by, so it is asked
 	// for the picture at the row it sits on instead. The address is the
 	// component's own: beefweb cannot resolve a playlist named by GUID.
+	// Retagged so that each neighbour is a record of its own. A neighbour on the centre's record
+	// shares the centre's picture, and whether it is asked for at all then turns on which of the
+	// two arrives first.
 	test.describe("where the media library carries neither of them", () => {
-		test.use({ mediaLibrarySize: 12 });
+		test.use({
+			mediaLibrarySize: 12,
+			retagged: {
+				"Rotten Apple": { "%album%": "Rotten Apple" },
+				"I Stay Away": { "%album%": "I Stay Away" },
+			},
+		});
 
 		const ROW_WITH_A_NEIGHBOUR_EITHER_SIDE = 1;
 

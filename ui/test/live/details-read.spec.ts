@@ -475,6 +475,6 @@ test("the playing-track read, timed beside the library read of the same track", 
 	expect(library.status).toBe(200);
 
 	console.log(
-		`[016] GET /api/track/playing, ${NOW_PLAYING_EXPRESSIONS.length} columns, ${SAMPLES} reads: median ${median(samples).toFixed(3)} s, max ${Math.max(...samples).toFixed(3)} s; GET /api/track/library once: ${library.seconds.toFixed(3)} s; 014 recorded 0.28 s`,
+		`[016] GET /api/track/playing, ${NOW_PLAYING_EXPRESSIONS.length} columns, ${SAMPLES} reads: median ${median(samples).toFixed(3)} s, max ${Math.max(...samples).toFixed(3)} s; GET /api/track/library once: ${library.seconds.toFixed(3)} s`,
 	);
 });

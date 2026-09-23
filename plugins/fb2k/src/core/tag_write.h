@@ -19,6 +19,13 @@ struct LibraryTrackRef {
     uint32_t subsong = 0;
 };
 
+// A position in the media library snapshot, with the generation it was read at. The precise
+// form of the library address: an ordinal names one track where a relative path can name two.
+struct OrdinalTrackRef {
+    uint32_t ordinal = 0;
+    uint64_t structure = 0;
+};
+
 // A row the media library does not hold, addressed by where a playlist holds it and by the
 // structure generation the client read that position at.
 struct PlaylistTrackRef {
@@ -27,9 +34,10 @@ struct PlaylistTrackRef {
     uint64_t structure = 0;
 };
 
-// Exactly one of the two; see ARCHITECTURE.md, *Track identity*.
+// Exactly one of the three; see ARCHITECTURE.md, *Track identity*.
 struct TrackRef {
     std::optional<LibraryTrackRef> library;
+    std::optional<OrdinalTrackRef> ordinal;
     std::optional<PlaylistTrackRef> playlist;
 };
 
@@ -67,7 +75,13 @@ std::string describe(TagWriteRefusal refusal);
 enum class TagWriteOutcome {
     written,
     trackNotKnown,
+
+    // A foobar2000 media library can have several roots, and two of them can hold one
+    // library-relative path, so that address names a track under each.
+    ambiguousAddress,
+
     rowsMoved,
+    libraryRebuilt,
     writeFailed,
     timedOut,
     unavailable,

@@ -37,13 +37,13 @@ One request per operation the spec publishes, in an order that lets a playlist b
 
 Two decisions behind those assertions are worth stating, because neither is readable from them.
 
-**A `503` is how an implementation says it cannot do a thing at all.** The contract already publishes that status for tag writing, for autoplaylists and for streaming, so a host that genuinely cannot do one of them answers `503` in the published shape, passes, and is reported as declining it. Everything else fails: an unpublished status, a document with the wrong keys, no answer. That is the whole of the difference between not implemented and implemented wrongly, and it is the contract's own vocabulary rather than a convention invented here.
+**A `503` is how an implementation says it cannot do a thing at all.** The contract already publishes that status for tag writing, for autoplaylists and for streaming, so a host that genuinely cannot do one of them answers `503` in the published shape, passes, and is reported as declining it. Everything else fails: an unpublished status, a document with the wrong keys or an error string the contract does not publish, no answer. That is the whole of the difference between not implemented and implemented wrongly, and it is the contract's own vocabulary rather than a convention invented here.
 
 **Request bodies come from the spec's own examples wherever it offers one.** That is why the query an autoplaylist is created with is the player's language and not a dialect written into this suite: the contract says the player owns that language, so the suite has to take it from the contract.
 
 ## Claiming conformance
 
-An implementation conforms when this suite is green against it with a token set: every operation under `paths:` is routed, only the statuses that operation's `responses:` lists come back, and every document carries exactly the keys its schema declares.
+An implementation conforms when this suite is green against it with a token set: every operation under `paths:` is routed, only the statuses that operation's `responses:` lists come back, every document carries exactly the keys its schema declares, and a field the schema enumerates or fixes carries one of the values it publishes. An error string the contract does not publish fails on its own, with every key around it right, and so does a refusal claiming the write it refused.
 
 **Add an operation to the spec in the same change that implements it.** `test/spec.test.ts` fails when the spec publishes something the suite does not drive, so a new route has to be driven before it can be shipped.
 

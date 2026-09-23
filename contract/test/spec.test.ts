@@ -378,6 +378,67 @@ test("a value of a type the contract does not publish is named", () => {
 	]);
 });
 
+test("a value the contract enumerates is held to that list", () => {
+	const refusal: Schema = {
+		type: "object",
+		additionalProperties: false,
+		required: ["error", "detail"],
+		properties: {
+			error: { type: "string", enum: ["too many columns", "duplicate column"] },
+			detail: { type: "string" },
+		},
+	};
+
+	assert.deepEqual(
+		conforms(refusal, { error: "duplicate column", detail: "" }),
+		[],
+	);
+	assert.deepEqual(
+		conforms(refusal, { error: "made up nonsense", detail: "" }),
+		["the value in error is none of the values the spec publishes"],
+	);
+});
+
+// The contract puts two refusal shapes at one status and tells them apart by disjoint error
+// strings, so the value is the whole of what decides which shape a document is.
+test("an error string neither shape at a status publishes matches no shape", () => {
+	const refused = operation("movePlaylist").published.get(400);
+	assert.ok(refused, "a move no longer refuses a body");
+
+	assert.deepEqual(
+		conforms(refused, { error: "unacceptable title", detail: "" }),
+		[],
+	);
+	assert.deepEqual(
+		conforms(refused, { error: "made up nonsense", detail: "" }),
+		["the value matches none of the shapes the spec allows"],
+	);
+});
+
+// A refusal is told from a write by one fixed field, so a body claiming the write happened is
+// wrong on the only thing a client reads before it keeps an optimistic value.
+test("a field the contract fixes is held to that value", () => {
+	const refused = operation("writeTags").published.get(400);
+	assert.ok(refused, "a tag write no longer refuses a body");
+
+	assert.deepEqual(
+		conforms(refused, {
+			written: false,
+			error: "malformed request",
+			detail: "",
+		}),
+		[],
+	);
+	assert.deepEqual(
+		conforms(refused, {
+			written: true,
+			error: "malformed request",
+			detail: "",
+		}),
+		["the value in written is none of the values the spec publishes"],
+	);
+});
+
 test("a key the contract constrains rather than declares is checked", () => {
 	const written: Schema = {
 		type: "object",

@@ -20,10 +20,14 @@ namespace {
 
 // Exactly the fields contract/openapi.yaml declares for this body, `additionalProperties:
 // false` there.
-constexpr std::array<const char*, 6> kTagWriteFields{"track", "subsong",   "playlist",
-                                                     "index", "structure", "fields"};
+constexpr std::array<const char*, 7> kTagWriteFields{
+    "track", "subsong", "ordinal", "playlist", "index", "structure", "fields"};
+
+// What each form is recognised by, which is everything it takes but `structure`: the ordinal
+// form and the playlist form both carry one, so it says nothing about which was sent.
 constexpr std::array<const char*, 2> kLibraryAddressFields{"track", "subsong"};
-constexpr std::array<const char*, 3> kPlaylistAddressFields{"playlist", "index", "structure"};
+constexpr std::array<const char*, 1> kOrdinalAddressFields{"ordinal"};
+constexpr std::array<const char*, 2> kPlaylistAddressFields{"playlist", "index"};
 
 TagWriteRequest refuse(TagWriteRefusal refusal, std::string detail = {}) {
     TagWriteRequest request;
@@ -87,6 +91,27 @@ AddressField readLibraryAddress(const json& root) {
     return address;
 }
 
+AddressField readOrdinalAddress(const json& root) {
+    OrdinalTrackRef ref;
+
+    const auto ordinal = root.find("ordinal");
+    if (ordinal == root.end() || !ordinal->is_number_unsigned() ||
+        ordinal->get<uint64_t>() > std::numeric_limits<uint32_t>::max())
+        return unreadable("'ordinal' must be a non-negative number");
+    ref.ordinal = ordinal->get<uint32_t>();
+
+    // A number where the playlist form's generation is a string: the media library's own
+    // counter fits a JSON number exactly and a playlist's nineteen-digit one does not.
+    const auto structure = root.find("structure");
+    if (structure == root.end() || !structure->is_number_unsigned())
+        return unreadable("'structure' is required and must be a non-negative number");
+    ref.structure = structure->get<uint64_t>();
+
+    AddressField address;
+    address.ref.ordinal = ref;
+    return address;
+}
+
 AddressField readPlaylistAddress(const json& root) {
     const auto playlist = readString(root, "playlist");
     if (!playlist.present || playlist.wrongType || !isPlaylistId(playlist.value))
@@ -112,14 +137,21 @@ AddressField readPlaylistAddress(const json& root) {
 
 AddressField readAddress(const json& root) {
     const bool library = namesAny(root, kLibraryAddressFields);
+    const bool ordinal = namesAny(root, kOrdinalAddressFields);
     const bool playlist = namesAny(root, kPlaylistAddressFields);
 
-    if (library && playlist)
-        return unreadable("a request names 'track' or 'playlist', never both");
-    if (!library && !playlist)
-        return unreadable("'track' or 'playlist' is required");
+    const int forms = (library ? 1 : 0) + (ordinal ? 1 : 0) + (playlist ? 1 : 0);
+    if (forms > 1)
+        return unreadable("a request names one of 'track', 'ordinal' and 'playlist', never two");
 
-    return library ? readLibraryAddress(root) : readPlaylistAddress(root);
+    if (library)
+        return readLibraryAddress(root);
+    if (ordinal)
+        return readOrdinalAddress(root);
+    if (playlist)
+        return readPlaylistAddress(root);
+
+    return unreadable("'track', 'ordinal' or 'playlist' is required");
 }
 
 std::optional<std::string> readFieldValue(const json& value) {
@@ -161,7 +193,7 @@ TagWriteRequest parseTagWrite(const std::string& body, const Settings& settings)
     const auto& root = document.value;
 
     if (const auto stray = undeclaredField(root, kTagWriteFields); !stray.empty()) {
-        return refuse(TagWriteRefusal::badAddress,
+        return refuse(TagWriteRefusal::malformedBody,
                       "'" + stray + "' is not a field this route takes");
     }
 
@@ -229,8 +261,12 @@ std::string describe(TagWriteOutcome outcome) {
             return "written";
         case TagWriteOutcome::trackNotKnown:
             return "foobar2000 does not know that track";
+        case TagWriteOutcome::ambiguousAddress:
+            return "the media library holds more than one track at that address";
         case TagWriteOutcome::rowsMoved:
             return "the playlist's rows were added, removed or reordered; read them again";
+        case TagWriteOutcome::libraryRebuilt:
+            return "the media library was rebuilt; export it again";
         case TagWriteOutcome::writeFailed:
             return "the player could not write the tags";
         case TagWriteOutcome::timedOut:

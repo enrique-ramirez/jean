@@ -162,7 +162,9 @@ Covered: authentication, CORS and preflight, every way a hand-edited `config.jso
 
 Three end-to-end checks run against a real player. `scripts/verify-tag-write.ps1` writes a rating to every track in the test fixture playlist and reads it back **through beefweb**, which is the point rather than a formality: the failure this design exists to avoid is a write the player performed but its own database did not learn about. `scripts/verify-stream.ps1` checks the stream with playback going: two listeners reading one encoder, a ticket, both formats well formed, the clock advancing, and a skipped track leaving a mark. `scripts/verify-listeners.ps1` checks the roster and the mute hold: who is listening, the player silenced for them, and the level put back afterwards.
 
-`scripts/test-fixtures.ps1` builds the corpus those run against: one MP3, one FLAC, one M4A and one with a non-ASCII filename, copied out of the library into a scratch directory and added to their own playlist. **Tag writes are only ever pointed at those**, never at a real library.
+`scripts/test-fixtures.ps1` builds the corpus those run against, out of files kept for the purpose rather than anybody's music. `-Corpus`, or `FOO_JEAN_CORPUS_DIR`, is the folder holding them, and the script refuses to run without it. It copies them into a tree of its own beside the player and adds the copies to a playlist of their own. **Tag writes are only ever pointed at that tree**, never at a real library.
+
+The tree is two media library roots and a folder outside both, so one run reaches every address form. The roots hold a different recording at one library-relative path, which is the address the component refuses as ambiguous; nothing under the third folder has a library-relative address at all. Among the copies are one MP3, one FLAC and one M4A, a filename that is not ASCII, and a FLAC whose subsongs foobar2000 numbers from 1. **Registering the two roots as media library folders is by hand.** The script prints them at the end and changes nothing in the player's configuration.
 
 ## Layout
 

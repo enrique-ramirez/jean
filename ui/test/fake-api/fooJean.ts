@@ -1,3 +1,4 @@
+import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
 import type { PlaybackMode } from "../../src/shared/api/types.ts";
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { ArtworkServer } from "./routes.ts";
@@ -40,6 +41,11 @@ export interface FooJeanOptions {
 	// anything was written, so both outcomes are real; `failWrites` alone is the
 	// one where nothing was, and this is the other.
 	writesLandAnyway?: boolean;
+
+	// One library-relative path that two media library roots both hold. The
+	// ordinal naming either of the two tracks still resolves, which is what a
+	// client's one retry is aimed at.
+	twoRootsHold?: string | null;
 
 	// Refuses GET /api/library/track with this status, which is the route a client
 	// reads one value back through. Nothing else answers there, so this reaches
@@ -99,6 +105,7 @@ export interface FooJeanOptions {
 	playlistChangeWindow?: number;
 
 	canReadLibrary?: boolean;
+	libraryReady?: boolean;
 	libraryBuilds?: number;
 	libraryBusy?: number;
 	libraryRebuilds?: number;
@@ -166,6 +173,7 @@ const DEFAULTS: FooJeanFake = {
 	allowedFields: ["rating"],
 	failWrites: null,
 	writesLandAnyway: false,
+	twoRootsHold: null,
 	failLibraryTrack: null,
 	hangLibraryTrack: false,
 	storesRatingAs: null,
@@ -190,6 +198,7 @@ const DEFAULTS: FooJeanFake = {
 	failPairing: null,
 	pairingError: "",
 	canReadLibrary: true,
+	libraryReady: true,
 	libraryBuilds: 0,
 	libraryBusy: 0,
 	libraryRebuilds: 0,
@@ -326,6 +335,14 @@ const NO_SUCH_TRACK = {
 	error: "foobar2000 does not know that track",
 };
 
+const NAMES_TWO_TRACKS =
+	"the media library holds more than one track at that address" satisfies components["schemas"]["TagFailed"]["error"];
+
+const LIBRARY_REBUILT = {
+	written: false,
+	error: "the media library was rebuilt; export it again",
+};
+
 const FAILURES: Record<number, unknown> = {
 	403: {
 		written: false,
@@ -349,13 +366,28 @@ const refuseWrite = (response: Responder, status: number) =>
 
 const subsongOf = (track: Track) => Number(track["%subsong%"]) || 0;
 
+const hasLibrarySnapshot = (state: FakeState) =>
+	state.libraryFeed.columns.length > 0;
+
+// The snapshot holds a track under each root, and the component answers neither.
+// A property of the address rather than of the route, so both routes that take
+// one ask before they resolve.
+const namesTwoTracks = (state: FakeState, address: unknown) =>
+	typeof address === "string" && address === state.fooJean.twoRootsHold;
+
 // Resolved against the snapshot's own relative paths rather than by the key the
 // row that named it was minted from: a fake that answers its own spelling back
-// proves nothing.
-const libraryTrackAt = (state: FakeState, address: string, subsong: number) =>
-	libraryItemsOf(state.libraryTracks).find(
-		(entry) => entry.path === address && entry.subsong === subsong,
-	)?.track ?? null;
+// proves nothing. The relative paths are part of the snapshot, so a component
+// holding none resolves no library address at all, which is the `404` a player
+// that has just started answers every library-form write with.
+const libraryTrackAt = (state: FakeState, address: string, subsong: number) => {
+	if (!hasLibrarySnapshot(state)) return null;
+	return (
+		libraryItemsOf(state.libraryTracks).find(
+			(entry) => entry.path === address && entry.subsong === subsong,
+		)?.track ?? null
+	);
+};
 
 // The player holds one file's tags once, so a write reaches every copy of the
 // track the fake is holding: the playlist row it was addressed through and the
@@ -1125,7 +1157,7 @@ function insertTracks(
 
 const libraryStateOf = (state: FakeState) => {
 	const { structure, revision, columns } = state.libraryFeed;
-	const ready = columns.length > 0;
+	const ready = hasLibrarySnapshot(state);
 	return {
 		ready,
 		structure,
@@ -1348,7 +1380,7 @@ async function handleState({
 	}
 	if (state.libraryFeed.building) {
 		if (fake.libraryBuilds > 0) fake.libraryBuilds -= 1;
-		else state.finishLibraryBuild();
+		else if (fake.libraryReady) state.finishLibraryBuild();
 	}
 	const tag = stateTagOf(state, "identity");
 	response.setHeader("Vary", "Origin, Accept-Encoding");
@@ -1414,6 +1446,11 @@ async function handleLibrary({
 				400,
 			);
 
+		// The caller asked this to find out what a write did, so one of the two
+		// tracks at that address is worse than none.
+		if (namesTwoTracks(state, address))
+			return json(response, { error: NAMES_TWO_TRACKS, detail: "" }, 409);
+
 		const held = libraryTrackAt(
 			state,
 			address,
@@ -1439,7 +1476,7 @@ async function handleLibrary({
 
 		if (!sameMembers(state.libraryFeed.columns, asked)) {
 			state.libraryFeed.building = asked;
-			if (fake.libraryBuilds > 0)
+			if (fake.libraryBuilds > 0 || !fake.libraryReady)
 				return json(response, libraryStateOf(state), 202);
 			state.finishLibraryBuild();
 		}
@@ -2549,19 +2586,25 @@ export async function handleAgent({
 		// The same latency switch the beefweb fake honours.
 		if (state.latency > 0) await delay(state.latency);
 
-		// A write that lands anyway is refused at the end instead, once the address
-		// has resolved and the tag has been written.
-		if (fake.failWrites && !fake.writesLandAnyway)
-			return refuseWrite(response, fake.failWrites);
-
 		const written = body as {
 			track?: unknown;
 			subsong?: unknown;
+			ordinal?: unknown;
 			playlist?: unknown;
 			index?: unknown;
 			structure?: unknown;
 			fields?: Record<string, string>;
 		} | null;
+
+		// Decided while the address is being resolved and so ahead of `failWrites`,
+		// which stands for the player failing at a write it had already taken on.
+		if (namesTwoTracks(state, written?.track))
+			return json(response, { written: false, error: NAMES_TWO_TRACKS }, 409);
+
+		// A write that lands anyway is refused at the end instead, once the address
+		// has resolved and the tag has been written.
+		if (fake.failWrites && !fake.writesLandAnyway)
+			return refuseWrite(response, fake.failWrites);
 
 		if (!written?.fields || Object.keys(written.fields).length === 0)
 			return json(
@@ -2588,15 +2631,19 @@ export async function handleAgent({
 				400,
 			);
 
-		const namesLibrary = written.track !== undefined;
-		const namesPlaylist = written.playlist !== undefined;
-		if (namesLibrary === namesPlaylist)
+		const forms = (["track", "ordinal", "playlist"] as const).filter(
+			(form) => written[form] !== undefined,
+		);
+		if (forms.length !== 1)
 			return json(
 				response,
 				{
 					written: false,
 					error: "unacceptable address",
-					detail: "name exactly one of 'track' and 'playlist'",
+					detail:
+						forms.length === 0
+							? "'track', 'ordinal' or 'playlist' is required"
+							: "a request names one of 'track', 'ordinal' and 'playlist', never two",
 				},
 				400,
 			);
@@ -2624,7 +2671,45 @@ export async function handleAgent({
 				? { ...written.fields, rating: fake.storesRatingAs }
 				: written.fields;
 
-		if (namesLibrary) {
+		// The precise library form. One ordinal names one track of one root, so
+		// nothing here can be ambiguous; what it can be is held against a snapshot
+		// the player has replaced.
+		if (forms[0] === "ordinal") {
+			if (
+				!Number.isInteger(written.ordinal) ||
+				!Number.isInteger(written.structure)
+			)
+				return json(
+					response,
+					{
+						written: false,
+						error: "unacceptable address",
+						detail: "'ordinal' and 'structure' are whole numbers",
+					},
+					400,
+				);
+
+			if (written.structure !== state.libraryFeed.structure)
+				return json(response, LIBRARY_REBUILT, 409);
+
+			// One answer for an ordinal past the end of the snapshot as well as for a
+			// generation that has moved, because the component's own resolver reports
+			// both as a miss and `writeToOrdinal` cannot tell them apart.
+			const held = hasLibrarySnapshot(state)
+				? state.ordinalOrder()[written.ordinal as number]?.track
+				: null;
+			if (!held) return json(response, LIBRARY_REBUILT, 409);
+
+			applyTags(state, held, stored);
+			if (fake.failWrites) return refuseWrite(response, fake.failWrites);
+			return json(response, {
+				written: true,
+				ordinal: written.ordinal,
+				fields: stored,
+			});
+		}
+
+		if (forms[0] === "track") {
 			if (
 				typeof written.track !== "string" ||
 				(written.subsong !== undefined &&

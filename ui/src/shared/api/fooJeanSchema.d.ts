@@ -87,7 +87,7 @@ export interface paths {
          * Write metadata to one track.
          * @description The player performs the write, through `metadb_io_v2`, so foobar2000's own database is current when this returns and a client re-reading the value through beefweb sees the new one.
          *
-         *     The track is named by exactly one of two addresses, and never by a filesystem path. The library form is `track` with `subsong`, the library-relative key `GET /artwork?track=` takes, resolved against the media library snapshot. The playlist form is `playlist`, `index` and `structure`, one row of a playlist by position. Sending neither, sending both, or sending a field of either with the wrong type is a `400`, the rule `POST /playlists/{id}/items` applies to `runs`, `bitset` and `ordinals`.
+         *     The track is named by exactly one of three addresses, and never by a filesystem path. The library form is `track` with `subsong`, the library-relative key `GET /artwork?track=` takes, resolved against the media library snapshot. The ordinal form is `ordinal` with `structure`, a position in that snapshot, which names one track where a relative path can name two. The playlist form is `playlist`, `index` and `structure`, one row of a playlist by position. Sending none of them, sending two, or sending a field of any with the wrong type is a `400`, the rule `POST /playlists/{id}/items` applies to `runs`, `bitset` and `ordinals`.
          *
          *     **A client holding a row's `libraryPath` SHOULD send the library form, playlist row or not.** A relative path survives a reorder, a rebuild and a restart, and a position survives none of them, so the playlist form is what a row the media library does not hold falls back to.
          *
@@ -95,11 +95,11 @@ export interface paths {
          *
          *     1. Every field is on the allowlist (`403`). Names are compared case-insensitively.
          *     2. The request carries exactly one address (`400`).
-         *     3. Something holds a track at it (`404`): the snapshot, at that relative path and subsong, or that playlist, at that position.
+         *     3. Something holds a track at it (`404`): the snapshot, at that relative path and subsong, or that playlist, at that position. An `ordinal` the snapshot does not hold answers `409` instead, for the reason below.
          *
          *     The first two are decided before the player is involved.
          *
-         *     **A `structure` that is no longer that playlist's current one is a `409` and nothing is written.** The check runs before the handle is read, so a write aimed at one row never lands on another. The library form cannot reach it: a relative path does not move when a playlist does.
+         *     **Three conditions answer a `409`, and nothing is written for any of them.** A `structure` that is no longer that playlist's current one, checked before the handle is read so that a write aimed at one row never lands on another. An ordinal form that resolves to nothing, which is a `structure` a rebuild has moved, an ordinal past the end of the snapshot at the generation named, or a component that has built no snapshot at all. And a `track` address the snapshot holds more than one track at, which two media library roots holding one relative path produce: the component refuses rather than pick one, and a client SHOULD retry once with the `ordinal` it read that row at. The error string tells the three apart.
          *
          *     Only the named fields are touched; everything else in the file is left alone. An empty string removes a field rather than setting it to empty, which is how a rating is cleared rather than set to `"0"`.
          *
@@ -1180,7 +1180,7 @@ export interface components {
              */
             expiresIn: number;
         };
-        /** @description Where to write, and what. The address is exactly one of two: `track` with `subsong`, or `playlist` with `index` and `structure`. Neither and both are a `400`, and so is a member of either carried with the wrong type. Nothing here is a filesystem path. */
+        /** @description Where to write, and what. The address is exactly one of three: `track` with `subsong`, `ordinal` with `structure`, or `playlist` with `index` and `structure`. None of them and two of them are both a `400`, and so is a member of any carried with the wrong type. Nothing here is a filesystem path. */
         TagWriteRequest: {
             /**
              * @description The library form: the track's path relative to the media library root, forward-slashed on every platform, the address `GET /artwork?track=` takes. The snapshot's `directory` and `filename` for that row, concatenated, or a playlist row's `libraryPath`.
@@ -1190,11 +1190,20 @@ export interface components {
              */
             track?: string;
             /**
-             * @description Which track inside the file, for cue sheets and disc images. Omit it for an ordinary file; a missing value is read as 0. Every subsong of one file shares a `track` address, so this is the half of the library form that tells them apart.
+             * @description Which track inside the file, for cue sheets and disc images: the number the player assigned it, never a position among the tracks at one path. Every subsong of one file shares a `track` address, so this is the half of the library form that tells them apart.
+             *
+             *     Omit it for an ordinary file, where a missing value is read as `0`. A cue sheet's subsongs number from 1, so omitting it for a file the player splits is a `404` rather than a write to that file's first track. Send the `subsong` the row carries.
              *
              *     No `default:` is declared here. openapi-typescript treats a property that has one as always present and emits it non-optional, which would force every caller to pass a subsong it does not have.
              */
             subsong?: number;
+            /**
+             * @description The precise library form: the track's position in the media library snapshot `structure` names, from `GET /library/export` or a delta. It names one track and one subsong, where a `track` address names every root holding that relative path.
+             *
+             *     This is what a client sends after a `409` saying the address holds more than one track. Requires `structure`, which is the media library's own generation and a number.
+             * @example 1904
+             */
+            ordinal?: number;
             /**
              * @description The playlist form: the playlist holding the row, by the `id` a `PlaylistAnnotation` carries. The address for a track the media library does not hold, and for nothing else.
              * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
@@ -1206,12 +1215,15 @@ export interface components {
              */
             index?: number;
             /**
-             * @description The playlist's own structure generation, the one the position was read at: from `GET /playlists`, from a page, or from a delta. Required with `playlist`. A value that is not a run of decimal digits inside 64 bits is a `400`, and a well-formed generation the playlist has moved past is a `409`. Nothing is written either way.
+             * @description The generation the address was read at, required with `ordinal` and with `playlist`, and its type says which of the two was sent. A well-formed generation the player has moved past is a `409` and anything else about it is a `400`. Nothing is written either way.
              *
-             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives, sent exactly as it arrived. **This is not the `structure` a fill sends**, which is the media library's own generation and a number.
+             *     With `playlist` it is that playlist's own structure generation, from `GET /playlists`, from a page or from a delta: a string of decimal digits, for the reason `PlaylistAnnotation.structure` gives, sent exactly as it arrived.
+             *
+             *     With `ordinal` it is the media library's own generation, from `library.structure` in `GET /state`, and a number, the same value a fill sends.
              * @example 9204739866101318923
+             * @example 41
              */
-            structure?: string;
+            structure?: string | number;
             /**
              * @description Tag name to value. Every name MUST be on the allowlist. Two names differing only in case are refused rather than guessed at, since foobar2000 tag names are case-insensitive and that is two instructions for one tag.
              * @example {
@@ -1222,12 +1234,13 @@ export interface components {
                 [key: string]: string | number;
             };
         };
-        /** @description What was written, and the address it was written to, echoed in the form the request sent: `track` and `subsong` for the library form, `subsong` carrying the value the write used and so `0` where the request omitted it; `playlist` and `index` for the playlist form. `structure` is not echoed, being a precondition on the write rather than part of the address. */
+        /** @description What was written, and the address it was written to, echoed in the form the request sent: `track` and `subsong` for the library form, `subsong` carrying the value the write used and so `0` where the request omitted it; `ordinal` alone for the ordinal form, which names a subsong already; `playlist` and `index` for the playlist form. `structure` is not echoed, being a precondition on the write rather than part of the address. */
         TagWritten: {
             /** @constant */
             written: true;
             track?: string;
             subsong?: number;
+            ordinal?: number;
             playlist?: string;
             index?: number;
             /** @description What was written, normalised to strings. */
@@ -1254,7 +1267,7 @@ export interface components {
             /** @constant */
             written: false;
             /** @enum {string} */
-            error: "foobar2000 does not know that track" | "the playlist's rows were added, removed or reordered; read them again" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available";
+            error: "foobar2000 does not know that track" | "the media library holds more than one track at that address" | "the playlist's rows were added, removed or reordered; read them again" | "the media library was rebuilt; export it again" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available";
         };
         /** @description One playlist, with everything a client draws its entry in a list from. */
         PlaylistAnnotation: {
@@ -1520,7 +1533,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id";
+            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
@@ -1590,7 +1603,7 @@ export interface components {
              *     and forward-slashed everywhere.
              */
             path: string;
-            /** @description The index within `path`, for a cue sheet or a disc image. `0` for an ordinary file. */
+            /** @description The player's own subsong number within `path`, for a cue sheet or a disc image. `0` for an ordinary file. */
             subsong: number;
             /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds the playing track, or `null` where it does not. With `subsong` it is the library address `POST /tags` takes, and it is the only address a client can write a rating for the playing track to: `path` is foobar2000's own absolute one and no route here accepts it. */
             libraryPath: string | null;
@@ -1706,7 +1719,7 @@ export interface components {
             /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
             libraryPath: string | null;
             /**
-             * @description Which track inside the file this row holds, `0` for an ordinary file, read from the handle the row was drawn from rather than from the media library. It is the other half of the library address `POST /tags` takes: every track of one cue sheet shares a `libraryPath`, so an address carrying the path alone reaches the first of them.
+             * @description Which track inside the file this row holds, `0` for an ordinary file, read from the handle the row was drawn from rather than from the media library. It is the other half of the library address `POST /tags` takes: every track of one cue sheet shares a `libraryPath`, and a cue sheet's subsongs number from 1, so an address carrying the path alone reaches none of them.
              *
              *     It is not one of the declared `columns`, and a client MUST NOT ask for `%subsong%` there: that declaration is shared with `GET /library/export`, so widening it rebuilds the snapshot and moves its `structure`.
              * @example 0
@@ -1726,7 +1739,7 @@ export interface components {
             /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
             libraryPath: string | null;
             /**
-             * @description Which track inside the file this row holds, `0` for an ordinary file, read from the handle the row was drawn from rather than from the media library. It is the other half of the library address `POST /tags` takes: every track of one cue sheet shares a `libraryPath`, so an address carrying the path alone reaches the first of them.
+             * @description Which track inside the file this row holds, `0` for an ordinary file, read from the handle the row was drawn from rather than from the media library. It is the other half of the library address `POST /tags` takes: every track of one cue sheet shares a `libraryPath`, and a cue sheet's subsongs number from 1, so an address carrying the path alone reaches none of them.
              *
              *     It is not one of the declared `columns`, and a client MUST NOT ask for `%subsong%` there: that declaration is shared with `GET /library/export`, so widening it rebuilds the snapshot and moves its `structure`.
              * @example 0
@@ -1838,7 +1851,7 @@ export interface components {
                 directory?: components["schemas"]["LibraryColumn"];
                 /** @description The last segment of the path, extension included. */
                 filename?: components["schemas"]["LibraryColumn"];
-                /** @description The index within the file, as decimal text, for cue sheets and disc images. `0` for an ordinary file. Text like every other column, because nothing here types a value. */
+                /** @description The player's own subsong number within the file, as decimal text, for cue sheets and disc images. `0` for an ordinary file, and never a position among the rows at one path. Text like every other column, because nothing here types a value. */
                 subsong?: components["schemas"]["LibraryColumn"];
             };
         };
@@ -2543,7 +2556,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagWritten"];
                 };
             };
-            /** @description The request is malformed, carries no address or carries both, carries one of their fields with the wrong type, or has nothing to write. Retrying it unchanged will not help. */
+            /** @description The request is malformed, carries no address or carries two, carries a field of one of them with the wrong type, or has nothing to write. Retrying it unchanged will not help. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2562,7 +2575,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagRefused"];
                 };
             };
-            /** @description Nothing holds a track at that address: the snapshot carries no track at that relative path and subsong, or the playlist does not exist, or `index` is at or past its end. Nothing was written. */
+            /** @description Nothing holds a track at that address: the snapshot carries no track at that relative path and subsong, or the playlist does not exist, or `index` is at or past its end. Nothing was written. An `ordinal` the snapshot does not hold is the `409` rather than this. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2571,7 +2584,15 @@ export interface operations {
                     "application/json": components["schemas"]["TagFailed"];
                 };
             };
-            /** @description The `structure` the playlist form named is no longer that playlist's current one, so the row at `index` may be another track. Nothing was written. Read the playlist's rows again from the generation `GET /playlists` now reports, and send the position that names. */
+            /**
+             * @description The address no longer names what the client read it at, and nothing was written. The error string says which of three, and each has its own remedy.
+             *
+             *     The `structure` the playlist form named is no longer that playlist's current one, so the row at `index` may be another track: read the playlist's rows again from the generation `GET /playlists` now reports, and send the position that names.
+             *
+             *     The ordinal form resolved to nothing, for one of three reasons the component cannot tell apart. The `structure` it named is no longer the media library's, so every ordinal held against it names another track. Or the snapshot at that generation holds no ordinal that high. Or no snapshot is built, which is where a component sits between starting and its first one. One resolver serves the ordinal here and the ones `POST /playlists/{id}/items` and the queue routes take, and it reports all three as a miss, so the error string names the rebuild alone. Export the library again and send the ordinal that names; where the `structure` sent is the one `GET /state` reports, the ordinal itself was wrong and exporting again will not help.
+             *
+             *     The `track` address names a track under more than one media library root, so nothing about it says which was meant: send the `ordinal` the row was read at instead. A client SHOULD retry once, and on this refusal only.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3819,7 +3840,9 @@ export interface operations {
                  */
                 track: string;
                 /**
-                 * @description Which track inside the file, for cue sheets and disc images. Omitted is read as `0`. Every subsong of one file shares an address, so this is what tells them apart.
+                 * @description Which track inside the file, for cue sheets and disc images: the number the player assigned it, never a position among the tracks at one path. Every subsong of one file shares an address, so this is what tells them apart.
+                 *
+                 *     Omitted is read as `0`, which is an ordinary file. A cue sheet's subsongs number from 1, so omitting it for a file the player splits is a `404` rather than that file's first track. Send the `subsong` the row carries.
                  * @example 0
                  */
                 subsong?: number;
@@ -3856,6 +3879,19 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoSuchLibraryTrack"];
+            /**
+             * @description The address names a track under more than one media library root, so answering one of them would confirm a value that may belong to the other. The client asked this route to find out what a write did, so the wrong track's columns are worse than none.
+             *
+             *     `POST /tags` refuses the same address in the same words, and a client that read the row from an export holds the `ordinal` that names one track. This route takes no ordinal; a client holding one MAY read the value back through a delta instead.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"];
+                };
+            };
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["LibraryUnavailable"];
             504: components["responses"]["PlayerTooSlow"];

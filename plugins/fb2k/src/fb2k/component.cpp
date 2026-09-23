@@ -63,7 +63,8 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
                    OutputHold& outputHold, LibraryFeed& libraryFeed, PlayerStateStore& playerState,
                    const PlaylistVersions& playlistVersions, const AlbumArt& rowArt) {
     Player player;
-    player.writeTags = makeTagWriter(mainThread, libraryFeed.trackResolver(), playlistVersions);
+    player.writeTags = makeTagWriter(mainThread, libraryFeed.trackResolver(),
+                                     libraryFeed.ordinalResolver(), playlistVersions);
     player.listPlaylists = makePlaylistLister(mainThread, playlistVersions);
     player.readPlaylistRows = makePlaylistRowReader(mainThread, playlistVersions);
     player.readChangedPlaylistRows = makeChangedPlaylistRowReader(mainThread, playlistVersions);

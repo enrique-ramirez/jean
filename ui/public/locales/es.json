@@ -348,11 +348,14 @@
 		"one": "Cola, {count} pista",
 		"other": "Cola, {count} pistas"
 	},
-	"rate.didNotLand": "No pudimos valorar {track} con {stars} estrellas",
+	"rate.didNotLand": {
+		"one": "No pudimos valorar {track} con {count} estrella",
+		"other": "No pudimos valorar {track} con {count} estrellas"
+	},
 	"rate.failed": "{label} no se valoró. {message}",
 	"rate.moved": "Esa pista se ha movido. Recarga para valorarla.",
 	"rate.notAllowed": "Este foobar2000 no permite escribir valoraciones.",
-	"rate.notSaved": "La valoración no se guardó. {message}",
+	"rate.notRemoved": "No pudimos quitar la valoración de {track}",
 	"rate.unknownTrack": "foobar2000 no conoce esa pista, así que no se valoró.",
 	"rating.clearOn": "Quitar la valoración ({label})",
 	"rating.none": "Sin valoración",

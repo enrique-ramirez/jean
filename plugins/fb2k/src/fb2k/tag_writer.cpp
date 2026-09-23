@@ -80,11 +80,49 @@ TagWriteOutcome askToWrite(MainThreadQueue& mainThread,
                                       TagWriteOutcome::timedOut, TagWriteOutcome::writeFailed);
 }
 
+TagWriteOutcome writeTo(MainThreadQueue& mainThread, const metadb_handle_ptr& track,
+                        const TagFields& fields) {
+    return askToWrite(mainThread, [track, fields](const AnswerPtr<TagWriteOutcome>& answer) {
+        beginWrite(track, fields, answer);
+    });
+}
+
+TagWriteOutcome writeToLibraryTrack(MainThreadQueue& mainThread,
+                                    const LibraryTrackResolver& resolve,
+                                    const LibraryTrackRef& address, const TagFields& fields) {
+    if (!resolve)
+        return TagWriteOutcome::trackNotKnown;
+
+    const LibraryTrackResolution at = resolve(address.track, address.subsong);
+    if (at.heldTwice)
+        return TagWriteOutcome::ambiguousAddress;
+
+    if (at.handle.is_empty())
+        return TagWriteOutcome::trackNotKnown;
+
+    return writeTo(mainThread, at.handle, fields);
+}
+
+TagWriteOutcome writeToOrdinal(MainThreadQueue& mainThread, const OrdinalResolver& resolve,
+                               const OrdinalTrackRef& address, const TagFields& fields) {
+    if (!resolve)
+        return TagWriteOutcome::trackNotKnown;
+
+    const OrdinalResolution at = resolve(address.structure, {address.ordinal});
+    if (!at.structureMatched)
+        return TagWriteOutcome::libraryRebuilt;
+
+    if (at.items.get_count() != 1)
+        return TagWriteOutcome::trackNotKnown;
+
+    return writeTo(mainThread, at.items[0], fields);
+}
+
 }  // namespace
 
 TagWriter makeTagWriter(MainThreadQueue& mainThread, LibraryTrackResolver resolveLibraryTrack,
-                        const PlaylistVersions& versions) {
-    return [&mainThread, resolveLibraryTrack, &versions](const TagWrite& write) {
+                        OrdinalResolver resolveOrdinal, const PlaylistVersions& versions) {
+    return [&mainThread, resolveLibraryTrack, resolveOrdinal, &versions](const TagWrite& write) {
         if (write.track.playlist) {
             return askToWrite(mainThread, [row = *write.track.playlist, fields = write.fields,
                                            &versions](const AnswerPtr<TagWriteOutcome>& answer) {
@@ -92,18 +130,14 @@ TagWriter makeTagWriter(MainThreadQueue& mainThread, LibraryTrackResolver resolv
             });
         }
 
-        if (!write.track.library || !resolveLibraryTrack)
-            return TagWriteOutcome::trackNotKnown;
+        if (write.track.ordinal)
+            return writeToOrdinal(mainThread, resolveOrdinal, *write.track.ordinal, write.fields);
 
-        const metadb_handle_ptr track =
-            resolveLibraryTrack(write.track.library->track, write.track.library->subsong);
-        if (track.is_empty())
-            return TagWriteOutcome::trackNotKnown;
+        if (write.track.library)
+            return writeToLibraryTrack(mainThread, resolveLibraryTrack, *write.track.library,
+                                       write.fields);
 
-        return askToWrite(mainThread,
-                          [track, fields = write.fields](const AnswerPtr<TagWriteOutcome>& answer) {
-                              beginWrite(track, fields, answer);
-                          });
+        return TagWriteOutcome::trackNotKnown;
     };
 }
 

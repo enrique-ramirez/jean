@@ -1,6 +1,13 @@
-import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import {
+	type QueryClient,
+	skipToken,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
+	componentLibraryKey,
+	playlistSnapshot,
 	recheckComponentLibrary,
 	retryFailedPlaylistReads,
 } from "@/domain/track/playlistStore";
@@ -84,6 +91,18 @@ function mergePlayer(
 	};
 }
 
+export const LIBRARY_UNBUILT_KEY = ["library", "unbuilt"];
+
+export function useExportHeldWhenLibraryUnbuilt(): number | null {
+	const { data = null } = useQuery<number | null>({
+		queryKey: LIBRARY_UNBUILT_KEY,
+		queryFn: skipToken,
+		staleTime: Infinity,
+		refetchOnWindowFocus: false,
+	});
+	return data;
+}
+
 async function applyPoll(
 	client: QueryClient,
 	origin: string,
@@ -91,6 +110,9 @@ async function applyPoll(
 	tag: string | null,
 	capabilities: FooJeanCapabilities | undefined,
 ): Promise<string | null> {
+	const exportHeldWhenAsked = playlistSnapshot(
+		componentLibraryKey(origin),
+	).structure;
 	const result = await fetchState(origin, token, tag);
 	if (!result.ok) return tag;
 
@@ -107,6 +129,14 @@ async function applyPoll(
 	client.setQueryData<PlayerSnapshot>(PLAYER_KEY, snapshot);
 	rememberSnapshot(snapshot);
 	notePlaybackState(snapshot.player.playbackState);
+
+	// The mark a library address is checked against: `shared/api/README.md`, *What Jean does about
+	// the library*.
+	client.setQueryData<number | null>(
+		LIBRARY_UNBUILT_KEY,
+		result.state.library.ready ? null : exportHeldWhenAsked,
+	);
+
 	void recheckComponentLibrary(origin, token, result.state.library);
 	void recheckQueue(client, origin, token, result.state.player.queueRevision);
 	void recheckPlaylists(

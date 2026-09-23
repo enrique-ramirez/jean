@@ -34,8 +34,18 @@ constexpr char kToken[] = "0123456789abcdef0123456789abcdef";
 // The one form a playlist id may take: lower case, dashed.
 constexpr char kPlaylistId[] = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 
-// The library-relative, forward-slashed address `GET /api/artwork?track=` takes.
+// The library-relative, forward-slashed address `GET /api/artwork?track=` takes. An ordinary
+// file, so the media library holds it at subsong 0 and at no other subsong.
 constexpr char kTrackAddress[] = "Someone/A Record/01 A Song.flac";
+
+// A cue sheet: three tracks inside one file, sharing an address and told apart by subsong
+// alone. foobar2000 numbers a cue sheet's subsongs from 1, so the media library holds this
+// address at 1, 2 and 3, and holds no subsong 0 of it. A stand-in that indexed a file's
+// subsongs by position instead would answer the first track for the subsong nothing holds,
+// and a client sending one would be answered by this suite and refused by the player.
+constexpr char kCueAddress[] = "Someone/A Record/disc.flac";
+constexpr uint32_t kFirstCueSubsong = 1;
+constexpr uint32_t kCueSubsongs = 3;
 
 // A playlist generation of the shape one really carries: past 2^53, where a JSON number stops
 // being exact, so a generation one away from it is the near miss a test wants.

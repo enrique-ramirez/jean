@@ -103,9 +103,10 @@ std::string unsendable(const std::string& schema, const std::set<std::string>& d
     return listed(missing);
 }
 
+template <typename Enum>
 int statusAnswered(const std::string& error) {
     for (int raw = 0;; ++raw) {
-        const auto outcome = static_cast<PlaylistOutcome>(raw);
+        const auto outcome = static_cast<Enum>(raw);
         const auto described = describe(outcome);
 
         if (described == "unknown")
@@ -113,6 +114,41 @@ int statusAnswered(const std::string& error) {
         if (described == error)
             return httpStatusFor(outcome);
     }
+}
+
+// What a client acts on is the sentence, so a refusal two routes both make has to be one
+// sentence however many enumerations carry it.
+template <typename Enum>
+std::vector<std::string> errorsSaying(const std::string& sense) {
+    std::vector<std::string> found;
+    for (const auto& described : everyDescribed<Enum>())
+        if (described.find(sense) != std::string::npos)
+            found.push_back(described);
+
+    return found;
+}
+
+// contract/openapi.yaml quotes a value wherever YAML needs it to and publishedEnum hands back
+// the line as written, so a comparison against the sentence the component sends drops them.
+std::string unquoted(const std::string& value) {
+    const bool quoted = value.size() >= 2 && value.front() == '"' && value.back() == '"';
+    return quoted ? value.substr(1, value.size() - 2) : value;
+}
+
+bool publishesError(const std::string& schema, const std::string& error) {
+    const auto values = publishedEnum(schema, "error");
+    return std::count_if(values.begin(), values.end(), [&error](const std::string& published) {
+               return unquoted(published) == error;
+           }) == 1;
+}
+
+bool publishes(const std::string& method, const std::string& path, int status) {
+    const auto routes = publishedRoutes();
+    const auto route = std::find_if(routes.begin(), routes.end(), [&](const SpecRoute& published) {
+        return published.method == method && published.path == path;
+    });
+
+    return route != routes.end() && route->statuses.count(status) != 0;
 }
 
 }  // namespace
@@ -593,7 +629,7 @@ TEST_CASE("a moved generation is refused with the 409 GET /library/changes alrea
     const auto moved = describe(DeltaOutcome::structureChanged);
 
     INFO("add an enumerator to PlaylistOutcome in core/playlists.h whose describe() is ", moved);
-    CHECK(statusAnswered(moved) == 409);
+    CHECK(statusAnswered<PlaylistOutcome>(moved) == 409);
 
     INFO("and publish that string as a PlaylistFailed.error in contract/openapi.yaml");
     const auto published = publishedEnum("PlaylistFailed", "error");
@@ -609,11 +645,54 @@ TEST_CASE("a stale queue revision is refused with a 409 distinct from a moved st
     CHECK(moved != describe(DeltaOutcome::structureChanged));
 
     INFO("add an enumerator to PlaylistOutcome in core/playlists.h whose describe() is ", moved);
-    CHECK(statusAnswered(moved) == 409);
+    CHECK(statusAnswered<PlaylistOutcome>(moved) == 409);
 
     INFO("and publish that string as a PlaylistFailed.error in contract/openapi.yaml");
     const auto published = publishedEnum("PlaylistFailed", "error");
     CHECK(std::count(published.begin(), published.end(), moved) == 1);
+}
+
+// Two media library roots can hold one library-relative path, so a library address can name a
+// track under each. A client retries once with a precise address on this reason and on no
+// other, and it reaches that client from two routes answering out of two enumerations, so one
+// sentence has to come back from both or the client cannot tell it from anything else.
+TEST_CASE("an address naming more than one track is one 409 both library routes send") {
+    constexpr char kNamesMoreThanOneTrack[] = "more than one track";
+
+    const auto fromTags = errorsSaying<TagWriteOutcome>(kNamesMoreThanOneTrack);
+    const auto fromColumns = errorsSaying<PlaylistOutcome>(kNamesMoreThanOneTrack);
+
+    INFO("add one enumerator to TagWriteOutcome and one to PlaylistOutcome, saying it");
+    REQUIRE(fromTags.size() == 1);
+    REQUIRE(fromColumns.size() == 1);
+    CHECK(fromTags.front() == fromColumns.front());
+
+    CHECK(statusAnswered<TagWriteOutcome>(fromTags.front()) == 409);
+    CHECK(statusAnswered<PlaylistOutcome>(fromColumns.front()) == 409);
+
+    INFO(kUpdateSpec);
+    CHECK(publishesError("TagFailed", fromTags.front()));
+    CHECK(publishesError("PlaylistFailed", fromColumns.front()));
+
+    CHECK(publishes("POST", "/tags", 409));
+    CHECK(publishes("GET", "/library/track", 409));
+}
+
+// Both generations are a 409 and the remedies differ. The playlist sentence tells a client to
+// read a playlist's rows again, and a client whose library generation moved has no playlist to
+// read: a true status carrying an instruction it cannot follow.
+TEST_CASE("a write against a rebuilt library is a 409 distinct from a moved playlist") {
+    constexpr char kLibraryWasRebuilt[] = "media library was rebuilt";
+
+    const auto rebuilt = errorsSaying<TagWriteOutcome>(kLibraryWasRebuilt);
+
+    INFO("add an enumerator to TagWriteOutcome in core/tag_write.h whose describe() says so");
+    REQUIRE(rebuilt.size() == 1);
+    CHECK(rebuilt.front() != describe(TagWriteOutcome::rowsMoved));
+    CHECK(statusAnswered<TagWriteOutcome>(rebuilt.front()) == 409);
+
+    INFO(kUpdateSpec);
+    CHECK(publishesError("TagFailed", rebuilt.front()));
 }
 
 TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer with") {

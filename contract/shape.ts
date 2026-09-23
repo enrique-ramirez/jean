@@ -56,7 +56,11 @@ function keysOfObject(schema: Schema, body: unknown, path: string): string[] {
 	return [...missing, ...undeclared, ...nested];
 }
 
-// The five keywords below are the whole of what this file judges a body against. A schema
+// A `const` is an enum of one, and the contract writes both.
+const publishedValues = (schema: Schema): unknown[] | undefined =>
+	schema.enum ?? ("const" in schema ? [schema.const] : undefined);
+
+// The keywords below are the whole of what this file judges a body against. A schema
 // declaring none of them constrains nothing it reads, so answering "conforms" would report
 // success on a document nothing looked at.
 const judgeable = (schema: Schema) =>
@@ -64,7 +68,8 @@ const judgeable = (schema: Schema) =>
 	schema.properties !== undefined ||
 	schema.items !== undefined ||
 	schema.oneOf !== undefined ||
-	schema.anyOf !== undefined;
+	schema.anyOf !== undefined ||
+	publishedValues(schema) !== undefined;
 
 // Values are never quoted back: one of these documents carries a bearer token.
 export function conforms(schema: Schema, body: unknown, path = ""): string[] {
@@ -87,6 +92,12 @@ export function conforms(schema: Schema, body: unknown, path = ""): string[] {
 	if (types.length > 0 && !matchesType(types, body))
 		return [
 			`the value${inside(path)} is ${typeOf(body)} where the spec declares ${types.join(" or ")}`,
+		];
+
+	const published = publishedValues(schema);
+	if (published && !published.includes(body))
+		return [
+			`the value${inside(path)} is none of the values the spec publishes`,
 		];
 
 	const items = schema.items;

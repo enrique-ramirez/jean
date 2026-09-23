@@ -37,7 +37,7 @@ import {
 } from "./rating";
 import { useWrittenRating } from "./ratingStore";
 import styles from "./TrackRow.module.css";
-import { useTagWriting } from "./useTagWriter";
+import { RATING_FIELD, useTagWriting } from "./useTagWriter";
 
 function Rating({
 	columns,
@@ -51,7 +51,7 @@ function Rating({
 	itemIndex: number;
 }) {
 	const t = useTranslate();
-	const { canRateInline, rate } = useTagWriting();
+	const { canRateInline, rate, hasWritableAddress } = useTagWriting();
 	const written = useWrittenRating(columns, itemIndex);
 
 	const raw = rawRatingWith(row, written);
@@ -62,7 +62,11 @@ function Rating({
 			? t("rating.unrated")
 			: t("rating.outOf", { stars, max: MAX_STARS });
 
-	if (!canRateInline || !isWritableScale(raw) || !source.address(itemIndex))
+	if (
+		!canRateInline ||
+		!isWritableScale(raw) ||
+		!hasWritableAddress(RATING_FIELD, source.addresses(itemIndex))
+	)
 		return <Stars value={stars} label={label} />;
 
 	return (

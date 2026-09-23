@@ -163,6 +163,9 @@ enum class PlaylistOutcome {
     queryInvalid,
     noSuchPlaylist,
     positionPastEnd,
+    // Says what POST /api/tags says by TagWriteOutcome::ambiguousAddress, in those words: a
+    // client tells one refusal from another by the sentence rather than by the route.
+    ambiguousAddress,
     notOurs,
     keyInUse,
     tooMany,

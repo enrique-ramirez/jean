@@ -186,7 +186,10 @@ struct LibraryFeed::State {
     // Ordinals run in relative-path order with the tie broken by subsong, so every subsong of
     // one file follows the lowest ordinal at its path, which is the one `byRelativePath` keeps.
     // See ARCHITECTURE.md, *The media library*.
-    metadb_handle_ptr trackAt(const std::string& relativePath, uint32_t subsong) const {
+    //
+    // The whole run is walked rather than stopped at the first match: two media library roots
+    // can hold one relative path, and whichever of the two sorts first is not an answer.
+    LibraryTrackResolution trackAt(const std::string& relativePath, uint32_t subsong) const {
         const OrderedPtr ordered = order();
         if (!ordered)
             return {};
@@ -195,21 +198,31 @@ struct LibraryFeed::State {
         if (found == ordered->byRelativePath.end())
             return {};
 
+        LibraryTrackResolution at;
         const size_t count = ordered->items.get_count();
         for (size_t ordinal = found->second;
              ordinal < count && ordered->relativePaths[ordinal] == relativePath; ++ordinal) {
-            if (ordered->items[ordinal]->get_subsong_index() == subsong)
-                return ordered->items[ordinal];
+            if (ordered->items[ordinal]->get_subsong_index() != subsong)
+                continue;
+
+            if (at.handle.is_valid())
+                return LibraryTrackResolution{true, {}};
+
+            at.handle = ordered->items[ordinal];
         }
 
-        return {};
+        return at;
     }
 
     // On a connection thread like `artwork()`; the columns go to the main thread for the reason
     // core/http_server.h's `LibraryTrackReader` gives.
     LibraryTrackRead readTrackColumns(const std::string& track, uint32_t subsong,
                                       const std::vector<std::string>& columns) const {
-        const metadb_handle_ptr handle = trackAt(track, subsong);
+        const LibraryTrackResolution at = trackAt(track, subsong);
+        if (at.heldTwice)
+            return trackReadFailure(PlaylistOutcome::ambiguousAddress);
+
+        const metadb_handle_ptr handle = at.handle;
         if (!handle.is_valid())
             return {};
 

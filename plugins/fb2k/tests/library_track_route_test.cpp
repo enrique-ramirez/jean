@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,23 @@ using namespace jean::testing;
 using nlohmann::json;
 
 namespace {
+
+// What the client acts on, which is the sentence rather than the enumerator carrying it: the
+// same refusal reaches a client from POST /api/tags, and that route answers out of
+// TagWriteOutcome instead.
+constexpr char kNamesMoreThanOneTrack[] = "more than one track";
+
+std::optional<PlaylistOutcome> outcomeForAnAddressNamingTwoTracks() {
+    for (int raw = 0;; ++raw) {
+        const auto outcome = static_cast<PlaylistOutcome>(raw);
+        const auto said = describe(outcome);
+
+        if (said == "unknown")
+            return std::nullopt;
+        if (said.find(kNamesMoreThanOneTrack) != std::string::npos)
+            return outcome;
+    }
+}
 
 std::string escaped(const std::string& value) {
     static constexpr char kHex[] = "0123456789ABCDEF";
@@ -62,9 +80,15 @@ struct FakeLibrary {
         std::vector<std::string> columns;
     };
 
-    // One entry per file, holding its subsongs in subsong order, as the snapshot's
-    // relative-path map does. Each subsong carries what a column evaluates to on its own handle.
-    std::map<std::string, std::vector<std::map<std::string, std::string>>> snapshot;
+    // One entry per file, holding its handles by the subsong each one is, as the snapshot's
+    // relative-path map does. A subsong is a number the player gave the handle rather than a
+    // position in the file: `kCueAddress` says what turns on that. Each handle carries what a
+    // column evaluates to on it.
+    std::map<std::string, std::map<uint32_t, std::map<std::string, std::string>>> snapshot;
+
+    // Addresses the snapshot holds twice over, which is what two media library roots sharing
+    // one library-relative path produce.
+    std::set<std::string> heldTwice;
 
     // Every address the route handed over, held or not.
     std::vector<Read> asked;
@@ -72,15 +96,14 @@ struct FakeLibrary {
 
 constexpr char kTitle[] = "%title%";
 constexpr char kRatingColumn[] = "%rating%";
-constexpr char kDiscAddress[] = "Someone/A Record/disc.flac";
 
 FakeLibrary holding() {
     FakeLibrary library;
-    library.snapshot = {{kTrackAddress, {{{kTitle, "A Song"}, {kRatingColumn, kRating}}}},
-                        {kDiscAddress,
-                         {{{kTitle, "The Overture"}},
-                          {{kTitle, "The Middle"}},
-                          {{kTitle, "The End"}}}}};
+    library.snapshot = {{kTrackAddress, {{0, {{kTitle, "A Song"}, {kRatingColumn, kRating}}}}},
+                        {kCueAddress,
+                         {{1, {{kTitle, "The Overture"}}},
+                          {2, {{kTitle, "The Middle"}}},
+                          {3, {{kTitle, "The End"}}}}}};
 
     return library;
 }
@@ -93,12 +116,21 @@ Player reading(FakeLibrary* library) {
         library->asked.push_back({track, subsong, columns});
 
         LibraryTrackRead read;
+        if (library->heldTwice.count(track) != 0) {
+            read.outcome = outcomeForAnAddressNamingTwoTracks().value();
+            return read;
+        }
+
         const auto file = library->snapshot.find(track);
-        if (file == library->snapshot.end() || subsong >= file->second.size())
+        if (file == library->snapshot.end())
+            return read;
+
+        const auto found = file->second.find(subsong);
+        if (found == file->second.end())
             return read;
 
         read.held = true;
-        const auto& handle = file->second.at(subsong);
+        const auto& handle = found->second;
         for (const std::string& column : columns) {
             const auto value = handle.find(column);
             read.columns.push_back(value == handle.end() ? kUnresolved : value->second);
@@ -139,24 +171,42 @@ TEST_CASE("each subsong of one file is read at its own handle") {
     FakeLibrary library = holding();
     const TestServer server(servingSettings(), reading(&library));
 
-    const std::vector<std::string> inTheFile{"The Overture", "The Middle", "The End"};
+    const std::map<uint32_t, std::string> inTheFile{
+        {1, "The Overture"}, {2, "The Middle"}, {3, "The End"}};
 
-    for (uint32_t subsong = 0; subsong < static_cast<uint32_t>(inTheFile.size()); ++subsong) {
-        const auto response = get(server, oneTrack(kDiscAddress, {kTitle}, subsong));
+    for (const auto& inside : inTheFile) {
+        const uint32_t subsong = inside.first;
+        const auto response = get(server, oneTrack(kCueAddress, {kTitle}, subsong));
 
         INFO("subsong: ", subsong);
         REQUIRE(response);
         CHECK(response->status == 200);
-        CHECK(json::parse(response->body) ==
-              json{{"columns", json::array({inTheFile.at(subsong)})}});
+        CHECK(json::parse(response->body) == json{{"columns", json::array({inside.second})}});
         CHECK(library.asked.back().subsong == subsong);
     }
 
-    // What a client sends for a file holding one track, which is nearly all of them.
-    const auto omitted = get(server, oneTrack(kDiscAddress, {kTitle}));
+    CHECK(library.asked.size() == inTheFile.size());
+}
 
-    REQUIRE(omitted);
-    CHECK(json::parse(omitted->body) == json{{"columns", json::array({inTheFile.front()})}});
+// The default is the ordinary file's own subsong, and it is the wrong number for a cue sheet:
+// `kCueAddress` says why. The read-back a timed-out write ends at asks this route, so answering
+// the file's first track for the subsong nothing holds would confirm a rating that never landed.
+TEST_CASE("a read naming no subsong is read as 0, which a cue sheet's file does not hold") {
+    FakeLibrary library = holding();
+    const TestServer server(servingSettings(), reading(&library));
+
+    // What a client sends for a file holding one track, which is nearly all of them.
+    const auto ordinary = get(server, oneTrack(kTrackAddress, {kTitle}));
+
+    REQUIRE(ordinary);
+    CHECK(ordinary->status == 200);
+    CHECK(json::parse(ordinary->body) == json{{"columns", json::array({"A Song"})}});
+    CHECK(library.asked.back().subsong == 0);
+
+    const auto cue = get(server, oneTrack(kCueAddress, {kTitle}));
+
+    REQUIRE(cue);
+    CHECK(cue->status == 404);
     CHECK(library.asked.back().subsong == 0);
 }
 
@@ -180,13 +230,35 @@ TEST_CASE("an address the snapshot does not hold is a 404, `..` and all") {
     // A subsong past the last one in the file. Answering the file's first track instead is
     // what a dropped subsong looks like from a client: a cue sheet whose every track rates
     // and reads back as its own album's opener.
-    const auto beyond = get(server, oneTrack(kDiscAddress, {kTitle}, 9));
+    const auto beyond = get(server, oneTrack(kCueAddress, {kTitle}, 9));
 
     REQUIRE(beyond);
     CHECK(beyond->status == 404);
 
     // Four looked up rather than refused at the door: the snapshot decides, not the spelling.
     CHECK(library.asked.size() == 4);
+}
+
+// Two media library roots can hold one library-relative path, so an address can name a track
+// under each. Answering whichever sorts first would confirm a rating that landed on the other
+// copy, which is worse than answering nothing: the client asked this route precisely to find
+// out what the write did.
+TEST_CASE("an address held under two roots is a 409 instead of one track's columns") {
+    const auto ambiguous = outcomeForAnAddressNamingTwoTracks();
+    REQUIRE_MESSAGE(ambiguous, "no PlaylistOutcome says an address names more than one track");
+
+    FakeLibrary library = holding();
+    library.heldTwice = {kTrackAddress};
+    const TestServer server(servingSettings(), reading(&library));
+
+    const auto response = get(server, oneTrack(kTrackAddress, {kTitle}));
+
+    REQUIRE(response);
+    CHECK(response->status == 409);
+
+    const auto body = json::parse(response->body);
+    CHECK(body.at("error") == describe(*ambiguous));
+    CHECK(body.count("columns") == 0);
 }
 
 // parseLibraryRequest is the gate GET /api/library/export puts on a declaration, reused here

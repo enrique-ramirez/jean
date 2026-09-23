@@ -83,7 +83,7 @@ The library is **derived from the captured tracks rather than invented**: the ca
 
 Two things the fake **refuses** rather than approximating, since a filter that silently disagreed with the real one is worse than no filter: the player's `query` syntax, and `sort` by anything but a bare `%field%`. Both answer **400**.
 
-**The captured tracks are all `subsong: 0`**, since every captured file is one track and a subsong needs a cue sheet or a disc image. `libraryOfShape({ subsongsPerFile })` synthesises them where a spec needs several tracks sharing one `%path%`.
+**The captured tracks are all `subsong: 0`**, since every captured file is one track and a subsong needs a cue sheet or a disc image. `libraryOfShape({ subsongsPerFile })` synthesises them where a spec needs several tracks sharing one `%path%`, numbered from 1 the way foobar2000 numbers a cue sheet's, so a file it splits has no subsong 0 at all. Wherever a route takes a subsong it is matched by value rather than read as a position, as the component matches it, and an address that leaves `subsong` out asks for 0.
 
 ### Covers
 
@@ -114,14 +114,17 @@ An export taken off a real player is far too large to commit, so the test that r
 JEAN_LIBRARY_EXPORT=/path/to/export.jlib pnpm test:unit
 ```
 
-The routes model the declaration the contract describes rather than answering from nothing. Nothing is built until an export names a column set, so a fresh fake reports `ready: false` and both generations at zero. Three options drive the paths a client has to survive:
+The routes model the declaration the contract describes rather than answering from nothing. Nothing is built until an export names a column set, so a fresh fake reports `ready: false` and both generations at zero. Five options drive the paths a client has to survive:
 
 | | |
 |---|---|
 | `canReadLibrary: false` | the component loaded without the feature: the three `/api/library/*` routes are a `503`, and `GET /api/state` answers `200` regardless, with a zero `library` and a populated `player`, since a player with no library is still a player |
+| `libraryReady: false` | no export ever finishes, so no snapshot is held for as long as the spec runs and a library address resolves against nothing. The window a freshly started player sits in until something has asked for an export |
 | `libraryBuilds: n` | polls of `GET /api/state` answered before a declared set finishes building, so the export is a `202` first |
 | `libraryBusy: n` | exports answered `429` before the rate limiter lets one through |
 | `libraryRebuilds: n` | structure rebuilds, one performed at the next poll of `GET /api/state` each. This is the `409` and the re-export behind it |
+
+**`GET /api/library/track` answers one track's declared columns**, addressed the way a cover is, by library-relative path and subsong. It is the read a client goes back with when a write's own answer never arrived, so two options reach it and no other traffic: `failLibraryTrack` refuses it with a status, and `hangLibraryTrack` holds it open and never answers, not even late. `twoRootsHold` names a library-relative path that two media library roots both hold, and this route and the tag write both answer `409` for it rather than choosing one of the two tracks.
 
 `GET /api/state`'s `player` section reads off `state.player` and `state.positionMark`, the position and the wall-clock time it was last set: a track change, a pause, a resume, a stop or a seek re-takes the mark, and a volume-only write does not, so a client interpolating `seconds + ageSeconds` never loses time it already counted. Its `ETag` folds a player version on top of the two library generations, so driving the player alone still moves the validator. **`failState`, set through `fooJean` or through `POST /__control/state { failState: n }`, refuses the route with status `n`** until cleared with `{ failState: null }`, shaped like `failWrites` but switchable mid-test, since the case it exists for is a poll cut off partway through a spec rather than one refused from the start.
 
@@ -253,7 +256,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |
 | `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
-| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failWrites: 504, writesLandAnyway: true }` for a write the player took and could not answer for, `{ storesRatingAs: '2' }` for a player that keeps ratings on a scale of its own, `{ failLibraryTrack: 404 }` and `{ hangLibraryTrack: true }` for the read a timed-out write goes back with, `{ failState: 503 }`, `{ failQueue: 500 }`, `{ knowsPlayingLocation: false }`, `{ annotatesEveryPlaylist: false }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
+| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failWrites: 504, writesLandAnyway: true }` for a write the player took and could not answer for, `{ storesRatingAs: '2' }` for a player that keeps ratings on a scale of its own, `{ twoRootsHold: path }` for an address two media library roots both hold, `{ failLibraryTrack: 404 }` and `{ hangLibraryTrack: true }` for the read a timed-out write goes back with, `{ failState: 503 }`, `{ failQueue: 500 }`, `{ knowsPlayingLocation: false }`, `{ annotatesEveryPlaylist: false }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
 | `fooJeanToken` | seeds the credential. `FOO_JEAN_TOKEN` by default; `null` is a device that has never paired |
 | `motion` | reduced by default, since Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work. It is accepted and silently ignored, so the fixture calls `page.emulateMedia()` |
 

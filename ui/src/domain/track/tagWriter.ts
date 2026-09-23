@@ -38,18 +38,23 @@ export const NO_WRITER: TagWriter = {
 	read: async () => null,
 };
 
-const addressFields = (address: TrackAddress) =>
-	address.kind === "library"
-		? {
-				track: address.track,
-				// Omitted rather than sent as 0; an ordinary file has no subsong.
-				...(address.subsong ? { subsong: address.subsong } : null),
-			}
-		: {
-				playlist: address.playlist,
-				index: address.index,
-				structure: address.structure,
-			};
+const addressFields = (address: TrackAddress) => {
+	if (address.kind === "library")
+		return {
+			track: address.track,
+			// Omitted rather than sent as 0; an ordinary file has no subsong.
+			...(address.subsong ? { subsong: address.subsong } : null),
+		};
+
+	if (address.kind === "ordinal")
+		return { ordinal: address.ordinal, structure: address.structure };
+
+	return {
+		playlist: address.playlist,
+		index: address.index,
+		structure: address.structure,
+	};
+};
 
 const agentWriter = (
 	origin: string,
@@ -66,6 +71,10 @@ const agentWriter = (
 		write: async (address, fields) =>
 			writeTags(origin, token, { ...addressFields(address), fields }),
 		read: async (address, column) => {
+			// `GET /api/library/track` names a track by the path form, so a write sent by an ordinal
+			// has no route to be read back through.
+			if (address.kind === "ordinal") return null;
+
 			const held = await (address.kind === "library"
 				? fetchLibraryTrack(origin, token, address.track, address.subsong, [
 						column,

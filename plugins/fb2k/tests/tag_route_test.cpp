@@ -7,6 +7,8 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -20,13 +22,35 @@ httplib::Result write(const TestServer& server, const std::string& body) {
     return post(server, "/api/tags", body);
 }
 
+// What the client acts on, which is the sentence rather than the enumerator carrying it: the
+// same refusal reaches a client from GET /api/library/track, and that route answers out of
+// PlaylistOutcome instead.
+constexpr char kNamesMoreThanOneTrack[] = "more than one track";
+
+std::optional<TagWriteOutcome> outcomeForAnAddressNamingTwoTracks() {
+    for (int raw = 0;; ++raw) {
+        const auto outcome = static_cast<TagWriteOutcome>(raw);
+        const auto said = describe(outcome);
+
+        if (said == "unknown")
+            return std::nullopt;
+        if (said.find(kNamesMoreThanOneTrack) != std::string::npos)
+            return outcome;
+    }
+}
+
 // The two ways an address becomes a handle, standing in for fb2k/tag_writer.cpp: that file
 // needs the foobar2000 SDK and never compiles here, so this holds a media library snapshot and
 // one playlist and answers the way the player will.
 struct FakePlayer {
-    // One entry per file, holding its subsongs in subsong order, as the snapshot's relative-path
-    // map does.
-    std::map<std::string, std::vector<std::string>> snapshot;
+    // One entry per file, holding its handles by the subsong each one is, as the snapshot's
+    // relative-path map does. A subsong is a number the player gave the handle rather than a
+    // position in the file: `kCueAddress` says what turns on that.
+    std::map<std::string, std::map<uint32_t, std::string>> snapshot;
+
+    // Addresses the snapshot holds twice over, which is what two media library roots sharing
+    // one library-relative path produce.
+    std::set<std::string> heldTwice;
 
     std::map<std::string, std::vector<std::string>> playlists;
     uint64_t structure = kWriteStructure;
@@ -39,18 +63,18 @@ struct FakePlayer {
 };
 
 constexpr char kSongHandle[] = "01 A Song";
-constexpr char kDiscAddress[] = "Someone/A Record/disc.flac";
-constexpr char kFirstSubsong[] = "disc, subsong 0";
-constexpr char kSecondSubsong[] = "disc, subsong 1";
-constexpr char kThirdSubsong[] = "disc, subsong 2";
+constexpr char kFirstSubsong[] = "disc, subsong 1";
+constexpr char kSecondSubsong[] = "disc, subsong 2";
+constexpr char kThirdSubsong[] = "disc, subsong 3";
 constexpr char kFirstRow[] = "a row the library misses";
 constexpr char kSecondRow[] = "a second such row";
 constexpr char kThirdRow[] = "a third such row";
 
 FakePlayer holding() {
     FakePlayer player;
-    player.snapshot = {{kTrackAddress, {kSongHandle}},
-                       {kDiscAddress, {kFirstSubsong, kSecondSubsong, kThirdSubsong}}};
+    player.snapshot = {
+        {kTrackAddress, {{0, kSongHandle}}},
+        {kCueAddress, {{1, kFirstSubsong}, {2, kSecondSubsong}, {3, kThirdSubsong}}}};
     player.playlists = {{kPlaylistId, {kFirstRow, kSecondRow, kThirdRow}}};
     return player;
 }
@@ -68,11 +92,18 @@ Player resolving(FakePlayer* player) {
         player->asked.push_back(write);
 
         if (const auto& library = write.track.library) {
+            if (player->heldTwice.count(library->track) != 0)
+                return outcomeForAnAddressNamingTwoTracks().value();
+
             const auto file = player->snapshot.find(library->track);
-            if (file == player->snapshot.end() || library->subsong >= file->second.size())
+            if (file == player->snapshot.end())
                 return TagWriteOutcome::trackNotKnown;
 
-            player->written[file->second.at(library->subsong)] = write.fields;
+            const auto handle = file->second.find(library->subsong);
+            if (handle == file->second.end())
+                return TagWriteOutcome::trackNotKnown;
+
+            player->written[handle->second] = write.fields;
             return TagWriteOutcome::written;
         }
 
@@ -90,6 +121,12 @@ Player resolving(FakePlayer* player) {
         player->written[rows->second.at(row.index)] = write.fields;
         return TagWriteOutcome::written;
     });
+}
+
+// The media library's own generation is a number on the wire where a playlist's is a string.
+std::string ratingWriteAtOrdinal(uint32_t ordinal, uint64_t structure) {
+    return R"({"ordinal": )" + std::to_string(ordinal) + R"(, "structure": )" +
+           std::to_string(structure) + R"(, "fields": {"rating": ")" + kRating + R"("}})";
 }
 
 std::string writingField(const std::string& field, const std::string& value) {
@@ -116,6 +153,9 @@ TEST_CASE("a library address reaches the writer as it was sent, and the answer e
     REQUIRE(player.asked.size() == 1);
     REQUIRE(player.asked[0].track.library.has_value());
     CHECK(player.asked[0].track.library->track == kTrackAddress);
+    // The request names no subsong, which is what a client sends for an ordinary file, and 0
+    // is what reaches the writer as well as what comes back.
+    CHECK(player.asked[0].track.library->subsong == 0);
     CHECK_FALSE(player.asked[0].track.playlist.has_value());
 
     CHECK(player.written.at(kSongHandle).at("rating") == kRating);
@@ -142,51 +182,72 @@ TEST_CASE("an address the writer does not know is a 404, `..` and all") {
     CHECK(player.written.empty());
 }
 
+// Two media library roots can hold one library-relative path, so an address can name a track
+// under each. Writing to whichever sorts first would rate the other copy, the same way every
+// time and with nothing to see, and GET /api/library/track would read that same wrong one back.
+// A client refused here retries once with an ordinal, so the reason has to be its own.
+TEST_CASE("an address the snapshot holds under two roots is a 409 saying so, and writes nothing") {
+    const auto ambiguous = outcomeForAnAddressNamingTwoTracks();
+    REQUIRE_MESSAGE(ambiguous, "no TagWriteOutcome says an address names more than one track");
+
+    FakePlayer player = holding();
+    player.heldTwice = {kTrackAddress};
+    const TestServer server(servingSettings(), resolving(&player));
+
+    const auto response = write(server, ratingWrite(kTrackAddress));
+
+    REQUIRE(response);
+    CHECK(response->status == 409);
+    CHECK(json::parse(response->body) ==
+          json{{"written", false}, {"error", describe(*ambiguous)}});
+
+    // Only the player can tell, so the route hands the address over rather than refusing it.
+    CHECK(player.asked.size() == 1);
+    CHECK(player.written.empty());
+}
+
 TEST_CASE("each subsong of one file is carried to the writer on its own") {
     FakePlayer player = holding();
     const TestServer server(servingSettings(), resolving(&player));
 
-    for (uint32_t subsong = 0; subsong < 3; ++subsong) {
-        const auto response = write(server, ratingWrite(kDiscAddress, subsong));
+    for (uint32_t subsong = kFirstCueSubsong; subsong <= kCueSubsongs; ++subsong) {
+        const auto response = write(server, ratingWrite(kCueAddress, subsong));
 
         INFO("subsong: ", subsong);
         REQUIRE(response);
         CHECK(response->status == 200);
         CHECK(json::parse(response->body) == json{{"written", true},
-                                                  {"track", kDiscAddress},
+                                                  {"track", kCueAddress},
                                                   {"subsong", subsong},
                                                   {"fields", {{"rating", kRating}}}});
 
-        REQUIRE(player.asked.size() == subsong + 1);
-        CHECK(player.asked.at(subsong).track.library->subsong == subsong);
+        REQUIRE_FALSE(player.asked.empty());
+        CHECK(player.asked.back().track.library->subsong == subsong);
     }
 
     // Three of the stand-in's handles rather than one written three times, which is what a
     // dropped subsong looks like: every write landing on the file's first track.
-    CHECK(player.written.size() == 3);
+    CHECK(player.asked.size() == kCueSubsongs);
+    CHECK(player.written.size() == kCueSubsongs);
 }
 
-TEST_CASE("a write naming no subsong is carried as subsong 0, and the answer says so") {
+// The default is the ordinary file's own subsong, and it is the wrong number for a cue sheet:
+// `kCueAddress` says why. So this is what a client that drops a subsong it holds gets, and the
+// point of it is that the player answers nothing rather than the file's first track.
+TEST_CASE("a write naming no subsong is carried as 0, which a cue sheet's file does not hold") {
     FakePlayer player = holding();
     const TestServer server(servingSettings(), resolving(&player));
 
-    const auto response = write(server, ratingWrite(kDiscAddress));
+    const auto response = write(server, ratingWrite(kCueAddress));
 
     REQUIRE(response);
-    CHECK(response->status == 200);
-
-    // The value the write used rather than the one the request carried, which is why it is
-    // echoed for a request that carried none.
-    CHECK(json::parse(response->body) == json{{"written", true},
-                                              {"track", kDiscAddress},
-                                              {"subsong", 0},
-                                              {"fields", {{"rating", kRating}}}});
+    CHECK(response->status == 404);
+    CHECK_FALSE(json::parse(response->body).value("written", true));
 
     REQUIRE(player.asked.size() == 1);
     REQUIRE(player.asked[0].track.library.has_value());
     CHECK(player.asked[0].track.library->subsong == 0);
-    CHECK(player.written.count(kFirstSubsong) == 1);
-    CHECK(player.written.count(kSecondSubsong) == 0);
+    CHECK(player.written.empty());
 }
 
 TEST_CASE("a playlist address reaches the writer whole, and comes back without its generation") {
@@ -212,6 +273,26 @@ TEST_CASE("a playlist address reaches the writer whole, and comes back without i
     CHECK_FALSE(player.asked[0].track.library.has_value());
 
     CHECK(player.written.at(kSecondRow).at("rating") == kRating);
+}
+
+// The address a client holding a library row already has, so a rating refused as ambiguous can
+// be retried precisely. The route resolves nothing itself, so what it owes an ordinal is to
+// carry it to the writer rather than turn it away for naming no track and no playlist.
+TEST_CASE("a write addressed by an ordinal reaches the writer, and the answer echoes it alone") {
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+
+    const auto response = write(server, ratingWriteAtOrdinal(5, 12));
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(log.calls.size() == 1);
+
+    // No structure, which guards the write rather than addressing it, and no subsong, which an
+    // ordinal names already. The echo is built from the write the player was handed, so an
+    // ordinal coming back is the ordinal that went in.
+    CHECK(json::parse(response->body) ==
+          json{{"written", true}, {"ordinal", 5}, {"fields", {{"rating", kRating}}}});
 }
 
 TEST_CASE("a playlist and a position the writer does not know are both a 404") {
@@ -263,7 +344,7 @@ TEST_CASE("a library whose root is a UNC share is rated like any other") {
     constexpr char kSharedFile[] = R"(\\nas\share\Music\Someone\A Record\01 A Song.flac)";
 
     FakePlayer player;
-    player.snapshot = {{kTrackAddress, {kSharedFile}}};
+    player.snapshot = {{kTrackAddress, {{0, kSharedFile}}}};
     const TestServer server(servingSettings(), resolving(&player));
 
     const auto response = write(server, ratingWrite(kTrackAddress));

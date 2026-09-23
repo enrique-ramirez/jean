@@ -1,4 +1,10 @@
 import { en } from "../../src/shared/i18n/en.ts";
+import {
+	fill,
+	formOf,
+	type Message,
+	type Values,
+} from "../../src/shared/i18n/message.ts";
 import { STALLED_READ_MS } from "../fake-api/fooJean.ts";
 import type { RecordedRequest, Track } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
@@ -39,6 +45,8 @@ const RATED = {
 // forward-slashed. It is the address `GET /api/artwork?track=` takes, and the
 // only one a write may name a file by.
 const DELECTRICO = "B/Babasónicos/(2001) Jessico/03. Deléctrico.mp3";
+const I_STAY_AWAY =
+	"A/Alice in Chains/(1994) Jar Of Flies/03. I Stay Away.flac";
 const FIZZ = "B/Babasónicos/(2001) Jessico/02. Fizz.mp3";
 const LOS_CALIENTES = "B/Babasónicos/(2001) Jessico/01. Los Calientes.mp3";
 const SOY_ROCK = "B/Babasónicos/(2001) Jessico/04. Soy Rock.mp3";
@@ -53,6 +61,12 @@ const ratingOf = (page: Page, row: number) =>
 
 const star = (page: Page, row: number, value: number) =>
 	trackRow(page, row).getByRole("button", { name: `Rate ${value} of 5` });
+
+// The now-playing screen's interactive control rather than the inert one beside
+// it: `Stars` is an `img` and `StarsInput` a `group`, so the role is half the
+// assertion wherever this is used.
+const starsOnScreen = (page: Page) =>
+	nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ });
 
 // POST only: the browser's own preflight is not a request the app made.
 const tagWrites = (player: { requests: { method: string }[] }) =>
@@ -156,6 +170,41 @@ const holdTheWrites = async (page: Page) => {
 		},
 	};
 };
+
+// Rendered through the app's own formatter rather than by hand, so a phrase that
+// counts its stars reads here the way the toast reads it.
+const saying = (message: Message, values: Values) =>
+	fill(
+		formOf(message, values, new Intl.PluralRules("en")),
+		values,
+		new Intl.NumberFormat("en"),
+	);
+
+const didNotLand = (track: string, stars: number) =>
+	saying(en["rate.didNotLand"], { track, count: stars });
+
+const notRemoved = (track: string) => saying(en["rate.notRemoved"], { track });
+
+// The tail of this one is the component's own words for what went wrong, so what
+// is matched is the half the catalogue writes.
+const wasNotRated = (label: string) =>
+	saying(en["rate.failed"], { label, message: "" }).trim();
+
+// The ordinal the media library holds a track at: its position in the snapshot's
+// own order, which is the position an export hands a client and the one address
+// that names a single track wherever two roots hold the same relative path.
+const ordinalOf = (player: FakePlayer, track: string) => {
+	const at = player.ordinalOrder().findIndex((entry) => entry.path === track);
+	if (at < 0) throw new Error(`the media library holds no ${track}`);
+	return at;
+};
+
+// Read off the player's own copy of the file, so a star painted before the write
+// went out is no evidence that anything was written.
+const libraryRatingOf = (player: FakePlayer, track: string) =>
+	player.ordinalOrder().find((entry) => entry.path === track)?.track[
+		"%rating%"
+	];
 
 const ratingsWritten = (player: FakePlayer) =>
 	tagWrites(player).map((entry) => [
@@ -408,9 +457,7 @@ test.describe("rating from All music", () => {
 			"POST /api/tags",
 		]);
 		const [write] = tagWrites(player);
-		expect(addressOf(write)).toEqual({
-			track: "A/Alice in Chains/(1994) Jar Of Flies/03. I Stay Away.flac",
-		});
+		expect(addressOf(write)).toEqual({ track: I_STAY_AWAY });
 		expect(write.body).toMatchObject({ fields: { rating: "4" } });
 
 		await expect(ratingOf(page, 2)).toHaveAccessibleName("4 of 5 stars");
@@ -587,6 +634,121 @@ test.describe("rating a row the media library does not hold", () => {
 	});
 });
 
+// A player that has just started holds no media library snapshot until a client
+// asks it for an export, and until it does, every library address it is handed is
+// a track it cannot find. The library view has no rows at all in that window, so
+// what has to survive it is a playlist row, whose library path the component
+// works out from the handle rather than from the snapshot, and the playing track,
+// whose address `GET /api/state` carries the same way.
+test.describe("before the player has built its library snapshot", () => {
+	test.use({
+		...RATED,
+		fooJean: { libraryReady: false },
+		fooJeanToken: FOO_JEAN_TOKEN,
+	});
+
+	test.describe("a row in a playlist", () => {
+		test.skip(
+			({ isMobile }) => Boolean(isMobile),
+			"the row's stars are a pointer control; touch uses the track menu",
+		);
+
+		test("still rates, by the position it is at", async ({ page, player }) => {
+			await openLibrary(page);
+			await nothingWrittenYet(player);
+			const said = await watchWhatIsSaid(page);
+
+			await star(page, 2, 4).click();
+
+			await expectSettlesAt(player, () => tagWrites(player).length, 1);
+			expect(addressOf(tagWrites(player)[0])).toEqual({
+				playlist: guidOfPlaylist(player, "p7"),
+				index: 2,
+				structure: String(player.playlistById("p7")?.structure),
+			});
+
+			// Off the player's own copy of the file: a star painted before the write
+			// went out stays painted through a write the player refused.
+			await expect.poll(() => ratingHeldAt(player, 2)).toBe("4");
+			await expect(ratingOf(page, 2)).toHaveAccessibleName("4 of 5 stars");
+			expect(await said()).toEqual([]);
+		});
+	});
+
+	test("the now-playing stars rate the row the track is playing from", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("Deléctrico");
+		await openNowPlaying(page);
+		await nothingWrittenYet(player);
+		const said = await watchWhatIsSaid(page);
+
+		const stars = starsOnScreen(page);
+		await stars.getByRole("button", { name: "Rate 4 of 5" }).click();
+
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
+		expect(addressOf(tagWrites(player)[0])).toEqual({
+			playlist: guidOfPlaylist(player, "p7"),
+			index: 2,
+			structure: String(player.playlistById("p7")?.structure),
+		});
+
+		await expect.poll(() => ratingHeldAt(player, 2)).toBe("4");
+		await expect(stars).toHaveAccessibleName("4 of 5 stars");
+		expect(await said()).toEqual([]);
+	});
+
+	// The other edge of the same gate: the state document names a library path for
+	// this track too, and with no snapshot behind it and no playlist row to fall
+	// back on there is nothing to name the track to the player by.
+	test.describe("a playing track the player cannot place in a playlist", () => {
+		test.use({
+			// Follow-playback off, so the row behind the layer is a track the write
+			// path could reach and a digit falling through to it would land.
+			// `settings` replaces rather than merges, so the column set has to be
+			// restated, and so does the readiness this describe is about.
+			settings: { ...RATED.settings, "jean.followPlayback": false },
+			fooJean: { libraryReady: false, knowsPlayingLocation: false },
+		});
+
+		test("draws stars that take no rating, and says nothing", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await trackRow(page, 2).dblclick();
+			await expect(page.locator("footer")).toContainText("Deléctrico");
+			// A click moves the cursor and leaves playback alone, so the marked row
+			// and the playing track are now two different tracks.
+			await trackRow(page, 0).click();
+
+			await openNowPlaying(page);
+			await expect(
+				nowPlayingScreen(page).getByRole("img", { name: /stars|Unrated/ }),
+			).toHaveAccessibleName("3 of 5 stars");
+			await expect(
+				nowPlayingScreen(page).getByRole("button", { name: /^Rate / }),
+			).toHaveCount(0);
+
+			const said = await watchWhatIsSaid(page);
+			await page.keyboard.press("4");
+
+			await expectSettlesAt(player, () => tagWrites(player), []);
+
+			// Los Calientes, under the cursor behind the layer, keeps the five it
+			// had: a digit the screen refuses is refused rather than passed on.
+			await nowPlayingScreen(page)
+				.getByRole("button", { name: "Close now playing" })
+				.click();
+			await expect(ratingOf(page, 0)).toHaveAccessibleName("5 of 5 stars");
+			expect(await said()).toEqual([]);
+		});
+	});
+});
+
 // Somebody edited the playlist between the rows being read and the star being
 // clicked, so the position the write named is no longer that track's. The player
 // writes nothing, and Jean must not leave a star standing for a rating that is
@@ -622,6 +784,226 @@ test.describe("when the playlist moved under a rating", () => {
 		// the same position could land on whatever moved into it.
 		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 	});
+});
+
+// Two media library roots holding one relative path, so `track` plus `subsong`
+// names a track under each and the component refuses rather than write to
+// whichever sorts first. It is decided before anything is written, which is what
+// makes it the one refusal in the rating path a client may answer by trying
+// again: every surface holds a second address that names one track, and the
+// retry carries the one that surface read the row at.
+test.describe("when a library address names more than one track", () => {
+	test.use({ ...RATED, fooJeanToken: FOO_JEAN_TOKEN });
+
+	const ROWS_ARE_A_POINTER_CONTROL =
+		"the row's stars are a pointer control; touch uses the track menu";
+
+	const playDelectrico = async (page: Page) => {
+		await openLibrary(page);
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("Deléctrico");
+		await openNowPlaying(page);
+	};
+
+	test.describe("a row read from the media library", () => {
+		test.use({ fooJean: { twoRootsHold: I_STAY_AWAY } });
+		test.skip(({ isMobile }) => Boolean(isMobile), ROWS_ARE_A_POINTER_CONTROL);
+
+		test("is rated again by its ordinal, and the star the user set lands", async ({
+			page,
+			player,
+		}) => {
+			await openAllMusic(page);
+			await expect(trackRow(page, 2)).toContainText("I Stay Away");
+			await nothingWrittenYet(player);
+			const said = await watchWhatIsSaid(page);
+
+			const before = player.requests.length;
+			await star(page, 2, 4).click();
+
+			await expectSettlesAt(player, () => asksSince(player, before), [
+				"POST /api/tags",
+				"POST /api/tags",
+			]);
+			const [first, second] = tagWrites(player);
+			expect(addressOf(first)).toEqual({ track: I_STAY_AWAY });
+			expect(addressOf(second)).toEqual({
+				ordinal: ordinalOf(player, I_STAY_AWAY),
+				structure: player.libraryFeed.structure,
+			});
+
+			await expect.poll(() => libraryRatingOf(player, I_STAY_AWAY)).toBe("4");
+			await expect(ratingOf(page, 2)).toHaveAccessibleName("4 of 5 stars");
+			// Refused once and sent again, and none of that reaches the person.
+			expect(await said()).toEqual([]);
+		});
+	});
+
+	test.describe("a row read from a playlist", () => {
+		test.use({ fooJean: { twoRootsHold: DELECTRICO } });
+		test.skip(({ isMobile }) => Boolean(isMobile), ROWS_ARE_A_POINTER_CONTROL);
+
+		test("is rated again by its position, and not by an ordinal it never read", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await expect(trackRow(page, 2)).toContainText("Deléctrico");
+			await nothingWrittenYet(player);
+			const said = await watchWhatIsSaid(page);
+
+			const before = player.requests.length;
+			await star(page, 2, 4).click();
+
+			await expectSettlesAt(player, () => asksSince(player, before), [
+				"POST /api/tags",
+				"POST /api/tags",
+			]);
+			const [first, second] = tagWrites(player);
+			expect(addressOf(first)).toEqual({ track: DELECTRICO });
+			expect(addressOf(second)).toEqual({
+				playlist: guidOfPlaylist(player, "p7"),
+				index: 2,
+				structure: String(player.playlistById("p7")?.structure),
+			});
+
+			await expect.poll(() => ratingHeldAt(player, 2)).toBe("4");
+			await expect(ratingOf(page, 2)).toHaveAccessibleName("4 of 5 stars");
+			expect(await said()).toEqual([]);
+		});
+	});
+
+	test.describe("the track the now-playing screen is showing", () => {
+		test.use({ fooJean: { twoRootsHold: DELECTRICO } });
+
+		test("is rated again by the row it is playing from", async ({
+			page,
+			player,
+		}) => {
+			await playDelectrico(page);
+			await nothingWrittenYet(player);
+			const said = await watchWhatIsSaid(page);
+
+			const before = player.requests.length;
+			await starsOnScreen(page)
+				.getByRole("button", { name: "Rate 4 of 5" })
+				.click();
+
+			await expectSettlesAt(player, () => asksSince(player, before), [
+				"POST /api/tags",
+				"POST /api/tags",
+			]);
+			expect(addressOf(tagWrites(player)[1])).toEqual({
+				playlist: guidOfPlaylist(player, "p7"),
+				index: 2,
+				structure: String(player.playlistById("p7")?.structure),
+			});
+
+			await expect.poll(() => ratingHeldAt(player, 2)).toBe("4");
+			await expect(starsOnScreen(page)).toHaveAccessibleName("4 of 5 stars");
+			expect(await said()).toEqual([]);
+		});
+	});
+
+	// Somebody reordered the playlist as well, so the position the retry names is
+	// refused in its turn. One retry is the whole allowance: a client that answered
+	// every refusal with another address would go round until it ran out of them.
+	test.describe("and the address the retry names is refused too", () => {
+		test.use({ fooJean: { twoRootsHold: DELECTRICO, failWrites: 409 } });
+		test.skip(({ isMobile }) => Boolean(isMobile), ROWS_ARE_A_POINTER_CONTROL);
+
+		test("the rating is not sent a third time, and the star goes back", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await expect(ratingOf(page, 2)).toHaveAccessibleName("3 of 5 stars");
+			await nothingWrittenYet(player);
+
+			const before = player.requests.length;
+			await star(page, 2, 4).click();
+
+			await expect(page.getByRole("status")).toContainText(en["rate.moved"]);
+			await expectSettlesAt(player, () => asksSince(player, before), [
+				"POST /api/tags",
+				"POST /api/tags",
+			]);
+			expect(addressOf(tagWrites(player)[1])).toMatchObject({
+				playlist: guidOfPlaylist(player, "p7"),
+			});
+			await expect(ratingOf(page, 2)).toHaveAccessibleName("3 of 5 stars");
+		});
+	});
+
+	// `playingLocation` is null, so the screen holds the ambiguous address and
+	// nothing else. There is nowhere to try again, and a star that quietly goes
+	// back is a person believing they rated a track they did not.
+	test.describe("a screen holding no second address", () => {
+		test.use({
+			fooJean: { twoRootsHold: DELECTRICO, knowsPlayingLocation: false },
+		});
+
+		test("says the rating did not land rather than going quiet", async ({
+			page,
+			player,
+		}) => {
+			await playDelectrico(page);
+			await nothingWrittenYet(player);
+			const said = await watchWhatIsSaid(page);
+
+			const before = player.requests.length;
+			await starsOnScreen(page)
+				.getByRole("button", { name: "Rate 4 of 5" })
+				.click();
+
+			await expectSettlesAt(player, () => asksSince(player, before), [
+				"POST /api/tags",
+			]);
+			await expect.poll(said).toEqual([didNotLand("Deléctrico", 4)]);
+			expect(ratingHeldAt(player, 2)).toBe("3");
+		});
+	});
+});
+
+// The other refusals, on a row that does hold a second address: the playlist row
+// above is the evidence that Jean would reach for one, so a rating that goes out
+// once here went out once by choice. An ambiguity refusal is answered before
+// anything is written and none of these is, so a second write could land on top
+// of a rating somebody made in between.
+test.describe("a refusal that is not about the address", () => {
+	test.use({ ...RATED, fooJeanToken: FOO_JEAN_TOKEN });
+
+	test.skip(
+		({ isMobile }) => Boolean(isMobile),
+		"the row's stars are a pointer control; touch uses the track menu",
+	);
+
+	for (const { status, costs } of [
+		{ status: 403, costs: ["POST /api/tags"] },
+		{ status: 404, costs: ["POST /api/tags"] },
+		{ status: 500, costs: ["POST /api/tags"] },
+		// A `504` says nothing about whether the tag was written, so the one read
+		// back rides with it. The write itself still goes out once.
+		{ status: 504, costs: ["POST /api/tags", "GET /api/library/track"] },
+	])
+		test.describe(`a ${status}`, () => {
+			test.use({ fooJean: { failWrites: status } });
+
+			test("sends the rating once and never to the row's other address", async ({
+				page,
+				player,
+			}) => {
+				await openLibrary(page);
+				await expect(trackRow(page, 2)).toContainText("Deléctrico");
+				await nothingWrittenYet(player);
+
+				const before = player.requests.length;
+				await star(page, 2, 4).click();
+
+				await expectSettlesAt(player, () => asksSince(player, before), costs);
+				expect(addressOf(tagWrites(player)[0])).toEqual({ track: DELECTRICO });
+			});
+		});
 });
 
 // A `504` is the component saying it did not answer in time, which says nothing
@@ -662,11 +1044,6 @@ test.describe("when a rating write times out", () => {
 		if (!found) throw new Error(`nothing asked ${route}`);
 		return new URLSearchParams(found.path.split("?")[1] ?? "");
 	};
-
-	const didNotLand = (track: string, stars: number) =>
-		en["rate.didNotLand"]
-			.replace("{track}", track)
-			.replace("{stars}", String(stars));
 
 	test.describe("and the rating reached the player anyway", () => {
 		test.use({ fooJean: { failWrites: 504, writesLandAnyway: true } });
@@ -778,6 +1155,36 @@ test.describe("when a rating write times out", () => {
 
 			await expect(ratingOf(page, 2)).toHaveAccessibleName("Unrated");
 			expect(await said()).toEqual([]);
+		});
+	});
+
+	// A removal asks the player to hold no rating at all, so the number in a
+	// message about it is zero, and "we couldn't rate this with 0 stars" is nobody
+	// asking for anything. What a person did here was take a rating off.
+	test.describe("and the rating it cleared did not reach the player", () => {
+		test.use({ fooJean: { failWrites: 504 } });
+
+		test("names the track without offering it a rating of none", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await nothingWrittenYet(player);
+			const said = await watchWhatIsSaid(page);
+
+			const before = player.requests.length;
+			await trackRow(page, 2)
+				.getByRole("button", { name: "Clear rating (3 of 5 stars)" })
+				.click();
+
+			await expectSettlesAt(
+				player,
+				() => asksSince(player, before),
+				WROTE_THEN_READ_THE_LIBRARY,
+			);
+
+			await expect.poll(said).toEqual([notRemoved("Deléctrico")]);
+			await expect(ratingOf(page, 2)).toHaveAccessibleName("Unrated");
 		});
 	});
 
@@ -946,9 +1353,7 @@ test.describe("rating with the number keys", () => {
 
 			// The stars on the screen move; Los Calientes, under the cursor behind
 			// the layer, keeps the five it had.
-			await expect(
-				nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ }),
-			).toHaveAccessibleName("4 of 5 stars");
+			await expect(starsOnScreen(page)).toHaveAccessibleName("4 of 5 stars");
 			await nowPlayingScreen(page)
 				.getByRole("button", { name: "Close now playing" })
 				.click();
@@ -1034,12 +1439,6 @@ test.describe("rating the track the now-playing screen is showing", () => {
 		await openNowPlaying(page);
 	};
 
-	// The interactive control rather than the inert one beside it: `Stars` is an
-	// `img` and `StarsInput` a `group`, so the role is half the assertion wherever
-	// this is used.
-	const starsOnScreen = (page: Page) =>
-		nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ });
-
 	test("names the playlist row where the media library does not hold the track", async ({
 		page,
 		player,
@@ -1094,6 +1493,53 @@ test.describe("rating the track the now-playing screen is showing", () => {
 				"POST /api/tags",
 			]);
 		});
+	});
+
+	// A row keeps one pending rating and one write in flight. This screen paints
+	// its optimistic star somewhere else entirely, and somebody pressing five
+	// stars in a second is doing the same thing at both.
+	test("five stars pressed one after another send the first, then one write for the fifth", async ({
+		page,
+		player,
+	}) => {
+		const writes = await holdTheWrites(page);
+		await openLibrary(page);
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("Deléctrico");
+		await openNowPlaying(page);
+		await expect(
+			starsOnScreen(page).getByRole("button", { name: "Rate 1 of 5" }),
+		).toBeVisible();
+
+		// Each star is one above the last, so every one is still labelled "Rate",
+		// and none of the five is the one that clears.
+		for (const value of [1, 2, 3, 4, 5])
+			await starsOnScreen(page)
+				.getByRole("button", { name: `Rate ${value} of 5` })
+				.click();
+		// All five arrived. A screen that dropped four of them would send one write
+		// and read as coalescing without ever coalescing anything.
+		await expect(starsOnScreen(page)).toHaveAccessibleName("5 of 5 stars");
+
+		// The first goes at once, with nothing to wait behind. The other four are
+		// pressed while it is open, and it stays the only write in flight.
+		await expectSettlesAt(player, () => writes.sent.length, 1);
+		expect(writes.sent[0]).toMatchObject({ fields: { rating: "1" } });
+
+		writes.letOneThrough();
+
+		// One write for the four behind it, carrying the last of them. Nothing is
+		// ever sent for 2, 3 or 4.
+		await expect.poll(() => writes.sent.length).toBe(2);
+		expect(writes.sent[1]).toMatchObject({ fields: { rating: "5" } });
+		await expectSettlesAt(player, () => writes.sent.length, 2);
+
+		writes.openTheDoor();
+		await expectSettlesAt(player, () => ratingsWritten(player), [
+			[DELECTRICO, "1"],
+			[DELECTRICO, "5"],
+		]);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("5 of 5 stars");
 	});
 
 	test("rates a track on a network share like any other", async ({
@@ -1209,15 +1655,169 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 		await expect(page.locator("footer")).toContainText("Deléctrico");
 		await openNowPlaying(page);
 
-		const stars = nowPlayingScreen(page).getByRole("group", {
-			name: /stars|Unrated/,
-		});
+		const stars = starsOnScreen(page);
 		await expect(stars).toHaveAccessibleName("3 of 5 stars");
 		await stars.getByRole("button", { name: "Rate 5 of 5" }).click();
 
 		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 		await expect(page.getByRole("status")).toContainText("was not rated");
 		await expect(stars).toHaveAccessibleName("3 of 5 stars");
+	});
+
+	// Two stars pressed while nothing has come back are two writes rather than
+	// one: the first is already in flight, so the second has nothing to coalesce
+	// into. What each of them puts back is the rating the player agreed to, and
+	// the player agreed to the same one throughout, so the star a press replaced
+	// is not it.
+	test("a second star pressed before the first write answers goes back to the same rating", async ({
+		page,
+		player,
+	}) => {
+		const writes = await holdTheWrites(page);
+		await openLibrary(page);
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("Deléctrico");
+		await openNowPlaying(page);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("3 of 5 stars");
+
+		await starsOnScreen(page)
+			.getByRole("button", { name: "Rate 4 of 5" })
+			.click();
+		await expectSettlesAt(player, () => writes.sent.length, 1);
+
+		await starsOnScreen(page)
+			.getByRole("button", { name: "Rate 5 of 5" })
+			.click();
+		await expect(starsOnScreen(page)).toHaveAccessibleName("5 of 5 stars");
+
+		writes.openTheDoor();
+
+		// A refusal puts the star back and says so in the same turn, so a message
+		// per write is both writes having been answered. Read any earlier, the
+		// stars are between the two refusals and hold the right rating for a
+		// moment on the way to the wrong one.
+		await expect(
+			page.getByRole("status").getByText(wasNotRated("Deléctrico")),
+		).toHaveCount(2);
+
+		await expect(starsOnScreen(page)).toHaveAccessibleName("3 of 5 stars");
+		expect(libraryRatingOf(player, DELECTRICO)).toBe("3");
+	});
+
+	// A write that timed out and landed is agreed to by the read after it rather
+	// than by an answer to itself: the player reports holding what was sent, which
+	// says as much as a 200 does. So a press refused later has a newer rating to
+	// put back than the one the screen fetched on its way in.
+	test.describe("after a write that timed out and reached the player", () => {
+		test.use({ fooJean: { failWrites: 504, writesLandAnyway: true } });
+
+		test("the stars go back to the rating the player turned out to hold", async ({
+			page,
+			player,
+		}) => {
+			const refusal = "the player could not write the tags";
+			let sent = 0;
+			await page.route(
+				(url) => url.pathname === "/api/tags",
+				async (route) => {
+					// The browser's own preflight for the `Authorization` header, which
+					// writes nothing.
+					if (route.request().method() !== "POST") return route.continue();
+
+					sent += 1;
+					if (sent === 1) return route.continue();
+
+					// Refused before the component writes anything, so the player keeps
+					// what the first press put there. `foo_jean` serves on an origin of
+					// its own, and a refusal the browser withholds from the app is a
+					// different failure with different wording, so this carries the
+					// header a real refusal carries.
+					return route.fulfill({
+						status: 500,
+						headers: {
+							"access-control-allow-origin": route.request().headers().origin,
+						},
+						contentType: "application/json",
+						body: JSON.stringify({ written: false, error: refusal }),
+					});
+				},
+			);
+
+			await openLibrary(page);
+			await trackRow(page, 2).dblclick();
+			await expect(page.locator("footer")).toContainText("Deléctrico");
+			await openNowPlaying(page);
+			await expect(starsOnScreen(page)).toHaveAccessibleName("3 of 5 stars");
+
+			await nothingWrittenYet(player);
+			const said = await watchWhatIsSaid(page);
+			const before = player.requests.length;
+
+			await starsOnScreen(page)
+				.getByRole("button", { name: "Rate 4 of 5" })
+				.click();
+
+			// The write, then the one read that follows it. Pressing again before
+			// that read has answered would make where the stars end a question about
+			// ordering rather than about what the player agreed to.
+			await expectSettlesAt(player, () => asksSince(player, before), [
+				"POST /api/tags",
+				"GET /api/library/track",
+			]);
+			expect(libraryRatingOf(player, DELECTRICO)).toBe("4");
+
+			await starsOnScreen(page)
+				.getByRole("button", { name: "Rate 5 of 5" })
+				.click();
+
+			// A refusal puts the star back and says so in the same turn, so the
+			// message on screen is the star having been put back. Between the press
+			// and it the stars hold five, which is neither rating this is about.
+			await expect(
+				page.getByRole("status").getByText(wasNotRated("Deléctrico")),
+			).toHaveCount(1);
+
+			await expect(starsOnScreen(page)).toHaveAccessibleName("4 of 5 stars");
+			// One message, and it is the refusal. A read that had found something
+			// else would have said so, and this would be a press putting back a
+			// rating nobody ever agreed to.
+			expect(await said()).toEqual([
+				saying(en["rate.failed"], { label: "Deléctrico", message: refusal }),
+			]);
+		});
+	});
+});
+
+// A refusal is the component saying this install writes no ratings at all, which
+// is as true of the screen as it is of a row. A row stops offering its stars
+// after one; this is the other surface the same answer has to reach.
+test.describe("when foo_jean refuses the field from the now-playing screen", () => {
+	test.use({
+		...RATED,
+		fooJean: { failWrites: 403 },
+		fooJeanToken: FOO_JEAN_TOKEN,
+	});
+
+	test("stops offering the stars instead of leaving them live", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("Deléctrico");
+		await openNowPlaying(page);
+
+		const stars = starsOnScreen(page);
+		await expect(stars).toHaveAccessibleName("3 of 5 stars");
+		await stars.getByRole("button", { name: "Rate 5 of 5" }).click();
+
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
+		await expect(
+			nowPlayingScreen(page).getByRole("button", { name: /^Rate / }),
+		).toHaveCount(0);
+		await expect(
+			nowPlayingScreen(page).getByRole("img", { name: /stars|Unrated/ }),
+		).toHaveAccessibleName("3 of 5 stars");
 	});
 });
 

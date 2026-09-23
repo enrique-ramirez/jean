@@ -286,6 +286,8 @@ export async function fetchState(
 export type WriteFailure =
 	| { ok: false; reason: "not-allowed"; field: string | null; message: string }
 	| { ok: false; reason: "unknown-track"; message: string }
+	// Two media library roots hold the path that was sent, so foo_jean refused to pick one.
+	| { ok: false; reason: "ambiguous"; message: string }
 	// foo_jean checks the generation inside the job that writes, so nothing was written.
 	| { ok: false; reason: "moved"; message: string }
 	// The write may still land, so it is never rolled back.
@@ -304,12 +306,19 @@ const messageOf = async (response: Response, fallback: string) => {
 		detail?: string;
 		field?: string;
 	} | null;
-	if (!body?.error) return { message: fallback, field: null };
+	if (!body?.error) return { message: fallback, error: "", field: null };
 	return {
 		message: body.detail ? `${body.error}: ${body.detail}` : body.error,
+		error: body.error,
 		field: body.field ?? null,
 	};
 };
+
+// The only 409 a write may answer by trying again. The other two, a playlist read at an older
+// structure and a library rebuilt under an ordinal, are stale addresses and nothing to send a
+// second write to.
+const NAMES_TWO_TRACKS =
+	"the media library holds more than one track at that address" satisfies Schema["TagFailed"]["error"];
 
 export async function writeTags(
 	origin: string,
@@ -326,7 +335,7 @@ export async function writeTags(
 	if (response.ok)
 		return { ok: true, written: (await response.json()) as TagWritten };
 
-	const { message, field } = await messageOf(
+	const { message, error, field } = await messageOf(
 		response,
 		`HTTP ${response.status}`,
 	);
@@ -339,7 +348,10 @@ export async function writeTags(
 		noteTokenRefused(response.status);
 		return { ok: false, reason: "unauthorized", message };
 	}
-	if (response.status === 409) return { ok: false, reason: "moved", message };
+	if (response.status === 409)
+		return error === NAMES_TWO_TRACKS
+			? { ok: false, reason: "ambiguous", message }
+			: { ok: false, reason: "moved", message };
 	if (response.status === 504) return { ok: false, reason: "timeout", message };
 	if (response.status === 400 || response.status === 413)
 		return { ok: false, reason: "refused", message };

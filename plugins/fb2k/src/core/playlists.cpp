@@ -2,6 +2,7 @@
 
 #include "core/json.h"
 #include "core/library.h"
+#include "core/tag_write.h"
 #include "core/text.h"
 
 #include <algorithm>
@@ -365,6 +366,8 @@ std::string describe(PlaylistOutcome outcome) {
             return "no such playlist";
         case PlaylistOutcome::positionPastEnd:
             return "that position is past the end";
+        case PlaylistOutcome::ambiguousAddress:
+            return describe(TagWriteOutcome::ambiguousAddress);
         case PlaylistOutcome::notOurs:
             return "that playlist was not created by foo_jean";
         case PlaylistOutcome::keyInUse:

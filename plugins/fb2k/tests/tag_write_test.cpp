@@ -48,6 +48,11 @@ std::string addressingRow(const std::string& playlist, const std::string& index,
            structure + R"(, "fields": {"rating": "4"}})";
 }
 
+std::string addressingOrdinal(const std::string& ordinal, const std::string& structure) {
+    return R"({"ordinal": )" + ordinal + R"(, "structure": )" + structure +
+           R"(, "fields": {"rating": "4"}})";
+}
+
 std::string writing(const std::string& fields) {
     return R"({"track": ")" + std::string(kLibraryAddress) + R"(", "fields": )" + fields + "}";
 }
@@ -85,19 +90,57 @@ TEST_CASE("the playlist form is read as written, generation and all") {
     CHECK_FALSE(request.write.track.library.has_value());
 }
 
-// The body that shipped before this named a filesystem path, and a path addresses nothing now.
-TEST_CASE("a request naming neither address is a 400") {
-    CHECK(statusOf(R"({"fields": {"rating": "4"}})") == 400);
-    CHECK(statusOf(R"({"path": "F:\\Music\\a.mp3", "fields": {"rating": "4"}})") == 400);
-    CHECK(statusOf(R"({"subsong": 2, "fields": {"rating": "4"}})") == 400);
+// The generation is the whole of what tells a write the snapshot has not been rebuilt under the
+// client since it read the position, so a form that parsed the ordinal and dropped the number
+// beside it would resolve every stale address it was handed.
+TEST_CASE("the ordinal form is read as written, generation and all") {
+    const auto request = parse(addressingOrdinal("5", "12"));
 
-    // Half a playlist address is not an address: a position with no generation to hold it
-    // against is the write this route exists to refuse.
-    CHECK(statusOf(R"({"playlist": ")" + std::string(kPlaylistId) +
-                   R"(", "fields": {"rating": "4"}})") == 400);
-    CHECK(statusOf(R"({"playlist": ")" + std::string(kPlaylistId) +
-                   R"(", "index": 4, "fields": {"rating": "4"}})") == 400);
-    CHECK(statusOf(R"({"index": 4, "structure": "7", "fields": {"rating": "4"}})") == 400);
+    REQUIRE(request.ok());
+    REQUIRE(request.write.track.ordinal.has_value());
+    CHECK(request.write.track.ordinal->ordinal == 5);
+    CHECK(request.write.track.ordinal->structure == 12);
+    CHECK_FALSE(request.write.track.library.has_value());
+    CHECK_FALSE(request.write.track.playlist.has_value());
+}
+
+TEST_CASE("a request naming no address at all is refused about its address") {
+    const std::string bodies[] = {
+        R"({"fields": {"rating": "4"}})",
+        R"({"subsong": 2, "fields": {"rating": "4"}})",
+
+        // Half a playlist address is not an address: a position with no generation to hold it
+        // against is the write this route exists to refuse.
+        R"({"playlist": ")" + std::string(kPlaylistId) + R"(", "fields": {"rating": "4"}})",
+        R"({"playlist": ")" + std::string(kPlaylistId) +
+            R"(", "index": 4, "fields": {"rating": "4"}})",
+        R"({"index": 4, "structure": "7", "fields": {"rating": "4"}})",
+    };
+
+    for (const auto& body : bodies) {
+        INFO("body: ", body);
+        CHECK(parse(body).refusal == TagWriteRefusal::badAddress);
+        CHECK(statusOf(body) == 400);
+    }
+}
+
+// A stray key says nothing about the address, and every other body in this component refuses
+// one through declaresOnly. A filesystem path is the case worth holding: it looks like an
+// address, and it lands here because `path` is a key nothing declares.
+TEST_CASE("a field the body does not declare is refused as a malformed body, not as an address") {
+    const std::string bodies[] = {
+        R"({"track": ")" + std::string(kLibraryAddress) +
+            R"(", "fields": {"rating": "4"}, "bogus": 1})",
+        R"({"path": "F:\\Music\\a.mp3", "fields": {"rating": "4"}})",
+        R"({"playlist": ")" + std::string(kPlaylistId) +
+            R"(", "index": 4, "structure": "7", "title": "x", "fields": {"rating": "4"}})",
+    };
+
+    for (const auto& body : bodies) {
+        INFO("body: ", body);
+        CHECK(parse(body).refusal == TagWriteRefusal::malformedBody);
+        CHECK(statusOf(body) == 400);
+    }
 }
 
 TEST_CASE("a request naming both addresses is a 400, because nothing says which one wins") {
@@ -106,6 +149,25 @@ TEST_CASE("a request naming both addresses is a 400, because nothing says which 
                       R"(, "index": 4, "structure": "7", "fields": {"rating": "4"}})";
 
     CHECK(statusOf(body) == 400);
+}
+
+// An ordinal is a position in the media library snapshot, so the generation that says it still
+// names the track the client read it from is the library's own. That one is a number on the
+// wire where a playlist's is a string, which is the one difference between the two forms that
+// both carry a `structure`.
+TEST_CASE("an ordinal and the generation it was read at is a third address, never a second") {
+    CHECK(parse(addressingOrdinal("5", "12")).ok());
+
+    CHECK(statusOf(addressingOrdinal("5", quoted("12"))) == 400);
+    CHECK(statusOf(addressingOrdinal(quoted("5"), "12")) == 400);
+    CHECK(statusOf(addressingOrdinal("-1", "12")) == 400);
+    CHECK(statusOf(addressingOrdinal("4.5", "12")) == 400);
+    CHECK(statusOf(R"({"ordinal": 5, "fields": {"rating": "4"}})") == 400);
+
+    CHECK(statusOf(R"({"track": ")" + std::string(kLibraryAddress) +
+                   R"(", "ordinal": 5, "structure": 12, "fields": {"rating": "4"}})") == 400);
+    CHECK(statusOf(R"({"ordinal": 5, "playlist": ")" + std::string(kPlaylistId) +
+                   R"(", "index": 4, "structure": "7", "fields": {"rating": "4"}})") == 400);
 }
 
 TEST_CASE("an address of the wrong type is a 400 rather than a guess") {

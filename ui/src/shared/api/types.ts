@@ -124,10 +124,12 @@ export interface TrackIdentity {
 	subsong: number;
 }
 
-// The two ways the player already holds a track, and what a tag write is addressed by. A position
-// moves, so the playlist form carries the structure generation it was read at.
+// The ways the player already holds a track, and what a tag write is addressed by. A library path
+// names one track per media library root holding it, so the ordinal is the precise form beside it;
+// a position moves, so both forms built on a generation carry the one they were read at.
 export type TrackAddress =
 	| { kind: "library"; track: string; subsong: number }
+	| { kind: "ordinal"; ordinal: number; structure: number }
 	| { kind: "playlist"; playlist: string; index: number; structure: string };
 
 export interface NowPlayingTrack extends TrackIdentity {

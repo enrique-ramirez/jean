@@ -20,7 +20,7 @@ import { ratingItems, trackActions } from "./trackActions";
 import { targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
-import { useTagWriting } from "./useTagWriter";
+import { RATING_FIELD, useTagWriting } from "./useTagWriter";
 
 const sameList = (a: number[], b: number[]) =>
 	a.length === b.length && a.every((entry, at) => entry === b[at]);
@@ -44,7 +44,7 @@ export function useTrackContextMenu({
 	const canWritePlaylists = permitsPlaylistWrites(discovery);
 	const addTracks = useAddTracks();
 	const { queueTracks, canQueue } = useQueueTracks();
-	const { canRate, rate } = useTagWriting();
+	const { rate, hasWritableAddress } = useTagWriting();
 	const menu = useContextMenu();
 
 	const [positions, setPositions] = useState<number[]>([]);
@@ -87,10 +87,9 @@ export function useTrackContextMenu({
 
 		const itemIndices = positions.map((position) => rows.ref(position));
 		const rateable =
-			canRate &&
 			rated !== undefined &&
 			isWritableScale(rawRating) &&
-			source.address(rated) !== null;
+			hasWritableAddress(RATING_FIELD, source.addresses(rated));
 
 		return trackActions({
 			count,
@@ -130,8 +129,8 @@ export function useTrackContextMenu({
 		addTracks,
 		canQueue,
 		queueTracks,
-		canRate,
 		rate,
+		hasWritableAddress,
 		rated,
 		rawRating,
 		t,

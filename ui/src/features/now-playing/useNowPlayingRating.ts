@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 import { isWritableScale, rawRatingOfValue } from "@/domain/track/rating";
-import { useTagWriting } from "@/domain/track/useTagWriter";
+import { RATING_FIELD, useTagWriting } from "@/domain/track/useTagWriter";
 import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 
@@ -9,8 +9,9 @@ const isLocalPath = (path: string | null) =>
 	path !== null && !path.includes("://");
 
 export function useNowPlayingRating() {
-	const { canRate, rateTrack } = useTagWriting();
-	const { track, address, details, setRating } = useNowPlayingTrack();
+	const { hasWritableAddress, writableAddress, rateTrack } = useTagWriting();
+	const { track, addresses, details, setRating, confirmRating, restoreRating } =
+		useNowPlayingTrack();
 
 	const isLocalFile = track !== null && isLocalPath(track.path);
 
@@ -19,24 +20,36 @@ export function useNowPlayingRating() {
 			? null
 			: rawRatingOfValue(details.row[NOW_PLAYING_FIELD.rating]);
 
+	const title = track?.title ?? null;
 	const canWrite =
-		canRate &&
 		isLocalFile &&
-		address !== null &&
 		details !== null &&
-		isWritableScale(raw);
+		isWritableScale(raw) &&
+		hasWritableAddress(RATING_FIELD, addresses);
 
 	const write = useCallback(
 		(stars: number | null) => {
-			if (!canWrite || !track || !address || !details) return;
-			const before = details.row[NOW_PLAYING_FIELD.rating];
-			setRating(stars === null ? "" : String(stars));
-			rateTrack(address, track.title, stars, {
+			if (!canWrite || title === null) return;
+
+			const writable = writableAddress(RATING_FIELD, addresses);
+			if (!writable) return;
+
+			rateTrack(writable, title, stars, {
 				adopt: setRating,
-				restore: () => setRating(before),
+				confirm: confirmRating,
+				restore: restoreRating,
 			});
 		},
-		[canWrite, track, address, details, setRating, rateTrack],
+		[
+			canWrite,
+			title,
+			addresses,
+			writableAddress,
+			setRating,
+			confirmRating,
+			restoreRating,
+			rateTrack,
+		],
 	);
 
 	return { raw, isLocalFile, canWrite, write };

@@ -26,10 +26,18 @@ struct OrdinalResolution {
 using OrdinalResolver =
     std::function<OrdinalResolution(uint64_t structure, const std::vector<uint32_t>& ordinals)>;
 
-// The handle the snapshot holds at a library-relative path and a subsong within it, the
-// address `GET /api/artwork?track=` takes. Invalid where the snapshot holds no such track.
+// The handle the snapshot holds at one address. Invalid where it holds no such track, and
+// `heldTwice` with no handle where it holds more than one: two media library roots can share
+// a relative path, and neither copy is the one the address meant.
+struct LibraryTrackResolution {
+    bool heldTwice = false;
+    metadb_handle_ptr handle;
+};
+
+// The address is the library-relative path `GET /api/artwork?track=` takes, and a subsong
+// within the file it names.
 using LibraryTrackResolver =
-    std::function<metadb_handle_ptr(const std::string& track, uint32_t subsong)>;
+    std::function<LibraryTrackResolution(const std::string& track, uint32_t subsong)>;
 
 class LibraryFeed {
 public:

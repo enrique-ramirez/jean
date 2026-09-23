@@ -423,11 +423,14 @@ export const en = {
 		one: "Queue, {count} track",
 		other: "Queue, {count} tracks",
 	},
-	"rate.didNotLand": "We couldn’t rate {track} with {stars} stars",
+	"rate.didNotLand": {
+		one: "We couldn’t rate {track} with {count} star",
+		other: "We couldn’t rate {track} with {count} stars",
+	},
 	"rate.failed": "{label} was not rated. {message}",
 	"rate.moved": "That track has moved. Reload to rate it.",
 	"rate.notAllowed": "This foobar2000 does not allow ratings to be written.",
-	"rate.notSaved": "The rating was not saved. {message}",
+	"rate.notRemoved": "We couldn’t remove the rating from {track}",
 	"rate.unknownTrack":
 		"foobar2000 does not know that track, so it was not rated.",
 	"rating.clearOn": "Clear rating ({label})",

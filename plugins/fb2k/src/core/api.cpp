@@ -519,6 +519,8 @@ std::string tagWrittenDocument(const TagWrite& write) {
     if (const auto& library = write.track.library) {
         body["track"] = library->track;
         body["subsong"] = library->subsong;
+    } else if (const auto& ordinal = write.track.ordinal) {
+        body["ordinal"] = ordinal->ordinal;
     } else if (const auto& row = write.track.playlist) {
         body["playlist"] = row->playlistId;
         body["index"] = row->index;
@@ -852,6 +854,7 @@ int httpStatusFor(PlaylistOutcome outcome) {
             return 403;
         case PlaylistOutcome::noSuchPlaylist:
             return 404;
+        case PlaylistOutcome::ambiguousAddress:
         case PlaylistOutcome::keyInUse:
         case PlaylistOutcome::tooMany:
         case PlaylistOutcome::structureMoved:
@@ -1053,7 +1056,9 @@ int httpStatusFor(TagWriteOutcome outcome) {
             return 200;
         case TagWriteOutcome::trackNotKnown:
             return 404;
+        case TagWriteOutcome::ambiguousAddress:
         case TagWriteOutcome::rowsMoved:
+        case TagWriteOutcome::libraryRebuilt:
             return 409;
         case TagWriteOutcome::writeFailed:
             return 500;

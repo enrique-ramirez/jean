@@ -13,6 +13,7 @@ export interface Schema {
 	oneOf?: Schema[];
 	anyOf?: Schema[];
 	enum?: unknown[];
+	const?: unknown;
 }
 
 export interface Parameter {

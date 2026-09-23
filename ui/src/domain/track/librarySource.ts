@@ -45,6 +45,8 @@ export interface LibrarySourceCommon {
 	// A row the media library carries no path for still has a position: `playlistRowArtworkUrl`'s
 	// fallback route.
 	artworkUrl: (ref: number) => string | null;
+
+	addresses: (ref: number) => TrackAddress[];
 	address: (ref: number) => TrackAddress | null;
 	addTo: (targetId: string, refs: Refs) => Promise<AddedRows>;
 	queueTargets: (refs: Refs) => Promise<QueueSource>;
@@ -183,6 +185,17 @@ const canonicalPathOf = (snapshot: PlaylistSnapshot, path: string): string => {
 	return byPath.get(path) ?? path;
 };
 
+// `shared/api/README.md`, *What Jean does about the library*, has why both halves are asked.
+export const libraryAddressesResolve = (
+	origin: string | null,
+	exportHeldWhenLibraryUnbuilt: number | null,
+) => {
+	if (origin === null) return false;
+
+	const { structure, paths } = playlistSnapshot(componentLibraryKey(origin));
+	return paths !== null && structure !== exportHeldWhenLibraryUnbuilt;
+};
+
 // The playing surfaces resolve a raw library path to its record's canonical one on the same terms a
 // playlist row does, so the status bar, the now-playing screen and a playlist row never disagree
 // about which address a shared record answers to.
@@ -248,6 +261,18 @@ const fromMediaLibrary = ({
 	const structure = snapshot ? snapshot.structure : 0;
 	const canonicalRefs = snapshot ? canonicalRefsOf(snapshot.columns) : null;
 
+	// The row's own path, never the album's canonical one `artworkUrl` asks for: a write lands on the
+	// track under the cursor.
+	const addresses = (ref: number): TrackAddress[] => {
+		const track = paths.at(ref);
+		return track
+			? [
+					{ kind: "library", track, subsong: subsongs[ref] ?? 0 },
+					{ kind: "ordinal", ordinal: ref, structure },
+				]
+			: [];
+	};
+
 	return {
 		kind: "library",
 		playlistId: null,
@@ -255,14 +280,8 @@ const fromMediaLibrary = ({
 		artworkUrl: (ref: number) =>
 			libraryArtworkUrl(artworkOrigin, paths.at(canonicalRefs?.[ref] ?? ref)),
 
-		// The row's own path, never the album's canonical one `artworkUrl` asks for: a write lands on
-		// the track under the cursor.
-		address: (ref: number) => {
-			const track = paths.at(ref);
-			return track
-				? { kind: "library", track, subsong: subsongs[ref] ?? 0 }
-				: null;
-		},
+		addresses,
+		address: (ref: number) => addresses(ref)[0] ?? null,
 
 		fill: fillScratch(paths, artworkOrigin, structure),
 		queueTargets: queueLibraryTracks(paths, structure),
@@ -287,6 +306,30 @@ const fromPlaylist = (
 ): Extract<LibrarySource, { kind: "playlist" }> => {
 	const { playlistId, origin = null, token = null, structure = null } = options;
 
+	const addresses = (ref: number): TrackAddress[] => {
+		const forms: TrackAddress[] = [];
+
+		if (options.paths) {
+			const track = options.paths.at(ref);
+			if (track)
+				forms.push({
+					kind: "library",
+					track,
+					subsong: options.subsongs[ref] ?? 0,
+				});
+		}
+
+		if (structure)
+			forms.push({
+				kind: "playlist",
+				playlist: playlistId,
+				index: ref,
+				structure,
+			});
+
+		return forms;
+	};
+
 	return {
 		kind: "playlist",
 		playlistId,
@@ -300,17 +343,8 @@ const fromPlaylist = (
 			return origin ? playlistRowArtworkUrl(origin, playlistId, ref) : null;
 		},
 
-		address: (ref: number) => {
-			if (options.paths) {
-				const track = options.paths.at(ref);
-				if (track)
-					return { kind: "library", track, subsong: options.subsongs[ref] };
-			}
-
-			return structure
-				? { kind: "playlist", playlist: playlistId, index: ref, structure }
-				: null;
-		},
+		addresses,
+		address: (ref: number) => addresses(ref)[0] ?? null,
 
 		queueTargets: async (refs: Refs): Promise<QueueSource> => ({
 			kind: "rows",

@@ -8,6 +8,8 @@ import {
 	useState,
 } from "react";
 
+import { useExportHeldWhenLibraryUnbuilt } from "@/domain/player/playerPoll";
+import { libraryOrigin, type WriteFailure } from "@/shared/api/fooJean";
 import type { TrackAddress } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
@@ -17,7 +19,7 @@ import type { Translate } from "@/shared/i18n/useTranslate";
 import { pushToast } from "@/shared/ui/toastStore";
 import { FIELD, TRACK_EXPRESSIONS, titleOf } from "./fields";
 import { type LibraryColumns, rowAt } from "./libraryColumns";
-import type { LibrarySource } from "./librarySource";
+import { type LibrarySource, libraryAddressesResolve } from "./librarySource";
 import { clearWrittenRating, setWrittenRating } from "./ratingStore";
 import {
 	NO_WRITER,
@@ -46,6 +48,17 @@ export interface RateTarget {
 	columns: LibraryColumns;
 }
 
+export interface OptimisticValue {
+	adopt: (raw: string) => void;
+	confirm: (raw: string) => void;
+	restore: () => void;
+}
+
+export interface WritableAddress {
+	address: TrackAddress;
+	retry: TrackAddress | null;
+}
+
 interface TagWriting {
 	state: TagWriterState;
 	isChecking: boolean;
@@ -57,12 +70,20 @@ interface TagWriting {
 	isFieldEnabled: (field: string) => boolean;
 	setFieldEnabled: (field: string, enabled: boolean) => void;
 	recheck: () => void;
+	hasWritableAddress: (
+		field: string,
+		forms: readonly TrackAddress[],
+	) => boolean;
+	writableAddress: (
+		field: string,
+		forms: readonly TrackAddress[],
+	) => WritableAddress | null;
 	rate: (target: RateTarget, stars: number | null) => void;
 	rateTrack: (
-		address: TrackAddress,
+		writable: WritableAddress,
 		label: string,
 		stars: number | null,
-		show: { adopt: (raw: string) => void; restore: () => void },
+		show: OptimisticValue,
 	) => void;
 }
 
@@ -77,6 +98,8 @@ const IDLE: TagWriting = {
 	isFieldEnabled: () => false,
 	setFieldEnabled: () => {},
 	recheck: () => {},
+	hasWritableAddress: () => false,
+	writableAddress: () => null,
 	rate: () => {},
 	rateTrack: () => {},
 };
@@ -91,19 +114,45 @@ const tagValueOf = (stars: number | null) =>
 
 const RATING_COLUMN = TRACK_EXPRESSIONS[FIELD.rating];
 
+const didNotLand = (label: string, raw: string) =>
+	raw === ""
+		? translate("rate.notRemoved", { track: label })
+		: translate("rate.didNotLand", { track: label, count: Number(raw) });
+
 async function confirmTimedOutRating(
 	writer: TagWriter,
 	address: TrackAddress,
 	label: string,
 	raw: string,
+	paint: OptimisticValue,
 ) {
 	const held = await writer.read(address, RATING_COLUMN);
-	if (held === null || held === raw) return;
+	if (held === null) return;
+	if (held === raw) return paint.confirm(raw);
 
-	pushToast({
-		message: translate("rate.didNotLand", { track: label, stars: Number(raw) }),
-		tone: "error",
-	});
+	pushToast({ message: didNotLand(label, raw), tone: "error" });
+}
+
+const refusalMessage = (result: WriteFailure, label: string, raw: string) => {
+	if (result.reason === "ambiguous") return didNotLand(label, raw);
+	if (result.reason === "moved") return translate("rate.moved");
+	if (result.reason === "not-allowed") return translate("rate.notAllowed");
+	if (result.reason === "unknown-track") return translate("rate.unknownTrack");
+	return translate("rate.failed", { label, message: result.message });
+};
+
+const addressKey = (address: TrackAddress) => {
+	if (address.kind === "library")
+		return `library:${address.track}:${address.subsong}`;
+	if (address.kind === "ordinal") return `ordinal:${address.ordinal}`;
+	return `playlist:${address.playlist}:${address.index}`;
+};
+
+interface PendingRating extends WritableAddress {
+	key: string;
+	label: string;
+	raw: string;
+	paint: OptimisticValue;
 }
 
 export function TagWriterProvider({ children }: { children: ReactNode }) {
@@ -147,73 +196,111 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 		[setFieldPrefs],
 	);
 
-	// Coalesced per row rather than through `useCoalescedWrite`, which holds one pending value and
-	// would lose an edit whenever two rows are rated in turn.
-	const pending = useRef<(RateTarget & { raw: string })[]>([]);
+	const origin = libraryOrigin(discovery);
+	const exportHeldWhenLibraryUnbuilt = useExportHeldWhenLibraryUnbuilt();
+
+	const hasWritableAddress = useCallback(
+		(field: string, forms: readonly TrackAddress[]) => {
+			if (!writer.allows(field)) return false;
+			const resolves = libraryAddressesResolve(
+				origin,
+				exportHeldWhenLibraryUnbuilt,
+			);
+			return forms.some((form) => form.kind === "playlist" || resolves);
+		},
+		[writer, origin, exportHeldWhenLibraryUnbuilt],
+	);
+
+	const writableAddress = useCallback(
+		(field: string, forms: readonly TrackAddress[]) => {
+			if (!writer.allows(field)) return null;
+			const resolves = libraryAddressesResolve(
+				origin,
+				exportHeldWhenLibraryUnbuilt,
+			);
+			const usable = forms.filter(
+				(form) => form.kind === "playlist" || resolves,
+			);
+			return usable.length === 0
+				? null
+				: { address: usable[0], retry: usable[1] ?? null };
+		},
+		[writer, origin, exportHeldWhenLibraryUnbuilt],
+	);
+
+	// Coalesced per address rather than through `useCoalescedWrite`, which holds one pending value and
+	// would lose an edit whenever two tracks are rated in turn.
+	const pending = useRef<PendingRating[]>([]);
 	const isWriting = useRef(false);
 	const writerRef = useRef(writer);
 	writerRef.current = writer;
 
 	const drain = useCallback(async () => {
 		if (isWriting.current) return;
-		const target = pending.current.shift();
-		if (!target) return;
+		const write = pending.current.shift();
+		if (!write) return;
 
 		isWriting.current = true;
 		try {
-			await sendRating(target, writerRef.current, setRefused);
+			await sendRating(write, writerRef.current, setRefused);
 		} finally {
 			isWriting.current = false;
 			drain();
 		}
 	}, []);
 
-	const rate = useCallback(
-		(target: RateTarget, stars: number | null) => {
-			const raw = tagValueOf(stars);
-			setWrittenRating(target.columns, target.ref, raw);
+	const queueRating = useCallback(
+		(write: PendingRating) => {
+			const at = pending.current.findIndex((entry) => entry.key === write.key);
+			const queued =
+				at < 0 ? write : { ...write, paint: pending.current[at].paint };
 
-			const queued = { ...target, raw };
-			const at = pending.current.findIndex(
-				(entry) =>
-					entry.columns.load === target.columns.load &&
-					entry.ref === target.ref,
-			);
 			if (at < 0) pending.current.push(queued);
 			else pending.current[at] = queued;
 
+			queued.paint.adopt(queued.raw);
 			drain();
 		},
 		[drain],
 	);
 
-	const rateTrack = useCallback(
-		(
-			address: TrackAddress,
-			label: string,
-			stars: number | null,
-			show: { adopt: (raw: string) => void; restore: () => void },
-		) => {
-			const raw = tagValueOf(stars);
-			const writing = writerRef.current;
-			writing.write(address, { [RATING_FIELD]: raw }).then((result) => {
-				if (result.ok)
-					return show.adopt(result.written.fields[RATING_FIELD] ?? raw);
+	const rate = useCallback(
+		({ source, ref, columns }: RateTarget, stars: number | null) => {
+			const writable = writableAddress(RATING_FIELD, source.addresses(ref));
+			if (!writable) return;
 
-				if (result.reason === "timeout")
-					return confirmTimedOutRating(writing, address, label, raw);
+			const overlay = (raw: string) => setWrittenRating(columns, ref, raw);
 
-				show.restore();
-				pushToast({
-					message:
-						result.reason === "moved"
-							? translate("rate.moved")
-							: translate("rate.failed", { label, message: result.message }),
-					tone: "error",
-				});
+			queueRating({
+				...writable,
+				key: addressKey(writable.address),
+				label: titleOf(rowAt(columns, ref), translate),
+				raw: tagValueOf(stars),
+				paint: {
+					adopt: overlay,
+					confirm: overlay,
+					restore: () => clearWrittenRating(columns, ref),
+				},
 			});
 		},
-		[],
+		[queueRating, writableAddress],
+	);
+
+	const rateTrack = useCallback(
+		(
+			writable: WritableAddress,
+			label: string,
+			stars: number | null,
+			show: OptimisticValue,
+		) =>
+			queueRating({
+				...writable,
+				key: addressKey(writable.address),
+				label,
+				raw: tagValueOf(stars),
+				paint: show,
+			}),
+		[queueRating],
 	);
 
 	const value = useMemo<TagWriting>(
@@ -231,6 +318,8 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			isFieldEnabled,
 			setFieldEnabled,
 			recheck,
+			hasWritableAddress,
+			writableAddress,
 			rate,
 			rateTrack,
 		}),
@@ -245,6 +334,8 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			hasFinePointer,
 			token,
 			setToken,
+			hasWritableAddress,
+			writableAddress,
 			rate,
 			rateTrack,
 		],
@@ -257,59 +348,47 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 	);
 }
 
+// `foo_jean` refuses an address two media library roots both hold before it writes anything, so the
+// precise address beside it goes instead. Nothing else is ever sent twice: every other refusal
+// leaves it open whether the tag was written, and a second write would land on top of a rating
+// somebody made in between.
+async function writeRating(
+	writer: TagWriter,
+	{ address, retry }: WritableAddress,
+	fields: Record<string, string>,
+) {
+	const result = await writer.write(address, fields);
+	if (result.ok || result.reason !== "ambiguous" || !retry)
+		return { sentTo: address, result };
+
+	return { sentTo: retry, result: await writer.write(retry, fields) };
+}
+
 async function sendRating(
-	{ source, ref, columns, raw }: RateTarget & { raw: string },
+	{ address, retry, label, raw, paint }: PendingRating,
 	writer: TagWriter,
 	refuse: (update: (current: string[]) => string[]) => void,
 ) {
-	const address = source.address(ref);
-	if (!address) {
-		clearWrittenRating(columns, ref);
-		return;
-	}
+	const { sentTo, result } = await writeRating(
+		writer,
+		{ address, retry },
+		{ [RATING_FIELD]: raw },
+	);
 
-	const result = await writer.write(address, { [RATING_FIELD]: raw });
-
-	if (result.ok) {
-		setWrittenRating(columns, ref, result.written.fields[RATING_FIELD] ?? raw);
-		return;
-	}
+	if (result.ok)
+		return paint.confirm(result.written.fields[RATING_FIELD] ?? raw);
 
 	if (result.reason === "timeout")
-		return confirmTimedOutRating(
-			writer,
-			address,
-			titleOf(rowAt(columns, ref), translate),
-			raw,
-		);
+		return confirmTimedOutRating(writer, sentTo, label, raw, paint);
 
-	clearWrittenRating(columns, ref);
-
-	if (result.reason === "moved") {
-		pushToast({
-			message: translate("rate.moved"),
-			tone: "error",
-		});
-		return;
-	}
+	paint.restore();
 
 	if (result.reason === "not-allowed") {
 		console.error(
 			`foo_jean refused '${result.field ?? RATING_FIELD}': ${result.message}`,
 		);
 		refuse((current) => [...current, result.field ?? RATING_FIELD]);
-		pushToast({
-			message: translate("rate.notAllowed"),
-			tone: "error",
-		});
-		return;
 	}
 
-	pushToast({
-		message:
-			result.reason === "unknown-track"
-				? translate("rate.unknownTrack")
-				: translate("rate.notSaved", { message: result.message }),
-		tone: "error",
-	});
+	pushToast({ message: refusalMessage(result, label, raw), tone: "error" });
 }

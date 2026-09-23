@@ -10,6 +10,6 @@
 namespace jean {
 
 TagWriter makeTagWriter(MainThreadQueue& mainThread, LibraryTrackResolver resolveLibraryTrack,
-                        const PlaylistVersions& versions);
+                        OrdinalResolver resolveOrdinal, const PlaylistVersions& versions);
 
 }  // namespace jean

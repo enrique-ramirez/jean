@@ -40,3 +40,4 @@ And the ones with no description of their own:
 | `running_server.{h,cpp}` | The live listener itself, so the preferences page can open a pairing window on it. Safe when nothing is serving |
 | `preferences.{cpp,rc}` | The page under **Tools**, which moves text between controls and `core/preferences.h` and decides nothing itself |
 | `log.cpp` | The console and `<profile>/foo_jean/foo_jean.log`, which appends, carries levels, and starts over rather than rotating past its cap |
+| `ui_assets.{h,cpp}` | Fills `Player::readPage`, `pageNames` and `readDiskPage`: an id lookup into the resources `scripts/embed-ui.ps1` writes from `ui/dist`, and a `www/` reader that canonicalizes every request and refuses one a symlink or junction resolves outside it |

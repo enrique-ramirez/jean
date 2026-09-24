@@ -23,6 +23,12 @@ if (-not (Test-Path (Join-Path $wtl 'atlapp.h'))) {
 }
 
 $proj = Join-Path $root $Project
+
+# Building the SDK's own foo_sample needs no ui\dist and must not be made to require one.
+if ((Split-Path -Leaf $proj) -eq 'foo_jean.vcxproj') {
+  & (Join-Path $PSScriptRoot 'embed-ui.ps1')
+}
+
 Write-Output "Building $Project ($Configuration|$Platform)"
 
 # PlatformToolset is forced to v143 on the command line: the SDK's projects target v142 and fail MSB8020 under VS 2022 alone.

@@ -208,6 +208,12 @@
     the .rc itself, so ResourceCompile needs no include directories of its own. It
     must not be given them through /p:UseEnv=true either: that is trap 3 above, and
     rc.exe failing on winres.h is where it shows up first.
+
+    This wildcard also matches fb2k\ui_assets.rc, which scripts\embed-ui.ps1 writes from ui\dist
+    before scripts\build.ps1 invokes msbuild at all: MSBuild's own item globs are expanded once,
+    when this project is parsed, so the file has to exist on disk before that happens rather
+    than as a build step of its own. fb2k\ui_assets.cpp reads the table the same script writes
+    beside it, and is already covered by the fb2k\*.cpp wildcard above.
   -->
   <ItemGroup>
     <ResourceCompile Include="fb2k\*.rc" />

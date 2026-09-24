@@ -24,6 +24,7 @@
 #include "fb2k/streamer.h"
 #include "fb2k/tag_writer.h"
 #include "fb2k/token.h"
+#include "fb2k/ui_assets.h"
 
 #include <chrono>
 #include <memory>
@@ -104,6 +105,9 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.readLibraryTrack = libraryFeed.trackColumnReader();
     player.readLibraryOrdinal = libraryFeed.ordinalTrackColumnReader();
     player.readPlayingTrack = playingTrackReader(mainThread);
+    player.readPage = readEmbeddedPage;
+    player.pageNames = embeddedPageNames();
+    player.readDiskPage = readWwwPage;
 
     if (streamer != nullptr) {
         player.openStream = streamer->opener();

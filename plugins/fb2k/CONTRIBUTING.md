@@ -107,6 +107,7 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 3. PowerShell 5.1 reads a BOM-less `.ps1` as Windows-1252, so a script MUST contain no non-ASCII literal. Derive such values at run time instead.
 4. PowerShell's bitwise operators share one precedence level with comparison and associate left to right, so `-shl`/`-bor` do not read like the same expression in C. Use arithmetic where the grouping matters.
 5. `ConvertFrom-Json` unwraps a one-element JSON array into the bare element, so a field that is a list everywhere else stops being one on the install that has a single entry. Wrap any such read in `@()`. The failure is silent and only that install sees it.
+6. A generated file that `rc.exe` or `cl.exe` will read, rather than PowerShell, needs `-Encoding ascii`. The default still adds a UTF-8 BOM under PowerShell 5.1, and neither compiler skips it.
 
 ## 9. Documentation
 

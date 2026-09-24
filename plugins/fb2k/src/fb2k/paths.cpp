@@ -40,6 +40,10 @@ std::string logPath() {
     return inComponentDir(std::string(kComponentName) + ".log");
 }
 
+std::string wwwDir() {
+    return inComponentDir("www");
+}
+
 void ensureComponentDir() {
     const auto dir = componentDir();
 

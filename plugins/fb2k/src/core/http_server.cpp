@@ -1,5 +1,6 @@
 #include "third_party/httplib.h"
 
+#include "core/assets.h"
 #include "core/device.h"
 #include "core/http_server.h"
 #include "core/json.h"
@@ -18,6 +19,7 @@
 #include <limits>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <thread>
 
 namespace jean {
@@ -50,6 +52,7 @@ constexpr auto kArtworkRefill = std::chrono::milliseconds(50);
 constexpr int kPollBurst = 30;
 constexpr auto kPollRefill = std::chrono::milliseconds(100);
 
+constexpr char kApiPrefix[] = "/api/";
 constexpr char kPairPath[] = "/api/pair";
 constexpr char kArtworkPath[] = "/api/artwork";
 constexpr char kPlayingArtworkPath[] = "/api/artwork/playing";
@@ -347,6 +350,10 @@ RequiredTitle requiredTitle(const std::string& body, bool onlyTitle = false) {
 // See ARCHITECTURE.md, *Artwork*, for why this and the two lifetimes below are what they are.
 constexpr char kAskEveryTime[] = "private, no-cache";
 
+// See ARCHITECTURE.md, *Serving the page*, for why this and pageIsLongCached differ.
+constexpr char kPageRevalidate[] = "no-cache";
+constexpr char kPageForAYear[] = "public, max-age=31536000, immutable";
+
 void revalidateAlways(httplib::Response& res, const std::string& tag) {
     res.set_header("Cache-Control", kAskEveryTime);
     res.set_header("ETag", tag);
@@ -533,6 +540,9 @@ struct HttpServer::Impl {
     RateLimiter pairAttempts{kPairBurst, kPairRefill};
     PairingWindow pairing{std::chrono::seconds(kPairingWindowSeconds)};
 
+    mutable std::mutex reservedNameLock;
+    mutable std::set<std::string> loggedReservedNames;
+
     std::atomic<bool> complainedAboutRate{false};
 
     bool originAllowed(const std::string& origin, const std::string& path,
@@ -574,6 +584,99 @@ struct HttpServer::Impl {
         res.set_header("Access-Control-Expose-Headers", "ETag, Retry-After");
     }
 
+    void answerRevalidated(const httplib::Request& req, httplib::Response& res,
+                           const std::string& bytes, const std::string& type) const {
+        const auto tag = pageTag(bytes);
+        res.set_header("Cache-Control", kPageRevalidate);
+        res.set_header("ETag", tag);
+
+        if (alreadyHolds(req, tag)) {
+            res.status = 304;
+            return;
+        }
+
+        res.status = 200;
+        res.set_content(bytes, type);
+    }
+
+    void logReservedNameOnce(const std::string& name) const {
+        const std::lock_guard<std::mutex> lock(reservedNameLock);
+        if (!loggedReservedNames.insert(toLower(name)).second)
+            return;
+
+        logInfo("requests under \"" + name +
+                "\" are never answered from www/, because that name is one of Jean's own, or "
+                "is api");
+    }
+
+    void servePageFromDisk(const httplib::Request& req, httplib::Response& res,
+                           const std::string& resolved) const {
+        const auto route = routePage(resolved, player.pageNames);
+
+        if (route.kind == PageRouteKind::Reserved) {
+            logReservedNameOnce(route.name);
+            res.status = 404;
+            return;
+        }
+
+        if (!player.readDiskPage) {
+            res.status = 404;
+            return;
+        }
+
+        if (route.kind == PageRouteKind::FolderRoot) {
+            const auto folder = player.readDiskPage(route.name);
+            if (folder.kind != DiskPage::Kind::Directory) {
+                res.status = 404;
+                return;
+            }
+
+            res.status = 301;
+            res.set_header("Location", "/" + httplib::encode_path_component(route.name) + "/");
+            return;
+        }
+
+        const auto type = route.kind == PageRouteKind::DiskLocale
+                              ? pageContentType(route.diskPath)
+                              : interfaceContentType(route.diskPath);
+        if (!type) {
+            res.status = 404;
+            return;
+        }
+
+        const auto page = player.readDiskPage(route.diskPath);
+        if (page.kind != DiskPage::Kind::File) {
+            res.status = 404;
+            return;
+        }
+
+        answerRevalidated(req, res, page.bytes, *type);
+    }
+
+    void servePage(const httplib::Request& req, httplib::Response& res) const {
+        const auto resolved = resolvePagePath(req.path);
+        if (!resolved) {
+            res.status = 404;
+            return;
+        }
+
+        const auto type = pageContentType(*resolved);
+        const auto bytes = type ? player.readPage(*resolved) : std::nullopt;
+        if (!bytes) {
+            servePageFromDisk(req, res, *resolved);
+            return;
+        }
+
+        if (pageIsLongCached(*resolved)) {
+            res.set_header("Cache-Control", kPageForAYear);
+            res.status = 200;
+            res.set_content(*bytes, *type);
+            return;
+        }
+
+        answerRevalidated(req, res, *bytes, *type);
+    }
+
     bool authorized(const httplib::Request& req) const {
         if (settings.authToken.empty())
             return false;
@@ -601,6 +704,15 @@ struct HttpServer::Impl {
         if (req.method == "OPTIONS") {
             res.status = 204;
             return Routing::Handled;
+        }
+
+        if (player.readPage && req.path.rfind(kApiPrefix, 0) != 0) {
+            if (req.method == "GET" || req.method == "HEAD") {
+                servePage(req, res);
+                return Routing::Handled;
+            }
+
+            return Routing::Unhandled;
         }
 
         if (req.path == "/api/status" || req.path == "/api/stream" || req.path == kPairPath)

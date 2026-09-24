@@ -196,6 +196,19 @@ struct PlayingTrackRead {
 using PlayingTrackReader =
     std::function<PlayingTrackRead(const std::vector<std::string>& columns)>;
 
+// Answers the bytes of the page's own build at `path`, relative to the build root and with no
+// leading slash, or nothing where nothing holds such a file. Null is how an install with no
+// page compiled in and no page on disk says so.
+using PageReader = std::function<std::optional<std::string>(const std::string& path)>;
+
+struct DiskPage {
+    enum class Kind { Missing, File, Directory };
+    Kind kind = Kind::Missing;
+    std::string bytes;
+};
+
+using DiskPageReader = std::function<DiskPage(const std::string& path)>;
+
 enum class Transport { PlayPause, Next, Previous, Stop };
 enum class VolumeStep { Up, Down };
 using TransportCommander = std::function<PlaylistOutcome(Transport)>;
@@ -274,6 +287,11 @@ struct Player {
     LibraryTrackReader readLibraryTrack;
     LibraryOrdinalReader readLibraryOrdinal;
     PlayingTrackReader readPlayingTrack;
+    PageReader readPage;
+
+    std::vector<std::string> pageNames;
+
+    DiskPageReader readDiskPage;
 };
 
 class HttpServer {

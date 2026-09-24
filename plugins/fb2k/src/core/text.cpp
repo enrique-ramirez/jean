@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <numeric>
@@ -16,6 +17,33 @@ std::string trimmed(const std::string& text) {
         return {};
 
     return text.substr(first, text.find_last_not_of(" \t") - first + 1);
+}
+
+// FNV-1a. The basis and the prime are the algorithm's own and not a choice made here.
+constexpr uint64_t kFoldBasis = 14695981039346656037ULL;
+constexpr uint64_t kFoldPrime = 1099511628211ULL;
+
+constexpr size_t kHexDigitsPerByte = 2;
+
+uint64_t fold(const std::string& bytes) {
+    uint64_t digest = kFoldBasis;
+    for (const char byte : bytes) {
+        digest ^= static_cast<unsigned char>(byte);
+        digest *= kFoldPrime;
+    }
+    return digest;
+}
+
+std::string quotedHex(uint64_t digest) {
+    constexpr char kDigits[] = "0123456789abcdef";
+
+    std::string text(sizeof(digest) * kHexDigitsPerByte, '0');
+    for (size_t at = text.size(); at > 0; --at) {
+        text[at - 1] = kDigits[digest & 0xFU];
+        digest >>= 4U;
+    }
+
+    return "\"" + text + "\"";
 }
 
 }  // namespace
@@ -88,6 +116,10 @@ bool readDecimal(const std::string& text, uint64_t& value) {
 
     value = result;
     return true;
+}
+
+std::string eTagFor(const std::string& bytes) {
+    return quotedHex(fold(bytes));
 }
 
 }  // namespace jean

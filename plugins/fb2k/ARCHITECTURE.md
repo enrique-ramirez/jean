@@ -241,6 +241,18 @@ Both generations sit under `library` in `GET /api/state`, which is small, ETagge
 
 **A present cover is fresh for months and a missing one for minutes**, `kCoverCacheLifetimeSeconds` and `kMissingCoverCacheLifetimeSeconds` in `core/http_server.cpp`; `contract/openapi.yaml`'s *Artwork* section has the exact figures. Never `no-store`: the client is meant to keep the bytes for as long as the lifetime says. `GET /api/artwork/playing` and the positional route carry no lifetime at all, since the same URL names a different picture once the track or the row does, so both stay `private, no-cache` on every outcome. `must-revalidate` appears on none of these, nor on the library blobs, which carry `private, no-cache` for the same reason: `private` is what keeps a shared cache out of an authenticated response, and nothing here needs `must-revalidate` to do that job as well. *Facts about the player* has why a shared cache was the thing to keep out in the first place.
 
+## Serving the page
+
+`core/assets.h` decides what a request for Jean's own page may resolve to; `core/http_server.cpp` asks it and answers, the same split as *The one boundary* at a smaller scale.
+
+Vite content-hashes every file it writes under `assets/`, so a rebuild is a new URL rather than a changed file at an old one. A browser that already holds a hashed file can keep it for a year without asking again, because the path itself changes when the file does. `index.html` and a hand-added locale carry no such hash, so they are revalidated on every load: an upgrade must never hide behind a browser's stale copy of the page that names it.
+
+`www/locales/` is the one place under one of Jean's own root names that a file on disk may still answer: `routePage` checks that prefix before it checks for a reserved name, so a hand-added translation lands even though `locales` is itself one of the build's root names. Every other root name, and `api`, stays reserved regardless of what a folder elsewhere in `www/` holds there. `fb2k/` resolves a disk path against the profile directory and refuses one that escapes `www/` through a symlink or a junction; `core/` trusts that guarantee and only ever asks for a path shape it has already checked.
+
+`pageNames` is read once at startup and kept as a plain list rather than asked for through a callback: it names the build's own root files, and those never change after the build that produced them.
+
+A bare folder name answers with a 301 to the same name with a trailing slash instead of serving its `index.html` directly, because a browser resolves every relative URL on that page against the path it loaded. Skip the redirect and a relative script or stylesheet in the folder's own page resolves against `/` instead of `/<name>/`.
+
 ## The HTTP contract
 
 **`contract/openapi.yaml`, at the repository root, is the contract, and it is hand-written.** There is no framework here to generate one from, and a generated spec would describe the implementation rather than the promise: the descriptions carry the reasoning a client needs, which is the half that matters and the half no generator produces. Clients generate their types from it, so a stale spec is a client that compiles and is wrong. It changes in the same pass as any change to a response shape, a status code or an error string.

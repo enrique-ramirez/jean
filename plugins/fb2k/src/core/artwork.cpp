@@ -2,38 +2,9 @@
 
 #include "core/text.h"
 
-#include <cstdint>
-
 namespace jean {
 
 namespace {
-
-// FNV-1a. The basis and the prime are the algorithm's own and not a choice made here.
-constexpr uint64_t kFoldBasis = 14695981039346656037ULL;
-constexpr uint64_t kFoldPrime = 1099511628211ULL;
-
-constexpr size_t kHexDigitsPerByte = 2;
-
-uint64_t fold(const std::string& bytes) {
-    uint64_t digest = kFoldBasis;
-    for (const char byte : bytes) {
-        digest ^= static_cast<unsigned char>(byte);
-        digest *= kFoldPrime;
-    }
-    return digest;
-}
-
-std::string quotedHex(uint64_t digest) {
-    constexpr char kDigits[] = "0123456789abcdef";
-
-    std::string text(sizeof(digest) * kHexDigitsPerByte, '0');
-    for (size_t at = text.size(); at > 0; --at) {
-        text[at - 1] = kDigits[digest & 0xFU];
-        digest >>= 4U;
-    }
-
-    return "\"" + text + "\"";
-}
 
 struct Signature {
     const char* bytes;
@@ -77,7 +48,7 @@ std::string trackAddressRefusal(const std::string& track) {
 }
 
 std::string artworkTag(const std::string& picture) {
-    return quotedHex(fold(picture));
+    return eTagFor(picture);
 }
 
 std::string imageTypeOf(const std::string& bytes) {

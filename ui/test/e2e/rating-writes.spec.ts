@@ -69,25 +69,17 @@ const star = (page: Page, row: number, value: number) =>
 const starsOnScreen = (page: Page) =>
 	nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ });
 
-// POST only: the browser's own preflight is not a request the app made.
-const tagWrites = (player: { requests: { method: string }[] }) =>
-	requestsTo(player as never, "/api/tags").filter(
-		(entry) => entry.method === "POST",
-	);
+const tagWrites = (player: FakePlayer) => requestsTo(player, "/api/tags");
 
 const routeOf = (path: string) => path.split("?")[0];
 
-// Everything a click cost, at either server: the write and anything sent to
-// work out what to write to. Two are left out because they are nobody's click:
-// the player poll runs once a second whatever happens, and a preflight is the
-// browser's own.
+// Everything a click cost: the write and anything sent to work out what to
+// write to. Left out because it is nobody's click: the player poll, which
+// runs once a second whatever happens.
 const asksSince = (player: FakePlayer, from: number) =>
 	player.requests
 		.slice(from)
-		.filter(
-			(entry) =>
-				entry.method !== "OPTIONS" && routeOf(entry.path) !== "/api/state",
-		)
+		.filter((entry) => routeOf(entry.path) !== "/api/state")
 		.map((entry) => `${entry.method} ${routeOf(entry.path)}`);
 
 // A view asks for a cover per record on the way in, and those are nobody's
@@ -152,10 +144,6 @@ const holdTheWrites = async (page: Page) => {
 	await page.route(
 		(url) => url.pathname === "/api/tags",
 		async (route) => {
-			// The browser's own preflight for the `Authorization` header, which
-			// writes nothing.
-			if (route.request().method() !== "POST") return route.continue();
-
 			sent.push(route.request().postDataJSON() as WriteBody);
 			if (!open) await new Promise<void>((resolve) => waiting.push(resolve));
 			return route.continue();
@@ -1764,23 +1752,13 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 			await page.route(
 				(url) => url.pathname === "/api/tags",
 				async (route) => {
-					// The browser's own preflight for the `Authorization` header, which
-					// writes nothing.
-					if (route.request().method() !== "POST") return route.continue();
-
 					sent += 1;
 					if (sent === 1) return route.continue();
 
 					// Refused before the component writes anything, so the player keeps
-					// what the first press put there. `foo_jean` serves on an origin of
-					// its own, and a refusal the browser withholds from the app is a
-					// different failure with different wording, so this carries the
-					// header a real refusal carries.
+					// what the first press put there.
 					return route.fulfill({
 						status: 500,
-						headers: {
-							"access-control-allow-origin": route.request().headers().origin,
-						},
 						contentType: "application/json",
 						body: JSON.stringify({ written: false, error: refusal }),
 					});
@@ -2021,48 +1999,23 @@ const settings = async (page: Page) => {
 };
 
 test.describe("what the settings screen says", () => {
-	test.describe("not installed", () => {
-		test.use({ fooJean: null, fooJeanToken: null });
-
-		test("says what it is and does not nag", async ({ page }) => {
-			await settings(page);
-			await expect(page.getByText("Not installed")).toBeVisible();
-			await expect(
-				page.getByRole("button", { name: "Check again" }),
-			).toBeVisible();
-			await expect(
-				page.getByText(/writes tags back to your library/),
-			).toBeVisible();
-			await expect(page.getByText(/not published yet/)).toBeVisible();
-			await expect(page.getByLabel("Token")).toHaveCount(0);
-		});
-	});
-
-	test.describe("installed but could not bind", () => {
-		test.use({
-			fooJean: {
-				listening: false,
-				portInUse: true,
-				error: "could not bind 127.0.0.1:8881; the port is in use",
-			},
-		});
-
-		test("shows the component's own words and the remedy", async ({ page }) => {
-			await settings(page);
-			await expect(page.getByText(/could not start on port/)).toBeVisible();
-			await expect(page.getByText(/the port is in use/)).toBeVisible();
-			await expect(page.getByText(/Another program already has/)).toBeVisible();
-		});
-	});
-
-	test.describe("advertised but unreachable", () => {
-		test.use({ fooJean: { reachable: false } });
+	test.describe("a component that is not answering", () => {
+		test.use({ fooJean: { reachable: false }, fooJeanToken: FOO_JEAN_TOKEN });
 
 		test("names the fix rather than going quiet", async ({ page }) => {
 			await settings(page);
-			await expect(page.getByText(/this device cannot reach it/)).toBeVisible();
-			await expect(page.getByText(/Preferences . Tools . Jean/)).toBeVisible();
-			await expect(page.getByText(/0\.0\.0\.0/)).toBeVisible();
+			await expect(page.getByText("Not connected")).toBeVisible();
+			await expect(
+				page.getByText("foo_jean is not answering right now."),
+			).toBeVisible();
+			await expect(
+				page.getByText(
+					"Check that foobar2000 is still running, then try again.",
+				),
+			).toBeVisible();
+			await expect(
+				page.getByRole("button", { name: "Check again" }),
+			).toBeVisible();
 		});
 	});
 
@@ -2072,7 +2025,16 @@ test.describe("what the settings screen says", () => {
 		test("asks for the token, once", async ({ page }) => {
 			await settings(page);
 			await expect(page.getByText("Needs token")).toBeVisible();
-			await expect(page.getByText(/needs the token/)).toBeVisible();
+			await expect(
+				page.getByText(
+					"foo_jean needs a token before it will accept anything.",
+				),
+			).toBeVisible();
+			await expect(
+				page.getByText(
+					/open File . Preferences . Tools . Jean and copy the token/,
+				),
+			).toBeVisible();
 			await expect(page.getByLabel("Token")).toBeVisible();
 		});
 
@@ -2172,51 +2134,14 @@ test.describe("what the settings screen says", () => {
 		}) => {
 			await settings(page);
 			await expect(page.getByText("Token refused")).toBeVisible();
-			await expect(page.getByText(/refused that token/)).toBeVisible();
-		});
-	});
-
-	// The record still says `foo_jean`, as a forgery would; the thing listening
-	// on the port it names does not.
-	test.describe("something else on the advertised port", () => {
-		test.use({
-			fooJean: { agentName: "not_foo_jean" },
-			fooJeanToken: FOO_JEAN_TOKEN,
-		});
-
-		test("refuses to send the token, and says why", async ({
-			page,
-			player,
-		}) => {
-			await settings(page);
-			await expect(page.getByText(/it is not foo_jean/)).toBeVisible();
 			await expect(
-				page.getByText(/token has not been sent to it/),
+				page.getByText("foo_jean refused that token."),
 			).toBeVisible();
-
-			expect(requestsTo(player, "/api/status").length).toBeGreaterThan(0);
-			await expectSettlesAt(
-				player,
-				() => requestsTo(player, "/api/capabilities"),
-				[],
-			);
-		});
-	});
-
-	test.describe("an API version Jean does not understand", () => {
-		test.use({ fooJean: { apiVersion: 99 }, fooJeanToken: FOO_JEAN_TOKEN });
-
-		test("refuses to proceed and says which is which", async ({
-			page,
-			player,
-		}) => {
-			await settings(page);
-			await expect(page.getByText(/version 99/)).toBeVisible();
-			await expectSettlesAt(
-				player,
-				() => requestsTo(player, "/api/capabilities"),
-				[],
-			);
+			await expect(
+				page.getByText(
+					/Check it against the token under File . Preferences . Tools . Jean/,
+				),
+			).toBeVisible();
 		});
 	});
 

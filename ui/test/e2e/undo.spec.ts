@@ -34,8 +34,6 @@ const titlesIn = (player: FakePlayer, id: string) =>
 const structureOf = (player: FakePlayer, beefwebId: string) =>
 	String(player.playlists.find((entry) => entry.id === beefwebId)!.structure);
 
-// The component is cross-origin, so a write also logs the preflight it answered with a 204:
-// counting every request matching the path counts that too.
 const postsTo = (player: FakePlayer, pattern: string) =>
 	requestsTo(player, pattern).filter((entry) => entry.method === "POST");
 
@@ -56,8 +54,7 @@ const listReads = (player: FakePlayer) =>
 // Anything a copy or a removal could have been built from, before it went out: a
 // read of the playlist collection, which is the only place an item count lives,
 // and any playlist write. A page of rows for the view on screen is neither, and
-// belongs to the list somebody is looking at rather than to the edit. Preflights
-// are the browser's own.
+// belongs to the list somebody is looking at rather than to the edit.
 const countReadsAndWritesBefore = (
 	player: FakePlayer,
 	request: RecordedRequest,
@@ -112,15 +109,11 @@ const addTo = async (
 };
 
 // How a copy was answered, which the request log cannot say: it holds what was asked of the
-// player and not what came back. The POST alone, since the browser's own preflight goes to the
-// same address.
+// player and not what came back.
 const copyStatuses = (page: Page) => {
 	const answered: number[] = [];
 	page.on("response", (response) => {
-		if (
-			response.request().method() === "POST" &&
-			response.url().includes("/items/copy")
-		)
+		if (response.url().includes("/items/copy"))
 			answered.push(response.status());
 	});
 	return answered;

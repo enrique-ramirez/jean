@@ -8,9 +8,8 @@ import type {
 	Page,
 } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
-import type { LibraryInfo } from "../../src/shared/api/types.ts";
+import { createServer, type FakeServer } from "../fake-api/agentServer.ts";
 import type { FooJeanOptions } from "../fake-api/fooJean.ts";
-import { createServer, type FakeServer } from "../fake-api/server.ts";
 import {
 	createState,
 	DEFAULT_PLAYLISTS,
@@ -33,12 +32,11 @@ interface JeanFixtures {
 	libraryShape: LibraryShape | null;
 	withoutPlaylists: boolean;
 	withoutFields: string[];
-	library: Partial<LibraryInfo>;
 	retagged: Record<string, Track>;
 	embeddedArt: Record<string, string>;
 	playlistsFromRow: Record<string, number>;
 	countsPlays: boolean;
-	fooJean: FooJeanOptions | null;
+	fooJean: FooJeanOptions;
 	fooJeanToken: string | null;
 	playerState: Partial<FakePlayerState> | null;
 	player: FakePlayer;
@@ -55,13 +53,12 @@ export const AS_A_CLIENT = {
 	headers: { Authorization: `Bearer ${FOO_JEAN_TOKEN}` },
 };
 
-// The component listens on its own port, discovered the way Jean itself discovers it, for a spec
-// that talks to it directly rather than through the app.
+// The component's own origin, for a spec that talks to it directly rather than through the app.
+// One server answers both now, so this is `baseURL` -- fetched rather than read off the config,
+// since a spec only ever holds an `APIRequestContext`.
 export const componentOrigin = async (request: APIRequestContext) => {
-	const { port } = await (
-		await request.get("/api/clientconfig/foo_jean")
-	).json();
-	return `http://localhost:${port}`;
+	const response = await request.get("/");
+	return new URL(response.url()).origin;
 };
 
 // The fixture that seeded a page's fake player, for a helper that only takes a
@@ -85,13 +82,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 		async ({}, use) => {
 			const server = createServer({ serveDir: DIST });
 			await new Promise<void>((resolve) => server.listen(0, () => resolve()));
-			// Listens for every test whether or not one asks for it; what makes the
-			// component absent is the discovery record beefweb serves.
-			await new Promise<void>((resolve) =>
-				server.agent.listen(0, () => resolve()),
-			);
 			await use(server);
-			await new Promise<void>((resolve) => server.agent.close(() => resolve()));
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		},
 		{ scope: "worker" },
@@ -108,8 +99,6 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 
 	withoutFields: [[], { option: true }],
 
-	library: [{}, { option: true }],
-
 	retagged: [{}, { option: true }],
 
 	embeddedArt: [{}, { option: true }],
@@ -121,9 +110,9 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 	// Defaults and the states each option can present are in `test/README.md`.
 	fooJean: [{}, { option: true }],
 
-	// Seeded into localStorage separately from `settings`, because the token may
-	// never travel through beefweb's clientconfig. `null` is a device that has
-	// never paired.
+	// Seeded into localStorage separately from `settings`, since a token is
+	// never something Jean's own settings sync carries. `null` is a device
+	// that has never paired.
 	fooJeanToken: [FOO_JEAN_TOKEN, { option: true }],
 
 	playerState: [null, { option: true }],
@@ -142,7 +131,6 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 			embeddedArt,
 			playlistsFromRow,
 			countsPlays,
-			library,
 			playerState,
 			fooJean,
 		},
@@ -166,7 +154,6 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 					embeddedArt,
 					playlistsFromRow,
 					countsPlays,
-					library,
 					player: playerState,
 					fooJean,
 				}),
@@ -457,7 +444,7 @@ export const requestsTo = (player: FakePlayer, pattern: string) =>
 
 const QUIET_MS = 250;
 
-const untilQuiet = async (player: FakePlayer) => {
+export const untilQuiet = async (player: FakePlayer) => {
 	let seen = -1;
 	await expect
 		.poll(
@@ -497,9 +484,6 @@ export const holdThePoll = async (page: Page) => {
 	await page.route(
 		(url) => url.pathname === "/api/state",
 		async (route) => {
-			// The browser's own preflight for the `Authorization` header, which
-			// carries no state and must not spend the tick being handed out.
-			if (route.request().method() !== "GET") return route.continue();
 			if (allowed > 0) {
 				allowed -= 1;
 				return route.continue();
@@ -527,18 +511,6 @@ export const holdThePoll = async (page: Page) => {
 		},
 	};
 };
-
-// beefweb addresses a cover by a playlist and a row. Its two other artwork
-// routes take no row, so the pattern tells them apart.
-const BEEFWEB_POSITIONAL_COVER = /^\/api\/artwork\/[^/?]+\/\d+$/;
-
-// Every cover asked for at beefweb's positional address. GETs alone, since a
-// preflight fetches no picture.
-export const coversFromBeefweb = (player: FakePlayer) =>
-	player.requests
-		.filter((entry) => entry.method === "GET")
-		.map((entry) => entry.path)
-		.filter((path) => BEEFWEB_POSITIONAL_COVER.test(path));
 
 // The component addresses a cover by the track's library path, so this is the
 // track each of its cover requests named. An empty string is a request that

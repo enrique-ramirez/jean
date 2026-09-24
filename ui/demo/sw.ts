@@ -2,7 +2,7 @@
 
 import { handleAgent } from "../test/fake-api/fooJean.ts";
 import type { RequestHeaders } from "../test/fake-api/http.ts";
-import { type ArtworkServer, handleApi } from "../test/fake-api/routes.ts";
+import type { ArtworkServer } from "../test/fake-api/routes.ts";
 import { createState } from "../test/fake-api/state.ts";
 import { withClock } from "./clock.ts";
 import { append, clear, type Entry, load } from "./journal.ts";
@@ -10,10 +10,6 @@ import { type CapturedLibrary, demoLibrary } from "./library.ts";
 import { answer } from "./responder.ts";
 
 declare const self: ServiceWorkerGlobalScope;
-
-// The port the component advertises. Nothing listens on it, but the app is
-// entitled to build a URL out of it, so it has to be a real port number.
-const AGENT_PORT = 8881;
 
 // beefweb refuses a body over 1 MiB by hanging up. `Response.error()` is that
 // same event in a browser: a network error rather than a status.
@@ -44,7 +40,6 @@ const build = (library: CapturedLibrary) => {
 			artworkOf: demo.artworkOf,
 			// Installed, listening and paired; see `demo/CLAUDE.md`.
 			fooJean: {
-				port: AGENT_PORT,
 				allowedFields: ["rating"],
 				canStream: false,
 			},
@@ -107,37 +102,21 @@ const artwork: ArtworkServer = async (
 	return true;
 };
 
-const isAgent = (url: URL) =>
-	url.hostname === self.location.hostname && url.port === String(AGENT_PORT);
-
 const dispatch = async (
 	player: NonNullable<typeof state>,
 	entry: Entry,
 	url: URL,
 ) => {
 	const { response } = answer();
-	if (isAgent(url))
-		await handleAgent({
-			state: player,
-			method: entry.method,
-			url,
-			headers: { host: self.location.host, origin: self.location.origin },
-			body: entry.body,
-			response,
-			artwork,
-		});
-	else
-		await handleApi({
-			state: player,
-			method: entry.method,
-			path: url.pathname,
-			url,
-			body: entry.body as Record<string, unknown>,
-			headers: {},
-			response,
-			agentPort: AGENT_PORT,
-			artwork,
-		});
+	await handleAgent({
+		state: player,
+		method: entry.method,
+		url,
+		headers: { host: self.location.host, origin: self.location.origin },
+		body: entry.body,
+		response,
+		artwork,
+	});
 };
 
 const start = async () => {
@@ -173,36 +152,16 @@ async function serve(request: Request, url: URL): Promise<Response> {
 
 	const { response, ready } = answer();
 
-	if (isAgent(url)) {
-		await handleAgent({
-			state: player,
-			method,
-			url,
-			headers: headersOf(request),
-			body,
-			response,
-			artwork,
-		});
-		return ready;
-	}
-
-	const handled = await handleApi({
+	await handleAgent({
 		state: player,
 		method,
-		path: url.pathname,
 		url,
-		body: body as Record<string, unknown>,
 		headers: headersOf(request),
+		body,
 		response,
-		agentPort: AGENT_PORT,
 		artwork,
 	});
-
-	if (handled) return ready;
-	return new Response(
-		JSON.stringify({ error: `no fake route for ${method} ${url.pathname}` }),
-		{ status: 404, headers: { "Content-Type": "application/json" } },
-	);
+	return ready;
 }
 
 async function control(url: URL): Promise<Response> {
@@ -236,7 +195,7 @@ self.addEventListener("fetch", (event) => {
 
 	// Everything else, including the artist lookup that is genuinely on the
 	// internet, goes to the network untouched.
-	if (!isAgent(url) && !(here && url.pathname.startsWith("/api/"))) return;
+	if (!here || !url.pathname.startsWith("/api/")) return;
 
 	event.respondWith(serve(event.request, url));
 });

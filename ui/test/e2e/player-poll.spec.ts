@@ -9,7 +9,6 @@ import {
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	coversByPosition,
-	coversFromBeefweb,
 	coversFromTheComponent,
 	expect,
 	expectPlayingFrom,
@@ -34,6 +33,7 @@ import {
 	touchDrag,
 	trackPlayed,
 	trackRow,
+	untilQuiet,
 	withNoListOnScreen,
 } from "./fixtures.ts";
 import { openPanels, panelTab } from "./nowPlaying.ts";
@@ -126,27 +126,20 @@ const TWO_RECORDS = {
 
 const PLAYING_COVER = "/api/artwork/playing";
 
-// Every request that asks for a cover, at all three addresses one is reachable
-// at: the component's playing cover, the component's by library path, and
-// beefweb's by row. Watching a single address would miss a picture asked for
-// again under another name, and that is the swap itself. GETs alone: an
-// `OPTIONS` preflight fetches no bytes and is not a picture being asked for.
+// Every request that asks for a cover, at both addresses one is reachable at:
+// the component's playing cover and the component's by library path. Watching a
+// single address would miss a picture asked for again under another name, and
+// that is the swap itself.
 const coversAskedFor = (player: FakePlayer) => [
-	...requestsTo(player, PLAYING_COVER)
-		.filter((one) => one.method === "GET")
-		.map((one) => routeOf(one.path)),
-	...coversFromBeefweb(player),
+	...requestsTo(player, PLAYING_COVER).map((one) => routeOf(one.path)),
 	...coversFromTheComponent(player),
 ];
 
-// A cover asked for at any address but the record's own: the playing route, beefweb's row, or the
-// component's row. A track whose record the media library holds uses none of the three, and the
-// positional one stays the fallback for a track it has no record for.
+// A cover asked for at any address but the record's own: the playing route or the component's
+// row. A track whose record the media library holds uses neither, and the positional one stays
+// the fallback for a track it has no record for.
 const coversAskedElsewhere = (player: FakePlayer) => [
-	...requestsTo(player, PLAYING_COVER)
-		.filter((one) => one.method === "GET")
-		.map((one) => routeOf(one.path)),
-	...coversFromBeefweb(player),
+	...requestsTo(player, PLAYING_COVER).map((one) => routeOf(one.path)),
 	...coversByPosition(player),
 ];
 
@@ -1276,9 +1269,7 @@ const holdTheFirstChangesRead = async (page: Page) => {
 	await page.route(
 		(url) => url.pathname.endsWith("/items/changes"),
 		async (route) => {
-			// The browser's own preflight for the `Authorization` header, which
-			// carries no rows and must not be the read this holds.
-			if (taken || route.request().method() !== "GET") return route.continue();
+			if (taken) return route.continue();
 			taken = true;
 
 			const response = await route.fetch();
@@ -1326,23 +1317,14 @@ test("shows both changes to a row where the second was made while the first was 
 const PLAYER_TOO_SLOW = 504;
 
 // A refusal the browser hands to the page as a status rather than as a network
-// failure. A fulfilled response is CORS-checked like any other, and the
-// component's port is not the page's, so without the origin back this case
-// would quietly become the one below it.
+// failure.
 const refuseWith = (status: number) => (route: Route) =>
-	route.fulfill({
-		status,
-		headers: {
-			"access-control-allow-origin": route.request().headers().origin ?? "",
-		},
-	});
+	route.fulfill({ status });
 
 // A wifi blip: the request leaves and nothing comes back.
 const dropTheConnection = (route: Route) => route.abort();
 
-// One changes read failed, and every read after it answered. The browser's own
-// preflight for the `Authorization` header is let through, since it carries no
-// rows and refusing it is a different failure.
+// One changes read failed, and every read after it answered.
 const failTheNextChangesRead = async (
 	page: Page,
 	refuse: (route: Route) => Promise<void>,
@@ -1356,7 +1338,7 @@ const failTheNextChangesRead = async (
 	await page.route(
 		(url) => url.pathname.endsWith("/items/changes"),
 		async (route) => {
-			if (taken || route.request().method() !== "GET") return route.continue();
+			if (taken) return route.continue();
 			taken = true;
 			await refuse(route);
 			failed();
@@ -2200,18 +2182,13 @@ test("a neighbour becoming the centre asks for no cover at all", async ({
 	// decoded and composited already.
 	await expect(drawnSlots(page)).toHaveCount(3);
 
-	// Three sleeves drawn means three covers fetched, and none of them at
-	// beefweb's positional address: Jean names a playlist by the GUID the
-	// component issues, which beefweb cannot resolve, so the neighbours come
-	// from the component by library path until 013.
-	//
-	// And this is the point the log may be thrown away at, which the centre
-	// decides rather than the neighbours. `expectSettlesAt` waits for the log to
-	// go quiet, and the centre's fetch is the one that lags: it goes through
+	// This is the point the log may be thrown away at, which the centre decides
+	// rather than the neighbours. `untilQuiet` waits for the log to go quiet, and
+	// the centre's fetch is the one that lags: it goes through
 	// `shared/ui/artworkQueue.ts`'s settle gate, while a neighbour's, drawn with
 	// no identity, goes straight out. A reset taken on a neighbour's sleeve lands
 	// while the centre's first fetch is still out and counts it below as a second.
-	await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+	await untilQuiet(player);
 	player.requests.length = 0;
 
 	await swipeToThePrevious(page);

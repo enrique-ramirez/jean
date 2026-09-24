@@ -12,22 +12,9 @@ type QueuedRead = ReturnType<FakeState["queuedEntries"]>[number];
 type OwnPlaylistRole = "scratch";
 
 export interface FooJeanOptions {
-	listening?: boolean;
-	error?: string;
-	portInUse?: boolean;
-	port?: number;
-
 	reachable?: boolean;
 
-	// A loaded machine or a phone at the edge of the wifi: how many `/api/status`
-	// probes answer only after the client has given up on them, with the fault
-	// gone by the next attempt.
-	slowStatus?: number;
-
 	name?: string;
-	// What answers on the advertised port, which is a different fact from what the
-	// record claims. The two disagreeing is what a forged record looks like.
-	agentName?: string;
 	version?: string;
 	apiVersion?: number;
 
@@ -163,9 +150,7 @@ export interface FooJeanOptions {
 	pairingError?: string;
 }
 
-export interface FooJeanFake extends Required<Omit<FooJeanOptions, "port">> {
-	port: number | null;
-	installed: boolean;
+export interface FooJeanFake extends Required<FooJeanOptions> {
 	ownPlaylists: Partial<Record<OwnPlaylistRole, string>>;
 	// Beefweb ids a control has locked against edits mid-test, consulted beside `isAuto`.
 	// `POST /__control/lockPlaylist` is the only way in or out of this set.
@@ -173,16 +158,9 @@ export interface FooJeanFake extends Required<Omit<FooJeanOptions, "port">> {
 }
 
 const DEFAULTS: FooJeanFake = {
-	installed: false,
 	ownPlaylists: {},
-	listening: true,
-	error: "",
-	portInUse: false,
-	port: null,
 	reachable: true,
-	slowStatus: 0,
 	name: "foo_jean",
-	agentName: "foo_jean",
 	version: "0.1.0",
 	apiVersion: 1,
 	token: "0123456789abcdef0123456789abcdef",
@@ -232,28 +210,12 @@ const DEFAULTS: FooJeanFake = {
 	lockedPlaylists: new Set(),
 };
 
-export const fooJeanState = (options: FooJeanOptions | null): FooJeanFake => ({
+export const fooJeanState = (options: FooJeanOptions): FooJeanFake => ({
 	...DEFAULTS,
-	installed: options !== null,
 	...options,
 	ownPlaylists: {},
 	lockedPlaylists: new Set(),
 });
-
-export const discoveryRecord = (fake: FooJeanFake, listeningPort: number) => {
-	if (!fake.installed) return null;
-	return {
-		name: fake.name,
-		version: fake.version,
-		apiVersion: fake.apiVersion,
-		port: fake.port ?? listeningPort,
-		authRequired: true,
-		listening: fake.listening,
-		...(fake.listening
-			? null
-			: { error: fake.error, portInUse: fake.portInUse }),
-	};
-};
 
 const one = (value: string | string[] | undefined) =>
 	(Array.isArray(value) ? value[0] : value) ?? "";
@@ -434,11 +396,6 @@ const applyTags = (
 };
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// How long a route that stalls before answering holds the socket for. Long
-// enough that no spec outlives it, short enough that the fake never keeps one
-// for good.
-const HELD_OPEN_MS = 8000;
 
 // How long the handler for a read that never answers waits for the client to go
 // away. Jean abandons that read 35 seconds later, which no spec can sit through,
@@ -1841,12 +1798,8 @@ export async function handleAgent({
 	}
 
 	if (path === "/api/status") {
-		if (fake.slowStatus > 0) {
-			fake.slowStatus -= 1;
-			if (await abandoned(response, HELD_OPEN_MS)) return true;
-		}
 		return json(response, {
-			name: fake.agentName,
+			name: fake.name,
 			version: fake.version,
 			apiVersion: fake.apiVersion,
 			authRequired: true,

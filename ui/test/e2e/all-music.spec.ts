@@ -220,14 +220,12 @@ test.describe("a beefweb permission that says nothing about playing a library se
 		playerState: {
 			permissions: {
 				changeOutput: true,
-				changeClientConfig: true,
 			},
 		},
 	});
 
-	// The scratch playlist these two fill is the component's own, made and
-	// filled over its own port, so beefweb's permission has nothing to say about
-	// playing a library set.
+	// The scratch playlist these two fill is the component's own, so beefweb's
+	// permission has nothing to say about playing a library set.
 	test("all music keeps Play and Shuffle", async ({ page }) => {
 		await page.goto("/#/all");
 		await expect(
@@ -244,13 +242,13 @@ test.describe("a beefweb permission that says nothing about playing a library se
 	});
 });
 
-test.describe("a player with no foo_jean on it at all", () => {
-	test.use({ fooJean: null });
+test.describe("a component that is not answering", () => {
+	test.use({ fooJean: { reachable: false } });
 
 	// The other half of the same question. Play and Shuffle wait on the
-	// component being reachable rather than on beefweb, so with no component
-	// there is nothing to fill a playlist from and no set to play. A build that
-	// dropped the gate instead of moving it draws both here.
+	// component being reachable rather than on beefweb, so with nothing
+	// answering there is nothing to fill a playlist from and no set to play. A
+	// build that dropped the gate instead of moving it draws both here.
 	test("all music offers neither Play nor Shuffle", async ({ page }) => {
 		await page.goto("/#/all");
 		await expect(

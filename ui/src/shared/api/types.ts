@@ -54,7 +54,6 @@ export interface PlayerInfo {
 
 export interface Permissions {
 	changeOutput: boolean;
-	changeClientConfig: boolean;
 }
 
 export interface PlayerState {

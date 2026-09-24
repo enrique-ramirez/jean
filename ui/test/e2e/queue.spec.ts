@@ -4,7 +4,6 @@ import {
 	AS_A_CLIENT,
 	componentOrigin,
 	coversByPosition,
-	coversFromBeefweb,
 	coversFromTheComponent,
 	dragFrom,
 	expect,
@@ -22,6 +21,7 @@ import {
 	test,
 	touchDrag,
 	trackRow,
+	untilQuiet,
 	withNoListOnScreen,
 } from "./fixtures.ts";
 
@@ -919,13 +919,10 @@ test.describe("what the player does with it", () => {
 		const [queued] = queuedTitles(player);
 		expect(player.playQueue[0].itemIndex).toBe(4);
 
-		await page.evaluate(() =>
-			fetch("/api/playlists/p7/items/remove", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ items: [0] }),
-			}),
-		);
+		const removed = await page.request.post("/__control/removeItems", {
+			data: { playlistId: "p7", items: [0] },
+		});
+		expect(removed.status()).toBe(204);
 
 		await expect
 			.poll(() => player.playQueue[0]?.itemIndex, { timeout: 5000 })
@@ -1161,7 +1158,6 @@ test.describe("a player whose beefweb permissions say nothing about queueing a l
 		playerState: {
 			permissions: {
 				changeOutput: true,
-				changeClientConfig: true,
 			},
 		},
 	});
@@ -1831,7 +1827,6 @@ test.describe("the cover on a queued row", () => {
 			[ITS_COVER],
 		);
 		expect(coversByPosition(player)).toEqual([]);
-		await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 	});
 
 	// A file in a playlist that the media library has never seen:
@@ -1873,7 +1868,7 @@ test.describe("the cover on a queued row", () => {
 			await expect
 				.poll(() => coversByPosition(player))
 				.toContain(`${guidOfPlaylist(player, "p2")}/${ROW}`);
-			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+			await untilQuiet(player);
 			expect(coversFromTheComponent(player)).not.toContain("");
 		});
 
@@ -1901,7 +1896,7 @@ test.describe("the cover on a queued row", () => {
 			expect(queuePositions(player)).toEqual([null]);
 			expect(libraryPathOfQueued(player, 0)).toBeNull();
 
-			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+			await untilQuiet(player);
 			expect(
 				coversByPosition(player),
 				"a position was invented for a row the player has none for",

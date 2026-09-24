@@ -148,7 +148,6 @@ const held = (over: Partial<PlayerState> = {}): PlayerState => ({
 	},
 	permissions: {
 		changeOutput: true,
-		changeClientConfig: true,
 	},
 	jeanPlaybackMode: "repeatOne",
 	playbackState: "stopped",
@@ -414,7 +413,6 @@ test("a tick draws the player's name, the fader's range and what the install per
 	});
 	assert.deepEqual(player?.permissions, {
 		changeOutput: false,
-		changeClientConfig: true,
 	});
 	assert.equal(player?.info.name, "foobar2000");
 	assert.equal(player?.info.version, "2.24.5");
@@ -462,7 +460,6 @@ test("a tick overwrites everything its document speaks for, whoever put the prev
 	});
 	assert.deepEqual(player?.permissions, {
 		changeOutput: false,
-		changeClientConfig: true,
 	});
 });
 
@@ -536,6 +533,5 @@ test("a tick before capabilities have landed reports the level with no range to 
 	assert.equal(volumePercent(player?.volume), 0);
 	assert.deepEqual(player?.permissions, {
 		changeOutput: true,
-		changeClientConfig: true,
 	});
 });

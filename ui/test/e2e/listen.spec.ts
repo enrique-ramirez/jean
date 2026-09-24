@@ -133,26 +133,31 @@ test.describe("where the picker sits", () => {
 	});
 });
 
-// A phone at the edge of a house answers the cross-origin probe slowly, and a
-// probe cached as unreachable takes the whole picker away -- `ListenHere`
-// renders nothing at all when the component is not ready, so there is not even a
-// button left to press. Settings has a "Check again"; the footer is where
-// somebody actually is.
-test.describe("a probe that is slower than the timeout", () => {
-	test.use({
-		fooJean: { slowStatus: 1 },
-		fooJeanToken: FOO_JEAN_TOKEN,
-	});
-	test.setTimeout(90_000);
+// A check cached as unreachable takes the whole picker away -- `ListenHere`
+// renders nothing at all when the component is not ready, so there is not
+// even a button left to press. Settings has a "Check again"; the footer is
+// where somebody actually is.
+test.describe("a first check that times out", () => {
+	test.use({ fooJeanToken: FOO_JEAN_TOKEN });
 
 	test("the picker turns up on its own, with nothing pressed in Settings", async ({
 		page,
 	}) => {
+		let refused = 0;
+		await page.route(
+			(url) => url.pathname === "/api/capabilities",
+			(route) => {
+				if (refused > 0) return route.continue();
+				refused += 1;
+				return route.abort("timedout");
+			},
+		);
 		await page.goto("/");
 
-		await expect(listenButton(page)).toBeVisible({ timeout: 60_000 });
+		await expect(listenButton(page)).toBeVisible();
 		await listenButton(page).click();
 		await expect(thisDevice(page)).toBeVisible();
+		expect(refused).toBe(1);
 	});
 });
 
@@ -232,22 +237,6 @@ test.describe("listening on this device", () => {
 		await thisDevice(page).click();
 		await expect.poll(() => currentTime(page)).toBe(0);
 		await expect(picker(page)).toContainText("Listen here");
-	});
-
-	test("the toggle is this device's alone", async ({ page, player }) => {
-		await page.goto("/");
-		await startListening(page);
-		await expectSettlesAt(player, () => ticketRequests(player).length, 1);
-
-		// Nothing about listening may reach the player's own settings namespace.
-		await expectSettlesAt(
-			player,
-			() =>
-				requestsTo(player, "/api/clientconfig").filter(
-					(entry) => entry.method === "POST",
-				),
-			[],
-		);
 	});
 
 	test("no ticket and no token appears in a URL", async ({ page, player }) => {
@@ -381,10 +370,10 @@ test.describe("the picker on the now-playing screen", () => {
 	});
 });
 
-test.describe("with no component at all", () => {
-	test.use({ fooJean: null, fooJeanToken: null });
+test.describe("a component that is not answering", () => {
+	test.use({ fooJean: { reachable: false }, fooJeanToken: FOO_JEAN_TOKEN });
 
-	test("is exactly the app it was before", async ({ page }) => {
+	test("offers nothing to listen with", async ({ page }) => {
 		await page.goto("/");
 		await expect(statusBar(page)).toBeVisible();
 		await expect(listenButton(page)).toHaveCount(0);

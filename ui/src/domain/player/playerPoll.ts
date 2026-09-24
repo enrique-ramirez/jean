@@ -62,7 +62,6 @@ function mergePlayer(
 				capabilities?.canChangeOutput ??
 				previous?.permissions.changeOutput ??
 				true,
-			changeClientConfig: previous?.permissions.changeClientConfig ?? true,
 		},
 		jeanPlaybackMode: doc.playbackMode,
 		playbackState: doc.playback,

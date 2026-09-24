@@ -6,8 +6,8 @@ import { defineConfig, devices } from "@playwright/test";
 const LIVE = process.env.LIVE;
 
 // Tests run against a production build served by the fake player, because that is the shape
-// beefweb deploys: one origin serving both the app and /api. A dev server with a proxy in
-// front of it would test an arrangement that only exists locally.
+// the component itself deploys: one origin serving both the app and /api. A dev server with a
+// proxy in front of it would test an arrangement that only exists locally.
 export default defineConfig({
 	testDir: "./test/e2e",
 	globalSetup: LIVE ? undefined : "./test/e2e/build.ts",

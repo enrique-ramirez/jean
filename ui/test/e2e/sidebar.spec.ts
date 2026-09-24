@@ -108,12 +108,7 @@ const queueAskedBefore = (player: FakePlayer, request: RecordedRequest) =>
 // network. A write is Jean taking somebody's queue apart.
 const queueWrites = (player: FakePlayer) =>
 	player.requests
-		.filter(
-			(one) =>
-				one.path.startsWith("/api/queue") &&
-				one.method !== "GET" &&
-				one.method !== "OPTIONS",
-		)
+		.filter((one) => one.path.startsWith("/api/queue") && one.method !== "GET")
 		.map((one) => `${one.method} ${one.path}`);
 
 // The playlists the sidebar draws, in the order it draws them. A reorder Jean made

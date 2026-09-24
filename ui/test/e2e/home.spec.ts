@@ -285,13 +285,12 @@ test.describe("a front door where a beefweb permission says nothing about playin
 		playerState: {
 			permissions: {
 				changeOutput: true,
-				changeClientConfig: true,
 			},
 		},
 	});
 
-	// Both buttons fill the component's own scratch playlist over its own port,
-	// so beefweb's permission has nothing to say about either of them.
+	// Both buttons fill the component's own scratch playlist, so beefweb's
+	// permission has nothing to say about either of them.
 	test("Play and Shuffle are both still offered", async ({ page }) => {
 		await page.goto("/");
 		const head = viewHeader(page);

@@ -40,7 +40,6 @@
     }
   ],
   "permissions": {
-    "changeClientConfig": true,
     "changeOutput": true,
     "changePlaylists": true
   },

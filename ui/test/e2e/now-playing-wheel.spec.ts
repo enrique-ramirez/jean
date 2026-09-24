@@ -1,7 +1,6 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	coversByPosition,
-	coversFromBeefweb,
 	coversFromTheComponent,
 	expect,
 	expectSettlesAt,
@@ -16,6 +15,7 @@ import {
 	test,
 	touchDrag,
 	trackRow,
+	untilQuiet,
 	withNoListOnScreen,
 } from "./fixtures.ts";
 import { playRow } from "./nowPlaying.ts";
@@ -388,7 +388,6 @@ test.describe("the sleeves either side of the playing row", () => {
 		expect(coversFromTheComponent(player)).not.toContain(
 			libraryPathOfRow(player, "p7", PLAYING.row + 1),
 		);
-		await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 	});
 
 	// A playlist of files the media library has never seen: the
@@ -444,7 +443,7 @@ test.describe("the sleeves either side of the playing row", () => {
 					]),
 				);
 
-			await expectSettlesAt(player, () => coversFromBeefweb(player), []);
+			await untilQuiet(player);
 			expect(coversFromTheComponent(player)).not.toContain("");
 		});
 	});

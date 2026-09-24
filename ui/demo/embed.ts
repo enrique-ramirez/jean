@@ -1,8 +1,6 @@
 import {
-	fetchDiscoveryRecord,
 	fetchPlaylistAnnotations,
 	fetchState,
-	originOfPort,
 	playPlaylistItem,
 	TOKEN_KEY,
 } from "../src/shared/api/fooJean";
@@ -39,11 +37,6 @@ export const applySettings = (params: URLSearchParams) => {
 const SEED_PLAYLIST = "Library";
 const SEED_POSITION_SECONDS = 47;
 
-const agentOrigin = async () => {
-	const record = await fetchDiscoveryRecord().catch(() => null);
-	return record ? originOfPort(record.port) : null;
-};
-
 const demoToken = (): string | null => {
 	const raw = localStorage.getItem(TOKEN_KEY);
 	if (!raw) return null;
@@ -55,9 +48,9 @@ const demoToken = (): string | null => {
 };
 
 export const seedPlayback = async () => {
-	const origin = await agentOrigin();
+	const origin = window.location.origin;
 	const token = demoToken();
-	if (!origin || !token) return;
+	if (!token) return;
 
 	const state = await fetchState(origin, token, null);
 	if (

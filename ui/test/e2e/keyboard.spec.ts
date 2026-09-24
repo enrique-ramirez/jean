@@ -6,6 +6,7 @@ import {
 	expectTheScreenIsStillOpen,
 	FOO_JEAN_TOKEN,
 	inSequence,
+	listenHere,
 	nowPlayingScreen,
 	openAllMusic,
 	openLibrary,
@@ -226,23 +227,34 @@ test.describe("a transport command, as the component sees it", () => {
 			});
 	});
 
-	// The component answers a preflight with a 600 second `Access-Control-Max-Age`,
-	// so only the first press in a session pays the extra round trip.
-	test("the first command is preflighted and the second is not", async ({
-		page,
-		player,
-	}) => {
-		const route = "/api/playback/play-pause";
+	test.describe("across a whole session", () => {
+		// Row 0 on foobar2000's own scale, so the digit has a track it may write.
+		test.use({ retagged: { "Los Calientes": { "%rating%": "0" } } });
 
-		await page.keyboard.press("Space");
-		await expect.poll(() => commandsTo(player, route)).toHaveLength(1);
-		await page.keyboard.press("Space");
+		// Every step waits on the player having acted, so an empty log is a session that reached the
+		// component and never paid a preflight, rather than one that sent nothing at all.
+		test("no request is ever preflighted", async ({ page, player }) => {
+			await trackRow(page, 0).dblclick();
+			await expect.poll(() => player.player.playbackState).toBe("playing");
 
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, route).map((entry) => entry.method),
-			["OPTIONS", "POST", "POST"],
-		);
+			await page.keyboard.press("4");
+			await expect.poll(() => commandsTo(player, "/api/tags")).toHaveLength(1);
+
+			await trackRow(page, 0).click({ button: "right" });
+			await page.getByRole("menuitem", { name: "Add to queue" }).click();
+			await expect.poll(() => player.playQueue.length).toBe(1);
+
+			await listenHere(page);
+
+			await expectSettlesAt(
+				player,
+				() =>
+					player.requests
+						.filter((entry) => entry.method === "OPTIONS")
+						.map((entry) => entry.path),
+				[],
+			);
+		});
 	});
 });
 

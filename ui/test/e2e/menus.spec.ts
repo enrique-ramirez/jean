@@ -388,15 +388,14 @@ test.describe("a player whose beefweb permissions say nothing about filing a tra
 		playerState: {
 			permissions: {
 				changeOutput: true,
-				changeClientConfig: true,
 			},
 		},
 	});
 
 	// beefweb's own permission is not what gates an edit. Filing a row goes to
-	// foo_jean over its own port, so the item carries no reason: the only setting
-	// that can refuse it is the player owner's, held by the component, and this
-	// install has not set it.
+	// foo_jean, so the item carries no reason: the only setting that can refuse
+	// it is the player owner's, held by the component, and this install has not
+	// set it.
 	test("the row menu still offers somewhere to file a track", async ({
 		page,
 		isMobile,

@@ -71,24 +71,10 @@ test.describe("pairing a device", () => {
 		expect(pairRequests(player)[0].body).toEqual({ name: "Living room TV" });
 	});
 
-	test("the token never reaches the player's own settings namespace", async ({
-		page,
-		player,
-	}) => {
+	test("the token never travels in an address", async ({ page, player }) => {
 		await openSettings(page);
 		await pairButton(page).click();
 		await expect(settingsDialog(page)).toContainText("Connected");
-
-		// beefweb serves clientconfig unauthenticated, so syncing the credential
-		// through it would recreate the escalation the credential prevents.
-		await expectSettlesAt(
-			player,
-			() =>
-				requestsTo(player, "/api/clientconfig").filter(
-					(entry) => entry.method === "POST",
-				),
-			[],
-		);
 
 		for (const entry of player.requests)
 			expect(entry.path).not.toContain(FOO_JEAN_TOKEN);
@@ -178,72 +164,62 @@ test.describe("too many attempts", () => {
 	});
 });
 
-test.describe("with no component at all", () => {
-	test.use({ fooJean: null });
+test.describe("a check that fails once", () => {
+	test.use({ fooJeanToken: FOO_JEAN_TOKEN });
 
-	test("there is nothing to pair with and nothing is offered", async ({
-		page,
-	}) => {
+	test("recovers on its own", async ({ page }) => {
+		let refused = 0;
+		await page.route(
+			(url) => url.pathname === "/api/capabilities",
+			(route) => {
+				if (refused > 0) return route.continue();
+				refused += 1;
+				return route.abort("timedout");
+			},
+		);
+
 		await openSettings(page);
 
-		await expect(settingsDialog(page)).toContainText("Not installed");
-		await expect(pairButton(page)).toHaveCount(0);
-	});
-
-	// Absent is the component's own answer, so it is asked once. A poll here would
-	// be a request every few seconds, for the life of every tab, on every install
-	// that does not have the component -- which is most of them.
-	test("and the answer is not asked for again", async ({ page, player }) => {
-		await openSettings(page);
-		await expect(settingsDialog(page)).toContainText("Not installed");
-
-		await page.waitForTimeout(8000);
-		expect(requestsTo(player, "/api/clientconfig/foo_jean")).toHaveLength(1);
-		expect(requestsTo(player, "/api/status")).toEqual([]);
-	});
-});
-
-test.describe("a probe that times out once", () => {
-	// Installed, running, reachable -- and the first `/api/status` answers only
-	// after this device has given up on it.
-	test.use({ fooJean: { slowStatus: 1 }, fooJeanToken: FOO_JEAN_TOKEN });
-
-	test("recovers on its own rather than reading as not installed", async ({
-		page,
-	}) => {
-		await openSettings(page);
-
-		// Nothing here presses "Check again": a timeout must not cost the session
-		// its component.
+		// Nothing here presses "Check again": one lost answer must not cost the session its component.
 		await expect(settingsDialog(page)).toContainText("Connected to foo_jean", {
 			timeout: 30_000,
 		});
-		await expect(settingsDialog(page)).not.toContainText("Not installed");
+		expect(refused).toBe(1);
 	});
 });
 
-test.describe("a component that is advertised but unreachable", () => {
-	// The port never answered `/api/status`, so it was never proven to be
-	// foo_jean, and the advertisement that named it is forgeable.
-	test.use({ fooJean: { reachable: false } });
+test.describe("a device that already holds a token", () => {
+	test.use({ fooJeanToken: FOO_JEAN_TOKEN });
 
-	test("is not offered a pair button either", async ({ page }) => {
+	// The page and the component share an origin, so nothing is left to vouch for before the token
+	// goes: the very first call carries it.
+	test("sends it on the first request, with no unauthenticated status check before", async ({
+		page,
+	}) => {
+		const sent: Promise<{ path: string; authorization?: string }>[] = [];
+		page.on("request", (request) => {
+			const { pathname } = new URL(request.url());
+			if (!pathname.startsWith("/api/")) return;
+			sent.push(
+				request.allHeaders().then((headers) => ({
+					path: pathname,
+					authorization: headers.authorization,
+				})),
+			);
+		});
+
 		await openSettings(page);
+		await expect(settingsDialog(page)).toContainText("Connected to foo_jean");
 
-		await expect(settingsDialog(page)).toContainText("cannot reach it");
-		await expect(pairButton(page)).toHaveCount(0);
-	});
-});
-
-test.describe("something else answering on the advertised port", () => {
-	test.use({ fooJean: { agentName: "not_foo_jean" } });
-
-	test("is never posted to", async ({ page, player }) => {
-		await openSettings(page);
-
-		await expect(settingsDialog(page)).toContainText("is not foo_jean");
-		await expect(pairButton(page)).toHaveCount(0);
-		await expectSettlesAt(player, () => pairRequests(player), []);
+		const seen = await Promise.all(sent);
+		expect(seen[0]).toMatchObject({
+			authorization: `Bearer ${FOO_JEAN_TOKEN}`,
+		});
+		expect(
+			seen.filter(
+				(one) => one.path === "/api/status" && one.authorization === undefined,
+			),
+		).toEqual([]);
 	});
 });
 
@@ -254,7 +230,7 @@ test.describe("a token the component stops accepting", () => {
 	test.use({ fooJeanToken: FOO_JEAN_TOKEN });
 
 	const probes = (player: FakePlayer) =>
-		requestsTo(player, "/api/clientconfig").filter(
+		requestsTo(player, "/api/capabilities").filter(
 			(entry) => entry.method === "GET",
 		).length;
 
@@ -286,10 +262,7 @@ test.describe("a token the component stops accepting", () => {
 			(route) =>
 				route.fulfill({
 					status: 401,
-					headers: {
-						"Access-Control-Allow-Origin": new URL(page.url()).origin,
-						"Content-Type": "application/json",
-					},
+					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ error: "authentication required" }),
 				}),
 		);
@@ -577,7 +550,9 @@ test.describe("a component that cannot be reached, at the transport", () => {
 		const before = structuredClone(player.player);
 
 		await openSettings(page);
-		await expect(settingsDialog(page)).toContainText("cannot reach it");
+		await expect(settingsDialog(page)).toContainText(
+			"foo_jean is not answering right now.",
+		);
 		await page.keyboard.press("Escape");
 		await expect(settingsDialog(page)).toBeHidden();
 

@@ -885,7 +885,10 @@ test.describe("what the panels say while a track plays", () => {
 		player,
 		isMobile,
 	}) => {
-		await page.route("**/api/clientconfig/foo_jean", () => {});
+		await page.route(
+			(url) => url.pathname === "/api/capabilities",
+			() => {},
+		);
 		player.playItem(player.playlists[0].id, 0);
 
 		await page.goto("/#/playing/details");

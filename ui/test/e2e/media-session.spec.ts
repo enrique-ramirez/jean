@@ -1,7 +1,5 @@
 import {
-	coversFromBeefweb,
 	expect,
-	expectSettlesAt,
 	FOO_JEAN_TOKEN,
 	listenHere,
 	openLibrary,
@@ -139,8 +137,6 @@ test.describe("the media session", () => {
 				isEncoded: true,
 				movedOn: true,
 			});
-
-		await expectSettlesAt(player, () => coversFromBeefweb(player), []);
 	});
 
 	test("follows the player's transport", async ({ page }) => {

@@ -807,16 +807,15 @@ test.describe("a beefweb permission that says nothing about playing a search res
 		playerState: {
 			permissions: {
 				changeOutput: true,
-				changeClientConfig: true,
 			},
 		},
 	});
 
-	// The scratch playlist is the component's own plumbing, made and filled over
-	// its own port, so beefweb's permission governs none of it. The fake honours
-	// no beefweb permission either, so a result that plays is not on its own
-	// proof that Jean stopped asking beefweb for the playlist to play it from:
-	// what the traffic says it asked for is.
+	// The scratch playlist is the component's own plumbing, so beefweb's
+	// permission governs none of it. The fake honours no beefweb permission
+	// either, so a result that plays is not on its own proof that Jean stopped
+	// asking beefweb for the playlist to play it from: what the traffic says it
+	// asked for is.
 	test("a result plays, and nothing beefweb could refuse is sent", async ({
 		page,
 		player,

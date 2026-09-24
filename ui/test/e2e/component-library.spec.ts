@@ -21,9 +21,8 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// `foo_jean` answers the whole library as one binary snapshot, on its own port and so across a real
-// origin boundary, preflight and all. It is the only source there is: beefweb's own library API must
-// go unread whatever the component says.
+// `foo_jean` answers the whole library as one binary snapshot. It is the only source there is:
+// beefweb's own library API must go unread whatever the component says.
 
 const exportsAsked = (player: FakePlayer) =>
 	requestsTo(player, "/api/library/export").filter(
@@ -87,8 +86,6 @@ const titlesIn = (player: FakePlayer, title: string) =>
 	player.playlists
 		.find((entry) => entry.title === title)!
 		.items.map((track) => track["%title%"]);
-
-test.use({ library: { supported: true, enabled: true } });
 
 const openAllMusic = async (page: Page) => {
 	await page.goto("/#/all");

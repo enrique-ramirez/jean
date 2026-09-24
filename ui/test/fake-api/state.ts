@@ -1,6 +1,5 @@
 import type {
 	ActiveItem,
-	LibraryInfo,
 	Permissions,
 	PlaybackState,
 	PlaylistInfo,
@@ -346,11 +345,6 @@ export const compareText = (a: unknown, b: unknown) =>
 const byLibraryPath = (a: LibraryEntry, b: LibraryEntry) =>
 	compareText(pathKey(a.path), pathKey(b.path)) || a.subsong - b.subsong;
 
-const browseOrder = (a: Track, b: Track) =>
-	compareText(evaluate(a, "%album artist%"), evaluate(b, "%album artist%")) ||
-	compareText(evaluate(a, "%album%"), evaluate(b, "%album%")) ||
-	compareText(evaluate(a, "%tracknumber%"), evaluate(b, "%tracknumber%"));
-
 export function createState({
 	playlists = DEFAULT_PLAYLISTS(),
 	player,
@@ -358,11 +352,10 @@ export function createState({
 	mediaLibrarySize,
 	mediaLibrary,
 	withoutFields = [],
-	library = {},
 	retagged = {},
 	embeddedArt = {},
 	playlistsFromRow = {},
-	fooJean = null,
+	fooJean = { reachable: false },
 	artworkOf = null,
 	countsPlays = false,
 }: {
@@ -374,11 +367,10 @@ export function createState({
 	mediaLibrarySize?: number | null;
 	mediaLibrary?: Track[] | null;
 	withoutFields?: string[];
-	library?: Partial<LibraryInfo>;
 	retagged?: Record<string, Track>;
 	embeddedArt?: Record<string, string>;
 	playlistsFromRow?: Record<string, number>;
-	fooJean?: FooJeanOptions | null;
+	fooJean?: FooJeanOptions;
 	artworkOf?: ((track: Track) => string | null) | null;
 	countsPlays?: boolean | null;
 } = {}) {
@@ -452,7 +444,6 @@ export function createState({
 			...player,
 		},
 		playQueue: [] as QueuedEntry[],
-		library: { supported: true, enabled: true, ...library },
 		latency: 0,
 		skipGapMs: 0,
 		requests: [] as RecordedRequest[],
@@ -904,7 +895,6 @@ export function createState({
 			return playlistsRevision;
 		},
 		queuedEntries,
-		library: state.library,
 		fooJean: fake,
 		// Which `?format=` each stream was opened with, in order; `requests` records
 		// paths without their query.
@@ -1241,18 +1231,6 @@ export function createState({
 			notify({ playlists: true });
 		},
 
-		libraryInfo() {
-			const { supported, enabled } = state.library;
-			return {
-				library: {
-					supported,
-					enabled,
-					itemCount:
-						supported && enabled ? libraryItemsOf(libraryTracks).length : 0,
-				},
-			};
-		},
-
 		libraryExport(): Uint8Array<ArrayBuffer> {
 			const built = buildLibrary();
 			return encodeJlib({
@@ -1270,168 +1248,6 @@ export function createState({
 		countPlay,
 
 		libraryChanges,
-
-		libraryItemsPayload({
-			offset,
-			count,
-			expressions,
-			sort,
-			desc,
-		}: {
-			offset: number;
-			count: number | null;
-			expressions: string[];
-			sort?: string | null;
-			desc?: boolean;
-		}) {
-			const items = libraryItemsOf(libraryTracks);
-
-			if (sort && sort !== "%path%") {
-				const key = (entry: LibraryEntry) => evaluate(entry.track, sort);
-				items.sort((a, b) => compareText(pathKey(key(a)), pathKey(key(b))));
-			} else items.sort(byLibraryPath);
-			if (desc) items.reverse();
-
-			const page =
-				count === null
-					? items.slice(offset)
-					: items.slice(offset, offset + count);
-			return {
-				libraryItems: {
-					offset,
-					totalCount: items.length,
-					items: page.map((entry) => ({
-						path: entry.path,
-						subsong: entry.subsong,
-						columns: columnsFor(entry.track, expressions),
-					})),
-				},
-			};
-		},
-
-		libraryNodesPayload({
-			path,
-			offset,
-			count,
-			expressions,
-		}: {
-			path?: string | null;
-			offset: number;
-			count: number | null;
-			expressions: string[];
-		}) {
-			const prefix = path ? `${path}/` : "";
-			const under = libraryItemsOf(libraryTracks).filter((entry) =>
-				entry.path.startsWith(prefix),
-			);
-			if (path && under.length === 0) return null;
-
-			const folders = new Map<string, number>();
-			const tracks: { entry: LibraryEntry; name: string }[] = [];
-
-			for (const entry of under) {
-				const rest = entry.path.slice(prefix.length);
-				const cut = rest.indexOf("/");
-				if (cut < 0) {
-					tracks.push({ entry, name: rest });
-				} else {
-					const name = rest.slice(0, cut);
-					folders.set(name, (folders.get(name) ?? 0) + 1);
-				}
-			}
-
-			const byName = (a: { name: string }, b: { name: string }) =>
-				a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-			const items = [
-				...[...folders]
-					.map(([name, itemCount]) => ({
-						type: "D",
-						name,
-						path: `${prefix}${name}`,
-						itemCount,
-					}))
-					.sort(byName),
-				...tracks
-					.map(({ entry, name }) => ({
-						type: "F",
-						name,
-						path: entry.path,
-						subsong: entry.subsong,
-						columns: columnsFor(entry.track, expressions),
-					}))
-					.sort(byName),
-			];
-
-			const page =
-				count === null
-					? items.slice(offset)
-					: items.slice(offset, offset + count);
-			const payload: {
-				offset: number;
-				totalCount: number;
-				path: string;
-				items: unknown[];
-				parentPath?: string;
-			} = { offset, totalCount: items.length, path: path ?? "", items: page };
-			// Absent at the top level, present everywhere else -- the client uses its
-			// absence to know it cannot navigate up.
-			if (path) payload.parentPath = path.split("/").slice(0, -1).join("/");
-			return { libraryNodes: payload };
-		},
-
-		addFromLibrary(
-			playlistId: string,
-			{
-				items,
-				index,
-				replace,
-				play,
-			}: {
-				items?: { path: string; subsong?: number }[];
-				index?: number;
-				replace?: boolean;
-				play?: boolean;
-			},
-		) {
-			const playlist = byId(playlistId);
-			if (!playlist) return false;
-			if (playlist.isAuto) return true;
-
-			const addressOf = (path: string, subsong = 0) =>
-				`${path}\u0000${subsong}`;
-			const known = new Map(
-				libraryItemsOf(libraryTracks).map((entry) => [
-					addressOf(entry.path, entry.subsong),
-					entry,
-				]),
-			);
-			const chosen = (
-				items ??
-				[...known.values()].map((entry) => ({
-					path: entry.path,
-					subsong: entry.subsong,
-				}))
-			)
-				.map((ref) => known.get(addressOf(ref.path, ref.subsong)))
-				.filter((entry) => entry !== undefined)
-				.sort((a, b) => browseOrder(a.track, b.track))
-				.map((entry) => entry.track);
-
-			const at =
-				index !== undefined && Number.isInteger(index)
-					? index
-					: replace
-						? 0
-						: playlist.items.length;
-			editItems(playlist, () => {
-				if (replace) playlist.items = [];
-				playlist.items.splice(at, 0, ...chosen);
-			});
-
-			notify({ playlists: true });
-			if (play && chosen.length > 0) setActive(playlist, at, "playing");
-			return true;
-		},
 
 		sortItems(
 			playlistId: string,

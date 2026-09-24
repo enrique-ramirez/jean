@@ -18,11 +18,11 @@ pnpm test:e2e --project=desktop -g "double-clicking"   # one test
 
 `locales.test.ts` checks every translation in `public/locales/` against the English catalogue: unknown keys, plural forms, and fields the English does not carry. Nothing in a browser can see any of that: a wrong key falls back to English silently and a wrong field renders as `{prot}` on a screen nobody has opened.
 
-`pnpm test:e2e` builds first. `globalSetup` in `playwright.config.ts` runs `test/e2e/build.ts`, which is `vite build` alone, and serves that build from the fake, since that is beefweb's arrangement: one origin answering both the app and `/api`. There is no `webServer` block; the fake is a worker fixture and `baseURL` is set per worker to the port it landed on.
+`pnpm test:e2e` builds first. `globalSetup` in `playwright.config.ts` runs `test/e2e/build.ts`, which is `vite build` alone, and serves that build from the fake, since that is the component's own arrangement: one origin answering both the app and `/api`. There is no `webServer` block; the fake is a worker fixture and `baseURL` is set per worker to the port it landed on.
 
 Both projects, `desktop` and `mobile` (Pixel 7, touch on), run every spec. Skip explicitly when a gesture has no equivalent on the other surface, and say why.
 
-**The component is installed, listening and paired by default**, because it is what answers the library and a run without it has no music at all. A spec that wants a device that has never paired sets `fooJeanToken: null`; one that wants no component sets `fooJean: null`. Both are states the app has to draw, and neither is the state most of the suite is about.
+**The component is installed and paired by default**, because it is what answers the library and a run without it has no music at all. A spec that wants a device that has never paired sets `fooJeanToken: null`; one that wants no component sets `fooJean: { reachable: false }`. Both are states the app has to draw, and neither is the state most of the suite is about.
 
 ## Touch gestures
 
@@ -32,20 +32,20 @@ Two things it does that are not optional. **Every point carries a timestamp**: `
 
 ## The fake player
 
-`test/fake-api/` is a small in-memory foobar2000. It implements the routes the app uses, holds real playlists, and pushes SSE the way beefweb does: a full snapshot of whatever was subscribed to on connect, then only the keys that changed, and **never on a timer**. Position advances in the app's own interpolation, so a test depending on the fake ticking would be testing behaviour the real player does not have.
+`test/fake-api/` is a small in-memory foobar2000. It implements the routes the app uses and holds real playlists. Position advances in the app's own interpolation, so a test depending on the fake ticking would be testing behaviour the real player does not have.
 
 Run it alone to develop with no player in reach:
 
 ```sh
-pnpm fake                                   # API only, on :8880
-BEEFWEB_URL=http://localhost:8880 pnpm dev  # in another shell
+pnpm fake                                    # the component's API, on :8881
+FOO_JEAN_URL=http://localhost:8881 pnpm dev  # in another shell
 
-pnpm build && node test/fake-api/main.ts --serve dist   # as beefweb serves it
+pnpm build && node test/fake-api/main.ts --serve dist   # page and API together, as the component serves them
 ```
 
 ### The routes run in two places
 
-`routes.ts` and `fooJean.ts`'s `handleAgent` have no host in them, and neither does `state.ts`, and there is no `node:` import in any of the three. `server.ts` and `agentServer.ts` give them a node socket for the suite; `demo/sw.ts` gives the same tables a `fetch` event. The seam is `Responder` in `http.ts`: `writeHead`, `setHeader`, `write`, `end` and `on("close")`, plus an optional readonly `writableEnded`. `ServerResponse` satisfies all of it as it stands, and the last two are what SSE and the audio pump stop on when a client leaves.
+`routes.ts` and `fooJean.ts`'s `handleAgent` have no host in them, and neither does `state.ts`, and there is no `node:` import in any of the three. `agentServer.ts` gives them a node socket for the suite; `demo/sw.ts` gives the same tables a `fetch` event. The seam is `Responder` in `http.ts`: `writeHead`, `setHeader`, `write`, `end` and `on("close")`, plus an optional readonly `writableEnded`. `ServerResponse` satisfies all of it as it stands, and the last two are what SSE and the audio pump stop on when a client leaves.
 
 Two consequences before adding a route. **Anything reaching for a socket, a file or a `Buffer` belongs in the host files**, not the route tables; the artwork routes are the worked example and take a function instead of a path. And **fixtures are imported rather than read off disk**, since one of the two hosts has no filesystem.
 
@@ -73,21 +73,13 @@ The cover art is real and downscaled by `capture.ts`, which shells out to macOS 
 
 ### The media library
 
-The fake serves the beefweb 0.11+ library API: `/library/info`, `/library/items`, `/library/items/by-path`, `/artwork/library` and `/playlists/{id}/items/add-from-library`, against shapes measured on a live player. `fake-library.spec.ts` is that check; `../src/shared/api/README.md` records the shapes. **Jean reads none of it**: the library and its covers come from the component, and beefweb's own library routes are only what a fill or a queue acts through.
-
-The library is **derived from the captured tracks rather than invented**: the capture's absolute `%path%` values give a deepest shared directory, which is treated as the media library folder, and what is left is the library-relative, forward-slashed path the real API returns.
-
-- `test.use({ library: { supported: false } })` models an install with no library API at all: `/library/info` still answers, since that is how a client discovers it has none, and everything else is **501**.
-- `{ enabled: false }` is foobar2000 with no media library configured: supported, empty, a different problem with a different fix.
-- The two **must not collapse into one state**.
-
-Two things the fake **refuses** rather than approximating, since a filter that silently disagreed with the real one is worse than no filter: the player's `query` syntax, and `sort` by anything but a bare `%field%`. Both answer **400**.
+The library is **derived from the captured tracks rather than invented**: the capture's absolute `%path%` values give a deepest shared directory, which is treated as the media library folder, and what is left is the library-relative, forward-slashed path the component's own API returns.
 
 **The captured tracks are all `subsong: 0`**, since every captured file is one track and a subsong needs a cue sheet or a disc image. `libraryOfShape({ subsongsPerFile })` synthesises them where a spec needs several tracks sharing one `%path%`, numbered from 1 the way foobar2000 numbers a cue sheet's, so a file it splits has no subsong 0 at all. Wherever a route takes a subsong it is matched by value rather than read as a position, as the component matches it, and an address that leaves `subsong` out asks for 0.
 
 ### Covers
 
-`GET /api/artwork?track=` is the route every library cover comes through, and the fake answers it on the component's own terms: a present cover `Cache-Control: private, max-age=15552000`, a `404` `private, max-age=600`, a strong quoted `ETag` under either, and a `304` for a conditional request that matches. `GET /api/artwork/playing` and the positional fallback answer `private, no-cache` instead, on every outcome. beefweb's two artwork routes keep foobar2000's own terms, and the same file server answers all five.
+`GET /api/artwork?track=` is the route every library cover comes through, and the fake answers it on the component's own terms: a present cover `Cache-Control: private, max-age=15552000`, a `404` `private, max-age=600`, a strong quoted `ETag` under either, and a `304` for a conditional request that matches. `GET /api/artwork/playing` and the positional fallback answer `private, no-cache` instead, on every outcome, and the same file server answers all three.
 
 ### Ordering
 
@@ -134,8 +126,6 @@ The routes model the declaration the contract describes rather than answering fr
 
 **The fake keeps a bounded revision history, so `GET /library/changes` answers a real delta.** A `since` from before the last rebuild is a `409` and one that fell out of the window is a `410`, both as the contract describes. Dictionaries are held per column and per structure generation, so a delta carries `dict.base` and only the entries appended after it, exactly as the component does.
 
-**Ordinals in the snapshot and pages of `/library/items` come from one comparator**, since Jean resolves a library row's absolute path through beefweb while reading its rows from the component. Two orders that disagreed would make every such lookup refuse.
-
 **gzip is real here.** The route compresses through `CompressionStream` when the request offers it, sets `Content-Encoding`, `Vary` and an `ETag` that names the coding. A browser decodes it before anything in the app sees it, so what this actually covers is the negotiation and the headers.
 
 **`Access-Control-Expose-Headers` names `ETag` and `Retry-After` on every answer**, as the contract says the component does. Without it a browser hands script neither, and the conditional poll behind `GET /api/state` and the documented `429` backoff both fail silently against a cross-origin reader.
@@ -146,19 +136,18 @@ The routes model the declaration the contract describes rather than answering fr
 
 **`player.announceSong({ title, artist })` is a radio station announcing its current song.** The name moves and the path does not. Without that, a status bar names a stream once and then lies for the rest of the hour. A field left out still reads off the playlist entry, an empty one crosses the wire as `null`, and the next track clears the announcement. One announcement replaces the last outright rather than merging onto it: the component holds no memory of a previous field, so a second announcement that leaves the artist unset does not keep the one named before.
 
-**There is one play queue and both servers act on it**, since the player has only one. An entry is a track with the playlist row it was queued from, and a track queued by handle has no row at all: `player.queueInsert([{ playlistId: null, track }])` is the desktop queueing one, which beefweb's read and its subscription can only report as `-1`. `player.queueRevision` moves when the contents, the order or a queued row's position moves, and never otherwise, and it carries the player's own version with it so `GET /api/state`'s validator moves too.
+**There is one play queue**, since the player has only one. An entry is a track with the playlist row it was queued from, and a track queued by handle has no row at all: `player.queueInsert([{ playlistId: null, track }])` is the desktop queueing one, which the component's read can only report as `-1`. `player.queueRevision` moves when the contents, the order or a queued row's position moves, and never otherwise, and it carries the player's own version with it so `GET /api/state`'s validator moves too.
 
-**Playback and volume are driven from one host now, and read from another.** `fooJean.ts`'s `handleAgent` answers `POST /api/playback/play-pause`, `/next`, `/previous`, `/stop`, `/seek` and `/mode`, plus `POST /api/volume`, by calling the same state methods a desktop press would: `playPause`, `next`, `previous`, `stop`, `patchPlayer` and `nudgeVolume`. beefweb's own `/player` routes are gone from `routes.ts`, since nothing calls them there anymore; `/api/query` and its SSE companion still answer off `state.player` on the beefweb host, the way a real beefweb goes on doing beside a running `foo_jean`.
+**Playback and volume are driven and read through the one host.** `fooJean.ts`'s `handleAgent` answers `POST /api/playback/play-pause`, `/next`, `/previous`, `/stop`, `/seek` and `/mode`, plus `POST /api/volume`, by calling the same state methods a desktop press would: `playPause`, `next`, `previous`, `stop`, `patchPlayer` and `nudgeVolume`; `GET /api/state` reads `state.player` back.
 
 ### What the fake gets wrong on purpose
 
 A fake kinder than the player it stands in for makes the suite agree with itself and disagree with reality.
 
-- **A request body over 1 MiB is refused by hanging up**, not answered with a status. The fake destroys the socket at the same threshold, in both hosts. That cap is beefweb's alone; `agentServer.ts` has none.
-- **A set added from the library comes back in the media library's browse order**, meaning album artist, album and track, not the order it was given, nor the file-path order `/library/items` pages in. The captured fixture cannot show this on its own, since its folders match its tags; `mediaLibrarySize` synthesises a library where they disagree.
+- **A request body over 1 MiB is refused by hanging up**, not answered with a status. `demo/sw.ts` destroys the socket at the same threshold. That cap is beefweb's alone; `agentServer.ts` has none.
 - **`POST /api/library/refresh` has no route.** A rate limiter is one of the things a kinder fake would get wrong, and nothing in Jean asks for a refresh yet.
 - **A queue entry with no position is skipped rather than played.** A real player plays one. The fake's own playback is addressed by a playlist and a row and has nowhere to play a bare handle from, so nothing asserting what reaches the head may lean on it.
-- **`foo_jean` is a second listener on its own port, not another route.** Every call to it is cross-origin, is preceded by a CORS preflight for the `Authorization` header, and can fail by not answering at all. So `fake-api/fooJean.ts` gets its own `http.Server`, started and stopped by the worker fixture that owns the beefweb one. **The unreachable state destroys the connection rather than answering 500.** A refused socket and an error response are different events in the browser, and "installed, advertised, healthy, unreachable" must never render as "not installed". **Preflights land in `player.requests`**, so counting writes means filtering to `POST`. **`Access-Control-Allow-Origin` reflects the request's `Origin`, checked against its own `Host`, rather than a wildcard.** That is the component's own choice, reproduced here rather than approximated with `*`.
+- **The unreachable state destroys the connection rather than answering 500.** A refused socket and an error response are different events in the browser. **`Access-Control-Allow-Origin` reflects the request's `Origin`, checked against its own `Host`, rather than a wildcard.** That is the component's own choice, reproduced here rather than approximated with `*`.
 - **A queue body carrying a field no schema declares is refused, as in the component.** `POST /queue` and `POST /queue/move` all answer `400` with an empty `detail`, matching `declaresOnly` in `core/api.cpp`; a fake that stayed permissive here would pass a request built from a stale type and fail against a real install.
 - **Pairing is single-grant, as in the component**: the first success closes the window. The fake also answers **415** to a body that is not `application/json`, since a client that stopped sending that header would pass every other assertion and fail against a real install. Tickets are **not** single-use, for the same reason the component's are not.
 - **A stream fails every way a second listener can.** `streamBehaviour` is `short` (ends after what it has sent, for reconnect) and `quiet` (opens, sends the container header, then nothing: the case with **no error to catch**, which is what a stopped player looks like and what the stall watchdog is the only answer to). `playableFormats` names which of `streamFormats` get bytes of the declared type. `failTickets` with `ticketError` separates a 503 meaning "busy" from one meaning "not supported". `expireTickets` answers 401 at `GET /stream`.
@@ -173,7 +162,7 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 
 These are not on purpose and are not fixed. `contract/` found them. `POST` and `DELETE /api/autoplaylists/{id}` have no route here at all, so they fall to the catch-all and answer `error` where the contract publishes a `detail` beside it; the `503` from `POST /api/autoplaylists` has the same gap; and `GET /api/capabilities` omits `streamFormats` when `canStream` is false, which the contract requires either way.
 
-Reproducing them takes more than pointing the suite at a default fake. Nothing serves this side on a port of its own: `main.ts` starts the beefweb server, and the agent gets a `listen` only inside the Playwright worker fixture, so no command puts `CONTRACT_URL` in front of it. The defaults then hide two of the three, since `maxAutoPlaylists` is `0`, so the create refuses and the update and the delete are skipped rather than driven, and `canStream` is `true`.
+Reproducing them takes more than pointing `CONTRACT_URL` at `pnpm fake`, since the defaults still hide two of the three: `maxAutoPlaylists` is `0`, so the create refuses and the update and the delete are skipped rather than driven, and `canStream` is `true`.
 
 ### Measuring against a real player
 
@@ -246,7 +235,6 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 
 | | |
 |---|---|
-| `library` | `Partial<LibraryInfo>`. Pins whether the fake claims beefweb's own media library API and whether it is enabled. Jean never reads the library through it; `fake-library.spec.ts` is what that option is for |
 | `librarySize` | swaps the 54 captured tracks for that many generated ones, for scroll arithmetic that only breaks past a few thousand rows |
 | `mediaLibrarySize` | swaps the media library, which is what the component publishes, for that many generated tracks |
 | `libraryShape` | states a library outright: counts, durations, years, tags to omit, whether an artist is spelled two ways, how many subsongs share a file. A description rather than built tracks, since an option's top level does not survive the trip to the worker as an array (nested arrays are fine) |
@@ -258,13 +246,13 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |
 | `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
-| `fooJean` | puts the component in whichever state is needed. `{}` is installed, listening and serving, which is the default; `null` is not installed. Then `{ listening: false }`, `{ reachable: false }`, `{ agentName: … }`, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failWrites: 504, writesLandAnyway: true }` for a write the player took and could not answer for, `{ storesRatingAs: '2' }` for a player that keeps ratings on a scale of its own, `{ twoRootsHold: path }` for an address two media library roots both hold, `{ failLibraryTrack: 404 }` and `{ hangLibraryTrack: true }` for the read a timed-out write goes back with, `{ failPlayingTrack: 500 }` and `{ hangPlayingTrack: true }` shaped the same way for the playing-track read, `{ playingTrackAnswersPath: path }` for an answer the next track has already overtaken, `{ playingTrackAnswersSubsong: n }` for one overtaken by the next track in the same file, `{ failPlayingTrack: 500, playingTrackKnobsFor: 1 }` for any of those four on the first read only, `{ failState: 503 }`, `{ failQueue: 500 }`, `{ knowsPlayingLocation: false }`, `{ annotatesEveryPlaylist: false }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
+| `fooJean` | puts the component in whichever state is needed. `{}` is installed and serving, which is the default. Then `{ reachable: false }` for no component, `{ allowedFields: [] }`, `{ failWrites: 403 }`, `{ failWrites: 504, writesLandAnyway: true }` for a write the player took and could not answer for, `{ storesRatingAs: '2' }` for a player that keeps ratings on a scale of its own, `{ twoRootsHold: path }` for an address two media library roots both hold, `{ failLibraryTrack: 404 }` and `{ hangLibraryTrack: true }` for the read a timed-out write goes back with, `{ failPlayingTrack: 500 }` and `{ hangPlayingTrack: true }` shaped the same way for the playing-track read, `{ playingTrackAnswersPath: path }` for an answer the next track has already overtaken, `{ playingTrackAnswersSubsong: n }` for one overtaken by the next track in the same file, `{ failPlayingTrack: 500, playingTrackKnobsFor: 1 }` for any of those four on the first read only, `{ failState: 503 }`, `{ failQueue: 500 }`, `{ knowsPlayingLocation: false }`, `{ annotatesEveryPlaylist: false }`, `canStream`, `streamFormats`, `playableFormats`, `streamBehaviour`, `streamPrime`, `failTickets` with `ticketError`, `expireTickets`, `otherListeners`, `canMuteWhileStreaming`, `maxAutoPlaylists`, `autoPlaylists`, `libraryEnabled`, `failCreate`, `pairingOpen`, `failPairing` with `pairingError` |
 | `fooJeanToken` | seeds the credential. `FOO_JEAN_TOKEN` by default; `null` is a device that has never paired |
 | `motion` | reduced by default, since Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work. It is accepted and silently ignored, so the fixture calls `page.emulateMedia()` |
 
 ### Control routes
 
-- **`POST /__control/play`** drives the player the way the desktop would: the case Jean has to survive and cannot provoke reliably against a real one. **`/__control/append`** is the same for playlists: the desktop adding tracks while Jean holds a range of indices.
+- **`POST /__control/play`** drives the player the way the desktop would: the case Jean has to survive and cannot provoke reliably against a real one. **`/__control/append`** is the same for playlists: the desktop adding tracks while Jean holds a range of indices. **`/__control/removeItems`**, `{ playlistId, items }`, is the same for removing them.
 - **`POST /__control/latency`** holds writes for N milliseconds, and `GET /api/playlists` and the six playlist writes on `foo_jean`'s side besides, since a slow join is what `useAutoPlaylists.ts` has to be caught catching up with and an optimistic playlist edit is indistinguishable from a fast one without it. On localhost every request settles before the next pointer event, so a control coalescing forty moves into three looks identical to one sending forty. `useCoalescedWrite` is untestable without it.
 - **`POST /__control/writePlaylists { canWrite }`** flips `foo_jean`'s `canWritePlaylists` mid-test, the one way a spec can put a refusal in front of a control still drawn: the component answers its capabilities once, at discovery, so an install with the setting off from the start draws no playlist-editing control at all.
 - **`POST /__control/skipGap`** spends N milliseconds reporting an empty `activeItem` on a skip, the way beefweb does while the player opens the next file; the real player's own state carries no such gap. Off by default, since the gap makes `next` asynchronous and no other spec should have to wait one out.

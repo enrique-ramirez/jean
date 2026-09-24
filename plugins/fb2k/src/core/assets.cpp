@@ -26,6 +26,25 @@ bool hasDotSegment(const std::string& path) {
     return false;
 }
 
+bool hasTrailingDotOrSpaceSegment(const std::string& path) {
+    size_t start = 0;
+    while (start <= path.size()) {
+        const auto slash = path.find('/', start);
+        const auto stop = slash == std::string::npos ? path.size() : slash;
+        if (stop > start) {
+            const char last = path[stop - 1];
+            if (last == '.' || last == ' ')
+                return true;
+        }
+
+        if (slash == std::string::npos)
+            break;
+        start = slash + 1;
+    }
+
+    return false;
+}
+
 std::string extensionOf(const std::string& path) {
     const auto slash = path.find_last_of('/');
     const std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
@@ -71,6 +90,9 @@ std::optional<std::string> resolvePagePath(const std::string& requestPath) {
     }
 
     if (hasDotSegment(relative))
+        return std::nullopt;
+
+    if (hasTrailingDotOrSpaceSegment(relative))
         return std::nullopt;
 
     return relative;

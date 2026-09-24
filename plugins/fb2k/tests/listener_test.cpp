@@ -66,6 +66,21 @@ TEST_CASE("a port already in use is refused, loudly, and named as such") {
     CHECK_FALSE(status.listening);
     CHECK(status.portInUse);
     CHECK(status.error.find(std::to_string(first.port())) != std::string::npos);
+    CHECK(status.error.find("the port is in use") != std::string::npos);
+}
+
+// 192.0.2.1 is RFC 5737's TEST-NET-1, reserved for documentation and never a real interface, so
+// binding it fails the same way on any machine this suite runs on.
+TEST_CASE("a bind address this machine does not hold is refused as unavailable, not as taken") {
+    Settings settings = servingSettings();
+    settings.bindAddress = "192.0.2.1";
+
+    const TestServer server(settings);
+
+    CHECK_FALSE(server.status().listening);
+    CHECK_FALSE(server.status().portInUse);
+    CHECK(server.status().error.find(settings.bindAddress) != std::string::npos);
+    CHECK(server.status().error.find("not one this machine holds") != std::string::npos);
 }
 
 TEST_CASE("a collision leaves the first server serving everything, not half of it") {

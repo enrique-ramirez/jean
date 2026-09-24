@@ -69,7 +69,7 @@ const unsupported = () => {
 		'<p style="font:14px/1.6 system-ui;max-width:36rem;margin:20vh auto;padding:0 1.5rem">' +
 		"This demo runs the whole player inside a service worker, and this browser " +
 		"has them switched off or unavailable. Jean itself needs nothing of the " +
-		"sort &mdash; it is served by beefweb, on the machine playing the music." +
+		"sort: it is served by foo_jean, on the machine playing the music." +
 		"</p>";
 };
 

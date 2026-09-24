@@ -238,14 +238,10 @@ const gzipped = async (bytes: Uint8Array<ArrayBuffer>) => {
 	return new Uint8Array(await new Response(zip.readable).arrayBuffer());
 };
 
-const cors = (headers: RequestHeaders, response: Responder) => {
-	const origin = one(headers.origin);
+// The component reflects only an origin listed in its own `allowedOrigins`, empty by
+// default, so nothing here is ever reflected: the fake carries no such list to check.
+const cors = (response: Responder) => {
 	response.setHeader("Vary", "Origin");
-	response.setHeader("Access-Control-Expose-Headers", "ETag, Retry-After");
-	if (!origin) return;
-	const addressed = one(headers.host).split(":")[0];
-	if (new URL(origin).hostname === addressed)
-		response.setHeader("Access-Control-Allow-Origin", origin);
 };
 
 // Matched case-insensitively, as the component does.
@@ -1782,18 +1778,10 @@ export async function handleAgent({
 		);
 	};
 
-	cors(headers, response);
+	cors(response);
 
 	if (method === "OPTIONS") {
-		response.writeHead(204, {
-			"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-			// If-None-Match belongs on this list too: without it a browser's own
-			// preflight check refuses a poll's second conditional request before it
-			// ever leaves, and no route here answers a 304 on the first.
-			"Access-Control-Allow-Headers":
-				"Authorization, Content-Type, If-None-Match",
-			"Access-Control-Max-Age": "600",
-		});
+		response.writeHead(204);
 		return response.end();
 	}
 

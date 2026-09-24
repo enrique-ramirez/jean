@@ -76,7 +76,7 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 
 | key | meaning |
 |---|---|
-| `port` | Default 8881, because beefweb's is 8880 and this runs alongside it. If the port is taken the component refuses to start and says so in the log and on the preferences page; it never quietly picks another, because a client can only find it at a port it can predict. |
+| `port` | Default 8881. If the port is taken the component refuses to start and says so in the log and on the preferences page; it never quietly picks another, because a client can only find it at a port it can predict. |
 | `bindAddress` | Every local interface by default, the same as beefweb. Set it to `127.0.0.1` to harden deliberately. |
 | `authToken` | Mandatory. An empty token means the listener refuses to start; a token shorter than 32 characters is refused outright. There is no unauthenticated mode to fall into. |
 | `allowedOrigins` | Empty reflects no origin, `POST /api/pair` included, so only a page served by the component itself, same-origin, can read a response. List origins to grant them the same access, matched whole and case-insensitively. |

@@ -19,7 +19,7 @@ Point it at a player with `FOO_JEAN_URL`, in the environment or in `.env.local` 
 FOO_JEAN_URL=http://<player-host>:8881 pnpm dev
 ```
 
-The dev server binds on the LAN (`host: true`), so a phone can load it and hit the same proxy. The port is `strictPort`: `foo_jean` matches the dev origin against an exact allowlist, so sliding to the next free port would report the component unreachable with nothing on screen saying why.
+The dev server binds on the LAN (`host: true`), so a phone can load it and hit the same proxy. The port is `strictPort`, so it is predictable: a phone typing the address or a bookmark does not go looking for whichever port happened to be free.
 
 No player in reach? `pnpm fake` serves the in-memory one on `:8881`, and `FOO_JEAN_URL=http://localhost:8881 pnpm dev` points at it.
 

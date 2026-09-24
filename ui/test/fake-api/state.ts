@@ -447,7 +447,6 @@ export function createState({
 		latency: 0,
 		skipGapMs: 0,
 		requests: [] as RecordedRequest[],
-		updateStreams: new Set<() => void>(),
 		// Same bound as the component's; `fooJean.ts` puts these on the stream clock.
 		streamMarks: [] as StreamMark[],
 		libraryFeed: {
@@ -876,7 +875,6 @@ export function createState({
 			return queuePayload();
 		},
 		requests: state.requests,
-		updateStreams: state.updateStreams,
 		get streamMarks() {
 			return state.streamMarks;
 		},

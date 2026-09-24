@@ -10,10 +10,7 @@ import { localePlugin, shippedLocales } from "../scripts/localePlugin.ts";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 
-// Null, as in a real build: the component's port is on the page's own host. The
-// worker answers before a request reaches any host, so that still holds.
 const define = {
-	__PLAYER_HOST__: "null",
 	__SHIPPED_LOCALES__: JSON.stringify(shippedLocales(ROOT)),
 };
 

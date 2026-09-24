@@ -13,9 +13,10 @@ namespace jean {
 // The path to ask the page seam for, relative to the build root and with no leading slash, for
 // the HTTP path `requestPath`. Nullopt for anything the seam must never be asked to resolve: an
 // empty result, a second leading slash left behind (as "//etc/passwd" does once the first is
-// stripped), a ':' (a Windows drive letter or an alternate stream), a backslash, a NUL, or a
-// path segment that is "." or "..". A later seam reading the build from disk relies on this to
-// never be handed an absolute or escaping path.
+// stripped), a ':' (a Windows drive letter or an alternate stream), a backslash, a NUL, a path
+// segment that is "." or "..", or a segment (file name included) ending in a dot or a space,
+// which Win32 path normalisation strips before the file is opened. A later seam reading the
+// build from disk relies on this to never be handed an absolute or escaping path.
 std::optional<std::string> resolvePagePath(const std::string& requestPath);
 
 // The Content-Type to answer `path`'s extension with, keyed by a fixed table, or nullopt where

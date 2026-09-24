@@ -80,12 +80,7 @@ One more is optional:
 ### Where your foobar2000 profile is
 
 <!-- site:profiles -->
-`<profile>` is foobar2000's own settings folder, the one it already keeps your playlists and library index in. `foo_jean` reads and writes its own files under `<profile>/foo_jean/`.
-
-| Setup | Location |
-|---|---|
-| Standard install | `%APPDATA%\foobar2000-v2\` |
-| **Portable install** | next to the executable, at `<install dir>\profile\` rather than `%APPDATA%` |
+`<profile>` is foobar2000's own settings folder, the one it already keeps your playlists and library index in. `foo_jean` reads and writes its own files under `<profile>/foo_jean/`. foobar2000 shows the path under **File → Preferences → Advanced → Display → Profile folder**, or, for a portable install, it is the `profile` folder beside the executable.
 <!-- /site:profiles -->
 
 ## Language
@@ -94,9 +89,9 @@ Jean ships in English, with a Spanish translation beside it. Pick one under **Se
 
 ### Translating it yourself
 
-The languages live at `<profile>/foo_jean/www/locales/`, one JSON file per language named after its code: `en.json`, `es.json`, `fr.json`. Copy one, translate the right-hand side of each line, and leave anything in `{braces}` alone: those are filled in at runtime, and a field renamed shows up as `{prot}` on screen.
+`en.json` and `es.json` are built into `foo_jean` rather than sitting in that folder, so start from a running Jean instead of copying a file: open `http://<the player's computer>:8881/locales/es.json` in a browser and save it. Translate the right-hand side of each line, and leave anything in `{braces}` alone: those are filled in at runtime, and a field renamed shows up as `{prot}` on screen.
 
-Then tell Jean the file is there. It cannot list its own folder, so name the code in `locales/custom.json`, right beside it, which is a plain list and is the one file here that is yours:
+Save the result at `<profile>/foo_jean/www/locales/<code>.json`, named after the language's own code, such as `fr.json`. Then tell Jean the file is there. It cannot list its own folder, so name the code in `locales/custom.json`, right beside it, which is a plain list and is the one file here that is yours:
 
 ```json
 ["fr", "pt-BR"]

@@ -2017,6 +2017,16 @@ test.describe("what the settings screen says", () => {
 				page.getByRole("button", { name: "Check again" }),
 			).toBeVisible();
 		});
+
+		test("offers no token field and no Pair button while it cannot be reached", async ({
+			page,
+		}) => {
+			await settings(page);
+			await expect(page.getByText("Not connected")).toBeVisible();
+
+			await expect(page.getByLabel("Token")).toHaveCount(0);
+			await expect(page.getByRole("button", { name: /^Pair$/ })).toHaveCount(0);
+		});
 	});
 
 	test.describe("listening, with no token stored", () => {

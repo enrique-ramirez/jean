@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <functional>
 #include <iterator>
@@ -20,6 +21,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <system_error>
 #include <thread>
 
 namespace jean {
@@ -446,6 +448,65 @@ bool setAddressOption(socket_t sock) {
     const int on = 1;
     return setsockopt(sock, SOL_SOCKET, kAddressOption, reinterpret_cast<const char*>(&on),
                       sizeof(on)) == 0;
+}
+
+#ifdef _WIN32
+int lastSocketError() {
+    return WSAGetLastError();
+}
+
+bool socketErrorMeansAddressInUse(int code) {
+    return code == WSAEADDRINUSE;
+}
+#else
+int lastSocketError() {
+    return errno;
+}
+
+bool socketErrorMeansAddressInUse(int code) {
+    return code == EADDRINUSE;
+}
+#endif
+
+struct BindDiagnosis {
+    bool inUse = false;
+    std::string osError;
+};
+
+// cpp-httplib's own bind_to_port() reports only pass or fail, so a socket of our own binds the
+// same address right after a failure to read the error that decided it. Nullopt where the probe
+// itself cannot say anything: an address inet_pton cannot parse, a probe socket this process
+// could not open, or a probe that raced past whatever refused the real attempt and bound fine.
+std::optional<BindDiagnosis> diagnoseBindFailure(const std::string& bindAddress, int port) {
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    if (inet_pton(AF_INET, bindAddress.c_str(), &addr.sin_addr) != 1)
+        return std::nullopt;
+
+#ifdef _WIN32
+    const SOCKET probe = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (probe == INVALID_SOCKET)
+        return std::nullopt;
+    const bool bound = ::bind(probe, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+    const int code = bound ? 0 : lastSocketError();
+    closesocket(probe);
+#else
+    const int probe = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (probe < 0)
+        return std::nullopt;
+    const bool bound = ::bind(probe, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+    const int code = bound ? 0 : lastSocketError();
+    ::close(probe);
+#endif
+
+    if (bound)
+        return std::nullopt;
+
+    BindDiagnosis diagnosis;
+    diagnosis.inUse = socketErrorMeansAddressInUse(code);
+    diagnosis.osError = std::error_code(code, std::system_category()).message();
+    return diagnosis;
 }
 
 void applyLimits(httplib::Server& server) {
@@ -2402,8 +2463,22 @@ ListenerStatus HttpServer::start() {
         return refused("no authentication token configured; refusing to listen");
 
     if (!server.bind_to_port(impl.settings.bindAddress, impl.settings.port)) {
-        return portTaken("could not bind " + impl.settings.bindAddress + ":" +
-                         std::to_string(impl.settings.port) + "; the port is in use");
+        const std::string address =
+            impl.settings.bindAddress + ":" + std::to_string(impl.settings.port);
+        const auto diagnosis = diagnoseBindFailure(impl.settings.bindAddress, impl.settings.port);
+
+        if (diagnosis && diagnosis->inUse)
+            return portTaken("could not bind " + address + "; the port is in use");
+
+        if (diagnosis) {
+            return refused("could not bind " + address +
+                           "; that address is not one this machine holds (" + diagnosis->osError +
+                           ")");
+        }
+
+        return refused("could not bind " + address +
+                       "; the port may already be in use, or that address may not be one this "
+                       "machine holds");
     }
 
     if (impl.addressOptionRefused) {

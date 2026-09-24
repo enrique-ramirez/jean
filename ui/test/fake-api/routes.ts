@@ -106,16 +106,5 @@ export function handleControl({
 		return empty(response);
 	}
 
-	if (action === "dropStream") {
-		const dropped = state.updateStreams.size;
-		for (const drop of [...state.updateStreams]) drop();
-		return json(response, { dropped });
-	}
-
-	if (action === "requests") {
-		state.requests.length = 0;
-		return empty(response);
-	}
-
 	return empty(response, 404);
 }

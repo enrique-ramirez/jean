@@ -317,6 +317,50 @@ TEST_CASE("c5 a path carrying .., a backslash or a NUL in any spelling is refuse
     CHECK(pages.asked.empty());
 }
 
+// Win32 path normalisation drops a trailing dot or space from every path segment, so on Windows
+// `www\assets.\x.js` opens `www\assets\x.js` and `www\api.\` opens `www\api\`. Both seams hold a
+// file under each decoded spelling, so a check that let one through is answered with its bytes.
+TEST_CASE("c5 a path segment ending in a dot or a space is refused unread, in a folder or a file name") {
+    FakePages pages = aBuild();
+    FakeDisk disk;
+    for (const char* held : {"assets./x.js", "api./index.html", "api./status", "locales./x.json",
+                             "mine./index.html", "mine /index.html", "index.html.",
+                             "index.html "}) {
+        pages.files[held] = kIndex;
+        disk.files[held] = kIndex;
+    }
+    const TestServer server(servingSettings(), serving(&pages, &disk));
+
+    const std::vector<std::string> refused{
+        "/assets./x.js",
+        "/api./",
+        "/api./status",
+        "/locales./x.json",
+        "/mine./index.html",
+        "/mine%20/index.html",
+        "/index.html.",
+        "/index.html%20",
+    };
+
+    for (const auto& path : refused) {
+        INFO("path: ", path);
+
+        for (const bool withToken : {false, true}) {
+            INFO("token: ", withToken);
+            const auto headers = withToken ? TestServer::bearer() : httplib::Headers{};
+
+            const auto response = server.client().Get(path, headers);
+
+            REQUIRE(response);
+            CHECK(response->status == 404);
+            CHECK(json::parse(response->body) == kNotFound);
+        }
+    }
+
+    CHECK(pages.asked.empty());
+    CHECK(disk.asked.empty());
+}
+
 // A stale index.html names scripts a new build no longer holds, and draws a blank page until
 // somebody finds the hard reload. Revalidating it every time is what keeps an upgrade visible.
 TEST_CASE("c6 index.html and a locale are revalidated on every load, and a matching tag is a 304") {

@@ -10,7 +10,7 @@ The player is `test/fake-api/`, the same one the suite runs against, wired to a 
 
 **A patched `window.fetch` cannot do this job**, because covers are `<img src="/api/artwork/…">` and only a worker sees those. Everything else under `/api/` could be answered by a patched fetch alone, but the worker answers all of it in one place rather than splitting the fake between two seams.
 
-**Everything under `/api/` is answered here**, since the demo's own origin has no `foo_jean` behind it: the status probe, pairing and a rating write all run exactly as they run against a real install.
+**Everything under `/api/` is answered here**, since the demo's own origin has no `foo_jean` behind it: the capabilities probe, pairing and a rating write all run exactly as they run against a real install.
 
 **`canStream: false`**, since there is no audio in the bundle: a real state the app already draws, not a hole in the fake.
 

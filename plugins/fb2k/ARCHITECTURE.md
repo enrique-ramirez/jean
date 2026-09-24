@@ -266,6 +266,8 @@ The token is 64 hex characters, and pairing exists so that nobody has to type it
 
 CORS carries no bound of pairing's own: `POST /api/pair` follows the same `allowedOrigins` rule as every other route, reflecting no origin by default. Jean pairs from the component's own origin, and so does a folder interface, so neither needs a header at all; the list is for a caller elsewhere, exactly as it is for every other route. `Content-Type: application/json` is required as well, so that a cross-origin caller is always preflighted and a simple `POST` cannot burn a grant blind.
 
+**A page on a hostname that DNS rebinding has pointed at the player's own address is same-origin to the component, and the risk is accepted.** Such a request needs no CORS at all: a browser sends no preflight and checks no `Origin` for a call to the origin a page believes it was loaded from, and nothing here checks `Host`. The private-source check still passes, since the request genuinely comes from a browser on the network. What is left is bounded on every other axis: a two-minute window only a person at the player opens, one grant inside it, a private source address, and a pane that names what paired.
+
 Pairing hands out the token the install already has rather than minting one per device, so regenerating the token locks out every device at once. `POST /api/pair` accepts an optional `name`, which is where per-device tokens would attach if they are ever added.
 
 ## Facts about the player

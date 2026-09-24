@@ -1,10 +1,10 @@
 # Talking to the player
 
-The beefweb client, the wire types, and the one discovery both optional-component seams are fed from. Knows nothing about Jean.
+The `foo_jean` client, the wire types, and the one discovery both optional-component seams are fed from. Knows nothing about Jean.
 
 **[README.md](README.md) is the reference, and the traps live there rather than here.** Read its *Traps that cost time* section before writing anything that talks to beefweb, and its `foo_jean` half before touching discovery, pairing or the stream. [ARCHITECTURE.md](../../../ARCHITECTURE.md) has why discovery sits in this folder and what the two seams downstream of it guarantee.
 
-**`discoverFooJean()` belongs here and not beside either consumer.** Tag writing is in `domain/track` and listening is in `domain/player`, tiers that may not import each other, and each running its own probe would send two status calls and two capabilities calls to answer one question. `FooJeanState` describes the *component*, not either seam.
+**`discoverFooJean()` belongs here and not beside either consumer.** Tag writing is in `domain/track` and listening is in `domain/player`, tiers that may not import each other, and each running its own probe would send two capabilities calls to answer one question. `FooJeanState` describes the *component*, not either seam.
 
 **A failure that might clear is marked `retryable`, and `shared/hooks/useFooJean.ts` widens the interval between attempts while it stays that way.** A player not running yet is the ordinary case for a page left open, so caching the first "unreachable" for the life of the tab means the component never turns up without a reload, while polling a dead port at a fixed rate is the other failure. The widening happens inside the query function rather than inside `refetchInterval`, which react-query is free to consult more than once per cycle.
 

@@ -15,6 +15,12 @@ tag="$1"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 code_version=$(sed -n 's/.*kVersion\[\] *= *"\([^"]*\)".*/\1/p' "$root/src/core/version.h")
+
+if [ -z "$code_version" ]; then
+  echo "could not find kVersion in $root/src/core/version.h" >&2
+  exit 1
+fi
+
 expected="v$code_version"
 
 if [ "$tag" != "$expected" ]; then

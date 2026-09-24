@@ -17,7 +17,7 @@ info:
   description: |
     A foobar2000 component exposing over HTTP what a client cannot otherwise reach: writing metadata tags, the whole media library in one piece, every playlist and autoplaylist addressed by foobar2000's own GUID, the play queue, cover art, what the player is doing, and a live encode of its output.
 
-    ## Relationship to beefweb
+    ## Playlists and playback
 
     Playlists are read and edited here and nowhere else. `GET /playlists` is the listing: every playlist the player holds, with its title, its item count, its position in the player's list, whether it is an autoplaylist, and the two generations that say what a client has to read again. There is no second answer to join it against. See `PlaylistAnnotation`.
 
@@ -45,11 +45,11 @@ info:
 
     No origin is reflected with `allowedOrigins` empty, `POST /pair` included: another port on the same host is another origin, and any service listening there could read the token. A listed origin is reflected on every route: `Vary: Origin` is set on every response, and the origin is echoed rather than answered with a literal `*`, which would forbid credentialed mode.
 
-    **A browser hands script only the CORS-safelisted response headers**, so every answer carries `Access-Control-Expose-Headers: ETag, Retry-After`. Those are the two a client is told to act on and neither is safelisted: without the first no cross-origin page can read a validator at all, and without the second a `429` cannot be backed off from as documented. `Cache-Control` and `Content-Type` are safelisted and are not named.
+    **A browser hands script only the CORS-safelisted response headers**, so an answer to a listed origin carries `Access-Control-Expose-Headers: ETag, Retry-After`. Those are the two a client is told to act on and neither is safelisted: without the first no cross-origin page can read a validator at all, and without the second a `429` cannot be backed off from as documented. `Cache-Control` and `Content-Type` are safelisted and are not named.
 
     `If-None-Match` is the other half of the same problem and is a *request* header, which no safelist covers either, so the preflight answers `Access-Control-Allow-Headers: Authorization, Content-Type, If-None-Match`. Without it a page could hold a validator and never send one, and the revision poll, the snapshot, the delta and a cover would each be a full download from a browser and a `304` from a command line.
 
-    CORS decides which page may read a response. The bearer token decides who is served. The token travels in a header rather than a cookie, so every request carrying it is preflighted, and a page without it gets a `401` whatever the CORS headers say.
+    CORS decides which page may read a response. The bearer token decides who is served. The token travels in a header rather than a cookie, so a listed cross-origin page sending it is preflighted, and a page without it gets a `401` whatever the CORS headers say.
 
     Set `allowedOrigins` in `<profile>/foo_jean/config.json` to the origins a page may be served from, matched on the whole origin string and case-insensitively.
 
@@ -184,7 +184,7 @@ security:
   - bearerAuth: []
 
 tags:
-  - name: discovery
+  - name: connection
     description: Finding the component and asking what it can do.
   - name: player
     description: |
@@ -213,7 +213,7 @@ tags:
 paths:
   /status:
     get:
-      tags: [discovery]
+      tags: [connection]
       operationId: getStatus
       summary: Identify the component. Needs no credential.
       description: |
@@ -308,7 +308,7 @@ paths:
 
   /capabilities:
     get:
-      tags: [discovery]
+      tags: [connection]
       operationId: getCapabilities
       summary: What this install permits, and what does not change while it runs.
       description: |

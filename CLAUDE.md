@@ -74,7 +74,7 @@ Writing a custom foobar component to feed Jean is a last resort. Do not design t
 Required, and the only thing an install needs: it serves Jean's own page as well as the media library, tag writing and listening. Jean is served by the same origin it calls, so no request it makes is cross-origin and none is preflighted. Its source is `plugins/fb2k/`, and `plugins/fb2k/CLAUDE.md` is the way into it: the rules for writing that component are its own, and this file governs only what Jean does about it. The two seams and the security model that says when a token may be sent are in `ui/ARCHITECTURE.md`; the endpoints and their failure modes are in `ui/src/shared/api/README.md`. What must not be undone:
 
 - **Nothing outside `domain/track/tagWriter.ts` and `domain/player/listener.ts` may ask which implementation it holds.** If something has to branch on `kind`, the seam is in the wrong place.
-- **Every connection state gets a message and a remedy. None of them is silence.** "Installed but could not start on port 8881" is actionable; silently rendering ratings read-only is not. `ui/src/features/settings/TagWriting.tsx` is where those live.
+- **Every connection state gets a message and a remedy. None of them is silence.** "foo_jean is not answering right now. Check that foobar2000 is still running, then try again." is actionable; silently rendering ratings read-only is not. `ui/src/features/settings/TagWriting.tsx` is where those live.
 - **Jean's per-field switches narrow and never widen.** The component's `config.json` is the player owner's; Jean lists exactly the fields it permits and turns them off, never on.
 
 ## Generality constraints

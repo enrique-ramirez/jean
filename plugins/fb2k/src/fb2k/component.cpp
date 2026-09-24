@@ -8,7 +8,6 @@
 #include "core/player_state.h"
 #include "core/playlists.h"
 #include "core/version.h"
-#include "fb2k/advertise.h"
 #include "fb2k/artwork.h"
 #include "fb2k/config_file.h"
 #include "fb2k/library.h"
@@ -55,9 +54,7 @@ std::unique_ptr<Streamer> makeStreamer(const Settings& settings) {
 }
 
 void explainPortCollision() {
-    logError(
-        "foo_jean runs alongside foo_beefweb rather than replacing it, "
-        "so they need separate ports");
+    logError("another program on this machine is already listening on that port");
     logError("change \"port\" in " + configPath() + " and restart foobar2000");
 }
 
@@ -169,7 +166,7 @@ public:
                 explainPortCollision();
         }
 
-        writeAdvertisement(settings_, status_);
+        publishListenerStatus(status_);
 
         // Last, so the preferences page only ever sees a configuration this component got
         // as far as trying.
@@ -183,8 +180,8 @@ public:
         mainThread_.close();
 
         forgetRunningServer();
+        forgetListenerStatus();
         forgetRunningSettings();
-        removeAdvertisement();
 
         if (streamer_)
             streamer_->stop();

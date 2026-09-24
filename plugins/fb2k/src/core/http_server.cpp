@@ -561,7 +561,7 @@ struct HttpServer::Impl {
             return !from.empty() && from == hostOfOrigin("x://" + host);
         }
 
-        return true;
+        return false;
     }
 
     void applyCors(const httplib::Request& req, httplib::Response& res) const {

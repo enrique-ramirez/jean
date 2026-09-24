@@ -21,7 +21,7 @@ info:
 
     Playlists are read and edited here and nowhere else. `GET /playlists` is the listing: every playlist the player holds, with its title, its item count, its position in the player's list, whether it is an autoplaylist, and the two generations that say what a client has to read again. There is no second answer to join it against. See `PlaylistAnnotation`.
 
-    [beefweb](https://github.com/hyperblast/beefweb) is for serving a client its own page, and for the discovery record a client finds this component through; see `DiscoveryRecord`. The playback commands are here: `/playback/*` for pause, next, previous, stop, seek and the playback mode, `/volume` for the level, a step and mute, and `POST /playlists/{id}/items/{index}/play` for starting a row, because a row is addressed by playlist.
+    The playback commands are here: `/playback/*` for pause, next, previous, stop, seek and the playback mode, `/volume` for the level, a step and mute, and `POST /playlists/{id}/items/{index}/play` for starting a row, because a row is addressed by playlist.
 
     ## Versioning
 
@@ -33,11 +33,7 @@ info:
 
     The two unauthenticated routes that do something carry credentials of their own. `POST /pair` requires a window opened at the player and a private source address. `GET /stream` requires a ticket from `POST /stream/ticket`.
 
-    The token is generated on first run into `<profile>/foo_jean/config.json`. Copy it out by hand or obtain it through `POST /pair`. It is absent from the discovery record.
-
-    ## Finding the component
-
-    See `DiscoveryRecord`. That record is writable by anyone who can reach beefweb, so it is a hint and never a destination for a credential.
+    The token is generated on first run into `<profile>/foo_jean/config.json`. Copy it out by hand or obtain it through `POST /pair`.
 
     ## Reachability
 
@@ -47,7 +43,7 @@ info:
 
     ## CORS
 
-    Any origin is reflected by default, so a client works wherever it is served from: beefweb on the next port, a dev server, a phone. `Vary: Origin` is set on every response, and the origin is echoed rather than answered with a literal `*`, which would forbid credentialed mode. `POST /pair` is the exception — with no `allowedOrigins` configured it admits only an origin on the host the request was addressed to, since it is the route that hands out the token.
+    No origin is reflected by default. `POST /pair` is the exception — with no `allowedOrigins` configured it admits only an origin on the host the request was addressed to, since it is the route that hands out the token. `Vary: Origin` is set on every response, and a listed origin is echoed rather than answered with a literal `*`, which would forbid credentialed mode.
 
     **A browser hands script only the CORS-safelisted response headers**, so every answer carries `Access-Control-Expose-Headers: ETag, Retry-After`. Those are the two a client is told to act on and neither is safelisted: without the first no cross-origin page can read a validator at all, and without the second a `429` cannot be backed off from as documented. `Cache-Control` and `Content-Type` are safelisted and are not named.
 
@@ -55,7 +51,7 @@ info:
 
     CORS decides which page may read a response. The bearer token decides who is served. The token travels in a header rather than a cookie, so every request carrying it is preflighted, and a page without it gets a `401` whatever the CORS headers say.
 
-    Set `allowedOrigins` in `<profile>/foo_jean/config.json` to narrow to a list, matched on the whole origin string and case-insensitively.
+    Set `allowedOrigins` in `<profile>/foo_jean/config.json` to the origins a page may be served from, matched on the whole origin string and case-insensitively.
 
     `OPTIONS` preflight is answered `204` without a credential, identically for every path, so it reveals nothing about which routes exist.
 
@@ -4709,38 +4705,3 @@ components:
       required: [error]
       properties:
         error: { type: string }
-
-    DiscoveryRecord:
-      description: |
-        Served by beefweb, not by this component, at `GET http://<player>:8880/api/clientconfig/foo_jean`. It is same-origin for anything beefweb serves, so finding the component is one request rather than a port scan. The component writes it on every start and removes it on a clean shutdown.
-
-        `null` means the component is not installed.
-
-        ### This record is not evidence
-
-        `POST /api/clientconfig/{id}` is a documented beefweb route, `changeClientConfig` defaults to on, and beefweb ships with no authentication. Anyone who can reach beefweb can therefore overwrite this record and name any port, and the forgery lasts until the component next starts. A client that read a port from here and posted its bearer token to it would hand the token to whoever wrote the file.
-
-        A client MUST treat this record as a hint. Call unauthenticated `GET /status` on the advertised port first, require `name` to be `foo_jean` and an `apiVersion` the client understands, and only then send the token.
-      type: object
-      required: [name, version, apiVersion, port, authRequired, listening]
-      properties:
-        name: { type: string, const: foo_jean }
-        version: { type: string, examples: ["0.3.0"] }
-        apiVersion: { type: integer, examples: [1] }
-        port:
-          type: integer
-          description: Where the component says it is listening. Verify before trusting.
-          examples: [8881]
-        authRequired: { type: boolean, const: true }
-        listening:
-          type: boolean
-          description: |
-            False when the component loaded but could not bind. Not the same as an absent record, and a client SHOULD report it: "installed but could not start on port 8881" is something a person can act on, where a silently disabled feature is not.
-        error:
-          type: string
-          description: Present only when `listening` is false. Safe to show a person.
-          examples: ["could not bind 0.0.0.0:8881; the port is in use"]
-        portInUse:
-          type: boolean
-          description: |
-            Present only when `listening` is false, and separated from other failures because it has a specific remedy: change `port` in `<profile>/foo_jean/config.json`. The usual cause is another server on that port.

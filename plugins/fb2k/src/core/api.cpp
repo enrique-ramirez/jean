@@ -510,20 +510,6 @@ std::string pairedDocument(const std::string& token) {
     return body.dump();
 }
 
-std::string discoveryDocument(const Settings& settings, const ListenerStatus& status) {
-    auto body = identity();
-    body["port"] = settings.port;
-    body["authRequired"] = true;
-    body["listening"] = status.listening;
-
-    if (!status.listening) {
-        body["error"] = status.error;
-        body["portInUse"] = status.portInUse;
-    }
-
-    return body.dump(2) + "\n";
-}
-
 std::string errorDocument(const std::string& message) {
     return json{{"error", message}}.dump();
 }

@@ -242,21 +242,6 @@ TEST_CASE("a failure is the shape contract/openapi.yaml publishes") {
     CHECK(keysOf(tagFailedDocument(TagWriteOutcome::trackNotKnown)) == Keys{"written", "error"});
 }
 
-TEST_CASE("the discovery record is the shape contract/openapi.yaml publishes") {
-    INFO(kUpdateSpec);
-
-    CHECK(keysOf(discoveryDocument(servingSettings(), listeningStatus())) ==
-          Keys{"name", "version", "apiVersion", "port", "authRequired", "listening"});
-
-    ListenerStatus taken;
-    taken.error = "could not bind";
-    taken.portInUse = true;
-
-    CHECK(keysOf(discoveryDocument(servingSettings(), taken)) ==
-          Keys{"name", "version", "apiVersion", "port", "authRequired", "listening", "error",
-               "portInUse"});
-}
-
 TEST_CASE("a playlist annotation is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 

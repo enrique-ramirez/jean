@@ -225,9 +225,14 @@ private:
         show(toForm(saved_));
 
         if (page_.configPath) {
-            writeControl(dialog, IDC_CONFIG_PATH,
-                         "Saved to " + displayConfigPath() +
-                             ". Changes take effect when foobar2000 restarts.");
+            const auto status = listenerStatus();
+            if (!status.listening && !status.error.empty()) {
+                writeControl(dialog, IDC_CONFIG_PATH, status.error);
+            } else {
+                writeControl(dialog, IDC_CONFIG_PATH,
+                             "Saved to " + displayConfigPath() +
+                                 ". Changes take effect when foobar2000 restarts.");
+            }
         }
 
         if (page_.pairing)

@@ -352,9 +352,9 @@ TEST_CASE("an empty body is a pairing with no name") {
     CHECK(response->status == 200);
 }
 
-// The permissive CORS default is safe while every route needs a token to do anything. This one
-// does not, so it keeps the stricter same-host rule: no other origin may read a token out of it.
-TEST_CASE("the pairing route does not reflect any origin the way the rest do") {
+// The one route that hands out a credential to a caller without one keeps a rule of its own: an
+// origin on the host the request was addressed to, and no other, may read a token out of it.
+TEST_CASE("the pairing route reflects only an origin on the host it was addressed to") {
     const TestServer server;
     server.component().openPairingWindow();
 
@@ -373,10 +373,10 @@ TEST_CASE("the pairing route does not reflect any origin the way the rest do") {
         CHECK_FALSE(preflight->has_header("Access-Control-Allow-Origin"));
     }
 
-    SUBCASE("every other route still reflects it, which is the default this preserves") {
+    SUBCASE("no other route reflects it either") {
         const auto status = server.client().Get("/api/status", elsewhere);
         REQUIRE(status);
-        CHECK(status->get_header_value("Access-Control-Allow-Origin") == "http://evil.example");
+        CHECK_FALSE(status->has_header("Access-Control-Allow-Origin"));
     }
 
     SUBCASE("an origin on the host the request was addressed to is allowed") {

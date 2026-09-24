@@ -44,17 +44,4 @@ void appendTextFile(const std::string& path, const std::string& text, uint64_t l
     f->write_string_raw(text.c_str(), fb2k::noAbort);
 }
 
-bool fileExists(const std::string& path) {
-    try {
-        return filesystem::g_exists(path.c_str(), fb2k::noAbort);
-    } catch (const std::exception&) {
-        return false;
-    }
-}
-
-void removeFileIfPresent(const std::string& path) {
-    if (fileExists(path))
-        filesystem::g_remove(path.c_str(), fb2k::noAbort);
-}
-
 }  // namespace jean

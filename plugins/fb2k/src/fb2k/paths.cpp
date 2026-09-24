@@ -3,7 +3,6 @@
 #include "fb2k/paths.h"
 
 #include "core/version.h"
-#include "fb2k/files.h"
 #include "fb2k/strings.h"
 
 namespace jean {
@@ -18,12 +17,6 @@ std::string inComponentDir(const std::string& name) {
     auto path = inProfile(kComponentName);
     path.add_filename(name.c_str());
     return toStd(path);
-}
-
-pfc::string8 beefwebClientConfigDir() {
-    auto path = inProfile("beefweb");
-    path.add_filename("clientconfig");
-    return path;
 }
 
 }  // namespace
@@ -52,19 +45,6 @@ void ensureComponentDir() {
             filesystem::g_create_directory(dir.c_str(), fb2k::noAbort);
     } catch (const std::exception&) {
     }
-}
-
-std::string discoveryRecordPath() {
-    auto path = beefwebClientConfigDir();
-    // beefweb requires lowercase alphanumeric plus underscore here; "foo-jean" is
-    // rejected with a 400 and "foo_jean" is not.
-    path.add_filename(kComponentName);
-    path += ".json";
-    return toStd(path);
-}
-
-bool beefwebPresent() {
-    return fileExists(toStd(beefwebClientConfigDir()));
 }
 
 }  // namespace jean

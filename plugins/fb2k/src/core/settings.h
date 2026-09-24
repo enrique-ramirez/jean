@@ -13,7 +13,6 @@ struct Settings {
 
     std::string authToken;
 
-    // Empty reflects any origin. Entries are matched whole and case insensitively.
     std::vector<std::string> allowedOrigins;
 
     std::vector<std::string> allowedFields{"rating"};

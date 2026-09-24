@@ -11,7 +11,4 @@ std::string wwwDir();
 
 void ensureComponentDir();
 
-std::string discoveryRecordPath();
-bool beefwebPresent();
-
 }  // namespace jean

@@ -51,10 +51,6 @@ std::string capabilitiesDocument(const Settings& settings,
 std::string streamListenersDocument(const std::vector<AudienceMember>& members, int connections,
                                     int maxConnections, bool playerMuted);
 
-// Anyone who can reach beefweb can read this, so it carries neither the token nor the
-// field allowlist.
-std::string discoveryDocument(const Settings& settings, const ListenerStatus& status);
-
 std::string errorDocument(const std::string& message);
 
 std::string streamTicketDocument(const std::string& ticket, int expiresInSeconds);

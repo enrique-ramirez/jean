@@ -10,6 +10,7 @@ namespace {
 
 std::mutex g_mutex;
 HttpServer* g_server = nullptr;
+ListenerStatus g_status;
 
 }  // namespace
 
@@ -26,6 +27,21 @@ void forgetRunningServer() {
 bool isServing() {
     const std::lock_guard<std::mutex> lock(g_mutex);
     return g_server != nullptr;
+}
+
+void publishListenerStatus(const ListenerStatus& status) {
+    const std::lock_guard<std::mutex> lock(g_mutex);
+    g_status = status;
+}
+
+void forgetListenerStatus() {
+    const std::lock_guard<std::mutex> lock(g_mutex);
+    g_status = ListenerStatus{};
+}
+
+ListenerStatus listenerStatus() {
+    const std::lock_guard<std::mutex> lock(g_mutex);
+    return g_status;
 }
 
 void openPairingWindow() {

@@ -397,7 +397,9 @@ TEST_CASE("a cover is never compressed, however the client asks") {
 // a page cannot.
 TEST_CASE("a page on another origin can read the validator and send it back") {
     ArtLog log{kJpeg};
-    const TestServer server(servingSettings(), showing(&log));
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"http://localhost:5173"};
+    const TestServer server(settings, showing(&log));
     const httplib::Headers origin{{"Origin", "http://localhost:5173"}};
 
     const auto preflight = server.client().Options("/api/artwork", origin);

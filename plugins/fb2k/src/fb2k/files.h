@@ -12,7 +12,4 @@ void writeTextFile(const std::string& path, const std::string& text);
 
 void appendTextFile(const std::string& path, const std::string& text, uint64_t limitBytes);
 
-bool fileExists(const std::string& path);
-void removeFileIfPresent(const std::string& path);
-
 }  // namespace jean

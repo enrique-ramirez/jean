@@ -2204,41 +2204,6 @@ export interface components {
         Error: {
             error: string;
         };
-        /**
-         * @description Served by beefweb, not by this component, at `GET http://<player>:8880/api/clientconfig/foo_jean`. It is same-origin for anything beefweb serves, so finding the component is one request rather than a port scan. The component writes it on every start and removes it on a clean shutdown.
-         *
-         *     `null` means the component is not installed.
-         *
-         *     ### This record is not evidence
-         *
-         *     `POST /api/clientconfig/{id}` is a documented beefweb route, `changeClientConfig` defaults to on, and beefweb ships with no authentication. Anyone who can reach beefweb can therefore overwrite this record and name any port, and the forgery lasts until the component next starts. A client that read a port from here and posted its bearer token to it would hand the token to whoever wrote the file.
-         *
-         *     A client MUST treat this record as a hint. Call unauthenticated `GET /status` on the advertised port first, require `name` to be `foo_jean` and an `apiVersion` the client understands, and only then send the token.
-         */
-        DiscoveryRecord: {
-            /** @constant */
-            name: "foo_jean";
-            /** @example 0.3.0 */
-            version: string;
-            /** @example 1 */
-            apiVersion: number;
-            /**
-             * @description Where the component says it is listening. Verify before trusting.
-             * @example 8881
-             */
-            port: number;
-            /** @constant */
-            authRequired: true;
-            /** @description False when the component loaded but could not bind. Not the same as an absent record, and a client SHOULD report it: "installed but could not start on port 8881" is something a person can act on, where a silently disabled feature is not. */
-            listening: boolean;
-            /**
-             * @description Present only when `listening` is false. Safe to show a person.
-             * @example could not bind 0.0.0.0:8881; the port is in use
-             */
-            error?: string;
-            /** @description Present only when `listening` is false, and separated from other failures because it has a specific remedy: change `port` in `<profile>/foo_jean/config.json`. The usual cause is another server on that port. */
-            portInUse?: boolean;
-        };
     };
     responses: {
         /** @description The request was understood and declined before the player was involved: a body that is not JSON, a missing or unusable `title`, `query`, `sort` or `key`, an id this component did not issue, or an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals`, or that names an ordinal outside the library while its `structure` is still the current one. A `structure` that has moved is a `409` instead, whether the library grew or shrank. */

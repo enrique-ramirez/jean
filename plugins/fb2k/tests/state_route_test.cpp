@@ -1652,7 +1652,9 @@ TEST_CASE("a burst of polls past the budget is refused rather than served") {
 TEST_CASE("a refused poll says how long to wait and why, where a browser can read both") {
     Library library;
     fill(library);
-    const TestServer server = serving(&library);
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {kOrigin};
+    const TestServer server(settings, Player{}, &library);
 
     auto client = server.client();
     const auto refusal = pollPastTheBudget(client, bearerFrom(kOrigin));

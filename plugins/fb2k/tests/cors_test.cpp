@@ -2,6 +2,8 @@
 
 #include "support/test_server.h"
 
+#include <string>
+
 using namespace jean;
 using namespace jean::testing;
 
@@ -13,24 +15,28 @@ httplib::Headers from(const std::string& origin) {
 
 }  // namespace
 
-// Safe only while every route that answers without a credential reveals nothing; the last
-// test in listener_test.cpp pins that.
-TEST_CASE("by default any origin is reflected") {
+TEST_CASE("with no origin list, no origin is reflected on a request or a preflight") {
     const TestServer server;
 
     for (const char* origin : {"http://127.0.0.1:8880", "http://localhost:5173",
                                "http://player.local:8880", "https://jean.example"}) {
-        const auto response = server.client().Get("/api/status", from(origin));
+        INFO("origin: ", std::string(origin));
 
-        INFO("origin: ", origin);
-        REQUIRE(response);
-        CHECK(response->get_header_value("Access-Control-Allow-Origin") == origin);
+        const auto request = server.client().Get("/api/status", from(origin));
+        REQUIRE(request);
+        CHECK_FALSE(request->has_header("Access-Control-Allow-Origin"));
+
+        const auto preflight = server.client().Options("/api/tags", from(origin));
+        REQUIRE(preflight);
+        CHECK_FALSE(preflight->has_header("Access-Control-Allow-Origin"));
     }
 }
 
 // A literal `*` forbids credentialed mode outright; reflecting keeps that door open.
-TEST_CASE("the origin is reflected rather than answered with a star") {
-    const TestServer server;
+TEST_CASE("a listed origin is reflected rather than answered with a star") {
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"https://jean.example"};
+    const TestServer server(settings);
 
     const auto response = server.client().Get("/api/status", from("https://jean.example"));
 
@@ -59,27 +65,36 @@ TEST_CASE("responses say they vary by origin, so a shared cache cannot cross-ser
     }
 }
 
-TEST_CASE("a configured origin list narrows the default to exactly that list") {
+TEST_CASE("a configured origin list reflects exactly the origins on it") {
     Settings settings = servingSettings();
     settings.allowedOrigins = {"https://jean.example"};
 
     const TestServer server(settings);
 
-    SUBCASE("a listed origin is reflected") {
-        const auto response = server.client().Get("/api/status", from("https://jean.example"));
+    SUBCASE("a listed origin is reflected, on a request and on its preflight") {
+        const auto request = server.client().Get("/api/status", from("https://jean.example"));
+        REQUIRE(request);
+        CHECK(request->get_header_value("Access-Control-Allow-Origin") == "https://jean.example");
 
-        REQUIRE(response);
-        CHECK(response->get_header_value("Access-Control-Allow-Origin") == "https://jean.example");
+        const auto preflight = server.client().Options("/api/tags", from("https://jean.example"));
+        REQUIRE(preflight);
+        CHECK(preflight->get_header_value("Access-Control-Allow-Origin") ==
+              "https://jean.example");
     }
 
-    SUBCASE("anything else is refused, including one that the default would have allowed") {
+    SUBCASE("an unlisted origin is not, however close it looks to a listed one") {
         for (const char* origin :
-             {"http://evil.example", "http://127.0.0.1:8880", "https://jean.example.evil.com"}) {
-            const auto response = server.client().Get("/api/status", from(origin));
+             {"http://evil.example", "http://127.0.0.1:8880", "https://jean.example.evil.com",
+              "http://jean.example"}) {
+            INFO("origin: ", std::string(origin));
 
-            INFO("origin: ", origin);
-            REQUIRE(response);
-            CHECK(response->get_header_value("Access-Control-Allow-Origin").empty());
+            const auto request = server.client().Get("/api/status", from(origin));
+            REQUIRE(request);
+            CHECK_FALSE(request->has_header("Access-Control-Allow-Origin"));
+
+            const auto preflight = server.client().Options("/api/tags", from(origin));
+            REQUIRE(preflight);
+            CHECK_FALSE(preflight->has_header("Access-Control-Allow-Origin"));
         }
     }
 }
@@ -99,7 +114,9 @@ TEST_CASE("a configured origin matches case-insensitively, because config.json i
 // exposed, a cross-origin page never sees a validator to hold, so the `GET /library` revision
 // poll stops working from a page while still working from a command line.
 TEST_CASE("the headers a client is told to act on are readable from another origin") {
-    const TestServer server;
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"https://jean.example"};
+    const TestServer server(settings);
 
     const auto response = server.client().Get("/api/status", from("https://jean.example"));
 
@@ -114,7 +131,9 @@ TEST_CASE("the headers a client is told to act on are readable from another orig
 // A browser sends no credentials on a preflight, so it must be answered before the token check
 // or the real request never follows.
 TEST_CASE("preflight is answered without a credential") {
-    const TestServer server;
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"http://localhost:5173"};
+    const TestServer server(settings);
 
     const auto response = server.client().Options("/api/tags", from("http://localhost:5173"));
 
@@ -131,7 +150,9 @@ TEST_CASE("preflight is answered without a credential") {
 // this, a page could read a validator and never send one back, and every ETagged route
 // would be a full download from a browser.
 TEST_CASE("the preflight lets a page send back the validator it was allowed to read") {
-    const TestServer server;
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"http://localhost:5173"};
+    const TestServer server(settings);
 
     const auto response = server.client().Options("/api/library", from("http://localhost:5173"));
 
@@ -144,7 +165,9 @@ TEST_CASE("the preflight lets a page send back the validator it was allowed to r
 // exemption. A browser has to be able to preflight it like anything else, or a page cannot
 // fetch the stream at all.
 TEST_CASE("the stream's exemption from the token does not change its preflight") {
-    const TestServer server;
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"http://localhost:5173"};
+    const TestServer server(settings);
     const auto origin = from("http://localhost:5173");
 
     const auto stream = server.client().Options("/api/stream", origin);
@@ -160,7 +183,9 @@ TEST_CASE("the stream's exemption from the token does not change its preflight")
 }
 
 TEST_CASE("preflight says nothing about which routes exist") {
-    const TestServer server;
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"http://localhost:5173"};
+    const TestServer server(settings);
     const auto origin = from("http://localhost:5173");
 
     const auto known = server.client().Options("/api/tags", origin);

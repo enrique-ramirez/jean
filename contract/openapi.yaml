@@ -43,7 +43,7 @@ info:
 
     ## CORS
 
-    No origin is reflected by default. `POST /pair` is the exception — with no `allowedOrigins` configured it admits only an origin on the host the request was addressed to, since it is the route that hands out the token. `Vary: Origin` is set on every response, and a listed origin is echoed rather than answered with a literal `*`, which would forbid credentialed mode.
+    No origin is reflected with `allowedOrigins` empty, `POST /pair` included: another port on the same host is another origin, and any service listening there could read the token. A listed origin is reflected on every route: `Vary: Origin` is set on every response, and the origin is echoed rather than answered with a literal `*`, which would forbid credentialed mode.
 
     **A browser hands script only the CORS-safelisted response headers**, so every answer carries `Access-Control-Expose-Headers: ETag, Retry-After`. Those are the two a client is told to act on and neither is safelisted: without the first no cross-origin page can read a validator at all, and without the second a `429` cannot be backed off from as documented. `Cache-Control` and `Content-Type` are safelisted and are not named.
 
@@ -249,7 +249,7 @@ paths:
         - Private source addresses only: RFC1918, loopback and link-local, and their IPv6 equivalents. A forwarded port or a tunnel cannot be paired through. The address is checked before the window is consulted, so a caller from outside learns nothing about whether a window is open and cannot spend a grant.
         - The pairing history is recorded and shown in the preferences pane, so a pairing the owner did not perform is discoverable afterwards.
 
-        `Content-Type: application/json` is required. A simple `POST` needs no CORS preflight, so without this requirement a page on any origin could fire one blind and spend the grant. Requiring JSON forces every cross-origin caller to be preflighted, and with no `allowedOrigins` configured this route answers a preflight only for an origin on the host the request was addressed to.
+        `Content-Type: application/json` is required. A simple `POST` needs no CORS preflight, so without this requirement a page on any origin could fire one blind and spend the grant. Requiring JSON forces every cross-origin caller to be preflighted, and with no `allowedOrigins` configured no origin is reflected, so a page has to be served by the component itself, same-origin, to pair.
       security: []
       requestBody:
         required: false

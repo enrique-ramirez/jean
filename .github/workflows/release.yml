@@ -1,0 +1,83 @@
+# Builds ui/, compiles it into foo_jean.dll and packages foo_jean.fb2k-component -- the only
+# build here that needs a real Windows toolchain, the way plugin.yml's header says for src/fb2k/.
+# Every push to main uploads the component as a workflow artifact; a v* tag also publishes it as
+# a GitHub Release, once scripts/release-tag.sh confirms the tag names the version
+# plugins/fb2k/src/core/version.h carries. That check runs first, on the Windows runner's own
+# bash, so a wrong tag fails before any of the build below runs rather than after. contract.yml
+# is where the Node setup below is copied from.
+
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: github.ref_type == 'tag'
+        shell: bash
+        run: bash plugins/fb2k/scripts/release-tag.sh "$GITHUB_REF_NAME"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --dir ui build
+
+      - run: .\scripts\fetch-sdk.ps1
+        working-directory: plugins/fb2k
+
+      - run: .\scripts\fetch-wtl.ps1
+        working-directory: plugins/fb2k
+
+      - run: .\scripts\fetch-opus.ps1
+        working-directory: plugins/fb2k
+
+      # Embeds ui/dist as a Windows resource before compiling; see scripts/embed-ui.ps1.
+      - run: .\scripts\build.ps1 -Project src\foo_jean.vcxproj
+        working-directory: plugins/fb2k
+
+      - run: .\scripts\package.ps1
+        working-directory: plugins/fb2k
+
+      # archive: false uploads dist/foo_jean.fb2k-component as itself, not zipped a second time.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: plugins/fb2k/dist/foo_jean.fb2k-component
+          archive: false
+
+  # A separate job, so contents: write reaches gh release create and nothing that fetches, builds
+  # or packages the DLL.
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: foo_jean.fb2k-component
+          path: dist
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/foo_jean.fb2k-component --generate-notes

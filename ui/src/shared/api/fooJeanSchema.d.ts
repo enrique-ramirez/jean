@@ -45,7 +45,7 @@ export interface paths {
          *     - Private source addresses only: RFC1918, loopback and link-local, and their IPv6 equivalents. A forwarded port or a tunnel cannot be paired through. The address is checked before the window is consulted, so a caller from outside learns nothing about whether a window is open and cannot spend a grant.
          *     - The pairing history is recorded and shown in the preferences pane, so a pairing the owner did not perform is discoverable afterwards.
          *
-         *     `Content-Type: application/json` is required. A simple `POST` needs no CORS preflight, so without this requirement a page on any origin could fire one blind and spend the grant. Requiring JSON forces every cross-origin caller to be preflighted, and with no `allowedOrigins` configured this route answers a preflight only for an origin on the host the request was addressed to.
+         *     `Content-Type: application/json` is required. A simple `POST` needs no CORS preflight, so without this requirement a page on any origin could fire one blind and spend the grant. Requiring JSON forces every cross-origin caller to be preflighted, and with no `allowedOrigins` configured no origin is reflected, so a page has to be served by the component itself, same-origin, to pair.
          */
         post: operations["pair"];
         delete?: never;

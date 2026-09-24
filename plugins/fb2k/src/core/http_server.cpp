@@ -545,23 +545,14 @@ struct HttpServer::Impl {
 
     std::atomic<bool> complainedAboutRate{false};
 
-    bool originAllowed(const std::string& origin, const std::string& path,
-                       const std::string& host) const {
+    bool originAllowed(const std::string& origin) const {
         if (origin.empty())
             return false;
 
-        if (!settings.allowedOrigins.empty())
-            return std::any_of(settings.allowedOrigins.begin(), settings.allowedOrigins.end(),
-                               [&origin](const std::string& permitted) {
-                                   return equalsIgnoringCase(origin, permitted);
-                               });
-
-        if (path == kPairPath) {
-            const auto from = hostOfOrigin(origin);
-            return !from.empty() && from == hostOfOrigin("x://" + host);
-        }
-
-        return false;
+        return std::any_of(settings.allowedOrigins.begin(), settings.allowedOrigins.end(),
+                            [&origin](const std::string& permitted) {
+                                return equalsIgnoringCase(origin, permitted);
+                            });
     }
 
     void applyCors(const httplib::Request& req, httplib::Response& res) const {
@@ -569,7 +560,7 @@ struct HttpServer::Impl {
         res.set_header("Vary", "Origin");
 
         const auto origin = req.get_header_value("Origin");
-        if (!originAllowed(origin, req.path, req.get_header_value("Host")))
+        if (!originAllowed(origin))
             return;
 
         res.set_header("Access-Control-Allow-Origin", origin);

@@ -14,8 +14,6 @@ namespace jean {
 // Parsed rather than prefix-matched, because "172.16." also admits 172.160.0.1.
 bool isPrivateAddress(const std::string& address);
 
-std::string hostOfOrigin(const std::string& origin);
-
 class PairingWindow {
 public:
     using Clock = std::chrono::steady_clock;

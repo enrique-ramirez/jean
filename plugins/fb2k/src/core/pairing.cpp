@@ -213,33 +213,6 @@ bool isPrivateAddress(const std::string& address) {
     return isPrivateIpv4(bare) || isPrivateIpv6(bare);
 }
 
-std::string hostOfOrigin(const std::string& origin) {
-    const auto scheme = origin.find("://");
-    if (scheme == std::string::npos)
-        return {};
-
-    auto host = origin.substr(scheme + 3);
-    if (host.empty())
-        return {};
-
-    if (host.front() == '[') {
-        const auto close = host.find(']');
-        if (close == std::string::npos)
-            return {};
-        return toLower(host.substr(1, close - 1));
-    }
-
-    const auto port = host.find(':');
-    if (port != std::string::npos)
-        host = host.substr(0, port);
-
-    const auto slash = host.find('/');
-    if (slash != std::string::npos)
-        host = host.substr(0, slash);
-
-    return toLower(std::move(host));
-}
-
 PairingWindow::PairingWindow(std::chrono::seconds duration) : duration_(duration) {}
 
 void PairingWindow::open(Clock::time_point now) {

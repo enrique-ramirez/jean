@@ -118,16 +118,6 @@ TEST_CASE("a private address is the local network and nothing else") {
     }
 }
 
-TEST_CASE("an origin is reduced to its host") {
-    CHECK(hostOfOrigin("http://player.local:8880") == "player.local");
-    CHECK(hostOfOrigin("https://Player.Local") == "player.local");
-    CHECK(hostOfOrigin("http://10.0.0.4:8123") == "10.0.0.4");
-    CHECK(hostOfOrigin("http://[fe80::1]:8880") == "fe80::1");
-    CHECK(hostOfOrigin("null").empty());
-    CHECK(hostOfOrigin("").empty());
-    CHECK(hostOfOrigin("http://").empty());
-}
-
 TEST_CASE("the window is shut until somebody opens it") {
     PairingWindow window{std::chrono::seconds(120)};
 
@@ -352,13 +342,15 @@ TEST_CASE("an empty body is a pairing with no name") {
     CHECK(response->status == 200);
 }
 
-// The one route that hands out a credential to a caller without one keeps a rule of its own: an
-// origin on the host the request was addressed to, and no other, may read a token out of it.
-TEST_CASE("the pairing route reflects only an origin on the host it was addressed to") {
+// Another port on the player's own host is another origin, and any service listening there could
+// read the token. A page served by the component pairs same-origin and needs no header at all.
+TEST_CASE("with no origin list, the pairing route reflects no origin, even one on its own host") {
     const TestServer server;
     server.component().openPairingWindow();
 
     const httplib::Headers elsewhere{{"Origin", "http://evil.example"}};
+    const httplib::Headers sameHostOtherPort{
+        {"Origin", "http://" + std::string(TestServer::kClientHost) + ":8880"}};
 
     SUBCASE("a foreign origin gets no allow header on pairing") {
         const auto response =
@@ -379,13 +371,17 @@ TEST_CASE("the pairing route reflects only an origin on the host it was addresse
         CHECK_FALSE(status->has_header("Access-Control-Allow-Origin"));
     }
 
-    SUBCASE("an origin on the host the request was addressed to is allowed") {
-        const std::string host = std::string(TestServer::kClientHost) + ":8880";
-        const httplib::Headers sameHost{{"Origin", "http://" + host}};
-
-        const auto preflight = server.client().Options("/api/pair", sameHost);
+    SUBCASE("an origin on the host it was addressed to gets no allow header on preflight") {
+        const auto preflight = server.client().Options("/api/pair", sameHostOtherPort);
         REQUIRE(preflight);
-        CHECK(preflight->get_header_value("Access-Control-Allow-Origin") == "http://" + host);
+        CHECK_FALSE(preflight->has_header("Access-Control-Allow-Origin"));
+    }
+
+    SUBCASE("an origin on the host it was addressed to gets no allow header on pairing") {
+        const auto response =
+            server.client().Post("/api/pair", sameHostOtherPort, "{}", "application/json");
+        REQUIRE(response);
+        CHECK_FALSE(response->has_header("Access-Control-Allow-Origin"));
     }
 }
 
@@ -396,6 +392,11 @@ TEST_CASE("a named origin list governs pairing as it governs everything else") {
     server.component().openPairingWindow();
 
     const httplib::Headers dev{{"Origin", "http://localhost:8123"}};
+
+    const auto preflight = server.client().Options("/api/pair", dev);
+    REQUIRE(preflight);
+    CHECK(preflight->get_header_value("Access-Control-Allow-Origin") == "http://localhost:8123");
+
     const auto response = server.client().Post("/api/pair", dev, "{}", "application/json");
     REQUIRE(response);
     CHECK(response->get_header_value("Access-Control-Allow-Origin") == "http://localhost:8123");

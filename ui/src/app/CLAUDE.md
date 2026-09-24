@@ -18,7 +18,7 @@ The grid every feature is drawn inside, hash routing, the themes, the browser ta
 
 ## Routing
 
-**Hash routing, because beefweb's static server has no SPA fallback**, for the reason `shared/api/README.md` gives.
+**Hash routing, because `foo_jean`'s own file server has no SPA fallback**, for the reason `shared/api/README.md` gives.
 
 **Where each view was left is remembered per view, and keyed on the route *underneath* the layer.** Keyed on the raw route instead, opening a layer would scroll the list behind it to the top and closing it would restore an offset over whatever had just been asked for. `useScrollMemory` also has to stand aside for a view being opened to be taken somewhere in particular, since the two would otherwise fight for as long as rows keep arriving.
 
@@ -49,7 +49,7 @@ The neutrals follow the accent's hue rather than a warm one.
 
 **A CSS-animated SVG favicon only animates in Firefox.** Chrome, Edge and Safari draw one static frame. So `favicon.ts` rasterises the SVG onto a canvas at a set of angles and swaps `link.href` between them, rendering each frame once and caching it. **Everything in the source file except the sheen is centred and circular**, so rotating the whole image is the same picture as rotating the sheen alone, which is what lets one SVG be both the static icon and the animation source. The file carries **no `prefers-color-scheme`**: a media query inside an SVG loaded as an `<img>` resolves inconsistently, and keeping it out is what keeps the file rasterisable.
 
-**The source is fetched, so it MUST be resolved against the document and never written root-relative.** beefweb serves Jean under a subpath, where a root-relative path belongs to whatever is at the root rather than to this app. Written absolute it 404s in the only deployment that matters, the image never loads, and the record simply never spins, while dev, served at the root, looks perfect. Vite's relative `base` covers the tag in `index.html`; anything the code fetches for itself is on the code.
+**The source is fetched, so it MUST be resolved against the document and never written root-relative.** The build's `base` is relative, because the same bundle is also the demo, embedded on the site under a prefix. Written absolute it 404s there, the image never loads, and the record simply never spins, while `foo_jean`, serving Jean at the root, looks perfect either way. Vite's relative `base` covers the tag in `index.html`; anything the code fetches for itself is on the code.
 
 **State is the label's colour and never the motion.** A background tab's timers are clamped to about a second, so a spinning icon freezes exactly when the tab strip is the only thing visible. **No output or speaker mark either**: the browser already badges an audible tab with a speaker glyph immediately beside the favicon.
 

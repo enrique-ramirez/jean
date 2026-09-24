@@ -1,7 +1,7 @@
 # Jean
 
 <!-- site:tagline -->
-Jean (/ʝan/) is a different face for [beefweb](https://github.com/hyperblast/beefweb), the plugin that puts a small web server inside foobar2000 and DeaDBeeF. It plays nothing itself. Your player does that, on the machine it has always done it on, and Jean is what you point a browser at: full keyboard control at a desk, gestures sized for a thumb on a phone, and a front door built to hand you back the records you already own and had forgotten about.
+Jean (/ʝan/) is a web interface for foobar2000, served by [`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), the component that puts a small web server inside it. It plays nothing itself. Your player does that, on the machine it has always done it on, and Jean is what you point a browser at: full keyboard control at a desk, gestures sized for a thumb on a phone, and a front door built to hand you back the records you already own and had forgotten about.
 <!-- /site:tagline -->
 
 **[Try it](https://enrique-ramirez.github.io/jean/demo/)**: the whole interface, running against a library and a player that live entirely in your browser tab. Nothing to install. Nothing actually plays.
@@ -52,13 +52,9 @@ Anything your library cannot support is not drawn. No ratings, no starred shelf.
 ## Requirements
 
 <!-- site:requirements -->
-Jean is not a music player, and on its own it does nothing at all. It draws a player that is already running somewhere else, so three things have to be in place before it has anything to talk to.
+Jean is not a music player, and on its own it does nothing at all. It draws a player that is already running somewhere else, so one thing has to be in place before it has anything to talk to.
 
-**A player that beefweb runs in.** foobar2000 on Windows, or DeaDBeeF on Linux, macOS or BSD. There is no foobar2000 build of beefweb for macOS, so a Mac means DeaDBeeF.
-
-**[beefweb](https://github.com/hyperblast/beefweb), installed and enabled in it.** This is the piece that answers a browser at all: it serves Jean itself and is how Jean finds `foo_jean` on your network.
-
-**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed beside it.** Playback, playlists, the queue, your library, its covers, ratings written back to your tags, and the sound sent to this device all come from here. It pairs with Jean once, on your own network.
+**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed in foobar2000 on Windows.** Playback, playlists, the queue, your library, its covers, ratings written back to your tags, the sound sent to this device, and Jean itself all come from here. There is nothing else to install.
 
 One more is optional:
 
@@ -70,57 +66,27 @@ One more is optional:
 ## Install
 
 <!-- site:install -->
-**1. Download [the latest release](https://github.com/enrique-ramirez/jean/releases) and unzip it.**
+**1. Install [`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k).** Download `foo_jean.fb2k-component` from [the latest release](https://github.com/enrique-ramirez/jean/releases) and open it with foobar2000, which installs it and offers to restart.
 
-**2. Put what came out of the zip into a folder called `jean`, beside your beefweb settings.** The files go straight in. A `jean` folder holding a second `jean` folder is the usual slip, and beefweb serves nothing at all when it happens:
+**2. Open `http://<the player's computer>:8881/`** in any browser in the house. `foo_jean` serves Jean itself, at the port it listens on. That is the whole install.
 
-```
-beefweb/
-├── config.json
-├── jean/
-│   ├── index.html
-│   ├── favicon.svg
-│   ├── assets/
-│   └── locales/
-```
+**Rating a track or writing a tag needs pairing first.** On the player, open `File → Preferences → Tools → Jean → Devices` and press "Pair a device", then press Pair in Jean. Nobody at the player's own screen? Open `<profile>/foo_jean/config.json` in a text editor and paste `authToken` into Jean's Token field instead.
 
-Replacing a copy you already have? Delete the old `jean` folder rather than unzipping over it, or yesterday's files pile up beside today's. If you wrote your own translation, keep `locales/custom.json`: that one is yours.
+**A translation lives at `<profile>/foo_jean/www/locales/<code>.json`**, added by hand.
 
-**3. Open `config.json`, in that same folder, in any text editor** and tell beefweb where the `jean` folder is. Create the file if it is not there:
-
-```json
-{
-  "urlMappings": {
-    "/jean": "C:\\Users\\you\\AppData\\Roaming\\foobar2000-v2\\beefweb\\jean"
-  }
-}
-```
-
-Write the full path, not a shortened one, and on Windows double every backslash exactly as above.
-
-**4. Restart the player.** It reads that file once, at startup.
-
-**5. Open `http://<the player's computer>:8880/jean/`** in any browser in the house. The trailing slash matters.
-
-Jean now lives at `/jean`, and the interface beefweb came with is still at `/`. Nothing has been replaced, so if you hate it, delete the folder.
+**A folder at `<profile>/foo_jean/www/<name>/` is a web interface of its own, served at `/<name>/`.** It shares Jean's origin, so it can read the token Jean stores there too.
 <!-- /site:install -->
 
-### Where the beefweb folder is
+### Where your foobar2000 profile is
 
 <!-- site:profiles -->
+`<profile>` is foobar2000's own settings folder, the one it already keeps your playlists and library index in. `foo_jean` reads and writes its own files under `<profile>/foo_jean/`.
+
 | Setup | Location |
 |---|---|
-| foobar2000, Windows | `%APPDATA%\foobar2000-v2\beefweb\` |
-| foobar2000, **portable install** | next to the executable, at `<install dir>\profile\beefweb\` rather than `%APPDATA%` |
-| DeaDBeeF, Linux/BSD | `~/.config/deadbeef/beefweb/` |
-| DeaDBeeF, macOS | `~/Library/Preferences/deadbeef/beefweb/` |
-
-The portable case catches people out. Copying to `%APPDATA%` there fails quietly: the files land, and beefweb goes on serving the interface it came with.
+| Standard install | `%APPDATA%\foobar2000-v2\` |
+| **Portable install** | next to the executable, at `<install dir>\profile\` rather than `%APPDATA%` |
 <!-- /site:profiles -->
-
-### You do not have to tell Jean your port
-
-Jean asks beefweb for the one thing it still needs, `foo_jean`'s discovery record, by a root-relative path, which the browser resolves against whatever origin served the page. Change the port in the player's settings and nothing here needs touching. The one arrangement this does not survive is hosting Jean somewhere *other* than beefweb. There is no same-origin API then, and beefweb has CORS off by default.
 
 ## Language
 
@@ -128,9 +94,9 @@ Jean ships in English, with a Spanish translation beside it. Pick one under **Se
 
 ### Translating it yourself
 
-The languages live in `locales/`, beside `index.html`, one JSON file per language named after its code: `en.json`, `es.json`, `fr.json`. Copy one, translate the right-hand side of each line, and leave anything in `{braces}` alone: those are filled in at runtime, and a field renamed shows up as `{prot}` on screen.
+The languages live at `<profile>/foo_jean/www/locales/`, one JSON file per language named after its code: `en.json`, `es.json`, `fr.json`. Copy one, translate the right-hand side of each line, and leave anything in `{braces}` alone: those are filled in at runtime, and a field renamed shows up as `{prot}` on screen.
 
-Then tell Jean the file is there. It cannot look: beefweb's static server publishes no directory listing, and its file browser refuses anything outside your music folders. So name the code in `locales/custom.json`, which is a plain list and is the one file here that is yours:
+Then tell Jean the file is there. It cannot list its own folder, so name the code in `locales/custom.json`, right beside it, which is a plain list and is the one file here that is yours:
 
 ```json
 ["fr", "pt-BR"]

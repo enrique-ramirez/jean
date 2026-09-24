@@ -36,7 +36,7 @@ There is one of these files beside each part of the tree, for what is local to i
 - **Fully responsive**, one codebase, no separate mobile build. Desktop is keyboard-first; mobile is aggressively optimised for touch targets, safe-area insets and payload.
 - **Light and dark themes, both designed.** Neither is `#000` / `#fff`.
 - **Everything a person can read is a phrase in the catalogue**, and English is the only language shipped in the bundle. A translation is a JSON file in `locales/` beside `index.html`, added by hand and never by Jean. `ui/src/shared/i18n/CLAUDE.md` is the whole of it; the rule that gets broken first is a string literal written straight into JSX.
-- **Minimum required components: `foo_jean` alone.** Everything beyond is optional, auto-detected and individually toggleable in Settings. A bare install MUST get a complete, coherent app, never a dead panel or an empty shelf. Keep the component table in `README.md` current.
+- **Minimum required components: `foo_jean` alone, with nothing else to install.** Everything beyond it is optional, auto-detected and individually toggleable in Settings. A bare install MUST get a complete, coherent app, never a dead panel or an empty shelf. Keep the component table in `README.md` current.
 - **Run the suite before claiming a change works.** `pnpm lint`, `pnpm typecheck` and `pnpm test` MUST pass. See `ui/CONTRIBUTING.md` for which parts of the suite are cheap enough to run freely.
 - **Write a comment only for a fact from outside this repository**, and name the system it is about: beefweb, foobar2000, `foo_jean`, a browser, a library. Why a value was chosen is a named constant; what the code does is the code; how the parts fit is `ui/ARCHITECTURE.md`; what the player answers is `ui/src/shared/api/README.md`. An external fact lives in one place and it is usually not a source file. `ui/src/` is near zero and an exception should be a surprise; specs carry more, because why a case exists is worth saying.
 
@@ -59,9 +59,7 @@ Prefer the player's own metadata over anything Jean invents, in this order:
 
 Writing a custom foobar component to feed Jean is a last resort. Do not design toward it.
 
-**Jean's own settings live in `localStorage` today and belong in `/api/clientconfig/{id}`**, with four keys permanently excluded from that move. `ui/ARCHITECTURE.md` has the split, the four keys and the reason for each.
-
-**The `foo_jean` clientconfig id is spoken for.** The component publishes its discovery record there and Jean writing to it would clobber the record. Ids take lowercase letters, digits and `_`; `foo-jean` is a 400.
+**Jean's own settings live in `localStorage`, and there is no server-side settings store.**
 
 ## Capability detection
 
@@ -73,11 +71,10 @@ Writing a custom foobar component to feed Jean is a last resort. Do not design t
 
 ## `foo_jean`
 
-Required. The media library, tag writing and listening all arrive through it. It listens on a port of its own while beefweb serves Jean on another, so every call to it is cross-origin and a token rides a request the component has answered a preflight for. Its source is `plugins/fb2k/`, and `plugins/fb2k/CLAUDE.md` is the way into it: the rules for writing that component are its own, and this file governs only what Jean does about it. The two seams, the discovery that feeds them, and the security model that says when a token may be sent are in `ui/ARCHITECTURE.md`; the endpoints and their failure modes are in `ui/src/shared/api/README.md`. What must not be undone:
+Required, and the only thing an install needs: it serves Jean's own page as well as the media library, tag writing and listening. Jean is served by the same origin it calls, so no request it makes is cross-origin and none is preflighted. Its source is `plugins/fb2k/`, and `plugins/fb2k/CLAUDE.md` is the way into it: the rules for writing that component are its own, and this file governs only what Jean does about it. The two seams and the security model that says when a token may be sent are in `ui/ARCHITECTURE.md`; the endpoints and their failure modes are in `ui/src/shared/api/README.md`. What must not be undone:
 
-- **The unauthenticated probe before the token is never optional.** The discovery record is writable by anyone who can reach beefweb, so it is a hint and never a credential target.
 - **Nothing outside `domain/track/tagWriter.ts` and `domain/player/listener.ts` may ask which implementation it holds.** If something has to branch on `kind`, the seam is in the wrong place.
-- **Every discovery state gets a message and a remedy. None of them is silence.** "Installed but could not start on port 8881" is actionable; silently rendering ratings read-only is not. `ui/src/features/settings/TagWriting.tsx` is where those live.
+- **Every connection state gets a message and a remedy. None of them is silence.** "Installed but could not start on port 8881" is actionable; silently rendering ratings read-only is not. `ui/src/features/settings/TagWriting.tsx` is where those live.
 - **Jean's per-field switches narrow and never widen.** The component's `config.json` is the player owner's; Jean lists exactly the fields it permits and turns them off, never on.
 
 ## Generality constraints
@@ -87,14 +84,14 @@ Things that vary between installs and MUST never be assumed:
 | | |
 |---|---|
 | Which playlist is which | The library is not one of them: `foo_jean` answers it. Never read a role out of a title somebody chose, and never assume `p1`, which is scratch space |
-| `permissions` | `changePlaylists`, `changeOutput`, `changeClientConfig` come from the player. Gate the UI on them: a read-only instance gets a read-only Jean, not buttons that 403 |
+| `permissions` | `changeOutput` comes from the player. Gate the UI on it: a read-only instance gets a read-only Jean, not buttons that 403 |
 | `authRequired` | May be on. Support Basic auth and a credentials prompt |
 | `pathSeparator` | From `/api/browser/roots`. `\` on Windows, `/` elsewhere, but library paths are `/`-separated everywhere, so do not build one with it |
 | Library size | Anywhere from empty to very large. Nothing may be linear in it on the main thread |
 | Components | Detect, never require |
 | Keyboard layout | A binding written as an unshifted key is not unshifted everywhere. See `ui/src/shared/keyboard/CLAUDE.md` |
 
-CORS is off in beefweb by default, so Jean MUST be served same-origin, by beefweb or through the dev proxy.
+Jean MUST be served same-origin with the API it calls: by `foo_jean` itself, or through the dev proxy in development.
 
 ## Invariants that hold everywhere
 

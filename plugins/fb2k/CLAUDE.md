@@ -19,17 +19,20 @@ This file holds only what the other four do not: the priorities, the rules about
 
 ## Driving the player
 
-The build happens on Windows, never on the editing machine. The loop is: edit, sync, build over SSH, install, restart, test. `scripts/deploy.local.sh` does the round trip and refuses to sync if the tests fail; `--skip-tests` overrides that when a change is genuinely Windows-only.
+Four roles, and a script that touches one MUST NOT assume it is another: **a build machine**, Windows, the only place the component compiles and the only place `src/fb2k/` is tested; **a player**, whose music files are never written, on which playback and playlists are fair game; **a disposable install**, for anything that writes tags, built and torn down by `scripts/test-fixtures.ps1`; and **a deploy target**, reached only to deploy, as the last step of finishing a task.
+
+The loop against the build machine is: edit, sync, build over SSH, install, restart, test. `scripts/deploy.local.sh` does that round trip and refuses to sync if the tests fail; `--skip-tests` overrides that when a change is genuinely Windows-only.
 
 | | |
 |---|---|
-| Player | `<player-host>`, key auth, **default shell is `cmd`** |
-| foobar2000 | portable install at `<foobar2000-install>`; the profile is beside the executable, *not* in `%APPDATA%` |
-| beefweb | port 8880 |
+| Build machine | `<build-machine>`, key auth, **default shell is `cmd`** |
+| Player | portable install at `<foobar2000-install>`; the profile is beside the executable, *not* in `%APPDATA%` |
 | foo_jean | port 8881; config and log in `<profile>/foo_jean/` |
-| Library | `<library-root>`. **Never written to.** Do not scan it; ask beefweb for paths |
-| Fixtures | `<fixtures-dir>`, built by `scripts/test-fixtures.ps1`, in their own playlist |
+| Library | `<library-root>`. **Never written to.** Do not scan it; ask `foo_jean`'s own library export for paths |
+| Disposable install | `<fixtures-dir>`, built by `scripts/test-fixtures.ps1`, in their own playlist |
 | Restart | `schtasks /run /tn foo_jean_exit` then `/tn foo_jean_start` |
+
+**Pairing a device against a headless player** is copying `authToken` out of `<profile>/foo_jean/config.json` by hand into Jean's token field, since nobody is at a screen to press **Pair a device**.
 
 - **Never run `foobar2000.exe` over SSH, with any argument or none.** An SSH session is session 0, so it starts a *second* instance in the wrong window station, which then intercepts the single-instance IPC and makes the next `/exit` hang. `/add` is the same trap and is where the stray usually comes from. Use the interactive (`/it`) scheduled tasks above, or `scripts/lib/player.ps1`, which is what everything in `scripts/` uses.
 - **If it happens:** `tasklist /fi "imagename eq foobar2000.exe"` shows two rows, one `Console` and one `Services`. Kill the `Services` one by PID. It holds no ports and does not own the profile.
@@ -43,7 +46,7 @@ The build happens on Windows, never on the editing machine. The loop is: edit, s
 
 ## State
 
-**All three goals work end to end** against a real player: tag writing, autoplaylists, and streaming in Opus and AAC with a timeline. Listening moves the sound rather than doubling it, and `GET /api/stream/listeners` says who else has it. The component builds, packages, installs and loads unsigned, with no manifest and no ceremony. The preferences page, device pairing and the discovery record are in. `scripts/verify-tag-write.ps1`, `scripts/verify-stream.ps1` and `scripts/verify-listeners.ps1` make three of those round trips repeatable.
+**All three goals work end to end** against a real player: tag writing, autoplaylists, and streaming in Opus and AAC with a timeline. Listening moves the sound rather than doubling it, and `GET /api/stream/listeners` says who else has it. The component builds, packages, installs and loads unsigned, with no manifest and no ceremony. The preferences page and device pairing are in, and so is Jean's own page, served from the component, same-origin with the API it calls. `scripts/verify-tag-write.ps1`, `scripts/verify-stream.ps1` and `scripts/verify-listeners.ps1` make three of those round trips repeatable.
 
 **The media library is a snapshot this component builds and keeps fresh**, in the columns whoever asks for it declares, with two generations and a per-column delta so a client patches what it holds rather than fetching it again. `core/` holds the snapshot, the encoding and every decision a request meets; `src/fb2k/library.cpp` walks the player, and like everything in that directory it is reviewed rather than tested until `scripts/build.ps1` has run.
 
@@ -55,4 +58,3 @@ The build happens on Windows, never on the editing machine. The loop is: edit, s
 2. **`scripts/verify-autoplaylist.ps1`.** The autoplaylist round trip is still done by hand. Same shape as `verify-tag-write.ps1`: create, check the count against a preview, check beefweb sees it, update, delete, and assert the playlist set is unchanged at the end. It should create its own playlist to exercise `notOurs` against.
 3. **The client half of autoplaylists.** The component half is done; `/api/capabilities` reports `canCreateAutoPlaylists` and `maxAutoPlaylists`, and `preview` reports `libraryEnabled` so a client can warn before creating a folder that cannot fill.
 4. **The playback-commands half.** `GET /api/state` already names the playing track, says which playlist it is playing from and where, and serves the now-playing cover. What is left is a component route that takes a playback mode by name, which `playerOrderFor` already implements with only tests calling it, and a client control that can express all seven modes `foo_jean` offers rather than the single shuffle toggle Jean draws today. **That control is a product decision nobody has taken.**
-5. **Serving the client from this component.** Jean is served same-origin with the API it talks to, and this is the half that does the serving. It is file-serving surface in a component whose first priority is security, so it is a piece of work of its own rather than a route bolted to an existing one.

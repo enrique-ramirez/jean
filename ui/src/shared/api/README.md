@@ -1,6 +1,6 @@
 # API reference
 
-Two HTTP APIs sit under Jean. **beefweb** serves the bundle and hosts the discovery record at `GET /api/clientconfig/foo_jean`, and nothing else on this page is a route Jean calls. **`foo_jean`** listens on a port of its own and answers everything else: playback, the player's own state, the playlist list and every edit to it, the queue, the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
+Two HTTP APIs are documented here. **`foo_jean`** serves Jean itself, from its own origin, and answers everything Jean calls: playback, the player's own state, the playlist list and every edit to it, the queue, the library and its covers, writing tags, creating autoplaylists, and streaming the player's output. **beefweb** is the plugin `foo_jean` sits beside; Jean calls none of its routes, and what follows about it is documented for a client that has no other API to reach for.
 
 Verified against foobar2000 with the beefweb plugin. Where behaviour differs by plugin version it says so: **0.10** is the current release, **0.11** adds the media library API.
 
@@ -15,11 +15,10 @@ Verified against foobar2000 with the beefweb plugin. Where behaviour differs by 
 | Base URL | `http://<player-host>:8880` |
 | API prefix | `/api` |
 | Auth | HTTP Basic, when `authRequired` is on. Off by default |
-| From Jean | root-relative `/api/…`, proxied by Vite in development |
 | Remote access | `allowRemote` must be on for anything but localhost |
-| CORS | **off by default.** No `Access-Control-Allow-Origin` comes back, so a page on another origin cannot call the API. Jean is served same-origin or through the dev proxy |
+| CORS | **off by default.** No `Access-Control-Allow-Origin` comes back, so a page on another origin cannot call the API |
 | Compression | gzip when the client asks for it |
-| SPA fallback | none. `/playlists/p2` is a 404, which is why Jean routes on the hash |
+| SPA fallback | none. `/playlists/p2` is a 404 |
 
 ## Reading state
 
@@ -118,7 +117,6 @@ The same parameters as Server-Sent Events. Each message is a full `data:` payloa
 | `GET /browser/roots` | `{ pathSeparator, roots: [{ path, … }] }`. `\` on Windows, `/` elsewhere |
 | `GET /browser/entries?path=` | `{ entries: [{ name, path, size, timestamp, type: "D"\|"F" }] }` |
 | `GET /artwork/current` · `/artwork/{playlistId}/{index}` | image bytes, or 404 when there is none |
-| `GET\|POST /clientconfig/{id}` · `POST /clientconfig/remove/{id}` | arbitrary server-side JSON blob storage |
 
 ## Shapes
 
@@ -162,14 +160,6 @@ The queue is finite, ordered and exhaustive: the player takes all of it, in orde
 - **The update stream carries the whole queue on every change**, with no `player` object riding along.
 
 > **Removing the queued track itself leaves the entry behind reporting `itemIndex: -1`, and its `columns` are garbage rather than empty.** They hold whatever is in the freed slot. **Test `itemIndex < 0`; never infer an orphan from its columns.**
-
-### `clientconfig`
-
-Arbitrary JSON blob storage, keyed by id.
-
-- **`GET` answers `200` with a body of `null` for an id nobody has written**, not a 404.
-- Ids are lowercase alphanumeric plus `_`. `foo-jean` is a **400**.
-- **Nothing on this route is authenticated and `changeClientConfig` defaults to on.** Anyone who can reach beefweb can read or overwrite any id. Never store a credential here.
 
 ### Artwork
 
@@ -238,7 +228,7 @@ Which of these resolve varies by install, by component and by how the library wa
 - **Emptying or deleting the playing playlist does not stop playback.** The current track keeps playing but is orphaned: `activeItem.playlistId` goes to `""` and `index` to `-1`. Emptying is harmless if a play follows immediately. Deleting is not: at the end of the track the player falls back to another playlist and carries on.
 - **A manual skip pushes an empty `activeItem` before it pushes the next track**, and goes on reporting `playbackState: "playing"` across the gap. Every field is cleared at once, so a client that draws each field as it arrives shows no cover, no title and `0:00` for the width of the gap. Three things make it a trap: it is **only manual skips**, so the flash looks intermittent; it is **not the stopped item**, which reports `duration` and `position` as `-1`; and **emptiness has to be read off `columns`, not off `index`**, since the orphan above is a lasting `index: -1` behind a track that is still audible.
 - **Renaming a playlist while it is playing is seamless**: same track, same position, uninterrupted. That turns "save these results as a playlist" into a rename rather than a copy.
-- **There is no tag-writing endpoint.** Every POST route is playback, playlists, queue, outputs or clientconfig. Ratings and lyrics can be *read* through title formatting and cannot be written back through beefweb at all.
+- **There is no tag-writing endpoint.** Every POST route is playback, playlists, queue or outputs. Ratings and lyrics can be *read* through title formatting and cannot be written back through beefweb at all.
 - **There is no way to reach another component.** `/api/commands`, `/api/command`, `/api/mainmenu`, `/api/contextmenu`, `/api/plugins` and `/api/components` all 404.
 
 ## The library on beefweb 0.10
@@ -369,33 +359,17 @@ npx @redocly/cli preview-docs \
 
 A foobar2000 component listening on a port of its own, typically 8881. Its source is `plugins/fb2k/`. The media library, tag writing and listening all arrive through it, and Jean reaches none of the three without it.
 
-**`contract/openapi.yaml` is that component's contract, and it is the reference for every route below the discovery record.** Jean's types are generated from it, its descriptions carry the reasoning a client needs, and nothing restated here could do anything but drift from it. `plugins/fb2k/ARCHITECTURE.md` is the design behind it. What follows is only the part that is Jean's.
+**`contract/openapi.yaml` is that component's contract, and it is the reference for every route below.** Jean's types are generated from it, its descriptions carry the reasoning a client needs, and nothing restated here could do anything but drift from it. `plugins/fb2k/ARCHITECTURE.md` is the design behind it. What follows is only the part that is Jean's.
 
 | | |
 |---|---|
-| Base URL | `http://<player-host>:8881`, the **same host as beefweb**, a different port |
-| CORS | genuinely cross-origin, so every authenticated call is preflighted |
+| Base URL | `http://<player-host>:8881`, the origin Jean is served from |
+| CORS | same-origin from Jean, so nothing it sends crosses one. `allowedOrigins` in the component's `config.json` is what a differently-hosted interface would need |
 | Owner's config | `<profile>/foo_jean/config.json`, which Jean never edits and has no route to. `plugins/fb2k/README.md` has the keys |
 
-## Discovery, and why its answer cannot be trusted
+## Discovery
 
-This is the one part of the component's surface the spec does not describe, because beefweb serves it. The component writes `<profile>/beefweb/clientconfig/foo_jean.json` on every start, which beefweb answers at `GET /api/clientconfig/foo_jean`, same origin as Jean, so discovery is one request folded into connect, with no CORS and no port scanning.
-
-```jsonc
-{ "name": "foo_jean", "version": "0.3.0", "apiVersion": 1,
-  "port": 8881, "authRequired": true, "listening": true }
-```
-
-| Field | |
-|---|---|
-| `port` | where the component *says* it is listening. Verify before trusting |
-| `listening` | false when the component loaded and could not bind. **Not the same as an absent record** |
-| `error` | present only when `listening` is false. Safe to show a person |
-| `portInUse` | present only when `listening` is false, and separated out since it has a specific remedy: change `port` in the component's `config.json` |
-
-**A `null` body is the not-installed signal**, and is the common case. beefweb answers 200 with `null` for an id nobody has written.
-
-> **The record is writable by anyone who can reach beefweb, so it is a hint and never a credential target.** A forged record can name any port, and a client that believed it would POST the user's bearer token to an attacker's listener. **The order in which a token may be attached is the security model**, and `ui/ARCHITECTURE.md` holds it; `discoverFooJean()` in `fooJean.ts` is the one implementation, and the states it resolves to are the union declared beside it.
+`discoverFooJean()` in `fooJean.ts` takes the origin straight off `window.location.origin` and asks `GET /api/capabilities` with the stored token. `ui/ARCHITECTURE.md`, *The `foo_jean` security model*, has the states that call resolves to.
 
 ## What Jean does about state
 

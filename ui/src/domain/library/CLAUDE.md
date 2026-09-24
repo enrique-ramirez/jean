@@ -52,7 +52,7 @@ Filling the scratch, deciding whether the scratch currently *is* a given set, an
 - **Play a *set***: a playlist is the only mechanism the API has, since the play queue has no bulk form and the player has no other way to say "these tracks, in this order".
 - **Never sort a playlist to browse.** It mutates. It is for building derived playlists on explicit request only.
 
-This is about side effects, not capability. **Explicit user intent is different**: asked to add an album, reorder a playlist or delete tracks, do exactly that. What Jean legitimately changes is playback state, the play queue, and `/api/clientconfig/{id}`. Note that even playing a track has downstream effects on the user's data. It scrobbles, increments play counts, and on some setups rewrites the file's mtime.
+This is about side effects, not capability. **Explicit user intent is different**: asked to add an album, reorder a playlist or delete tracks, do exactly that. What Jean legitimately changes on the player is playback state and the play queue. Note that even playing a track has downstream effects on the user's data. It scrobbles, increments play counts, and on some setups rewrites the file's mtime.
 
 ## Showing playlists
 

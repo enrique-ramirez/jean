@@ -14,7 +14,7 @@ A foobar2000 component that exposes over HTTP the things [beefweb](https://githu
 
 ## Building
 
-The component is Windows-only, because beefweb is: the released `foo_beefweb.fb2k-component` carries no macOS bundle, so a Mac build would have no client to serve. Editing on one machine and building over SSH on a Windows one works well. On the build machine you need:
+The component is Windows-only. Editing on one machine and building over SSH on a Windows one works well. On the build machine you need:
 
 - **Visual Studio 2022 Build Tools** with the C++ workload **and the ATL component** (`Microsoft.VisualStudio.Component.VC.ATL`). `--includeRecommended` does not bring ATL, and the SDK's helpers include `atlbase.h`. The SDK ships MSBuild project files, so there is no CMake to write.
 - **The foobar2000 SDK**, fetched by `scripts/fetch-sdk.ps1` into `sdk/`. It is not vendored: its licence does not permit redistribution.
@@ -76,10 +76,10 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 
 | key | meaning |
 |---|---|
-| `port` | Default 8881, because beefweb's is 8880 and this runs alongside it. If the port is taken the component refuses to start and says so in the log and in its discovery record; it never quietly picks another, because a client can only find it at a port it can predict. |
+| `port` | Default 8881, because beefweb's is 8880 and this runs alongside it. If the port is taken the component refuses to start and says so in the log and on the preferences page; it never quietly picks another, because a client can only find it at a port it can predict. |
 | `bindAddress` | Every local interface by default, the same as beefweb. Set it to `127.0.0.1` to harden deliberately. |
 | `authToken` | Mandatory. An empty token means the listener refuses to start; a token shorter than 32 characters is refused outright. There is no unauthenticated mode to fall into. |
-| `allowedOrigins` | Empty reflects any origin, so a client works wherever it is served from. List origins to narrow it to exactly those, matched whole and case-insensitively. `POST /api/pair` is the exception, and `plugins/fb2k/ARCHITECTURE.md` has why. |
+| `allowedOrigins` | Empty reflects no origin, `POST /api/pair` included, so only a page served by the component itself, same-origin, can read a response. List origins to grant them the same access, matched whole and case-insensitively. |
 | `allowedFields` | The write allowlist. Nothing outside it is ever written, and clients read it from `/api/capabilities` rather than being configured twice. Empty switches writing off. |
 | `maxAutoPlaylists` | How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off. |
 | `writePlaylists` | `true` by default, so leaving it alone permits every playlist write this component can make: create, add, edit, delete, reorder, rename. Set it to `false` to make every playlist and autoplaylist read-only except the component's own scratch playlist, which stays writable because it is how Jean works rather than the user's music. |
@@ -117,20 +117,7 @@ The token is 64 hex characters, which is unpleasant to type on a phone and unrea
 1. At the player, **Preferences → Tools → Jean → Devices → Pair a device**. A two-minute window opens and the pane counts it down.
 2. On the device, in the client's settings, press **Pair**.
 
-Four bounds make that safe and not one of them is optional. `plugins/fb2k/ARCHITECTURE.md`, *Pairing, and one accepted risk*, is what they are, and what the arrangement deliberately does not defend against.
-
-## How a client finds it
-
-On every start the component writes `<profile>/beefweb/clientconfig/foo_jean.json`, which beefweb serves at `GET /api/clientconfig/foo_jean`, **same-origin** for anything beefweb is already serving, so one request replaces a port scan:
-
-```json
-{ "name": "foo_jean", "version": "0.3.0", "apiVersion": 1,
-  "port": 8881, "authRequired": true, "listening": true }
-```
-
-No component, no file, and beefweb answers `null`, so treat this as optional and light up features only when it is there. A listener that failed to start still publishes a record, with `"listening": false` and the reason.
-
-**The token is never in that file**, and the record is a hint rather than a place to send credentials. `POST /api/clientconfig/{id}` is a real beefweb route, `changeClientConfig` defaults to on, and beefweb ships without authentication, so anyone who can reach beefweb can overwrite the record and name any port they like. A client MUST call unauthenticated `GET /api/status` on the advertised port first and require `name` to be `foo_jean` before sending the token.
+Four bounds make that safe and not one of them is optional. `plugins/fb2k/ARCHITECTURE.md`, *Pairing*, is what they are.
 
 ## Testing
 
@@ -156,7 +143,7 @@ On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\tes
 
 The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover lives in `src/core/`, which compiles standalone. They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about a bearer token or a CORS header is about the bytes a browser would see. Run the suite more than once before believing it; `tests/support/test_server.cpp` retries a port race.
 
-Covered: authentication, CORS and preflight, every way a hand-edited `config.json` can be wrong, the discovery record, the listener and its port collision, pairing, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
+Covered: authentication, CORS and preflight, every way a hand-edited `config.json` can be wrong, the listener and its port collision, pairing, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
 
 **Nothing here covers `src/fb2k/`.** That half needs the SDK and compiles for the first time on the build machine.
 
@@ -165,6 +152,10 @@ Three end-to-end checks run against a real player. `scripts/verify-tag-write.ps1
 `scripts/test-fixtures.ps1` builds the corpus those run against, out of files kept for the purpose rather than anybody's music. `-Corpus`, or `FOO_JEAN_CORPUS_DIR`, is the folder holding them, and the script refuses to run without it. It copies them into a tree of its own beside the player and adds the copies to a playlist of their own. **Tag writes are only ever pointed at that tree**, never at a real library.
 
 The tree is two media library roots and a folder outside both, so one run reaches every address form. The roots hold a different recording at one library-relative path, which is the address the component refuses as ambiguous; nothing under the third folder has a library-relative address at all. Among the copies are one MP3, one FLAC and one M4A, a filename that is not ASCII, and a FLAC whose subsongs foobar2000 numbers from 1. **Registering the two roots as media library folders is by hand.** The script prints them at the end and changes nothing in the player's configuration.
+
+## Releasing
+
+`.github/workflows/release.yml` builds `ui/`, compiles it into `foo_jean.dll` and packages `foo_jean.fb2k-component` on `windows-latest`. Every push to `main` uploads that file as a workflow artifact. Pushing a tag matching `v*` also publishes it to a GitHub Release of that tag, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
 
 ## Layout
 

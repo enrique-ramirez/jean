@@ -179,10 +179,10 @@ It compares the library read against the playlist read, sweeps range sizes to se
 `test/live/` is a second, much smaller suite that drives a player actually running foobar2000, and it replaces the fake suite rather than joining it: setting `LIVE` swaps the projects in `playwright.config.ts` for a single serial one, so `pnpm test` is untouched.
 
 ```sh
-LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='C:\Music' pnpm test:live
+LIVE=http://<player-host>:8881 LIVE_LIBRARY_ROOT='C:\Music' pnpm test:live
 ```
 
-`LIVE` is the url the app is served at, not the origin, because beefweb serves its own client at the root and Jean under a `urlMappings` prefix, and the api origin is taken from it.
+`LIVE` is the url `foo_jean` serves Jean from, and the api origin is taken from it: the two are the same origin, so no separate one needs naming.
 
 **It exists for rule 11 below.** These are the comparisons where that matters: the join between the `%path%` the player reports playing and the row Jean drew, a cover that has to decode rather than merely have a `src`, an update that arrives on a real SSE stream, `fold()` against tags read off real files, and the `foo_jean` discovery chain against a real component rather than a second node server.
 

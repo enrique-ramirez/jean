@@ -102,7 +102,7 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **A fallback is held for the session and never written to the setting.** The stored key says what to *try* and a separate flag says what happened: rewriting somebody's preference to record a bad network is how a setting comes to mean nothing. Settings says so rather than showing a switch that is on while the plain path is running.
 
-**The toggle is per device and is never synced**, not through `clientconfig` and not through anything `useStoredState` might one day sync. One device's button must never silence another's. It is not persisted across a reload either, since autoplay policy would block the reconnect.
+**The toggle is per device and is never synced**, not through anything `useStoredState` might one day sync. One device's button must never silence another's. It is not persisted across a reload either, since autoplay policy would block the reconnect.
 
 **The e2e fake serves WAV, so it exercises the fallback and not the path.** The demuxer and the muxer are covered by the unit tests, which need no runner and no dependency since both modules import nothing.
 

@@ -220,11 +220,11 @@ TEST_CASE("every error answer is JSON, including the ones cpp-httplib makes itse
     }
 }
 
-// The invariant the permissive CORS default rests on: any page may read our answers, so any
-// route that answers without a credential must be safe for any page to read. The routes come
-// from contract/openapi.yaml rather than from a list kept here, so a route this test has never
-// heard of is covered the moment it is documented, and one that wants to be public has to
-// write `security: []` into the contract where a reviewer will see it.
+// The invariant an origin in allowedOrigins rests on: once granted, it reads our answers whole,
+// so any route that answers without a credential must be safe for such an origin to read. The
+// routes come from contract/openapi.yaml rather than from a list kept here, so a route this test
+// has never heard of is covered the moment it is documented, and one that wants to be public has
+// to write `security: []` into the contract where a reviewer will see it.
 TEST_CASE("only status, stream and pair answer without a credential") {
     const TestServer server(servingSettings(), TestServer::writing([](const TagWrite&) {
                                 return TagWriteOutcome::written;

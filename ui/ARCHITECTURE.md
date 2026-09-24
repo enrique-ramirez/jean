@@ -2,7 +2,7 @@
 
 For someone about to build on Jean. Structure, boundaries and contracts: the things a file listing does not tell you. [CONTRIBUTING.md](./CONTRIBUTING.md) is how to write the code; [src/shared/api/README.md](src/shared/api/README.md) is what the player answers.
 
-Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./CONTRIBUTING.md), *Stack*, is what it is built out of. **Jean is served same-origin with beefweb**, which is what the two things Jean still asks it for rest on: it serves the bundle itself, and it hosts `foo_jean`'s discovery record at `GET /api/clientconfig/foo_jean`, root-relative and resolved against whatever origin served the page, so discovery needs no CORS and no port scanning. `foo_jean` listens on a port of its own, so playback, the library, its covers and every tag write are cross-origin and carry a bearer token through a preflight the component answers with a 600 second `Access-Control-Max-Age`.
+Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./CONTRIBUTING.md), *Stack*, is what it is built out of. **`foo_jean` serves Jean from its own origin**: the built page, its assets and every route Jean calls share one host and one port, so nothing Jean sends ever crosses an origin.
 
 ## The shape of it
 
@@ -10,10 +10,8 @@ Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./C
 flowchart TB
   subgraph machine["The player's machine"]
     fb["foobar2000"]
-    bw["foo_beefweb :8880"]
-    fj["foo_jean :8881<br/>required"]
+    fj["foo_jean :8881<br/>required, serves Jean itself"]
     stats["playback statistics<br/>component, optional"]
-    fb --- bw
     fb --- fj
     stats -.->|title-formatting fields| fb
   end
@@ -28,8 +26,7 @@ flowchart TB
     domain --> shared
   end
 
-  bw -->|"discovery record"| shared
-  fj -->|"the library, REST and audio"| shared
+  fj -->|"the page, the library, REST and audio"| shared
 ```
 
 Arrows inside the browser are import direction, and they point one way only.
@@ -66,7 +63,7 @@ Two mechanisms, and the split is not arbitrary.
 | `["fooJeanPlaylists", …]` | which playlists the player fills itself | when the playlist count changes |
 | `["artistInfo", artist]` | MusicBrainz and Wikipedia | never; off unless switched on in Settings |
 
-**`["player"]` has one writer: `applyPoll`.** `startPlayerPoll`'s tick calls it once a second; `pollPlayerNow` calls it once more, right after `usePlayItem` posts a write, so `activeItem` need not wait out a whole tick to catch up. Either way it reads `GET /api/state` and builds the whole snapshot from that document and `capabilities`, through `mergePlayer` in `playerPoll.ts`. `permissions.changeClientConfig` is the one field neither the document nor `capabilities` speaks for, so it carries forward from the previous tick with nothing to correct it. Everything else is overwritten on every tick, whoever wrote it last: `watch()` in `domain/player/listenerStore.ts` reads `playbackState` off this same write through `notePlaybackState`, which is what lets it skip a direct call to beefweb.
+**`["player"]` has one writer: `applyPoll`.** `startPlayerPoll`'s tick calls it once a second; `pollPlayerNow` calls it once more, right after `usePlayItem` posts a write, so `activeItem` need not wait out a whole tick to catch up. Either way it reads `GET /api/state` and builds the whole snapshot from that document and `capabilities`, through `mergePlayer` in `playerPoll.ts`, overwriting whatever the previous tick held. `watch()` in `domain/player/listenerStore.ts` reads `playbackState` off this same write through `notePlaybackState`, which is what lets it skip a poll of its own.
 
 **A poll's playlist is already `foo_jean`'s own GUID, and so is every entry `["playlists"]` holds.** `useResolvedPlaylistId` confirms the GUID the poll answers still names a playlist the list carries, rather than resolving one address into another. **It answers `undefined` rather than `null` while `["playlists"]` has not caught up with the revision the poll last announced, and `null` once it has and the guid still is not there**, so a reader can tell a confirmation with no answer yet from one that has answered absent; everywhere but the app's front-door resume and the cover key `StatusBar` and `NowPlaying` build from it, the two collapse to the same absence. `usePlaylistsCaughtUp` carries that distinction by comparing the revision a caller has seen against the one `recheckPlaylists` last fetched, since `["playlists"]` takes no `queryFn` of its own for `status` or `isFetching` to mean anything. `["fooJeanPlaylists", …]` is a separate concern, `isAutoPlaylist` rather than the playing set, and refetches on its own schedule when `useAutoPlaylists.ts`'s effect sees the playlist count move.
 
@@ -78,7 +75,7 @@ Nine modules build on it: `playlistStore`, `ratingStore`, `listenerStore`, `audi
 
 **A stored setting is shared by its key, not copied per caller.** `useStoredState` reads through one map and one listener set, so every hook naming a key sees one value and every write. A `useState` per caller makes a live pair out of every key with two readers. Its snapshot returns the same reference until something writes. `useSyncExternalStore` requires that, and a fresh object each call is an infinite render loop rather than a stale value.
 
-Jean's settings live in `localStorage` today and belong in beefweb's `/api/clientconfig/{id}` so they follow the user between devices; the hook's signature is the shape a server-backed version would have, falling back to local storage where `permissions.changeClientConfig` is false. Four keys are permanently excluded from that move, and the exclusion is named next to `TOKEN_KEY` in `src/shared/api/fooJean.ts`: the `foo_jean` token, since beefweb serves the `clientconfig` namespace unauthenticated and syncing a credential would recreate the escalation it exists to prevent, plus the three keys that describe *one device*: its listening volume, its id and its name.
+Every Jean setting lives in `localStorage`, on the device that set it.
 
 ## The library is one array
 
@@ -137,31 +134,11 @@ Both are fed by one discovery, in `src/shared/api/fooJean.ts`, deduped through `
 
 ## The `foo_jean` security model
 
-The component publishes a discovery record at beefweb's `clientconfig` namespace. **That record is writable by anyone who can reach beefweb**: `POST /api/clientconfig/{id}` is a real route, `changeClientConfig` defaults to true, and beefweb ships with no authentication of its own. A forged record can name any port, and the forgery lasts until the component next starts. **So the advertisement is a hint, never a credential target.**
+`discoverFooJean()` in `fooJean.ts` takes the component's origin straight off `window.location.origin`, so there is no address to verify before a token may be sent. **The token is attached from the first authenticated call, `GET /api/capabilities`, and nothing before it asks unauthenticated.**
 
-```mermaid
-sequenceDiagram
-    participant J as Jean
-    participant B as beefweb :8880
-    participant F as the advertised port
+**Pairing needs no CORS exception of its own.** `POST /api/pair` follows the same rule as every other route: with `allowedOrigins` empty the component reflects no origin, so only a page served by the component itself, same-origin, can reach it.
 
-    J->>B: GET /api/clientconfig/foo_jean
-    B-->>J: record, or null
-    Note over J: null means not installed. Stop here.
-    J->>F: GET /api/status — no credential, on purpose
-    F-->>J: name and apiVersion
-    Note over J: name must be foo_jean,<br/>apiVersion must be one this build knows
-    J->>F: POST /api/pair — still no token
-    F-->>J: token, single grant, private addresses only
-    J->>F: GET /api/capabilities — Bearer token
-    F-->>J: allowedFields, streamFormats, limits
-```
-
-Read the record, prove the port with an unauthenticated call, and only then attach the token. Skipping the middle step hands a credential to whoever forged the record. That leaves the attack needing someone who can already run a listener on the player's machine.
-
-**Pairing is a write, so it obeys the same order.** `discovery.origin` is non-null exactly when the probe succeeded, which makes it the proof a port is safe to post to, so the Pair button renders on `origin` rather than on the state kind, and an unreachable or impostor port never gets one.
-
-**Discovery resolves to a state, and none of the states is silence.** They are the union declared beside `discoverFooJean()`, and the component is installed and working in five of them. `src/features/settings/TagWriting.tsx` holds one message and one remedy per state, *impostor* included, where Jean must say it did not send the token.
+**Discovery resolves to a state, and none of the states is silence.** `FooJeanState` is `unreachable`, `no-token`, `unauthorized` or `ready`, the union declared beside `discoverFooJean()`. `src/features/settings/TagWriting.tsx` holds one message and one remedy per state.
 
 **Which project owns which setting.** The component's `config.json` holds what the *player owner* decides: port, bind address, the write allowlist. Jean never edits it and there is no route to it. Jean owns the token and, per field, whether to offer the control at all. **Those switches narrow and never widen.** Settings lists exactly the permitted fields and turns them off, never on.
 

@@ -2,7 +2,7 @@
 
 For somebody about to build on this: how the pieces fit, which thread owns what, and why the boundaries sit where they do. [plugins/fb2k/README.md](README.md) is what the component is and how to run it, [plugins/fb2k/CONTRIBUTING.md](CONTRIBUTING.md) is how to write its code, and [src/README.md](src/README.md) is the source tree file by file.
 
-foo_jean is a DLL foobar2000 loads, an HTTP listener on a port of its own, a snapshot of the media library, and one live encode of the player's output. It owns the media library, cover art, tag writing, the play queue and every playlist, and it reports what the player is doing. A playlist is listed, read, created, renamed, deleted, reordered, filled from library ordinals, copied from, cut down and played here, and nowhere else, and every other playback command, transport, seek, the mode and the volume, is answered here too. What is left to beefweb is browsing the filesystem, serving a client its own page, and the discovery record a client finds this component through. Every playlist and autoplaylist write is gated behind `writePlaylists`, and an edit addressing one of foo_jean's own playlists is refused whatever that setting says. A client talks to both.
+foo_jean is a DLL foobar2000 loads, an HTTP listener on a port of its own, a snapshot of the media library, and one live encode of the player's output. It serves Jean's own page as well as its API, so the two share an origin and a client talks to this component alone. It owns the media library, cover art, tag writing, the play queue and every playlist, and it reports what the player is doing. A playlist is listed, read, created, renamed, deleted, reordered, filled from library ordinals, copied from, cut down and played here, and nowhere else, and every other playback command, transport, seek, the mode and the volume, is answered here too. What is left to beefweb, where it runs at all, is browsing the filesystem: nothing this component or Jean does depends on it. Every playlist and autoplaylist write is gated behind `writePlaylists`, and an edit addressing one of foo_jean's own playlists is refused whatever that setting says.
 
 ## The shape of it
 
@@ -14,21 +14,18 @@ flowchart TB
       cap["playback_stream_capture_v2<br/>post-DSP, pre-volume"]
       main --- cap
     end
-    bw["foo_beefweb :8880<br/>the filesystem, a user's own playlist, clientconfig"]
-    main --- bw
-
     subgraph fb2k["src/fb2k/ — knows the SDK"]
       queue["MainThreadQueue<br/>coalescing, over fb2k::inMainThread"]
       work["tag_writer · playlists · player_mute"]
       feed["LibraryFeed<br/>change callbacks, and a worker of its own"]
       str["Streamer"]
       prefs["preferences page<br/>Tools → Jean"]
-      adv["advertise"]
+      assets["ui_assets<br/>Jean's build, compiled in"]
     end
 
     subgraph core["src/core/ — knows nothing of foobar2000"]
       http["HttpServer :8881<br/>cpp-httplib, one thread per connection"]
-      pure["settings · tag_write · playlists · pairing<br/>rate_limit · stream_ticket · api"]
+      pure["settings · tag_write · playlists · pairing<br/>rate_limit · stream_ticket · api · assets"]
       lib["Library<br/>one snapshot · two generations"]
       aud["Audience"]
       hold["OutputHold<br/>a thread of its own"]
@@ -36,7 +33,7 @@ flowchart TB
   end
 
   subgraph net["The network"]
-    client["a client"]
+    client["a browser"]
     ears["listeners<br/>&lt;audio&gt; elements"]
   end
 
@@ -44,11 +41,11 @@ flowchart TB
   work -->|blocking calls| queue
   queue -->|marshalled work| main
   prefs --> queue
-  adv -->|writes clientconfig/foo_jean.json| bw
   main -->|added · removed · modified| feed
 
   work -.->|Player callbacks| http
   str -.->|StreamOpener · formats · timeline| http
+  assets -.->|readPage · readDiskPage · pageNames| http
   feed -->|a built snapshot| lib
   http --> pure
   http --> lib
@@ -56,8 +53,8 @@ flowchart TB
   aud -->|anybody listening?| hold
   hold -->|mute · restore| queue
 
+  client -->|GET /, GET /locales/…| http
   client -->|REST, Bearer| http
-  client -->|GET /api/clientconfig/foo_jean| bw
   ears -->|GET /api/stream?ticket=…| http
 ```
 
@@ -259,17 +256,15 @@ A bare folder name answers with a 301 to the same name with a trailing slash ins
 
 Two mechanical checks keep the code and the spec together, and neither can read prose. `tests/api_contract_test.cpp` pins the exact key set of every document the component publishes and drives the stream routes to compare their statuses with the spec's, reading the operation list through `tests/support/spec.h`. `scripts/test.sh` compares the spec's version with `src/core/version.h` before it builds anything.
 
-`core/api.cpp` is the one place a published document is built, which is what stops `/api/status` and the discovery record drifting apart. Every answer of 400 or above carries a JSON `error` string. Bodies are capped at `kMaxBodyBytes`, which the spec documents by that number.
+`core/api.cpp` is the one place a published document is built. Every answer of 400 or above carries a JSON `error` string. Bodies are capped at `kMaxBodyBytes`, which the spec documents by that number.
 
-Three routes are reachable without a bearer token: `/api/status`, which says less than a port scan, and `/api/pair` and `/api/stream`, which carry credentials of their own. **A fourth means revisiting the permissive CORS default in the same change**, because that default is safe only while the unauthenticated routes stay that harmless.
+Three routes are reachable without a bearer token: `/api/status`, which says less than a port scan, and `/api/pair` and `/api/stream`, which carry credentials of their own. **A fourth means revisiting `allowedOrigins` in the same change**, because an origin in that list can already read all three without a token, and a fourth answers to it the same way.
 
-## Pairing, and one accepted risk
+## Pairing
 
 The token is 64 hex characters, and pairing exists so that nobody has to type it into a phone or a television remote. `POST /api/pair` cannot require a credential, because the caller is asking for one. Four bounds carry it instead: a window somebody opened at the player, with no route that opens one remotely; one grant, the first success closing the window; private source addresses only, parsed rather than prefix-matched and checked *before* the window is consulted, so a caller from outside neither learns whether one is open nor spends the grant; and a history the pane shows and the log keeps, so a pairing nobody performed leaves evidence.
 
-CORS is the fifth. Every other route reflects any origin by default, because every other route needs a token; this one hands one out, so with no `allowedOrigins` configured it admits only an origin whose host matches the `Host` the request was addressed to. `Content-Type: application/json` is required as well, so that a cross-origin caller is always preflighted and a simple `POST` cannot burn a grant blind.
-
-**That same-host rule is defeated by DNS rebinding, and the risk is accepted.** A page served from a hostname resolving to the player's private address satisfies the origin check and the address check both. Requiring an IP literal would close it and would also stop anyone pairing through `http://player.local:8881`, which is how people reach the player. What remains is bounded on every other axis: a two-minute window only a person at the player can open, exactly one grant inside it, a private source, and a pane that names what paired. The attack needs a rebinding page loaded on the local network during a window somebody just opened by hand; the defence against it costs the feature its reason to exist. The trade is deliberate.
+CORS carries no bound of pairing's own: `POST /api/pair` follows the same `allowedOrigins` rule as every other route, reflecting no origin by default. Jean pairs from the component's own origin, and so does a folder interface, so neither needs a header at all; the list is for a caller elsewhere, exactly as it is for every other route. `Content-Type: application/json` is required as well, so that a cross-origin caller is always preflighted and a simple `POST` cannot burn a grant blind.
 
 Pairing hands out the token the install already has rather than minting one per device, so regenerating the token locks out every device at once. `POST /api/pair` accepts an optional `name`, which is where per-device tokens would attach if they are ever added.
 

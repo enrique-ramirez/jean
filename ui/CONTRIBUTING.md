@@ -6,22 +6,22 @@ Four other documents, and they do not overlap: [ARCHITECTURE.md](./ARCHITECTURE.
 
 ## 1. The development loop
 
-You do not deploy to a player to develop. Jean is a static SPA that talks to beefweb over HTTP; it does not need to be served *by* beefweb. Vite proxies `/api` to a real player, so the app is same-origin, there is no CORS to configure, and nothing changes on the player side.
+You do not deploy to a player to develop. Jean is a static SPA that talks to `foo_jean` over HTTP; a build does not need to be served by it. Vite proxies `/api` to a real player, so the app is same-origin, there is no CORS to configure, and nothing changes on the player side.
 
 ```sh
 pnpm install
 pnpm dev            # http://localhost:8123
 ```
 
-Point it at a player with `BEEFWEB_URL`, in the environment or in `.env.local` (copy `.env.example`):
+Point it at a player with `FOO_JEAN_URL`, in the environment or in `.env.local` (copy `.env.example`):
 
 ```sh
-BEEFWEB_URL=http://<player-host>:8880 pnpm dev
+FOO_JEAN_URL=http://<player-host>:8881 pnpm dev
 ```
 
 The dev server binds on the LAN (`host: true`), so a phone can load it and hit the same proxy. The port is `strictPort`: `foo_jean` matches the dev origin against an exact allowlist, so sliding to the next free port would report the component unreachable with nothing on screen saying why.
 
-No player in reach? `pnpm fake` serves the in-memory one on `:8880`, and `BEEFWEB_URL=http://localhost:8880 pnpm dev` points at it.
+No player in reach? `pnpm fake` serves the in-memory one on `:8881`, and `FOO_JEAN_URL=http://localhost:8881 pnpm dev` points at it.
 
 ## 2. The commands
 
@@ -39,7 +39,7 @@ pnpm test:e2e       # playwright, desktop and mobile
 pnpm test:ui        # pick and watch tests interactively
 pnpm test:live      # the small suite against a real player. Needs LIVE
 pnpm test:contract  # drive a running plugin against the specification. Needs CONTRACT_URL
-pnpm fake           # the fake player alone, on :8880
+pnpm fake           # the fake player alone, on :8881
 pnpm demo           # build the live demo into dist-demo/
 pnpm demo:preview   # serve that
 pnpm site           # build the landing page into site/dist-site/
@@ -52,19 +52,7 @@ pnpm sync-kit       # refresh .claude/ from the ai-engineering kit
 
 **`pnpm test:e2e` is not.** A full Playwright run is desktop and mobile across the whole suite: it loads the machine and floods an agent's context. Run the specs that cover what you changed, such as `pnpm test:e2e test/e2e/queue.spec.ts`, `--grep "toast"` or `--project=desktop`, as often as you like. Keep the full run as a final verification, once, when the change is substantial enough that something outside the specs you already ran could plausibly have broken. Changes to documentation, comments or configuration need no run at all. See `test/README.md`.
 
-## 3. `foo_jean` is the one thing the proxy does not cover
-
-Every other request is a root-relative `/api` path the dev proxy forwards. The optional tag-writing and streaming component listens on a port of its own, so its address is a *host* and a port rather than a path, and on the dev server that host is your machine rather than the player's. `vite.config.ts` takes it from `BEEFWEB_URL` and injects it as `__PLAYER_HOST__`.
-
-Every call to it is cross-origin, in a build as much as here, because the port differs. What development changes is the *host*, and that is what `POST /api/pair` checks: with no `allowedOrigins` configured it admits only an origin whose host matches the one the request was addressed to. Add the dev server to `<profile>/foo_jean/config.json` and restart the player:
-
-```jsonc
-"allowedOrigins": ["http://localhost:8123"]
-```
-
-Add the LAN name too if you test on a phone against the dev server. A build needs none of it: beefweb serves Jean from the player's own host, so the hosts already match.
-
-## 4. Where things live
+## 3. Where things live
 
 ```
 src/
@@ -90,7 +78,7 @@ demo/         the live demo -- the same fake, in a service worker
 
 That tree is `ui/`, and this file governs it. Three siblings share the repository: `site/` is the landing page, its own package, built by `pnpm site` and published to Pages with the demo underneath it; `contract/` is the API specification every plugin implements and the conformance suite that measures one; `plugins/fb2k/` is the foobar2000 component, which is C++ and has a `plugins/fb2k/CONTRIBUTING.md` of its own. Commands run from the repository root and the root `package.json` delegates them, so nothing here needs running from inside `ui/`.
 
-## 5. Design
+## 4. Design
 
 The standard is one thing: control complexity so a person can read the result. Craftsmanship and simplicity agree on nearly all of what follows: names carry the meaning, a unit does one thing, duplication is a defect, clarity beats cleverness. Where they pull apart is how much structure is worth its cost, and that is settled below in favour of the simpler reading.
 
@@ -103,14 +91,14 @@ The standard is one thing: control complexity so a person can read the result. C
 7. **Be pragmatic before dogmatic.** No pattern is owed an appearance. If a rule here would make a file harder to read, the rule is wrong for that file; say so in the change rather than obeying it quietly.
 8. **This app already has its one architectural boundary, and it is enough.** Imports run `app → features → domain → shared` and Biome fails the build on a violation, so the dependencies point inward without anyone policing it. Keep that direction exact; do not introduce a container, a service locator or a mediator to soften it.
 
-## 6. Naming
+## 5. Naming
 
 1. **Never name a store, a parser or a helper after the component beside it.** A case-insensitive filesystem cannot tell `toasts.ts` from `Toasts.tsx`, so TypeScript resolves `'./Toasts'` to the wrong file silently. Hence `toastStore.ts`, `lyricsFormat.ts`, `volumeScale.ts`.
 2. **Never name a declaration file after the module beside it.** `fooJean.d.ts` next to `fooJean.ts` is read as that file's own declarations. The generated component types are `fooJeanSchema.d.ts`.
 3. Components are `PascalCase.tsx`, hooks are `useThing.ts`, everything else is `camelCase.ts`.
 4. Stylesheets are `Component.module.css`, beside the component.
 
-## 7. Styling
+## 6. Styling
 
 1. **CSS Modules, colocated with the component.** The only global stylesheets are `shared/styles/tokens.css` (the palette and scale, as custom properties) and `base.css`. Re-theming Jean SHOULD mean editing custom properties and nothing else.
 2. **A rule in one module that overrides another's MUST outrank it on specificity, never merely follow it.** Module order in the bundle follows import order, and import sorting can flip two rules of equal specificity.
@@ -118,7 +106,7 @@ The standard is one thing: control complexity so a person can read the result. C
 4. Animate compositor properties only: `transform`, `scale`, `rotate`, `opacity`.
 5. **A new stacking layer goes in the table in `ARCHITECTURE.md` before it goes in a stylesheet.** The app-level scale is shared by everything, and picking a number without reading it is how a dialog ends up under a toolbar.
 
-## 8. Comments
+## 7. Comments
 
 Write a comment when the code is correct **because of something outside this repository**, and name that thing: what beefweb, foobar2000, DeaDBeeF, `foo_jean`, a browser or a library actually does. Every other claim a reader can check by reading; that one they cannot.
 
@@ -141,7 +129,7 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 
 **A lint suppression is code, not a comment, and carries its reason.** Read the `useExhaustiveDependencies` suppressions before running `lint:fix`, which would remove every one and break the feature silently; the root `CLAUDE.md` has the one shape they all take.
 
-## 9. Documentation
+## 8. Documentation
 
 Documentation states the current design and nothing else. No history: what something used to be, why it changed, or what was rejected belongs in git rather than in a file. The one exception is a trap a reader would actively revert into. Write that as an imperative rule, not as a story. No personal detail either: no names, machines, hostnames, addresses or real library paths, in prose, comments or test data. Use placeholders. Public repository URLs are fine.
 
@@ -159,7 +147,7 @@ Two reviewers cover that rest, over uncommitted changes and in this order: `styl
 
 `pnpm sync-kit` takes the kit's current version of those files. It reports anything under `.claude/` that was edited here rather than in the kit, and moves it to `<name>.local.bak` rather than dropping it. A rule worth keeping belongs in the kit, so every project gets it; `.claude/register.local.txt` is the place for something that is genuinely only true of Jean.
 
-## 10. Writing
+## 9. Writing
 
 Short sentences. RFC 2119 keywords for obligations. Commit messages take an imperative subject; add a body only for a fact the diff cannot show.
 
@@ -169,11 +157,11 @@ The words are the easy half. What actually gives an assistant away is shape: an 
 
 Plain words over elevated ones. No selling to a reader who is already here. No sentence whose only job is to introduce the next one.
 
-## 11. Tag hygiene is the library owner's business
+## 10. Tag hygiene is the library owner's business
 
 Jean reads tags. It never writes or normalises them to make its own life easier. A genre spelled two ways is two rows in a list; the fix belongs in the player, where it sticks for every other client too.
 
-## 12. Stack
+## 11. Stack
 
 React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual · TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright · `node --test`.
 

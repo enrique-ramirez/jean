@@ -39,7 +39,7 @@ info:
 
     `bindAddress` defaults to `0.0.0.0`, every local interface, so a browser on another device on the same network reaches the component without configuration. It can be narrowed to `127.0.0.1`.
 
-    A component that is advertised but does not answer the status probe is either narrowed that way or behind a firewall. That is a distinct state from an absent component, and a client SHOULD report it as such rather than as "not installed".
+    No answer at all to `GET /status`, rather than a refusal, means `bindAddress` has narrowed the component off this network or a firewall is in the way, not necessarily that foo_jean is not installed.
 
     ## CORS
 
@@ -171,14 +171,14 @@ info:
 
 servers:
   - url: http://{host}:{port}/api
-    description: The component, on its own port beside beefweb.
+    description: The component. It also serves Jean itself, from the same origin.
     variables:
       host:
         default: 127.0.0.1
         description: The machine running foobar2000.
       port:
         default: "8881"
-        description: From the discovery record. beefweb's own default is 8880.
+        description: Set by `port` in `<profile>/foo_jean/config.json`.
 
 security:
   - bearerAuth: []
@@ -217,7 +217,7 @@ paths:
       operationId: getStatus
       summary: Identify the component. Needs no credential.
       description: |
-        Tells "foo_jean is here" from "nothing is listening" without spending a credential, so the port named in a discovery record can be checked before a token is sent to it.
+        Tells "foo_jean is here" from "nothing is listening" without spending a credential, for a script or a person checking this origin before anything authenticated is tried against it.
 
         It reports nothing a port scan would not. The field allowlist is absent from it and requires authentication.
       security: []
@@ -3212,8 +3212,7 @@ components:
         name:
           type: string
           const: foo_jean
-          description: |
-            Always this value. A client following a discovery record MUST check it before sending a token: the record can be forged, and this is what confirms the port it named is running foo_jean.
+          description: Always this value, which is what confirms the answering origin is foo_jean rather than something else on it.
         version:
           type: string
           description: The component's own version. Informational; branch on apiVersion instead.

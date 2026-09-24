@@ -85,7 +85,7 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 ## 6. The HTTP contract
 
 1. **Any change to a response shape, a status code or an error string changes `contract/openapi.yaml` in the same commit.** ARCHITECTURE.md, *The HTTP contract*, is why the spec is hand-written and which two checks hold it to the code; neither of them can read prose.
-2. **Adding an unauthenticated route means revisiting the CORS default in the same commit.** `tests/listener_test.cpp` and `tests/pairing_test.cpp` pin both halves of what makes the permissive default safe.
+2. **Adding an unauthenticated route means revisiting `allowedOrigins` in the same commit.** `tests/listener_test.cpp` and `tests/pairing_test.cpp` pin both halves of what makes a listed origin safe to grant.
 3. **Anything that publishes a track path MUST publish the display form**, through `filesystem::g_get_display_path`. ARCHITECTURE.md, *Track identity*, is why.
 
 ## 7. Security rules
@@ -94,9 +94,9 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 2. Compare credentials in constant time.
 3. Never trust a path from a client. Resolve against what the player reports; never concatenate.
 4. Write only allowlisted fields, compared case-insensitively, and say in the response which field was refused.
-5. Never log a token or a stream ticket, and never put either in the discovery record.
+5. Never log a token or a stream ticket.
 6. **Never set `SO_REUSEADDR`.** On Windows it lets a socket bind a port another socket is actively listening on, so two servers silently split the traffic on one port. The override to `SO_EXCLUSIVEADDRUSE` must stay; `third_party/README.md` is what it overrides and why that default is there.
-7. A partial or failed bind MUST be loud, to the log and to the discovery record, because a headless install has nobody reading a console.
+7. A partial or failed bind MUST be loud, to the log and to the preferences page, because a headless install has nobody reading a console.
 8. Refuse before doing. Validate, then act: the tests assert the order, not just the status.
 9. **No response may compress request-controlled text beside a secret.** That is the BREACH shape: whoever can get a chosen string into a response and watch what it does to the compressed length reads the secret beside it a byte at a time. Compression is on wherever a client offers it, cpp-httplib's own for the JSON routes and this component's for the library blobs, so the rule sits on what a body may hold rather than on the compressor.
 

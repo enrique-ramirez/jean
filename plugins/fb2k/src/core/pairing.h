@@ -7,8 +7,7 @@
 
 namespace jean {
 
-// See ARCHITECTURE.md, *Pairing, and one accepted risk*, for the bounds this enforces and
-// why each one is there.
+// See ARCHITECTURE.md, *Pairing*, for the bounds this enforces and why each one is there.
 
 // RFC1918, loopback, link-local and their IPv6 equivalents; everything else is refused.
 // Parsed rather than prefix-matched, because "172.16." also admits 172.160.0.1.

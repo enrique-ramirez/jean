@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * Identify the component. Needs no credential.
-         * @description Tells "foo_jean is here" from "nothing is listening" without spending a credential, so the port named in a discovery record can be checked before a token is sent to it.
+         * @description Tells "foo_jean is here" from "nothing is listening" without spending a credential, for a script or a person checking this origin before anything authenticated is tried against it.
          *
          *     It reports nothing a port scan would not. The field allowlist is absent from it and requires authentication.
          */
@@ -1181,7 +1181,7 @@ export interface components {
     schemas: {
         Status: {
             /**
-             * @description Always this value. A client following a discovery record MUST check it before sending a token: the record can be forged, and this is what confirms the port it named is running foo_jean.
+             * @description Always this value, which is what confirms the answering origin is foo_jean rather than something else on it.
              * @constant
              */
             name: "foo_jean";

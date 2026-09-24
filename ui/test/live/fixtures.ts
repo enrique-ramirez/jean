@@ -2,7 +2,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 import { fieldTable } from "../../src/shared/api/fieldTable.ts";
 import { TOKEN } from "./component.ts";
 
-//   LIVE=http://<player-host>:8880/jean/ LIVE_LIBRARY_ROOT='D:\SomeFolder' pnpm test:live
+//   LIVE=http://<player-host>:8881 LIVE_LIBRARY_ROOT='D:\SomeFolder' pnpm test:live
 
 // A comma inside an expression would split beefweb's own `columns` list, so these stay comma-free.
 const { expressions, index: FIELD } = fieldTable([
@@ -88,14 +88,14 @@ const readInstall = async (origin: string): Promise<Install> => {
 			`${strays.length} of ${tracks.length} tracks sit outside ${root} -- refusing to drive this player. First: ${strays[0]?.path}`,
 		);
 
-	const record = await api<unknown>(origin, "/clientconfig/foo_jean");
+	const status = await api<{ name: string }>(origin, "/status");
 
 	return {
 		origin,
 		info: player.info,
 		itemCount: libraryItems.totalCount,
 		tracks,
-		hasFooJean: record !== null,
+		hasFooJean: status.name === "foo_jean",
 	};
 };
 

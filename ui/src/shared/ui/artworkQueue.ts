@@ -6,8 +6,7 @@ const SETTLE_MS = 100;
 const FAILURE_FORGET_MS = 600_000;
 
 // A browser gives one origin six HTTP/1.1 connections, and covers share that budget with whatever
-// else the origin is answering: beefweb's update stream holds one of its six forever, and the
-// component answers on one work queue.
+// else the origin is answering.
 const MAX_IN_FLIGHT = 3;
 
 export type ArtworkOutcome = "ok" | "failed";

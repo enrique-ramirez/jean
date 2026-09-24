@@ -11,8 +11,8 @@ import { useStoredState } from "@/shared/hooks/useStoredState";
 
 const KEY = "fooJean";
 
-const ABSENT: FooJeanDiscovery = {
-	state: { kind: "absent" },
+const UNCHECKED: FooJeanDiscovery = {
+	state: { kind: "unreachable" },
 	origin: null,
 	token: null,
 	retryable: false,
@@ -69,7 +69,7 @@ export function useFooJean() {
 	}, [isReady, recheck, token]);
 
 	return {
-		discovery: query.data ?? ABSENT,
+		discovery: query.data ?? UNCHECKED,
 		isDiscovered: query.data !== undefined,
 		isChecking: query.isFetching,
 		token,

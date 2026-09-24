@@ -3,8 +3,6 @@ import type { TrackAddress } from "./types";
 
 type Schema = components["schemas"];
 
-export type DiscoveryRecord = Schema["DiscoveryRecord"];
-export type FooJeanStatus = Schema["Status"];
 export type FooJeanCapabilities = Schema["Capabilities"];
 export type TagWriteRequest = Schema["TagWriteRequest"];
 export type TagWritten = Schema["TagWritten"];
@@ -33,22 +31,11 @@ export type RemovedRows = Schema["RemovedRows"];
 
 export type OwnPlaylistRole = "scratch";
 
-// Never moves to `/api/clientconfig`: beefweb serves that namespace unauthenticated. The root CLAUDE.md holds the rest of the exclusion list.
 export const TOKEN_KEY = "jean.fooJeanToken";
-
-// The component rewrites this clientconfig id on every start, so Jean must not store settings under it.
-export const FOO_JEAN_ID = "foo_jean";
-
-export const SUPPORTED_API_VERSION = 1;
 
 const PROBE_TIMEOUT_MS = 4000;
 const WRITE_TIMEOUT_MS = 35_000;
 const STATE_TIMEOUT_MS = 5_000;
-
-// The component listens on the player's host, which is the page's own host in a build but not on the
-// dev server: there `/api` is proxied and this is not.
-export const originOfPort = (port: number) =>
-	`${window.location.protocol}//${__PLAYER_HOST__ ?? window.location.hostname}:${port}`;
 
 export const withTimeout = async <T>(
 	ms: number,
@@ -66,54 +53,6 @@ export const withTimeout = async <T>(
 		outer?.removeEventListener("abort", relay);
 	}
 };
-
-const isPort = (value: unknown) =>
-	typeof value === "number" &&
-	Number.isInteger(value) &&
-	value > 0 &&
-	value <= 65535;
-
-const looksLikeRecord = (value: unknown): value is DiscoveryRecord =>
-	typeof value === "object" &&
-	value !== null &&
-	(value as DiscoveryRecord).name === FOO_JEAN_ID &&
-	isPort((value as DiscoveryRecord).port);
-
-// A 404 is beefweb saying nobody has written that id, which is the not-installed signal. Anything
-// else throws, so a hiccup is never cached as absent.
-export async function fetchDiscoveryRecord(): Promise<DiscoveryRecord | null> {
-	const response = await fetch(`/api/clientconfig/${FOO_JEAN_ID}`);
-	if (response.status === 404) return null;
-	if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-	const body: unknown = await response.json().catch(() => null);
-	return looksLikeRecord(body) ? body : null;
-}
-
-export type ProbeResult =
-	| { ok: true; status: FooJeanStatus }
-	| { ok: false; reason: "unreachable" }
-	| { ok: false; reason: "impostor" }
-	| { ok: false; reason: "unsupported"; apiVersion: number };
-
-// Unauthenticated, and must stay so: this is what makes the advertised port safe to send a credential to.
-export async function probeStatus(origin: string): Promise<ProbeResult> {
-	const body = await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
-		const response = await fetch(`${origin}/api/status`, { signal });
-		if (!response.ok) return null;
-		return (await response.json()) as unknown;
-	}).catch(() => undefined);
-
-	if (body === undefined || body === null)
-		return { ok: false, reason: "unreachable" };
-
-	const status = body as FooJeanStatus;
-	if (status?.name !== FOO_JEAN_ID) return { ok: false, reason: "impostor" };
-	if (status.apiVersion !== SUPPORTED_API_VERSION)
-		return { ok: false, reason: "unsupported", apiVersion: status.apiVersion };
-
-	return { ok: true, status };
-}
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -364,24 +303,10 @@ export async function writeTags(
 }
 
 export type FooJeanState =
-	| { kind: "absent" }
-	| {
-			kind: "not-listening";
-			record: DiscoveryRecord;
-			error: string;
-			portInUse: boolean;
-	  }
-	| { kind: "unreachable"; record: DiscoveryRecord }
-	| { kind: "impostor"; record: DiscoveryRecord }
-	| { kind: "unsupported"; record: DiscoveryRecord; apiVersion: number }
-	| { kind: "no-token"; record: DiscoveryRecord; status: FooJeanStatus }
-	| { kind: "unauthorized"; record: DiscoveryRecord; status: FooJeanStatus }
-	| {
-			kind: "ready";
-			record: DiscoveryRecord;
-			status: FooJeanStatus;
-			capabilities: FooJeanCapabilities;
-	  };
+	| { kind: "unreachable" }
+	| { kind: "no-token" }
+	| { kind: "unauthorized" }
+	| { kind: "ready"; capabilities: FooJeanCapabilities };
 
 export interface FooJeanDiscovery {
 	state: FooJeanState;
@@ -418,46 +343,11 @@ export function requireFooJean(
 export async function discoverFooJean(
 	token: string | null,
 ): Promise<FooJeanDiscovery> {
-	const unproven = { origin: null, token: null };
-	const settled = { ...unproven, retryable: false };
-	const transient = { ...unproven, retryable: true };
-
-	const record = await fetchDiscoveryRecord().catch(() => undefined);
-	if (record === undefined) return { state: { kind: "absent" }, ...transient };
-	if (record === null) return { state: { kind: "absent" }, ...settled };
-
-	if (!record.listening) {
-		return {
-			state: {
-				kind: "not-listening",
-				record,
-				error: record.error ?? "The component could not start.",
-				portInUse: Boolean(record.portInUse),
-			},
-			...settled,
-		};
-	}
-
-	const origin = originOfPort(record.port);
-	const probe = await probeStatus(origin);
-
-	if (!probe.ok) {
-		if (probe.reason === "unreachable")
-			return { state: { kind: "unreachable", record }, ...transient };
-		return {
-			state:
-				probe.reason === "unsupported"
-					? { kind: "unsupported", record, apiVersion: probe.apiVersion }
-					: { kind: "impostor", record },
-			...settled,
-		};
-	}
-
-	const { status } = probe;
+	const origin = window.location.origin;
 
 	if (!token)
 		return {
-			state: { kind: "no-token", record, status },
+			state: { kind: "no-token" },
 			origin,
 			token: null,
 			retryable: false,
@@ -466,9 +356,14 @@ export async function discoverFooJean(
 	const capabilities = await fetchCapabilities(origin, token);
 	if (!capabilities.ok) {
 		if (capabilities.reason === "unreachable")
-			return { state: { kind: "unreachable", record }, ...transient };
+			return {
+				state: { kind: "unreachable" },
+				origin,
+				token: null,
+				retryable: true,
+			};
 		return {
-			state: { kind: "unauthorized", record, status },
+			state: { kind: "unauthorized" },
 			origin,
 			token: null,
 			retryable: false,
@@ -476,12 +371,7 @@ export async function discoverFooJean(
 	}
 
 	return {
-		state: {
-			kind: "ready",
-			record,
-			status,
-			capabilities: capabilities.capabilities,
-		},
+		state: { kind: "ready", capabilities: capabilities.capabilities },
 		origin,
 		token,
 		retryable: false,

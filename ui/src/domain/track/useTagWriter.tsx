@@ -88,7 +88,7 @@ interface TagWriting {
 }
 
 const IDLE: TagWriting = {
-	state: { kind: "absent" },
+	state: { kind: "unreachable" },
 	isChecking: false,
 	canRate: false,
 	canRateInline: false,

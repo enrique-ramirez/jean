@@ -134,13 +134,6 @@ export const en = {
 	"finder.inList": "Find in this list",
 	"finder.inShelf": "Find in this shelf",
 	"finder.noMatch": "Nothing here matches that.",
-	"fooJean.absent.install":
-		"Install it into foobar2000 and restart the player.",
-	"fooJean.absent.soon":
-		"It is not published yet, so there is nothing to do here.",
-	"fooJean.absent.summary":
-		"foo_jean is the companion component that writes tags back to your library. Without it Jean reads everything and changes nothing, which is still a complete app — just not one that can set a rating.",
-	"fooJean.badge.absent": "Not installed",
 	"fooJean.badge.connected": "Connected",
 	"fooJean.badge.disconnected": "Not connected",
 	"fooJean.badge.needsToken": "Needs token",
@@ -154,20 +147,10 @@ export const en = {
 	"fooJean.fields.narrowOnly":
 		"Turning one off here narrows what Jean offers. It cannot widen the list.",
 	"fooJean.fields.title": "What Jean may write",
-	"fooJean.impostor.fix":
-		"That record is writable by anything that can reach the player, so it may simply be stale. Restart foobar2000 to have foo_jean publish it again.",
-	"fooJean.impostor.summary":
-		"Something is listening on port {port} and it is not foo_jean. Your token has not been sent to it.",
 	"fooJean.noToken.fix":
-		"On the player, open {pane} and copy the token. It is deliberately not published with the rest of the component's details, because anything that can reach the player can read those.",
+		"Press Pair above if you can reach the player, or open {pane} and copy the token yourself.",
 	"fooJean.noToken.summary":
-		"foo_jean {version} is running on port {port}. It needs the token before it will accept anything.",
-	"fooJean.notListening.check":
-		"Check the settings under {pane} in foobar2000, then restart it.",
-	"fooJean.notListening.portTaken":
-		"Another program already has that port. Change the port under {pane} in foobar2000, then restart it.",
-	"fooJean.notListening.summary":
-		"foo_jean is installed but could not start on port {port}. {error}",
+		"foo_jean needs a token before it will accept anything.",
 	"fooJean.pair.busy":
 		"Too many pairing attempts just now. Wait a few seconds and try again.",
 	"fooJean.pair.how":
@@ -186,7 +169,7 @@ export const en = {
 		'Add the fields you want under {pane}, in "Fields they may write", then restart foobar2000.',
 	"fooJean.ready.noFields":
 		"Connected, and this install permits no fields to be written.",
-	"fooJean.ready.summary": "Connected to foo_jean {version} on port {port}.",
+	"fooJean.ready.summary": "Connected to foo_jean.",
 	"fooJean.stream.none":
 		"This copy of foo_jean does not stream audio, so Jean cannot play it on this device. Either it is older than the feature, or no encoder started — check {pane}.",
 	"fooJean.token.label": "Token",
@@ -195,12 +178,8 @@ export const en = {
 		"Check it against the token under {pane}. Regenerating there locks out every client holding the old one.",
 	"fooJean.unauthorized.summary": "foo_jean refused that token.",
 	"fooJean.unreachable.fix":
-		"Something on the player is refusing the connection: usually the address under {pane} restricted to one machine, otherwise a firewall. 0.0.0.0 accepts connections from your network, which is both the default and what beefweb itself does.",
-	"fooJean.unreachable.summary":
-		"foo_jean says it is listening on port {port}, but this device cannot reach it.",
-	"fooJean.unsupported.fix": "Update whichever of the two is older.",
-	"fooJean.unsupported.summary":
-		"foo_jean is speaking version {theirs} of its API and this copy of Jean understands version {ours}.",
+		"Check that foobar2000 is still running, then try again.",
+	"fooJean.unreachable.summary": "foo_jean is not answering right now.",
 	"genre.alphabetical": "A–Z",
 	"genre.asking": "Asking the player what this matches…",
 	"genre.autoPlaylistOf": "An autoplaylist of {genre}",

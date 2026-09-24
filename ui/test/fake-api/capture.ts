@@ -79,7 +79,7 @@ const args = new Map(
 	process.argv.slice(2).map((arg, index, all) => [arg, all[index + 1]]),
 );
 const base =
-	args.get("--url") ?? process.env.BEEFWEB_URL ?? "http://localhost:8880";
+	args.get("--url") ?? process.env.CAPTURE_URL ?? "http://localhost:8880";
 
 const out = args.has("--out") ? resolve(args.get("--out") as string) : null;
 

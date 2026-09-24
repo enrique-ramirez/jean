@@ -8,7 +8,7 @@ const HAS_EXTENSION = /\.(?:[cm]?[jt]sx?|json)$/;
 
 // The values `vite.config.ts` injects. No translation is fetched under `node`,
 // so the shipped list is empty and English is the whole catalogue.
-Object.assign(globalThis, { __PLAYER_HOST__: null, __SHIPPED_LOCALES__: [] });
+Object.assign(globalThis, { __SHIPPED_LOCALES__: [] });
 
 registerHooks({
 	resolve(specifier, context, next) {

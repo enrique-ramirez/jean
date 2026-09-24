@@ -69,7 +69,7 @@ Tracks are stored as objects keyed by title-formatting expression, not as the po
 
 The cover art is real and downscaled by `capture.ts`, which shells out to macOS `sips` and says so when it cannot. Nothing but the fake reads `artwork/`.
 
-**The same tool captures the demo's library, and the two must not be confused.** `capture.ts --albums demo/albums.ts --out demo` writes into `demo/`; see `demo/CLAUDE.md`. Nothing in `demo/` is read by a test and nothing here is read by the demo. A demo capture leaves `player.json` alone; a named album the tool cannot find is skipped and logged either way. `--url` falls back to `BEEFWEB_URL` and then to localhost.
+**The same tool captures the demo's library, and the two must not be confused.** `capture.ts --albums demo/albums.ts --out demo` writes into `demo/`; see `demo/CLAUDE.md`. Nothing in `demo/` is read by a test and nothing here is read by the demo. A demo capture leaves `player.json` alone; a named album the tool cannot find is skipped and logged either way. `--url` falls back to `CAPTURE_URL` and then to localhost.
 
 ### The media library
 

@@ -1,25 +1,19 @@
-import { fileURLToPath, URL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
 import { localePlugin, shippedLocales } from "./scripts/localePlugin.ts";
 
-// Only the dev server needs to know where the player is. A build does not, except that
-// `foo_jean` listens on a port of its own: its address is the page's host with a different
-// port, which is right when beefweb serves the files and wrong on the dev server. The host is
-// injected here and read by `originOfPort`.
-export default defineConfig(({ command, mode }) => {
+// A build needs no target at all: `foo_jean` serves Jean and answers `/api` from the one origin.
+// Only the dev server, which serves Jean itself, has to be told where the player is.
+export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
 	const target =
-		process.env.BEEFWEB_URL || env.BEEFWEB_URL || "http://localhost:8880";
-
-	// Null in a build, where the page really is served by the player.
-	const playerHost = command === "serve" ? new URL(target).hostname : null;
+		process.env.FOO_JEAN_URL || env.FOO_JEAN_URL || "http://localhost:8881";
 
 	return {
 		define: {
-			__PLAYER_HOST__: JSON.stringify(playerHost),
 			__SHIPPED_LOCALES__: JSON.stringify(shippedLocales(process.cwd())),
 		},
 
@@ -31,7 +25,6 @@ export default defineConfig(({ command, mode }) => {
 			},
 		},
 
-		// Relative asset paths, so a build works under whatever prefix beefweb serves it from.
 		base: "./",
 
 		server: {

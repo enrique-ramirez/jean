@@ -1,11 +1,7 @@
 import { useState } from "react";
 import type { TagWriterState } from "@/domain/track/tagWriter";
 import { labelOfField, useTagWriting } from "@/domain/track/useTagWriter";
-import {
-	type PairFailure,
-	pairWithAgent,
-	SUPPORTED_API_VERSION,
-} from "@/shared/api/fooJean";
+import { type PairFailure, pairWithAgent } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Trans } from "@/shared/i18n/Trans";
 import type { Translate } from "@/shared/i18n/useTranslate";
@@ -18,77 +14,28 @@ import styles from "./Settings.module.css";
 
 const PANE = "File \u2192 Preferences \u2192 Tools \u2192 Jean";
 
-// TODO: link the release once foo_jean is published.
-const IS_PUBLISHED = false;
-
 interface Explained {
 	tone: "ok" | "warn" | "off";
 	badge: string;
-	summary: string;
+	summary: string | null;
 	fix: string | null;
 }
 
 function explain(state: TagWriterState, t: Translate): Explained {
 	switch (state.kind) {
-		case "absent":
-			return {
-				tone: "off",
-				badge: t("fooJean.badge.absent"),
-				summary: t("fooJean.absent.summary"),
-				fix: t(IS_PUBLISHED ? "fooJean.absent.install" : "fooJean.absent.soon"),
-			};
-
-		case "not-listening":
-			return {
-				tone: "warn",
-				badge: t("fooJean.badge.disconnected"),
-				summary: t("fooJean.notListening.summary", {
-					port: state.record.port,
-					error: state.error,
-				}),
-				fix: t(
-					state.portInUse
-						? "fooJean.notListening.portTaken"
-						: "fooJean.notListening.check",
-					{ pane: PANE },
-				),
-			};
-
 		case "unreachable":
 			return {
 				tone: "warn",
 				badge: t("fooJean.badge.disconnected"),
-				summary: t("fooJean.unreachable.summary", { port: state.record.port }),
-				fix: t("fooJean.unreachable.fix", { pane: PANE }),
-			};
-
-		case "impostor":
-			return {
-				tone: "warn",
-				badge: t("fooJean.badge.disconnected"),
-				summary: t("fooJean.impostor.summary", { port: state.record.port }),
-				fix: t("fooJean.impostor.fix"),
-			};
-
-		case "unsupported":
-			return {
-				tone: "warn",
-				badge: t("fooJean.badge.disconnected"),
-				summary: t("fooJean.unsupported.summary", {
-					theirs: state.apiVersion,
-					ours: SUPPORTED_API_VERSION,
-				}),
-				fix: t("fooJean.unsupported.fix"),
+				summary: t("fooJean.unreachable.summary"),
+				fix: t("fooJean.unreachable.fix"),
 			};
 
 		case "no-token":
 			return {
 				tone: "warn",
 				badge: t("fooJean.badge.needsToken"),
-				summary: t("fooJean.noToken.summary", {
-					version: state.status.version,
-					port: state.record.port,
-				}),
+				summary: t("fooJean.noToken.summary"),
 				fix: t("fooJean.noToken.fix", { pane: PANE }),
 			};
 
@@ -105,10 +52,7 @@ function explain(state: TagWriterState, t: Translate): Explained {
 				? {
 						tone: "ok",
 						badge: t("fooJean.badge.connected"),
-						summary: t("fooJean.ready.summary", {
-							version: state.status.version,
-							port: state.record.port,
-						}),
+						summary: t("fooJean.ready.summary"),
 						fix: null,
 					}
 				: {
@@ -118,6 +62,15 @@ function explain(state: TagWriterState, t: Translate): Explained {
 						fix: t("fooJean.ready.addFields", { pane: PANE }),
 					};
 	}
+}
+
+function explainChecking(t: Translate): Explained {
+	return {
+		tone: "off",
+		badge: t("fooJean.checking"),
+		summary: null,
+		fix: null,
+	};
 }
 
 // Only the refusal. That it *can* stream is said by the control appearing in the status bar.
@@ -145,7 +98,6 @@ function PairButton({
 	origin,
 	onPaired,
 }: {
-	// Non-null only once `/api/status` has answered as foo_jean: the discovery record naming the port is forgeable, so a probed origin is what makes it safe to send the token to.
 	origin: string;
 	onPaired: (token: string) => void;
 }) {
@@ -244,11 +196,12 @@ function TokenField({
 
 export function TagWriting() {
 	const t = useTranslate();
-	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
+	const { discovery, isDiscovered, isChecking, token, setToken, recheck } =
+		useFooJean();
 	const { allowedFields, isFieldEnabled, setFieldEnabled } = useTagWriting();
 	const { state, origin } = discovery;
 
-	const explained = explain(state, t);
+	const explained = isDiscovered ? explain(state, t) : explainChecking(t);
 	const streaming = explainStreaming(state, t);
 	const needsToken = state.kind === "no-token" || state.kind === "unauthorized";
 
@@ -263,7 +216,9 @@ export function TagWriting() {
 				</span>
 			</div>
 
-			<p className={styles.summary}>{explained.summary}</p>
+			{explained.summary ? (
+				<p className={styles.summary}>{explained.summary}</p>
+			) : null}
 			{explained.fix ? <p className={styles.fix}>{explained.fix}</p> : null}
 			{streaming ? <p className={styles.fix}>{streaming}</p> : null}
 

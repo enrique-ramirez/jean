@@ -6,7 +6,11 @@ The keymap, the manager it registers into, and who owns the keyboard when a laye
 
 **Register a binding where the button lives, when there is a button.** The component that owns the call also owns the question of whether the action is possible at all, so the key and the button cannot disagree and the key is live on exactly the views that draw it.
 
+**The transport's keys are global, and no scope may take one.** Space, the arrows with and without Mod, `=` and `-`, `M`, `O` and `W` mean the same thing on every view.
+
 **A focus region answers its own keys on the element, and the shortcut sheet does not list them.** The manager fires *every* enabled registration matching a key, conflicts are reported rather than resolved, and the track list holds the arrows and Enter for its own cursor. **So the region stops the event**: the manager listens on `document` at bubble, below React's root, and `stopPropagation` from inside settles it.
+
+**A focus region may answer a listed binding for the element that has the caret**, through `matchesBinding` rather than a registration of its own, and stop it there. `P` on a sidebar row plays that row where the open view would otherwise play itself: the key keeps one meaning, and the caret decides what it applies to.
 
 **Enter is stopped without being prevented.** A focused row is a button and the browser's default action on Enter is the click that opens it; preventing it makes a keyboard-navigable sidebar a dead end. Space is deliberately *not* stopped, since it is the transport everywhere in Jean, and a row is reachable with Enter.
 

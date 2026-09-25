@@ -11,6 +11,8 @@ import {
 	openLibrary,
 	openNowPlaying,
 	openSidebar,
+	playedFrom,
+	playRequests,
 	pressAndHold,
 	refusePlaylistWrites,
 	requestsTo,
@@ -675,6 +677,22 @@ test.describe("the search entry", () => {
 		await expect(link(page, "babasonicos")).toContainText("12");
 	});
 
+	test("Home stays first, and the search sits below the pages", async ({
+		page,
+	}) => {
+		await openApp(page);
+		await searchFor(page, "babasonicos");
+		await openSidebar(page);
+
+		const labels = await sidebar(page)
+			.locator("[data-nav-row]")
+			.allInnerTexts();
+		expect(labels[0]).toContain("Home");
+		expect(labels.findIndex((label) => label.includes("babasonicos"))).toBe(
+			labels.findIndex((label) => label.includes("Genres")) + 1,
+		);
+	});
+
 	test("it goes back to the results after browsing away", async ({ page }) => {
 		await openApp(page);
 		await searchFor(page, "babasonicos");
@@ -690,6 +708,53 @@ test.describe("the search entry", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "babasonicos" }),
 		).toBeVisible();
+	});
+});
+
+test.describe("playing from the sidebar", () => {
+	test.skip(
+		({ isMobile }) => isMobile,
+		"a double tap is two taps, and there is no key to press",
+	);
+
+	const guidOf = (player: FakePlayer, title: string) =>
+		player.playlists.find((entry) => entry.title === title)!.guid;
+
+	test("double-clicking a playlist opens it and plays it from the top", async ({
+		page,
+		player,
+	}) => {
+		await openApp(page);
+		await link(page, FAVORITES).dblclick();
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: FAVORITES }),
+		).toBeVisible();
+		await expect
+			.poll(() => playedFrom(player))
+			.toEqual({ id: guidOf(player, FAVORITES), index: 0 });
+	});
+
+	test("p on a focused row plays that row and nothing else", async ({
+		page,
+		player,
+	}) => {
+		await openApp(page);
+		await link(page, FAVORITES).focus();
+		await page.keyboard.press("p");
+
+		await expect
+			.poll(() => playedFrom(player))
+			.toEqual({ id: guidOf(player, FAVORITES), index: 0 });
+		await expectSettlesAt(player, () => playRequests(player).length, 1);
+	});
+
+	test("a page is not something to play", async ({ page, player }) => {
+		await openApp(page);
+		await link(page, "Home").dblclick();
+		await link(page, "Genres").dblclick();
+
+		await expectSettlesAt(player, () => playRequests(player), []);
 	});
 });
 

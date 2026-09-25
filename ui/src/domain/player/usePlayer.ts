@@ -429,6 +429,8 @@ export const useSeek = () => {
 	);
 };
 
+export const KEY_SEEK_SECONDS = 5;
+
 export const useSeekBy = () => {
 	const { discovery } = useFooJean();
 	return usePlayerPatch(

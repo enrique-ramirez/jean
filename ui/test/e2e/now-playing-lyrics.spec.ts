@@ -463,6 +463,27 @@ test.describe("full-screen lyrics", () => {
 		});
 	}
 
+	test("the arrows still seek underneath it, and F closes it again", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 0);
+		await panelTab(nowPlayingScreen(page), "Lyrics").click();
+		await pressF(page);
+		await expect(fullScreen(page)).toBeVisible();
+
+		await page.keyboard.press("ArrowRight");
+		await page.keyboard.press("ArrowLeft");
+		await expect
+			.poll(() =>
+				requestsTo(player, "/api/playback/seek").map((entry) => entry.body),
+			)
+			.toEqual([{ relativeSeconds: 5 }, { relativeSeconds: -5 }]);
+
+		await page.keyboard.press("f");
+		await expect(fullScreen(page)).toHaveCount(0);
+	});
+
 	test("only the lyrics are left, and the X brings the screen back", async ({
 		page,
 	}) => {

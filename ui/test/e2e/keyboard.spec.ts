@@ -4,12 +4,14 @@ import {
 	expectPlayingFrom,
 	expectSettlesAt,
 	expectTheScreenIsStillOpen,
+	guidOfPlaylist,
 	inSequence,
 	listenHere,
 	nowPlayingScreen,
 	openAllMusic,
 	openLibrary,
 	openNowPlaying,
+	playedFrom,
 	requestsTo,
 	scrollTo,
 	scrollTop,
@@ -31,7 +33,8 @@ import { panelTab, playRow, TAGGED } from "./nowPlaying.ts";
 // Bindings covered elsewhere:
 //
 //   /  ArrowUp/Down  Enter  Escape   finder.spec.ts   (the finder's own scope)
-//   n                                follow.spec.ts   (jump to playing)
+//   n on the playing view            follow.spec.ts   (jump to playing)
+//   [  ]                             artist.spec.ts   (the tabs they step)
 //   l  d  a                          now-playing.spec.ts (the panels they open)
 //   h                                heat.spec.ts     (and finder.spec, where
 //                                                      it must NOT fire)
@@ -159,6 +162,22 @@ test.describe("playback", () => {
 		await expect
 			.poll(() => bodiesTo(player, "/api/volume"))
 			.toEqual([{ step: "up" }, { step: "down" }]);
+	});
+
+	test("o switches shuffle on and off", async ({ page, player }) => {
+		await page.keyboard.press("o");
+		await expect
+			.poll(() =>
+				bodiesTo(player, "/api/playback/mode").map((body) => body.mode),
+			)
+			.toEqual(["shuffleTracks"]);
+	});
+
+	test("p plays the open playlist from the top", async ({ page, player }) => {
+		await page.keyboard.press("p");
+		await expect
+			.poll(() => playedFrom(player))
+			.toEqual({ id: guidOfPlaylist(player, "p7"), index: 0 });
 	});
 
 	test("m mutes and unmutes", async ({ page, player }) => {
@@ -405,13 +424,13 @@ test.describe("navigation and appearance", () => {
 		await expect(page).toHaveURL(new RegExp(`#/${guid}$`));
 	});
 
-	test("p goes to what is playing", async ({ page, player }) => {
+	test("n goes to what is playing", async ({ page, player }) => {
 		await page.goto("/#/all");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
 		await trackRow(page, 0).dblclick();
-		// Jean's own account of what is playing, which is the whole of what `p` acts
+		// Jean's own account of what is playing, which is the whole of what `n` acts
 		// on. The player holding the track is a different fact and arrives first: this
 		// client still has to learn which set it came from before the key means
 		// anything.
@@ -421,10 +440,22 @@ test.describe("navigation and appearance", () => {
 			(entry) => entry.title === "Favorites",
 		)!.guid;
 		await page.goto(`/#/${guid}`);
-		await page.keyboard.press("p");
+		await page.keyboard.press("n");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
+	});
+
+	test("Backspace goes back to the view before", async ({ page }) => {
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+		await page.goto("/#/genres");
+		await expect(page).toHaveURL(/#\/genres$/);
+
+		await page.keyboard.press("Backspace");
+		await expect(page).toHaveURL(/#\/all$/);
 	});
 
 	test("Escape closes the sheet, and so does ? again", async ({ page }) => {

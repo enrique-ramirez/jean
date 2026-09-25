@@ -39,6 +39,11 @@ export function PlayActions({
 
 	useKeymap(
 		SCOPE.playlist,
+		{ playAll: () => play(0) },
+		{ enabled: canPlaySets && !isEmpty && canControlPlayback },
+	);
+	useKeymap(
+		SCOPE.playlist,
 		{ shufflePlay },
 		{ enabled: canShuffleHere && canControlPlayback },
 	);

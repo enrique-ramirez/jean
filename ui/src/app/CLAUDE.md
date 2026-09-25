@@ -14,6 +14,8 @@ The grid every feature is drawn inside, hash routing, the themes, the browser ta
 
 **The sidebar is a keyboard destination, not just a column**, and revealing it *with a key* also puts the caret on a row, where revealing it with a click leaves the caret alone. The shell owns whether the column is open and the sidebar owns which row gets the caret, so it travels as an ask (`sidebarFocus.ts`) rather than a prop: the reveal has to have committed before the focus is looked for. **Hiding it MUST blur a focused row.** A caret left on a collapsed column sends every key after it somewhere invisible.
 
+**Home and Genres are pages; All music, the search, the temporary row and every playlist hold tracks.** `NavRow` takes the difference as whether it is handed an `onPlay`.
+
 **Every row of the grid carries `min-width: 0`, and the top bar is the one that keeps being forgotten.** A grid item may not be sized below its own min-content, so a single control that refuses to shrink sets a floor for the whole shell, and the document is as wide as the shell. On a phone that is two faults from one cause: the page scrolls sideways, and the browser widens the visual viewport to fit the excess, which leaves the full-height grid short of the bottom of the screen. Neither shows above about 400px, so `shell.spec.ts` asks at the narrowest phone worth drawing for.
 
 ## Routing

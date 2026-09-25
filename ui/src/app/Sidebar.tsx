@@ -39,7 +39,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
-import { hintFor, SCOPE } from "@/shared/keyboard/keymap";
+import { hintFor, matchesBinding, SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
 import { isRefusal } from "@/shared/lib/refusal";
@@ -52,6 +52,14 @@ import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
 
 const PALETTE_HINT = hintFor("openPalette");
 
+export type PlayableRow =
+	| { kind: "all" }
+	| { kind: "search" }
+	| { kind: "playingFrom" }
+	| { kind: "playlist"; id: string };
+
+const hasFinePointer = () => window.matchMedia("(pointer: fine)").matches;
+
 function NavRow({
 	icon: Icon,
 	label,
@@ -59,6 +67,7 @@ function NavRow({
 	isPlaying,
 	isCurrent,
 	onClick,
+	onPlay,
 	rowProps,
 	itemProps,
 	children,
@@ -69,6 +78,7 @@ function NavRow({
 	isPlaying?: boolean;
 	isCurrent?: boolean;
 	onClick?: () => void;
+	onPlay?: () => void;
 	rowProps?: PropBag;
 	itemProps?: PropBag;
 	children?: ReactNode;
@@ -81,6 +91,23 @@ function NavRow({
 				className={styles.item}
 				aria-current={isCurrent}
 				onClick={onClick}
+				onDoubleClick={
+					onPlay
+						? () => {
+								if (hasFinePointer()) onPlay();
+							}
+						: undefined
+				}
+				onKeyDown={
+					onPlay
+						? (event) => {
+								if (!matchesBinding(event.nativeEvent, "playAll")) return;
+								event.preventDefault();
+								event.stopPropagation();
+								onPlay();
+							}
+						: undefined
+				}
 				data-nav-row=""
 				{...itemProps}
 			>
@@ -112,6 +139,7 @@ export function Sidebar({
 	onOpenSearch,
 	route,
 	onOpenRoute,
+	onPlayRow,
 	playingFrom,
 	isOpen,
 	isCollapsed,
@@ -126,6 +154,7 @@ export function Sidebar({
 	onOpenSearch: (query?: string) => void;
 	route: string;
 	onOpenRoute: (route: string) => void;
+	onPlayRow?: (row: PlayableRow) => void;
 	playingFrom: PlayingRoute | null;
 	isOpen: boolean;
 	isCollapsed: boolean;
@@ -151,6 +180,9 @@ export function Sidebar({
 	const shown = useMemo(() => withoutScratchPlaylist(playlists), [playlists]);
 
 	const playingRoute = playingFrom?.isPlaying ? playingFrom.route : null;
+
+	const playRow = (row: PlayableRow | null) =>
+		onPlayRow && row !== null ? () => onPlayRow(row) : undefined;
 
 	const target = shown.find((entry) => entry.id === targetId) ?? null;
 	const focusedIndex = shown.findIndex((entry) => entry.id === focusedId);
@@ -335,22 +367,6 @@ export function Sidebar({
 				onKeyDown={onArrows}
 				{...swipe}
 			>
-				{search.hasQuery || search.remembered ? (
-					<>
-						<p className={styles.heading}>{t("search.title")}</p>
-						<NavRow
-							icon={Search}
-							label={search.query || search.remembered}
-							count={search.hasQuery ? format.number(search.matchCount) : ""}
-							isPlaying={playingRoute !== null && isSearchRoute(playingRoute)}
-							isCurrent={isSearchOpen}
-							onClick={() =>
-								onOpenSearch(search.query || search.remembered || undefined)
-							}
-						/>
-					</>
-				) : null}
-
 				<NavRow
 					icon={Home}
 					label={t("sidebar.home")}
@@ -364,6 +380,7 @@ export function Sidebar({
 					isPlaying={playingRoute === "all"}
 					isCurrent={route === "all"}
 					onClick={() => onOpenRoute("all")}
+					onPlay={playRow({ kind: "all" })}
 				/>
 
 				<NavRow
@@ -372,6 +389,23 @@ export function Sidebar({
 					isCurrent={route === ROUTE.genres}
 					onClick={() => onOpenRoute(ROUTE.genres)}
 				/>
+
+				{search.hasQuery || search.remembered ? (
+					<>
+						<p className={styles.heading}>{t("search.title")}</p>
+						<NavRow
+							icon={Search}
+							label={search.query || search.remembered}
+							count={search.hasQuery ? format.number(search.matchCount) : ""}
+							isPlaying={playingRoute !== null && isSearchRoute(playingRoute)}
+							isCurrent={isSearchOpen}
+							onClick={() =>
+								onOpenSearch(search.query || search.remembered || undefined)
+							}
+							onPlay={playRow(search.hasQuery ? { kind: "search" } : null)}
+						/>
+					</>
+				) : null}
 
 				{playingFrom?.temporaryRow ? (
 					<>
@@ -384,6 +418,7 @@ export function Sidebar({
 							isPlaying={playingFrom.isPlaying}
 							isCurrent={route === playingFrom.route}
 							onClick={() => onOpenRoute(playingFrom.route)}
+							onPlay={playRow({ kind: "playingFrom" })}
 						/>
 					</>
 				) : null}
@@ -440,6 +475,7 @@ export function Sidebar({
 								? undefined
 								: () => onSelect(playlist.id)
 						}
+						onPlay={playRow({ kind: "playlist", id: playlist.id })}
 						onFocus={() => setFocusedId(playlist.id)}
 						onBlur={() =>
 							setFocusedId((current) =>
@@ -519,6 +555,7 @@ function PlaylistRow({
 	handleProps,
 	menuProps,
 	onSelect,
+	onPlay,
 	onFocus,
 	onBlur,
 	onRename,
@@ -537,6 +574,7 @@ function PlaylistRow({
 	handleProps: PropBag;
 	menuProps: PropBag;
 	onSelect?: () => void;
+	onPlay?: () => void;
 	onFocus: () => void;
 	onBlur: () => void;
 	onRename: (title: string | null) => void;
@@ -573,6 +611,7 @@ function PlaylistRow({
 			isPlaying={isPlaying}
 			isCurrent={isSelected}
 			onClick={onSelect}
+			onPlay={onPlay}
 			itemProps={{ onFocus, onBlur }}
 			rowProps={{
 				ref,

@@ -321,7 +321,10 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		if (activeIndex < 0 || activeIndex >= rows.length) return;
 		jumpAnswered();
 		moveCursorTo(activeIndex);
-		scrollToTrack(activeIndex, { align: "center" });
+		scrollToTrack(activeIndex, {
+			align: "center",
+			animate: jumpAsked.animate,
+		});
 	}, [jumpAsked, activeIndex, rows.length, moveCursorTo, scrollToTrack]);
 
 	const cursorAt = useRef(selection.cursor);
@@ -395,11 +398,6 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 			cursorTop: () => keyMoveTo(0),
 			cursorBottom: () => keyMoveTo(rows.length - 1),
 			playCursor: () => play(selection.cursor),
-			jumpToPlaying: () => {
-				if (activeIndex < 0) return;
-				moveCursorTo(activeIndex);
-				scrollToTrack(activeIndex, { align: "center", animate: true });
-			},
 			extendDown: () => keyMove(1, { extend: true }),
 			extendUp: () => keyMove(-1, { extend: true }),
 			selectAll: selection.selectAll,

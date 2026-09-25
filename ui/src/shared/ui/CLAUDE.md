@@ -26,6 +26,8 @@ It is an **action sheet**, not a bottom sheet: detached from every edge, all fou
 
 **A list that appears under a stationary pointer gets a `mouseenter` it did not earn.** The mouse has not moved; the element beneath it changed. Hover would then hand the active row to whatever landed there and Enter would act on that instead of the first. **Hover has to prove the pointer moved**: a flag re-armed per result set covers the ordinary case, and comparing the event's coordinates against the last seen ones covers the first move onto a result, where `mouseenter` arrives before the `mousemove` that would have set the flag. `useEarnedHover` is that guard and the one place it is written; every list whose rows can appear under a resting pointer MUST gate its `onMouseEnter` on it.
 
+**Some touch browsers fire `dblclick` for a fast double tap, despite there being no mouse.** A handler meant to answer a real double-click has to check `matchMedia("(pointer: fine)")` as well, or a rushed double tap on a touch screen fires it too.
+
 **A touch target is not a pointer target.** A miss on a thin fader track does nothing at all, which reads as broken without ever being wrong. Hit areas widen on `(pointer: coarse)` while the visible rail does not, and the thumb is drawn permanently there, because on touch there is no hover to reveal it.
 
 ## Dragging

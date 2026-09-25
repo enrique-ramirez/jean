@@ -1,5 +1,7 @@
 import {
 	formatForDisplay,
+	type Hotkey,
+	matchesKeyboardEvent,
 	type RegisterableHotkey,
 } from "@tanstack/react-hotkeys";
 
@@ -83,6 +85,27 @@ export const KEYMAP: Binding[] = [
 		group: "shortcutGroup.playback",
 		name: "shortcut.toggleMute",
 		keys: ["M"],
+	},
+	{
+		id: "toggleShuffle",
+		scope: SCOPE.global,
+		group: "shortcutGroup.playback",
+		name: "shortcut.toggleShuffle",
+		keys: ["O"],
+	},
+	{
+		id: "playAll",
+		scope: SCOPE.playlist,
+		group: "shortcutGroup.playback",
+		name: "shortcut.playAll",
+		keys: ["P"],
+	},
+	{
+		id: "shufflePlay",
+		scope: SCOPE.playlist,
+		group: "shortcutGroup.playback",
+		name: "shortcut.shufflePlay",
+		keys: ["S"],
 	},
 
 	{
@@ -186,11 +209,18 @@ export const KEYMAP: Binding[] = [
 		keys: ["W"],
 	},
 	{
-		id: "goToPlayingFrom",
+		id: "goToPlaying",
 		scope: SCOPE.global,
 		group: "shortcutGroup.navigation",
-		name: "shortcut.goToPlayingFrom",
-		keys: ["P"],
+		name: "shortcut.goToPlaying",
+		keys: ["N"],
+	},
+	{
+		id: "goBack",
+		scope: SCOPE.global,
+		group: "shortcutGroup.navigation",
+		name: "shortcut.goBack",
+		keys: ["Backspace"],
 	},
 	// Modified rather than bare `Home`, which the playlist scope binds to the cursor and would shadow
 	// it in exactly the long lists this exists for.
@@ -272,14 +302,19 @@ export const KEYMAP: Binding[] = [
 		keys: ["Alt+ArrowDown"],
 	},
 
-	// One key rather than an initial each: `T` for Tracks is the theme toggle, and a scoped binding
-	// quietly shadowing a global one is worse than a key that is not a first letter.
 	{
-		id: "switchArtistTab",
+		id: "previousTab",
 		scope: SCOPE.artist,
 		group: "shortcutGroup.artist",
-		name: "shortcut.switchArtistTab",
-		keys: ["O"],
+		name: "shortcut.previousTab",
+		keys: ["["],
+	},
+	{
+		id: "nextTab",
+		scope: SCOPE.artist,
+		group: "shortcutGroup.artist",
+		name: "shortcut.nextTab",
+		keys: ["]"],
 	},
 
 	{
@@ -352,20 +387,6 @@ export const KEYMAP: Binding[] = [
 		group: "shortcutGroup.playlist",
 		name: "shortcut.playCursor",
 		keys: ["Enter"],
-	},
-	{
-		id: "shufflePlay",
-		scope: SCOPE.playlist,
-		group: "shortcutGroup.playlist",
-		name: "shortcut.shufflePlay",
-		keys: ["S"],
-	},
-	{
-		id: "jumpToPlaying",
-		scope: SCOPE.playlist,
-		group: "shortcutGroup.playlist",
-		name: "shortcut.jumpToPlaying",
-		keys: ["N"],
 	},
 	{
 		id: "extendDown",
@@ -458,6 +479,11 @@ export const KEYMAP: Binding[] = [
 		options: { ignoreInputs: false },
 	},
 ];
+
+export const matchesBinding = (event: KeyboardEvent, id: string) =>
+	KEYMAP.find((binding) => binding.id === id)?.keys.some((key) =>
+		matchesKeyboardEvent(event, key as Hotkey),
+	) ?? false;
 
 const documented = KEYMAP.filter((binding) => !binding.hidden);
 

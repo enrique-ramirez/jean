@@ -42,6 +42,4 @@ Who an artist is -- in `domain/track/artists.ts`, since the search index needs i
 
 **Choosing a record on the overview opens the tracks and scrolls to it.** It does not play: the discography is for finding your way to a record, and a click that started the music would leave nowhere to go but back. `revealTrack.ts` carries the ask, and it carries a **ref rather than a position** -- the list that answers is not the one that asked.
 
-**One key rather than an initial each.** `T` for Tracks is the theme toggle, and a scoped binding quietly shadowing a global one is worse than a key that is not a first letter. The strip underlines a letter only when the key really is the label's initial.
-
 **The MusicBrainz panel is the same component the now-playing screen draws** -- its comment has why the subject is a parameter rather than the playing track.

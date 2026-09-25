@@ -77,6 +77,23 @@ test.describe("an artist is a place", () => {
 		expect(trackPlayed(player)).toBeTruthy();
 		await expectPlayingFrom(page, ARTIST);
 	});
+
+	test("p plays the artist from the overview, as the button does", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "p is a keyboard shortcut");
+
+		await openArtist(page, ARTIST);
+		await page.keyboard.press("p");
+
+		await expect
+			.poll(() => playedFrom(player))
+			.toEqual({ id: scratchOf(player)?.guid, index: 0 });
+		await expectPlayingFrom(page, ARTIST);
+		expect(await page.evaluate(() => location.hash)).not.toContain("/tracks");
+	});
 });
 
 test.describe("two views of one artist", () => {
@@ -126,14 +143,18 @@ test.describe("two views of one artist", () => {
 		expect((await name.boundingBox())?.width).toBeGreaterThan(across / 2);
 	});
 
-	test("one key moves between them, in both directions", async ({ page }) => {
+	test("the brackets step between them and stop at either end", async ({
+		page,
+	}) => {
 		await openArtist(page, ARTIST);
 		await page.locator("main").click({ position: { x: 20, y: 300 } });
 
-		await page.keyboard.press("o");
+		await page.keyboard.press("]");
+		await expect(tab(page, "Tracks")).toHaveAttribute("aria-current", "true");
+		await page.keyboard.press("]");
 		await expect(tab(page, "Tracks")).toHaveAttribute("aria-current", "true");
 
-		await page.keyboard.press("o");
+		await page.keyboard.press("[");
 		await expect(tab(page, "Overview")).toHaveAttribute("aria-current", "true");
 	});
 

@@ -18,9 +18,11 @@ import { usePlayerPoll } from "@/domain/player/playerPoll";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import {
+	KEY_SEEK_SECONDS,
 	useIsPlaying,
 	usePlaybackOrder,
 	usePlayer,
+	usePlayItem,
 	usePlaylists,
 	usePlayPause,
 	usePrevious,
@@ -33,6 +35,7 @@ import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
 import { type ArtistTab, artistRoute } from "@/domain/track/artistRoute";
 import { type ArtistTracks, refsOfArtist } from "@/domain/track/artists";
 import {
+	isScratchPlaylist,
 	SCRATCH_KIND,
 	withoutScratchPlaylist,
 } from "@/domain/track/jeanPlaylists";
@@ -79,7 +82,6 @@ import { useTheme } from "@/shared/hooks/useTheme";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
-import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import {
 	SHORTCUTS_KEYBOARD,
 	ShortcutSheet,
@@ -99,14 +101,12 @@ import {
 	routeOfPlayingSet,
 	routeOfSuggestion,
 } from "./routes";
-import { Sidebar } from "./Sidebar";
+import { type PlayableRow, Sidebar } from "./Sidebar";
 import { askToFocusSidebar } from "./sidebarFocus";
 import { useDocumentIdentity } from "./useDocumentIdentity";
 import { useHashRoute } from "./useHashRoute";
 import { useIsAtTop } from "./useIsAtTop";
 import { useScrollMemory } from "./useScrollMemory";
-
-const SEEK_STEP = 5;
 
 const ARTIST_TABS = [
 	{ value: "overview", label: "artist.overview" },
@@ -486,6 +486,29 @@ function Shell() {
 		[openRoute],
 	);
 
+	const playItem = usePlayItem();
+	const playFromTop = (playlistId: string | undefined) => {
+		if (playlistId) playItem.mutate({ playlistId, index: 0 });
+	};
+	const playRow = (row: PlayableRow) => {
+		switch (row.kind) {
+			case "all":
+				return void home.playEverything(allMusic.indices);
+			case "search":
+				if (search.results.indices.length === 0) return;
+				return void playSet({
+					kind: SCRATCH_KIND.search,
+					label: search.query,
+					refs: search.results.indices,
+					position: 0,
+				});
+			case "playingFrom":
+				return playFromTop(playlists.find(isScratchPlaylist)?.id);
+			case "playlist":
+				return playFromTop(row.id);
+		}
+	};
+
 	const openSearch = useCallback(
 		(query?: string) => openRoute(query ? searchRoute(query) : ROUTE.search),
 		[openRoute],
@@ -530,7 +553,6 @@ function Shell() {
 					options={ARTIST_TABS.map((tab) => ({
 						...tab,
 						label: t(tab.label),
-						mnemonic: mnemonicOf(t(tab.label), "switchArtistTab"),
 					}))}
 					onChange={showArtistTab}
 				/>
@@ -545,11 +567,17 @@ function Shell() {
 		onRight: () => showArtistTab("overview"),
 	});
 
+	const stepArtistTab = (delta: number) => {
+		const at = ARTIST_TABS.findIndex((tab) => tab.value === artistTab);
+		const next = ARTIST_TABS[at + delta];
+		if (next) showArtistTab(next.value);
+	};
+
 	useKeymap(
 		SCOPE.artist,
 		{
-			switchArtistTab: () =>
-				showArtistTab(artistTab === "tracks" ? "overview" : "tracks"),
+			previousTab: () => stepArtistTab(-1),
+			nextTab: () => stepArtistTab(1),
 		},
 		{ enabled: Boolean(artist) },
 	);
@@ -632,11 +660,14 @@ function Shell() {
 			nextTrack: () => transport.next.mutate(),
 			previousTrack: () => previous(),
 			stop: () => transport.stop.mutate(),
-			seekBack: () => seekBy.mutate(-SEEK_STEP),
-			seekForward: () => seekBy.mutate(SEEK_STEP),
+			seekBack: () => seekBy.mutate(-KEY_SEEK_SECONDS),
+			seekForward: () => seekBy.mutate(KEY_SEEK_SECONDS),
 			volumeUp: () => volume.up(),
 			volumeDown: () => volume.down(),
 			toggleMute: () => volume.toggleMute(),
+			toggleShuffle: () => {
+				if (playbackMode.canShuffle) playbackMode.toggleShuffle();
+			},
 		},
 		{ enabled: canControlPlayback },
 	);
@@ -662,9 +693,16 @@ function Shell() {
 		},
 		toggleQueue,
 		toggleNowPlaying,
-		goToPlayingFrom: () => {
-			if (playingRoute) openPlayingFrom(playingRoute);
+		goToPlaying: () => {
+			if (!playingRoute) return;
+			if (
+				shellRoute === playingRoute ||
+				shellRoute.startsWith(`${playingRoute}/`)
+			)
+				askToJump({ animate: true });
+			else openPlayingFrom(playingRoute);
 		},
+		goBack: () => history.back(),
 		toggleTheme,
 		rate0: () => rateShortcut(0),
 		rate1: () => rateShortcut(1),
@@ -795,6 +833,7 @@ function Shell() {
 					onOpenSearch={openSearch}
 					route={shellRoute}
 					onOpenRoute={openRoute}
+					onPlayRow={canControlPlayback ? playRow : undefined}
 					playingFrom={playingFrom}
 					isOpen={isSidebarOpen}
 					isCollapsed={!isCompactViewport && isSidebarCollapsed}

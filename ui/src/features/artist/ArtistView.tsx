@@ -31,6 +31,8 @@ import {
 	useFormats,
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
+import { SCOPE } from "@/shared/keyboard/keymap";
+import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Button } from "@/shared/ui/Button";
 import styles from "./ArtistView.module.css";
@@ -115,6 +117,18 @@ export function ArtistView({
 
 	const held = (own?.length ?? 0) + (guest?.length ?? 0);
 	const allRefs = tracks.all;
+	const isPlayable = held > 0 && canControlPlayback;
+
+	useKeymap(
+		SCOPE.playlist,
+		{ playAll: () => onPlay(allRefs, 0) },
+		{ enabled: isPlayable && canPlay },
+	);
+	useKeymap(
+		SCOPE.playlist,
+		{ shufflePlay: () => onShuffle(allRefs) },
+		{ enabled: isPlayable && canShuffle },
+	);
 
 	return (
 		<div className={styles.artist}>

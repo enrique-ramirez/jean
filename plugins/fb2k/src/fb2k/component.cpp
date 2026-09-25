@@ -10,6 +10,7 @@
 #include "core/version.h"
 #include "fb2k/artwork.h"
 #include "fb2k/config_file.h"
+#include "fb2k/config_watch.h"
 #include "fb2k/library.h"
 #include "fb2k/main_thread.h"
 #include "fb2k/paths.h"
@@ -22,7 +23,7 @@
 #include "fb2k/running_settings.h"
 #include "fb2k/streamer.h"
 #include "fb2k/tag_writer.h"
-#include "fb2k/token.h"
+#include "fb2k/ticket_mint.h"
 #include "fb2k/ui_assets.h"
 
 #include <chrono>
@@ -44,9 +45,11 @@ using namespace jean;
 
 constexpr double kPcmBufferSeconds = 3.0;
 
+// Built regardless of streamingEnabled, which a reload flips with no restart: http_server.cpp
+// answers 503 while it is off rather than this never having a source to open.
 std::unique_ptr<Streamer> makeStreamer(const Settings& settings) {
-    if (!settings.streamingEnabled || settings.maxConcurrentStreams == 0) {
-        logInfo("streaming is switched off in " + configPath());
+    if (settings.maxConcurrentStreams == 0) {
+        logInfo("maxConcurrentStreams is 0 in " + configPath() + "; streaming is switched off");
         return nullptr;
     }
 
@@ -58,8 +61,8 @@ void explainPortCollision() {
     logError("change \"port\" in " + configPath() + " and restart foobar2000");
 }
 
-Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const Streamer* streamer,
-                   OutputHold& outputHold, LibraryFeed& libraryFeed, PlayerStateStore& playerState,
+Player playerUsing(MainThreadQueue& mainThread, const Streamer* streamer, OutputHold& outputHold,
+                   LibraryFeed& libraryFeed, PlayerStateStore& playerState,
                    const PlaylistVersions& playlistVersions, const AlbumArt& rowArt) {
     Player player;
     player.writeTags = makeTagWriter(mainThread, libraryFeed.trackResolver(),
@@ -81,8 +84,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Settings& settings, const 
     player.moveQueueEntry = makeMoveQueueEntry(mainThread, playerState);
     player.removeQueueEntry = makeRemoveQueueEntry(mainThread, playerState);
     player.clearQueue = makeClearQueue(mainThread);
-    player.createAutoPlaylist =
-        makeAutoPlaylistCreator(mainThread, playlistVersions, settings.maxAutoPlaylists);
+    player.createAutoPlaylist = makeAutoPlaylistCreator(mainThread, playlistVersions);
     player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread, playlistVersions);
     player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);
     player.ownPlaylist = makeOwnPlaylistResolver(mainThread, playlistVersions);
@@ -153,11 +155,12 @@ public:
           playlistWatch_(mainThread_, playlistVersions_, playerState_),
           nowPlayingArtworkWatch_(nowPlayingArtwork_),
           server_(settings_, audience_,
-                  playerUsing(mainThread_, settings_, streamer_.get(), outputHold_, libraryFeed_,
+                  playerUsing(mainThread_, streamer_.get(), outputHold_, libraryFeed_,
                               playerState_, playlistVersions_, rowArt_),
-                  generateToken, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
+                  mintTicket, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
                   &nowPlayingArtwork_),
-          status_(server_.start()) {
+          status_(server_.start()),
+          configWatch_(server_, settings_) {
         if (status_.listening) {
             logInfo("listening on " + settings_.bindAddress + ":" + std::to_string(settings_.port));
         } else {
@@ -171,15 +174,13 @@ public:
         // Last, so the preferences page only ever sees a configuration this component got
         // as far as trying.
         publishRunningSettings(settings_);
-
-        if (status_.listening)
-            publishRunningServer(&server_);
     }
 
     ~Plugin() {
+        configWatch_.stop();
+
         mainThread_.close();
 
-        forgetRunningServer();
         forgetListenerStatus();
         forgetRunningSettings();
 
@@ -212,6 +213,10 @@ private:
 
     HttpServer server_;
     const ListenerStatus status_;
+
+    // Declared last so it stops, joining its own thread, before anything it might still be
+    // mid-call into starts tearing down.
+    ConfigWatch configWatch_;
 };
 
 class initquit_jean : public initquit {

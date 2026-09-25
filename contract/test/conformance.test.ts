@@ -7,7 +7,6 @@ import { conforms } from "../shape.ts";
 import { type Operation, publishedOperations } from "../spec.ts";
 
 const base = (process.env.CONTRACT_URL ?? "").replace(/\/+$/, "");
-const token = process.env.CONTRACT_TOKEN ?? "";
 
 // The contract publishes 30 seconds as the point at which an implementation gives up on the
 // player, so anything shorter here would report a conformant one as unreachable.
@@ -43,8 +42,7 @@ function address(operation: Operation, attempt: Attempt) {
 
 function ask(operation: Operation, attempt: Attempt) {
 	const headers: Record<string, string> = {};
-	if (operation.needsToken) headers.Authorization = `Bearer ${token}`;
-	if (attempt.body !== undefined) headers["Content-Type"] = "application/json";
+	if (operation.method === "POST") headers["Content-Type"] = "application/json";
 
 	return fetch(address(operation, attempt), {
 		method: operation.method,
@@ -63,9 +61,6 @@ describe("an implementation of the contract", {
 		test(drive.id, async (t) => {
 			const operation = operations.get(drive.id);
 			assert.ok(operation, `the contract no longer publishes ${drive.id}`);
-
-			if (operation.needsToken && !token)
-				return t.skip("CONTRACT_TOKEN is not set");
 
 			const attempt = drive.probe(operation, context);
 			if (attempt === null)

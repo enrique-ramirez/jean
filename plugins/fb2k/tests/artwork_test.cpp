@@ -77,9 +77,7 @@ Player showing(ArtLog* log) {
 
 httplib::Result getHolding(const TestServer& server, const std::string& path,
                            const std::string& tag) {
-    auto headers = TestServer::bearer();
-    headers.emplace("If-None-Match", tag);
-    return server.client().Get(path, headers);
+    return server.client().Get(path, httplib::Headers{{"If-None-Match", tag}});
 }
 
 TestServer servingPlaying(NowPlayingArtwork* playing, ArtLog* log) {
@@ -331,17 +329,6 @@ TEST_CASE("an install that does not serve the library says so rather than answer
     CHECK(json::parse(response->body)["error"] == "artwork is not available");
 }
 
-TEST_CASE("artwork answers nothing without a token") {
-    ArtLog log{kJpeg};
-    const TestServer server(servingSettings(), showing(&log));
-
-    const auto response = server.client().Get(kAddress);
-
-    REQUIRE(response);
-    CHECK(response->status == 401);
-    CHECK(log.asked.empty());
-}
-
 // A screenful of covers is the ordinary case and must not be refused, so what this pins is
 // that the ceiling exists at all and that the player stops being reached once it is met.
 TEST_CASE("a client looping on artwork stops reaching the player") {
@@ -360,7 +347,7 @@ TEST_CASE("a client looping on artwork stops reaching the player") {
     std::string refusal;
 
     for (int attempt = 0; attempt < kAttempts; ++attempt) {
-        const auto response = client.Get(kAddress, TestServer::bearer());
+        const auto response = client.Get(kAddress);
         REQUIRE(response);
 
         if (response->status != 429)
@@ -409,8 +396,7 @@ TEST_CASE("a page on another origin can read the validator and send it back") {
     CHECK(preflight->get_header_value("Access-Control-Allow-Headers").find("If-None-Match") !=
           std::string::npos);
 
-    auto headers = TestServer::bearer();
-    headers.emplace("Origin", "http://localhost:5173");
+    httplib::Headers headers{{"Origin", "http://localhost:5173"}};
     const auto first = server.client().Get(kAddress, headers);
 
     REQUIRE(first);
@@ -455,7 +441,7 @@ TEST_CASE("artwork answers no status contract/openapi.yaml does not document") {
 
     auto client = server.client();
     for (int attempt = 0; attempt < 600; ++attempt)
-        note(client.Get(kAddress, TestServer::bearer()));
+        note(client.Get(kAddress));
 
     const auto published = publishedRoutes();
     const auto artwork = std::find_if(published.begin(), published.end(), [](const SpecRoute& r) {
@@ -861,24 +847,6 @@ TEST_CASE("a picture a position names is bounded and typed as one a track names 
     }
 }
 
-TEST_CASE("a position answers nothing without a token, and the playlist is never read") {
-    RowArtLog rows{kJpeg};
-    const TestServer server(servingSettings(), showingRows(&rows));
-    const auto address = rowAddress(kPlaylistId, kOffLibraryRow);
-
-    const auto response = server.client().Get(address);
-
-    REQUIRE(response);
-    CHECK(response->status == 401);
-    CHECK(rows.asked.empty());
-
-    // The token is what the 401 is about, so the same address with one is the cover.
-    const auto held = get(server, address);
-
-    REQUIRE(held);
-    CHECK(held->status == 200);
-}
-
 // One budget for every cover, so a client cannot spend twice by asking two ways. A second
 // bucket refills at its own rate, which is what the batch at the end would find: the shared
 // one is empty by then and gains a token every fiftieth of a second at most.
@@ -896,7 +864,7 @@ TEST_CASE("a client looping on positions spends the budget a track address spend
     std::string refusal;
 
     for (int attempt = 0; attempt < kAttempts; ++attempt) {
-        const auto response = client.Get(address, TestServer::bearer());
+        const auto response = client.Get(address);
         REQUIRE(response);
 
         if (response->status != 429)
@@ -916,7 +884,7 @@ TEST_CASE("a client looping on positions spends the budget a track address spend
     int deniedByTrack = 0;
 
     for (int attempt = 0; attempt < kThen; ++attempt) {
-        const auto response = client.Get(kAddress, TestServer::bearer());
+        const auto response = client.Get(kAddress);
         REQUIRE(response);
 
         if (response->status == 429)

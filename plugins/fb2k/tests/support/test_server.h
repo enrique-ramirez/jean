@@ -4,6 +4,7 @@
 
 #include "core/audience.h"
 #include "core/http_server.h"
+#include "core/reload.h"
 #include "support/fixtures.h"
 
 #include <memory>
@@ -41,16 +42,20 @@ public:
     const ListenerStatus& status() const { return status_; }
     int port() const { return settings_.port; }
 
-    // Pairing is opened at the player, so a test has to stand in for the person at it.
-    HttpServer& component() const { return *server_; }
+    // Decides against the settings this server is running, applies the result, and keeps
+    // `next` as what it is running from here on.
+    ReloadDecision reload(const std::string& fileText) {
+        const auto decision = decideReload(settings_, fileText);
+        server_->applyReload(decision);
+        settings_ = decision.next;
+        return decision;
+    }
 
     // A departed device's linger is invisible to a client on purpose, so a route test about
     // one reads the audience the server is driving.
     Audience& audience() const { return *audience_; }
 
     httplib::Client client() const;
-
-    static httplib::Headers bearer(const std::string& token = kToken);
 
 private:
     Settings settings_;
@@ -70,7 +75,7 @@ httplib::Result post(const TestServer& server, const std::string& path, const st
 // wire has to turn that off.
 httplib::Client undecoding(const TestServer& server);
 
-// Bearer plus the Accept-Encoding that decides whether an answer is compressed at all.
+// The Accept-Encoding header that decides whether an answer is compressed at all.
 httplib::Headers accepting(const char* encoding);
 
 bool isGzip(const std::string& body);

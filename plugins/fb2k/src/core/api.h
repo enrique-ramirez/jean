@@ -55,9 +55,6 @@ std::string errorDocument(const std::string& message);
 
 std::string streamTicketDocument(const std::string& ticket, int expiresInSeconds);
 
-// The only document that carries the token.
-std::string pairedDocument(const std::string& token);
-
 std::string streamTimelineDocument(double streamTime, const std::vector<StreamMark>& marks);
 
 std::string tagWrittenDocument(const TagWrite& write);

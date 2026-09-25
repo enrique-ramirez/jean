@@ -14,9 +14,6 @@ struct SpecRoute {
     // As the spec writes it, without the server's /api base and with any {id} still in it.
     std::string path;
 
-    // The spec's own `security: []`, which is how an operation says it needs no token.
-    bool needsNoToken = false;
-
     std::set<int> statuses;
 };
 

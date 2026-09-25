@@ -23,7 +23,7 @@ export function useNowPlayingMenu() {
 	const { data: playlists = [] } = usePlaylists();
 	const { discovery } = useFooJean();
 	const canWritePlaylists = permitsPlaylistWrites(discovery);
-	const { queueTracks, canQueue } = useQueueTracks();
+	const { queueTracks, canQueue, canControlPlayback } = useQueueTracks();
 	const { raw, canWrite, write } = useNowPlayingRating();
 	const addTracks = useAddTracks();
 
@@ -45,11 +45,10 @@ export function useNowPlayingMenu() {
 						kind: "playlist",
 						playlistId: playingPlaylistId,
 						origin: discovery.origin,
-						token: discovery.token,
 						structure: playingStructure,
 					})
 				: null,
-		[playingPlaylistId, playingStructure, discovery.origin, discovery.token],
+		[playingPlaylistId, playingStructure, discovery.origin],
 	);
 
 	const actions = useMemo(() => {
@@ -73,6 +72,7 @@ export function useNowPlayingMenu() {
 			playlists,
 			canWritePlaylists,
 			canQueue,
+			canControlPlayback,
 			queueTracks,
 			addTracks,
 			credit: track?.artist,
@@ -87,6 +87,7 @@ export function useNowPlayingMenu() {
 		playlists,
 		canWritePlaylists,
 		canQueue,
+		canControlPlayback,
 		queueTracks,
 		addTracks,
 		raw,

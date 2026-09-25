@@ -2,6 +2,8 @@
 
 #include "support/test_server.h"
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 
 using namespace jean;
@@ -128,8 +130,6 @@ TEST_CASE("the headers a client is told to act on are readable from another orig
     CHECK(exposed.find("Retry-After") != std::string::npos);
 }
 
-// A browser sends no credentials on a preflight, so it must be answered before the token check
-// or the real request never follows.
 TEST_CASE("preflight is answered without a credential") {
     Settings settings = servingSettings();
     settings.allowedOrigins = {"http://localhost:5173"};
@@ -140,8 +140,6 @@ TEST_CASE("preflight is answered without a credential") {
     REQUIRE(response);
     CHECK(response->status == 204);
     CHECK(response->get_header_value("Access-Control-Allow-Origin") == "http://localhost:5173");
-    CHECK(response->get_header_value("Access-Control-Allow-Headers").find("Authorization") !=
-          std::string::npos);
     CHECK(response->get_header_value("Access-Control-Allow-Methods").find("POST") !=
           std::string::npos);
 }
@@ -161,10 +159,9 @@ TEST_CASE("the preflight lets a page send back the validator it was allowed to r
           std::string::npos);
 }
 
-// /api/stream is exempt from the bearer filter, and the preflight handler runs before that
-// exemption. A browser has to be able to preflight it like anything else, or a page cannot
+// A browser has to be able to preflight /api/stream like anything else, or a page cannot
 // fetch the stream at all.
-TEST_CASE("the stream's exemption from the token does not change its preflight") {
+TEST_CASE("the stream route preflights like any other") {
     Settings settings = servingSettings();
     settings.allowedOrigins = {"http://localhost:5173"};
     const TestServer server(settings);
@@ -196,4 +193,24 @@ TEST_CASE("preflight says nothing about which routes exist") {
     CHECK(known->status == invented->status);
     CHECK(known->get_header_value("Access-Control-Allow-Methods") ==
           invented->get_header_value("Access-Control-Allow-Methods"));
+}
+
+// The header list is checked for Content-Type as well, so an answer with no list at all
+// cannot pass for one that leaves Authorization out.
+TEST_CASE("a preflight never offers Authorization as a header a page may send") {
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"http://localhost:5173"};
+    const TestServer server(settings);
+
+    const auto response = server.client().Options("/api/tags", from("http://localhost:5173"));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 204);
+
+    std::string allowed = response->get_header_value("Access-Control-Allow-Headers");
+    std::transform(allowed.begin(), allowed.end(), allowed.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    CHECK(allowed.find("content-type") != std::string::npos);
+    CHECK(allowed.find("authorization") == std::string::npos);
 }

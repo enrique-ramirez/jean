@@ -1,6 +1,5 @@
 // GET /api/stream/timeline over a real socket. tests/timeline_test.cpp is the class; this is
-// the route, which publishes display paths out of somebody's library and so is the one stream
-// route where losing the credential costs more than the audio.
+// the route.
 
 #include "third_party/doctest.h"
 
@@ -40,37 +39,11 @@ Player publishing(std::atomic<int>* reads) {
 
 }  // namespace
 
-TEST_CASE("the timeline is behind the token, like everything but the stream itself") {
-    std::atomic<int> reads{0};
-    const TestServer server(servingSettings(), publishing(&reads));
-
-    const auto response = server.client().Get("/api/stream/timeline");
-
-    REQUIRE(response);
-    CHECK(response->status == 401);
-
-    CHECK(reads == 0);
-    CHECK(response->body.find("Music") == std::string::npos);
-}
-
-TEST_CASE("a ticket is not a way into the timeline either") {
-    std::atomic<int> reads{0};
-    const TestServer server(servingSettings(), publishing(&reads));
-
-    // /api/stream is exempt from the bearer filter so an <audio> element can reach it. The
-    // exemption is that one path and not the prefix.
-    const auto response = server.client().Get("/api/stream/timeline?ticket=ticket-1");
-
-    REQUIRE(response);
-    CHECK(response->status == 401);
-    CHECK(reads == 0);
-}
-
 TEST_CASE("the timeline a client reads is the one the encoder wrote") {
     std::atomic<int> reads{0};
     const TestServer server(servingSettings(), publishing(&reads));
 
-    const auto response = server.client().Get("/api/stream/timeline", TestServer::bearer());
+    const auto response = server.client().Get("/api/stream/timeline");
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -89,7 +62,7 @@ TEST_CASE("the timeline is not cached, because it is a clock") {
     std::atomic<int> reads{0};
     const TestServer server(servingSettings(), publishing(&reads));
 
-    const auto response = server.client().Get("/api/stream/timeline", TestServer::bearer());
+    const auto response = server.client().Get("/api/stream/timeline");
 
     REQUIRE(response);
 
@@ -103,7 +76,7 @@ TEST_CASE("the timeline is not cached, because it is a clock") {
 TEST_CASE("an install with no stream source has no timeline to publish") {
     const TestServer server;
 
-    const auto response = server.client().Get("/api/stream/timeline", TestServer::bearer());
+    const auto response = server.client().Get("/api/stream/timeline");
 
     REQUIRE(response);
     CHECK(response->status == 503);

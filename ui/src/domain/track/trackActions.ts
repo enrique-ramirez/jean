@@ -40,6 +40,7 @@ export function trackActions({
 	playlists,
 	canWritePlaylists,
 	canQueue,
+	canControlPlayback,
 	queueTracks,
 	addTracks,
 	rating,
@@ -52,6 +53,7 @@ export function trackActions({
 	playlists: PlaylistInfo[];
 	canWritePlaylists: boolean;
 	canQueue: boolean;
+	canControlPlayback: boolean;
 	queueTracks: (options: {
 		source: LibrarySource;
 		itemIndices: number[];
@@ -114,8 +116,9 @@ export function trackActions({
 		...(artist.length > 0 ? [{ type: "separator" as const }] : []),
 		{
 			id: "queue",
-			label:
-				count > QUEUE_LIMIT
+			label: !canControlPlayback
+				? t("player.controlOffName", { control: t("track.queue") })
+				: count > QUEUE_LIMIT
 					? t("track.queueLimited", { limit: QUEUE_LIMIT })
 					: t("track.queue"),
 			icon: ListEnd,

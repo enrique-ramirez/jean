@@ -34,9 +34,11 @@ export const useElapsedSeconds = (
 export function SeekBar({
 	snapshot,
 	onSeek,
+	disabled = false,
 }: {
 	snapshot: PlayerSnapshot | null | undefined;
 	onSeek: (position: number) => void;
+	disabled?: boolean;
 }) {
 	const t = useTranslate();
 	const elapsed = useElapsed(snapshot);
@@ -46,10 +48,11 @@ export function SeekBar({
 
 	const { ref, fraction, isDragging, handlers } = useDragFraction({
 		onCommit: (next) => onSeek(next * duration),
-		disabled: !canSeek,
+		disabled: disabled || !canSeek,
 	});
 
 	const progress = fraction ?? (canSeek ? Math.min(elapsed / duration, 1) : 0);
+	const baseLabel = t("player.position");
 
 	return (
 		<div
@@ -58,8 +61,13 @@ export function SeekBar({
 			data-scrubbing={isDragging}
 			data-seekable={canSeek}
 			role="slider"
-			tabIndex={canSeek ? 0 : -1}
-			aria-label={t("player.position")}
+			tabIndex={disabled || canSeek ? 0 : -1}
+			aria-disabled={disabled || undefined}
+			aria-label={
+				disabled
+					? t("player.controlOffName", { control: baseLabel })
+					: baseLabel
+			}
 			aria-valuemin={0}
 			aria-valuemax={Math.round(duration)}
 			aria-valuenow={Math.round(progress * duration)}

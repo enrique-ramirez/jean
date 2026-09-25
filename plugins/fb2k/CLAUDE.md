@@ -32,8 +32,6 @@ The loop against the build machine is: edit, sync, build over SSH, install, rest
 | Disposable install | `<fixtures-dir>`, built by `scripts/test-fixtures.ps1`, in their own playlist |
 | Restart | `schtasks /run /tn foo_jean_exit` then `/tn foo_jean_start` |
 
-**Pairing a device against a headless player** is copying `authToken` out of `<profile>/foo_jean/config.json` by hand into Jean's token field, since nobody is at a screen to press **Pair a device**.
-
 - **Never run `foobar2000.exe` over SSH, with any argument or none.** An SSH session is session 0, so it starts a *second* instance in the wrong window station, which then intercepts the single-instance IPC and makes the next `/exit` hang. `/add` is the same trap and is where the stray usually comes from. Use the interactive (`/it`) scheduled tasks above, or `scripts/lib/player.ps1`, which is what everything in `scripts/` uses.
 - **If it happens:** `tasklist /fi "imagename eq foobar2000.exe"` shows two rows, one `Console` and one `Services`. Kill the `Services` one by PID. It holds no ports and does not own the profile.
 - **Never point a tag write at the real library.** `scripts/test-fixtures.ps1` copies a corpus kept for the purpose into a tree of its own, and that tree is the only thing writes are aimed at. **Never restock that corpus out of the library**: no copy of somebody's music produces the cases it is there to hold. Registering the tree's two roots as media library folders is a manual step nothing checks, and a run that skipped it reaches the positional address form and none of the library ones.
@@ -46,7 +44,7 @@ The loop against the build machine is: edit, sync, build over SSH, install, rest
 
 ## State
 
-**All three goals work end to end** against a real player: tag writing, autoplaylists, and streaming in Opus and AAC with a timeline. Listening moves the sound rather than doubling it, and `GET /api/stream/listeners` says who else has it. The component builds, packages, installs and loads unsigned, with no manifest and no ceremony. The preferences page and device pairing are in, and so is Jean's own page, served from the component, same-origin with the API it calls. `scripts/verify-tag-write.ps1`, `scripts/verify-stream.ps1` and `scripts/verify-listeners.ps1` make three of those round trips repeatable.
+**All three goals work end to end** against a real player: tag writing, autoplaylists, and streaming in Opus and AAC with a timeline. Listening moves the sound rather than doubling it, and `GET /api/stream/listeners` says who else has it. The component builds, packages, installs and loads unsigned, with no manifest and no ceremony. The preferences page is in, and so is Jean's own page, served from the component, same-origin with the API it calls. `scripts/verify-tag-write.ps1`, `scripts/verify-stream.ps1` and `scripts/verify-listeners.ps1` make three of those round trips repeatable.
 
 **The media library is a snapshot this component builds and keeps fresh**, in the columns whoever asks for it declares, with two generations and a per-column delta so a client patches what it holds rather than fetching it again. `core/` holds the snapshot, the encoding and every decision a request meets; `src/fb2k/library.cpp` walks the player, and like everything in that directory it is reviewed rather than tested until `scripts/build.ps1` has run.
 

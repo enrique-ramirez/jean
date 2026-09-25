@@ -70,11 +70,11 @@ One more is optional:
 
 **2. Open `http://<the player's computer>:8881/`** in any browser in the house. `foo_jean` serves Jean itself, at the port it listens on. That is the whole install.
 
-**Rating a track or writing a tag needs pairing first.** On the player, open `File → Preferences → Tools → Jean → Devices` and press "Pair a device", then press Pair in Jean. Nobody at the player's own screen? Open `<profile>/foo_jean/config.json` in a text editor and paste `authToken` into Jean's Token field instead.
+**Rating a track or writing a tag needs nothing extra.** `foo_jean` allows it from the moment it starts; the player owner narrows or turns it off under `File → Preferences → Tools → Jean → Permissions`.
 
 **A translation lives at `<profile>/foo_jean/www/locales/<code>.json`**, added by hand.
 
-**A folder at `<profile>/foo_jean/www/<name>/` is a web interface of its own, served at `/<name>/`.** It shares Jean's origin, so it can read the token Jean stores there too.
+**A folder at `<profile>/foo_jean/www/<name>/` is a web interface of its own, served at `/<name>/`.** It shares Jean's origin, so it reaches `foo_jean`'s API the same way Jean does, with nothing to configure.
 <!-- /site:install -->
 
 ### Where your foobar2000 profile is

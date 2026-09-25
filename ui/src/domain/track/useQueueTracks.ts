@@ -9,7 +9,7 @@ import type { Refs } from "./project";
 export const QUEUE_LIMIT = 1000;
 
 export function useQueueTracks() {
-	const { queue, canQueue } = useQueueActions();
+	const { queue, canQueue, canControlPlayback } = useQueueActions();
 
 	const queueTracks = useCallback(
 		async ({
@@ -49,5 +49,5 @@ export function useQueueTracks() {
 		[canQueue, queue],
 	);
 
-	return { queueTracks, canQueue };
+	return { queueTracks, canQueue, canControlPlayback };
 }

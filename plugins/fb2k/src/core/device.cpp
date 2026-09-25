@@ -65,25 +65,4 @@ DeviceIdentityRequest parseDeviceIdentity(const std::string& body) {
     return request;
 }
 
-DeviceIdentityRequest parseDeviceName(const std::string& body) {
-    if (body.empty())
-        return {};
-
-    const auto document = parseJsonObject(body);
-    if (!document.ok())
-        return refuse("body is not a JSON object");
-
-    const auto name = readString(document.value, "name");
-
-    if (name.wrongType)
-        return refuse("name must be text");
-
-    if (name.value.size() > kMaxDeviceNameLength)
-        return refuse(tooLong("name", kMaxDeviceNameLength));
-
-    DeviceIdentityRequest request;
-    request.device.name = name.value;
-    return request;
-}
-
 }  // namespace jean

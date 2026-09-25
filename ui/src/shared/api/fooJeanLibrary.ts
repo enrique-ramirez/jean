@@ -1,9 +1,8 @@
-import { bearer, fetchState, withTimeout } from "./fooJean";
+import { fetchState, withTimeout } from "./fooJean";
 import { decodeJlib, type JlibDelta, type JlibSnapshot } from "./jlib";
 
 export type LibraryFailureReason =
 	| "unavailable"
-	| "unauthorized"
 	| "too-large"
 	| "refused"
 	| "unreachable"
@@ -91,7 +90,6 @@ type Attempt =
 
 const REFUSALS: Partial<Record<number, LibraryFailureReason>> = {
 	400: "refused",
-	401: "unauthorized",
 	413: "too-large",
 	503: "unavailable",
 };
@@ -100,7 +98,6 @@ type Asked = { ok: true; response: Response } | LibraryFailure;
 
 const ask = async (
 	url: string,
-	headers: Record<string, string>,
 	timeoutMs: number,
 	signal: AbortSignal | undefined,
 ): Promise<Asked> => {
@@ -109,7 +106,7 @@ const ask = async (
 			ok: true,
 			response: await withTimeout(
 				timeoutMs,
-				(inner) => fetch(url, { headers, signal: inner }),
+				(inner) => fetch(url, { signal: inner }),
 				signal,
 			),
 		};
@@ -141,13 +138,11 @@ const decoded = <T>(
 
 async function attemptExport(
 	origin: string,
-	token: string,
 	columns: readonly string[],
 	signal: AbortSignal | undefined,
 ): Promise<Attempt> {
 	const asked = await ask(
 		exportUrl(origin, columns),
-		bearer(token),
 		EXPORT_TIMEOUT_MS,
 		signal,
 	);
@@ -184,13 +179,11 @@ const RESTARTS = new Set([409, 410]);
 
 export async function fetchLibraryChanges(
 	origin: string,
-	token: string,
 	since: number,
 	signal?: AbortSignal,
 ): Promise<LibraryChanges> {
 	const asked = await ask(
 		`${origin}/api/library/changes?since=${since}`,
-		bearer(token),
 		CHANGES_TIMEOUT_MS,
 		signal,
 	);
@@ -214,7 +207,6 @@ export async function fetchLibraryChanges(
 
 export async function fetchLibrary(
 	origin: string,
-	token: string,
 	columns: readonly string[],
 	signal?: AbortSignal,
 ): Promise<LibraryResult> {
@@ -222,7 +214,7 @@ export async function fetchLibrary(
 	let pollMs = POLL_MIN_MS;
 
 	while (Date.now() < deadline) {
-		const attempt = await attemptExport(origin, token, columns, signal);
+		const attempt = await attemptExport(origin, columns, signal);
 		if (attempt.kind === "done") return attempt.result;
 
 		if (attempt.kind === "wait") {
@@ -234,7 +226,7 @@ export async function fetchLibrary(
 			await sleep(pollMs, signal);
 			pollMs = Math.min(pollMs * 2, POLL_MAX_MS);
 
-			const polled = await fetchState(origin, token, null, signal);
+			const polled = await fetchState(origin, null, signal);
 			if (!polled.ok && !TRANSIENT.has(polled.reason)) return polled;
 			if (
 				polled.ok &&

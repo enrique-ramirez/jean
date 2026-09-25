@@ -11,7 +11,6 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
-	FOO_JEAN_TOKEN,
 	guidOfPlaylist,
 	inSequence,
 	nowPlayingScreen,
@@ -205,7 +204,6 @@ test.describe("with writing switched off", () => {
 	test.use({
 		...RATED,
 		fooJean: { allowedFields: [] },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("draws the same read-only column", async ({ page }) => {
@@ -217,8 +215,8 @@ test.describe("with writing switched off", () => {
 	});
 });
 
-test.describe("with foo_jean and a token", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+test.describe("with foo_jean connected", () => {
+	test.use({ ...RATED, fooJean: {} });
 
 	test.skip(
 		({ isMobile }) => Boolean(isMobile),
@@ -416,7 +414,7 @@ test.describe("with foo_jean and a token", () => {
 // `#/all` is the media library itself rather than a playlist of it, so these are
 // the rows the component's own snapshot answers for.
 test.describe("rating from All music", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED, fooJean: {} });
 
 	test.skip(
 		({ isMobile }) => Boolean(isMobile),
@@ -495,7 +493,6 @@ test.describe("a library row the component has no address for", () => {
 		settings: RATED.settings,
 		retagged: { Fizz: { "%path%": "C:\\Music\\" } },
 		fooJean: {},
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test.skip(
@@ -588,7 +585,7 @@ const dropItIntoTheLibraryPlaylist = async (
 };
 
 test.describe("rating a row the media library does not hold", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED, fooJean: {} });
 
 	test.skip(
 		({ isMobile }) => Boolean(isMobile),
@@ -633,7 +630,6 @@ test.describe("before the player has built its library snapshot", () => {
 	test.use({
 		...RATED,
 		fooJean: { libraryReady: false },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test.describe("a row in a playlist", () => {
@@ -746,7 +742,6 @@ test.describe("when the playlist moved under a rating", () => {
 	test.use({
 		...RATED,
 		fooJean: { failWrites: 409 },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test.skip(
@@ -782,7 +777,7 @@ test.describe("when the playlist moved under a rating", () => {
 // again: every surface holds a second address that names one track, and the
 // retry carries the one that surface read the row at.
 test.describe("when a library address names more than one track", () => {
-	test.use({ ...RATED, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED });
 
 	const ROWS_ARE_A_POINTER_CONTROL =
 		"the row's stars are a pointer control; touch uses the track menu";
@@ -1003,7 +998,7 @@ test.describe("when a library address names more than one track", () => {
 // anything is written and none of these is, so a second write could land on top
 // of a rating somebody made in between.
 test.describe("a refusal that is not about the address", () => {
-	test.use({ ...RATED, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED });
 
 	test.skip(
 		({ isMobile }) => Boolean(isMobile),
@@ -1044,7 +1039,7 @@ test.describe("a refusal that is not about the address", () => {
 // because a second write would overwrite a rating made in between, so it reads
 // the value back once and lets the answer decide whether anybody is told.
 test.describe("when a rating write times out", () => {
-	test.use({ ...RATED, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED });
 
 	test.skip(
 		({ isMobile }) => Boolean(isMobile),
@@ -1316,7 +1311,7 @@ test.describe("when a rating write times out", () => {
 });
 
 test.describe("rating with the number keys", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED, fooJean: {} });
 
 	test("rates the row under the cursor", async ({ page, player }) => {
 		await openLibrary(page);
@@ -1458,7 +1453,7 @@ test.describe("rating with the number keys", () => {
 // address comes from `GET /api/state`: the library-relative path the state
 // document carries, and the playlist row playback is at where it carries none.
 test.describe("rating the track the now-playing screen is showing", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED, fooJean: {} });
 
 	const playTheDroppedFile = async (
 		page: Page,
@@ -1602,7 +1597,6 @@ test.describe("a playing track the component has no address for", () => {
 		// rather than merges, so the column set has to be restated.
 		settings: { ...RATED.settings, "jean.followPlayback": false },
 		fooJean: { knowsPlayingLocation: false },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("shows the rating it holds and takes no new one, saying nothing", async ({
@@ -1646,7 +1640,6 @@ test.describe("when foo_jean refuses the field", () => {
 	test.use({
 		...RATED,
 		fooJean: { failWrites: 403 },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test.skip(
@@ -1675,7 +1668,6 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 	test.use({
 		...RATED,
 		fooJean: { failWrites: 500 },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("the stars go back to the rating the player holds", async ({
@@ -1811,7 +1803,7 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 });
 
 test.describe("a lyric that lands while a rating is still being written", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED, fooJean: {} });
 
 	test("leaves the star where it was put", async ({
 		page,
@@ -1847,7 +1839,7 @@ test.describe("a lyric that lands while a rating is still being written", () => 
 });
 
 test.describe("a song a station announces while a rating is still being written", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED, fooJean: {} });
 
 	test("leaves the star where it was put", async ({ page, player }) => {
 		const writes = await holdTheWrites(page);
@@ -1889,7 +1881,6 @@ test.describe("when foo_jean refuses the field from the now-playing screen", () 
 	test.use({
 		...RATED,
 		fooJean: { failWrites: 403 },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("stops offering the stars instead of leaving them live", async ({
@@ -1916,7 +1907,7 @@ test.describe("when foo_jean refuses the field from the now-playing screen", () 
 });
 
 test.describe("the track actions on the now-playing screen", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED, fooJean: {} });
 
 	test("offer no rating until the player has answered with one", async ({
 		page,
@@ -1949,7 +1940,7 @@ test.describe("the track actions on the now-playing screen", () => {
 });
 
 test.describe("rating from the track menu", () => {
-	test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ ...RATED, fooJean: {} });
 
 	test("a hold opens a rating page that writes", async ({ page, player }) => {
 		await openLibrary(page);
@@ -2000,7 +1991,7 @@ const settings = async (page: Page) => {
 
 test.describe("what the settings screen says", () => {
 	test.describe("a component that is not answering", () => {
-		test.use({ fooJean: { reachable: false }, fooJeanToken: FOO_JEAN_TOKEN });
+		test.use({ fooJean: { reachable: false } });
 
 		test("names the fix rather than going quiet", async ({ page }) => {
 			await settings(page);
@@ -2017,76 +2008,11 @@ test.describe("what the settings screen says", () => {
 				page.getByRole("button", { name: "Check again" }),
 			).toBeVisible();
 		});
-
-		test("offers no token field and no Pair button while it cannot be reached", async ({
-			page,
-		}) => {
-			await settings(page);
-			await expect(page.getByText("Not connected")).toBeVisible();
-
-			await expect(page.getByLabel("Token")).toHaveCount(0);
-			await expect(page.getByRole("button", { name: /^Pair$/ })).toHaveCount(0);
-		});
-	});
-
-	test.describe("listening, with no token stored", () => {
-		test.use({ fooJean: {}, fooJeanToken: null });
-
-		test("asks for the token, once", async ({ page }) => {
-			await settings(page);
-			await expect(page.getByText("Needs token")).toBeVisible();
-			await expect(
-				page.getByText(
-					"foo_jean needs a token before it will accept anything.",
-				),
-			).toBeVisible();
-			await expect(
-				page.getByText(
-					/open File . Preferences . Tools . Jean and copy the token/,
-				),
-			).toBeVisible();
-			await expect(page.getByLabel("Token")).toBeVisible();
-		});
-
-		test("masks the token and can show it", async ({ page }) => {
-			await settings(page);
-			await expect(page.getByLabel("Token")).toHaveAttribute(
-				"type",
-				"password",
-			);
-			// Exact, or it also matches the sidebar's "Show playlists".
-			await page.getByRole("button", { name: "Show", exact: true }).click();
-			await expect(page.getByLabel("Token")).toHaveAttribute("type", "text");
-		});
-
-		test("pasting the token switches ratings on", async ({ page }) => {
-			await settings(page);
-			await page.getByLabel("Token").fill(FOO_JEAN_TOKEN);
-			await page.getByRole("button", { name: "Save" }).click();
-
-			await expect(page.getByText(/Connected to foo_jean/)).toBeVisible();
-			await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-			await expect(page.getByLabel("Token")).toHaveCount(0);
-		});
-	});
-
-	test.describe("a token that is stored and working", () => {
-		test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
-
-		// There is one token and it is working, so the panel offers no way to replace it -- the only
-		// thing a field here could do is break the connection it is reporting.
-		test("is never shown and never offered for editing", async ({ page }) => {
-			await settings(page);
-
-			await expect(page.getByText(/Connected to foo_jean/)).toBeVisible();
-			await expect(page.getByLabel("Token")).toHaveCount(0);
-			await expect(page.getByRole("button", { name: /token/i })).toHaveCount(0);
-		});
 	});
 
 	// The component's allowlist is the ceiling; these choose from underneath it.
 	test.describe("choosing what Jean may write", () => {
-		test.use({ ...RATED, fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+		test.use({ ...RATED, fooJean: {} });
 
 		test("draws one switch per permitted field, on by default", async ({
 			page,
@@ -2136,27 +2062,8 @@ test.describe("what the settings screen says", () => {
 		});
 	});
 
-	test.describe("a token the component refuses", () => {
-		test.use({ fooJean: {}, fooJeanToken: "not-the-right-token-at-all-no" });
-
-		test("says it was refused rather than going read-only in silence", async ({
-			page,
-		}) => {
-			await settings(page);
-			await expect(page.getByText("Token refused")).toBeVisible();
-			await expect(
-				page.getByText("foo_jean refused that token."),
-			).toBeVisible();
-			await expect(
-				page.getByText(
-					/Check it against the token under File . Preferences . Tools . Jean/,
-				),
-			).toBeVisible();
-		});
-	});
-
 	test.describe("connected with writing switched off", () => {
-		test.use({ fooJean: { allowedFields: [] }, fooJeanToken: FOO_JEAN_TOKEN });
+		test.use({ fooJean: { allowedFields: [] } });
 
 		test("says the allowlist is empty rather than claiming to be broken", async ({
 			page,
@@ -2166,7 +2073,7 @@ test.describe("what the settings screen says", () => {
 			await expect(
 				page.getByText(/permits no fields to be written/),
 			).toBeVisible();
-			await expect(page.getByText(/Fields they may write/)).toBeVisible();
+			await expect(page.getByText(/Fields this may write/)).toBeVisible();
 			// Scoped to this panel: Settings has other switches.
 			await expect(
 				page

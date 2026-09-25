@@ -1,4 +1,3 @@
-import { TOKEN_KEY } from "../src/shared/api/fooJean";
 import "./badge.css";
 import {
 	applySettings,
@@ -12,10 +11,6 @@ const DISMISSED = "jean.demoChipDismissed";
 
 const params = new URLSearchParams(location.search);
 const embedded = isEmbed(params);
-
-// The token the component would have handed over at pairing, seeded so a visitor
-// arrives at a paired install. Pairing itself is a screen in Settings.
-const DEMO_TOKEN = "0123456789abcdef0123456789abcdef";
 
 // The play-count shading introduces itself on first sight, and a popover over
 // the toolbar is not what a demo should open on.
@@ -114,9 +109,6 @@ async function start() {
 
 	if (embedded) isolateStorage();
 
-	// JSON, because that is how `useStoredState` reads: a bare string parses as
-	// nothing and the app reports a component it has no token for.
-	localStorage.setItem(TOKEN_KEY, JSON.stringify(DEMO_TOKEN));
 	for (const [key, value] of Object.entries(SEED))
 		if (localStorage.getItem(key) === null)
 			localStorage.setItem(key, JSON.stringify(value));

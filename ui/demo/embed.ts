@@ -2,7 +2,6 @@ import {
 	fetchPlaylistAnnotations,
 	fetchState,
 	playPlaylistItem,
-	TOKEN_KEY,
 } from "../src/shared/api/fooJean";
 import { seekTo } from "../src/shared/api/playback";
 
@@ -37,22 +36,10 @@ export const applySettings = (params: URLSearchParams) => {
 const SEED_PLAYLIST = "Library";
 const SEED_POSITION_SECONDS = 47;
 
-const demoToken = (): string | null => {
-	const raw = localStorage.getItem(TOKEN_KEY);
-	if (!raw) return null;
-	try {
-		return JSON.parse(raw) as string;
-	} catch {
-		return null;
-	}
-};
-
 export const seedPlayback = async () => {
 	const origin = window.location.origin;
-	const token = demoToken();
-	if (!token) return;
 
-	const state = await fetchState(origin, token, null);
+	const state = await fetchState(origin, null);
 	if (
 		state.ok &&
 		state.kind === "state" &&
@@ -60,15 +47,15 @@ export const seedPlayback = async () => {
 	)
 		return;
 
-	const playlists = await fetchPlaylistAnnotations(origin, token);
+	const playlists = await fetchPlaylistAnnotations(origin);
 	const from = playlists?.find(
 		(playlist) => playlist.title === SEED_PLAYLIST && playlist.itemCount > 0,
 	);
 	if (!from) return;
 
 	try {
-		await playPlaylistItem(origin, token, from.id, 0);
-		await seekTo(origin, token, SEED_POSITION_SECONDS);
+		await playPlaylistItem(origin, from.id, 0);
+		await seekTo(origin, SEED_POSITION_SECONDS);
 	} catch {
 		// A frame opens on a stopped player rather than not opening at all.
 	}

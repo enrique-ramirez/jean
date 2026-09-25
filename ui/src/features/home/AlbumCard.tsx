@@ -7,18 +7,27 @@ export function AlbumCard({
 	album,
 	caption,
 	onPlay,
+	canControlPlayback = true,
 }: {
 	album: CoveredAlbum;
 	caption?: string | null;
 	onPlay: () => void;
+	canControlPlayback?: boolean;
 }) {
 	const t = useTranslate();
+	const title = `${album.artistTag ?? t("track.unknownArtist")} — ${album.album}`;
 	return (
 		<button
 			type="button"
 			className={styles.card}
-			onClick={onPlay}
-			title={`${album.artistTag ?? t("track.unknownArtist")} — ${album.album}`}
+			onClick={canControlPlayback ? onPlay : undefined}
+			aria-disabled={canControlPlayback ? undefined : "true"}
+			aria-label={
+				canControlPlayback
+					? undefined
+					: t("player.controlOffName", { control: title })
+			}
+			title={title}
 		>
 			<span className={styles.cover}>
 				<Artwork

@@ -5,7 +5,11 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { usePlayer, useResolvedPlaylistId } from "@/domain/player/usePlayer";
+import {
+	reportPlaybackRefusal,
+	usePlayer,
+	useResolvedPlaylistId,
+} from "@/domain/player/usePlayer";
 import { type Album, albumIndex } from "@/domain/track/albums";
 import { type Artist, artistIndex } from "@/domain/track/artists";
 import { type Genre, genreIndex } from "@/domain/track/genres";
@@ -17,7 +21,7 @@ import { libraryIndex, searchLibrary } from "@/domain/track/libraryIndex";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
 import { rankEntities } from "@/domain/track/rankEntities";
 import { bestMatches } from "@/domain/track/rankTracks";
-import { emptyOwnPlaylist, permitsPlaylistWrites } from "@/shared/api/fooJean";
+import { emptyOwnPlaylist, permitsPlaybackControl } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
@@ -67,7 +71,7 @@ const entityOf = (suggestion: Suggestion) =>
 				: null;
 
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
-	const { discovery } = useFooJean();
+	const { discovery, recheck } = useFooJean();
 	const { data: playerSnapshot } = usePlayer();
 	const player = playerSnapshot?.player;
 	const playingPlaylistId =
@@ -95,13 +99,13 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		setDraft((current) => current || remembered || "");
 	}, [remembered]);
 
-	const canEdit = permitsPlaylistWrites(discovery);
+	const canEmptyScratch = permitsPlaybackControl(discovery);
 
 	const clear = useCallback(() => {
 		setDraft("");
 		setQuery("");
 		setIsOpen(false);
-		if (!canEdit) return;
+		if (!canEmptyScratch) return;
 
 		const scratch = playlists.find(isScratchPlaylist);
 		if (!scratch) return;
@@ -114,9 +118,19 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		)
 			return;
 
-		const { origin, token } = discovery;
-		if (origin && token) emptyOwnPlaylist(origin, token, "scratch");
-	}, [playlists, canEdit, player, playingPlaylistId, discovery]);
+		const { origin } = discovery;
+		if (origin)
+			emptyOwnPlaylist(origin, "scratch").catch((error) =>
+				reportPlaybackRefusal(error, recheck),
+			);
+	}, [
+		playlists,
+		canEmptyScratch,
+		player,
+		playingPlaylistId,
+		discovery,
+		recheck,
+	]);
 
 	const deferredDraft = useDeferredValue(draft);
 

@@ -28,8 +28,8 @@ const causeOf = (
 // `positions` is a shape no route on a real player answers.
 export function useAddTracks() {
 	const queryClient = useQueryClient();
-	const { discovery } = useFooJean();
-	const { origin, token } = discovery;
+	const { discovery, recheck } = useFooJean();
+	const { origin } = discovery;
 
 	return useCallback(
 		async ({
@@ -49,25 +49,25 @@ export function useAddTracks() {
 				added = await source.addTo(target.id, itemIndices);
 			} catch (error) {
 				const status = error instanceof Error ? error.cause : undefined;
+				const cause = causeOf(status, target);
 				pushToast({
 					tone: "error",
-					message: translate(causeOf(status, target), {
-						playlist: target.title,
-					}),
+					message: translate(cause, { playlist: target.title }),
 				});
+				if (cause === "add.writePlaylistsOff") recheck();
 				return;
 			}
 
 			const runs = runsOf(added.positions);
 
 			const undo = async () => {
-				if (!origin || !token) {
+				if (!origin) {
 					pushToast({ tone: "error", message: translate("add.undoFailed") });
 					return;
 				}
 
 				try {
-					await removePlaylistRows(origin, token, target.id, {
+					await removePlaylistRows(origin, target.id, {
 						structure: added.structure,
 						runs,
 					});
@@ -86,6 +86,6 @@ export function useAddTracks() {
 				action: { label: translate("action.undo"), run: undo },
 			});
 		},
-		[queryClient, origin, token],
+		[queryClient, origin, recheck],
 	);
 }

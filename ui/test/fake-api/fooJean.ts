@@ -18,7 +18,6 @@ export interface FooJeanOptions {
 	version?: string;
 	apiVersion?: number;
 
-	token?: string;
 	allowedFields?: string[];
 
 	failWrites?: number | null;
@@ -123,6 +122,7 @@ export interface FooJeanOptions {
 
 	canWritePlaylists?: boolean | "absent";
 	canChangeOutput?: boolean;
+	canControlPlayback?: boolean;
 
 	canStream?: boolean;
 	// Best first, as the component reports it. An install whose Windows has no AAC
@@ -144,10 +144,6 @@ export interface FooJeanOptions {
 		connections?: number;
 		listeningFor?: number;
 	}[];
-
-	pairingOpen?: boolean;
-	failPairing?: number | null;
-	pairingError?: string;
 }
 
 export interface FooJeanFake extends Required<FooJeanOptions> {
@@ -155,6 +151,10 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	// Beefweb ids a control has locked against edits mid-test, consulted beside `isAuto`.
 	// `POST /__control/lockPlaylist` is the only way in or out of this set.
 	lockedPlaylists: Set<string>;
+	// Moves whenever a switch a control route flips actually changes, mirroring
+	// `GET /api/state`'s `configGeneration`. `/__control/controlPlayback` and
+	// `/__control/writePlaylists` are the only two that touch it.
+	configGeneration: number;
 }
 
 const DEFAULTS: FooJeanFake = {
@@ -163,7 +163,6 @@ const DEFAULTS: FooJeanFake = {
 	name: "foo_jean",
 	version: "0.1.0",
 	apiVersion: 1,
-	token: "0123456789abcdef0123456789abcdef",
 	allowedFields: ["rating"],
 	failWrites: null,
 	writesLandAnyway: false,
@@ -193,9 +192,6 @@ const DEFAULTS: FooJeanFake = {
 	expireTickets: false,
 	canMuteWhileStreaming: true,
 	otherListeners: [],
-	pairingOpen: false,
-	failPairing: null,
-	pairingError: "",
 	canReadLibrary: true,
 	libraryReady: true,
 	libraryBuilds: 0,
@@ -207,7 +203,9 @@ const DEFAULTS: FooJeanFake = {
 	failCreate: null,
 	canWritePlaylists: true,
 	canChangeOutput: true,
+	canControlPlayback: true,
 	lockedPlaylists: new Set(),
+	configGeneration: 1,
 };
 
 export const fooJeanState = (options: FooJeanOptions): FooJeanFake => ({
@@ -219,6 +217,13 @@ export const fooJeanState = (options: FooJeanOptions): FooJeanFake => ({
 
 const one = (value: string | string[] | undefined) =>
 	(Array.isArray(value) ? value[0] : value) ?? "";
+
+// Mirrors core/http_server.cpp's isJsonRequest: a prefix match on the lowercased header, so a
+// charset riding along still counts.
+const isJsonContentType = (headers: RequestHeaders) =>
+	one(headers["content-type"]).toLowerCase().startsWith("application/json");
+
+const SEND_JSON = { error: "send application/json" };
 
 // RFC 9110's negotiation, as the component reads it: `gzip;q=0` is a refusal, and `*` offers
 // nothing rather than everything.
@@ -243,10 +248,6 @@ const gzipped = async (bytes: Uint8Array<ArrayBuffer>) => {
 const cors = (response: Responder) => {
 	response.setHeader("Vary", "Origin");
 };
-
-// Matched case-insensitively, as the component does.
-const bearerOf = (headers: RequestHeaders) =>
-	/^bearer\s+(.+)$/i.exec(one(headers.authorization))?.[1] ?? null;
 
 const MAX_TRACK_ADDRESS = 4096;
 
@@ -567,6 +568,38 @@ const WRITES_DISABLED = {
 	error:
 		"this install has playlist writes turned off; turn on writePlaylists in config.json to allow them",
 	detail: "",
+} satisfies components["schemas"]["PlaylistFailed"];
+
+// Word for word what the component's `core/playlists.cpp` describes for the switch.
+const PLAYBACK_DISABLED = {
+	error:
+		"this install has playback control turned off; turn on controlPlayback in config.json to allow it",
+	detail: "",
+} satisfies components["schemas"]["PlaylistFailed"];
+
+const PLAYBACK_COMMAND_PATHS = new Set([
+	"/api/playback/play-pause",
+	"/api/playback/next",
+	"/api/playback/previous",
+	"/api/playback/stop",
+	"/api/playback/seek",
+	"/api/playback/mode",
+	"/api/volume",
+]);
+
+const PLAY_ROW_PATH = /^\/api\/playlists\/[^/]+\/items\/\d+\/play$/;
+const SCRATCH_ITEMS_PATH = "/api/playlists/own/scratch/items";
+
+// Every route criterion 9 names, checked once rather than at each handler so the
+// gate always answers first, ahead of a 400, a 409 or a 503 the route would
+// otherwise reach for.
+const needsPlaybackControl = (method: string, path: string): boolean => {
+	if (method === "POST" && PLAYBACK_COMMAND_PATHS.has(path)) return true;
+	if (method === "POST" && PLAY_ROW_PATH.test(path)) return true;
+	if (method !== "GET" && path.startsWith("/api/queue")) return true;
+	if ((method === "POST" || method === "DELETE") && path === SCRATCH_ITEMS_PATH)
+		return true;
+	return false;
 };
 
 // `PlaylistLocked` and `FillConflict` in `contract/openapi.yaml` publish the same two fields for
@@ -1293,10 +1326,11 @@ const tagOf = (state: FakeState, coding: string, since?: string) =>
 	}-${coding}"`;
 
 // `GET /api/state`'s own validator, distinct from the two binary routes'
-// `tagOf`: it folds the player's version too, so a poll that only drove the
-// player still sees the tag move.
+// `tagOf`: it folds the player's version and the config generation too, so a
+// poll that only drove the player, or only flipped a switch, still sees the
+// tag move.
 const stateTagOf = (state: FakeState, coding: string) =>
-	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-p${state.playerVersion}-${coding}"`;
+	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-p${state.playerVersion}-g${state.fooJean.configGeneration}-${coding}"`;
 
 const sendBlob = async (
 	response: Responder,
@@ -1558,6 +1592,7 @@ async function handleState({
 		return true;
 	}
 	return json(response, {
+		configGeneration: fake.configGeneration,
 		library: libraryStateOf(state),
 		player: playerSectionOf(state, fake),
 	});
@@ -1785,31 +1820,18 @@ export async function handleAgent({
 		return response.end();
 	}
 
+	if (method === "POST" && !isJsonContentType(headers))
+		return json(response, SEND_JSON, 415);
+
+	if (!fake.canControlPlayback && needsPlaybackControl(method, path))
+		return json(response, PLAYBACK_DISABLED, 403);
+
 	if (path === "/api/status") {
 		return json(response, {
 			name: fake.name,
 			version: fake.version,
 			apiVersion: fake.apiVersion,
-			authRequired: true,
 		});
-	}
-
-	if (method === "POST" && path === "/api/pair") {
-		if (!one(headers["content-type"]).startsWith("application/json"))
-			return json(response, { error: "send application/json" }, 415);
-
-		if (fake.failPairing)
-			return json(
-				response,
-				{ error: fake.pairingError || "pairing is not open" },
-				fake.failPairing,
-			);
-
-		if (!fake.pairingOpen)
-			return json(response, { error: "pairing is not open" }, 403);
-
-		fake.pairingOpen = false;
-		return json(response, { token: fake.token, apiVersion: fake.apiVersion });
 	}
 
 	// No bearer token, because an `<audio>` element cannot send a header. The
@@ -1855,11 +1877,6 @@ export async function handleAgent({
 		return serveStream(response, fake, format);
 	}
 
-	// No `WWW-Authenticate`: it would raise a native credential dialog for a
-	// scheme no browser can satisfy.
-	if (bearerOf(headers) !== fake.token)
-		return json(response, { error: "authentication required" }, 401);
-
 	if (path === "/api/capabilities") {
 		return json(response, {
 			apiVersion: fake.apiVersion,
@@ -1872,6 +1889,7 @@ export async function handleAgent({
 			canStream: fake.canStream && fake.streamFormats.length > 0,
 			canMuteWhileStreaming: fake.canMuteWhileStreaming,
 			canChangeOutput: fake.canChangeOutput,
+			canControlPlayback: fake.canControlPlayback,
 			playerName: state.player.info.name,
 			playerVersion: state.player.info.version,
 			volumeMin: state.player.volume.min,

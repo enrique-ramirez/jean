@@ -1,6 +1,5 @@
 import {
 	expect,
-	FOO_JEAN_TOKEN,
 	listenHere,
 	openLibrary,
 	type Page,
@@ -47,7 +46,7 @@ const session = (page: Page) =>
 const LOCK_SCREEN_MAX_EDGE = 512;
 
 test.describe("the media session", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	test("stays empty while the sound is on the player", async ({ page }) => {
 		await page.goto("/");
@@ -82,11 +81,10 @@ test.describe("the media session", () => {
 		expect(live.state).toBe("playing");
 	});
 
-	// The operating system fetches an artwork address itself, with no bearer token on it, and every
-	// cover the component serves needs one. So the picture handed over is the one Jean already
-	// fetched, redrawn small and encoded into the URL itself. A `blob:` is no good either: Chrome
-	// on iOS refuses one here. No test can see a lock screen, so this is as close as the suite
-	// gets to it.
+	// The operating system fetches an artwork address itself and cannot be handed the blob URL Jean
+	// already resolved: Chrome on iOS refuses a `blob:` on the lock screen. So the picture handed
+	// over is the one Jean already fetched, redrawn small and encoded into the URL itself. No test
+	// can see a lock screen, so this is as close as the suite gets to it.
 	test("carries the cover as an encoded picture, and keeps naming the track it moves to", async ({
 		page,
 		player,

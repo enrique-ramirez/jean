@@ -12,10 +12,14 @@ namespace jean {
 struct SettingsForm {
     std::string port;
     std::string bindAddress;
-    std::string authToken;
     std::string allowedOrigins;
     std::string allowedFields;
     bool writePlaylists = true;
+    bool controlPlayback = true;
+    bool changeOutput = true;
+    bool streamingEnabled = true;
+    std::string maxAutoPlaylists;
+    std::string allowedHosts;
 };
 
 bool operator==(const SettingsForm& a, const SettingsForm& b);
@@ -25,9 +29,7 @@ inline bool operator!=(const SettingsForm& a, const SettingsForm& b) {
 
 SettingsForm toForm(const Settings& settings);
 
-// The defaults, except the token: blanking the one already in the file would leave the
-// component refusing to serve.
-SettingsForm defaultForm(std::string keepToken);
+SettingsForm defaultForm();
 
 struct FormReading {
     std::string error;
@@ -45,5 +47,9 @@ struct FormReading {
 // rather than defaulted because forgetting it would silently reset a key somebody set by
 // hand.
 FormReading readForm(const SettingsForm& form, const Settings& unshown);
+
+// True where a restart-only key in `saved` differs from `running`, sharing the comparison
+// decideReload makes rather than a second copy of which keys those are.
+bool restartNeeded(const Settings& running, const Settings& saved);
 
 }  // namespace jean

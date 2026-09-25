@@ -33,7 +33,6 @@ function useLoadedRows(
 
 export function usePlaylistItems(
 	origin: string | null,
-	token: string | null,
 	playlistId: string | null | undefined,
 	structure: string | null | undefined,
 	revision: string | null | undefined,
@@ -41,7 +40,6 @@ export function usePlaylistItems(
 ) {
 	const isReady =
 		Boolean(origin) &&
-		Boolean(token) &&
 		Boolean(playlistId) &&
 		structure != null &&
 		itemCount != null;
@@ -52,42 +50,30 @@ export function usePlaylistItems(
 			() =>
 				loadPlaylist(
 					origin as string,
-					token as string,
 					playlistId as string,
 					structure as string,
 					itemCount as number,
 				),
-			[origin, token, playlistId, structure, itemCount],
+			[origin, playlistId, structure, itemCount],
 		),
 	);
 
 	useEffect(() => {
 		if (!isReady || revision == null) return;
-		void recheckPlaylist(
-			origin as string,
-			token as string,
-			playlistId as string,
-			{
-				structure: structure as string,
-				revision,
-			},
-		);
-	}, [isReady, origin, token, playlistId, structure, revision]);
+		void recheckPlaylist(origin as string, playlistId as string, {
+			structure: structure as string,
+			revision,
+		});
+	}, [isReady, origin, playlistId, structure, revision]);
 
 	return snapshot;
 }
 
-export function useComponentLibraryItems(
-	origin: string | null,
-	token: string | null,
-) {
-	const isReady = Boolean(origin) && Boolean(token);
+export function useComponentLibraryItems(origin: string | null) {
+	const isReady = Boolean(origin);
 
 	return useLoadedRows(
 		isReady ? componentLibraryKey(origin as string) : null,
-		useCallback(
-			() => loadComponentLibrary(origin as string, token as string),
-			[origin, token],
-		),
+		useCallback(() => loadComponentLibrary(origin as string), [origin]),
 	);
 }

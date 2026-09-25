@@ -64,8 +64,6 @@ interface TagWriting {
 	isChecking: boolean;
 	canRate: boolean;
 	canRateInline: boolean;
-	token: string;
-	setToken: (token: string) => void;
 	allowedFields: string[];
 	isFieldEnabled: (field: string) => boolean;
 	setFieldEnabled: (field: string, enabled: boolean) => void;
@@ -92,8 +90,6 @@ const IDLE: TagWriting = {
 	isChecking: false,
 	canRate: false,
 	canRateInline: false,
-	token: "",
-	setToken: () => {},
 	allowedFields: [],
 	isFieldEnabled: () => false,
 	setFieldEnabled: () => {},
@@ -156,7 +152,7 @@ interface PendingRating extends WritableAddress {
 }
 
 export function TagWriterProvider({ children }: { children: ReactNode }) {
-	const { discovery, isChecking, token, setToken, recheck } = useFooJean();
+	const { discovery, isChecking, recheck } = useFooJean();
 	const [fieldPrefs, setFieldPrefs] = useStoredState<Record<string, boolean>>(
 		FIELDS_KEY,
 		{},
@@ -310,8 +306,6 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			canRate: writer.canWrite && writer.allows(RATING_FIELD),
 			canRateInline:
 				writer.canWrite && writer.allows(RATING_FIELD) && hasFinePointer,
-			token,
-			setToken,
 			// The component's list, not the narrowed one: Settings draws a switch per permitted field,
 			// including the ones switched off.
 			allowedFields: permitted.allowedFields,
@@ -332,8 +326,6 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			isFieldEnabled,
 			setFieldEnabled,
 			hasFinePointer,
-			token,
-			setToken,
 			hasWritableAddress,
 			writableAddress,
 			rate,

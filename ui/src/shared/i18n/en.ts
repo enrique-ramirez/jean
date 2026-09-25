@@ -35,7 +35,7 @@ export const en = {
 	"add.undoFailed": "Could not undo that.",
 	"add.undoStale": "{playlist} has changed since then, so nothing was removed.",
 	"add.writePlaylistsOff":
-		"Nothing was added to {playlist}. foo_jean has playlist writes turned off; turn on writePlaylists in its config.json to allow them.",
+		'Nothing was added to {playlist}. foo_jean has "Allow Jean to change playlists" (writePlaylists) turned off; turn it on under File → Preferences → Tools → Jean → Permissions, or in its config.json, to allow them.',
 	"album.coverAlt": "{album} cover",
 	"album.crumb": "Album",
 	"album.disc": "Disc {number}",
@@ -136,8 +136,6 @@ export const en = {
 	"finder.noMatch": "Nothing here matches that.",
 	"fooJean.badge.connected": "Connected",
 	"fooJean.badge.disconnected": "Not connected",
-	"fooJean.badge.needsToken": "Needs token",
-	"fooJean.badge.tokenRefused": "Token refused",
 	"fooJean.checkAgain": "Check again",
 	"fooJean.checking": "Checking…",
 	"fooJean.field.rating": "Ratings",
@@ -147,36 +145,15 @@ export const en = {
 	"fooJean.fields.narrowOnly":
 		"Turning one off here narrows what Jean offers. It cannot widen the list.",
 	"fooJean.fields.title": "What Jean may write",
-	"fooJean.noToken.fix":
-		"Press Pair above if you can reach the player, or open {pane} and copy the token yourself.",
-	"fooJean.noToken.summary":
-		"foo_jean needs a token before it will accept anything.",
-	"fooJean.pair.busy":
-		"Too many pairing attempts just now. Wait a few seconds and try again.",
-	"fooJean.pair.how":
-		"Press “Pair a device” under {pane} on the player, then press Pair here. No typing on this device.",
-	"fooJean.pair.namePlaceholder": "This device (optional)",
-	"fooJean.pair.notLocal":
-		"This device is not on the player’s own network, so it cannot pair. Paste the token instead.",
-	"fooJean.pair.notOpen":
-		"No pairing window is open. On the player, go to {pane} and press “Pair a device”, then press Pair here within two minutes.",
-	"fooJean.pair.pair": "Pair",
-	"fooJean.pair.pairing": "Pairing…",
-	"fooJean.pair.unreachable": "Could not reach foo_jean. {message}",
-	"fooJean.pair.unsupported":
-		"This copy of foo_jean is too old to pair. Paste the token instead, or update the component.",
+	"fooJean.playback.none":
+		'This foobar2000 allows no playback control from here. Turn on "Allow Jean to control playback" (controlPlayback) under {pane} to allow it.',
 	"fooJean.ready.addFields":
-		'Add the fields you want under {pane}, in "Fields they may write", then restart foobar2000.',
+		'Add the fields you want under {pane}, in "Fields this may write". It takes effect at once.',
 	"fooJean.ready.noFields":
 		"Connected, and this install permits no fields to be written.",
 	"fooJean.ready.summary": "Connected to foo_jean.",
 	"fooJean.stream.none":
-		"This copy of foo_jean does not stream audio, so Jean cannot play it on this device. Either it is older than the feature, or no encoder started — check {pane}.",
-	"fooJean.token.label": "Token",
-	"fooJean.token.placeholder": "Paste the token from foobar2000",
-	"fooJean.unauthorized.fix":
-		"Check it against the token under {pane}. Regenerating there locks out every client holding the old one.",
-	"fooJean.unauthorized.summary": "foo_jean refused that token.",
+		'This copy of foo_jean does not stream audio, so Jean cannot play it on this device. Turn on "Allow Jean to stream audio" (streamingEnabled) under {pane}, or update foo_jean if it has none.',
 	"fooJean.unreachable.fix":
 		"Check that foobar2000 is still running, then try again.",
 	"fooJean.unreachable.summary": "foo_jean is not answering right now.",
@@ -267,7 +244,6 @@ export const en = {
 		"foo_jean is still building the library. Give it a moment and try again.",
 	"library.readTooLarge":
 		"This library is larger than foo_jean will send in one piece.",
-	"library.readUnauthorized": "foo_jean did not accept this device's token.",
 	"library.readUnavailable": "foo_jean is not serving the media library.",
 	"library.readUnreachable": "Could not reach foo_jean.",
 	"library.reading": "Reading your library…",
@@ -327,6 +303,10 @@ export const en = {
 	"panel.trackViews": "Track views",
 	"player.closeNowPlaying": "Close now playing",
 	"player.connecting": "Connecting to the player…",
+	"player.controlOff": "Playback control is off.",
+	"player.controlOffName": "{control} (playback control is off)",
+	"player.controlOffToast":
+		'Playback control is off. Turn on "Allow Jean to control playback" (controlPlayback) under File → Preferences → Tools → Jean → Permissions, or in its config.json, to allow it.',
 	"player.currentTrack": "Current track",
 	"player.disconnected": "Disconnected",
 	"player.hideVolume": "Hide volume",

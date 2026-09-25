@@ -38,7 +38,7 @@ const build = (library: CapturedLibrary) => {
 			playlists: demo.playlists,
 			mediaLibrary: demo.tracks,
 			artworkOf: demo.artworkOf,
-			// Installed, listening and paired; see `demo/CLAUDE.md`.
+			// Installed and listening; see `demo/CLAUDE.md`.
 			fooJean: {
 				allowedFields: ["rating"],
 				canStream: false,
@@ -112,7 +112,13 @@ const dispatch = async (
 		state: player,
 		method: entry.method,
 		url,
-		headers: { host: self.location.host, origin: self.location.origin },
+		headers: {
+			host: self.location.host,
+			origin: self.location.origin,
+			...(entry.method === "POST"
+				? { "content-type": "application/json" }
+				: null),
+		},
 		body: entry.body,
 		response,
 		artwork,

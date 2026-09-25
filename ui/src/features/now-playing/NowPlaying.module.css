@@ -250,6 +250,13 @@
 	gap: 6px;
 }
 
+.reason {
+	margin: 0;
+	font-size: 0.75rem;
+	color: var(--muted);
+	text-align: center;
+}
+
 .times {
 	display: flex;
 	justify-content: space-between;
@@ -300,7 +307,9 @@
 	color: var(--accent-text);
 }
 
-.order:disabled {
+.order:disabled,
+.order[aria-disabled="true"],
+.skip[aria-disabled="true"] {
 	opacity: 0.35;
 	cursor: default;
 }

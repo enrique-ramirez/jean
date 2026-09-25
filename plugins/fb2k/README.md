@@ -52,17 +52,18 @@ The script never runs `foobar2000.exe` directly, and neither should anything els
 
 ## Configuring
 
-Everything is a file. `<profile>/foo_jean/config.json` is written on first start with a generated token, and it is the source of truth rather than a fallback for a dialog: this component is built for installs with nobody at the keyboard.
+Everything is a file. `<profile>/foo_jean/config.json` is written on first start with every key at its default, and it is the source of truth rather than a fallback for a dialog: this component is built for installs with nobody at the keyboard.
 
 ```json
 {
   "port": 8881,
   "bindAddress": "0.0.0.0",
-  "authToken": "generated on first run, 32 bytes of OS randomness as 64 hex characters",
   "allowedOrigins": [],
+  "allowedHosts": [],
   "allowedFields": ["rating"],
   "maxAutoPlaylists": 100,
   "writePlaylists": true,
+  "controlPlayback": true,
   "streamingEnabled": true,
   "opusBitrate": 256000,
   "aacBitrate": 192000,
@@ -72,17 +73,20 @@ Everything is a file. `<profile>/foo_jean/config.json` is written on first start
 }
 ```
 
-Every key is optional. An absent key keeps its default; a present but malformed one logs a line naming it and keeps its default, so a single bad edit cannot stop a headless player coming up. A key that is not a setting at all is reported too, because a typo like `bindaddress` otherwise changes nothing and says nothing.
+Every key is optional. An absent key keeps its default; a present but malformed one logs a line naming it, the value it refused and the default it took, so a single bad edit cannot stop a headless player coming up and never leaves silent about what happened. A key that is not a setting at all is reported too, because a typo like `bindaddress` otherwise changes nothing and says nothing.
+
+`controlPlayback`, `writePlaylists`, `allowedFields`, `changeOutput`, `streamingEnabled`, `maxAutoPlaylists`, `allowedHosts` and `allowedOrigins` take effect on the next request once the file changes on disk, with no restart. `port`, `bindAddress`, `opusBitrate`, `aacBitrate`, `maxConcurrentStreams`, `streamTicketTtlSeconds` and `muteWhileStreaming` keep their running values until foobar2000 restarts, because nothing rebinds a listening socket or a stream already open.
 
 | key | meaning |
 |---|---|
 | `port` | Default 8881. If the port is taken the component refuses to start and says so in the log and on the preferences page; it never quietly picks another, because a client can only find it at a port it can predict. |
-| `bindAddress` | Every local interface by default, the same as beefweb. Set it to `127.0.0.1` to harden deliberately. |
-| `authToken` | Mandatory. An empty token means the listener refuses to start; a token shorter than 32 characters is refused outright. There is no unauthenticated mode to fall into. |
-| `allowedOrigins` | Empty reflects no origin, `POST /api/pair` included, so only a page served by the component itself, same-origin, can read a response. List origins to grant them the same access, matched whole and case-insensitively. |
+| `bindAddress` | Every local interface by default, the same as beefweb. Set it to `127.0.0.1` for a deployment that only ever answers its own machine. |
+| `allowedOrigins` | Empty reflects no origin, so only a page served by the component itself, same-origin, can read a response. List origins to grant them the same access, matched whole and case-insensitively. |
+| `allowedHosts` | The `Host` allowlist, beside what the component already admits on its own: an IPv4 or bracketed IPv6 literal, `localhost`, a name with no dot, and a name ending `.lan`, `.local` or `.home.arpa`. Matched case-insensitively, with the port and one trailing dot stripped. A request whose `Host` matches none of these is `403`, so a public name needs listing here. A reverse proxy on another machine must pass the client's own `Host` through unchanged for this check to see it; Caddy's `reverse_proxy` does that by default. |
 | `allowedFields` | The write allowlist. Nothing outside it is ever written, and clients read it from `/api/capabilities` rather than being configured twice. Empty switches writing off. |
 | `maxAutoPlaylists` | How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off. |
 | `writePlaylists` | `true` by default, so leaving it alone permits every playlist write this component can make: create, add, edit, delete, reorder, rename. Set it to `false` to make every playlist and autoplaylist read-only except the component's own scratch playlist, which stays writable because it is how Jean works rather than the user's music. |
+| `controlPlayback` | `true` by default. Set it to `false` and every playback command, seek, playback mode, volume, playing a row, and every queue and scratch write answers `403 playbackDisabled`; reading the queue and the state still answers. |
 | `streamingEnabled` | `false`, or a `maxConcurrentStreams` of `0`, and the capture callback is never registered at all. `/api/capabilities` then reports `canStream: false`. |
 | `opusBitrate` | Bits per second for the Opus stream, between 32000 and 510000. One bitrate rather than a per-request choice: each distinct value would need its own encoder and buffer for as long as anybody listened to it. Opus is hard to tell from the source above 192000, and libopus can barely spend more than 256000. |
 | `aacBitrate` | Bits per second for the AAC stream, and **only one of four values**, which `src/core/settings.h` names beside the reason. A refusal would cost the ADTS format altogether, which is the only one older Safari can play, so a value off the list is reported and replaced rather than passed on. |
@@ -92,11 +96,11 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 
 ### The preferences page
 
-**Preferences → Tools → Jean** edits the port, the bind address and the two lists; its **Devices** child page holds the token, a **Regenerate** button and **Pair a device**. Two pages rather than one because foobar2000 sizes a preferences page to the host window and does not scroll it, so a tall page has content nobody can reach. Between them they write `config.json` and nothing else, so a headless install loses nothing by never opening the page, and a key the page has no control for is carried through untouched rather than reset.
+**Preferences → Tools → Jean** edits the port, the bind address and `allowedOrigins`; its **Permissions** child page holds everything else: a checkbox each for `controlPlayback`, `writePlaylists`, `changeOutput` and `streamingEnabled`, the `allowedFields` list, `maxAutoPlaylists`, and the `allowedHosts` list. Two pages rather than one because foobar2000 sizes a preferences page to the host window and does not scroll it, so a tall page has content nobody can reach. Between them they write `config.json` and nothing else, so a headless install loses nothing by never opening the page, and a key the page has no control for is carried through untouched rather than reset.
 
 The page is stricter than the file parser, deliberately: a hand-edited file must never stop a headless player coming up, so a bad key there falls back to a default, while the dialog refuses and says what to type.
 
-**Applying needs a restart, and the page says so.** Nothing rebinds a listening socket: the port, the address, the token and both lists are read once at start. The page shows *"changes require a restart"* whenever what is saved is not what the process is serving with.
+**Applying most switches needs no restart**, since a change to `config.json` reaches a running listener within a couple of seconds. Either page shows *"a restart is needed for some changes to take effect"*, and only where a saved value differs from what the process is actually running with for one of `port`, `bindAddress`, `opusBitrate`, `aacBitrate`, `maxConcurrentStreams`, `streamTicketTtlSeconds` or `muteWhileStreaming`, since nothing rebinds a listening socket or a stream already open.
 
 ## The API
 
@@ -106,18 +110,9 @@ The page is stricter than the file parser, deliberately: a hand-edited file must
 npx openapi-typescript contract/openapi.yaml -o fooJean.d.ts
 ```
 
-`contract/` beside it is the conformance suite that measures an implementation against it. `plugins/fb2k/ARCHITECTURE.md` is the design behind the spec: which routes are reachable without a credential and what keeps that safe, how the media library snapshot is built and kept current, and what the audio path is made of.
+`contract/` beside it is the conformance suite that measures an implementation against it. `plugins/fb2k/ARCHITECTURE.md` is the design behind the spec: how a request is admitted and what keeps that safe, how the media library snapshot is built and kept current, and what the audio path is made of.
 
-Two things hold across the whole surface. Every route but `/api/status`, `/api/pair` and `/api/stream` requires `Authorization: Bearer <token>`, compared in constant time; `/api/stream` takes a ticket instead, because an `<audio>` element cannot send a header, and a bearer token is not accepted in its place. And a response is gzipped whenever the client offers `Accept-Encoding: gzip`, which `third_party/README.md` has the mechanics of, including what keeps the live encode out of the compressor.
-
-## Pairing a device
-
-The token is 64 hex characters, which is unpleasant to type on a phone and unreasonable on a television remote. So:
-
-1. At the player, **Preferences → Tools → Jean → Devices → Pair a device**. A two-minute window opens and the pane counts it down.
-2. On the device, in the client's settings, press **Pair**.
-
-Four bounds make that safe and not one of them is optional. `plugins/fb2k/ARCHITECTURE.md`, *Pairing*, is what they are.
+Two things hold across the whole surface. Every request is checked first for where it came from and what `Host` it named, refused before it reaches a route where either fails; `/api/stream` needs a ticket as well, because an `<audio>` element cannot send a header. `plugins/fb2k/ARCHITECTURE.md`, *Admission*, is what decides both checks and what they leave for the switches in `config.json` to decide instead. And a response is gzipped whenever the client offers `Accept-Encoding: gzip`, which `third_party/README.md` has the mechanics of, including what keeps the live encode out of the compressor.
 
 ## Testing
 
@@ -141,9 +136,9 @@ On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\tes
 
 `scripts/test.sh`'s own header has the rest of its arguments and what each one costs.
 
-The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover lives in `src/core/`, which compiles standalone. They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about a bearer token or a CORS header is about the bytes a browser would see. Run the suite more than once before believing it; `tests/support/test_server.cpp` retries a port race.
+The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover lives in `src/core/`, which compiles standalone. They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about admission or a CORS header is about the bytes a browser would see. Run the suite more than once before believing it; `tests/support/test_server.cpp` retries a port race.
 
-Covered: authentication, CORS and preflight, every way a hand-edited `config.json` can be wrong, the listener and its port collision, pairing, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
+Covered: admission, CORS and preflight, every way a hand-edited `config.json` can be wrong including a reload while the listener runs, the listener and its port collision, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
 
 **Nothing here covers `src/fb2k/`.** That half needs the SDK and compiles for the first time on the build machine.
 

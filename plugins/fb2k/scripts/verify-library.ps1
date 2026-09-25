@@ -8,25 +8,11 @@
 param(
   [string]$Beefweb = 'http://127.0.0.1:8880/api',
   [string]$FooJean = 'http://127.0.0.1:8881/api',
-  [string]$Token,
-  [string]$Foobar2000Dir = $env:FOOBAR2000_DIR,
   [switch]$Full,
   [string]$LibraryExport = $env:JEAN_LIBRARY_EXPORT
 )
 
 $ErrorActionPreference = 'Stop'
-
-if (-not $Token) {
-  if (-not $Foobar2000Dir) {
-    throw "Pass -Token, or set -Foobar2000Dir / FOOBAR2000_DIR so the token can be read from config.json"
-  }
-  $configPath = Join-Path $Foobar2000Dir 'profile\foo_jean\config.json'
-  if (-not (Test-Path $configPath)) { throw "No foo_jean config at $configPath" }
-  $Token = (Get-Content $configPath -Raw | ConvertFrom-Json).authToken
-}
-if (-not $Token) { throw "foo_jean has no auth token configured; it will not be serving." }
-
-$auth = @{ Authorization = "Bearer $Token" }
 
 $script:passed = 0
 $script:failed = 0
@@ -76,7 +62,11 @@ $script:ApiProbeTimeoutSeconds = 30
 # that failed to decode.
 function Invoke-ApiProbe($uri, $method, $headers) {
   try {
-    $resp = Invoke-WebRequest -Uri $uri -Method $method -Headers $headers -UseBasicParsing -TimeoutSec $script:ApiProbeTimeoutSeconds
+    $resp = if ($method -ieq 'Post') {
+      Invoke-WebRequest -Uri $uri -Method $method -Headers $headers -ContentType 'application/json' -UseBasicParsing -TimeoutSec $script:ApiProbeTimeoutSeconds
+    } else {
+      Invoke-WebRequest -Uri $uri -Method $method -Headers $headers -UseBasicParsing -TimeoutSec $script:ApiProbeTimeoutSeconds
+    }
     $body = [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray())
     return @{ StatusCode = [int]$resp.StatusCode; Headers = $resp.Headers; Body = $body; ContentLength = $resp.BaseResponse.ContentLength }
   } catch {
@@ -115,7 +105,7 @@ function Test-SameColumns([string[]]$a, [string[]]$b) {
 
 $script:librarySnapshot = $null
 Invoke-Check -Name "GET /library answers before anything else and never starts a build" -Body {
-  $probe = Invoke-ApiProbe "$FooJean/library" 'Get' $auth
+  $probe = Invoke-ApiProbe "$FooJean/library" 'Get' @{}
   if ($probe.StatusCode -ne 200) {
     throw "GET /library answered $($probe.StatusCode), not 200"
   }
@@ -132,7 +122,7 @@ if ($script:librarySnapshot -and $script:librarySnapshot.Ready) {
 
 $corsOrigin = 'https://jean.example'
 
-Invoke-Check -Name "the preflight allows Authorization, Content-Type and If-None-Match" -Body {
+Invoke-Check -Name "the preflight allows Content-Type and If-None-Match" -Body {
   $preflight = Invoke-ApiProbe "$FooJean/library" 'Options' @{
     Origin                           = $corsOrigin
     'Access-Control-Request-Method'  = 'GET'
@@ -142,7 +132,7 @@ Invoke-Check -Name "the preflight allows Authorization, Content-Type and If-None
     throw "OPTIONS /library answered $($preflight.StatusCode), not 204"
   }
   $allowed = $preflight.Headers['Access-Control-Allow-Headers']
-  $missing = @(Get-MissingHeaderNames $allowed @('Authorization', 'Content-Type', 'If-None-Match'))
+  $missing = @(Get-MissingHeaderNames $allowed @('Content-Type', 'If-None-Match'))
   if ($missing.Count -gt 0) {
     throw "Access-Control-Allow-Headers is missing $($missing -join ', ') (was '$allowed')"
   }
@@ -157,7 +147,6 @@ Invoke-Check -Name "every answer exposes ETag and Retry-After, preflight and pla
     throw "the preflight answer is missing $($missingOnPreflight -join ', ') from Access-Control-Expose-Headers"
   }
 
-  # /status carries no bearer requirement, so this is a plain answer rather than a second preflight.
   $plain = Invoke-ApiProbe "$FooJean/status" 'Get' @{ Origin = $corsOrigin }
   $missingOnPlain = @(Get-MissingHeaderNames $plain.Headers['Access-Control-Expose-Headers'] $required)
   if ($missingOnPlain.Count -gt 0) {
@@ -167,7 +156,7 @@ Invoke-Check -Name "every answer exposes ETag and Retry-After, preflight and pla
 
 function Get-ArtworkProbe($track) {
   $uri = "$FooJean/artwork?track=" + [System.Uri]::EscapeDataString($track)
-  Invoke-ApiProbe $uri 'Get' $auth
+  Invoke-ApiProbe $uri 'Get' @{}
 }
 
 function Assert-ArtworkRefusal($track, $expectedStatus, $expectedError, $label) {
@@ -220,7 +209,7 @@ Invoke-Check -Name "a control character in the address is refused before any loo
 # coding explicitly rather than omitting the header is what makes the identity request
 # unambiguous: an omitted header risks whatever Invoke-WebRequest's own transport adds on top.
 function Get-CodingHeaders([string]$coding) {
-  return @{ Authorization = $auth.Authorization; 'Accept-Encoding' = $coding }
+  return @{ 'Accept-Encoding' = $coding }
 }
 
 # The three library routes name the content coding in the validator (sendIfChanged in
@@ -318,7 +307,7 @@ $script:LibraryExportTimeoutSeconds = 120
 
 function Get-CurrentLibraryState {
   Assert-SnapshotWarm
-  $probe = Invoke-ApiProbe "$FooJean/library" 'Get' $auth
+  $probe = Invoke-ApiProbe "$FooJean/library" 'Get' @{}
   if ($probe.StatusCode -ne 200) {
     throw "GET /library answered $($probe.StatusCode), not 200"
   }
@@ -346,7 +335,7 @@ function Wait-ForDeclaredColumns([int]$TimeoutSeconds, [uint64]$MinStructure = 0
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 2
-    $state = Invoke-ApiProbe "$FooJean/library" 'Get' $auth
+    $state = Invoke-ApiProbe "$FooJean/library" 'Get' @{}
     if ($state.StatusCode -ne 200) {
       throw "GET /library answered $($state.StatusCode), not 200, while waiting for the declared columns to build"
     }
@@ -663,8 +652,7 @@ Invoke-Check -Name "GET /artwork revalidates by ETag, with a zero-byte 304 and t
   $tag = $first.Headers['ETag']
   if (-not $tag) { throw "GET /artwork answered with no ETag" }
 
-  $revalidateHeaders = $auth.Clone()
-  $revalidateHeaders['If-None-Match'] = $tag
+  $revalidateHeaders = @{ 'If-None-Match' = $tag }
   $uri = "$FooJean/artwork?track=" + [System.Uri]::EscapeDataString($address)
   $again = Invoke-ApiProbe $uri 'Get' $revalidateHeaders
   if ($again.StatusCode -ne 304) {
@@ -755,7 +743,7 @@ Invoke-Check -Name "a forced rebuild reproduces the same ordinal order, position
   $before = Get-LibraryAddresses (Get-LibrarySpine)
   $structureBefore = Get-CurrentLibraryStructure
 
-  $refresh = Invoke-ApiProbe "$FooJean/library/refresh" 'Post' $auth
+  $refresh = Invoke-ApiProbe "$FooJean/library/refresh" 'Post' @{}
   if ($refresh.StatusCode -ne 202) {
     throw "POST /library/refresh answered $($refresh.StatusCode), not 202"
   }

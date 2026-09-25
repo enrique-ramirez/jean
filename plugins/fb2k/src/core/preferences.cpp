@@ -1,5 +1,7 @@
 #include "core/preferences.h"
 
+#include "core/reload.h"
+
 #include <algorithm>
 #include <cctype>
 #include <numeric>
@@ -50,47 +52,56 @@ bool isDigit(char c) {
     return std::isdigit(static_cast<unsigned char>(c)) != 0;
 }
 
-// Printable ASCII with no space. The token travels in an HTTP header, where anything else
-// is either unsendable or a paste that brought its surroundings along.
-bool isTokenCharacter(char c) {
-    const auto value = static_cast<unsigned char>(c);
-    return value > 0x20 && value < 0x7f;
-}
-
 FormReading refusing(std::string error) {
     FormReading reading;
     reading.error = std::move(error);
     return reading;
 }
 
+// A listed name is compared whole against the Host a browser sends, with its scheme, port,
+// path and any space already gone, so an entry carrying one of those admits nobody.
+bool couldMatchARequest(const std::string& host) {
+    return host.find_first_of(":/ \t") == std::string::npos;
+}
+
+// admission.cpp trims one trailing dot from the request's own Host before comparing; an
+// entry that keeps its own dot would then never equal it.
+std::string withoutTrailingDot(std::string host) {
+    if (!host.empty() && host.back() == '.')
+        host.pop_back();
+    return host;
+}
+
 }  // namespace
 
 bool operator==(const SettingsForm& a, const SettingsForm& b) {
-    return a.port == b.port && a.bindAddress == b.bindAddress && a.authToken == b.authToken &&
+    return a.port == b.port && a.bindAddress == b.bindAddress &&
            a.allowedOrigins == b.allowedOrigins && a.allowedFields == b.allowedFields &&
-           a.writePlaylists == b.writePlaylists;
+           a.writePlaylists == b.writePlaylists && a.controlPlayback == b.controlPlayback &&
+           a.changeOutput == b.changeOutput && a.streamingEnabled == b.streamingEnabled &&
+           a.maxAutoPlaylists == b.maxAutoPlaylists && a.allowedHosts == b.allowedHosts;
 }
 
 SettingsForm toForm(const Settings& settings) {
     SettingsForm form;
     form.port = std::to_string(settings.port);
     form.bindAddress = settings.bindAddress;
-    form.authToken = settings.authToken;
     form.allowedOrigins = joinLines(settings.allowedOrigins);
     form.allowedFields = joinLines(settings.allowedFields);
     form.writePlaylists = settings.writePlaylists;
+    form.controlPlayback = settings.controlPlayback;
+    form.changeOutput = settings.changeOutput;
+    form.streamingEnabled = settings.streamingEnabled;
+    form.maxAutoPlaylists = std::to_string(settings.maxAutoPlaylists);
+    form.allowedHosts = joinLines(settings.allowedHosts);
     return form;
 }
 
-SettingsForm defaultForm(std::string keepToken) {
-    auto form = toForm(Settings());
-    form.authToken = std::move(keepToken);
-    return form;
+SettingsForm defaultForm() {
+    return toForm(Settings());
 }
 
 FormReading readForm(const SettingsForm& form, const Settings& unshown) {
-    Settings settings = unshown;
-
     const auto port = trimmed(form.port);
     if (port.empty())
         return refusing("A port is required.");
@@ -99,34 +110,63 @@ FormReading readForm(const SettingsForm& form, const Settings& unshown) {
 
     // Digits only by now, so out of range is the one thing left that can go wrong -- and a
     // number too long for an int arrives here as an exception rather than a value.
+    int portValue = 0;
     try {
-        settings.port = std::stoi(port);
+        portValue = std::stoi(port);
     } catch (const std::exception&) {
-        settings.port = 0;
+        portValue = 0;
     }
-    if (settings.port < kMinPort || settings.port > kMaxPort)
+    if (portValue < kMinPort || portValue > kMaxPort)
         return refusing("The port must be between " + std::to_string(kMinPort) + " and " +
                         std::to_string(kMaxPort) + ".");
 
-    settings.bindAddress = trimmed(form.bindAddress);
-    if (settings.bindAddress.empty())
+    const auto bindAddress = trimmed(form.bindAddress);
+    if (bindAddress.empty())
         return refusing("An address is required. Use 0.0.0.0 for every local interface.");
 
-    settings.authToken = trimmed(form.authToken);
-    if (settings.authToken.size() < kMinTokenLength) {
-        return refusing("The token must be at least " + std::to_string(kMinTokenLength) +
-                        " characters. There is no unauthenticated mode to fall back to.");
-    }
-    if (!std::all_of(settings.authToken.begin(), settings.authToken.end(), isTokenCharacter))
-        return refusing("The token must not contain spaces or control characters.");
+    const auto maxAutoPlaylistsText = trimmed(form.maxAutoPlaylists);
+    if (maxAutoPlaylistsText.empty() ||
+        !std::all_of(maxAutoPlaylistsText.begin(), maxAutoPlaylistsText.end(), isDigit))
+        return refusing("The autoplaylist limit must be a whole number of 0 or more.");
 
+    int maxAutoPlaylistsValue = 0;
+    try {
+        maxAutoPlaylistsValue = std::stoi(maxAutoPlaylistsText);
+    } catch (const std::exception&) {
+        return refusing("The autoplaylist limit must be a whole number of 0 or more.");
+    }
+
+    auto allowedHosts = splitLines(form.allowedHosts);
+    std::transform(allowedHosts.begin(), allowedHosts.end(), allowedHosts.begin(),
+                   withoutTrailingDot);
+
+    for (const auto& host : allowedHosts) {
+        if (!couldMatchARequest(host)) {
+            return refusing("'" + host +
+                            "' could not match a request's Host, so it would never admit "
+                            "anyone.");
+        }
+    }
+
+    Settings settings = unshown;
+    settings.port = portValue;
+    settings.bindAddress = bindAddress;
     settings.allowedOrigins = splitLines(form.allowedOrigins);
     settings.allowedFields = splitLines(form.allowedFields);
     settings.writePlaylists = form.writePlaylists;
+    settings.controlPlayback = form.controlPlayback;
+    settings.changeOutput = form.changeOutput;
+    settings.streamingEnabled = form.streamingEnabled;
+    settings.maxAutoPlaylists = maxAutoPlaylistsValue;
+    settings.allowedHosts = std::move(allowedHosts);
 
     FormReading reading;
     reading.settings = std::move(settings);
     return reading;
+}
+
+bool restartNeeded(const Settings& running, const Settings& saved) {
+    return !decideReload(running, serialiseSettings(saved)).restartKeys.empty();
 }
 
 }  // namespace jean

@@ -70,9 +70,13 @@
 		background-color 0.12s var(--ease);
 }
 
-.clear:hover {
+.clear:hover:not([aria-disabled="true"]) {
 	background: var(--surface-sunken);
 	color: var(--danger);
+}
+
+.clear[aria-disabled="true"] {
+	opacity: 0.5;
 }
 
 .close {
@@ -314,7 +318,7 @@
 	opacity: 1;
 }
 
-.remove:hover {
+.remove:hover:not([aria-disabled="true"]) {
 	color: var(--danger);
 }
 

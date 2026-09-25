@@ -6,7 +6,7 @@ import {
 	viewHeader,
 } from "../e2e/fixtures.ts";
 import { capabilities, playlists } from "./component.ts";
-import { expect, type Page, seedToken, test } from "./fixtures.ts";
+import { expect, type Page, test } from "./fixtures.ts";
 
 // The control for c32.spec.ts, run with `writePlaylists` back on: every selector that answered zero
 // there has to answer something here, or the zeros said nothing about the setting.
@@ -32,7 +32,6 @@ test("the same controls are all drawn once the setting is back on", async ({
 
 	const shown = (await playlists()).filter((entry) => entry.role === null);
 
-	await seedToken(page);
 	await openAllMusic(page);
 	await openSidebar(page);
 

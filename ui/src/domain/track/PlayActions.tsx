@@ -2,6 +2,8 @@ import { Shuffle } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 
 import { usePlaybackOrder } from "@/domain/player/usePlayer";
+import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -21,6 +23,8 @@ export function PlayActions({
 	children?: ReactNode;
 }) {
 	const t = useTranslate();
+	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	const order = usePlaybackOrder();
 	const isEmpty = trackCount === 0;
 
@@ -33,7 +37,14 @@ export function PlayActions({
 
 	const canShuffleHere = canPlaySets && !isEmpty && order.canShuffle;
 
-	useKeymap(SCOPE.playlist, { shufflePlay }, { enabled: canShuffleHere });
+	useKeymap(
+		SCOPE.playlist,
+		{ shufflePlay },
+		{ enabled: canShuffleHere && canControlPlayback },
+	);
+
+	const playLabel = t("player.play");
+	const shuffleLabel = t("player.shuffle");
 
 	return (
 		<>
@@ -41,20 +52,32 @@ export function PlayActions({
 				<Button
 					variant="primary"
 					icon={PlayIcon}
-					onClick={() => play(0)}
-					disabled={isEmpty}
+					onClick={canControlPlayback ? () => play(0) : undefined}
+					disabled={canControlPlayback && isEmpty}
+					aria-disabled={canControlPlayback ? undefined : "true"}
+					aria-label={
+						canControlPlayback
+							? undefined
+							: t("player.controlOffName", { control: playLabel })
+					}
 				>
-					{t("player.play")}
+					{playLabel}
 				</Button>
 			) : null}
 
 			{canPlaySets ? (
 				<Button
 					icon={Shuffle}
-					disabled={isEmpty || !order.canShuffle}
-					onClick={shufflePlay}
+					disabled={canControlPlayback && (isEmpty || !order.canShuffle)}
+					aria-disabled={canControlPlayback ? undefined : "true"}
+					aria-label={
+						canControlPlayback
+							? undefined
+							: t("player.controlOffName", { control: shuffleLabel })
+					}
+					onClick={canControlPlayback ? shufflePlay : undefined}
 				>
-					{t("player.shuffle")}
+					{shuffleLabel}
 				</Button>
 			) : null}
 

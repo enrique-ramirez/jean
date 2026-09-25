@@ -81,7 +81,21 @@ export function handleControl({
 	}
 
 	if (action === "writePlaylists") {
-		state.fooJean.canWritePlaylists = input.canWrite !== false;
+		const next = input.canWrite !== false;
+		if (next !== state.fooJean.canWritePlaylists)
+			state.fooJean.configGeneration += 1;
+		state.fooJean.canWritePlaylists = next;
+		return empty(response);
+	}
+
+	// Mirrors `writePlaylists`: flips `canControlPlayback` and moves `configGeneration`
+	// only on a change that actually took, since a poll relies on that number never
+	// moving on a flip to the value it already held.
+	if (action === "controlPlayback") {
+		const next = input.canControl !== false;
+		if (next !== state.fooJean.canControlPlayback)
+			state.fooJean.configGeneration += 1;
+		state.fooJean.canControlPlayback = next;
 		return empty(response);
 	}
 

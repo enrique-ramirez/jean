@@ -1,6 +1,6 @@
 #include "fb2k/PCH.h"
 
-#include "fb2k/token.h"
+#include "fb2k/ticket_mint.h"
 
 #include <numeric>
 
@@ -26,7 +26,7 @@ std::string toHex(const unsigned char* bytes, size_t count) {
 
 }  // namespace
 
-std::string generateToken() {
+std::string mintTicket() {
 #ifdef _WIN32
     unsigned char bytes[32];
     if (BCryptGenRandom(nullptr, bytes, sizeof(bytes), BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0)

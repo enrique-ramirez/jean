@@ -64,11 +64,7 @@ export type LibrarySource =
 			// playlist itself, in the same call that fills it, so there is no id to pass in ahead of the
 			// call. Answers the GUID the fill landed in, or null where the caller must resolve it
 			// another way.
-			fill: (
-				target: string,
-				refs: Refs,
-				options?: { token?: string },
-			) => Promise<string | null>;
+			fill: (target: string, refs: Refs) => Promise<string | null>;
 	  })
 	| (LibrarySourceCommon & { kind: "playlist" });
 
@@ -76,7 +72,6 @@ interface MediaLibraryOptions {
 	paths: PathTable;
 	subsongs: Int32Array;
 	artworkOrigin: string | null;
-	token: string | null;
 }
 
 type PlaylistAddresses =
@@ -86,7 +81,6 @@ type PlaylistAddresses =
 type PlaylistOptions = PlaylistAddresses & {
 	playlistId: string;
 	origin?: string | null;
-	token?: string | null;
 	// ARCHITECTURE.md, *The two seams*: the generation the rows on screen were read at.
 	structure?: string | null;
 };
@@ -97,43 +91,29 @@ export type LibrarySourceOptions =
 
 const fillScratch =
 	(paths: PathTable, origin: string | null, structure: number) =>
-	async (
-		title: string,
-		refs: Refs,
-		{ token }: { token?: string } = {},
-	): Promise<string | null> => {
-		if (!origin || !token) return null;
+	async (title: string, refs: Refs): Promise<string | null> => {
+		if (!origin) return null;
 
 		const request: FillOwnPlaylistRequest = {
 			title,
 			...encodeFill(refs, { structure, trackCount: paths.length }),
 		};
 
-		const result = await fillOwnPlaylist(origin, token, "scratch", request);
+		const result = await fillOwnPlaylist(origin, "scratch", request);
 		return result.playlistId;
 	};
 
 const addToPlaylist =
-	(
-		paths: PathTable,
-		origin: string | null,
-		structure: number,
-		token: string | null,
-	) =>
+	(paths: PathTable, origin: string | null, structure: number) =>
 	async (targetId: string, refs: Refs): Promise<AddedRows> => {
-		const required = requireFooJean(origin, token);
+		const required = requireFooJean(origin);
 
 		const request: FillPlaylistRequest = encodeFill(refs, {
 			structure,
 			trackCount: paths.length,
 		});
 
-		const result = await fillPlaylist(
-			required.origin,
-			required.token,
-			targetId,
-			request,
-		);
+		const result = await fillPlaylist(required, targetId, request);
 		return { positions: result.positions, structure: result.structure };
 	};
 
@@ -250,7 +230,6 @@ const fromMediaLibrary = ({
 	paths,
 	subsongs,
 	artworkOrigin,
-	token,
 }: MediaLibraryOptions): Extract<LibrarySource, { kind: "library" }> => {
 	// Read once, alongside `paths`: `structure` and the canonical-ref table both describe the same
 	// snapshot, and reading either again later could see a rebuild `paths` has not, resolving refs
@@ -286,7 +265,7 @@ const fromMediaLibrary = ({
 		fill: fillScratch(paths, artworkOrigin, structure),
 		queueTargets: queueLibraryTracks(paths, structure),
 
-		addTo: addToPlaylist(paths, artworkOrigin, structure, token),
+		addTo: addToPlaylist(paths, artworkOrigin, structure),
 
 		// Linear, where the playlist source bisects: path order is not ref order.
 		playingPosition: (refs: Refs, track: TrackIdentity | null | undefined) => {
@@ -304,7 +283,7 @@ const fromMediaLibrary = ({
 const fromPlaylist = (
 	options: PlaylistOptions,
 ): Extract<LibrarySource, { kind: "playlist" }> => {
-	const { playlistId, origin = null, token = null, structure = null } = options;
+	const { playlistId, origin = null, structure = null } = options;
 
 	const addresses = (ref: number): TrackAddress[] => {
 		const forms: TrackAddress[] = [];
@@ -351,8 +330,8 @@ const fromPlaylist = (
 			targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
 		}),
 		addTo: async (targetId: string, refs: Refs): Promise<AddedRows> => {
-			const required = requireFooJean(origin, token);
-			return copyPlaylistRows(required.origin, required.token, targetId, {
+			const required = requireFooJean(origin);
+			return copyPlaylistRows(required, targetId, {
 				source: playlistId,
 				runs: runsOf(refs),
 			});

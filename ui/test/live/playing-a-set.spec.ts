@@ -8,7 +8,7 @@ import {
 	rowsOf,
 	state,
 } from "./component.ts";
-import { expect, seedToken, test } from "./fixtures.ts";
+import { expect, test } from "./fixtures.ts";
 
 // Starting a row is not the same as deciding where the track after it comes from, and only a real
 // player can tell the two apart: `POST /playlists/{id}/items/{index}/play` reaches
@@ -81,7 +81,6 @@ test("a set played from a library view leaves the player focused on that set", a
 	await playRow(elsewhere.id, 0);
 	await expect.poll(focused).toBe(elsewhere.id);
 
-	await seedToken(page);
 	// Playback is running by now, and All music holds the track it is running, so Jean would scroll
 	// the list to it and recycle the row being reached for out from under the click.
 	await page.addInitScript(() =>

@@ -461,9 +461,7 @@ SelectionResult decodeSelection(const json& root, size_t trackCount) {
 }  // namespace
 
 std::string statusDocument() {
-    auto body = identity();
-    body["authRequired"] = true;
-    return body.dump();
+    return identity().dump();
 }
 
 std::string capabilitiesDocument(const Settings& settings,
@@ -477,10 +475,11 @@ std::string capabilitiesDocument(const Settings& settings,
         {"allowedFields", settings.allowedFields},
         {"canWrite", !settings.allowedFields.empty()},
         {"canWritePlaylists", settings.writePlaylists},
+        {"canControlPlayback", settings.controlPlayback},
         {"canChangeOutput", settings.changeOutput},
         {"maxAutoPlaylists", settings.maxAutoPlaylists},
         {"canCreateAutoPlaylists", settings.writePlaylists && settings.maxAutoPlaylists > 0},
-        {"canStream", !streamFormats.empty()},
+        {"canStream", !streamFormats.empty() && settings.streamingEnabled},
         {"streamFormats", streamFormats},
         {"canMuteWhileStreaming", mutesWhileStreaming},
         {"canReadLibrary", servesLibrary},
@@ -503,11 +502,6 @@ std::string streamListenersDocument(const std::vector<AudienceMember>& members, 
                 {"maxConnections", maxConnections},
                 {"playerMuted", playerMuted}}
         .dump();
-}
-
-std::string pairedDocument(const std::string& token) {
-    const json body{{"token", token}, {"apiVersion", kApiVersion}};
-    return body.dump();
 }
 
 std::string errorDocument(const std::string& message) {
@@ -994,6 +988,7 @@ int httpStatusFor(PlaylistOutcome outcome) {
         case PlaylistOutcome::notOurs:
         case PlaylistOutcome::writesDisabled:
         case PlaylistOutcome::ownPlaylist:
+        case PlaylistOutcome::playbackDisabled:
             return 403;
         case PlaylistOutcome::noSuchPlaylist:
             return 404;

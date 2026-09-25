@@ -11,7 +11,7 @@ const LOOK_AT = [2_000, 5_000, 10_000, 20_000];
 export function useLyricsRecheck() {
 	const { track, details, setLyrics } = useNowPlayingTrack();
 	const { discovery } = useFooJean();
-	const { origin, token } = discovery;
+	const { origin } = discovery;
 	const path = track?.path ?? null;
 	const subsong = track?.subsong ?? 0;
 	const isBare =
@@ -19,7 +19,7 @@ export function useLyricsRecheck() {
 		readValue(details.row[NOW_PLAYING_FIELD.lyrics]) === null;
 
 	useEffect(() => {
-		if (!isBare || path === null || !origin || !token) return;
+		if (!isBare || path === null || !origin) return;
 
 		const from = Date.now();
 		let look = 0;
@@ -27,11 +27,9 @@ export function useLyricsRecheck() {
 		let isCancelled = false;
 
 		const read = async () => {
-			const answer = await fetchPlayingTrack(
-				origin,
-				token,
-				LYRICS_EXPRESSIONS,
-			).catch(() => null);
+			const answer = await fetchPlayingTrack(origin, LYRICS_EXPRESSIONS).catch(
+				() => null,
+			);
 			if (isCancelled) return;
 
 			const found =
@@ -58,5 +56,5 @@ export function useLyricsRecheck() {
 			isCancelled = true;
 			clearTimeout(timer);
 		};
-	}, [isBare, path, subsong, origin, token, setLyrics]);
+	}, [isBare, path, subsong, origin, setLyrics]);
 }

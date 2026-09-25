@@ -32,6 +32,7 @@ export function HomeHeader({
 	onSearch,
 	canPlay,
 	canShuffle,
+	canControlPlayback,
 }: {
 	stats: LibraryStats;
 	isLoading: boolean;
@@ -40,8 +41,11 @@ export function HomeHeader({
 	onSearch: (query: string) => void;
 	canPlay: boolean;
 	canShuffle: boolean;
+	canControlPlayback: boolean;
 }) {
 	const t = useTranslate();
+	const playLabel = t("player.play");
+	const shuffleLabel = t("player.shuffle");
 	const duration = spellDuration(stats.seconds);
 	const span =
 		stats.earliest && stats.latest && stats.earliest !== stats.latest
@@ -122,14 +126,29 @@ export function HomeHeader({
 						<Button
 							variant="primary"
 							icon={PlayIcon}
-							onClick={onPlayEverything}
+							onClick={canControlPlayback ? onPlayEverything : undefined}
+							aria-disabled={canControlPlayback ? undefined : "true"}
+							aria-label={
+								canControlPlayback
+									? undefined
+									: t("player.controlOffName", { control: playLabel })
+							}
 						>
-							{t("player.play")}
+							{playLabel}
 						</Button>
 					) : null}
 					{canShuffle ? (
-						<Button icon={Shuffle} onClick={onShuffleEverything}>
-							{t("player.shuffle")}
+						<Button
+							icon={Shuffle}
+							onClick={canControlPlayback ? onShuffleEverything : undefined}
+							aria-disabled={canControlPlayback ? undefined : "true"}
+							aria-label={
+								canControlPlayback
+									? undefined
+									: t("player.controlOffName", { control: shuffleLabel })
+							}
+						>
+							{shuffleLabel}
 						</Button>
 					) : null}
 				</div>

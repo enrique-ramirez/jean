@@ -28,9 +28,6 @@ struct StringMaker<std::shared_ptr<jean::Audience::Membership>> {
 
 namespace jean::testing {
 
-// Long enough to be accepted, short enough to read in a failure message.
-constexpr char kToken[] = "0123456789abcdef0123456789abcdef";
-
 // The one form a playlist id may take: lower case, dashed.
 constexpr char kPlaylistId[] = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 
@@ -62,7 +59,7 @@ std::string ratingWrite(const std::string& track,
 // The same write, addressed by a row's position in a playlist and the generation it was read at.
 std::string ratingWriteAtRow(const std::string& playlist, uint32_t index, uint64_t structure);
 
-// A configuration that would serve: a legal token, every other default left alone.
+// The defaults, named so a test reaches them the same way it reaches every other fixture.
 Settings servingSettings();
 
 // The report a real player always carries: its name, its version and its volume range.

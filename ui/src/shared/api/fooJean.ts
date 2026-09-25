@@ -12,7 +12,6 @@ export type StreamMark = StreamTimeline["marks"][number];
 export type StreamListeners = Schema["StreamListeners"];
 export type StreamListener = StreamListeners["devices"][number];
 export type DeviceIdentity = Schema["DeviceIdentity"];
-export type Paired = Schema["Paired"];
 export type PlaylistAnnotation = Schema["PlaylistAnnotation"];
 export type AutoPlaylistRequest = Schema["AutoPlaylistRequest"];
 export type QueryPreview = Schema["QueryPreview"];
@@ -30,8 +29,6 @@ export type CopiedRows = Schema["CopiedRows"];
 export type RemovedRows = Schema["RemovedRows"];
 
 export type OwnPlaylistRole = "scratch";
-
-export const TOKEN_KEY = "jean.fooJeanToken";
 
 const PROBE_TIMEOUT_MS = 4000;
 const WRITE_TIMEOUT_MS = 35_000;
@@ -54,8 +51,6 @@ export const withTimeout = async <T>(
 	}
 };
 
-export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
-
 const JSON_BODY = { "Content-Type": "application/json" };
 
 const UNREACHABLE = "Could not reach foo_jean.";
@@ -63,16 +58,13 @@ const UNREACHABLE = "Could not reach foo_jean.";
 const postJson = async (
 	url: string,
 	body: unknown,
-	{
-		token,
-		timeoutMs = PROBE_TIMEOUT_MS,
-	}: { token?: string; timeoutMs?: number } = {},
+	{ timeoutMs = PROBE_TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<Response | null> => {
 	try {
 		return await withTimeout(timeoutMs, (signal) =>
 			fetch(url, {
 				method: "POST",
-				headers: token ? { ...bearer(token), ...JSON_BODY } : JSON_BODY,
+				headers: JSON_BODY,
 				body: JSON.stringify(body),
 				signal,
 			}),
@@ -82,39 +74,15 @@ const postJson = async (
 	}
 };
 
-const refusals = new Set<() => void>();
-
-export const whenTokenRefused = (listener: () => void) => {
-	refusals.add(listener);
-	return () => {
-		refusals.delete(listener);
-	};
-};
-
-export const noteTokenRefused = (status: number) => {
-	if (status !== 401) return;
-	for (const listener of [...refusals]) listener();
-};
-
-const authedJson = async <T>(
+const fetchJson = async <T>(
 	origin: string,
-	token: string,
 	path: string,
-	// A plain object, not a `Headers`: spreading a `Headers` instance yields `{}`, so a POST would
-	// silently lose its content type.
-	init?: Omit<RequestInit, "headers"> & { headers?: Record<string, string> },
+	init?: RequestInit,
 ): Promise<T | null> => {
 	try {
 		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
-			const response = await fetch(`${origin}${path}`, {
-				...init,
-				headers: { ...bearer(token), ...init?.headers },
-				signal,
-			});
-			if (!response.ok) {
-				noteTokenRefused(response.status);
-				return null;
-			}
+			const response = await fetch(`${origin}${path}`, { ...init, signal });
+			if (!response.ok) return null;
 			return (await response.json()) as T;
 		});
 	} catch {
@@ -124,20 +92,14 @@ const authedJson = async <T>(
 
 export type CapabilitiesResult =
 	| { ok: true; capabilities: FooJeanCapabilities }
-	| { ok: false; reason: "unauthorized" | "unreachable" };
+	| { ok: false; reason: "unreachable" };
 
 export async function fetchCapabilities(
 	origin: string,
-	token: string,
 ): Promise<CapabilitiesResult> {
 	try {
 		return await withTimeout(PROBE_TIMEOUT_MS, async (signal) => {
-			const response = await fetch(`${origin}/api/capabilities`, {
-				headers: bearer(token),
-				signal,
-			});
-			if (response.status === 401)
-				return { ok: false, reason: "unauthorized" } as const;
+			const response = await fetch(`${origin}/api/capabilities`, { signal });
 			if (!response.ok) return { ok: false, reason: "unreachable" } as const;
 			return {
 				ok: true,
@@ -151,11 +113,7 @@ export async function fetchCapabilities(
 
 export type StateDocument = Schema["State"];
 
-export type StateFailureReason =
-	| "unavailable"
-	| "unauthorized"
-	| "unreachable"
-	| "failed";
+export type StateFailureReason = "unavailable" | "unreachable" | "failed";
 
 export interface StateFailure {
 	ok: false;
@@ -169,13 +127,11 @@ export type StateResult =
 	| StateFailure;
 
 const STATE_REFUSALS: Partial<Record<number, StateFailureReason>> = {
-	401: "unauthorized",
 	503: "unavailable",
 };
 
 export async function fetchState(
 	origin: string,
-	token: string,
 	tag: string | null,
 	signal?: AbortSignal,
 ): Promise<StateResult> {
@@ -185,9 +141,7 @@ export async function fetchState(
 			STATE_TIMEOUT_MS,
 			(inner) =>
 				fetch(`${origin}/api/state`, {
-					headers: tag
-						? { ...bearer(token), "If-None-Match": tag }
-						: bearer(token),
+					headers: tag ? { "If-None-Match": tag } : undefined,
 					signal: inner,
 				}),
 			signal,
@@ -201,7 +155,6 @@ export async function fetchState(
 
 	const refusal = STATE_REFUSALS[response.status];
 	if (refusal) {
-		noteTokenRefused(response.status);
 		const body = (await response.json().catch(() => null)) as {
 			error?: string;
 			detail?: string;
@@ -233,13 +186,34 @@ export type WriteFailure =
 	| { ok: false; reason: "moved"; message: string }
 	// The write may still land, so it is never rolled back.
 	| { ok: false; reason: "timeout"; message: string }
-	| { ok: false; reason: "unauthorized"; message: string }
 	| { ok: false; reason: "refused"; message: string }
 	| { ok: false; reason: "failed"; message: string }
 	| { ok: false; reason: "unavailable"; message: string }
 	| { ok: false; reason: "unreachable"; message: string };
 
 export type WriteResult = { ok: true; written: TagWritten } | WriteFailure;
+
+export type SwitchRefusal = "playbackDisabled" | "writesDisabled";
+
+// Word for word what the component's `core/playlists.cpp` answers for each switch.
+const REFUSAL_MESSAGE = {
+	playbackDisabled:
+		"this install has playback control turned off; turn on controlPlayback in config.json to allow it",
+	writesDisabled:
+		"this install has playlist writes turned off; turn on writePlaylists in config.json to allow them",
+} satisfies Record<SwitchRefusal, Schema["PlaylistFailed"]["error"]>;
+
+const switchRefusalIn = (message: string): SwitchRefusal | null =>
+	(Object.keys(REFUSAL_MESSAGE) as SwitchRefusal[]).find((refusal) =>
+		message.includes(REFUSAL_MESSAGE[refusal]),
+	) ?? null;
+
+// Every write a switch can refuse throws through `requestThrowing`, whose message carries the body's
+// own `error`, so a caller reads the refusal off the thrown error rather than parsing a response again.
+export function switchRefusalOf(error: unknown): SwitchRefusal | null {
+	if (!(error instanceof Error) || error.cause !== 403) return null;
+	return switchRefusalIn(error.message);
+}
 
 const messageOf = async (response: Response, fallback: string) => {
 	const body = (await response.json().catch(() => null)) as {
@@ -263,11 +237,9 @@ const NAMES_TWO_TRACKS =
 
 export async function writeTags(
 	origin: string,
-	token: string,
 	request: TagWriteRequest,
 ): Promise<WriteResult> {
 	const response = await postJson(`${origin}/api/tags`, request, {
-		token,
 		timeoutMs: WRITE_TIMEOUT_MS,
 	});
 	if (!response)
@@ -285,10 +257,6 @@ export async function writeTags(
 		return { ok: false, reason: "not-allowed", field, message };
 	if (response.status === 404)
 		return { ok: false, reason: "unknown-track", message };
-	if (response.status === 401) {
-		noteTokenRefused(response.status);
-		return { ok: false, reason: "unauthorized", message };
-	}
 	if (response.status === 409)
 		return error === NAMES_TWO_TRACKS
 			? { ok: false, reason: "ambiguous", message }
@@ -304,14 +272,11 @@ export async function writeTags(
 
 export type FooJeanState =
 	| { kind: "unreachable" }
-	| { kind: "no-token" }
-	| { kind: "unauthorized" }
 	| { kind: "ready"; capabilities: FooJeanCapabilities };
 
 export interface FooJeanDiscovery {
 	state: FooJeanState;
 	origin: string | null;
-	token: string | null;
 	retryable: boolean;
 }
 
@@ -327,53 +292,31 @@ export const permitsPlaylistWrites = (discovery: FooJeanDiscovery) =>
 	discovery.state.kind !== "ready" ||
 	discovery.state.capabilities.canWritePlaylists !== false;
 
+// Absent or unreached reads as permitted, for the same reason `permitsPlaylistWrites` does.
+export const permitsPlaybackControl = (discovery: FooJeanDiscovery) =>
+	discovery.state.kind !== "ready" ||
+	discovery.state.capabilities.canControlPlayback !== false;
+
 export const isFooJeanReady = (discovery: FooJeanDiscovery) =>
 	discovery.state.kind === "ready";
 
-// A caller already inside a guarded control has `origin` and `token` as two nullable strings, from
-// `FooJeanDiscovery` or threaded down separately; this is the one throw both shapes share.
-export function requireFooJean(
-	origin: string | null,
-	token: string | null,
-): { origin: string; token: string } {
-	if (!origin || !token) throw new Error("foo_jean is not reachable");
-	return { origin, token };
+// A caller already inside a guarded control has `origin` as a nullable string, from
+// `FooJeanDiscovery` or threaded down separately; this is the one throw every shape shares.
+export function requireFooJean(origin: string | null): string {
+	if (!origin) throw new Error("foo_jean is not reachable");
+	return origin;
 }
 
-export async function discoverFooJean(
-	token: string | null,
-): Promise<FooJeanDiscovery> {
+export async function discoverFooJean(): Promise<FooJeanDiscovery> {
 	const origin = window.location.origin;
 
-	if (!token)
-		return {
-			state: { kind: "no-token" },
-			origin,
-			token: null,
-			retryable: false,
-		};
-
-	const capabilities = await fetchCapabilities(origin, token);
-	if (!capabilities.ok) {
-		if (capabilities.reason === "unreachable")
-			return {
-				state: { kind: "unreachable" },
-				origin,
-				token: null,
-				retryable: true,
-			};
-		return {
-			state: { kind: "unauthorized" },
-			origin,
-			token: null,
-			retryable: false,
-		};
-	}
+	const capabilities = await fetchCapabilities(origin);
+	if (!capabilities.ok)
+		return { state: { kind: "unreachable" }, origin, retryable: true };
 
 	return {
 		state: { kind: "ready", capabilities: capabilities.capabilities },
 		origin,
-		token,
 		retryable: false,
 	};
 }
@@ -381,7 +324,6 @@ export async function discoverFooJean(
 export type TicketFailure =
 	| { ok: false; reason: "busy"; message: string }
 	| { ok: false; reason: "unavailable"; message: string }
-	| { ok: false; reason: "unauthorized"; message: string }
 	| { ok: false; reason: "unreachable"; message: string };
 
 export type TicketResult = { ok: true; ticket: StreamTicket } | TicketFailure;
@@ -391,12 +333,9 @@ const isBusy = (message: string) =>
 
 export async function issueStreamTicket(
 	origin: string,
-	token: string,
 	device: DeviceIdentity,
 ): Promise<TicketResult> {
-	const response = await postJson(`${origin}/api/stream/ticket`, device, {
-		token,
-	});
+	const response = await postJson(`${origin}/api/stream/ticket`, device);
 	if (!response)
 		return { ok: false, reason: "unreachable", message: UNREACHABLE };
 
@@ -404,8 +343,6 @@ export async function issueStreamTicket(
 		return { ok: true, ticket: (await response.json()) as StreamTicket };
 
 	const { message } = await messageOf(response, `HTTP ${response.status}`);
-	if (response.status === 401)
-		return { ok: false, reason: "unauthorized", message };
 	if (response.status === 503)
 		return {
 			ok: false,
@@ -427,24 +364,20 @@ export const playlistRowArtworkUrl = (
 	index: number,
 ) => origin && `${origin}/api/artwork/playlists/${playlistId}/${index}`;
 
-// The ticket travels in the query string and the bearer token never does: an `<audio>` element sends
-// no headers, and a token here would reach every proxy log on the way.
 export const streamUrl = (origin: string, ticket: string, format: string) =>
 	`${origin}/api/stream?ticket=${encodeURIComponent(ticket)}&format=${encodeURIComponent(format)}`;
 
-export const fetchStreamTimeline = (origin: string, token: string) =>
-	authedJson<StreamTimeline>(origin, token, "/api/stream/timeline");
+export const fetchStreamTimeline = (origin: string) =>
+	fetchJson<StreamTimeline>(origin, "/api/stream/timeline");
 
-export const fetchStreamListeners = (origin: string, token: string) =>
-	authedJson<StreamListeners>(origin, token, "/api/stream/listeners");
+export const fetchStreamListeners = (origin: string) =>
+	fetchJson<StreamListeners>(origin, "/api/stream/listeners");
 
 export async function fetchPlaylistAnnotations(
 	origin: string,
-	token: string,
 ): Promise<PlaylistAnnotation[] | null> {
-	const body = await authedJson<{ playlists?: PlaylistAnnotation[] }>(
+	const body = await fetchJson<{ playlists?: PlaylistAnnotation[] }>(
 		origin,
-		token,
 		"/api/playlists",
 	);
 	return body?.playlists ?? null;
@@ -452,8 +385,8 @@ export async function fetchPlaylistAnnotations(
 
 // A query that does not parse comes back as a 200 carrying `valid: false`, never as a 400. Debounce
 // the caller: this runs on foobar2000's main thread.
-export const previewQuery = (origin: string, token: string, query: string) =>
-	authedJson<QueryPreview>(origin, token, "/api/autoplaylists/preview", {
+export const previewQuery = (origin: string, query: string) =>
+	fetchJson<QueryPreview>(origin, "/api/autoplaylists/preview", {
 		method: "POST",
 		headers: JSON_BODY,
 		body: JSON.stringify({ query }),
@@ -465,11 +398,9 @@ export type CreatedAutoPlaylist =
 
 export async function createAutoPlaylist(
 	origin: string,
-	token: string,
 	request: AutoPlaylistRequest,
 ): Promise<CreatedAutoPlaylist> {
 	const response = await postJson(`${origin}/api/autoplaylists`, request, {
-		token,
 		timeoutMs: WRITE_TIMEOUT_MS,
 	});
 	if (!response) return { ok: false, message: UNREACHABLE };
@@ -484,44 +415,41 @@ export async function createAutoPlaylist(
 	return { ok: false, message };
 }
 
-// Unlike `postJson` and `authedJson`, these throw rather than answer null: the refusals a caller
+// Unlike `postJson` and `fetchJson`, these throw rather than answer null: the refusals a caller
 // cares about, such as `writePlaylists` off or a moved `structure`, ride the status on the error's
-// `cause`, and an answer of `null` would have nowhere to carry it.
+// `cause` and the body's `error` in its message, and an answer of `null` would have nowhere to carry
+// either.
 const requestThrowing = async (
 	url: string,
-	token: string,
 	method: string,
 	body?: unknown,
-	notifyRefusal = false,
 ): Promise<Response> => {
 	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
 		fetch(url, {
 			method,
-			headers:
-				body === undefined ? bearer(token) : { ...bearer(token), ...JSON_BODY },
+			headers: method === "POST" ? JSON_BODY : undefined,
 			body: body === undefined ? undefined : JSON.stringify(body),
 			signal,
 		}),
 	);
 	if (!response.ok) {
-		if (notifyRefusal) noteTokenRefused(response.status);
-		throw new Error(`${method} ${url} failed: ${response.status}`, {
+		const { message } = await messageOf(response, `HTTP ${response.status}`);
+		throw new Error(`${method} ${url} failed: ${response.status}: ${message}`, {
 			cause: response.status,
 		});
 	}
 	return response;
 };
 
-const postThrowing = (url: string, token: string, body: unknown) =>
-	requestThrowing(url, token, "POST", body);
+const postThrowing = (url: string, body: unknown) =>
+	requestThrowing(url, "POST", body);
 
 export async function postFooJeanCommand(
 	origin: string,
-	token: string,
 	path: string,
 	body?: unknown,
 ): Promise<void> {
-	await requestThrowing(`${origin}${path}`, token, "POST", body, true);
+	await requestThrowing(`${origin}${path}`, "POST", body);
 }
 
 const playlistUrl = (origin: string, id: string) =>
@@ -529,37 +457,29 @@ const playlistUrl = (origin: string, id: string) =>
 
 export async function fillOwnPlaylist(
 	origin: string,
-	token: string,
 	role: OwnPlaylistRole,
 	request: FillOwnPlaylistRequest,
 ): Promise<FillResult> {
 	const response = await postThrowing(
 		`${origin}/api/playlists/own/${role}/items`,
-		token,
 		request,
 	);
 	return (await response.json()) as FillResult;
 }
 
-export const emptyOwnPlaylist = (
-	origin: string,
-	token: string,
-	role: OwnPlaylistRole,
-) =>
-	requestThrowing(`${origin}/api/playlists/own/${role}/items`, token, "DELETE");
+export const emptyOwnPlaylist = (origin: string, role: OwnPlaylistRole) =>
+	requestThrowing(`${origin}/api/playlists/own/${role}/items`, "DELETE");
 
 // A 403 here is always `writePlaylists` off: this route addresses a playlist by the GUID its own
 // annotation carries, so the other 403 this contract has, a target foo_jean did not create, cannot
 // apply to it.
 export async function fillPlaylist(
 	origin: string,
-	token: string,
 	guid: string,
 	request: FillPlaylistRequest,
 ): Promise<FillResult> {
 	const response = await postThrowing(
 		`${origin}/api/playlists/${guid}/items`,
-		token,
 		request,
 	);
 	return (await response.json()) as FillResult;
@@ -582,22 +502,19 @@ const libraryTrackAddressQuery = (address: LibraryTrackAddress) =>
 // the only way to read one track's current values back.
 export async function fetchLibraryTrack(
 	origin: string,
-	token: string,
 	address: LibraryTrackAddress,
 	columns: readonly string[],
 ): Promise<LibraryTrack> {
 	const response = await withTimeout(WRITE_TIMEOUT_MS, (signal) =>
 		fetch(
 			`${origin}/api/track/library?${libraryTrackAddressQuery(address)}&${columnsQuery(columns)}`,
-			{ headers: bearer(token), signal },
+			{ signal },
 		),
 	);
-	if (!response.ok) {
-		noteTokenRefused(response.status);
+	if (!response.ok)
 		throw new Error(`GET library track failed: ${response.status}`, {
 			cause: response.status,
 		});
-	}
 	return (await response.json()) as LibraryTrack;
 }
 
@@ -606,7 +523,6 @@ const READ_TIMEOUT_MS = 8_000;
 
 export async function fetchPlayingTrack(
 	origin: string,
-	token: string,
 	columns: readonly string[],
 	{ signal }: { signal?: AbortSignal } = {},
 ): Promise<PlayingTrackColumns> {
@@ -614,23 +530,19 @@ export async function fetchPlayingTrack(
 		READ_TIMEOUT_MS,
 		(inner) =>
 			fetch(`${origin}/api/track/playing?${columnsQuery(columns)}`, {
-				headers: bearer(token),
 				signal: inner,
 			}),
 		signal,
 	);
-	if (!response.ok) {
-		noteTokenRefused(response.status);
+	if (!response.ok)
 		throw new Error(`GET playing track failed: ${response.status}`, {
 			cause: response.status,
 		});
-	}
 	return (await response.json()) as PlayingTrackColumns;
 }
 
 export async function fetchPlaylistRows(
 	origin: string,
-	token: string,
 	id: string,
 	offset: number,
 	count: number,
@@ -642,7 +554,7 @@ export async function fetchPlaylistRows(
 		(inner) =>
 			fetch(
 				`${playlistUrl(origin, id)}/items?offset=${offset}&count=${count}&${columnsQuery(columns)}`,
-				{ headers: bearer(token), signal: inner },
+				{ signal: inner },
 			),
 		signal,
 	);
@@ -660,7 +572,6 @@ export type PlaylistChangesResult =
 
 export async function fetchPlaylistItemChanges(
 	origin: string,
-	token: string,
 	id: string,
 	structure: string,
 	since: string,
@@ -672,7 +583,7 @@ export async function fetchPlaylistItemChanges(
 		(inner) =>
 			fetch(
 				`${playlistUrl(origin, id)}/items/changes?structure=${structure}&since=${since}&${columnsQuery(columns)}`,
-				{ headers: bearer(token), signal: inner },
+				{ signal: inner },
 			),
 		signal,
 	);
@@ -687,55 +598,31 @@ export async function fetchPlaylistItemChanges(
 
 export async function createPlaylist(
 	origin: string,
-	token: string,
 	request: CreatePlaylistRequest,
 ): Promise<PlaylistAnnotation> {
-	const response = await postThrowing(
-		`${origin}/api/playlists`,
-		token,
-		request,
-	);
+	const response = await postThrowing(`${origin}/api/playlists`, request);
 	return (await response.json()) as PlaylistAnnotation;
 }
 
-export const renamePlaylist = (
-	origin: string,
-	token: string,
-	id: string,
-	title: string,
-) => postThrowing(playlistUrl(origin, id), token, { title });
+export const renamePlaylist = (origin: string, id: string, title: string) =>
+	postThrowing(playlistUrl(origin, id), { title });
 
-export const removePlaylist = (origin: string, token: string, id: string) =>
-	requestThrowing(playlistUrl(origin, id), token, "DELETE");
+export const removePlaylist = (origin: string, id: string) =>
+	requestThrowing(playlistUrl(origin, id), "DELETE");
 
-export const movePlaylist = (
-	origin: string,
-	token: string,
-	id: string,
-	index: number,
-) => postThrowing(`${playlistUrl(origin, id)}/move`, token, { index });
+export const movePlaylist = (origin: string, id: string, index: number) =>
+	postThrowing(`${playlistUrl(origin, id)}/move`, { index });
 
-export const playPlaylistItem = (
-	origin: string,
-	token: string,
-	id: string,
-	index: number,
-) =>
-	requestThrowing(
-		`${playlistUrl(origin, id)}/items/${index}/play`,
-		token,
-		"POST",
-	);
+export const playPlaylistItem = (origin: string, id: string, index: number) =>
+	requestThrowing(`${playlistUrl(origin, id)}/items/${index}/play`, "POST");
 
 export async function copyPlaylistRows(
 	origin: string,
-	token: string,
 	id: string,
 	request: CopyPlaylistRowsRequest,
 ): Promise<CopiedRows> {
 	const response = await postThrowing(
 		`${playlistUrl(origin, id)}/items/copy`,
-		token,
 		request,
 	);
 	return (await response.json()) as CopiedRows;
@@ -743,13 +630,11 @@ export async function copyPlaylistRows(
 
 export async function removePlaylistRows(
 	origin: string,
-	token: string,
 	id: string,
 	request: RemovePlaylistRowsRequest,
 ): Promise<RemovedRows> {
 	const response = await postThrowing(
 		`${playlistUrl(origin, id)}/items/remove`,
-		token,
 		request,
 	);
 	return (await response.json()) as RemovedRows;
@@ -757,53 +642,12 @@ export async function removePlaylistRows(
 
 // Tells a deliberate stop from a dropped connection: both close the socket, and only this one gives
 // the player its sound back now rather than after the component's linger.
-export function leaveStream(origin: string, token: string, deviceId: string) {
+export function leaveStream(origin: string, deviceId: string) {
 	void fetch(`${origin}/api/stream/leave`, {
 		method: "POST",
-		headers: { ...bearer(token), ...JSON_BODY },
+		headers: JSON_BODY,
 		body: JSON.stringify({ deviceId }),
 	}).catch(() => {});
-}
-
-export type PairFailure =
-	| { ok: false; reason: "not-open"; message: string }
-	| { ok: false; reason: "not-local"; message: string }
-	| { ok: false; reason: "busy"; message: string }
-	| { ok: false; reason: "unreachable"; message: string }
-	| { ok: false; reason: "unsupported"; message: string };
-
-export type PairResult = { ok: true; token: string } | PairFailure;
-
-export async function pairWithAgent(
-	origin: string,
-	name: string,
-): Promise<PairResult> {
-	const response = await postJson(`${origin}/api/pair`, name ? { name } : {});
-	if (!response)
-		return { ok: false, reason: "unreachable", message: UNREACHABLE };
-
-	if (response.ok) {
-		const body = (await response.json()) as Paired;
-		if (!body?.token)
-			return {
-				ok: false,
-				reason: "unsupported",
-				message: "foo_jean answered without a token.",
-			};
-		return { ok: true, token: body.token };
-	}
-
-	const { message } = await messageOf(response, `HTTP ${response.status}`);
-
-	if (response.status === 403)
-		return /local network/i.test(message)
-			? { ok: false, reason: "not-local", message }
-			: { ok: false, reason: "not-open", message };
-	if (response.status === 429) return { ok: false, reason: "busy", message };
-	if (response.status === 404 || response.status === 415)
-		return { ok: false, reason: "unsupported", message };
-
-	return { ok: false, reason: "unreachable", message };
 }
 
 export type QueueRead = Schema["QueueRead"];
@@ -814,12 +658,11 @@ export type MoveQueueRequest = Schema["MoveQueueRequest"];
 
 const deleteJson = async (
 	url: string,
-	token: string,
 	{ timeoutMs = WRITE_TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<Response | null> => {
 	try {
 		return await withTimeout(timeoutMs, (signal) =>
-			fetch(url, { method: "DELETE", headers: bearer(token), signal }),
+			fetch(url, { method: "DELETE", signal }),
 		);
 	} catch {
 		return null;
@@ -829,49 +672,56 @@ const deleteJson = async (
 export type QueueMutationResult =
 	| { ok: true }
 	| { ok: false; reason: "stale" }
-	| { ok: false; reason: "failed"; message: string };
+	| {
+			ok: false;
+			reason: "failed";
+			message: string;
+			refusal: SwitchRefusal | null;
+	  };
 
 const queueMutationResult = async (
 	response: Response | null,
 ): Promise<QueueMutationResult> => {
-	if (!response) return { ok: false, reason: "failed", message: UNREACHABLE };
+	if (!response)
+		return { ok: false, reason: "failed", message: UNREACHABLE, refusal: null };
 	if (response.ok) return { ok: true };
 	if (response.status === 409) return { ok: false, reason: "stale" };
-	const { message } = await messageOf(response, `HTTP ${response.status}`);
-	return { ok: false, reason: "failed", message };
+	const { message, error } = await messageOf(
+		response,
+		`HTTP ${response.status}`,
+	);
+	return {
+		ok: false,
+		reason: "failed",
+		message,
+		refusal: response.status === 403 ? switchRefusalIn(error) : null,
+	};
 };
 
-export const fetchQueue = (origin: string, token: string) =>
-	authedJson<QueueRead>(origin, token, "/api/queue");
+export const fetchQueue = (origin: string) =>
+	fetchJson<QueueRead>(origin, "/api/queue");
 
 export async function postQueue(
 	origin: string,
-	token: string,
 	request: QueuePlaylistRowsRequest | QueueLibraryTracksRequest,
 ): Promise<QueueMutationResult> {
 	return queueMutationResult(
 		await postJson(`${origin}/api/queue`, request, {
-			token,
 			timeoutMs: WRITE_TIMEOUT_MS,
 		}),
 	);
 }
 
-export async function clearQueue(
-	origin: string,
-	token: string,
-): Promise<QueueMutationResult> {
-	return queueMutationResult(await deleteJson(`${origin}/api/queue`, token));
+export async function clearQueue(origin: string): Promise<QueueMutationResult> {
+	return queueMutationResult(await deleteJson(`${origin}/api/queue`));
 }
 
 export async function moveQueueEntry(
 	origin: string,
-	token: string,
 	request: MoveQueueRequest,
 ): Promise<QueueMutationResult> {
 	return queueMutationResult(
 		await postJson(`${origin}/api/queue/move`, request, {
-			token,
 			timeoutMs: WRITE_TIMEOUT_MS,
 		}),
 	);
@@ -879,15 +729,11 @@ export async function moveQueueEntry(
 
 export async function removeQueueEntry(
 	origin: string,
-	token: string,
 	index: number,
 	revision: number,
 ): Promise<QueueMutationResult> {
 	return queueMutationResult(
-		await deleteJson(
-			`${origin}/api/queue/${index}?revision=${revision}`,
-			token,
-		),
+		await deleteJson(`${origin}/api/queue/${index}?revision=${revision}`),
 	);
 }
 

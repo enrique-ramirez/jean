@@ -10,9 +10,11 @@ import type { FilledShelf } from "./shelves";
 export function ShelfTabs({
 	shelves,
 	onPlayAlbum,
+	canControlPlayback = true,
 }: {
 	shelves: FilledShelf<CoveredAlbum>[];
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
+	canControlPlayback?: boolean;
 }) {
 	const t = useTranslate();
 	const [chosen, choose] = useStoredState<string | null>(
@@ -55,7 +57,11 @@ export function ShelfTabs({
 				</nav>
 			</header>
 
-			<ShelfScroller shelf={active} onPlayAlbum={onPlayAlbum} />
+			<ShelfScroller
+				shelf={active}
+				onPlayAlbum={onPlayAlbum}
+				canControlPlayback={canControlPlayback}
+			/>
 		</section>
 	);
 }

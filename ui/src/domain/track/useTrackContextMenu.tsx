@@ -43,7 +43,7 @@ export function useTrackContextMenu({
 	const { discovery } = useFooJean();
 	const canWritePlaylists = permitsPlaylistWrites(discovery);
 	const addTracks = useAddTracks();
-	const { queueTracks, canQueue } = useQueueTracks();
+	const { queueTracks, canQueue, canControlPlayback } = useQueueTracks();
 	const { rate, hasWritableAddress } = useTagWriting();
 	const menu = useContextMenu();
 
@@ -98,6 +98,7 @@ export function useTrackContextMenu({
 			playlists,
 			canWritePlaylists,
 			canQueue,
+			canControlPlayback,
 			queueTracks,
 			addTracks,
 			credit: count === 1 ? value(rows.at(positions[0]), FIELD.artist) : null,
@@ -128,6 +129,7 @@ export function useTrackContextMenu({
 		canWritePlaylists,
 		addTracks,
 		canQueue,
+		canControlPlayback,
 		queueTracks,
 		rate,
 		hasWritableAddress,

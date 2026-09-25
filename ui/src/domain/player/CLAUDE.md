@@ -64,7 +64,7 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 ### Tickets and the element
 
-**Tickets are asked for immediately before connecting, never stored and never logged**, and a reconnect takes a fresh one. **The bearer token stays in a header and never reaches a URL.** **Never open a second element to probe with**: Safari already holds two connections per listener and the component's cap counts connections, not people.
+**Tickets are asked for immediately before connecting, never stored and never logged**, and a reconnect takes a fresh one. **The ticket is the only credential the stream needs**, since no other `foo_jean` route asks for one. **Never open a second element to probe with**: Safari already holds two connections per listener and the component's cap counts connections, not people.
 
 **`play()` after an `await` has lost its user gesture**, so a rejection with `NotAllowedError` has to degrade to a control the user presses synchronously.
 

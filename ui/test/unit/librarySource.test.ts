@@ -7,7 +7,6 @@ import { pathCollector } from "../../src/domain/track/pathTable.ts";
 import type { Refs } from "../../src/domain/track/project.ts";
 
 const ORIGIN = "http://player.invalid:8881";
-const TOKEN = "token";
 const TARGET_GUID = "{5a1d0000-0000-0000-0000-000000000001}";
 const PLAYLIST_GUID = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 
@@ -55,7 +54,6 @@ const librarySource = (
 		paths: pathTableOf(paths),
 		subsongs,
 		artworkOrigin: ORIGIN,
-		token: TOKEN,
 	});
 
 const playlistSource = ({
@@ -71,7 +69,6 @@ const playlistSource = ({
 		kind: "playlist",
 		playlistId: PLAYLIST_GUID,
 		origin: ORIGIN,
-		token: TOKEN,
 		paths: pathTableOf(paths),
 		subsongs,
 		structure,
@@ -113,7 +110,7 @@ interface Call {
 const CALLS: Call[] = [
 	{
 		name: "playing a library view",
-		run: (source) => source.fill("All music", REFS, { token: TOKEN }),
+		run: (source) => source.fill("All music", REFS),
 	},
 	{
 		name: "queueing library rows",

@@ -85,16 +85,15 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 ## 6. The HTTP contract
 
 1. **Any change to a response shape, a status code or an error string changes `contract/openapi.yaml` in the same commit.** ARCHITECTURE.md, *The HTTP contract*, is why the spec is hand-written and which two checks hold it to the code; neither of them can read prose.
-2. **Adding an unauthenticated route means revisiting `allowedOrigins` in the same commit.** `tests/listener_test.cpp` and `tests/pairing_test.cpp` pin both halves of what makes a listed origin safe to grant.
-3. **Anything that publishes a track path MUST publish the display form**, through `filesystem::g_get_display_path`. ARCHITECTURE.md, *Track identity*, is why.
+2. **Anything that publishes a track path MUST publish the display form**, through `filesystem::g_get_display_path`. ARCHITECTURE.md, *Track identity*, is why.
 
 ## 7. Security rules
 
-1. Authentication is mandatory. There is no unauthenticated mode to fall into: an empty token means the listener refuses to start, and a token shorter than `kMinTokenLength` is refused rather than quietly accepted.
-2. Compare credentials in constant time.
+1. Admission runs before anything else, on every path. A route that answers before the source address and `Host` are checked, or that carries its own exception from either check, is a security bug regardless of what the route does.
+2. Compare a stream ticket in constant time.
 3. Never trust a path from a client. Resolve against what the player reports; never concatenate.
 4. Write only allowlisted fields, compared case-insensitively, and say in the response which field was refused.
-5. Never log a token or a stream ticket.
+5. Never log a stream ticket.
 6. **Never set `SO_REUSEADDR`.** On Windows it lets a socket bind a port another socket is actively listening on, so two servers silently split the traffic on one port. The override to `SO_EXCLUSIVEADDRUSE` must stay; `third_party/README.md` is what it overrides and why that default is there.
 7. A partial or failed bind MUST be loud, to the log and to the preferences page, because a headless install has nobody reading a console.
 8. Refuse before doing. Validate, then act: the tests assert the order, not just the status.

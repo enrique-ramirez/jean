@@ -41,6 +41,15 @@
 	transform: scale(0.95);
 }
 
+.toggle[aria-disabled="true"] {
+	opacity: 0.45;
+}
+
+.toggle[aria-disabled="true"]:hover,
+.toggle[aria-disabled="true"]:active {
+	transform: none;
+}
+
 .toggle[data-motion="equalizer"][data-playing="true"] rect {
 	transform-box: fill-box;
 	transform-origin: center;

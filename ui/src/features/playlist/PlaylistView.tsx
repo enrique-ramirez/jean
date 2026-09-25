@@ -31,7 +31,7 @@ export function PlaylistView({
 }) {
 	const t = useTranslate();
 	const { discovery } = useFooJean();
-	const { origin, token } = discovery;
+	const { origin } = discovery;
 	const {
 		columns,
 		paths,
@@ -45,7 +45,6 @@ export function PlaylistView({
 		playedCount,
 	} = usePlaylistItems(
 		origin,
-		token,
 		playlist?.id,
 		playlist?.structure,
 		playlist?.revision,
@@ -59,14 +58,13 @@ export function PlaylistView({
 			kind: "playlist" as const,
 			playlistId: playlist?.id as string,
 			origin,
-			token,
 			structure: playlist?.structure,
 		};
 
 		return paths && subsongs
 			? librarySourceOf({ ...options, paths, subsongs })
 			: librarySourceOf(options);
-	}, [playlist?.id, playlist?.structure, origin, token, paths, subsongs]);
+	}, [playlist?.id, playlist?.structure, origin, paths, subsongs]);
 
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const isPlaying = useIsPlaying();

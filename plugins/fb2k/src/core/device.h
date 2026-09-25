@@ -32,9 +32,7 @@ struct DeviceIdentityRequest {
     bool ok() const { return refusal.empty(); }
 };
 
-// Never throws: a malformed body is routine for the HTTP handler that calls these.
+// Never throws: a malformed body is routine for the HTTP handler that calls this.
 DeviceIdentityRequest parseDeviceIdentity(const std::string& body);
-
-DeviceIdentityRequest parseDeviceName(const std::string& body);
 
 }  // namespace jean

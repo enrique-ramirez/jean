@@ -70,7 +70,7 @@ import {
 	SETTINGS_KEYBOARD,
 	SettingsDialog,
 } from "@/features/settings/SettingsDialog";
-import { bearer } from "@/shared/api/fooJean";
+import { permitsPlaybackControl } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
@@ -85,7 +85,6 @@ import {
 	ShortcutSheet,
 } from "@/shared/keyboard/ShortcutSheet";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
-import { ArtworkAccessProvider } from "@/shared/ui/Artwork";
 import { animateScrollTo } from "@/shared/ui/animateScroll";
 import { Button } from "@/shared/ui/Button";
 import { Crumb } from "@/shared/ui/Crumb";
@@ -189,17 +188,10 @@ function Shell() {
 	} = resolveRoute(shellRoute);
 
 	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	usePlayerPoll(
 		discovery.origin,
-		discovery.token,
 		discovery.state.kind === "ready" ? discovery.state.capabilities : null,
-	);
-	const artworkAccess = useMemo(
-		() =>
-			discovery.origin && discovery.token
-				? { origin: discovery.origin, headers: bearer(discovery.token) }
-				: null,
-		[discovery.origin, discovery.token],
 	);
 
 	const library = useLibrary();
@@ -633,16 +625,23 @@ function Shell() {
 		{ owner: SHORTCUTS_KEYBOARD },
 	);
 
+	useKeymap(
+		SCOPE.global,
+		{
+			playPause: () => playPause.mutate(),
+			nextTrack: () => transport.next.mutate(),
+			previousTrack: () => previous(),
+			stop: () => transport.stop.mutate(),
+			seekBack: () => seekBy.mutate(-SEEK_STEP),
+			seekForward: () => seekBy.mutate(SEEK_STEP),
+			volumeUp: () => volume.up(),
+			volumeDown: () => volume.down(),
+			toggleMute: () => volume.toggleMute(),
+		},
+		{ enabled: canControlPlayback },
+	);
+
 	useKeymap(SCOPE.global, {
-		playPause: () => playPause.mutate(),
-		nextTrack: () => transport.next.mutate(),
-		previousTrack: () => previous(),
-		stop: () => transport.stop.mutate(),
-		seekBack: () => seekBy.mutate(-SEEK_STEP),
-		seekForward: () => seekBy.mutate(SEEK_STEP),
-		volumeUp: () => volume.up(),
-		volumeDown: () => volume.down(),
-		toggleMute: () => volume.toggleMute(),
 		globalSearch: () => {
 			revealSearch();
 			search.focus();
@@ -676,301 +675,300 @@ function Shell() {
 	});
 
 	return (
-		<ArtworkAccessProvider value={artworkAccess}>
-			<div className={styles.app}>
-				<header className={styles.topbar}>
-					<Button
-						variant="ghost"
-						icon={PanelLeft}
-						aria-label={isSidebarShown ? t("sidebar.hide") : t("sidebar.show")}
-						aria-expanded={
-							isCompactViewport ? isSidebarOpen : !isSidebarCollapsed
-						}
-						onClick={toggleSidebar}
-					/>
+		<div className={styles.app}>
+			<header className={styles.topbar}>
+				<Button
+					variant="ghost"
+					icon={PanelLeft}
+					aria-label={isSidebarShown ? t("sidebar.hide") : t("sidebar.show")}
+					aria-expanded={
+						isCompactViewport ? isSidebarOpen : !isSidebarCollapsed
+					}
+					onClick={toggleSidebar}
+				/>
 
-					{isBrandShown ? (
-						<a className={styles.brand} href={`#/${ROUTE.home}`}>
-							je<span>a</span>n
-						</a>
-					) : null}
+				{isBrandShown ? (
+					<a className={styles.brand} href={`#/${ROUTE.home}`}>
+						je<span>a</span>n
+					</a>
+				) : null}
 
-					{isCompactBarShut && place ? (
-						<button
-							type="button"
-							className={styles.place}
-							data-at-top={isAtTop || undefined}
-							onClick={backToTop}
-							// Omitted at the top: an unlabelled control's accessible name falls back to its
-							// visible text, and there is nowhere left for the label to promise going.
-							aria-label={isAtTop ? undefined : t("view.backToTop", { place })}
-						>
-							<span className={styles.placeName}>{place}</span>
-							{isAtTop ? null : (
-								<ChevronUp size={14} strokeWidth={2.5} aria-hidden="true" />
-							)}
-						</button>
-					) : null}
-
-					{isCompactBarShut ? null : (
-						<LibrarySearchField
-							search={search}
-							library={library}
-							onChange={search.type}
-							onSubmit={() => openSearch(search.commit().query)}
-							onSelect={(suggestion) => {
-								if (suggestion.kind !== "track") {
-									search.revert();
-									openRoute(routeOfSuggestion(suggestion));
-									return;
-								}
-
-								const { query, refs } = search.commit();
-								const position = refs ? refs.indexOf(suggestion.ref) : -1;
-								if (refs && position >= 0)
-									void playSet({
-										kind: SCRATCH_KIND.search,
-										label: query,
-										refs,
-										position,
-									});
-							}}
-							onLeave={() => {
-								if (!search.hasDraft) setIsSearchOpen(false);
-							}}
-							onDismiss={() => {
-								search.clear();
-								setIsSearchOpen(false);
-								if (isSearch) navigate(`/${selectedId}`);
-							}}
-						/>
-					)}
-
-					<div className={styles.actions}>
-						{isCompactBarShut ? (
-							<Button
-								variant="ghost"
-								icon={Search}
-								aria-label={t("search.yourLibrary")}
-								aria-expanded={false}
-								onClick={revealSearch}
-							/>
-						) : null}
-						<Button
-							variant="ghost"
-							className={styles.shortcuts}
-							icon={Keyboard}
-							aria-label={t("shortcuts.title")}
-							onClick={() => setIsSheetOpen(true)}
-						/>
-						<Button
-							variant="ghost"
-							icon={Settings}
-							aria-label={t("settings.title")}
-							aria-expanded={isSettingsOpen}
-							onClick={() => setIsSettingsOpen(true)}
-						/>
-						{isCompactViewport ? null : (
-							<Button
-								variant="ghost"
-								icon={theme === "dark" ? Sun : Moon}
-								aria-label={
-									theme === "dark" ? t("theme.toLight") : t("theme.toDark")
-								}
-								onClick={toggleTheme}
-							/>
-						)}
-					</div>
-				</header>
-
-				<div
-					className={styles.body}
-					data-collapsed={!isCompactViewport && isSidebarCollapsed}
-				>
-					<Sidebar
-						playlists={playlists}
-						playingPlaylistId={playingPlaylistId ?? null}
-						selectedId={isLibrary ? null : selectedId}
-						onSelect={openPlaylist}
-						search={search}
-						isSearchOpen={isSearch}
-						onOpenSearch={openSearch}
-						route={shellRoute}
-						onOpenRoute={openRoute}
-						playingFrom={playingFrom}
-						isOpen={isSidebarOpen}
-						isCollapsed={!isCompactViewport && isSidebarCollapsed}
-						onDismiss={() => setIsSidebarOpen(false)}
-					/>
-
-					<main
-						className={styles.main}
-						ref={scrollRef}
-						{...(artist ? artistSwipe : null)}
+				{isCompactBarShut && place ? (
+					<button
+						type="button"
+						className={styles.place}
+						data-at-top={isAtTop || undefined}
+						onClick={backToTop}
+						// Omitted at the top: an unlabelled control's accessible name falls back to its
+						// visible text, and there is nowhere left for the label to promise going.
+						aria-label={isAtTop ? undefined : t("view.backToTop", { place })}
 					>
-						{isHome ? (
-							<HomeView
-								library={library}
-								onPlayAlbum={home.playShelf}
-								onPlayTrack={(ref) => home.playTrack(allMusic.indices, ref)}
-								onPlayEverything={() => home.playEverything(allMusic.indices)}
-								onShuffleEverything={() =>
-									home.shuffleEverything(allMusic.indices)
-								}
-								onSearch={searchFor}
-								canPlay={home.canPlay}
-								canShuffle={home.canShuffle}
-							/>
-						) : isGenres ? (
-							<GenresView library={library} onOpenRoute={openRoute} />
-						) : isAll || shelf || genre || album ? (
-							<LibraryListView
-								library={library}
-								view={listView.view ?? EMPTY_VIEW}
-								kind={listView.kind}
-								label={listView.label}
-								eyebrow={listView.eyebrow}
-								title={listView.title}
-								playlists={playlists}
-								scrollRef={scrollRef}
-								isCompactViewport={isCompactViewport}
-								onOpenPlaylist={openPlaylist}
-								emptyNotice={
-									library.isLoading
-										? t("library.reading")
-										: genre
-											? t("library.noGenre", { genre })
-											: album
-												? t("library.noAlbum")
-												: t("library.empty")
-								}
-							/>
-						) : isSearch ? (
-							<SearchResults
-								search={search}
-								library={library}
-								playlists={playlists}
-								scrollRef={scrollRef}
-								isCompactViewport={isCompactViewport}
-								onOpenPlaylist={openPlaylist}
-							/>
-						) : artist ? (
-							<div
-								key={artistTab}
-								className={styles.artistTab}
-								data-direction={tabDirection}
-							>
-								{artistTab === "tracks" ? (
-									<LibraryListView
-										library={library}
-										view={artistView ?? EMPTY_VIEW}
-										kind={SCRATCH_KIND.artist}
-										label={artist}
-										eyebrow={t("artist.eyebrow")}
-										title={artist}
-										tabs={artistTabs}
-										playlists={playlists}
-										scrollRef={scrollRef}
-										isCompactViewport={isCompactViewport}
-										onOpenPlaylist={openPlaylist}
-										emptyNotice={
-											library.isLoading
-												? t("library.reading")
-												: t("library.noArtist", { artist })
-										}
-									/>
-								) : (
-									<ArtistView
-										tabs={artistTabs}
-										name={artist}
-										library={library}
-										tracks={artistTracks}
-										onPlay={playArtist}
-										onShuffle={(refs) => {
-											playbackMode.enableShuffle();
-											playArtist(refs, Math.floor(Math.random() * refs.length));
-										}}
-										onOpenAlbum={(refs) => {
-											const at = Array.prototype.indexOf.call(
-												artistTracks.all,
-												refs[0],
-											);
-											askToReveal(refs[0]);
-											showArtistTab("tracks");
-											if (at >= 0) playArtist(artistTracks.all, at);
-										}}
-										canPlay={home.canPlay}
-										canShuffle={home.canShuffle}
-									/>
-								)}
-							</div>
-						) : (
-							<PlaylistView
-								playlist={playlist}
-								scrollRef={scrollRef}
-								isCompactViewport={isCompactViewport}
-							/>
+						<span className={styles.placeName}>{place}</span>
+						{isAtTop ? null : (
+							<ChevronUp size={14} strokeWidth={2.5} aria-hidden="true" />
 						)}
-					</main>
+					</button>
+				) : null}
 
-					<NowPlaying
-						isOpen={isNowPlaying}
-						tab={panelOfRoute(route)}
-						onSelectTab={selectPanel}
-						isCompactViewport={isCompactViewport}
-						isQueueOpen={isQueueOpen}
-						onToggleQueue={toggleQueue}
-						onOpenPlayingFrom={
-							playingRoute ? () => openPlayingFrom(playingRoute) : undefined
-						}
-						onDismiss={closeNowPlaying}
-					/>
+				{isCompactBarShut ? null : (
+					<LibrarySearchField
+						search={search}
+						library={library}
+						onChange={search.type}
+						onSubmit={() => openSearch(search.commit().query)}
+						onSelect={(suggestion) => {
+							if (suggestion.kind !== "track") {
+								search.revert();
+								openRoute(routeOfSuggestion(suggestion));
+								return;
+							}
 
-					<QueuePanel
-						isOpen={isQueueOpen}
-						isCompactViewport={isCompactViewport}
-						onDismiss={() =>
-							isCompactViewport
-								? setIsQueueDrawerOpen(false)
-								: setIsQueueDocked(false)
-						}
-					/>
-				</div>
-
-				<Toasts />
-
-				{isCompactViewport && isNowPlaying ? null : (
-					<StatusBar
-						isQueueOpen={isQueueOpen}
-						onToggleQueue={toggleQueue}
-						onOpenNowPlaying={toggleNowPlaying}
-						onRevealNowPlaying={() => navigate(`/${ROUTE.playing}`)}
+							const { query, refs } = search.commit();
+							const position = refs ? refs.indexOf(suggestion.ref) : -1;
+							if (refs && position >= 0)
+								void playSet({
+									kind: SCRATCH_KIND.search,
+									label: query,
+									refs,
+									position,
+								});
+						}}
+						onLeave={() => {
+							if (!search.hasDraft) setIsSearchOpen(false);
+						}}
+						onDismiss={() => {
+							search.clear();
+							setIsSearchOpen(false);
+							if (isSearch) navigate(`/${selectedId}`);
+						}}
 					/>
 				)}
 
-				<DragGhost />
-
-				{isPaletteOpen ? (
-					<CommandPalette
-						views={paletteViews}
-						playlists={palettePlaylists}
-						onSelect={openFromPalette}
-						onDismiss={() => setIsPaletteOpen(false)}
+				<div className={styles.actions}>
+					{isCompactBarShut ? (
+						<Button
+							variant="ghost"
+							icon={Search}
+							aria-label={t("search.yourLibrary")}
+							aria-expanded={false}
+							onClick={revealSearch}
+						/>
+					) : null}
+					<Button
+						variant="ghost"
+						className={styles.shortcuts}
+						icon={Keyboard}
+						aria-label={t("shortcuts.title")}
+						onClick={() => setIsSheetOpen(true)}
 					/>
-				) : null}
+					<Button
+						variant="ghost"
+						icon={Settings}
+						aria-label={t("settings.title")}
+						aria-expanded={isSettingsOpen}
+						onClick={() => setIsSettingsOpen(true)}
+					/>
+					{isCompactViewport ? null : (
+						<Button
+							variant="ghost"
+							icon={theme === "dark" ? Sun : Moon}
+							aria-label={
+								theme === "dark" ? t("theme.toLight") : t("theme.toDark")
+							}
+							onClick={toggleTheme}
+						/>
+					)}
+				</div>
+			</header>
 
-				{isSheetOpen ? (
-					<ShortcutSheet onDismiss={() => setIsSheetOpen(false)} />
-				) : null}
+			<div
+				className={styles.body}
+				data-collapsed={!isCompactViewport && isSidebarCollapsed}
+			>
+				<Sidebar
+					playlists={playlists}
+					playingPlaylistId={playingPlaylistId ?? null}
+					selectedId={isLibrary ? null : selectedId}
+					onSelect={openPlaylist}
+					search={search}
+					isSearchOpen={isSearch}
+					onOpenSearch={openSearch}
+					route={shellRoute}
+					onOpenRoute={openRoute}
+					playingFrom={playingFrom}
+					isOpen={isSidebarOpen}
+					isCollapsed={!isCompactViewport && isSidebarCollapsed}
+					onDismiss={() => setIsSidebarOpen(false)}
+				/>
 
-				{isSettingsOpen ? (
-					<SettingsDialog onDismiss={() => setIsSettingsOpen(false)} />
-				) : null}
+				<main
+					className={styles.main}
+					ref={scrollRef}
+					{...(artist ? artistSwipe : null)}
+				>
+					{isHome ? (
+						<HomeView
+							library={library}
+							onPlayAlbum={home.playShelf}
+							onPlayTrack={(ref) => home.playTrack(allMusic.indices, ref)}
+							onPlayEverything={() => home.playEverything(allMusic.indices)}
+							onShuffleEverything={() =>
+								home.shuffleEverything(allMusic.indices)
+							}
+							onSearch={searchFor}
+							canPlay={home.canPlay}
+							canShuffle={home.canShuffle}
+							canControlPlayback={canControlPlayback}
+						/>
+					) : isGenres ? (
+						<GenresView library={library} onOpenRoute={openRoute} />
+					) : isAll || shelf || genre || album ? (
+						<LibraryListView
+							library={library}
+							view={listView.view ?? EMPTY_VIEW}
+							kind={listView.kind}
+							label={listView.label}
+							eyebrow={listView.eyebrow}
+							title={listView.title}
+							playlists={playlists}
+							scrollRef={scrollRef}
+							isCompactViewport={isCompactViewport}
+							onOpenPlaylist={openPlaylist}
+							emptyNotice={
+								library.isLoading
+									? t("library.reading")
+									: genre
+										? t("library.noGenre", { genre })
+										: album
+											? t("library.noAlbum")
+											: t("library.empty")
+							}
+						/>
+					) : isSearch ? (
+						<SearchResults
+							search={search}
+							library={library}
+							playlists={playlists}
+							scrollRef={scrollRef}
+							isCompactViewport={isCompactViewport}
+							onOpenPlaylist={openPlaylist}
+						/>
+					) : artist ? (
+						<div
+							key={artistTab}
+							className={styles.artistTab}
+							data-direction={tabDirection}
+						>
+							{artistTab === "tracks" ? (
+								<LibraryListView
+									library={library}
+									view={artistView ?? EMPTY_VIEW}
+									kind={SCRATCH_KIND.artist}
+									label={artist}
+									eyebrow={t("artist.eyebrow")}
+									title={artist}
+									tabs={artistTabs}
+									playlists={playlists}
+									scrollRef={scrollRef}
+									isCompactViewport={isCompactViewport}
+									onOpenPlaylist={openPlaylist}
+									emptyNotice={
+										library.isLoading
+											? t("library.reading")
+											: t("library.noArtist", { artist })
+									}
+								/>
+							) : (
+								<ArtistView
+									tabs={artistTabs}
+									name={artist}
+									library={library}
+									tracks={artistTracks}
+									onPlay={playArtist}
+									onShuffle={(refs) => {
+										playbackMode.enableShuffle();
+										playArtist(refs, Math.floor(Math.random() * refs.length));
+									}}
+									onOpenAlbum={(refs) => {
+										const at = Array.prototype.indexOf.call(
+											artistTracks.all,
+											refs[0],
+										);
+										askToReveal(refs[0]);
+										showArtistTab("tracks");
+										if (at >= 0) playArtist(artistTracks.all, at);
+									}}
+									canPlay={home.canPlay}
+									canShuffle={home.canShuffle}
+								/>
+							)}
+						</div>
+					) : (
+						<PlaylistView
+							playlist={playlist}
+							scrollRef={scrollRef}
+							isCompactViewport={isCompactViewport}
+						/>
+					)}
+				</main>
 
-				<span className="visually-hidden" aria-live="polite">
-					{t(isPlaying ? "player.playing" : "player.paused")}
-				</span>
+				<NowPlaying
+					isOpen={isNowPlaying}
+					tab={panelOfRoute(route)}
+					onSelectTab={selectPanel}
+					isCompactViewport={isCompactViewport}
+					isQueueOpen={isQueueOpen}
+					onToggleQueue={toggleQueue}
+					onOpenPlayingFrom={
+						playingRoute ? () => openPlayingFrom(playingRoute) : undefined
+					}
+					onDismiss={closeNowPlaying}
+				/>
+
+				<QueuePanel
+					isOpen={isQueueOpen}
+					isCompactViewport={isCompactViewport}
+					onDismiss={() =>
+						isCompactViewport
+							? setIsQueueDrawerOpen(false)
+							: setIsQueueDocked(false)
+					}
+				/>
 			</div>
-		</ArtworkAccessProvider>
+
+			<Toasts />
+
+			{isCompactViewport && isNowPlaying ? null : (
+				<StatusBar
+					isQueueOpen={isQueueOpen}
+					onToggleQueue={toggleQueue}
+					onOpenNowPlaying={toggleNowPlaying}
+					onRevealNowPlaying={() => navigate(`/${ROUTE.playing}`)}
+				/>
+			)}
+
+			<DragGhost />
+
+			{isPaletteOpen ? (
+				<CommandPalette
+					views={paletteViews}
+					playlists={palettePlaylists}
+					onSelect={openFromPalette}
+					onDismiss={() => setIsPaletteOpen(false)}
+				/>
+			) : null}
+
+			{isSheetOpen ? (
+				<ShortcutSheet onDismiss={() => setIsSheetOpen(false)} />
+			) : null}
+
+			{isSettingsOpen ? (
+				<SettingsDialog onDismiss={() => setIsSettingsOpen(false)} />
+			) : null}
+
+			<span className="visually-hidden" aria-live="polite">
+				{t(isPlaying ? "player.playing" : "player.paused")}
+			</span>
+		</div>
 	);
 }

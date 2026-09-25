@@ -1,4 +1,4 @@
-import { COMPONENT, component, removePlaylist, TOKEN } from "./component.ts";
+import { COMPONENT, component, removePlaylist } from "./component.ts";
 import { api, expect, post, test } from "./fixtures.ts";
 
 // Every playback command sent to `foo_jean` on a real foobar2000, and read back off beefweb,
@@ -68,10 +68,7 @@ const command = (path: string, body?: unknown) =>
 const sendRaw = (path: string, body?: unknown) =>
 	fetch(`${COMPONENT()}${path}`, {
 		method: "POST",
-		headers: {
-			Authorization: `Bearer ${TOKEN()}`,
-			...(body === undefined ? {} : { "Content-Type": "application/json" }),
-		},
+		headers: { "Content-Type": "application/json" },
 		...(body === undefined ? {} : { body: JSON.stringify(body) }),
 	});
 

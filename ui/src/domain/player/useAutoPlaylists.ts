@@ -18,14 +18,13 @@ export interface PlaylistAnnotations {
 
 export function usePlaylistAnnotations(): PlaylistAnnotations {
 	const { discovery } = useFooJean();
-	const { origin, token } = discovery;
+	const { origin } = discovery;
 	const { data: playlists } = usePlaylists();
 
 	const { data, status, isFetching, refetch } = useQuery({
-		queryKey: [KEY, origin, token],
-		queryFn: () =>
-			origin && token ? fetchPlaylistAnnotations(origin, token) : null,
-		enabled: Boolean(origin && token && playlists),
+		queryKey: [KEY, origin],
+		queryFn: () => (origin ? fetchPlaylistAnnotations(origin) : null),
+		enabled: Boolean(origin && playlists),
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnWindowFocus: false,
 		retry: false,
@@ -36,8 +35,8 @@ export function usePlaylistAnnotations(): PlaylistAnnotations {
 	useEffect(() => {
 		if (lastCount.current === playlistCount) return;
 		lastCount.current = playlistCount;
-		if (origin && token && playlists) void refetch();
-	}, [playlistCount, origin, token, playlists, refetch]);
+		if (origin && playlists) void refetch();
+	}, [playlistCount, origin, playlists, refetch]);
 
 	return {
 		entries: data ?? [],

@@ -12,42 +12,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Identify the component. Needs no credential.
-         * @description Tells "foo_jean is here" from "nothing is listening" without spending a credential, for a script or a person checking this origin before anything authenticated is tried against it.
+         * Identify the component.
+         * @description Tells "foo_jean is here" from "nothing is listening", for a script or a person checking this origin exists before asking it anything else.
          *
-         *     It reports nothing a port scan would not. The field allowlist is absent from it and requires authentication.
+         *     It reports nothing a port scan would not. The field allowlist is absent from it; ask `GET /capabilities` for it.
          */
         get: operations["getStatus"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/pair": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Read the token, during a window opened at the player.
-         * @description Returns the bearer token, so a device need not have 64 hex characters typed into it. The owner presses **Pair a device** in `File → Preferences → Tools → Jean`, then the user presses Pair in the client. The window is open for 120 seconds.
-         *
-         *     Three bounds apply, and none is optional:
-         *
-         *     - Single grant. The first success closes the window. Pairing a second device takes a second press.
-         *     - Private source addresses only: RFC1918, loopback and link-local, and their IPv6 equivalents. A forwarded port or a tunnel cannot be paired through. The address is checked before the window is consulted, so a caller from outside learns nothing about whether a window is open and cannot spend a grant.
-         *     - The pairing history is recorded and shown in the preferences pane, so a pairing the owner did not perform is discoverable afterwards.
-         *
-         *     `Content-Type: application/json` is required. A simple `POST` needs no CORS preflight, so without this requirement a page on any origin could fire one blind and spend the grant. Requiring JSON forces every cross-origin caller to be preflighted, and with no `allowedOrigins` configured no origin is reflected, so a page has to be served by the component itself, same-origin, to pair.
-         */
-        post: operations["pair"];
         delete?: never;
         options?: never;
         head?: never;
@@ -261,7 +233,7 @@ export interface paths {
          *
          *     The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select or a queue, MUST use to keep that order.
          *
-         *     The read-only-playlists setting never refuses this operation: it protects a user's own playlists, and neither of the component's own holds any.
+         *     The read-only-playlists setting never refuses this operation: it protects a user's own playlists, and neither of the component's own holds any. `controlPlayback` does: playing a set is playback, and this is refused with a `403` while it is off.
          */
         post: operations["fillOwnPlaylist"];
         /**
@@ -270,7 +242,7 @@ export interface paths {
          *
          *     Idempotent: a role with no playlist yet is not made one just to answer this, and reports success regardless, exactly as `DELETE /stream/hold` reports success whether or not there was a hold to release.
          *
-         *     The read-only-playlists setting never refuses this operation, for the reason it never refuses a fill of `scratch`: it holds none of the user's music.
+         *     The read-only-playlists setting never refuses this operation, for the reason it never refuses a fill of `scratch`: it holds none of the user's music. `controlPlayback` does, for the same reason it refuses the fill.
          */
         delete: operations["emptyOwnPlaylist"];
         options?: never;
@@ -516,7 +488,7 @@ export interface paths {
          *
          *     Nothing comes back. Where playback landed reaches a client through `GET /state`'s `playingLocation`, on the player's own report rather than on this answer, so a track started at the player and a track started here arrive the same way.
          *
-         *     This writes nothing and the read-only-playlists setting does not refuse it.
+         *     This writes nothing and the read-only-playlists setting does not refuse it. `controlPlayback` does: this is playback, not a playlist write.
          */
         post: operations["playPlaylistRow"];
         delete?: never;
@@ -1026,11 +998,11 @@ export interface paths {
         put?: never;
         /**
          * Get a short-lived credential for one stream connection.
-         * @description An `<audio>` element cannot send an `Authorization` header, so the credential for `GET /stream` travels in the query string. That makes it a capability URL, and a short lifetime is what bounds it: a ticket expires in `expiresIn` seconds and grants nothing but the audio already being played.
+         * @description An `<audio>` element cannot send a header at all, so the credential for `GET /stream` travels in the query string. That makes it a capability URL, and a short lifetime is what bounds it: a ticket expires in `expiresIn` seconds and grants nothing but the audio already being played.
          *
          *     A ticket is not single-use. Safari's media element probes a source with a `Range: bytes=0-1` request before fetching it for real, so one playback start is two requests and a single-use ticket cannot serve Safari at all. A ticket is good until it expires; `maxConcurrentStreams` bounds how many streams may be open at once.
          *
-         *     A client SHOULD call this immediately before opening the stream rather than at page load, and MUST request a fresh ticket when reconnecting. Clients MUST NOT store a ticket, log it, or put it anywhere a bearer token would not go.
+         *     A client SHOULD call this immediately before opening the stream rather than at page load, and MUST request a fresh ticket when reconnecting. Clients MUST NOT store a ticket or log it.
          *
          *     This is also where a device says who it is, because it is the only part of opening a stream a client controls: an `<audio>` element sends no body and no header of its own. The identity rides the ticket to the connection it opens, so `GET /stream/listeners` can group sockets into devices. A request with no body is an anonymous listener rather than a refusal.
          */
@@ -1164,7 +1136,7 @@ export interface paths {
          *
          *     The response is chunked and ends when the client disconnects, the component stops, or the listener falls too far behind to be sent contiguous audio. A client MUST reconnect rather than treat the end as a stop: a dropped connection is ordinary on a wireless network, and an `<audio>` element does not retry by itself.
          *
-         *     This route takes a ticket rather than a bearer token, because an `<audio>` element cannot send a header. Without a valid ticket it answers `401`, and a bearer token is not accepted in its place.
+         *     This route takes a ticket because an `<audio>` element cannot send a header at all: without one, anything that can address this origin, a cross-origin `<audio src>` included, could open a stream. Without a valid ticket it answers `401`.
          */
         get: operations["openStream"];
         put?: never;
@@ -1195,11 +1167,6 @@ export interface components {
              * @example 1
              */
             apiVersion: number;
-            /**
-             * @description Always true. There is no unauthenticated mode.
-             * @constant
-             */
-            authRequired: true;
         };
         Capabilities: {
             /** @example 1 */
@@ -1219,12 +1186,14 @@ export interface components {
              *     The component's own scratch playlist stays writable regardless: this governs the user's playlists, not the component's own plumbing. The play queue is unaffected either way, since it is addressed through `/queue` rather than through a playlist.
              */
             canWritePlaylists: boolean;
+            /** @description Whether this install permits driving playback from here: the transport, seeking, the playback mode, the volume, playing a row and every queue write. `controlPlayback` in `config.json`, defaulting to `true`. Reading the state and the queue is unaffected either way, and so is the component's own scratch playlist, which follows this rather than `canWritePlaylists`. */
+            canControlPlayback: boolean;
             /** @description Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. Reported only: no route in this bundle reads it back or acts on it. */
             canChangeOutput: boolean;
             /**
              * @description How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
              *
-             *     The cap bounds a client bug rather than an attacker; whoever holds the token can already write tags.
+             *     The cap bounds a client bug rather than an attacker; anything admitted onto this origin can already write tags.
              * @example 100
              */
             maxAutoPlaylists: number;
@@ -1376,20 +1345,11 @@ export interface components {
                 position: number;
             }[];
         };
-        Paired: {
-            /** @description The bearer token, in full. A client MUST store it where it would store one pasted by hand, and MUST NOT log it or put it in a URL. */
-            token: string;
-            /**
-             * @description The shape of this API, so a client can refuse a version it does not know.
-             * @example 1
-             */
-            apiVersion: number;
-        };
         DeviceIdentity: {
             /**
              * @description Opaque, and stable for as long as the device keeps its storage. It is what groups a device's connections into one listener, so a reconnect and Safari's `Range` probe do not read as three people.
              *
-             *     Untrusted: it labels a row in somebody else's picker and nothing branches on it, and anyone already holding the token could send another device's. A client SHOULD generate one at random and keep it, and MUST NOT derive it from anything about the person using it.
+             *     Untrusted: it labels a row in somebody else's picker and nothing branches on it, and anything admitted onto this origin could send another device's. A client SHOULD generate one at random and keep it, and MUST NOT derive it from anything about the person using it.
              * @example 3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8
              */
             deviceId?: string;
@@ -1789,7 +1749,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id";
+            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id" | "this install has playback control turned off; turn on controlPlayback in config.json to allow it";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
@@ -1800,6 +1760,11 @@ export interface components {
         State: {
             library: components["schemas"]["Library"];
             player: components["schemas"]["PlayerState"];
+            /**
+             * @description Moves when a reload changes a key `GET /capabilities` reflects, and stands still on every other reload, including one that changed nothing or changed only a key that needs foobar2000 restarted. A client polls this to learn a switch moved without asking for capabilities on every tick.
+             * @example 3
+             */
+            configGeneration: number;
         };
         /** @description What rides under `library` in `GET /state`'s `200`, and what `GET /library/export` and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled. */
         Library: {
@@ -2252,6 +2217,15 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
+        /** @description This install has `controlPlayback` set to `false` in `config.json`. That is a player owner's own choice, made to keep the transport, the queue and the component's own scratch playlist untouched from here; setting it back to `true` is what grants the write. Reading the state and the queue is unaffected. */
+        PlaybackDisabled: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
         /** @description No playlist has that id. It may have been deleted in the player. */
         NoSuchPlaylist: {
             headers: {
@@ -2692,19 +2666,6 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /**
-         * @description No token, the wrong token, or the wrong scheme.
-         *
-         *     No `WWW-Authenticate` header is sent. It would raise a native browser credential dialog over the client's own UI, and no browser can satisfy this scheme.
-         */
-        Unauthorized: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
     };
     parameters: never;
     requestBodies: never;
@@ -2733,69 +2694,6 @@ export interface operations {
             };
         };
     };
-    pair: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": {
-                    /** @description What to call this device in the pairing history. Optional, and it MUST stay optional: requiring a name reintroduces the typing this route removes. Display text only. A value containing control characters is stored as empty rather than refused, since it is written to a log where a newline would forge a line. */
-                    name?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description The token. The only response in this API that carries it. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Paired"];
-                };
-            };
-            /** @description A body that is not a JSON object, or a name that is not short text. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description No window is open, or the caller is not on the local network. The `error` string distinguishes them: the first is fixed by a press at the player, the second is a fact about the network. A caller from outside is answered before the window is consulted, so it cannot infer one from the other. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description The request was not `application/json`. This requirement is what forces a cross-origin caller to be preflighted. */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Pairing attempts are rate-limited on a budget of their own, separate from every other route. A burst of ten is allowed, refilling at one every six seconds. */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     getCapabilities: {
         parameters: {
             query?: never;
@@ -2814,7 +2712,6 @@ export interface operations {
                     "application/json": components["schemas"]["Capabilities"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
         };
     };
     writeTags: {
@@ -2848,7 +2745,6 @@ export interface operations {
                     "application/json": components["schemas"]["TagRefused"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             /** @description The field is not on this install's allowlist. A `403` rather than a `400` because the request was understood and retrying it unchanged will never work. `field` names the offending field, and a client SHOULD stop offering that control. */
             403: {
                 headers: {
@@ -2887,7 +2783,7 @@ export interface operations {
             /**
              * @description The body exceeds 256 KB and was refused before it was parsed. The component answers and closes while the rest of the body may still be in flight, so a client sending something very large may see a dropped connection instead of this response. Both mean refused.
              *
-             *     One of the two failures that does not carry `written`; the other is the `401`.
+             *     The one response from `POST /tags` that does not carry `written`.
              */
             413: {
                 headers: {
@@ -2946,7 +2842,6 @@ export interface operations {
                     };
                 };
             };
-            401: components["responses"]["Unauthorized"];
             503: components["responses"]["PlaylistUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
@@ -2982,7 +2877,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["WritesDisabled"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["StructureMoved"];
@@ -3024,7 +2918,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["WritesDisabled"];
             409: components["responses"]["PlaylistConflict"];
             429: components["responses"]["TooManyRequests"];
@@ -3059,7 +2952,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
-            401: components["responses"]["Unauthorized"];
             503: components["responses"]["PlaylistUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
@@ -3093,7 +2985,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["NotOurs"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistConflict"];
@@ -3140,7 +3031,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["NotOurs"];
             404: components["responses"]["NoSuchPlaylist"];
             429: components["responses"]["TooManyRequests"];
@@ -3178,7 +3068,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             409: components["responses"]["FillConflict"];
             413: components["responses"]["BodyTooLarge"];
             429: components["responses"]["TooManyRequests"];
@@ -3210,7 +3100,7 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["PlaylistRefused"];
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["OwnPlaylistsUnavailable"];
@@ -3252,7 +3142,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistLocked"];
@@ -3294,7 +3183,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistLocked"];
@@ -3339,7 +3227,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
             413: components["responses"]["BodyTooLarge"];
@@ -3399,7 +3286,6 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryRefusal"] | components["schemas"]["PlaylistRefusal"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoSuchPlaylist"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
@@ -3435,7 +3321,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["WritesDisabled"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["FillConflict"];
@@ -3494,7 +3379,6 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryRefusal"] | components["schemas"]["PlaylistRefusal"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistRowsMoved"];
             410: components["responses"]["PlaylistRevisionGone"];
@@ -3540,7 +3424,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["OwnPlaylistAddressed"];
             /** @description Neither the target nor the source is a playlist the player holds. Which of the two is not said: either way the rows asked for are not there to copy. */
             404: {
@@ -3596,7 +3479,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
             /** @description Either the `structure` the request named is no longer the playlist's current one, or another component has locked the playlist against having rows removed. The `error` string tells them apart; nothing is removed in either case. */
@@ -3651,7 +3533,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             404: components["responses"]["NoSuchPlaylist"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
@@ -3674,7 +3556,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3696,7 +3578,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3718,7 +3600,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3740,7 +3622,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3775,7 +3657,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaybackSeekRefusal"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3810,7 +3692,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaybackModeRefusal"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             409: components["responses"]["PlaybackModeUnavailable"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
@@ -3846,7 +3728,7 @@ export interface operations {
                     "application/json": components["schemas"]["VolumeRefusal"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["VolumeUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3877,7 +3759,6 @@ export interface operations {
                 };
             };
             304: components["responses"]["NotModified"];
-            401: components["responses"]["Unauthorized"];
             429: components["responses"]["StatePolledTooFast"];
         };
     };
@@ -3899,7 +3780,6 @@ export interface operations {
                     "application/json": components["schemas"]["QueueRead"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
                 headers: {
@@ -3958,7 +3838,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             404: components["responses"]["NoSuchPlaylist"];
             /** @description Either the `structure` a library-tracks request named has moved -- tracks were added to or removed from the library, so every ordinal it carries has shifted -- or `at` was sent with a `revision` the queue has moved past or never reached. `error` tells the two apart: re-read `GET /state`'s `library.structure` and export again for the first, or re-read `GET /queue` and try again for the second. */
             409: {
@@ -4015,7 +3895,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             429: components["responses"]["TooManyRequests"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
@@ -4075,7 +3955,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             /** @description `revision` is not the queue's current one: it has moved past what a client planned this against, or has not reached it yet. Re-read `GET /queue` and try again. */
             409: {
                 headers: {
@@ -4146,7 +4026,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlaybackDisabled"];
             /** @description `revision` is not the queue's current one: it has moved past what a client planned this against, or has not reached it yet. Re-read `GET /queue` and try again. */
             409: {
                 headers: {
@@ -4236,7 +4116,6 @@ export interface operations {
             };
             304: components["responses"]["NotModified"];
             400: components["responses"]["LibraryRefused"];
-            401: components["responses"]["Unauthorized"];
             413: components["responses"]["LibraryTooLarge"];
             429: components["responses"]["LibraryRefreshedTooFast"];
             503: components["responses"]["LibraryUnavailable"];
@@ -4276,7 +4155,6 @@ export interface operations {
             };
             304: components["responses"]["NotModified"];
             400: components["responses"]["LibraryRefused"];
-            401: components["responses"]["Unauthorized"];
             409: components["responses"]["LibraryConflict"];
             410: components["responses"]["LibraryRevisionGone"];
             413: components["responses"]["LibraryTooLarge"];
@@ -4301,7 +4179,6 @@ export interface operations {
                     "application/json": components["schemas"]["Library"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             429: components["responses"]["LibraryRefreshedTooFast"];
             503: components["responses"]["LibraryUnavailable"];
         };
@@ -4366,7 +4243,6 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryRefusal"] | components["schemas"]["Error"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoSuchLibraryTrack"];
             /**
              * @description The address no longer names one definite track, and nothing was answered. The `error` string says which of two.
@@ -4426,7 +4302,6 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryRefusal"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoTrackPlaying"];
             500: components["responses"]["PlayerRefused"];
             504: components["responses"]["PlayerTooSlow"];
@@ -4468,7 +4343,6 @@ export interface operations {
             };
             304: components["responses"]["ArtworkNotModified"];
             400: components["responses"]["ArtworkRefused"];
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoArtwork"];
             413: components["responses"]["ArtworkTooLarge"];
             429: components["responses"]["ArtworkRequestedTooFast"];
@@ -4502,7 +4376,6 @@ export interface operations {
                 };
             };
             304: components["responses"]["RevalidatedArtworkNotModified"];
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoPlayingArtwork"];
             413: components["responses"]["ArtworkTooLarge"];
             429: components["responses"]["ArtworkRequestedTooFast"];
@@ -4555,7 +4428,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NoPositionalArtwork"];
             413: components["responses"]["ArtworkTooLarge"];
             429: components["responses"]["ArtworkRequestedTooFast"];
@@ -4595,7 +4467,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             /** @description A body was sent and was not `application/json`. */
             415: {
                 headers: {
@@ -4626,7 +4497,6 @@ export interface operations {
                     "application/json": components["schemas"]["StreamListeners"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
         };
     };
     releaseOutputHold: {
@@ -4645,7 +4515,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            401: components["responses"]["Unauthorized"];
             /** @description This install does not mute the player, so there is never a hold. `canMuteWhileStreaming` says so in advance. */
             503: {
                 headers: {
@@ -4686,7 +4555,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             /** @description The body was not `application/json`. */
             415: {
                 headers: {
@@ -4716,7 +4584,6 @@ export interface operations {
                     "application/json": components["schemas"]["StreamTimeline"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
             503: components["responses"]["StreamUnavailable"];
         };
     };

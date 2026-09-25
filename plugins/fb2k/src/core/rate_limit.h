@@ -9,9 +9,9 @@
 
 namespace jean {
 
-// A token bucket. The bearer token is the security control, and anyone holding one could
-// already make the same calls one at a time. What this bounds is how fast a client bug
-// turns into a burst of them.
+// A token bucket. Admission is the security control, and anyone it admits could already make
+// the same calls one at a time. What this bounds is how fast a client bug turns into a burst
+// of them.
 class RateLimiter {
 public:
     RateLimiter(int burst, std::chrono::milliseconds perToken);

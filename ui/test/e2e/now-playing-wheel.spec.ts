@@ -4,7 +4,6 @@ import {
 	coversFromTheComponent,
 	expect,
 	expectSettlesAt,
-	FOO_JEAN_TOKEN,
 	guidOfPlaylist,
 	inSequence,
 	listenHere,
@@ -458,7 +457,6 @@ test.describe("the wheel while the sound is a stream", () => {
 	test.use({
 		motion: "allow",
 		fooJean: { streamPrime: 6 },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 	test.setTimeout(120_000);
 

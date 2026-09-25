@@ -30,14 +30,6 @@ const std::unordered_map<std::string, int>& uiAssetIds() {
     return table;
 }
 
-// core_api::pathInProfile answers a "file://" path, and std::filesystem needs the form Windows
-// itself resolves symlinks and junctions against.
-std::filesystem::path nativePathOf(const std::string& profilePath) {
-    pfc::string8 display;
-    filesystem::g_get_display_path(profilePath.c_str(), display);
-    return std::filesystem::path(toWide(toStd(display)));
-}
-
 bool isWithin(const std::filesystem::path& root, const std::filesystem::path& candidate) {
     auto rootPart = root.begin();
     auto candidatePart = candidate.begin();

@@ -3,7 +3,6 @@ import { en } from "../../src/shared/i18n/en.ts";
 import type { RecordedRequest } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
-	AS_A_CLIENT,
 	componentOrigin,
 	expect,
 	expectSettlesAt,
@@ -666,7 +665,6 @@ test.describe("what the player answers an edit it holds the lock on", () => {
 		request.post(
 			`${origin}/api/playlists/${guidOfPlaylist(player, target)}/items/copy`,
 			{
-				...AS_A_CLIENT,
 				data: { source: guidOfPlaylist(player, LIBRARY), runs: [[0, 3]] },
 			},
 		);
@@ -691,17 +689,13 @@ test.describe("what the player answers an edit it holds the lock on", () => {
 		const origin = await componentOrigin(request);
 		const built = await request.get(
 			`${origin}/api/library/export?columns=${encodeURIComponent("%title%")}`,
-			AS_A_CLIENT,
 		);
 		expect(built.status()).toBe(200);
-		const { library } = await (
-			await request.get(`${origin}/api/state`, AS_A_CLIENT)
-		).json();
+		const { library } = await (await request.get(`${origin}/api/state`)).json();
 
 		const refused = await request.post(
 			`${origin}/api/playlists/${guidOfPlaylist(player, AUTO.id)}/items`,
 			{
-				...AS_A_CLIENT,
 				data: { structure: library.structure, ordinals: [0, 1, 2] },
 			},
 		);

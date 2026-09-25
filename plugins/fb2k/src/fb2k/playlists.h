@@ -57,7 +57,7 @@ PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread);
 PlaylistRowArtworkReader makePlaylistRowArtworkReader(MainThreadQueue& mainThread,
                                                        const AlbumArt& art);
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
-                                            const PlaylistVersions& versions, int maxAutoPlaylists);
+                                            const PlaylistVersions& versions);
 AutoPlaylistUpdater makeAutoPlaylistUpdater(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions);
 AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread);

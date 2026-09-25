@@ -49,7 +49,7 @@ async function poll() {
 	if (inFlight) return;
 	inFlight = true;
 	try {
-		const listeners = await fetchStreamListeners(target.origin, target.token);
+		const listeners = await fetchStreamListeners(target.origin);
 		publish({ listeners, lagSeconds: listeningLagSeconds() });
 	} finally {
 		inFlight = false;

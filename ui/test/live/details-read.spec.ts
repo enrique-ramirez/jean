@@ -6,13 +6,7 @@ import {
 	trackRow,
 } from "../e2e/fixtures.ts";
 import { expectPanelOpen, panelTab } from "../e2e/nowPlaying.ts";
-import {
-	COMPONENT,
-	component,
-	playRow,
-	removePlaylist,
-	TOKEN,
-} from "./component.ts";
+import { COMPONENT, component, playRow, removePlaylist } from "./component.ts";
 import {
 	api,
 	expect,
@@ -20,7 +14,6 @@ import {
 	type Page,
 	post,
 	reset,
-	seedToken,
 	test,
 } from "./fixtures.ts";
 
@@ -163,9 +156,7 @@ const median = (values: number[]) => {
 
 const timed = async (path: string) => {
 	const from = performance.now();
-	const response = await fetch(`${COMPONENT()}${path}`, {
-		headers: { Authorization: `Bearer ${TOKEN()}` },
-	});
+	const response = await fetch(`${COMPONENT()}${path}`);
 	await response.text();
 	return {
 		status: response.status,
@@ -269,10 +260,6 @@ test.beforeAll(async ({ install }) => {
 test.afterAll(async ({ install }) => {
 	await reset(install.origin);
 	if (probe) await removePlaylist(probe);
-});
-
-test.beforeEach(async ({ page }) => {
-	await seedToken(page);
 });
 
 test("the details panel fills for a track the media library holds", async ({

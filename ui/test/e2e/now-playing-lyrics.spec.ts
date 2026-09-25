@@ -1,7 +1,6 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
-	FOO_JEAN_TOKEN,
 	listenHere,
 	nowPlayingScreen,
 	openLibrary,
@@ -283,7 +282,6 @@ test.describe("a lyric read through the stream", () => {
 	test.use({
 		...TAGGED,
 		fooJean: { streamPrime: 6 },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 	test.setTimeout(120_000);
 

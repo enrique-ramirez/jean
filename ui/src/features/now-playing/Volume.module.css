@@ -17,7 +17,7 @@
 		color 0.12s var(--ease);
 }
 
-.button:hover {
+.button:hover:not([aria-disabled="true"]) {
 	background: var(--surface-sunken);
 	color: var(--text);
 }
@@ -26,12 +26,21 @@
 	color: var(--accent-text);
 }
 
+.button[aria-disabled="true"] {
+	opacity: 0.45;
+}
+
 .slider {
 	position: relative;
 	display: flex;
 	align-items: center;
 	cursor: pointer;
 	touch-action: none;
+}
+
+.slider[aria-disabled="true"] {
+	cursor: default;
+	opacity: 0.6;
 }
 
 .slider[data-orientation="horizontal"] {

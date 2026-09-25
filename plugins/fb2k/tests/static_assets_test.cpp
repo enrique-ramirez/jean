@@ -1,6 +1,6 @@
-// Jean's page served over a real socket from the page seam: every path outside /api/, answered
-// before the bearer check. Where the files come from is the seam's business and is not tested
-// here; what a request meets on its way to one is.
+// Jean's page served over a real socket from the page seam: every path outside /api/. Where the
+// files come from is the seam's business and is not tested here; what a request meets on its way
+// to one is.
 
 #include "third_party/doctest.h"
 
@@ -212,30 +212,25 @@ TEST_CASE("c3 a path under /api/ answers as it does with no page, and never from
     const auto bareIndex = browse(withPage, "/api/index.html");
 
     REQUIRE(bareIndex);
-    CHECK(bareIndex->status == 401);
+    CHECK(bareIndex->status == 404);
     CHECK(bareIndex->body != kIndex);
 
     for (const char* path :
          {"/api/index.html", "/api/assets/x.js", "/api/locales/es.json", "/api/"}) {
         INFO("path: ", path);
 
-        for (const bool withToken : {false, true}) {
-            INFO("token: ", withToken);
-            const auto headers = withToken ? TestServer::bearer() : httplib::Headers{};
+        const auto page = withPage.client().Get(path);
+        const auto today = withoutPage.client().Get(path);
 
-            const auto page = withPage.client().Get(path, headers);
-            const auto today = withoutPage.client().Get(path, headers);
+        REQUIRE(page);
+        REQUIRE(today);
+        CHECK(page->status == today->status);
+        CHECK(page->body == today->body);
 
-            REQUIRE(page);
-            REQUIRE(today);
-            CHECK(page->status == today->status);
-            CHECK(page->body == today->body);
+        const auto head = withPage.client().Head(path);
 
-            const auto head = withPage.client().Head(path, headers);
-
-            REQUIRE(head);
-            CHECK(head->status == today->status);
-        }
+        REQUIRE(head);
+        CHECK(head->status == today->status);
     }
 
     CHECK(pages.asked.empty());
@@ -243,7 +238,7 @@ TEST_CASE("c3 a path under /api/ answers as it does with no page, and never from
 
 // Jean routes on the hash, so a path the build does not hold is never a view of the app, and
 // answering index.html for it would hide a missing asset behind a page that loads blank.
-TEST_CASE("c4 a path the build does not hold is the JSON 404, with a token or without") {
+TEST_CASE("c4 a path the build does not hold is the JSON 404") {
     FakePages pages = aBuild();
     const TestServer server(servingSettings(), serving(&pages));
 
@@ -256,17 +251,12 @@ TEST_CASE("c4 a path the build does not hold is the JSON 404, with a token or wi
                              "/library/some/view"}) {
         INFO("path: ", path);
 
-        for (const bool withToken : {false, true}) {
-            INFO("token: ", withToken);
-            const auto headers = withToken ? TestServer::bearer() : httplib::Headers{};
+        const auto response = server.client().Get(path);
 
-            const auto response = server.client().Get(path, headers);
-
-            REQUIRE(response);
-            CHECK(response->status == 404);
-            CHECK(json::parse(response->body) == kNotFound);
-            CHECK(response->body == unknownApiPath->body);
-        }
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body) == kNotFound);
+        CHECK(response->body == unknownApiPath->body);
     }
 }
 
@@ -302,16 +292,11 @@ TEST_CASE("c5 a path carrying .., a backslash or a NUL in any spelling is refuse
     for (const auto& path : refused) {
         INFO("path: ", path);
 
-        for (const bool withToken : {false, true}) {
-            INFO("token: ", withToken);
-            const auto headers = withToken ? TestServer::bearer() : httplib::Headers{};
+        const auto response = server.client().Get(path);
 
-            const auto response = server.client().Get(path, headers);
-
-            REQUIRE(response);
-            CHECK(response->status == 404);
-            CHECK(json::parse(response->body) == kNotFound);
-        }
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body) == kNotFound);
     }
 
     CHECK(pages.asked.empty());
@@ -345,16 +330,11 @@ TEST_CASE("c5 a path segment ending in a dot or a space is refused unread, in a 
     for (const auto& path : refused) {
         INFO("path: ", path);
 
-        for (const bool withToken : {false, true}) {
-            INFO("token: ", withToken);
-            const auto headers = withToken ? TestServer::bearer() : httplib::Headers{};
+        const auto response = server.client().Get(path);
 
-            const auto response = server.client().Get(path, headers);
-
-            REQUIRE(response);
-            CHECK(response->status == 404);
-            CHECK(json::parse(response->body) == kNotFound);
-        }
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body) == kNotFound);
     }
 
     CHECK(pages.asked.empty());
@@ -434,38 +414,33 @@ TEST_CASE("c7 HEAD / answers what GET / would, with no body") {
     CHECK(response->body.empty());
 }
 
-TEST_CASE("c7 POST / is a 404 with a token or without, and no other method reaches a page file") {
+TEST_CASE("c7 POST / is a 404, and no other method reaches a page file") {
     FakePages pages = aBuild();
     const TestServer server(servingSettings(), serving(&pages));
 
-    for (const bool withToken : {false, true}) {
-        INFO("token: ", withToken);
-        const auto headers = withToken ? TestServer::bearer() : httplib::Headers{};
+    const auto posted = server.client().Post("/", "", "text/plain");
 
-        const auto posted = server.client().Post("/", headers, "", "text/plain");
+    REQUIRE(posted);
+    CHECK(posted->status == 404);
+    CHECK(json::parse(posted->body) == kNotFound);
 
-        REQUIRE(posted);
-        CHECK(posted->status == 404);
-        CHECK(json::parse(posted->body) == kNotFound);
+    auto client = server.client();
+    std::vector<httplib::Result> others;
+    others.push_back(client.Put("/index.html", "", "text/plain"));
+    others.push_back(client.Patch("/index.html", "", "text/plain"));
+    others.push_back(client.Delete("/index.html"));
 
-        auto client = server.client();
-        std::vector<httplib::Result> others;
-        others.push_back(client.Put("/index.html", headers, "", "text/plain"));
-        others.push_back(client.Patch("/index.html", headers, "", "text/plain"));
-        others.push_back(client.Delete("/index.html", headers));
-
-        for (const auto& other : others) {
-            REQUIRE(other);
-            CHECK(other->status != 200);
-            CHECK(other->body != kIndex);
-        }
+    for (const auto& other : others) {
+        REQUIRE(other);
+        CHECK(other->status != 200);
+        CHECK(other->body != kIndex);
     }
 
     CHECK(pages.asked.empty());
 }
 
 // A folder dropped in www/ is somebody else's code sharing Jean's origin, so letting it replace
-// one of Jean's files would hand it Jean's page and the token Jean stores.
+// one of Jean's files would hand it Jean's page and whatever Jean does with it.
 TEST_CASE("c9 a path the build holds is answered from the build, and disk is never asked for it") {
     FakePages pages = aBuild();
     FakeDisk disk;

@@ -2,7 +2,6 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
-	FOO_JEAN_TOKEN,
 	openLibrary,
 	openSettings,
 	playedFrom,
@@ -159,7 +158,6 @@ test.describe("the settings dialog", () => {
 	test.describe("typing into a field", () => {
 		test.use({
 			fooJean: {},
-			fooJeanToken: FOO_JEAN_TOKEN,
 		});
 
 		test("the caret survives a push from the player", async ({
@@ -227,7 +225,6 @@ test.describe("cursor follows playback", () => {
 			withoutFields: ["%lastfm_play_count%"],
 			retagged: { Deléctrico: { "%rating%": "3" } },
 			fooJean: {},
-			fooJeanToken: FOO_JEAN_TOKEN,
 		});
 
 		test("is what makes the rating keys hit the track you are hearing", async ({
@@ -333,5 +330,66 @@ test.describe("playback follows cursor", () => {
 			await expect(cursorRow(page)).toHaveAttribute("data-row", "3");
 			await expect(statusBar(page)).toContainText("Soy Rock");
 		});
+	});
+});
+
+const PERMISSIONS = "File → Preferences → Tools → Jean → Permissions";
+
+const fooJeanPanel = (page: Page) =>
+	settingsDialog(page).getByRole("region", { name: "foo_jean" });
+
+// Scoped to the paragraph that names the switch, since the stream and field
+// messages name the same Permissions page and would satisfy a panel-wide match.
+const playbackRemedy = (page: Page) =>
+	fooJeanPanel(page)
+		.locator("p")
+		.filter({ hasText: /control ?playback/i });
+
+test.describe("foo_jean refusing playback control", () => {
+	test.use({ fooJean: { canControlPlayback: false } });
+
+	test("Settings names the switch that allows playback control, and the Permissions page it is on", async ({
+		page,
+	}) => {
+		await openSettings(page);
+
+		await expect(playbackRemedy(page)).toBeVisible();
+		await expect(playbackRemedy(page)).toContainText(PERMISSIONS);
+	});
+
+	test.describe("with no fields and no stream as well", () => {
+		test.use({
+			fooJean: {
+				canControlPlayback: false,
+				allowedFields: [],
+				canStream: false,
+			},
+		});
+
+		test("each refusal keeps its own message, and none replaces another", async ({
+			page,
+		}) => {
+			await openSettings(page);
+
+			await expect(playbackRemedy(page)).toBeVisible();
+			await expect(playbackRemedy(page)).toContainText(PERMISSIONS);
+			await expect(fooJeanPanel(page)).toContainText(
+				"Connected, and this install permits no fields to be written.",
+			);
+			await expect(fooJeanPanel(page)).toContainText(
+				"does not stream audio, so Jean cannot play it on this device",
+			);
+		});
+	});
+});
+
+test.describe("foo_jean allowing playback control", () => {
+	test.use({ fooJean: { canControlPlayback: true } });
+
+	test("Settings says nothing about the playback switch", async ({ page }) => {
+		await openSettings(page);
+
+		await expect(fooJeanPanel(page)).toContainText("Connected to foo_jean.");
+		await expect(fooJeanPanel(page)).not.toContainText(/control ?playback/i);
 	});
 });

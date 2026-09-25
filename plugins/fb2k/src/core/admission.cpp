@@ -1,9 +1,8 @@
-#include "pairing.h"
+#include "admission.h"
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <cstdlib>
 #include <optional>
 
 #include "text.h"
@@ -199,6 +198,64 @@ bool isPrivateIpv6(const std::string& address) {
     return isLoopback(bytes) || isUniqueLocal(bytes) || isLinkLocal(bytes);
 }
 
+bool hasSuffix(const std::string& text, const std::string& suffix) {
+    return text.size() >= suffix.size() &&
+           text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+bool isListedHost(const std::vector<std::string>& allowedHosts, const std::string& lowered) {
+    return std::any_of(allowedHosts.begin(), allowedHosts.end(),
+                        [&lowered](const std::string& allowed) {
+                            return equalsIgnoringCase(lowered, allowed);
+                        });
+}
+
+// A bracketed literal is the only unambiguous way to carry an IPv6 address in a Host
+// header, since an unbracketed one cannot be told apart from its own port separator.
+bool admitsBracketedLiteral(const std::string& host) {
+    const auto close = host.find(']');
+    if (close == std::string::npos)
+        return false;
+
+    const std::string afterBracket = host.substr(close + 1);
+    if (!afterBracket.empty() && afterBracket[0] != ':')
+        return false;
+
+    return parseIpv6(host.substr(1, close - 1)).has_value();
+}
+
+bool admitsNamedHost(const std::string& host, const std::vector<std::string>& allowedHosts) {
+    if (std::count(host.begin(), host.end(), ':') > 1)
+        return false;
+
+    const auto colon = host.find(':');
+    std::string name = colon == std::string::npos ? host : host.substr(0, colon);
+    if (!name.empty() && name.back() == '.')
+        name.pop_back();
+
+    if (name.empty())
+        return false;
+
+    const std::string lowered = toLower(name);
+
+    if (parseIpv4(lowered))
+        return true;
+
+    return lowered == "localhost" || lowered.find('.') == std::string::npos ||
+           hasSuffix(lowered, ".lan") || hasSuffix(lowered, ".local") ||
+           hasSuffix(lowered, ".home.arpa") || isListedHost(allowedHosts, lowered);
+}
+
+bool hostAdmitted(const std::string& host, const std::vector<std::string>& allowedHosts) {
+    if (host.empty())
+        return false;
+
+    if (host[0] == '[')
+        return admitsBracketedLiteral(host);
+
+    return admitsNamedHost(host, allowedHosts);
+}
+
 }  // namespace
 
 bool isPrivateAddress(const std::string& address) {
@@ -213,57 +270,15 @@ bool isPrivateAddress(const std::string& address) {
     return isPrivateIpv4(bare) || isPrivateIpv6(bare);
 }
 
-PairingWindow::PairingWindow(std::chrono::seconds duration) : duration_(duration) {}
+Admission admit(const std::string& sourceAddress, const std::string& host,
+                 const std::vector<std::string>& allowedHosts) {
+    if (!isPrivateAddress(sourceAddress))
+        return Admission{false, "the request did not come from a private address"};
 
-void PairingWindow::open(Clock::time_point now) {
-    const std::lock_guard<std::mutex> held(mutex_);
-    openUntil_ = now + duration_;
-    everOpened_ = true;
-}
+    if (!hostAdmitted(host, allowedHosts))
+        return Admission{false, "Host " + host + " is not in allowedHosts"};
 
-void PairingWindow::close() {
-    const std::lock_guard<std::mutex> held(mutex_);
-    openUntil_ = Clock::time_point{};
-}
-
-bool PairingWindow::openAt(Clock::time_point now) const {
-    return everOpened_ && now < openUntil_;
-}
-
-bool PairingWindow::isOpen(Clock::time_point now) const {
-    const std::lock_guard<std::mutex> held(mutex_);
-    return openAt(now);
-}
-
-std::chrono::seconds PairingWindow::remaining(Clock::time_point now) const {
-    const std::lock_guard<std::mutex> held(mutex_);
-    if (!openAt(now))
-        return std::chrono::seconds{0};
-    return std::chrono::duration_cast<std::chrono::seconds>(openUntil_ - now);
-}
-
-PairingWindow::Result PairingWindow::claim(Clock::time_point now,
-                                           std::chrono::system_clock::time_point wallNow,
-                                           const std::string& address, const std::string& name) {
-    if (!isPrivateAddress(address))
-        return Result::AddressNotPrivate;
-
-    const std::lock_guard<std::mutex> held(mutex_);
-    if (!openAt(now))
-        return Result::NotOpen;
-
-    openUntil_ = Clock::time_point{};
-
-    history_.push_back(Record{isPrintable(name) ? name : std::string(), address, wallNow});
-    if (history_.size() > kMaxPairingHistory)
-        history_.erase(history_.begin());
-
-    return Result::Granted;
-}
-
-std::vector<PairingWindow::Record> PairingWindow::history() const {
-    const std::lock_guard<std::mutex> held(mutex_);
-    return history_;
+    return Admission{true, ""};
 }
 
 }  // namespace jean

@@ -350,11 +350,7 @@ async function open(next: string) {
 		attempt > 0 ? { kind: "reconnecting", attempt } : { kind: "connecting" },
 	);
 
-	const issued = await issueStreamTicket(
-		target.origin,
-		target.token,
-		deviceIdentity(),
-	);
+	const issued = await issueStreamTicket(target.origin, deviceIdentity());
 	if (mine !== generation) return;
 
 	if (!issued.ok) {
@@ -493,7 +489,7 @@ async function reloadMarks() {
 	if (!target || !element || !isListening(phase)) return;
 
 	const mine = generation;
-	const timeline = await fetchStreamTimeline(target.origin, target.token);
+	const timeline = await fetchStreamTimeline(target.origin);
 	if (!timeline || mine !== generation || !element) return;
 
 	marks = timeline.marks;
@@ -618,13 +614,12 @@ export function disconnect() {
 
 	// A closed socket says nothing about why it closed, and the component waits out a linger before
 	// unmuting the player in case it was a reconnect. This is what says it was not one.
-	if (wasListening && gone) leaveStream(gone.origin, gone.token, deviceId());
+	if (wasListening && gone) leaveStream(gone.origin, deviceId());
 }
 
 export function configureListening(next: ListenTarget | null) {
 	const same =
 		target?.origin === next?.origin &&
-		target?.token === next?.token &&
 		target?.formats.join() === next?.formats.join();
 	if (same) return;
 

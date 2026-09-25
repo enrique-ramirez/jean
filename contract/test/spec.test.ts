@@ -104,8 +104,8 @@ test("the contract carries a fill per owner, and refuses only the one addressing
 	assert.equal(`${users.method} ${users.path}`, "POST /playlists/{id}/items");
 
 	assert.ok(
-		!own.published.has(403),
-		"the read-only-playlists setting now reaches a playlist the component owns",
+		own.published.has(403),
+		"controlPlayback no longer refuses a fill of the component's own playlist",
 	);
 	assert.ok(
 		users.published.has(403),
@@ -121,8 +121,8 @@ test("playing a row is not one of the writes the read-only-playlists setting ref
 		"POST /playlists/{id}/items/{index}/play",
 	);
 	assert.ok(
-		!play.published.has(403),
-		"a read-only instance now refuses a playback command as though it were an edit",
+		play.published.has(403),
+		"controlPlayback no longer refuses a playback command",
 	);
 });
 

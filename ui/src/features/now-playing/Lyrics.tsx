@@ -2,7 +2,9 @@ import { Mic2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { audibleAt } from "@/domain/player/position";
+import { permitsPlaybackControl } from "@/shared/api/fooJean";
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { scrollParentOf } from "@/shared/lib/scrollParent";
 import styles from "./Lyrics.module.css";
@@ -33,6 +35,9 @@ function Synced({
 	snapshot: PlayerSnapshot | null | undefined;
 	onSeek: (at: number) => void;
 }) {
+	const t = useTranslate();
+	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	const [active, setActive] = useState(() =>
 		activeLineAt(lines, audibleAt(snapshot)),
 	);
@@ -108,7 +113,13 @@ function Synced({
 						data-state={
 							index === active ? "active" : index < active ? "past" : "coming"
 						}
-						onClick={() => onSeek(line.at)}
+						aria-disabled={canControlPlayback ? undefined : "true"}
+						aria-label={
+							canControlPlayback || !line.text
+								? undefined
+								: t("player.controlOffName", { control: line.text })
+						}
+						onClick={canControlPlayback ? () => onSeek(line.at) : undefined}
 					>
 						{line.text || <span className={styles.gap} aria-hidden="true" />}
 					</button>

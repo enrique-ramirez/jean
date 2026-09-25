@@ -3,7 +3,6 @@ import {
 	expect,
 	expectSettlesAt,
 	type FakePlayer,
-	FOO_JEAN_TOKEN,
 	type Locator,
 	nowPlayingScreen,
 	openNowPlaying,
@@ -67,7 +66,7 @@ const thePlayer = (page: Page) =>
 const marks = (within: Locator) => within.locator("[data-paused]");
 
 test.describe("where the picker sits", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	// The button is a third of the way in from the right edge at every width, so a
 	// panel whose right edge is the button's hangs off the left of a phone.
@@ -138,8 +137,6 @@ test.describe("where the picker sits", () => {
 // even a button left to press. Settings has a "Check again"; the footer is
 // where somebody actually is.
 test.describe("a first check that times out", () => {
-	test.use({ fooJeanToken: FOO_JEAN_TOKEN });
-
 	test("the picker turns up on its own, with nothing pressed in Settings", async ({
 		page,
 	}) => {
@@ -162,7 +159,7 @@ test.describe("a first check that times out", () => {
 });
 
 test.describe("listening on this device", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	test("takes a ticket and opens the stream", async ({ page, player }) => {
 		await page.goto("/");
@@ -238,18 +235,6 @@ test.describe("listening on this device", () => {
 		await expect.poll(() => currentTime(page)).toBe(0);
 		await expect(picker(page)).toContainText("Listen here");
 	});
-
-	test("no ticket and no token appears in a URL", async ({ page, player }) => {
-		await page.goto("/");
-		await startListening(page);
-		await expect.poll(() => streamRequests(player).length).toBeGreaterThan(0);
-
-		// The bearer token travels in a header and must never be in a query
-		// string; the ticket is the credential that may be.
-		for (const entry of player.requests)
-			expect(entry.path).not.toContain(FOO_JEAN_TOKEN);
-		expect(page.url()).not.toContain(FOO_JEAN_TOKEN);
-	});
 });
 
 test.describe("choosing a codec", () => {
@@ -260,7 +245,6 @@ test.describe("choosing a codec", () => {
 			streamFormats: ["opus", "aac"],
 			playableFormats: ["aac"],
 		},
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("falls to the second format without a reload", async ({
@@ -288,7 +272,6 @@ test.describe("a stream the short-buffer path cannot read", () => {
 	test.use({
 		fooJean: {},
 		settings: { "jean.lowLatencyStream": true },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("falls back to the browser's own buffer rather than going silent", async ({
@@ -319,7 +302,7 @@ test.describe("a stream the short-buffer path cannot read", () => {
 });
 
 test.describe("an install with no encoder", () => {
-	test.use({ fooJean: { canStream: false }, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: { canStream: false } });
 
 	test("does not offer the control at all", async ({ page }) => {
 		await page.goto("/");
@@ -329,7 +312,7 @@ test.describe("an install with no encoder", () => {
 });
 
 test.describe("the picker on the now-playing screen", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	// The phone's screen replaces the status bar, so without a copy here the one
 	// control that says where the sound is going is unreachable while it is open.
@@ -371,7 +354,7 @@ test.describe("the picker on the now-playing screen", () => {
 });
 
 test.describe("a component that is not answering", () => {
-	test.use({ fooJean: { reachable: false }, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: { reachable: false } });
 
 	test("offers nothing to listen with", async ({ page }) => {
 		await page.goto("/");
@@ -386,7 +369,6 @@ test.describe("a busy component", () => {
 			failTickets: 503,
 			ticketError: "too many listeners",
 		},
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("reads as busy rather than as not supported", async ({ page }) => {
@@ -400,7 +382,7 @@ test.describe("a busy component", () => {
 });
 
 test.describe("an expired ticket", () => {
-	test.use({ fooJean: { expireTickets: true }, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: { expireTickets: true } });
 
 	test("retries with a fresh one rather than giving up at once", async ({
 		page,
@@ -421,7 +403,6 @@ test.describe("an expired ticket", () => {
 test.describe("a stream that ends", () => {
 	test.use({
 		fooJean: { streamBehaviour: "short" },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("reconnects with a fresh ticket", async ({ page, player }) => {
@@ -455,7 +436,6 @@ test.describe("a stream that ends", () => {
 test.describe("a stream that goes quiet", () => {
 	test.use({
 		fooJean: { streamBehaviour: "quiet" },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("says the player is stopped rather than nothing at all", async ({
@@ -481,7 +461,7 @@ const NEXT = { index: 40, title: "Goodnite, Noises Everywhere" };
 test.describe("what is audible, not what the player is doing", () => {
 	// The lag is `12 - prime`; the default of fifteen leaves none. See
 	// `test/README.md`.
-	test.use({ fooJean: { streamPrime: 6 }, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: { streamPrime: 6 } });
 
 	// Real time is the thing under test.
 	test.setTimeout(120_000);
@@ -596,7 +576,6 @@ test.describe("the clock once the short buffer is written off", () => {
 	test.use({
 		fooJean: { streamPrime: 6 },
 		settings: { "jean.lowLatencyStream": true },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test.setTimeout(120_000);
@@ -643,7 +622,6 @@ test.describe("who else is listening", () => {
 				{ deviceId: "laptop-1", name: null, listeningFor: 0 },
 			],
 		},
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("names them, and tells two of a kind apart", async ({ page }) => {
@@ -739,7 +717,7 @@ test.describe("who else is listening", () => {
 });
 
 test.describe("saying goodbye", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	test("a handoff back to the player says it meant to stop", async ({
 		page,

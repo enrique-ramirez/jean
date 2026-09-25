@@ -9,8 +9,6 @@
 param(
   [string]$Beefweb = 'http://127.0.0.1:8880/api',
   [string]$FooJean = 'http://127.0.0.1:8881/api',
-  [string]$Token,
-  [string]$Foobar2000Dir = $env:FOOBAR2000_DIR,
   # kMuteLingerSeconds in core/settings.h. A departure is only really a departure once this has run out.
   [int]$Linger = 8
 )
@@ -20,7 +18,8 @@ $failures = 0
 
 function Get-Json($uri, $headers = @{}, $method = 'GET', $body = $null) {
   $call = @{ Uri = $uri; Headers = $headers; Method = $method; UseBasicParsing = $true; TimeoutSec = 30 }
-  if ($null -ne $body) { $call.Body = $body; $call.ContentType = 'application/json' }
+  if ($null -ne $body) { $call.Body = $body }
+  if ($method -ieq 'POST') { $call.ContentType = 'application/json' }
   $resp = Invoke-WebRequest @call
   if ($resp.RawContentStream.Length -eq 0) { return $null }
   [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
@@ -35,23 +34,12 @@ function Check($what, $ok, $detail = '') {
   }
 }
 
-if (-not $Token) {
-  if (-not $Foobar2000Dir) {
-    throw "Pass -Token, or set -Foobar2000Dir / FOOBAR2000_DIR so the token can be read from config.json"
-  }
-  $configPath = Join-Path $Foobar2000Dir 'profile\foo_jean\config.json'
-  if (-not (Test-Path $configPath)) { throw "No foo_jean config at $configPath" }
-  $Token = (Get-Content $configPath -Raw | ConvertFrom-Json).authToken
-}
-
-$auth = @{ Authorization = "Bearer $Token" }
-
 function Get-PlayerVolume { (Get-Json "$Beefweb/player").player.volume }
-function Get-Listeners { Get-Json "$FooJean/stream/listeners" $auth }
+function Get-Listeners { Get-Json "$FooJean/stream/listeners" }
 
 function New-Ticket($deviceId, $name) {
   $body = @{ deviceId = $deviceId; name = $name } | ConvertTo-Json -Compress
-  (Get-Json "$FooJean/stream/ticket" $auth 'POST' $body).ticket
+  (Get-Json "$FooJean/stream/ticket" @{} 'POST' $body).ticket
 }
 
 # A socket written by hand rather than an HttpWebRequest, so that closing one connection closes exactly that connection:
@@ -102,7 +90,7 @@ function Wait-For($predicate, $seconds = 10) {
 }
 
 Write-Host "capabilities"
-$caps = Get-Json "$FooJean/capabilities" $auth
+$caps = Get-Json "$FooJean/capabilities"
 Check "canStream is true" ($caps.canStream -eq $true)
 if (-not $caps.canStream) { exit 1 }
 Check "canMuteWhileStreaming is reported" ($null -ne $caps.canMuteWhileStreaming)
@@ -174,7 +162,7 @@ Check "it disconnects" (Wait-For { (Get-Listeners).connections -eq 0 })
 
 if ($mutes) {
   Check "the hold is still on" ((Get-Listeners).playerMuted -eq $true)
-  Get-Json "$FooJean/stream/leave" $auth 'POST' (@{ deviceId = 'verify-2' } | ConvertTo-Json -Compress) | Out-Null
+  Get-Json "$FooJean/stream/leave" @{} 'POST' (@{ deviceId = 'verify-2' } | ConvertTo-Json -Compress) | Out-Null
 
   # A handoff back to the player and a dropped connection close the same socket; only one of them should wait.
   Check "saying so ends the linger at once" (Wait-For { (Get-Listeners).playerMuted -eq $false } 3)

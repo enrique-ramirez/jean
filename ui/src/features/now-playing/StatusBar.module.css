@@ -92,7 +92,7 @@
 		background-color 0.12s var(--ease);
 }
 
-.order:hover:not(:disabled) {
+.order:hover:not(:disabled):not([aria-disabled="true"]) {
 	background: var(--surface-sunken);
 	color: var(--text);
 }
@@ -101,7 +101,8 @@
 	color: var(--accent-text);
 }
 
-.order:disabled {
+.order:disabled,
+.order[aria-disabled="true"] {
 	opacity: 0.35;
 }
 
@@ -115,9 +116,13 @@
 	color: var(--muted);
 }
 
-.skip:hover {
+.skip:hover:not([aria-disabled="true"]) {
 	background: var(--surface-sunken);
 	color: var(--text);
+}
+
+.skip[aria-disabled="true"] {
+	opacity: 0.35;
 }
 
 .trailing {
@@ -157,6 +162,13 @@
 	margin: 0;
 	padding: 14px 20px;
 	font-size: 0.8125rem;
+	color: var(--muted);
+}
+
+.reason {
+	margin: 0;
+	padding: 0 20px 10px;
+	font-size: 0.75rem;
 	color: var(--muted);
 }
 

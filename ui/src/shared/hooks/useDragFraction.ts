@@ -56,7 +56,7 @@ export function useDragFraction({
 			onDrag?.(next);
 		},
 		onPointerMove: (event: ReactPointerEvent) => {
-			if (fraction === null) return;
+			if (fraction === null || disabled) return;
 			const next = read(event);
 			setFraction(next);
 			onDrag?.(next);
@@ -64,8 +64,9 @@ export function useDragFraction({
 		onPointerUp: (event: ReactPointerEvent) => {
 			if (fraction === null) return;
 			event.currentTarget.releasePointerCapture(event.pointerId);
-			onCommit?.(read(event));
 			setFraction(null);
+			if (disabled) return;
+			onCommit?.(read(event));
 		},
 		onPointerCancel: () => setFraction(null),
 	};

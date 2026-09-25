@@ -4,7 +4,6 @@ import {
 	expectPlayingFrom,
 	expectSettlesAt,
 	expectTheScreenIsStillOpen,
-	FOO_JEAN_TOKEN,
 	inSequence,
 	listenHere,
 	nowPlayingScreen,
@@ -180,17 +179,14 @@ test.describe("a transport command, as the component sees it", () => {
 
 	const COMMAND = /^\/api\/(playback\/[a-z-]+|volume)$/;
 
-	test("every one carries the paired token", async ({ page }) => {
-		const sent: Promise<{ route: string; authorization?: string }>[] = [];
+	test("every command key reaches the route the component answers", async ({
+		page,
+	}) => {
+		const sent: string[] = [];
 		page.on("request", (request) => {
 			const { pathname } = new URL(request.url());
-			if (request.method() !== "POST" || !COMMAND.test(pathname)) return;
-			sent.push(
-				request.allHeaders().then((headers) => ({
-					route: pathname,
-					authorization: headers.authorization,
-				})),
-			);
+			if (request.method() === "POST" && COMMAND.test(pathname))
+				sent.push(pathname);
 		});
 
 		await inSequence(
@@ -208,10 +204,8 @@ test.describe("a transport command, as the component sees it", () => {
 		// Last, since Space on a focused button presses the button instead.
 		await statusBar(page).getByRole("button", { name: "Shuffle" }).click();
 
-		const routes = async () =>
-			[...new Set((await Promise.all(sent)).map((one) => one.route))].sort();
 		await expect
-			.poll(routes)
+			.poll(() => [...new Set(sent)].sort())
 			.toEqual([
 				"/api/playback/mode",
 				"/api/playback/next",
@@ -221,10 +215,6 @@ test.describe("a transport command, as the component sees it", () => {
 				"/api/playback/stop",
 				"/api/volume",
 			]);
-		for (const one of await Promise.all(sent))
-			expect(one, one.route).toMatchObject({
-				authorization: `Bearer ${FOO_JEAN_TOKEN}`,
-			});
 	});
 
 	test.describe("across a whole session", () => {

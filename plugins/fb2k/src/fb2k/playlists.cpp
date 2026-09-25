@@ -7,6 +7,7 @@
 #include "core/text.h"
 #include "fb2k/ask_player.h"
 #include "fb2k/columns.h"
+#include "fb2k/running_settings.h"
 #include "fb2k/strings.h"
 
 #include <algorithm>
@@ -1057,9 +1058,8 @@ PlaylistRowArtworkReader makePlaylistRowArtworkReader(MainThreadQueue& mainThrea
 }
 
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
-                                            const PlaylistVersions& versions,
-                                            int maxAutoPlaylists) {
-    return [&mainThread, &versions, maxAutoPlaylists](const AutoPlaylistSpec& spec) {
+                                            const PlaylistVersions& versions) {
+    return [&mainThread, &versions](const AutoPlaylistSpec& spec, int maxAutoPlaylists) {
         if (maxAutoPlaylists <= 0)
             return playlistFailure(PlaylistOutcome::unavailable);
 

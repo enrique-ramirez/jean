@@ -351,8 +351,4 @@ export const drives: Drive[] = [
 		id: "leaveStream",
 		probe: (_, context) => ({ body: { deviceId: context.deviceId } }),
 	},
-	{
-		id: "pair",
-		probe: (operation) => ({ body: example(operation, "anonymous") }),
-	},
 ];

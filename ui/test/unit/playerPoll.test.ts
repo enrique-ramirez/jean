@@ -27,7 +27,6 @@ import type {
 // moment before one.
 
 const ORIGIN = "http://player.invalid:8881";
-const TOKEN = "token";
 const STATE_PATH = "/api/state";
 const PLAYER_KEY = ["player"];
 
@@ -203,7 +202,7 @@ const harness = (
 	} as unknown as Document;
 
 	const client = new QueryClient();
-	const stop = startPlayerPoll(client, ORIGIN, TOKEN, capabilities);
+	const stop = startPlayerPoll(client, ORIGIN, capabilities);
 
 	t.after(() => {
 		stop();

@@ -1,5 +1,5 @@
 import { trackRow } from "../e2e/fixtures.ts";
-import { byTitle, rowsOf, TOKEN, writeRating } from "./component.ts";
+import { byTitle, rowsOf, writeRating } from "./component.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 // On a real player: a rating written outside Jean reaches the open playlist through the changes
@@ -50,10 +50,7 @@ test("a rating written at the player reaches the open playlist through the chang
 			for (const [key, value] of Object.entries(values))
 				window.localStorage.setItem(key, JSON.stringify(value));
 		},
-		{
-			"jean.columns": ["duration", "rating"],
-			"jean.fooJeanToken": TOKEN(),
-		},
+		{ "jean.columns": ["duration", "rating"] },
 	);
 
 	const seen: Seen[] = [];

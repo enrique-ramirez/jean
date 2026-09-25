@@ -4,7 +4,7 @@ The phrase catalogue, how a translation reaches it, and the `Intl` formatters th
 
 **Every phrase a person can read goes through `t()`.** A string literal in JSX is a phrase that will never be translated, and nothing catches it. The exceptions are what the *player* answers with: a track's title, a playlist's name or a genre tag, which are the user's own data and are never Jean's to reword.
 
-**Names of things outside Jean stay in the language they are in.** `PANE` in `TagWriting.tsx` is a menu path inside foobar2000, `Library → Search` is another, and `"Fields they may write"` is `foo_jean`'s own label: those are strings somebody has to find on a screen that is in English whatever Jean is showing. Translating them sends the reader looking for a menu that is not there.
+**Names of things outside Jean stay in the language they are in.** `PANE` in `TagWriting.tsx` is a menu path inside foobar2000, `Library → Search` is another, and `"Fields this may write"` is `foo_jean`'s own label: those are strings somebody has to find on a screen that is in English whatever Jean is showing. Translating them sends the reader looking for a menu that is not there.
 
 ## Writing a phrase
 

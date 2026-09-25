@@ -23,6 +23,8 @@ import {
 import { summarise } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { Artist } from "@/features/now-playing/Artist";
+import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Trans } from "@/shared/i18n/Trans";
 import {
 	type Translate,
@@ -83,6 +85,8 @@ export function ArtistView({
 }) {
 	const t = useTranslate();
 	const format = useFormats();
+	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	const { snapshot } = library;
 
 	const own = useMemo(
@@ -139,13 +143,34 @@ export function ArtistView({
 							<Button
 								variant="primary"
 								icon={Play}
-								onClick={() => onPlay(allRefs, 0)}
-								disabled={!canPlay}
+								onClick={
+									canControlPlayback ? () => onPlay(allRefs, 0) : undefined
+								}
+								disabled={canControlPlayback && !canPlay}
+								aria-disabled={canControlPlayback ? undefined : "true"}
+								aria-label={
+									canControlPlayback
+										? undefined
+										: t("player.controlOffName", { control: t("player.play") })
+								}
 							>
 								{t("player.play")}
 							</Button>
 							{canShuffle ? (
-								<Button icon={Shuffle} onClick={() => onShuffle(allRefs)}>
+								<Button
+									icon={Shuffle}
+									onClick={
+										canControlPlayback ? () => onShuffle(allRefs) : undefined
+									}
+									aria-disabled={canControlPlayback ? undefined : "true"}
+									aria-label={
+										canControlPlayback
+											? undefined
+											: t("player.controlOffName", {
+													control: t("player.shuffle"),
+												})
+									}
+								>
 									{t("player.shuffle")}
 								</Button>
 							) : null}

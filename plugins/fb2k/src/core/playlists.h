@@ -188,6 +188,7 @@ enum class PlaylistOutcome {
     writesDisabled,
     playlistLocked,
     ownPlaylist,
+    playbackDisabled,
 };
 
 struct PlaylistResult {

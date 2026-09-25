@@ -27,6 +27,7 @@ import { setRatingLayer } from "@/domain/track/ratingTarget";
 import {
 	fetchPlaylistRows,
 	isFooJeanReady,
+	permitsPlaybackControl,
 	playingArtworkUrl,
 	playlistRowArtworkUrl,
 } from "@/shared/api/fooJean";
@@ -94,6 +95,8 @@ function Rating() {
 // Must match the exit animation in NowPlaying.module.css.
 const SLIDE_MS = 280;
 
+const NOOP = () => {};
+
 // The empty string stands for a row the media library confirms carries no path, kept apart from a
 // position this window has not read at all: only the former falls back to `playlistRowArtworkUrl`.
 // `identity` is computed the same way `coverIdentity()` reads a list row's own columns, so a
@@ -115,19 +118,17 @@ const NEIGHBOURS_KEY = "nowPlayingNeighbours";
 // than its position.
 async function fetchRowWindow(
 	origin: string,
-	token: string,
 	playlistId: string,
 	index: number,
 ): Promise<RowWindow> {
 	const offset = Math.max(0, index - 1);
-	const { items } = await fetchPlaylistRows(
-		origin,
-		token,
-		playlistId,
-		offset,
-		3,
-		["%path%", "%album%", "%album artist%", "%artist%", "%title%"],
-	);
+	const { items } = await fetchPlaylistRows(origin, playlistId, offset, 3, [
+		"%path%",
+		"%album%",
+		"%album artist%",
+		"%artist%",
+		"%title%",
+	]);
 	return items.map((row, at) => {
 		const [, album, albumArtist, artist, title] = row.columns.map(readValue);
 		const credited = albumArtist || artist;
@@ -191,9 +192,11 @@ export function NowPlaying({
 	const { track, details } = useNowPlayingTrack();
 	const from = usePlayingFrom();
 	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 
 	const playPause = usePlayPause();
 	const seek = useSeek();
+	const seekTo = canControlPlayback ? (at: number) => seek.mutate(at) : NOOP;
 	const transport = useTransport();
 	const previous = usePrevious();
 	const order = usePlaybackOrder();
@@ -236,7 +239,6 @@ export function NowPlaying({
 
 	const isReady = isFooJeanReady(discovery);
 	const origin = isReady ? discovery.origin : null;
-	const token = isReady ? discovery.token : null;
 
 	const artworkKey =
 		hasPosition && item && playlistId !== undefined
@@ -249,10 +251,10 @@ export function NowPlaying({
 
 	const windowQuery = useQuery({
 		queryKey: [NEIGHBOURS_KEY, origin, playlistId, item?.index],
-		enabled: isOpen && hasPosition && Boolean(origin && token && playlistId),
+		enabled: isOpen && hasPosition && Boolean(origin && playlistId),
 		queryFn: () =>
-			origin && token && playlistId && item
-				? fetchRowWindow(origin, token, playlistId, item.index)
+			origin && playlistId && item
+				? fetchRowWindow(origin, playlistId, item.index)
 				: null,
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
@@ -357,8 +359,8 @@ export function NowPlaying({
 			? {
 					onDown: onDismiss,
 					onUp: () => setIsInfoOpen(true),
-					onDrag: wheel.onDrag,
-					onDragEnd: wheel.onDragEnd,
+					onDrag: canControlPlayback ? wheel.onDrag : undefined,
+					onDragEnd: canControlPlayback ? wheel.onDragEnd : undefined,
 				}
 			: { onDown: onDismiss },
 	);
@@ -383,6 +385,13 @@ export function NowPlaying({
 			className={styles.cover}
 		/>
 	);
+
+	const previousLabel = canControlPlayback
+		? t("shortcut.previousTrack")
+		: t("player.controlOffName", { control: t("shortcut.previousTrack") });
+	const nextLabel = canControlPlayback
+		? t("shortcut.nextTrack")
+		: t("player.controlOffName", { control: t("shortcut.nextTrack") });
 
 	if (!isPresent) return null;
 
@@ -492,7 +501,7 @@ export function NowPlaying({
 							variant="gatefold"
 							lyrics={lyrics}
 							snapshot={snapshot}
-							onSeek={(at) => seek.mutate(at)}
+							onSeek={seekTo}
 							trackKey={settledPath ?? ""}
 							onExpand={() => setIsLyricsFull(true)}
 							isExpanded={isLyricsFull}
@@ -504,7 +513,11 @@ export function NowPlaying({
 
 				{!isCompactViewport ? null : (
 					<div className={styles.controls}>
-						<SeekBar snapshot={snapshot} onSeek={(at) => seek.mutate(at)} />
+						<SeekBar
+							snapshot={snapshot}
+							onSeek={seekTo}
+							disabled={!canControlPlayback}
+						/>
 						<Times snapshot={snapshot} />
 
 						<div className={styles.transport}>
@@ -513,6 +526,7 @@ export function NowPlaying({
 									order={order}
 									className={styles.order}
 									size={18}
+									disabled={!canControlPlayback}
 								/>
 
 								<QueueButton
@@ -526,8 +540,13 @@ export function NowPlaying({
 								<button
 									type="button"
 									className={styles.skip}
-									aria-label={t("shortcut.previousTrack")}
-									onClick={() => previous(() => wheel.skip(-1))}
+									aria-disabled={canControlPlayback ? undefined : "true"}
+									aria-label={previousLabel}
+									onClick={
+										canControlPlayback
+											? () => previous(() => wheel.skip(-1))
+											: undefined
+									}
 								>
 									<SkipBackIcon size={22} />
 								</button>
@@ -536,13 +555,15 @@ export function NowPlaying({
 									isPlaying={isPlaying}
 									onToggle={() => playPause.mutate()}
 									variant="screen"
+									disabled={!canControlPlayback}
 								/>
 
 								<button
 									type="button"
 									className={styles.skip}
-									aria-label={t("shortcut.nextTrack")}
-									onClick={() => wheel.skip(1)}
+									aria-disabled={canControlPlayback ? undefined : "true"}
+									aria-label={nextLabel}
+									onClick={canControlPlayback ? () => wheel.skip(1) : undefined}
 								>
 									<SkipForwardIcon size={22} />
 								</button>
@@ -558,10 +579,15 @@ export function NowPlaying({
 										volume={volume}
 										onChange={setValue}
 										label={t(isHere ? "player.volumeHere" : "player.volume")}
+										disabled={!canControlPlayback}
 									/>
 								) : null}
 							</div>
 						</div>
+
+						{canControlPlayback ? null : (
+							<p className={styles.reason}>{t("player.controlOff")}</p>
+						)}
 					</div>
 				)}
 
@@ -575,7 +601,7 @@ export function NowPlaying({
 					artist={track?.artist ?? "—"}
 					lyrics={lyrics}
 					snapshot={snapshot}
-					onSeek={(at) => seek.mutate(at)}
+					onSeek={seekTo}
 					trackKey={settledPath ?? ""}
 					onClose={() => setIsInfoOpen(false)}
 					tab={tab}
@@ -587,7 +613,7 @@ export function NowPlaying({
 				<LyricsScreen
 					lyrics={lyrics}
 					snapshot={snapshot}
-					onSeek={(at) => seek.mutate(at)}
+					onSeek={seekTo}
 					onClose={() => setIsLyricsFull(false)}
 				/>
 			) : null}

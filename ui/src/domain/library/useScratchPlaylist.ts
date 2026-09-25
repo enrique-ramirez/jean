@@ -33,8 +33,8 @@ export function useScratchPlaylist({
 		null,
 	);
 	const queryClient = useQueryClient();
-	const { token, discovery } = useFooJean();
-	const { origin, token: readyToken } = discovery;
+	const { discovery } = useFooJean();
+	const { origin } = discovery;
 
 	const playlist = useMemo(
 		() => playlists.find(isScratchPlaylist) ?? null,
@@ -73,7 +73,7 @@ export function useScratchPlaylist({
 			sequence += 1;
 			const mine = sequence;
 			const title = scratchTitle(kind, label);
-			const landedId = await source.fill(title, refs, { token });
+			const landedId = await source.fill(title, refs);
 			if (sequence !== mine) return null;
 
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
@@ -88,30 +88,22 @@ export function useScratchPlaylist({
 			setLandedCount(refs.length);
 			return id;
 		},
-		[
-			canEdit,
-			holdsView,
-			playlist,
-			setLandedTitle,
-			setLandedCount,
-			queryClient,
-			token,
-		],
+		[canEdit, holdsView, playlist, setLandedTitle, setLandedCount, queryClient],
 	);
 
 	// The playlist's own polled `itemCount` is the fallback for a scratch filled by another device,
 	// which leaves no `landedCount` behind for this one.
 	const adopt = useCallback(
 		async (title: string) => {
-			if (!playlist || !origin || !readyToken) return null;
+			if (!playlist || !origin) return null;
 			const count = landedCount ?? playlist.itemCount;
-			const created = await createPlaylist(origin, readyToken, {
+			const created = await createPlaylist(origin, {
 				title,
 				...(count > 0 ? { source: playlist.id, runs: [[0, count]] } : {}),
 			});
 			return created.id;
 		},
-		[playlist, origin, readyToken, landedCount],
+		[playlist, origin, landedCount],
 	);
 
 	return { playlist, holdsView, ensure, adopt };

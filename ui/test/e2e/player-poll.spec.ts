@@ -767,8 +767,8 @@ test("a cover survives the playing row being pulled from its own playlist", asyn
 	await expect(currentSlot(page)).toHaveAttribute("data-artwork", "ok");
 
 	// The request, never what is drawn: a picture the browser already holds and a
-	// picture a bare `<img src>` failed to fetch both look drawn a moment later,
-	// and only the log says whether either one carried a bearer token.
+	// freshly fetched one both look drawn a moment later, and only the log says
+	// which one happened.
 	await expectSettlesAt(
 		player,
 		() =>

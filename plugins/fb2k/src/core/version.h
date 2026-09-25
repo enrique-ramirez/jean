@@ -2,7 +2,7 @@
 
 namespace jean {
 
-// Renaming this orphans an installed component's profile directory, its log and its token:
+// Renaming this orphans an installed component's profile directory, its log and its config:
 // `fb2k/paths.cpp` builds all three from it. See `fb2k/paths.cpp`.
 constexpr char kComponentName[] = "foo_jean";
 

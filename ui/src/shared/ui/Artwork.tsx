@@ -1,5 +1,5 @@
 import { DiscAlbum } from "lucide-react";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { classNames } from "@/shared/lib/classNames";
 import { dropArtwork, heldArtwork, holdArtwork } from "./artworkHandles";
 import {
@@ -13,15 +13,6 @@ import { whenNearViewport } from "./nearViewport";
 type ArtworkState = "waiting" | "granted" | ArtworkOutcome;
 
 import styles from "./Artwork.module.css";
-
-export interface ArtworkAccess {
-	origin: string;
-	headers: Record<string, string>;
-}
-
-const AccessContext = createContext<ArtworkAccess | null>(null);
-
-export const ArtworkAccessProvider = AccessContext.Provider;
 
 const knownState = (key: string | null): ArtworkState | null =>
 	key ? (outcomeFor(key) ?? null) : null;
@@ -44,8 +35,6 @@ export function Artwork({
 	// See `shared/ui/CLAUDE.md`, *Artwork*: when this is right and when it is not.
 	revealsInstantly?: boolean;
 }) {
-	const access = useContext(AccessContext);
-	const addressNeedsAuth = Boolean(access && src?.startsWith(access.origin));
 	const key = identity ?? src ?? null;
 	const [state, setState] = useState<ArtworkState>(
 		() => knownState(key) ?? "waiting",
@@ -98,10 +87,7 @@ export function Artwork({
 		let settled: ArtworkOutcome | undefined;
 
 		const read = async () => {
-			const response = await fetch(src, {
-				signal: abort.signal,
-				headers: addressNeedsAuth && access ? access.headers : {},
-			});
+			const response = await fetch(src, { signal: abort.signal });
 			if (!response.ok) {
 				if (response.status === 404) settled = "failed";
 				throw new Error(`no artwork: ${response.status}`);
@@ -155,7 +141,7 @@ export function Artwork({
 			release.current?.();
 			release.current = null;
 		};
-	}, [src, key, access, addressNeedsAuth, revealsInstantly, retryToken]);
+	}, [src, key, revealsInstantly, retryToken]);
 
 	const settle = (outcome: ArtworkOutcome) => {
 		release.current?.(outcome);

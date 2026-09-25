@@ -43,7 +43,7 @@ StreamOpener opensWith(std::vector<std::string> chunks, std::string contentType 
 
 std::string ticketFrom(const TestServer& server) {
     const auto response =
-        server.client().Post("/api/stream/ticket", TestServer::bearer(), "", "application/json");
+        server.client().Post("/api/stream/ticket", "", "application/json");
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body)["ticket"].get<std::string>();
@@ -55,11 +55,10 @@ httplib::Result listen(const TestServer& server, const std::string& ticket) {
 
 }  // namespace
 
-TEST_CASE("a ticket is issued to a caller holding the token") {
+TEST_CASE("a ticket is issued") {
     const TestServer server(servingSettings(), TestServer::streaming(opensWith({"ogg"})));
 
-    const auto response =
-        server.client().Post("/api/stream/ticket", TestServer::bearer(), "", "application/json");
+    const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
 
     REQUIRE(response);
     CHECK(response->status == 200);
@@ -75,8 +74,7 @@ TEST_CASE("the ticket lives as long as the file says, not as long as the default
 
     const TestServer server(settings, TestServer::streaming(opensWith({"ogg"})));
 
-    const auto response =
-        server.client().Post("/api/stream/ticket", TestServer::bearer(), "", "application/json");
+    const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -84,15 +82,6 @@ TEST_CASE("the ticket lives as long as the file says, not as long as the default
     // A client schedules its reconnect off this, so a lifetime that never left config.json
     // is a client that reconnects at the wrong moment for the whole session.
     CHECK(json::parse(response->body)["expiresIn"] == 45);
-}
-
-TEST_CASE("issuing a ticket needs the token like every other route") {
-    const TestServer server(servingSettings(), TestServer::streaming(opensWith({"ogg"})));
-
-    const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
-
-    REQUIRE(response);
-    CHECK(response->status == 401);
 }
 
 TEST_CASE("a ticket streams the bytes the session produces") {
@@ -170,14 +159,15 @@ TEST_CASE("the stream is refused without a ticket") {
     CHECK(opens == 0);
 }
 
-// The route is exempt from the bearer filter so a ticket can reach it; that exemption must not
-// become a second way in.
-TEST_CASE("the bearer token does not substitute for a ticket") {
+// No route reads Authorization, so a page could send whatever it likes there; that must not
+// become a second way into the stream.
+TEST_CASE("an Authorization header does not substitute for a ticket") {
     int opens = 0;
     const TestServer server(servingSettings(),
                             TestServer::streaming(opensWith({"a"}, "audio/ogg", &opens)));
 
-    const auto response = server.client().Get("/api/stream", TestServer::bearer());
+    const auto response =
+        server.client().Get("/api/stream", httplib::Headers{{"Authorization", "Bearer x"}});
 
     REQUIRE(response);
     CHECK(response->status == 401);
@@ -241,7 +231,7 @@ TEST_CASE("an install with no stream source says so rather than pretending") {
     const TestServer server;
 
     SUBCASE("no ticket is issued") {
-        const auto response = server.client().Post("/api/stream/ticket", TestServer::bearer(), "",
+        const auto response = server.client().Post("/api/stream/ticket", "",
                                                    "application/json");
         REQUIRE(response);
         CHECK(response->status == 503);
@@ -257,9 +247,37 @@ TEST_CASE("an install with no stream source says so rather than pretending") {
     }
 
     SUBCASE("capabilities says the button should not be offered") {
-        const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+        const auto response = server.client().Get("/api/capabilities");
         REQUIRE(response);
         CHECK(json::parse(response->body)["canStream"] == false);
+    }
+}
+
+TEST_CASE("the refusal names streamingEnabled only when that switch is actually off") {
+    SUBCASE("streamingEnabled is on and there is simply no source") {
+        const TestServer server;
+
+        const auto response =
+            server.client().Post("/api/stream/ticket", "", "application/json");
+
+        REQUIRE(response);
+        CHECK(response->status == 503);
+        CHECK(json::parse(response->body)["error"].get<std::string>().find(
+                  "streamingEnabled") == std::string::npos);
+    }
+
+    SUBCASE("streamingEnabled is off") {
+        auto settings = servingSettings();
+        settings.streamingEnabled = false;
+        const TestServer server(settings, TestServer::streaming(opensWith({"a"})));
+
+        const auto response =
+            server.client().Post("/api/stream/ticket", "", "application/json");
+
+        REQUIRE(response);
+        CHECK(response->status == 503);
+        CHECK(json::parse(response->body)["error"].get<std::string>().find(
+                  "streamingEnabled") != std::string::npos);
     }
 }
 
@@ -292,7 +310,7 @@ TEST_CASE("capabilities lists the formats rather than only a boolean") {
     const TestServer server(servingSettings(),
                             TestServer::streaming(opensWith({"a"}), {"opus", "aac"}));
 
-    const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+    const auto response = server.client().Get("/api/capabilities");
 
     REQUIRE(response);
     const auto body = json::parse(response->body);
@@ -303,7 +321,7 @@ TEST_CASE("capabilities lists the formats rather than only a boolean") {
 TEST_CASE("capabilities reports streaming when a source is wired up") {
     const TestServer server(servingSettings(), TestServer::streaming(opensWith({"a"})));
 
-    const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+    const auto response = server.client().Get("/api/capabilities");
 
     REQUIRE(response);
     CHECK(json::parse(response->body)["canStream"] == true);
@@ -325,7 +343,7 @@ TEST_CASE("a mint that fails refuses to issue rather than serving an empty ticke
                             [] { return std::string(); });
 
     const auto response =
-        server.client().Post("/api/stream/ticket", TestServer::bearer(), "", "application/json");
+        server.client().Post("/api/stream/ticket", "", "application/json");
 
     REQUIRE(response);
     CHECK(response->status == 503);
@@ -366,4 +384,67 @@ TEST_CASE("a stream with nothing to send yet is not a stream that ended") {
     REQUIRE(response);
     CHECK(response->status == 200);
     CHECK(response->body == "ogg");
+}
+
+namespace {
+
+bool canStream(const TestServer& server) {
+    const auto response = server.client().Get("/api/capabilities");
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    return json::parse(response->body)["canStream"].get<bool>();
+}
+
+}  // namespace
+
+// The component builds its stream source whether or not streaming is on, so that a reload can
+// turn it on. The switch alone is what refuses.
+TEST_CASE("with streamingEnabled off and a source wired up, no ticket is issued and capabilities says so") {
+    int opens = 0;
+    const TestServer server(parseSettings(R"({"streamingEnabled": false})"),
+                            TestServer::streaming(opensWith({"Ogg"}, "audio/ogg", &opens)));
+
+    const auto ticket = server.client().Post("/api/stream/ticket", "", "application/json");
+
+    REQUIRE(ticket);
+    CHECK(ticket->status == 503);
+    CHECK_FALSE(json::parse(ticket->body).value("error", std::string()).empty());
+    CHECK_FALSE(canStream(server));
+    CHECK(opens == 0);
+}
+
+TEST_CASE("a reload turning streaming off refuses tickets and streams, and turning it back on serves them") {
+    int opens = 0;
+    TestServer server(servingSettings(),
+                      TestServer::streaming(opensWith({"Ogg"}, "audio/ogg", &opens)));
+    const auto issuedBefore = ticketFrom(server);
+
+    server.reload(R"({"streamingEnabled": false})");
+
+    const auto ticket = server.client().Post("/api/stream/ticket", "", "application/json");
+    REQUIRE(ticket);
+    CHECK(ticket->status == 503);
+
+    const auto stream = listen(server, issuedBefore);
+    REQUIRE(stream);
+    CHECK(stream->status == 503);
+    CHECK(opens == 0);
+
+    server.reload("{}");
+
+    const auto restored = listen(server, ticketFrom(server));
+    REQUIRE(restored);
+    CHECK(restored->status == 200);
+    CHECK(restored->body == "Ogg");
+}
+
+TEST_CASE("canStream follows streamingEnabled through a reload") {
+    TestServer server(servingSettings(), TestServer::streaming(opensWith({"Ogg"})));
+    REQUIRE(canStream(server));
+
+    server.reload(R"({"streamingEnabled": false})");
+    CHECK_FALSE(canStream(server));
+
+    server.reload("{}");
+    CHECK(canStream(server));
 }

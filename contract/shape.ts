@@ -71,7 +71,8 @@ const judgeable = (schema: Schema) =>
 	schema.anyOf !== undefined ||
 	publishedValues(schema) !== undefined;
 
-// Values are never quoted back: one of these documents carries a bearer token.
+// Values are never quoted back: this suite drives a real component, and a response body is not
+// something to put in a failure message.
 export function conforms(schema: Schema, body: unknown, path = ""): string[] {
 	if (!judgeable(schema))
 		throw new Error(

@@ -87,7 +87,7 @@ Player recordingPlayer(PlayerLog* log) {
 
     player.listPlaylists = [] { return PlaylistsResult{PlaylistOutcome::done, {rock()}}; };
 
-    player.createAutoPlaylist = [log](const AutoPlaylistSpec& spec) {
+    player.createAutoPlaylist = [log](const AutoPlaylistSpec& spec, int) {
         log->creates++;
         log->lastSpec = spec;
         return answering(log);
@@ -120,7 +120,7 @@ Player recordingPlayer(PlayerLog* log) {
 
 json capabilitiesOf(const Settings& settings) {
     const TestServer server(settings);
-    const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+    const auto response = server.client().Get("/api/capabilities");
 
     REQUIRE(response);
     return json::parse(response->body);
@@ -131,7 +131,7 @@ json capabilitiesReporting(std::vector<std::string> orders) {
     player.playbackOrders = std::move(orders);
 
     const TestServer server(servingSettings(), player);
-    const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+    const auto response = server.client().Get("/api/capabilities");
 
     REQUIRE(response);
     return json::parse(response->body);
@@ -411,7 +411,7 @@ Player namingPlayer(FillLog* log) {
 }
 
 std::string titleOf(const TestServer& server, const std::string& id) {
-    const auto response = server.client().Get("/api/playlists", TestServer::bearer());
+    const auto response = server.client().Get("/api/playlists");
     REQUIRE(response);
 
     const auto body = json::parse(response->body);
@@ -426,7 +426,7 @@ std::string titleOf(const TestServer& server, const std::string& id) {
 }
 
 std::vector<json> foundByRole(const TestServer& server) {
-    const auto response = server.client().Get("/api/playlists", TestServer::bearer());
+    const auto response = server.client().Get("/api/playlists");
     REQUIRE(response);
 
     const auto body = json::parse(response->body);
@@ -919,7 +919,7 @@ std::string createBody(const json& set = json::object()) {
 }
 
 json listingOf(const TestServer& server) {
-    const auto response = server.client().Get("/api/playlists", TestServer::bearer());
+    const auto response = server.client().Get("/api/playlists");
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -1128,7 +1128,7 @@ std::vector<Edit> playlistEdits() {
              [](const EditLog& log) { return log.renames; }},
             {"deleting",
              [](const TestServer& server, const std::string& id) {
-                 return server.client().Delete(playlistPath(id), TestServer::bearer());
+                 return server.client().Delete(playlistPath(id));
              },
              [](const EditLog& log) { return log.removals; }},
             {"moving",
@@ -1424,8 +1424,7 @@ std::vector<Write> playlistWrites(uint64_t structure) {
              }},
             {"deleting an autoplaylist",
              [](const TestServer& server) {
-                 return server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId,
-                                               TestServer::bearer());
+                 return server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId);
              }},
             {"filling a playlist a user owns, which is what addTo does",
              [structure](const TestServer& server) {
@@ -1445,8 +1444,7 @@ std::vector<Write> playlistWrites(uint64_t structure) {
              204},
             {"deleting a playlist",
              [](const TestServer& server) {
-                 return server.client().Delete(playlistPath(kThirdPlaylistId),
-                                               TestServer::bearer());
+                 return server.client().Delete(playlistPath(kThirdPlaylistId));
              },
              204},
             {"copying rows into a playlist",
@@ -1558,7 +1556,7 @@ std::vector<Write> lockableWrites() {
              }},
             {"deleting a playlist",
              [](const TestServer& server) {
-                 return server.client().Delete(playlistPath(kPlaylistId), TestServer::bearer());
+                 return server.client().Delete(playlistPath(kPlaylistId));
              }},
             {"copying rows into a playlist",
              [](const TestServer& server) {
@@ -1639,7 +1637,7 @@ TEST_CASE("GET /api/playlists answers each playlist by everything a client draws
                                 return PlaylistsResult{PlaylistOutcome::done, {rock(), ordinary()}};
                             }));
 
-    const auto response = server.client().Get("/api/playlists", TestServer::bearer());
+    const auto response = server.client().Get("/api/playlists");
 
     REQUIRE(response);
     CHECK(response->status == 200);
@@ -1685,7 +1683,7 @@ TEST_CASE("the scratch answers its role however it and the playlists around it a
                                 return PlaylistsResult{PlaylistOutcome::done, {scratch, titled}};
                             }));
 
-    const auto response = server.client().Get("/api/playlists", TestServer::bearer());
+    const auto response = server.client().Get("/api/playlists");
 
     REQUIRE(response);
     const auto body = json::parse(response->body);
@@ -1711,7 +1709,7 @@ TEST_CASE("a playlist carries these keys and no others") {
                                 return PlaylistsResult{PlaylistOutcome::done, {rock(), scratch}};
                             }));
 
-    const auto response = server.client().Get("/api/playlists", TestServer::bearer());
+    const auto response = server.client().Get("/api/playlists");
 
     REQUIRE(response);
     const auto body = json::parse(response->body);
@@ -2401,7 +2399,7 @@ TEST_CASE("deleting a playlist takes it out of the list the player answers with"
     EditLog log;
     const TestServer server(servingSettings(), editingPlayer(&log));
 
-    const auto response = server.client().Delete(playlistPath(kPlaylistId), TestServer::bearer());
+    const auto response = server.client().Delete(playlistPath(kPlaylistId));
 
     REQUIRE(response);
     CHECK(accepted(response));
@@ -2423,7 +2421,7 @@ TEST_CASE("deleting a playlist asks the play queue nothing, before or after") {
     const TestServer server(servingSettings(),
                             countingQueueCalls(editingPlayer(&log), &log.queueCalls));
 
-    const auto response = server.client().Delete(playlistPath(kPlaylistId), TestServer::bearer());
+    const auto response = server.client().Delete(playlistPath(kPlaylistId));
 
     REQUIRE(response);
     CHECK(accepted(response));
@@ -3050,38 +3048,6 @@ TEST_CASE(
     CHECK(heldTitles(server, kPlaylistId) == json::array({"First", "Second", "Third", "Fourth"}));
 }
 
-TEST_CASE("every playlist route needs the token") {
-    PlayerLog log;
-    const TestServer server(servingSettings(), recordingPlayer(&log));
-
-    CHECK(server.client().Get("/api/playlists")->status == 401);
-    CHECK(server.client().Get(itemsPath(kPlaylistId, 0, 10, {"%title%"}))->status == 401);
-    CHECK(server.client()
-              .Get(changesPath(kPlaylistId, kRowsStructure, kChangedSince, {"%title%"}))
-              ->status == 401);
-    CHECK(server.client().Post(playPath(kPlaylistId, "0"), "", "application/json")->status == 401);
-    CHECK(server.client().Post(kCreatePlaylist, createBody(), "application/json")->status == 401);
-    CHECK(server.client()
-              .Post(playlistPath(kPlaylistId), renameBody(kNewTitle), "application/json")
-              ->status == 401);
-    CHECK(server.client().Delete(playlistPath(kPlaylistId))->status == 401);
-    CHECK(server.client().Post(movePath(kPlaylistId), moveBody(0), "application/json")->status ==
-          401);
-    CHECK(server.client()
-              .Post(copyPath(kPlaylistId), copyBody(kSecondPlaylistId, unorderedRuns()).dump(),
-                    "application/json")
-              ->status == 401);
-    CHECK(server.client()
-              .Post(removeRowsPath(kPlaylistId),
-                    removeRowsBody(kRowsStructure, unorderedRuns()).dump(), "application/json")
-              ->status == 401);
-    CHECK(server.client().Post("/api/autoplaylists", kCreate, "application/json")->status == 401);
-    CHECK(server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId)->status == 401);
-
-    CHECK(log.creates == 0);
-    CHECK(log.removals == 0);
-}
-
 TEST_CASE("creating passes the whole request through to the player") {
     PlayerLog log;
     const TestServer server(servingSettings(), recordingPlayer(&log));
@@ -3143,11 +3109,11 @@ TEST_CASE("what the player says about a playlist maps onto a status a client can
 TEST_CASE("a component with no player refuses honestly rather than pretending it did the work") {
     const TestServer server;
 
-    CHECK(server.client().Get("/api/playlists", TestServer::bearer())->status == 503);
+    CHECK(server.client().Get("/api/playlists")->status == 503);
     CHECK(post(server, "/api/autoplaylists", kCreate)->status == 503);
     CHECK(post(server, "/api/autoplaylists/preview", R"({"query": "a"})")->status == 503);
     CHECK(server.client()
-              .Delete(std::string("/api/autoplaylists/") + kPlaylistId, TestServer::bearer())
+              .Delete(std::string("/api/autoplaylists/") + kPlaylistId)
               ->status == 503);
 }
 
@@ -3185,8 +3151,7 @@ TEST_CASE("updating and removing address one playlist by its id") {
     CHECK(log.lastId == kPlaylistId);
     CHECK(log.lastSpec.query == "%genre% IS Jazz");
 
-    const auto removed = server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId,
-                                                TestServer::bearer());
+    const auto removed = server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId);
 
     REQUIRE(removed);
     CHECK(removed->status == 200);
@@ -3205,7 +3170,7 @@ TEST_CASE("an id that is not one we issued never reaches the player") {
     for (const char* id : {"nonsense", "45837D74-FA4F-415C-BBA9-BF2DB8F0DC04", "../../etc"}) {
         INFO("id: ", id);
         const auto response =
-            server.client().Delete(std::string("/api/autoplaylists/") + id, TestServer::bearer());
+            server.client().Delete(std::string("/api/autoplaylists/") + id);
         REQUIRE(response);
         CHECK(response->status == 404);
     }
@@ -3213,7 +3178,7 @@ TEST_CASE("an id that is not one we issued never reaches the player") {
     // Right length and right alphabet, so this one reaches our own check and is refused by
     // name rather than as a missing route.
     const auto response = server.client().Delete(
-        "/api/autoplaylists/------------------------------------", TestServer::bearer());
+        "/api/autoplaylists/------------------------------------");
 
     REQUIRE(response);
     CHECK(response->status == 400);
@@ -3289,7 +3254,7 @@ TEST_CASE("a client stuck in a loop is slowed down rather than obeyed") {
     CHECK(complaints < refused);
 
     // Reading changes nothing, so it is not limited and a different route cannot spend it.
-    CHECK(server.client().Get("/api/playlists", TestServer::bearer())->status == 200);
+    CHECK(server.client().Get("/api/playlists")->status == 200);
 }
 
 // One budget covers every playlist write, as contract/openapi.yaml says, so a client looping any
@@ -3335,7 +3300,7 @@ TEST_CASE("an install that allows no autoplaylists says so before a client offer
     SUBCASE("the default install can create, and says how many") {
         const TestServer server(servingSettings());
         const auto body =
-            json::parse(server.client().Get("/api/capabilities", TestServer::bearer())->body);
+            json::parse(server.client().Get("/api/capabilities")->body);
 
         CHECK(body["canCreateAutoPlaylists"] == true);
         CHECK(body["maxAutoPlaylists"] == Settings().maxAutoPlaylists);
@@ -3347,7 +3312,7 @@ TEST_CASE("an install that allows no autoplaylists says so before a client offer
 
         const TestServer server(settings);
         const auto body =
-            json::parse(server.client().Get("/api/capabilities", TestServer::bearer())->body);
+            json::parse(server.client().Get("/api/capabilities")->body);
 
         CHECK(body["canCreateAutoPlaylists"] == false);
         CHECK(body["maxAutoPlaylists"] == 0);
@@ -3454,9 +3419,7 @@ TEST_CASE("a player reporting no playback orders offers an empty list rather tha
 // and the name a client reads are one decision, and setting the field directly pins half of it.
 TEST_CASE("GET /api/capabilities publishes what this install permits, off its own config.json") {
     const auto permitting = [](const char* config) {
-        auto settings = parseSettings(config);
-        settings.authToken = kToken;
-        return capabilitiesOf(settings);
+        return capabilitiesOf(parseSettings(config));
     };
 
     SUBCASE("a config nobody narrowed permits both") {
@@ -3787,7 +3750,7 @@ TEST_CASE("the queue role is gone, and neither verb on it reaches the player") {
     const TestServer server(servingSettings(), fillingPlayer(&log), &library);
 
     const auto filled = post(server, kQueueFill, ownBody(kScratchTitle, log.structure));
-    const auto emptied = server.client().Delete(kQueueFill, TestServer::bearer());
+    const auto emptied = server.client().Delete(kQueueFill);
     const auto invented =
         post(server, "/api/playlists/own/library/items", ownBody(kScratchTitle, log.structure));
 
@@ -4409,7 +4372,7 @@ TEST_CASE("emptying the role takes its playlist's rows and leaves the playlist i
     auto log = holding(library.state().structure);
     const TestServer server(servingSettings(), fillingPlayer(&log), &library);
 
-    const auto response = server.client().Delete(kScratchFill, TestServer::bearer());
+    const auto response = server.client().Delete(kScratchFill);
 
     REQUIRE(response);
     INFO("status: ", response->status);
@@ -4429,7 +4392,7 @@ TEST_CASE("emptying the role takes its playlist's rows and leaves the playlist i
 TEST_CASE("an empty the player cannot serve names its own playlists rather than autoplaylists") {
     const TestServer server;
 
-    const auto response = server.client().Delete(kScratchFill, TestServer::bearer());
+    const auto response = server.client().Delete(kScratchFill);
 
     REQUIRE(response);
     CHECK(response->status == 503);
@@ -4452,7 +4415,7 @@ TEST_CASE("the component's own playlist empties whether writePlaylists is on or 
         const TestServer server(writePlaylists ? servingSettings() : readOnlyPlaylists(),
                                 fillingPlayer(&log), &library);
 
-        const auto response = server.client().Delete(kScratchFill, TestServer::bearer());
+        const auto response = server.client().Delete(kScratchFill);
 
         REQUIRE(response);
         INFO("status: ", response->status);
@@ -4473,7 +4436,7 @@ TEST_CASE("a role the contract does not name is refused on an empty exactly as i
         INFO("role: ", role);
         const auto path = "/api/playlists/own/" + role + "/items";
 
-        const auto emptied = server.client().Delete(path, TestServer::bearer());
+        const auto emptied = server.client().Delete(path);
         const auto filled = post(server, path, ownBody(kScratchTitle, log.structure));
 
         REQUIRE(emptied);
@@ -4508,8 +4471,8 @@ TEST_CASE("the contract publishes a 403 on exactly the writes the setting can re
         CHECK(answers403(name));
     }
 
-    CHECK_FALSE(answers403("POST /playlists/own/{role}/items"));
-    CHECK_FALSE(answers403("DELETE /playlists/own/{role}/items"));
+    CHECK(answers403("POST /playlists/own/{role}/items"));
+    CHECK(answers403("DELETE /playlists/own/{role}/items"));
 }
 
 TEST_CASE("the contract publishes a 429 on every write the playlist limit can refuse") {
@@ -4536,4 +4499,59 @@ TEST_CASE("the contract publishes a 429 on every write the playlist limit can re
     // Reading spends nothing, so a client may page a playlist while another is being written.
     CHECK(statusesOf("GET /playlists").count(429) == 0);
     CHECK(statusesOf("GET /playlists/{id}/items").count(429) == 0);
+}
+
+TEST_CASE("with controlPlayback off, playing a row and both scratch routes are 403") {
+    Library library;
+    buildLibrary(library);
+
+    auto fills = holding(library.state().structure);
+    int plays = 0;
+
+    Player player = fillingPlayer(&fills);
+    player.playPlaylistRow = [&plays](const std::string&, uint32_t) {
+        ++plays;
+        return PlaylistOutcome::done;
+    };
+
+    const TestServer server(parseSettings(R"({"controlPlayback": false})"), player, &library);
+
+    std::set<std::string> sentences;
+    const auto refused = [&sentences](const char* name, const httplib::Result& response) {
+        INFO(std::string(name));
+        REQUIRE(response);
+        CHECK(response->status == 403);
+
+        const auto body = json::parse(response->body, nullptr, false);
+        CHECK(body.is_object());
+        if (body.is_object() && body.value("error", json()).is_string())
+            sentences.insert(body["error"].get<std::string>());
+    };
+
+    refused("play a row", post(server, playPath(kPlaylistId, "0"), ""));
+    refused("fill the scratch", post(server, kScratchFill, ownBody(kScratchTitle, fills.structure)));
+    refused("empty the scratch", server.client().Delete(kScratchFill));
+
+    CHECK(plays == 0);
+    CHECK(fills.fills == 0);
+    CHECK(fills.roles.empty());
+    CHECK(fills.held[kScratchPlaylistId] == kHeldRows);
+
+    REQUIRE(sentences.size() == 1);
+    CHECK(sentences.begin()->find("controlPlayback") != std::string::npos);
+}
+
+// Playing a row is playback rather than a playlist write, so a guard copied from writesRefused
+// onto the play route would break every read-only install's play button.
+TEST_CASE("with writePlaylists off and controlPlayback on, playing a row reaches the player") {
+    PlayLog log;
+    const TestServer server(
+        parseSettings(R"({"writePlaylists": false, "controlPlayback": true})"),
+        playingPlayer(&log));
+
+    const auto response = post(server, playPath(kPlaylistId, "3"), "");
+
+    REQUIRE(response);
+    CHECK(response->status == 204);
+    CHECK(log.calls == 1);
 }

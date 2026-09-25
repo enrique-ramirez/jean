@@ -2,10 +2,15 @@
 
 #include "core/settings.h"
 
+#include <string>
+
 namespace jean {
 
-// Reads <profile>/foo_jean/config.json, writing a default one with a fresh token if it is
-// missing. Never throws.
+// The raw bytes of <profile>/foo_jean/config.json, or empty if it is missing, unreadable or
+// implausibly large. Never throws.
+std::string readConfigText();
+
+// Reads <profile>/foo_jean/config.json, writing a default one if it is missing. Never throws.
 Settings loadSettings();
 
 // Replaces the file with these settings. Throws, unlike everything else here.

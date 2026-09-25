@@ -1,10 +1,8 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
-	AS_A_CLIENT,
 	componentOrigin,
 	coversFromTheComponent,
 	expect,
-	FOO_JEAN_TOKEN,
 	guidOfPlaylist,
 	nowPlayingScreen,
 	openAllMusic,
@@ -68,7 +66,7 @@ test.describe("artwork loading", () => {
 		const origin = await componentOrigin(request);
 		await request.post(
 			`${origin}/api/playlists/${guidOfPlaylist(player, "p7")}/items/${FAR}/play`,
-			AS_A_CLIENT,
+			{ headers: { "Content-Type": "application/json" } },
 		);
 		await expect.poll(() => scrollTop(page)).toBeGreaterThan(1_000_000);
 
@@ -363,13 +361,12 @@ test.describe("a cover from the library", () => {
 				.find((name) => name.includes("/api/artwork?track=")),
 		)) as string;
 
-		const auth = { Authorization: `Bearer ${FOO_JEAN_TOKEN}` };
-		const first = await request.get(url, { headers: auth });
+		const first = await request.get(url);
 		expect(first.status()).toBe(200);
 
 		const tag = first.headers().etag;
 		const again = await request.get(url, {
-			headers: { ...auth, "If-None-Match": tag },
+			headers: { "If-None-Match": tag },
 		});
 
 		expect(again.status()).toBe(304);
@@ -527,28 +524,20 @@ test.describe("a playlist row the media library carries no path for", () => {
 
 	// Which picture is behind an address, as a digest of its bytes: a row that drew a stale handle,
 	// or a neighbouring record's sleeve, reaches `ok` just the same and only the bytes tell them
-	// apart. A `blob:` handle carries no credential; the component's own address needs the token.
+	// apart.
 	const digestOf = (page: Page, url: string) =>
-		page.evaluate(
-			async ({ address, token }: { address: string; token: string }) => {
-				const response = await fetch(
-					address,
-					address.startsWith("blob:")
-						? {}
-						: { headers: { Authorization: `Bearer ${token}` } },
-				);
-				if (!response.ok) return `status ${response.status}`;
+		page.evaluate(async (address: string) => {
+			const response = await fetch(address);
+			if (!response.ok) return `status ${response.status}`;
 
-				const digest = await crypto.subtle.digest(
-					"SHA-1",
-					await response.arrayBuffer(),
-				);
-				return [...new Uint8Array(digest)]
-					.map((byte) => byte.toString(16).padStart(2, "0"))
-					.join("");
-			},
-			{ address: url, token: FOO_JEAN_TOKEN },
-		);
+			const digest = await crypto.subtle.digest(
+				"SHA-1",
+				await response.arrayBuffer(),
+			);
+			return [...new Uint8Array(digest)]
+				.map((byte) => byte.toString(16).padStart(2, "0"))
+				.join("");
+		}, url);
 
 	test("draws its cover from the position it sits at", async ({
 		page,
@@ -605,36 +594,26 @@ test.describe("a track whose own art is not its album's", () => {
 		`${origin}/api/artwork?track=${encodeURIComponent(track)}`;
 
 	// Which picture is on screen, as a digest of the bytes behind each address: two sleeves can be
-	// asked for at one address, and only the bytes say which of them a person is looking at. A
-	// `blob:` handle carries no credential, and every other address here is the component's and
-	// needs the token.
+	// asked for at one address, and only the bytes say which of them a person is looking at.
 	const digestsOf = (page: Page, urls: string[]) =>
-		page.evaluate(
-			async ({ list, token }: { list: string[]; token: string }) => {
-				const read = async (url: string) => {
-					const response = await fetch(
-						url,
-						url.startsWith("blob:")
-							? {}
-							: { headers: { Authorization: `Bearer ${token}` } },
-					);
-					if (!response.ok) return `status ${response.status}`;
+		page.evaluate(async (list: string[]) => {
+			const read = async (url: string) => {
+				const response = await fetch(url);
+				if (!response.ok) return `status ${response.status}`;
 
-					const digest = await crypto.subtle.digest(
-						"SHA-1",
-						await response.arrayBuffer(),
-					);
-					return [...new Uint8Array(digest)]
-						.map((byte) => byte.toString(16).padStart(2, "0"))
-						.join("");
-				};
+				const digest = await crypto.subtle.digest(
+					"SHA-1",
+					await response.arrayBuffer(),
+				);
+				return [...new Uint8Array(digest)]
+					.map((byte) => byte.toString(16).padStart(2, "0"))
+					.join("");
+			};
 
-				const digests: string[] = [];
-				for (const url of list) digests.push(await read(url));
-				return digests;
-			},
-			{ list: urls, token: FOO_JEAN_TOKEN },
-		);
+			const digests: string[] = [];
+			for (const url of list) digests.push(await read(url));
+			return digests;
+		}, urls);
 
 	test("draws its album's cover rather than the one in its own file", async ({
 		page,
@@ -660,14 +639,14 @@ test.describe("a track whose own art is not its album's", () => {
 	});
 });
 
-// A browser gives an `<img>` no way to send a header, and the component authenticates
-// every cover it serves, so an address of its own written straight onto an element is fetched
-// without the token, refused, and draws nothing that anybody can see went wrong. Every cover
-// reaches the element as a blob somebody already fetched, on every surface that draws one.
+// Every cover reaches the element as a blob somebody already fetched, on every surface that draws
+// one, rather than as `foo_jean`'s own address written straight onto an `<img>`. That stays true even
+// though the address itself needs no credential any more: switching to a plain address changes
+// caching and lazy loading enough to be a bundle of its own.
 test.describe("what a cover element is ever pointed at", () => {
 	// Every address a cover element is carrying that is not a handle on bytes somebody already
-	// fetched. Read off the elements rather than off an origin, because an address needing a header
-	// is wrong on an `<img>` whoever serves it, and Jean's own origin is the only one that does not.
+	// fetched. Read off the elements rather than off an origin, since it is `foo_jean`'s own address,
+	// not a header, that a plain `<img>` here would be wrong to carry.
 	const addressesThatAreNotBlobs = (page: Page) =>
 		page.evaluate(() =>
 			[...document.querySelectorAll("[data-artwork] img")]
@@ -675,15 +654,14 @@ test.describe("what a cover element is ever pointed at", () => {
 				.filter((src) => src !== "" && !src.startsWith("blob:")),
 		);
 
-	test("never at an address that needs the token, on any surface that draws a cover", async ({
+	test("never at the component's own address directly, on any surface that draws a cover", async ({
 		page,
 		isMobile,
 	}) => {
 		// Read in this order on purpose. The element has to exist before its address says anything,
 		// and it exists whether the address is a handle or the component's own. The picture has to
 		// have drawn as well, or the absence in the middle is an absence of covers rather than of
-		// unauthenticated addresses -- and that one goes last, because an address sent without the
-		// header is refused and never draws, so "no cover here" is the wrong thing to report first.
+		// direct addresses.
 		const onlyBlobs = async (surface: string, within: Locator) => {
 			await expect(
 				within.locator("[data-artwork] img").first(),

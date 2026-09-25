@@ -9,8 +9,6 @@ import { createState, libraryOfShape } from "../fake-api/state.ts";
 // row by the subsong the snapshot handed it and never by 0. `test/README.md` has how the fake
 // numbers them, and why it matches the player rather than counting.
 
-const TOKEN = "0f8c1d2e3a4b5c6d7e8f90a1b2c3d4e5";
-
 const TRACKS_IN_THE_FILE = 3;
 
 // What the fake answers for a title-formatting expression the track does not carry, as a real
@@ -42,7 +40,7 @@ beforeEach(() => {
 			tracks: TRACKS_IN_THE_FILE,
 			subsongsPerFile: TRACKS_IN_THE_FILE,
 		}),
-		fooJean: { token: TOKEN },
+		fooJean: {},
 	});
 	state.libraryFeed.building = ["%title%", "%rating%"];
 	state.finishLibraryBuild();
@@ -57,16 +55,14 @@ const theFile = () => {
 const rate = (address: Record<string, unknown>) =>
 	fetch(`${origin}/api/tags`, {
 		method: "POST",
-		headers: { Authorization: `Bearer ${TOKEN}` },
+		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ ...address, fields: { rating: "4" } }),
 	});
 
 const readRating = (track: string, subsong?: number) => {
 	const query = new URLSearchParams({ track, columns: "%rating%" });
 	if (subsong !== undefined) query.set("subsong", String(subsong));
-	return fetch(`${origin}/api/track/library?${query}`, {
-		headers: { Authorization: `Bearer ${TOKEN}` },
-	});
+	return fetch(`${origin}/api/track/library?${query}`);
 };
 
 test("a rating written to one subsong lands on that subsong and on no other", async () => {

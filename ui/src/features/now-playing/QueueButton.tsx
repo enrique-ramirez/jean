@@ -1,7 +1,7 @@
 import { ListEnd } from "lucide-react";
 
 import { QUEUE_DROP_TARGET } from "@/domain/player/queue";
-import { useQueue } from "@/domain/player/useQueue";
+import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useDragState } from "@/shared/ui/dnd";
 import styles from "./QueueButton.module.css";
@@ -19,6 +19,7 @@ export function QueueButton({
 }) {
 	const t = useTranslate();
 	const { count } = useQueue();
+	const { canControlPlayback } = useQueueActions();
 	const drag = useDragState();
 
 	return (
@@ -34,6 +35,9 @@ export function QueueButton({
 			data-queue-toggle=""
 			data-drop-target={drag.isDragging ? QUEUE_DROP_TARGET : undefined}
 			data-drop-over={drag.over === QUEUE_DROP_TARGET ? "true" : undefined}
+			data-drop-refuses={
+				canControlPlayback ? undefined : t("player.controlOff")
+			}
 			onClick={onToggle}
 		>
 			<ListEnd size={18} strokeWidth={2} aria-hidden="true" />

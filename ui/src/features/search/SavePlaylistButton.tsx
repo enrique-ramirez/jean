@@ -64,11 +64,8 @@ export function SavePlaylistButton({
 				return { id, title: name };
 			}
 
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			const playlist = await createPlaylist(origin, token, {
+			const origin = requireFooJean(discovery.origin);
+			const playlist = await createPlaylist(origin, {
 				title: name,
 				...encodeFill(indices, {
 					structure: library.structure,

@@ -37,7 +37,6 @@ interface JeanFixtures {
 	playlistsFromRow: Record<string, number>;
 	countsPlays: boolean;
 	fooJean: FooJeanOptions;
-	fooJeanToken: string | null;
 	playerState: Partial<FakePlayerState> | null;
 	player: FakePlayer;
 	settings: Record<string, unknown>;
@@ -46,12 +45,6 @@ interface JeanFixtures {
 }
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), "../../dist");
-
-export const FOO_JEAN_TOKEN = "0123456789abcdef0123456789abcdef";
-
-export const AS_A_CLIENT = {
-	headers: { Authorization: `Bearer ${FOO_JEAN_TOKEN}` },
-};
 
 // The component's own origin, for a spec that talks to it directly rather than through the app.
 // One server answers both now, so this is `baseURL` -- fetched rather than read off the config,
@@ -109,11 +102,6 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 
 	// Defaults and the states each option can present are in `test/README.md`.
 	fooJean: [{}, { option: true }],
-
-	// Seeded into localStorage separately from `settings`, since a token is
-	// never something Jean's own settings sync carries. `null` is a device
-	// that has never paired.
-	fooJeanToken: [FOO_JEAN_TOKEN, { option: true }],
 
 	playerState: [null, { option: true }],
 
@@ -180,10 +168,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 	// test.use({ motion: 'allow' }).
 	motion: ["reduce", { option: true }],
 
-	page: async (
-		{ page, settings, firstRun, player, motion, fooJeanToken },
-		use,
-	) => {
+	page: async ({ page, settings, firstRun, player, motion }, use) => {
 		playerOf.set(page, player);
 		if (motion === "reduce")
 			await page.emulateMedia({ reducedMotion: "reduce" });
@@ -192,12 +177,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 				for (const [key, value] of Object.entries(values))
 					window.localStorage.setItem(key, JSON.stringify(value));
 			},
-			{
-				...(firstRun ? settings : { ...SEEDED_SETTINGS, ...settings }),
-				...(fooJeanToken === null
-					? null
-					: { "jean.fooJeanToken": fooJeanToken }),
-			},
+			firstRun ? settings : { ...SEEDED_SETTINGS, ...settings },
 		);
 		await use(page);
 	},

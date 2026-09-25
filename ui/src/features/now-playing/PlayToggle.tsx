@@ -12,11 +12,13 @@ export function PlayToggle({
 	onToggle,
 	variant = "bar",
 	className,
+	disabled = false,
 }: {
 	isPlaying: boolean;
 	onToggle: () => void;
 	variant?: "bar" | "screen";
 	className?: string;
+	disabled?: boolean;
 }) {
 	const t = useTranslate();
 	const [motion, setMotion] = useState(MOTIONS[0]);
@@ -37,6 +39,8 @@ export function PlayToggle({
 		return () => clearInterval(timer);
 	}, [isPlaying]);
 
+	const baseLabel = t(isPlaying ? "player.pause" : "player.play");
+
 	return (
 		<button
 			type="button"
@@ -44,8 +48,13 @@ export function PlayToggle({
 			data-size={variant}
 			data-playing={isPlaying}
 			data-motion={motion}
-			aria-label={t(isPlaying ? "player.pause" : "player.play")}
-			onClick={onToggle}
+			aria-disabled={disabled || undefined}
+			aria-label={
+				disabled
+					? t("player.controlOffName", { control: baseLabel })
+					: baseLabel
+			}
+			onClick={disabled ? undefined : onToggle}
 		>
 			{isPlaying ? <PauseIcon /> : <PlayIcon />}
 		</button>

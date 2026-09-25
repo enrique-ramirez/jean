@@ -128,7 +128,6 @@ export const playlistKey = (playlistId: string, structure: string) =>
 
 const fetchChunk = async (
 	origin: string,
-	token: string,
 	playlistId: string,
 	offset: number,
 	count: number,
@@ -136,7 +135,6 @@ const fetchChunk = async (
 ): Promise<Chunk> => {
 	const page = await fetchPlaylistRows(
 		origin,
-		token,
 		playlistId,
 		offset,
 		count,
@@ -202,12 +200,7 @@ function evictIdle(currentKey: string) {
 		});
 }
 
-async function load(
-	entry: Entry,
-	origin: string,
-	token: string,
-	playlistId: string,
-) {
+async function load(entry: Entry, origin: string, playlistId: string) {
 	const collector = columnCollector(TRACK_EXPRESSIONS.length);
 	const paths = pathCollector();
 	const subsongs: number[] = [];
@@ -254,14 +247,7 @@ async function load(
 
 	try {
 		const signal = (entry.controller as AbortController).signal;
-		const first = await fetchChunk(
-			origin,
-			token,
-			playlistId,
-			0,
-			FIRST_CHUNK,
-			signal,
-		);
+		const first = await fetchChunk(origin, playlistId, 0, FIRST_CHUNK, signal);
 		addChunk(first);
 		entry.feed = {
 			kind: "playlist",
@@ -274,12 +260,7 @@ async function load(
 		const total = first.totalCount;
 		publish(total, collector.count() < total);
 		if (collector.count() >= total)
-			return void (await recheckMissedPlaylist(
-				entry,
-				origin,
-				token,
-				playlistId,
-			));
+			return void (await recheckMissedPlaylist(entry, origin, playlistId));
 
 		const held = collector.count();
 		const offsets = Array.from(
@@ -304,14 +285,7 @@ async function load(
 				const offset = queue.shift() as number;
 				pending.set(
 					offset,
-					await fetchChunk(
-						origin,
-						token,
-						playlistId,
-						offset,
-						CHUNK_SIZE,
-						signal,
-					),
+					await fetchChunk(origin, playlistId, offset, CHUNK_SIZE, signal),
 				);
 				drainInOrder();
 				publishSoon(total, collector.count() < total);
@@ -326,7 +300,7 @@ async function load(
 		// than when the count is reached.
 		dropDeferred();
 		publish(total, false);
-		await recheckMissedPlaylist(entry, origin, token, playlistId);
+		await recheckMissedPlaylist(entry, origin, playlistId);
 	} catch (error) {
 		dropDeferred();
 		if (error instanceof Error && error.name === "AbortError") return;
@@ -340,7 +314,6 @@ async function load(
 
 const READ_FAILED = {
 	unavailable: "library.readUnavailable",
-	unauthorized: "library.readUnauthorized",
 	"too-large": "library.readTooLarge",
 	refused: "library.readRefused",
 	unreachable: "library.readUnreachable",
@@ -357,11 +330,10 @@ const readError = (failure: LibraryFailure) => {
 	);
 };
 
-async function loadSnapshot(entry: Entry, origin: string, token: string) {
+async function loadSnapshot(entry: Entry, origin: string) {
 	try {
 		const result = await fetchLibrary(
 			origin,
-			token,
 			TRACK_EXPRESSIONS,
 			(entry.controller as AbortController).signal,
 		);
@@ -397,7 +369,7 @@ async function loadSnapshot(entry: Entry, origin: string, token: string) {
 			...deriveIntensity(columns),
 		});
 
-		await recheckMissed(entry, origin, token);
+		await recheckMissed(entry, origin);
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") return;
 		entry.isStarted = false;
@@ -412,25 +384,20 @@ async function loadSnapshot(entry: Entry, origin: string, token: string) {
 	}
 }
 
-function exportAgain(entry: Entry, origin: string, token: string) {
+function exportAgain(entry: Entry, origin: string) {
 	entry.controller?.abort();
 	entry.controller = new AbortController();
 	entry.feed = null;
 	emit(entry, { isLoading: true, error: null });
-	return loadSnapshot(entry, origin, token);
+	return loadSnapshot(entry, origin);
 }
 
-function reloadPlaylist(
-	entry: Entry,
-	origin: string,
-	token: string,
-	playlistId: string,
-) {
+function reloadPlaylist(entry: Entry, origin: string, playlistId: string) {
 	entry.controller?.abort();
 	entry.controller = new AbortController();
 	entry.feed = null;
 	emit(entry, { isLoading: true, error: null });
-	return load(entry, origin, token, playlistId);
+	return load(entry, origin, playlistId);
 }
 
 function patchedPlaylistColumns(
@@ -530,7 +497,7 @@ function applyDelta(entry: Entry, feed: LibraryFeed, delta: JlibDelta) {
 	return true;
 }
 
-async function recheckMissed(entry: Entry, origin: string, token: string) {
+async function recheckMissed(entry: Entry, origin: string) {
 	const missed = entry.missedLibrary;
 	if (!missed) return;
 	entry.missedLibrary = null;
@@ -544,14 +511,13 @@ async function recheckMissed(entry: Entry, origin: string, token: string) {
 	)
 		return;
 
-	const result = await fetchState(origin, token, null);
+	const result = await fetchState(origin, null);
 	if (result.ok && result.kind === "state")
-		await recheckComponentLibrary(origin, token, result.state.library);
+		await recheckComponentLibrary(origin, result.state.library);
 }
 
 export async function recheckComponentLibrary(
 	origin: string,
-	token: string,
 	library: LibraryGeneration,
 ) {
 	const entry = entries.get(componentLibraryKey(origin));
@@ -570,35 +536,33 @@ export async function recheckComponentLibrary(
 	feed.isChecking = true;
 	try {
 		if (library.structure !== feed.structure)
-			return void (await exportAgain(entry, origin, token));
+			return void (await exportAgain(entry, origin));
 		if (library.revision <= feed.revision) return;
 
-		const changes = await fetchLibraryChanges(origin, token, feed.revision);
+		const changes = await fetchLibraryChanges(origin, feed.revision);
 		if (!changes.ok) return;
 		if (changes.kind === "delta" && applyDelta(entry, feed, changes.delta))
 			return;
 
-		await exportAgain(entry, origin, token);
+		await exportAgain(entry, origin);
 	} finally {
 		feed.isChecking = false;
-		await recheckMissed(entry, origin, token);
+		await recheckMissed(entry, origin);
 	}
 }
 
 export const loadPlaylist = (
 	origin: string,
-	token: string,
 	playlistId: string,
 	structure: string,
 	itemCount: number,
 ) =>
 	begin(playlistKey(playlistId, structure), itemCount, itemCount > 0, (entry) =>
-		load(entry, origin, token, playlistId),
+		load(entry, origin, playlistId),
 	);
 
 async function fetchChangesOrNull(
 	origin: string,
-	token: string,
 	playlistId: string,
 	structure: string,
 	revision: string,
@@ -606,7 +570,6 @@ async function fetchChangesOrNull(
 	try {
 		return await fetchPlaylistItemChanges(
 			origin,
-			token,
 			playlistId,
 			structure,
 			revision,
@@ -617,7 +580,7 @@ async function fetchChangesOrNull(
 	}
 }
 
-export async function retryFailedPlaylistReads(origin: string, token: string) {
+export async function retryFailedPlaylistReads(origin: string) {
 	const pending = [...entries.values()].flatMap((entry) => {
 		const unread = entry.unreadPlaylist;
 		if (!unread) return [];
@@ -626,12 +589,11 @@ export async function retryFailedPlaylistReads(origin: string, token: string) {
 	});
 
 	for (const { playlistId, generation } of pending)
-		await recheckPlaylist(origin, token, playlistId, generation);
+		await recheckPlaylist(origin, playlistId, generation);
 }
 
 export async function recheckPlaylist(
 	origin: string,
-	token: string,
 	playlistId: string,
 	generation: PlaylistGeneration,
 ) {
@@ -659,7 +621,6 @@ export async function recheckPlaylist(
 	try {
 		const result = await fetchChangesOrNull(
 			origin,
-			token,
 			playlistId,
 			feed.structure,
 			feed.revision,
@@ -670,7 +631,7 @@ export async function recheckPlaylist(
 		}
 
 		if (!result.ok)
-			return void (await reloadPlaylist(entry, origin, token, playlistId));
+			return void (await reloadPlaylist(entry, origin, playlistId));
 
 		// A row inside the prefix a load has already published would patch in
 		// cleanly right now, but the load's next publish is built from a collector
@@ -686,28 +647,27 @@ export async function recheckPlaylist(
 		}
 
 		if (!applyPlaylistChanges(entry, feed, result.changes))
-			return void (await reloadPlaylist(entry, origin, token, playlistId));
+			return void (await reloadPlaylist(entry, origin, playlistId));
 	} finally {
 		if (entry.feed === feed) feed.isChecking = false;
-		await recheckMissedPlaylist(entry, origin, token, playlistId);
+		await recheckMissedPlaylist(entry, origin, playlistId);
 	}
 }
 
 async function recheckMissedPlaylist(
 	entry: Entry,
 	origin: string,
-	token: string,
 	playlistId: string,
 ) {
 	const missed = entry.missedPlaylist;
 	if (!missed || entry.snapshot.isLoading) return;
 	entry.missedPlaylist = null;
-	await recheckPlaylist(origin, token, playlistId, missed);
+	await recheckPlaylist(origin, playlistId, missed);
 }
 
-export const loadComponentLibrary = (origin: string, token: string) =>
+export const loadComponentLibrary = (origin: string) =>
 	begin(componentLibraryKey(origin), 0, true, (entry) =>
-		loadSnapshot(entry, origin, token),
+		loadSnapshot(entry, origin),
 	);
 
 function begin(

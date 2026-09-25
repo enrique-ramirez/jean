@@ -5,12 +5,14 @@
 #include "third_party/doctest.h"
 
 #include "support/fixtures.h"
+#include "support/spec.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -586,25 +588,6 @@ TEST_CASE("every mode GET /api/capabilities offers is one POST /api/playback/mod
     }
 }
 
-// The pre-routing filter answers this, and a handler that touched the token would be a second
-// place a credential is judged.
-TEST_CASE("every command without a bearer token is a 401 and never reaches the player") {
-    Commands commands;
-    const TestServer server(servingSettings(), commanding(&commands));
-
-    for (const auto& command : kOneOfEach) {
-        INFO("POST ", command.path, " ", command.body);
-
-        const auto response = server.client().Post(command.path, command.body, "application/json");
-
-        REQUIRE(response);
-        CHECK(response->status == 401);
-        CHECK(json::parse(response->body)["error"] == "authentication required");
-    }
-
-    CHECK(commands.count() == 0);
-}
-
 // A held skip key or a dragged fader sends a run of these. The playlist limit exists for edits
 // that rebuild a snapshot, and a refusal here would be a key that stops working mid-press.
 TEST_CASE("a run of commands faster than the playlist limit allows is answered every time") {
@@ -667,4 +650,51 @@ TEST_CASE("an install with no playback seams answers every command 503") {
         CHECK(response->status == 503);
         CHECK(json::parse(response->body)["error"].is_string());
     }
+}
+
+// Driven from the contract, so a playback route added later is refused without editing this.
+TEST_CASE("with controlPlayback off, every playback command, seek, mode and volume is 403") {
+    Commands commands;
+    const TestServer server(parseSettings(R"({"controlPlayback": false})"), commanding(&commands));
+
+    std::set<std::string> sentences;
+    size_t routes = 0;
+
+    for (const auto& route : publishedRoutes()) {
+        const bool playback = route.path.rfind("/playback/", 0) == 0 || route.path == "/volume";
+        if (route.method != "POST" || !playback)
+            continue;
+
+        ++routes;
+        const auto path = "/api" + route.path;
+
+        std::vector<std::string> bodies;
+        for (const auto& command : kEveryForm)
+            if (path == command.path)
+                bodies.emplace_back(command.body);
+        if (bodies.empty())
+            bodies.emplace_back("{}");
+
+        for (const auto& body : bodies) {
+            const auto error = checkRefused(server, commands, path, body, 403);
+            if (error.is_string())
+                sentences.insert(error.get<std::string>());
+        }
+    }
+
+    REQUIRE(routes >= kOneOfEach.size());
+    CHECK(commands.count() == 0);
+
+    // One switch, one sentence, naming the switch a player's owner has to turn back on.
+    REQUIRE(sentences.size() == 1);
+    CHECK(sentences.begin()->find("controlPlayback") != std::string::npos);
+}
+
+TEST_CASE("with controlPlayback off, the player's state is still read") {
+    const TestServer server(parseSettings(R"({"controlPlayback": false})"));
+
+    const auto response = server.client().Get("/api/state");
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
 }

@@ -1,7 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
-	AS_A_CLIENT,
 	componentOrigin,
 	coversByPosition,
 	coversFromTheComponent,
@@ -1579,17 +1578,16 @@ const postToComponent = (
 	request: APIRequestContext,
 	url: string,
 	body: Record<string, unknown>,
-) => request.post(url, { ...AS_A_CLIENT, data: body });
+) => request.post(url, { data: body });
 
 const readFromComponent = async (request: APIRequestContext, url: string) =>
-	await (await request.get(url, AS_A_CLIENT)).json();
+	await (await request.get(url)).json();
 
 // Nothing is exported until a client names a column set, and a queue by handle
 // against a library that was never built is a 503 before any body is read.
 const buildTheLibrary = async (request: APIRequestContext, origin: string) => {
 	const built = await request.get(
 		`${origin}/api/library/export?columns=${encodeURIComponent("%title%")}`,
-		AS_A_CLIENT,
 	);
 	expect(built.status()).toBe(200);
 	const { library } = await readFromComponent(request, `${origin}/api/state`);
@@ -1959,7 +1957,7 @@ test.describe("the cover on a queued row", () => {
 				// for either, two positions, and one record named across both.
 				const origin = await componentOrigin(request);
 				const { entries } = await (
-					await request.get(`${origin}/api/queue`, AS_A_CLIENT)
+					await request.get(`${origin}/api/queue`)
 				).json();
 				expect(
 					entries.map(

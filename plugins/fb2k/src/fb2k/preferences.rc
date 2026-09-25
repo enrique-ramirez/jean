@@ -2,9 +2,9 @@
 //
 // Fixed size: foobar2000 sizes a preferences page to the space the host window has and
 // does not scroll it, so a page taller than the smallest window somebody might use is a
-// page with content nobody can reach. Two pages rather than one for the same reason: all
-// five groups together do not fit. IDD_PREFERENCES holds what is set once; IDD_DEVICES
-// holds who may connect.
+// page with content nobody can reach. Two pages rather than one for the same reason:
+// everything together does not fit. IDD_PREFERENCES holds what is set once; IDD_PERMISSIONS
+// holds what governs a request, as a child page.
 //
 // Dialog units are relative to FONT 8, "MS Shell Dlg"; changing either invalidates every
 // coordinate below. A wrapping LTEXT needs more height than its lines add up to, or the
@@ -19,7 +19,7 @@
 
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
-IDD_PREFERENCES DIALOGEX 0, 0, 332, 232
+IDD_PREFERENCES DIALOGEX 0, 0, 332, 163
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
@@ -32,37 +32,39 @@ BEGIN
                     IDC_STATIC, 14, 58, 304, 10
 
     GROUPBOX        "Allowed origins", IDC_STATIC, 7, 77, 318, 53
-    LTEXT           "One per line. Empty allows any origin.", IDC_STATIC, 14, 89, 304, 10
+    LTEXT           "One per line. An empty list reflects no origin.", IDC_STATIC, 14, 89, 304, 10
     EDITTEXT        IDC_ORIGINS, 14, 101, 304, 24,
                     ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
 
-    GROUPBOX        "Fields this may write", IDC_STATIC, 7, 134, 318, 53
-    LTEXT           "One per line. Nothing outside this list is ever written.", IDC_STATIC,
-                    14, 146, 304, 10
-    EDITTEXT        IDC_FIELDS, 14, 158, 304, 24,
-                    ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
-
-    CONTROL         "Allow Jean to change playlists", IDC_WRITE_PLAYLISTS, "Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP, 14, 191, 304, 10
-
-    LTEXT           "", IDC_CONFIG_PATH, 7, 203, 318, 22
+    LTEXT           "", IDC_CONFIG_PATH, 7, 134, 318, 22
 END
 
-IDD_DEVICES DIALOGEX 0, 0, 332, 172
+IDD_PERMISSIONS DIALOGEX 0, 0, 332, 229
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    GROUPBOX        "Authentication", IDC_STATIC, 7, 7, 318, 70
-    LTEXT           "Token:", IDC_STATIC, 14, 24, 32, 10
-    EDITTEXT        IDC_TOKEN, 50, 22, 194, 14, ES_AUTOHSCROLL
-    PUSHBUTTON      "Regenerate", IDC_REGENERATE, 250, 21, 68, 16
-    LTEXT           "Sent as Authorization: Bearer <token>. Regenerating locks out every client holding the old one.",
-                    IDC_STATIC, 14, 42, 304, 22
+    GROUPBOX        "Permissions", IDC_STATIC, 7, 7, 318, 70
+    CONTROL         "Allow Jean to control playback", IDC_CONTROL_PLAYBACK, "Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP, 14, 20, 304, 10
+    CONTROL         "Allow Jean to change playlists", IDC_WRITE_PLAYLISTS, "Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP, 14, 34, 304, 10
+    CONTROL         "Allow Jean to change the output device", IDC_CHANGE_OUTPUT, "Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP, 14, 48, 304, 10
+    CONTROL         "Allow Jean to stream audio", IDC_STREAMING_ENABLED, "Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP, 14, 62, 304, 10
 
-    GROUPBOX        "Pairing", IDC_STATIC, 7, 81, 318, 82
-    LTEXT           "Opens a two-minute window during which one device on this network may read the token. Press this, then press Pair in Jean.",
-                    IDC_STATIC, 14, 93, 230, 26
-    PUSHBUTTON      "Pair a device", IDC_PAIR, 250, 95, 68, 16
-    LTEXT           "", IDC_PAIR_STATUS, 14, 123, 304, 18
-    LTEXT           "", IDC_PAIR_HISTORY, 14, 143, 304, 14
+    GROUPBOX        "Fields this may write", IDC_STATIC, 7, 81, 318, 53
+    LTEXT           "One per line. Nothing outside this list is ever written.", IDC_STATIC,
+                    14, 93, 304, 10
+    EDITTEXT        IDC_FIELDS, 14, 105, 304, 24,
+                    ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
+
+    LTEXT           "Autoplaylist limit:", IDC_STATIC, 14, 140, 110, 10
+    EDITTEXT        IDC_MAX_AUTOPLAYLISTS, 128, 138, 40, 14, ES_AUTOHSCROLL | ES_NUMBER
+
+    GROUPBOX        "Allowed hosts", IDC_STATIC, 7, 157, 318, 65
+    LTEXT           "One per line. *.lan, *.local, *.home.arpa, an IP address, localhost and a name with no dot are always admitted.",
+                    IDC_STATIC, 14, 169, 304, 22
+    EDITTEXT        IDC_HOSTS, 14, 193, 304, 24,
+                    ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
 END

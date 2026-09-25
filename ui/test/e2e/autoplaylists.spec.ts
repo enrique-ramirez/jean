@@ -14,8 +14,6 @@ import {
 // that answer before any write is attempted: the sidebar removes the drop affordance rather than
 // offering one the player would refuse. A row it says nothing about is drawn like any other.
 
-const PAIRED = { fooJeanToken: "0123456789abcdef0123456789abcdef" };
-
 // The fixture seeds `Recently Added` as an autoplaylist, so it refuses wherever this file looks.
 // `Favorites` refuses only where a describe says the player fills that one too.
 const AUTO = "Recently Added";
@@ -37,7 +35,6 @@ const posts = (player: FakePlayer, path: string) =>
 
 test.describe("marking autoplaylists in the sidebar", () => {
 	test.use({
-		...PAIRED,
 		fooJean: { autoPlaylists: ["p2"] },
 	});
 
@@ -101,7 +98,7 @@ test.describe("a playlist the component says nothing about", () => {
 });
 
 test.describe("creating one from a genre", () => {
-	test.use({ ...PAIRED, fooJean: { maxAutoPlaylists: 100 } });
+	test.use({ fooJean: { maxAutoPlaylists: 100 } });
 
 	test("the player is asked what the query matches before anything is made", async ({
 		page,
@@ -177,7 +174,7 @@ test.describe("creating one from a genre", () => {
 });
 
 test.describe("when the player cannot make one", () => {
-	test.use({ ...PAIRED, fooJean: { maxAutoPlaylists: 0 } });
+	test.use({ fooJean: { maxAutoPlaylists: 0 } });
 
 	test("the button is absent rather than dead", async ({ page }) => {
 		await page.goto("/#/genre/Post%20Rock");
@@ -190,7 +187,6 @@ test.describe("when the player cannot make one", () => {
 
 test.describe("a player with no media library", () => {
 	test.use({
-		...PAIRED,
 		fooJean: { maxAutoPlaylists: 100, libraryEnabled: false },
 	});
 

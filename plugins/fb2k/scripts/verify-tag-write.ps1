@@ -13,8 +13,6 @@ param(
   [string]$FooJean = 'http://127.0.0.1:8881/api',
   [string]$PlaylistTitle = '#foo_jean test',
   [string]$Rating = '3',
-  [string]$Token,
-  [string]$Foobar2000Dir = $env:FOOBAR2000_DIR,
   # A guard, not a limit: if this is ever pointed at a playlist holding a real library, the item count gives it away before anything is written.
   [int]$MaxItems = 20
 )
@@ -28,25 +26,13 @@ function Get-Json($uri, $headers = @{}) {
   [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
 }
 
-if (-not $Token) {
-  if (-not $Foobar2000Dir) {
-    throw "Pass -Token, or set -Foobar2000Dir / FOOBAR2000_DIR so the token can be read from config.json"
-  }
-  $configPath = Join-Path $Foobar2000Dir 'profile\foo_jean\config.json'
-  if (-not (Test-Path $configPath)) { throw "No foo_jean config at $configPath" }
-  $Token = (Get-Content $configPath -Raw | ConvertFrom-Json).authToken
-}
-if (-not $Token) { throw "foo_jean has no auth token configured; it will not be serving." }
-
-$auth = @{ Authorization = "Bearer $Token" }
-
 $playlist = (Get-Json "$Beefweb/playlists").playlists | Where-Object { $_.title -eq $PlaylistTitle }
 if (-not $playlist) { throw "No playlist titled '$PlaylistTitle'. Run scripts\test-fixtures.ps1 first." }
 if ($playlist.itemCount -gt $MaxItems) {
   throw "Playlist '$PlaylistTitle' holds $($playlist.itemCount) items, which is more than -MaxItems ($MaxItems). Refusing: this script writes tags."
 }
 
-$matching = @((Get-Json "$FooJean/playlists" $auth).playlists | Where-Object { $_.title -eq $PlaylistTitle })
+$matching = @((Get-Json "$FooJean/playlists").playlists | Where-Object { $_.title -eq $PlaylistTitle })
 if ($matching.Count -ne 1) {
   throw "foo_jean reports $($matching.Count) playlists titled '$PlaylistTitle'; the write needs exactly one to address rows in."
 }
@@ -61,7 +47,7 @@ function Get-Fixtures {
 
 function Get-Targets {
   $columns = ('%path%', '%codec%' | ForEach-Object { 'columns=' + [System.Uri]::EscapeDataString($_) }) -join '&'
-  $page = Get-Json "$FooJean/playlists/$($fooJeanPlaylist.id)/items?offset=0&count=$MaxItems&$columns" $auth
+  $page = Get-Json "$FooJean/playlists/$($fooJeanPlaylist.id)/items?offset=0&count=$MaxItems&$columns"
   $rows = @($page.items)
   for ($index = 0; $index -lt $rows.Count; $index++) {
     [pscustomobject]@{
@@ -94,7 +80,7 @@ foreach ($target in $targets) {
   $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 
   try {
-    $resp = Invoke-WebRequest -Uri "$FooJean/tags" -Method Post -Headers $auth `
+    $resp = Invoke-WebRequest -Uri "$FooJean/tags" -Method Post `
       -Body $bytes -ContentType 'application/json' -UseBasicParsing -TimeoutSec 60
     $status = $resp.StatusCode
   } catch {

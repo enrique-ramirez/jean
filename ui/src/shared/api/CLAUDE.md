@@ -2,7 +2,7 @@
 
 The `foo_jean` client, the wire types, and the one discovery both optional-component seams are fed from. Knows nothing about Jean.
 
-**[README.md](README.md) is the reference, and the traps live there rather than here.** Read its *Traps that cost time* section before writing anything that talks to beefweb, and its `foo_jean` half before touching discovery, pairing or the stream. [ARCHITECTURE.md](../../../ARCHITECTURE.md) has why discovery sits in this folder and what the two seams downstream of it guarantee.
+**[README.md](README.md) is the reference, and the traps live there rather than here.** Read its *Traps that cost time* section before writing anything that talks to beefweb, and its `foo_jean` half before touching discovery or the stream. [ARCHITECTURE.md](../../../ARCHITECTURE.md) has why discovery sits in this folder and what the two seams downstream of it guarantee.
 
 **`discoverFooJean()` belongs here and not beside either consumer.** Tag writing is in `domain/track` and listening is in `domain/player`, tiers that may not import each other, and each running its own probe would send two capabilities calls to answer one question. `FooJeanState` describes the *component*, not either seam.
 

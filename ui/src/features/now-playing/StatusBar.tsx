@@ -12,7 +12,11 @@ import {
 } from "@/domain/player/usePlayer";
 import { coverKey } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
-import { isFooJeanReady, playingArtworkUrl } from "@/shared/api/fooJean";
+import {
+	isFooJeanReady,
+	permitsPlaybackControl,
+	playingArtworkUrl,
+} from "@/shared/api/fooJean";
 import { readTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -29,6 +33,8 @@ import { SeekBar, useElapsedSeconds } from "./SeekBar";
 import { ShuffleToggle } from "./ShuffleToggle";
 import styles from "./StatusBar.module.css";
 import { Volume, VolumePopover } from "./Volume";
+
+const NOOP = () => {};
 
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	const t = useTranslate();
@@ -74,6 +80,7 @@ export function StatusBar({
 	const { isPending, isError, error } = usePlayer();
 	const snapshot = useAudiblePlayer();
 	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	const isCompactViewport = useIsCompactViewport();
 	// iOS exposes no level to set, so the fader is dropped rather than drawn dead.
 	const {
@@ -128,11 +135,19 @@ export function StatusBar({
 			? coverKey(credited, album)
 			: coverKey(track.artist, track.title, "track");
 
+	const previousLabel = canControlPlayback
+		? t("shortcut.previousTrack")
+		: t("player.controlOffName", { control: t("shortcut.previousTrack") });
+	const nextLabel = canControlPlayback
+		? t("shortcut.nextTrack")
+		: t("player.controlOffName", { control: t("shortcut.nextTrack") });
+
 	return (
 		<footer className={styles.statusbar}>
 			<SeekBar
 				snapshot={snapshot}
-				onSeek={(position) => seek.mutate(position)}
+				onSeek={canControlPlayback ? (position) => seek.mutate(position) : NOOP}
+				disabled={!canControlPlayback}
 			/>
 
 			<div className={styles.row} {...swipeUp}>
@@ -165,13 +180,19 @@ export function StatusBar({
 				<div className={styles.transport}>
 					{isCompactViewport ? null : (
 						<>
-							<ShuffleToggle order={order} className={styles.order} size={16} />
+							<ShuffleToggle
+								order={order}
+								className={styles.order}
+								size={16}
+								disabled={!canControlPlayback}
+							/>
 
 							<button
 								type="button"
 								className={styles.skip}
-								aria-label={t("shortcut.previousTrack")}
-								onClick={() => previous()}
+								aria-disabled={canControlPlayback ? undefined : "true"}
+								aria-label={previousLabel}
+								onClick={canControlPlayback ? () => previous() : undefined}
 							>
 								<SkipBackIcon size={18} />
 							</button>
@@ -186,6 +207,7 @@ export function StatusBar({
 									volume={shownVolume}
 									onChange={changeVolume}
 									label={t(isHere ? "player.volumeHere" : "player.volume")}
+									disabled={!canControlPlayback}
 								/>
 							) : null}
 						</>
@@ -194,6 +216,7 @@ export function StatusBar({
 					<PlayToggle
 						isPlaying={isPlaying}
 						onToggle={() => playPause.mutate()}
+						disabled={!canControlPlayback}
 					/>
 
 					{isCompactViewport ? null : (
@@ -201,8 +224,11 @@ export function StatusBar({
 							<button
 								type="button"
 								className={styles.skip}
-								aria-label={t("shortcut.nextTrack")}
-								onClick={() => transport.next.mutate()}
+								aria-disabled={canControlPlayback ? undefined : "true"}
+								aria-label={nextLabel}
+								onClick={
+									canControlPlayback ? () => transport.next.mutate() : undefined
+								}
 							>
 								<SkipForwardIcon size={18} />
 							</button>
@@ -222,11 +248,16 @@ export function StatusBar({
 								onChange={changeVolume}
 								onToggleMute={toggleMute}
 								label={t(isHere ? "player.volumeHere" : "player.volume")}
+								disabled={!canControlPlayback}
 							/>
 						) : null}
 					</div>
 				)}
 			</div>
+
+			{canControlPlayback ? null : (
+				<p className={styles.reason}>{t("player.controlOff")}</p>
+			)}
 		</footer>
 	);
 }

@@ -10,6 +10,9 @@ namespace jean {
 void publishRunningSettings(const Settings& settings);
 void forgetRunningSettings();
 
+// core/preferences.h's restartNeeded against whatever is currently running, true before
+// anything has published since a component that never finished starting cannot promise no
+// restart.
 bool restartNeeded(const Settings& saved);
 
 }  // namespace jean

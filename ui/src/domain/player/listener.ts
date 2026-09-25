@@ -25,7 +25,6 @@ export const playableFormats = (offered: readonly string[] | undefined) =>
 
 export interface ListenTarget {
 	origin: string;
-	token: string;
 	formats: string[];
 }
 
@@ -44,12 +43,8 @@ export const NO_LISTENER: Listener = {
 };
 
 // `canStream` absent means false: an older foo_jean does not carry the field.
-export function resolveListener({
-	state,
-	origin,
-	token,
-}: FooJeanDiscovery): Listener {
-	if (state.kind !== "ready" || !origin || !token) return NO_LISTENER;
+export function resolveListener({ state, origin }: FooJeanDiscovery): Listener {
+	if (state.kind !== "ready" || !origin) return NO_LISTENER;
 	if (!state.capabilities.canStream) return NO_LISTENER;
 
 	const formats = playableFormats(state.capabilities.streamFormats);
@@ -59,7 +54,7 @@ export function resolveListener({
 		kind: "agent",
 		canListen: true,
 		formats,
-		target: { origin, token, formats },
+		target: { origin, formats },
 	};
 }
 

@@ -43,13 +43,6 @@ httplib::Result anonymously(const TestServer& server, const std::string& method,
     return server.client().Post(path, "{}", "application/json");
 }
 
-// The one refusal the bearer filter makes, told apart from every other 401 by its wording:
-// GET /api/stream answers 401 too, and means "no ticket" rather than "no token".
-bool refusedForWantOfAToken(const httplib::Response& response) {
-    return response.status == 401 &&
-           json::parse(response.body)["error"] == "authentication required";
-}
-
 }  // namespace
 
 TEST_CASE("a port already in use is refused, loudly, and named as such") {
@@ -109,7 +102,7 @@ TEST_CASE("a dozen clients arriving together are all answered") {
     std::vector<std::future<int>> pending;
     std::generate_n(std::back_inserter(pending), 12, [&server] {
         return std::async(std::launch::async, [&server] {
-            const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+            const auto response = server.client().Get("/api/capabilities");
             return response ? response->status : 0;
         });
     });
@@ -148,7 +141,7 @@ TEST_CASE("stopping is idempotent and releases the port") {
 TEST_CASE("an unknown route is a 404 rather than anything more interesting") {
     const TestServer server;
 
-    const auto response = server.client().Get("/api/no/such/thing", TestServer::bearer());
+    const auto response = server.client().Get("/api/no/such/thing");
 
     REQUIRE(response);
     CHECK(response->status == 404);
@@ -159,9 +152,8 @@ TEST_CASE("an unknown route is a 404 rather than anything more interesting") {
 TEST_CASE("a large request body to an unrouted path costs us nothing and leaves us serving") {
     const TestServer server;
 
-    const auto oversized =
-        server.client().Post("/api/no/such/thing", TestServer::bearer(),
-                             std::string(kMaxBodyBytes + 1, 'x'), "application/json");
+    const auto oversized = server.client().Post(
+        "/api/no/such/thing", std::string(kMaxBodyBytes + 1, 'x'), "application/json");
     REQUIRE(oversized);
     CHECK(oversized->status == 404);
 
@@ -173,8 +165,8 @@ TEST_CASE("a large request body to an unrouted path costs us nothing and leaves 
 TEST_CASE("a POST to a route that does not exist is a 404, not a 405 or a crash") {
     const TestServer server;
 
-    const auto response = server.client().Post("/api/capabilities", TestServer::bearer(),
-                                               std::string("{}"), "application/json");
+    const auto response =
+        server.client().Post("/api/capabilities", std::string("{}"), "application/json");
 
     REQUIRE(response);
     CHECK(response->status == 404);
@@ -193,13 +185,13 @@ TEST_CASE("JSON responses forbid content type sniffing") {
 TEST_CASE("an error response says nothing about the machine it came from") {
     const TestServer server;
 
-    const auto response = server.client().Get("/api/capabilities");
+    const auto response = server.client().Get("/api/stream");
 
     REQUIRE(response);
     REQUIRE(response->status == 401);
 
     const auto body = json::parse(response->body);
-    CHECK(body["error"] == "authentication required");
+    CHECK(body["error"] == "a valid stream ticket is required");
     CHECK(body.size() == 1);
 }
 
@@ -218,10 +210,10 @@ TEST_CASE("every error answer is JSON, including the ones cpp-httplib makes itse
     // in flight when the server closes on it makes whether the answer arrives a race.
     const auto oversize = std::string(kMaxBodyBytes + 1, 'x');
     std::vector<Case> cases;
-    cases.push_back({"unknown route", server.client().Get("/api/nope", TestServer::bearer())});
-    cases.push_back({"no credential", server.client().Get("/api/capabilities")});
-    cases.push_back({"oversized body", server.client().Post("/api/tags", TestServer::bearer(),
-                                                            oversize, "application/json")});
+    cases.push_back({"unknown route", server.client().Get("/api/nope")});
+    cases.push_back({"no stream ticket", server.client().Get("/api/stream")});
+    cases.push_back(
+        {"oversized body", server.client().Post("/api/tags", oversize, "application/json")});
 
     for (const auto& one : cases) {
         INFO("case: ", one.what);
@@ -235,73 +227,96 @@ TEST_CASE("every error answer is JSON, including the ones cpp-httplib makes itse
     }
 }
 
-// The invariant an origin in allowedOrigins rests on: once granted, it reads our answers whole,
-// so any route that answers without a credential must be safe for such an origin to read. The
-// routes come from contract/openapi.yaml rather than from a list kept here, so a route this test
-// has never heard of is covered the moment it is documented, and one that wants to be public has
-// to write `security: []` into the contract where a reviewer will see it.
-TEST_CASE("only status, stream and pair answer without a credential") {
+TEST_CASE("status is public, and says nothing sensitive") {
+    const TestServer server;
+
+    const auto response = server.client().Get("/api/status");
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+
+    const auto body = json::parse(response->body);
+    CHECK(body["name"] == "foo_jean");
+    CHECK(body.size() == 3);
+    CHECK(body.find("allowedFields") == body.end());
+}
+
+// GET /api/stream answers 401 without a ticket, which is its own credential and not a token.
+TEST_CASE("no documented route answers 401 to a request that carries no Authorization") {
     const TestServer server(servingSettings(), TestServer::writing([](const TagWrite&) {
                                 return TagWriteOutcome::written;
                             }));
 
-    SUBCASE("every documented route is refused unless the specification exempts it") {
-        const auto routes = publishedRoutes();
-        REQUIRE(routes.size() > 10);
+    const auto routes = publishedRoutes();
+    REQUIRE(routes.size() > 10);
 
-        std::vector<std::string> exempt;
+    for (const auto& route : routes) {
+        const auto path = dialable(route.path);
+        if (path == "/api/stream")
+            continue;
 
-        for (const auto& route : routes) {
-            const auto path = dialable(route.path);
-            INFO("route: ", route.method, " ", path);
+        INFO("route: ", route.method, " ", path);
 
-            const auto response = anonymously(server, route.method, path);
-            REQUIRE(response);
+        const auto response = anonymously(server, route.method, path);
+        REQUIRE(response);
+        CHECK(response->status != 401);
+    }
+}
 
-            if (route.needsNoToken) {
-                CHECK_FALSE(refusedForWantOfAToken(*response));
-                exempt.push_back(path);
-                continue;
-            }
+TEST_CASE("an Authorization header of any value is ignored rather than refused") {
+    const TestServer server;
 
-            CHECK(refusedForWantOfAToken(*response));
+    for (const char* path : {"/api/status", "/api/capabilities", "/api/secret"}) {
+        const auto without = server.client().Get(path);
+        REQUIRE(without);
+
+        for (const char* value : {"Bearer not-a-token", "Basic Zm9vOmJhcg==", "garbage", ""}) {
+            INFO("path: ", std::string(path), ", Authorization: ", std::string(value));
+
+            const auto with = server.client().Get(path, httplib::Headers{{"Authorization", value}});
+            REQUIRE(with);
+            CHECK(with->status == without->status);
+            CHECK(with->body == without->body);
         }
-
-        // Named as well as counted: the derived check above passes just as happily with a
-        // fourth exemption in the specification, and this is where that has to be argued for.
-        CHECK(exempt == std::vector<std::string>{"/api/status", "/api/pair", "/api/stream"});
     }
 
-    SUBCASE("status is public, and says nothing sensitive") {
-        const auto response = server.client().Get("/api/status");
+    const auto capabilities =
+        server.client().Get("/api/capabilities", httplib::Headers{{"Authorization", "garbage"}});
+    REQUIRE(capabilities);
+    CHECK(capabilities->status == 200);
 
-        REQUIRE(response);
-        CHECK(response->status == 200);
+    const auto unknown =
+        server.client().Get("/api/secret", httplib::Headers{{"Authorization", "garbage"}});
+    REQUIRE(unknown);
+    CHECK(unknown->status == 404);
+}
 
-        const auto body = json::parse(response->body);
-        CHECK(body["name"] == "foo_jean");
-        CHECK(body.size() == 4);
-        CHECK(body.find("allowedFields") == body.end());
-        CHECK(body.find("authToken") == body.end());
-    }
+TEST_CASE("POST /api/pair is a route that does not exist") {
+    const TestServer server;
 
-    // The only one that does anything, and it rests on a window opened at the player rather
-    // than on the CORS default, which it does not take. tests/pairing_test.cpp covers it.
-    SUBCASE("pair answers without a credential and refuses without a window") {
-        const auto response = server.client().Post("/api/pair", "{}", "application/json");
+    const auto response = server.client().Post("/api/pair", "{}", "application/json");
 
-        REQUIRE(response);
-        CHECK(response->status == 403);
-        CHECK(json::parse(response->body)["error"] == "pairing is not open");
-    }
+    REQUIRE(response);
+    CHECK(response->status == 404);
+}
 
-    SUBCASE("an unknown route reveals nothing either way") {
-        const auto anonymous = server.client().Get("/api/secret");
-        const auto credentialed = server.client().Get("/api/secret", TestServer::bearer());
+TEST_CASE("the listener starts with no token configured and answers") {
+    const TestServer server(Settings{});
 
-        REQUIRE(anonymous);
-        REQUIRE(credentialed);
-        CHECK(anonymous->status == 401);  // refused before routing, so it says nothing
-        CHECK(credentialed->status == 404);
-    }
+    REQUIRE(server.status().listening);
+    CHECK(server.status().error.empty());
+
+    const auto response = server.client().Get("/api/capabilities");
+    REQUIRE(response);
+    CHECK(response->status == 200);
+}
+
+TEST_CASE("status does not claim that authentication is required") {
+    const TestServer server;
+
+    const auto response = server.client().Get("/api/status");
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    CHECK_FALSE(json::parse(response->body).contains("authRequired"));
 }

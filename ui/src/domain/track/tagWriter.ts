@@ -56,11 +56,7 @@ const addressFields = (address: TrackAddress) => {
 	};
 };
 
-const agentWriter = (
-	origin: string,
-	token: string,
-	allowedFields: string[],
-): TagWriter => {
+const agentWriter = (origin: string, allowedFields: string[]): TagWriter => {
 	const allowed = new Set(allowedFields.map((field) => field.toLowerCase()));
 
 	return {
@@ -69,13 +65,13 @@ const agentWriter = (
 		allowedFields,
 		allows: (field) => allowed.has(field.toLowerCase()),
 		write: async (address, fields) =>
-			writeTags(origin, token, { ...addressFields(address), fields }),
+			writeTags(origin, { ...addressFields(address), fields }),
 		read: async (address, column) => {
 			const held = await (address.kind === "playlist"
-				? fetchPlaylistRows(origin, token, address.playlist, address.index, 1, [
+				? fetchPlaylistRows(origin, address.playlist, address.index, 1, [
 						column,
 					]).then(({ items }) => items[0]?.columns[0])
-				: fetchLibraryTrack(origin, token, address, [column]).then(
+				: fetchLibraryTrack(origin, address, [column]).then(
 						({ columns }) => columns[0],
 					)
 			).catch(() => undefined);
@@ -113,15 +109,13 @@ export interface TagWriterResolution {
 export function tagWriterOf({
 	state,
 	origin,
-	token,
 }: FooJeanDiscovery): TagWriterResolution {
-	if (state.kind !== "ready" || !origin || !token)
-		return { state, writer: NO_WRITER };
+	if (state.kind !== "ready" || !origin) return { state, writer: NO_WRITER };
 	return {
 		state,
-		writer: agentWriter(origin, token, state.capabilities.allowedFields),
+		writer: agentWriter(origin, state.capabilities.allowedFields),
 	};
 }
 
-export const resolveTagWriter = async (token: string | null) =>
-	tagWriterOf(await discoverFooJean(token));
+export const resolveTagWriter = async () =>
+	tagWriterOf(await discoverFooJean());

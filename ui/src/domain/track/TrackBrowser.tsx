@@ -13,6 +13,8 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -112,6 +114,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 ) {
 	const t = useTranslate();
 	const listRef = useRef<TrackListHandle | null>(null);
+	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 
 	const layouts = useMemo(
 		() => LAYOUTS.map((option) => ({ ...option, label: t(option.label) })),
@@ -176,9 +180,10 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 	const play = useCallback(
 		(position: number) => {
 			moveCursorTo(position);
+			if (!canControlPlayback) return;
 			onPlay(position);
 		},
-		[moveCursorTo, onPlay],
+		[moveCursorTo, onPlay, canControlPlayback],
 	);
 
 	const preview = useCallback(

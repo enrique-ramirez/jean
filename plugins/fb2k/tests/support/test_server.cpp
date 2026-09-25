@@ -73,16 +73,12 @@ httplib::Client TestServer::client() const {
     return client;
 }
 
-httplib::Headers TestServer::bearer(const std::string& token) {
-    return httplib::Headers{{"Authorization", "Bearer " + token}};
-}
-
 httplib::Result get(const TestServer& server, const std::string& path) {
-    return server.client().Get(path, TestServer::bearer());
+    return server.client().Get(path);
 }
 
 httplib::Result post(const TestServer& server, const std::string& path, const std::string& body) {
-    return server.client().Post(path, TestServer::bearer(), body, "application/json");
+    return server.client().Post(path, body, "application/json");
 }
 
 httplib::Client undecoding(const TestServer& server) {
@@ -92,9 +88,7 @@ httplib::Client undecoding(const TestServer& server) {
 }
 
 httplib::Headers accepting(const char* encoding) {
-    auto headers = TestServer::bearer();
-    headers.emplace("Accept-Encoding", encoding);
-    return headers;
+    return httplib::Headers{{"Accept-Encoding", encoding}};
 }
 
 bool isGzip(const std::string& body) {

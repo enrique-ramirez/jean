@@ -32,22 +32,30 @@ function VolumeButton({
 	volume,
 	onPress,
 	label,
+	disabled = false,
 	...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
 	volume: VolumeState | null;
 	onPress?: () => void;
 	label: string;
+	disabled?: boolean;
 }) {
 	const t = useTranslate();
 	const percent = volumePercent(volume);
+	const baseLabel = t(volume?.isMuted ? "player.unmute" : "player.mute");
 
 	return (
 		<button
 			type="button"
 			className={styles.button}
-			onClick={onPress}
+			onClick={disabled ? undefined : onPress}
 			aria-pressed={Boolean(volume?.isMuted)}
-			aria-label={t(volume?.isMuted ? "player.unmute" : "player.mute")}
+			aria-disabled={disabled || undefined}
+			aria-label={
+				disabled
+					? t("player.controlOffName", { control: baseLabel })
+					: baseLabel
+			}
 			title={
 				volume?.isMuted
 					? t("player.muted")
@@ -66,18 +74,20 @@ export function VolumeSlider({
 	orientation = "horizontal",
 	className,
 	label,
+	disabled = false,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	orientation?: "horizontal" | "vertical";
 	className?: string;
 	label: string;
+	disabled?: boolean;
 }) {
 	const t = useTranslate();
 	const { ref, fraction, isDragging, handlers } = useDragFraction({
 		onDrag: (next) => onChange(fractionToVolume(volume as VolumeState, next)),
 		onCommit: (next) => onChange(fractionToVolume(volume as VolumeState, next)),
-		disabled: !volume,
+		disabled: disabled || !volume,
 		orientation,
 	});
 
@@ -93,7 +103,10 @@ export function VolumeSlider({
 			data-muted={Boolean(volume?.isMuted)}
 			role="slider"
 			tabIndex={0}
-			aria-label={label}
+			aria-disabled={disabled || undefined}
+			aria-label={
+				disabled ? t("player.controlOffName", { control: label }) : label
+			}
 			aria-valuemin={0}
 			aria-valuemax={100}
 			aria-valuenow={percent}
@@ -126,10 +139,12 @@ export function VolumePopover({
 	volume,
 	onChange,
 	label,
+	disabled = false,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	label: string;
+	disabled?: boolean;
 }) {
 	const t = useTranslate();
 	const [isOpen, setIsOpen] = useState(false);
@@ -144,6 +159,7 @@ export function VolumePopover({
 						onChange={onChange}
 						orientation="vertical"
 						label={label}
+						disabled={disabled}
 					/>
 					<span className={styles.readout}>{volumePercent(volume)}</span>
 				</div>
@@ -165,16 +181,28 @@ export function Volume({
 	onChange,
 	onToggleMute,
 	label,
+	disabled = false,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	onToggleMute: () => void;
 	label: string;
+	disabled?: boolean;
 }) {
 	return (
 		<div className={styles.volume}>
-			<VolumeButton volume={volume} label={label} onPress={onToggleMute} />
-			<VolumeSlider volume={volume} onChange={onChange} label={label} />
+			<VolumeButton
+				volume={volume}
+				label={label}
+				onPress={onToggleMute}
+				disabled={disabled}
+			/>
+			<VolumeSlider
+				volume={volume}
+				onChange={onChange}
+				label={label}
+				disabled={disabled}
+			/>
 		</div>
 	);
 }

@@ -27,7 +27,7 @@ export function CreateAutoPlaylist({
 	const t = useTranslate();
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
-	const { origin, token, state } = discovery;
+	const { origin, state } = discovery;
 	const canCreate =
 		state.kind === "ready" && state.capabilities.canCreateAutoPlaylists;
 
@@ -43,9 +43,8 @@ export function CreateAutoPlaylist({
 
 	const { data: preview } = useQuery({
 		queryKey: ["fooJeanPreview", origin, query],
-		queryFn: () =>
-			origin && token ? previewQuery(origin, token, query) : null,
-		enabled: isOpen && Boolean(origin && token),
+		queryFn: () => (origin ? previewQuery(origin, query) : null),
+		enabled: isOpen && Boolean(origin),
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnWindowFocus: false,
 		retry: false,
@@ -53,8 +52,8 @@ export function CreateAutoPlaylist({
 
 	const create = useMutation({
 		mutationFn: async () => {
-			const required = requireFooJean(origin, token);
-			const made = await createAutoPlaylist(required.origin, required.token, {
+			const required = requireFooJean(origin);
+			const made = await createAutoPlaylist(required, {
 				title: title.trim(),
 				query,
 			});
@@ -69,7 +68,7 @@ export function CreateAutoPlaylist({
 		},
 	});
 
-	if (!origin || !token || !canCreate) return null;
+	if (!origin || !canCreate) return null;
 
 	const submit = (event: ReactFormEvent) => {
 		event.preventDefault();

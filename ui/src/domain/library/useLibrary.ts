@@ -14,7 +14,7 @@ export function useLibrary() {
 
 	const origin = libraryOrigin(discovery);
 
-	const library = useComponentLibraryItems(origin, discovery.token);
+	const library = useComponentLibraryItems(origin);
 
 	const key = origin
 		? generationKey(componentLibraryKey(origin), library.structure)
@@ -27,9 +27,8 @@ export function useLibrary() {
 				paths: library.paths as PathTable,
 				subsongs: library.subsongs as Int32Array,
 				artworkOrigin: origin,
-				token: discovery.token,
 			}),
-		[library.paths, library.subsongs, origin, discovery.token],
+		[library.paths, library.subsongs, origin],
 	);
 
 	return {

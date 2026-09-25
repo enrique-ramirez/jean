@@ -10,6 +10,7 @@
 #include "core/library.h"
 #include "core/player_state.h"
 #include "support/keys.h"
+#include "support/spec.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -18,6 +19,7 @@
 #include <functional>
 #include <iterator>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -875,8 +877,7 @@ Player removing(RemoveLog* log) {
 
 httplib::Result removeEntry(const TestServer& server, const std::string& index,
                             const std::string& query) {
-    return server.client().Delete(std::string(kQueueRows) + "/" + index + query,
-                                  TestServer::bearer());
+    return server.client().Delete(std::string(kQueueRows) + "/" + index + query);
 }
 
 httplib::Result removeEntry(const TestServer& server, uint32_t index, uint64_t revision) {
@@ -886,7 +887,7 @@ httplib::Result removeEntry(const TestServer& server, uint32_t index, uint64_t r
 constexpr int kAttempts = 60;
 
 httplib::Result clearTheQueue(const TestServer& server) {
-    return server.client().Delete(kQueueRows, TestServer::bearer());
+    return server.client().Delete(kQueueRows);
 }
 
 }  // namespace
@@ -1417,4 +1418,97 @@ TEST_CASE("a client moving, removing or clearing in a loop is slowed down rather
         const TestServer server = servingQueue(clearing(&log), &store);
         slowedDown([&server] { return clearTheQueue(server); }, log.calls);
     }
+}
+
+namespace {
+
+Player countingQueueWrites(int* calls) {
+    Player player = queueing({track("Queued")});
+    player.queuePlaylistRows = [calls](const std::string&, const std::vector<uint32_t>&,
+                                       std::optional<QueuePosition>) {
+        ++*calls;
+        return PlaylistOutcome::done;
+    };
+    player.queueLibraryTracks = [calls](uint64_t, const std::vector<uint32_t>&,
+                                        std::optional<QueuePosition>) {
+        ++*calls;
+        return PlaylistOutcome::done;
+    };
+    player.moveQueueEntry = [calls](uint32_t, uint32_t, uint64_t) {
+        ++*calls;
+        return PlaylistOutcome::done;
+    };
+    player.removeQueueEntry = [calls](uint32_t, uint64_t) {
+        ++*calls;
+        return PlaylistOutcome::done;
+    };
+    player.clearQueue = [calls] {
+        ++*calls;
+        return PlaylistOutcome::done;
+    };
+    return player;
+}
+
+// A well-formed request to each queue write the contract publishes, so a refusal is the
+// switch's and never the body's.
+httplib::Result writeTheQueue(const TestServer& server, const SpecRoute& route) {
+    const auto name = route.method + " " + route.path;
+
+    if (name == "POST /queue")
+        return post(server, kQueueRows, rowsOf(kPlaylistId, {3}));
+    if (name == "POST /queue/move")
+        return post(server, "/api/queue/move", json{{"from", 1}, {"to", 0}, {"revision", 1}}.dump());
+    if (name == "DELETE /queue/{index}")
+        return server.client().Delete("/api/queue/0?revision=1");
+    if (route.method == "DELETE")
+        return server.client().Delete("/api" + route.path);
+
+    return post(server, "/api" + route.path, "{}");
+}
+
+}  // namespace
+
+// Driven from the contract, so a queue write added later is refused without editing this.
+TEST_CASE("with controlPlayback off, every queue write is 403 and reaches no player") {
+    int calls = 0;
+    PlayerStateStore store;
+    changeTheQueueUntil(store, 1);
+    const TestServer server(parseSettings(R"({"controlPlayback": false})"),
+                            countingQueueWrites(&calls), nullptr, countingMint(), &store);
+
+    std::set<std::string> sentences;
+    size_t writes = 0;
+
+    for (const auto& route : publishedRoutes()) {
+        if (route.method == "GET" || route.path.rfind("/queue", 0) != 0)
+            continue;
+
+        ++writes;
+        INFO("route: ", route.method, " ", route.path);
+
+        const auto response = writeTheQueue(server, route);
+        REQUIRE(response);
+        CHECK(response->status == 403);
+
+        const auto body = json::parse(response->body, nullptr, false);
+        CHECK(body.is_object());
+        if (body.is_object() && body.value("error", json()).is_string())
+            sentences.insert(body["error"].get<std::string>());
+    }
+
+    REQUIRE(writes >= 4);
+    CHECK(calls == 0);
+    REQUIRE(sentences.size() == 1);
+    CHECK(sentences.begin()->find("controlPlayback") != std::string::npos);
+}
+
+TEST_CASE("with controlPlayback off, the queue is still read") {
+    PlayerStateStore store;
+    const TestServer server(parseSettings(R"({"controlPlayback": false})"),
+                            queueing({track("Queued")}), nullptr, countingMint(), &store);
+
+    const auto entries = entriesOf(server);
+
+    REQUIRE(entries.size() == 1);
+    CHECK(entries[0]["title"] == "Queued");
 }

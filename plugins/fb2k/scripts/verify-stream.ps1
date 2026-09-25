@@ -8,8 +8,6 @@
 param(
   [string]$Beefweb = 'http://127.0.0.1:8880/api',
   [string]$FooJean = 'http://127.0.0.1:8881/api',
-  [string]$Token,
-  [string]$Foobar2000Dir = $env:FOOBAR2000_DIR,
   [int]$Seconds = 6,
   # Skips a track partway through, so a timeline mark is created while a listener is attached. Off by default: it changes what the player is doing.
   [switch]$SkipTrack,
@@ -22,7 +20,11 @@ $ErrorActionPreference = 'Stop'
 $failures = 0
 
 function Get-Json($uri, $headers = @{}, $method = 'GET') {
-  $resp = Invoke-WebRequest -Uri $uri -Headers $headers -Method $method -UseBasicParsing -TimeoutSec 30
+  $resp = if ($method -eq 'POST') {
+    Invoke-WebRequest -Uri $uri -Headers $headers -Method $method -ContentType 'application/json' -UseBasicParsing -TimeoutSec 30
+  } else {
+    Invoke-WebRequest -Uri $uri -Headers $headers -Method $method -UseBasicParsing -TimeoutSec 30
+  }
   [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
 }
 
@@ -34,17 +36,6 @@ function Check($what, $ok, $detail = '') {
     $script:failures++
   }
 }
-
-if (-not $Token) {
-  if (-not $Foobar2000Dir) {
-    throw "Pass -Token, or set -Foobar2000Dir / FOOBAR2000_DIR so the token can be read from config.json"
-  }
-  $configPath = Join-Path $Foobar2000Dir 'profile\foo_jean\config.json'
-  if (-not (Test-Path $configPath)) { throw "No foo_jean config at $configPath" }
-  $Token = (Get-Content $configPath -Raw | ConvertFrom-Json).authToken
-}
-
-$auth = @{ Authorization = "Bearer $Token" }
 
 # HttpWebRequest rather than Invoke-WebRequest: the response never ends, so anything waiting for completion waits for ever.
 function Read-Stream($uri, $seconds) {
@@ -74,7 +65,7 @@ function Read-Stream($uri, $seconds) {
 }
 
 function New-Ticket {
-  (Get-Json "$FooJean/stream/ticket" $auth 'POST').ticket
+  (Get-Json "$FooJean/stream/ticket" @{} 'POST').ticket
 }
 
 # Walks ADTS frames: every length field must land exactly on the next syncword, which is what proves the headers were written correctly rather than merely present.
@@ -104,7 +95,7 @@ Check "foobar2000 is playing" ($state -eq 'playing') "state is '$state'; start p
 if ($state -ne 'playing') { exit 1 }
 
 Write-Host "capabilities"
-$caps = Get-Json "$FooJean/capabilities" $auth
+$caps = Get-Json "$FooJean/capabilities"
 Check "canStream is true" ($caps.canStream -eq $true)
 Check "opus is offered first" ($caps.streamFormats[0] -eq 'opus') "got '$($caps.streamFormats -join ', ')'"
 $hasAac = $caps.streamFormats -contains 'aac'
@@ -125,7 +116,7 @@ $bad = Read-Stream "$FooJean/stream?ticket=$(New-Ticket)&format=flac" 2
 Check "an unknown format is refused" ($bad.Status -eq 400) "got $($bad.Status)"
 
 Write-Host "two listeners, one encoder"
-$before = (Get-Json "$FooJean/stream/timeline" $auth).streamTime
+$before = (Get-Json "$FooJean/stream/timeline").streamTime
 $jobs = @(
   Start-Job -ArgumentList "$FooJean/stream?ticket=$(New-Ticket)", $Seconds, ${function:Read-Stream} -ScriptBlock {
     param($uri, $seconds, $reader)
@@ -141,13 +132,13 @@ $beforeSkip = $null
 if ($SkipTrack -or $Seek) {
   Start-Sleep -Seconds ([Math]::Max(1, [int]($Seconds / 2)))
   # Sampled immediately before, so the mark it produces is the only one that can land after it.
-  $beforeSkip = (Get-Json "$FooJean/stream/timeline" $auth).streamTime
+  $beforeSkip = (Get-Json "$FooJean/stream/timeline").streamTime
 
   if ($Seek) {
     Invoke-WebRequest -Uri "$Beefweb/player" -Method POST -UseBasicParsing -TimeoutSec 10 `
       -ContentType 'application/json' -Body "{`"position`": $SeekTo}" | Out-Null
   } else {
-    Invoke-WebRequest -Uri "$Beefweb/player/next" -Method POST -UseBasicParsing -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -Uri "$Beefweb/player/next" -Method POST -ContentType 'application/json' -UseBasicParsing -TimeoutSec 10 | Out-Null
   }
 }
 
@@ -173,7 +164,7 @@ if ($hasAac) {
 }
 
 Write-Host "timeline"
-$timeline = Get-Json "$FooJean/stream/timeline" $auth
+$timeline = Get-Json "$FooJean/stream/timeline"
 Check "the stream clock advanced" ($timeline.streamTime -gt $before) "$before then $($timeline.streamTime)"
 if ($SkipTrack -or $Seek) {
   $recent = @($timeline.marks | Where-Object { $_.at -ge $beforeSkip })

@@ -365,18 +365,6 @@ TEST_CASE("an empty address is a 400 and is never looked up") {
     CHECK(player.asked.empty());
 }
 
-TEST_CASE("writing needs the token like everything else") {
-    TestServer::WriterLog log;
-    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
-
-    const auto response =
-        server.client().Post("/api/tags", ratingWrite(kTrackAddress), "application/json");
-
-    REQUIRE(response);
-    CHECK(response->status == 401);
-    CHECK(log.calls.empty());
-}
-
 TEST_CASE("a field outside the allowlist is refused without involving the player") {
     TestServer::WriterLog log;
     const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
@@ -493,13 +481,13 @@ TEST_CASE("an oversized write body is refused before it is parsed") {
         auto client = server.client();
         client.set_keep_alive(true);
 
-        const auto refused = client.Post("/api/tags", TestServer::bearer(),
-                                         bodyOf(kMaxBodyBytes + 1), "application/json");
+        const auto refused =
+            client.Post("/api/tags", bodyOf(kMaxBodyBytes + 1), "application/json");
         REQUIRE(refused);
         CHECK(refused->status == 413);
         CHECK(refused->get_header_value("Connection") == "close");
 
-        const auto next = client.Get("/api/status", TestServer::bearer());
+        const auto next = client.Get("/api/status");
         REQUIRE(next);
         CHECK(next->status == 200);
         CHECK(json::parse(next->body)["name"] == "foo_jean");
@@ -512,7 +500,7 @@ TEST_CASE("GET is not a way to write") {
     TestServer::WriterLog log;
     const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
 
-    const auto response = server.client().Get("/api/tags", TestServer::bearer());
+    const auto response = server.client().Get("/api/tags");
 
     REQUIRE(response);
     CHECK(response->status == 404);

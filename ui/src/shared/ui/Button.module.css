@@ -15,12 +15,13 @@
 		color 0.14s var(--ease);
 }
 
-.button:hover:not(:disabled) {
+.button:hover:not(:disabled):not([aria-disabled="true"]) {
 	border-color: var(--accent-line);
 	background: var(--surface-raised);
 }
 
-.button:disabled {
+.button:disabled,
+.button[aria-disabled="true"] {
 	opacity: 0.45;
 	cursor: not-allowed;
 }
@@ -41,7 +42,7 @@
 	color: var(--on-accent);
 }
 
-.primary:hover:not(:disabled) {
+.primary:hover:not(:disabled):not([aria-disabled="true"]) {
 	border-color: transparent;
 	background: oklch(
 		calc(var(--accent-l) + 0.05) var(--accent-c) var(--accent-h)
@@ -54,7 +55,7 @@
 	color: var(--muted);
 }
 
-.ghost:hover:not(:disabled) {
+.ghost:hover:not(:disabled):not([aria-disabled="true"]) {
 	border-color: transparent;
 	background: var(--surface);
 	color: var(--text);
@@ -64,7 +65,7 @@
 	color: var(--danger);
 }
 
-.danger:hover:not(:disabled),
+.danger:hover:not(:disabled):not([aria-disabled="true"]),
 .danger:focus-visible {
 	border-color: var(--danger);
 	background: color-mix(in oklab, var(--danger) 10%, var(--surface));

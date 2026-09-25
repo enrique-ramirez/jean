@@ -27,7 +27,6 @@ export interface Operation {
 	id: string;
 	method: string;
 	path: string;
-	needsToken: boolean;
 	parameters: Parameter[];
 	published: Map<number, Schema | null>;
 	body: Schema | null;
@@ -124,9 +123,6 @@ export function publishedOperations(): Operation[] {
 				id: String(operation.operationId),
 				method: method.toUpperCase(),
 				path,
-				// An operation says it needs no credential by overriding the document's own
-				// security with an empty list, so anything that does not override needs one.
-				needsToken: operation.security === undefined,
 				parameters: parametersOf(entry, operation),
 				published: publishedOf(operation.responses as Mapping),
 				body: requestBody ? jsonSchemaOf(requestBody) : null,

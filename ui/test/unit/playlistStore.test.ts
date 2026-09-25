@@ -21,8 +21,6 @@ import type { TrackColumns } from "../../src/shared/api/types.ts";
 // stayed behind.
 
 const ORIGIN = "http://player.invalid:8881";
-const TOKEN = "token";
-
 // Every track of one cue sheet shares a library path, so the subsong is the
 // half of the address that tells two of them apart.
 const CUE = "Fictional Artist/Imaginary Album/album.flac";
@@ -121,7 +119,7 @@ const STEPS_TO_SETTLE = 100;
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 const loaded = async (playlistId: string, count: number) => {
-	const key = loadPlaylist(ORIGIN, TOKEN, playlistId, STRUCTURE, count);
+	const key = loadPlaylist(ORIGIN, playlistId, STRUCTURE, count);
 
 	for (let step = 0; step < STEPS_TO_SETTLE; step += 1) {
 		const { isLoading, loaded, error } = playlistSnapshot(key);
@@ -154,7 +152,6 @@ const addressesIn = (key: string, playlistId: string) => {
 		kind: "playlist",
 		playlistId,
 		origin: ORIGIN,
-		token: TOKEN,
 		paths,
 		subsongs,
 		structure: STRUCTURE,
@@ -188,7 +185,7 @@ test("a delta that swaps two tracks of one cue sheet leaves each row addressing 
 		SECOND_READ,
 	);
 
-	await recheckPlaylist(ORIGIN, TOKEN, playlistId, {
+	await recheckPlaylist(ORIGIN, playlistId, {
 		structure: STRUCTURE,
 		revision: SECOND_READ,
 	});
@@ -216,7 +213,7 @@ test("a delta that changes a row's values where it sits costs no second read of 
 	player.rows = [player.rows[0], rated, player.rows[2]];
 	player.changes = changesOf([{ position: 1, row: rated }], SECOND_READ);
 
-	await recheckPlaylist(ORIGIN, TOKEN, playlistId, {
+	await recheckPlaylist(ORIGIN, playlistId, {
 		structure: STRUCTURE,
 		revision: SECOND_READ,
 	});

@@ -5,8 +5,6 @@ import { after, before, beforeEach, test } from "node:test";
 import { createFooJeanServer } from "../fake-api/agentServer.ts";
 import { createState } from "../fake-api/state.ts";
 
-const TOKEN = "0f8c1d2e3a4b5c6d7e8f90a1b2c3d4e5";
-
 const PLAYING_AT_SECONDS = 30;
 
 let state: ReturnType<typeof createState>;
@@ -31,7 +29,7 @@ after(() => {
 const playingMidPlaylist = (
 	volume?: Partial<ReturnType<typeof createState>["player"]["volume"]>,
 ) => {
-	const fresh = createState({ fooJean: { token: TOKEN } });
+	const fresh = createState({ fooJean: {} });
 	if (volume) fresh.player.volume = { ...fresh.player.volume, ...volume };
 
 	const playlist = fresh.playlists.find((one) => one.items.length >= 3);
@@ -48,7 +46,7 @@ beforeEach(() => {
 const post = (path: string, body?: string) =>
 	fetch(`${origin}${path}`, {
 		method: "POST",
-		headers: { Authorization: `Bearer ${TOKEN}` },
+		headers: { "Content-Type": "application/json" },
 		...(body === undefined ? {} : { body }),
 	});
 

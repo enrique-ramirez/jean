@@ -1,8 +1,8 @@
 import { postFooJeanCommand as post } from "./fooJean";
 import type { PlaybackMode } from "./types";
 
-export const playPause = (origin: string, token: string) =>
-	post(origin, token, "/api/playback/play-pause");
+export const playPause = (origin: string) =>
+	post(origin, "/api/playback/play-pause");
 
 export const ASKED_MS = 4000;
 let asked: { by: number; at: number } | null = null;
@@ -17,39 +17,35 @@ const skipping = (by: number) => {
 	asked = { by, at: Date.now() };
 };
 
-export const nextTrack = (origin: string, token: string) => {
+export const nextTrack = (origin: string) => {
 	skipping(1);
-	return post(origin, token, "/api/playback/next");
+	return post(origin, "/api/playback/next");
 };
 
-export const previousTrack = (origin: string, token: string) => {
+export const previousTrack = (origin: string) => {
 	skipping(-1);
-	return post(origin, token, "/api/playback/previous");
+	return post(origin, "/api/playback/previous");
 };
 
-export const stop = (origin: string, token: string) =>
-	post(origin, token, "/api/playback/stop");
+export const stop = (origin: string) => post(origin, "/api/playback/stop");
 
-export const seekTo = (origin: string, token: string, position: number) =>
-	post(origin, token, "/api/playback/seek", { seconds: position });
+export const seekTo = (origin: string, position: number) =>
+	post(origin, "/api/playback/seek", { seconds: position });
 
-export const seekBy = (origin: string, token: string, offset: number) =>
-	post(origin, token, "/api/playback/seek", { relativeSeconds: offset });
+export const seekBy = (origin: string, offset: number) =>
+	post(origin, "/api/playback/seek", { relativeSeconds: offset });
 
-export const setVolume = (origin: string, token: string, volume: number) =>
-	post(origin, token, "/api/volume", { value: volume });
+export const setVolume = (origin: string, volume: number) =>
+	post(origin, "/api/volume", { value: volume });
 
-export const setMuted = (origin: string, token: string, isMuted: boolean) =>
-	post(origin, token, "/api/volume", { muted: isMuted });
+export const setMuted = (origin: string, isMuted: boolean) =>
+	post(origin, "/api/volume", { muted: isMuted });
 
-export const volumeUp = (origin: string, token: string) =>
-	post(origin, token, "/api/volume", { step: "up" });
+export const volumeUp = (origin: string) =>
+	post(origin, "/api/volume", { step: "up" });
 
-export const volumeDown = (origin: string, token: string) =>
-	post(origin, token, "/api/volume", { step: "down" });
+export const volumeDown = (origin: string) =>
+	post(origin, "/api/volume", { step: "down" });
 
-export const setPlaybackOrder = (
-	origin: string,
-	token: string,
-	mode: PlaybackMode,
-) => post(origin, token, "/api/playback/mode", { mode });
+export const setPlaybackOrder = (origin: string, mode: PlaybackMode) =>
+	post(origin, "/api/playback/mode", { mode });

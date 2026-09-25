@@ -541,9 +541,7 @@ Player playingFrom(FakePlayback* playback) {
 
 httplib::Result getAsking(const TestServer& server, const std::string& path,
                           const std::string& ifNoneMatch) {
-    auto headers = TestServer::bearer();
-    headers.emplace("If-None-Match", ifNoneMatch);
-    return server.client().Get(path, headers);
+    return server.client().Get(path, httplib::Headers{{"If-None-Match", ifNoneMatch}});
 }
 
 }  // namespace
@@ -663,9 +661,8 @@ TEST_CASE("the playing track refuses the column lists GET /api/track/library ref
 
         const auto query = asked.second.empty() ? "" : "&" + asked.second;
         const auto library =
-            raw.Get("/api/track/library?track=" + escaped(kTrackAddress) + query,
-                    TestServer::bearer());
-        const auto response = raw.Get(playingAsking(asked.second), TestServer::bearer());
+            raw.Get("/api/track/library?track=" + escaped(kTrackAddress) + query);
+        const auto response = raw.Get(playingAsking(asked.second));
 
         REQUIRE(library);
         REQUIRE(response);

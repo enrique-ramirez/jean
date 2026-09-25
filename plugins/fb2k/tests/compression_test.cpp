@@ -58,7 +58,7 @@ private:
 
 std::string ticketFrom(const TestServer& server) {
     const auto response =
-        server.client().Post("/api/stream/ticket", TestServer::bearer(), "", "application/json");
+        server.client().Post("/api/stream/ticket", "", "application/json");
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body)["ticket"].get<std::string>();

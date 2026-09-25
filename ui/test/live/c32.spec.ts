@@ -7,7 +7,7 @@ import {
 	viewHeader,
 } from "../e2e/fixtures.ts";
 import { capabilities, playlists } from "./component.ts";
-import { expect, type Page, seedToken, test } from "./fixtures.ts";
+import { expect, type Page, test } from "./fixtures.ts";
 
 // Criterion 32 on a real player, with `writePlaylists` off in the component's own config.json and
 // the player restarted, so the capabilities Jean reads at discovery already say no.
@@ -63,7 +63,6 @@ test("the sidebar draws the playlists and no way to add, rename, delete or reord
 	const first = shown[0];
 	const second = shown[1];
 
-	await seedToken(page);
 	const seen: Seen[] = [];
 	page.on("request", (request) =>
 		seen.push({ method: request.method(), url: request.url() }),
@@ -141,7 +140,6 @@ test("a track cannot be dropped onto a playlist and has nowhere to be filed", as
 	const shown = (await playlists()).filter((entry) => entry.role === null);
 	const target = shown.find((entry) => !entry.isAutoPlaylist) ?? shown[0];
 
-	await seedToken(page);
 	const seen: Seen[] = [];
 	page.on("request", (request) =>
 		seen.push({ method: request.method(), url: request.url() }),
@@ -181,7 +179,6 @@ test("a track cannot be dropped onto a playlist and has nowhere to be filed", as
 test("search results keep Play and draw no Save as playlist", async ({
 	page,
 }) => {
-	await seedToken(page);
 	await openAllMusic(page);
 	await searchFor(page, QUERY);
 

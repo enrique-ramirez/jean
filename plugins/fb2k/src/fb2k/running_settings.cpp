@@ -2,6 +2,8 @@
 
 #include "fb2k/running_settings.h"
 
+#include "core/preferences.h"
+
 #include <mutex>
 #include <optional>
 
@@ -26,7 +28,7 @@ void forgetRunningSettings() {
 
 bool restartNeeded(const Settings& saved) {
     const std::lock_guard<std::mutex> lock(g_mutex);
-    return !g_running || *g_running != saved;
+    return !g_running || restartNeeded(*g_running, saved);
 }
 
 }  // namespace jean

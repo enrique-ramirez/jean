@@ -1,11 +1,11 @@
 #include "third_party/httplib.h"
 
+#include "core/admission.h"
 #include "core/assets.h"
 #include "core/device.h"
 #include "core/http_server.h"
 #include "core/json.h"
 #include "core/log.h"
-#include "core/pairing.h"
 #include "core/playback_modes.h"
 #include "core/rate_limit.h"
 #include "core/stream_ticket.h"
@@ -38,9 +38,6 @@ constexpr auto kPlaylistRefill = std::chrono::seconds(1);
 
 constexpr size_t kMaxOutstandingTickets = 16;
 
-constexpr int kPairBurst = 10;
-constexpr auto kPairRefill = std::chrono::seconds(6);
-
 // A refresh walks every track in the player's library, so this is a rate a person at a
 // button can keep up with and a looping client cannot.
 constexpr int kRefreshBurst = 3;
@@ -55,7 +52,6 @@ constexpr int kPollBurst = 30;
 constexpr auto kPollRefill = std::chrono::milliseconds(100);
 
 constexpr char kApiPrefix[] = "/api/";
-constexpr char kPairPath[] = "/api/pair";
 constexpr char kArtworkPath[] = "/api/artwork";
 constexpr char kPlayingArtworkPath[] = "/api/artwork/playing";
 constexpr char kStatePath[] = "/api/state";
@@ -81,6 +77,9 @@ constexpr char kModeNotOffered[] = "this install does not offer that playback mo
 constexpr char kNoVolume[] = "volume is not available";
 
 constexpr char kNoStreaming[] = "streaming is not available";
+
+constexpr char kStreamingDisabled[] =
+    "this install has streaming turned off; turn on streamingEnabled in config.json to allow it";
 
 constexpr char kNoQueue[] = "the queue is not available";
 
@@ -141,9 +140,19 @@ std::string quoted(const std::string& tag) {
     return "\"" + tag + "\"";
 }
 
-std::string generationsOf(const Library::State& state, uint64_t playerVersion = 0) {
-    return "s" + std::to_string(state.structure) + "-r" + std::to_string(state.revision) + "-p" +
-           std::to_string(playerVersion);
+std::string generationsOf(const Library::State& state, uint64_t playerVersion = 0,
+                          std::optional<uint64_t> configGeneration = std::nullopt) {
+    std::string tag = "s" + std::to_string(state.structure) + "-r" +
+                      std::to_string(state.revision) + "-p" + std::to_string(playerVersion);
+    if (configGeneration)
+        tag += "-c" + std::to_string(*configGeneration);
+    return tag;
+}
+
+std::string withConfigGeneration(const std::string& document, uint64_t configGeneration) {
+    auto body = nlohmann::json::parse(document);
+    body["configGeneration"] = configGeneration;
+    return body.dump();
 }
 
 // cpp-httplib evaluates If-None-Match for its own file handler alone, so a route serving
@@ -562,16 +571,44 @@ void reportFailuresWithoutLeaking(httplib::Server& server) {
 struct HttpServer::Impl {
     Impl(Settings s, Audience& a, Player p, TicketMint mint, Library* lib, PlayerStateStore* state,
          NowPlayingArtwork* playing)
-        : settings(std::move(s)),
+        : settingsSnapshot(std::make_shared<const Settings>(std::move(s))),
           audience(a),
           player(std::move(p)),
           library(lib),
           playerState(state),
           nowPlayingArtwork(playing),
-          tickets(std::move(mint), std::chrono::seconds(settings.streamTicketTtlSeconds),
+          tickets(std::move(mint), std::chrono::seconds(settingsSnapshot->streamTicketTtlSeconds),
                   kMaxOutstandingTickets) {}
 
-    const Settings settings;
+    // Swapped whole on a reload, so a handler that takes one copy at the top of its own run
+    // never sees a Settings with some fields from the file and some from before it.
+    mutable std::mutex settingsLock;
+    std::shared_ptr<const Settings> settingsSnapshot;
+
+    std::shared_ptr<const Settings> currentSettings() const {
+        const std::lock_guard<std::mutex> lock(settingsLock);
+        return settingsSnapshot;
+    }
+
+    // Moves only when a reload changes a key GET /api/capabilities reflects, so a client
+    // polling GET /api/state learns a switch moved without asking for capabilities every tick.
+    std::atomic<uint64_t> configGeneration{0};
+
+    void applyReload(const ReloadDecision& decision) {
+        {
+            const std::lock_guard<std::mutex> lock(settingsLock);
+            settingsSnapshot = std::make_shared<const Settings>(decision.next);
+        }
+
+        const auto movesGeneration =
+            std::any_of(decision.changedKeys.begin(), decision.changedKeys.end(),
+                       [](const std::string& key) {
+                           return key != "allowedHosts" && key != "allowedOrigins";
+                       });
+        if (movesGeneration)
+            configGeneration.fetch_add(1, std::memory_order_relaxed);
+    }
+
     Audience& audience;
     const Player player;
     Library* const library;
@@ -598,9 +635,6 @@ struct HttpServer::Impl {
     mutable std::mutex declarationLock;
     std::vector<std::string> declared;
 
-    RateLimiter pairAttempts{kPairBurst, kPairRefill};
-    PairingWindow pairing{std::chrono::seconds(kPairingWindowSeconds)};
-
     mutable std::mutex reservedNameLock;
     mutable std::set<std::string> loggedReservedNames;
 
@@ -610,7 +644,8 @@ struct HttpServer::Impl {
         if (origin.empty())
             return false;
 
-        return std::any_of(settings.allowedOrigins.begin(), settings.allowedOrigins.end(),
+        const auto settings = currentSettings();
+        return std::any_of(settings->allowedOrigins.begin(), settings->allowedOrigins.end(),
                             [&origin](const std::string& permitted) {
                                 return equalsIgnoringCase(origin, permitted);
                             });
@@ -626,13 +661,12 @@ struct HttpServer::Impl {
 
         res.set_header("Access-Control-Allow-Origin", origin);
         res.set_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers",
-                       "Authorization, Content-Type, If-None-Match");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, If-None-Match");
         res.set_header("Access-Control-Max-Age", "600");
 
         // See ARCHITECTURE.md, *Facts about the player*, for why If-None-Match, ETag and
         // Retry-After each need naming on one side of a CORS request or the other, and
-        // Authorization, Content-Type and Cache-Control do not.
+        // Content-Type and Cache-Control do not.
         res.set_header("Access-Control-Expose-Headers", "ETag, Retry-After");
     }
 
@@ -729,26 +763,22 @@ struct HttpServer::Impl {
         answerRevalidated(req, res, *bytes, *type);
     }
 
-    bool authorized(const httplib::Request& req) const {
-        if (settings.authToken.empty())
-            return false;
-
-        const auto header = req.get_header_value("Authorization");
-
-        constexpr char kScheme[] = "bearer ";
-        constexpr size_t kSchemeLength = sizeof(kScheme) - 1;
-
-        if (header.size() <= kSchemeLength)
-            return false;
-        if (toLower(header.substr(0, kSchemeLength)) != kScheme)  // RFC 9110: case-insensitive
-            return false;
-
-        return secureEquals(header.substr(kSchemeLength), settings.authToken);
-    }
-
     httplib::Server::HandlerResponse filter(const httplib::Request& req,
                                             httplib::Response& res) const {
         using Routing = httplib::Server::HandlerResponse;
+
+        const auto settings = currentSettings();
+        const auto admission =
+            admit(req.remote_addr, req.get_header_value("Host"), settings->allowedHosts);
+        if (!admission.admitted) {
+            if (req.path.rfind(kApiPrefix, 0) == 0) {
+                respond(res, 403, errorDocument(admission.refusal));
+            } else {
+                res.status = 403;
+                res.set_content(admission.refusal, "text/plain");
+            }
+            return Routing::Handled;
+        }
 
         applyCors(req, res);
         res.set_header("X-Content-Type-Options", "nosniff");
@@ -767,13 +797,8 @@ struct HttpServer::Impl {
             return Routing::Unhandled;
         }
 
-        if (req.path == "/api/status" || req.path == "/api/stream" || req.path == kPairPath)
-            return Routing::Unhandled;
-
-        if (!authorized(req)) {
-            // No WWW-Authenticate: sending it pops a native browser credential dialog, and
-            // no browser can satisfy this scheme anyway.
-            respond(res, 401, errorDocument("authentication required"));
+        if (req.method == "POST" && req.path.rfind(kApiPrefix, 0) == 0 && !isJsonRequest(req)) {
+            respond(res, 415, errorDocument(kSendJson));
             return Routing::Handled;
         }
 
@@ -795,55 +820,8 @@ struct HttpServer::Impl {
         return true;
     }
 
-    void addPairingRoute() {
-        server.Post(kPairPath, [this](const httplib::Request& req, httplib::Response& res) {
-            if (!isJsonRequest(req)) {
-                respond(res, 415, errorDocument(kSendJson));
-                return;
-            }
-
-            if (!pairAttempts.allow(std::chrono::steady_clock::now())) {
-                respond(res, 429, errorDocument("too many pairing attempts"));
-                return;
-            }
-
-            const auto asked = parseDeviceName(req.body);
-            if (!asked.ok()) {
-                respond(res, 400, errorDocument(asked.refusal));
-                return;
-            }
-
-            const auto name = sanitised(asked.device).name;
-
-            const auto outcome =
-                pairing.claim(std::chrono::steady_clock::now(), std::chrono::system_clock::now(),
-                              req.remote_addr, name);
-
-            if (outcome == PairingWindow::Result::AddressNotPrivate) {
-                logError("refused a pairing request from " + req.remote_addr +
-                         ": pairing is available on the local network only");
-                respond(res, 403, errorDocument("pairing is available on the local network only"));
-                return;
-            }
-
-            if (outcome == PairingWindow::Result::NotOpen) {
-                respond(res, 403, errorDocument("pairing is not open"));
-                return;
-            }
-
-            logInfo("paired with " + req.remote_addr +
-                    (name.empty() ? std::string() : " (" + name + ")"));
-            respond(res, 200, pairedDocument(settings.authToken));
-        });
-    }
-
     static bool readDeviceIdentity(const httplib::Request& req, httplib::Response& res,
                                    DeviceIdentity& device) {
-        if (!isJsonRequest(req)) {
-            respond(res, 415, errorDocument(kSendJson));
-            return false;
-        }
-
         const auto asked = parseDeviceIdentity(req.body);
         if (!asked.ok()) {
             respond(res, 400, errorDocument(asked.refusal));
@@ -854,13 +832,20 @@ struct HttpServer::Impl {
         return true;
     }
 
-    bool streamingAvailable() const { return player.openStream && !player.streamFormats.empty(); }
+    bool streamingAvailable() const {
+        return player.openStream && !player.streamFormats.empty() &&
+               currentSettings()->streamingEnabled;
+    }
+
+    const char* streamingRefusalMessage() const {
+        return currentSettings()->streamingEnabled ? kNoStreaming : kStreamingDisabled;
+    }
 
     void addStreamRoutes() {
         server.Post("/api/stream/ticket",
                     [this](const httplib::Request& req, httplib::Response& res) {
                         if (!streamingAvailable()) {
-                            respond(res, 503, errorDocument(kNoStreaming));
+                            respond(res, 503, errorDocument(streamingRefusalMessage()));
                             return;
                         }
 
@@ -882,9 +867,10 @@ struct HttpServer::Impl {
         server.Get("/api/stream/listeners", [this](const httplib::Request&,
                                                    httplib::Response& res) {
             denyCachingAndRanges(res);
+            const auto settings = currentSettings();
             respond(res, 200,
                     streamListenersDocument(audience.roster(std::chrono::steady_clock::now()),
-                                            audience.connections(), settings.maxConcurrentStreams,
+                                            audience.connections(), settings->maxConcurrentStreams,
                                             player.outputHeld && player.outputHeld()));
         });
 
@@ -932,7 +918,7 @@ struct HttpServer::Impl {
             }
 
             if (!streamingAvailable()) {
-                respond(res, 503, errorDocument(kNoStreaming));
+                respond(res, 503, errorDocument(streamingRefusalMessage()));
                 return;
             }
 
@@ -970,7 +956,12 @@ struct HttpServer::Impl {
             // third_party/README.md has, and not by anything here.
             res.set_chunked_content_provider(
                 opened.contentType,
-                [session, held = std::move(membership)](size_t, httplib::DataSink& sink) {
+                [this, session, held = std::move(membership)](size_t, httplib::DataSink& sink) {
+                    if (!currentSettings()->streamingEnabled) {
+                        sink.done();
+                        return true;
+                    }
+
                     std::vector<std::uint8_t> bytes;
                     if (!session->next(bytes)) {
                         sink.done();
@@ -1048,14 +1039,18 @@ struct HttpServer::Impl {
             if (pollingTooFast(res, req.remote_addr))
                 return;
 
+            const auto generation = configGeneration.load(std::memory_order_relaxed);
             const auto state = library ? library->state() : Library::State{};
             const auto published =
                 playerState ? playerState->read() : PlayerStateStore::Published{};
-            sendIfChanged(req, res, generationsOf(state, published.version), "application/json",
-                          [&state, &published] {
-                              return stateDocument(
-                                  state, published.state, std::chrono::steady_clock::now(),
-                                  published.queueRevision, published.playlistsRevision);
+            sendIfChanged(req, res, generationsOf(state, published.version, generation),
+                          "application/json", [&state, &published, generation] {
+                              return withConfigGeneration(
+                                  stateDocument(state, published.state,
+                                               std::chrono::steady_clock::now(),
+                                               published.queueRevision,
+                                               published.playlistsRevision),
+                                  generation);
                           });
         });
 
@@ -1364,7 +1359,7 @@ struct HttpServer::Impl {
 
     void addTagRoutes() {
         server.Post("/api/tags", [this](const httplib::Request& req, httplib::Response& res) {
-            const auto request = parseTagWrite(req.body, settings);
+            const auto request = parseTagWrite(req.body, *currentSettings());
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal), tagRefusedDocument(request));
                 return;
@@ -1426,11 +1421,20 @@ struct HttpServer::Impl {
     // from a route addressing the component's own scratch playlist -- that stays writable in
     // both states.
     bool writesRefused(httplib::Response& res) const {
-        if (settings.writePlaylists)
+        if (currentSettings()->writePlaylists)
             return false;
 
         respond(res, httpStatusFor(PlaylistOutcome::writesDisabled),
                 playlistFailedDocument(playlistFailure(PlaylistOutcome::writesDisabled)));
+        return true;
+    }
+
+    bool playbackRefused(httplib::Response& res) const {
+        if (currentSettings()->controlPlayback)
+            return false;
+
+        respond(res, httpStatusFor(PlaylistOutcome::playbackDisabled),
+                playlistFailedDocument(playlistFailure(PlaylistOutcome::playbackDisabled)));
         return true;
     }
 
@@ -1694,10 +1698,12 @@ struct HttpServer::Impl {
                 return;
 
             const auto request = refuseChange(parseAutoPlaylist(req.body, Need::required));
+            const auto maxAutoPlaylists = currentSettings()->maxAutoPlaylists;
 
-            const auto created = attempt(res, request, [this, &request] {
+            const auto created = attempt(res, request, [this, &request, maxAutoPlaylists] {
                 return askIfAvailable(player.createAutoPlaylist,
-                                      playlistFailure(PlaylistOutcome::unavailable), request.spec);
+                                      playlistFailure(PlaylistOutcome::unavailable), request.spec,
+                                      maxAutoPlaylists);
             });
 
             if (created)
@@ -1743,6 +1749,9 @@ struct HttpServer::Impl {
         constexpr char kOwnItems[] = R"(/api/playlists/own/([^/]+)/items)";
 
         server.Post(kOwnItems, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             if (!library) {
                 respond(res, 503, errorDocument(kNoLibrary));
                 return;
@@ -1802,6 +1811,9 @@ struct HttpServer::Impl {
         });
 
         server.Delete(kOwnItems, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             const auto role = ownPlaylistRoleFor(req.matches[1].str());
             if (!role) {
                 respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
@@ -2038,6 +2050,9 @@ struct HttpServer::Impl {
         constexpr char kPlayPlaylistRow[] = R"(/api/playlists/([0-9a-f-]{36})/items/([^/]+)/play)";
 
         server.Post(kPlayPlaylistRow, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             const auto request = parsePlayRow(req.matches[1].str(), req.matches[2].str());
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
@@ -2079,6 +2094,9 @@ struct HttpServer::Impl {
         });
 
         server.Post(kQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             switch (queueSourceOf(req.body)) {
                 case QueueSource::playlistRows:
                     postQueuePlaylistRows(req, res);
@@ -2093,6 +2111,9 @@ struct HttpServer::Impl {
         });
 
         server.Delete(kQueuePath, [this](const httplib::Request&, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             if (changingTooFast()) {
                 res.set_header("Retry-After", "1");
                 respond(res, httpStatusFor(PlaylistRefusal::tooFast),
@@ -2118,6 +2139,9 @@ struct HttpServer::Impl {
         constexpr char kMoveQueuePath[] = "/api/queue/move";
 
         server.Post(kMoveQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             const auto request = refuseMoveQueueChange(parseMoveQueue(req.body));
             if (!request.ok()) {
                 if (request.refusal == PlaylistRefusal::tooFast)
@@ -2151,6 +2175,9 @@ struct HttpServer::Impl {
         constexpr char kQueueEntryPath[] = R"(/api/queue/([^/]+))";
 
         server.Delete(kQueueEntryPath, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             const auto request = refuseRemoveQueueChange(
                 parseRemoveQueue(req.matches[1].str(), req.get_param_value("revision")));
             if (!request.ok()) {
@@ -2304,6 +2331,9 @@ struct HttpServer::Impl {
 
     void addTransportRoute(const char* path, Transport command) {
         server.Post(path, [this, command](const httplib::Request&, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             if (!player.commandTransport) {
                 respond(res, 503, errorDocument(kNoPlayback));
                 return;
@@ -2320,6 +2350,9 @@ struct HttpServer::Impl {
         addTransportRoute(kPlaybackStopPath, Transport::Stop);
 
         server.Post(kPlaybackSeekPath, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             const auto request = parseSeek(req.body);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal),
@@ -2336,6 +2369,9 @@ struct HttpServer::Impl {
         });
 
         server.Post(kPlaybackModePath, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             const auto request = parsePlaybackMode(req.body);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal),
@@ -2368,6 +2404,9 @@ struct HttpServer::Impl {
 
     void addVolumeRoute() {
         server.Post(kVolumePath, [this](const httplib::Request& req, httplib::Response& res) {
+            if (playbackRefused(res))
+                return;
+
             const auto request = parseVolume(req.body, player.volumeMin, player.volumeMax);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal),
@@ -2440,7 +2479,7 @@ ListenerStatus HttpServer::start() {
 
     server.Get("/api/capabilities", [&impl](const httplib::Request&, httplib::Response& res) {
         respond(res, 200,
-                capabilitiesDocument(impl.settings, impl.player.streamFormats,
+                capabilitiesDocument(*impl.currentSettings(), impl.player.streamFormats,
                                      impl.player.releaseOutput != nullptr, impl.library != nullptr,
                                      impl.player.playerName, impl.player.playerVersion,
                                      impl.player.volumeMin, impl.player.volumeMax,
@@ -2457,15 +2496,13 @@ ListenerStatus HttpServer::start() {
     impl.addArtworkRoute();
     impl.addPlayingArtworkRoute();
     impl.addPlaylistRowArtworkRoute();
-    impl.addPairingRoute();
 
-    if (impl.settings.authToken.empty())
-        return refused("no authentication token configured; refusing to listen");
-
-    if (!server.bind_to_port(impl.settings.bindAddress, impl.settings.port)) {
+    const auto startupSettings = impl.currentSettings();
+    if (!server.bind_to_port(startupSettings->bindAddress, startupSettings->port)) {
         const std::string address =
-            impl.settings.bindAddress + ":" + std::to_string(impl.settings.port);
-        const auto diagnosis = diagnoseBindFailure(impl.settings.bindAddress, impl.settings.port);
+            startupSettings->bindAddress + ":" + std::to_string(startupSettings->port);
+        const auto diagnosis =
+            diagnoseBindFailure(startupSettings->bindAddress, startupSettings->port);
 
         if (diagnosis && diagnosis->inUse)
             return portTaken("could not bind " + address + "; the port is in use");
@@ -2496,28 +2533,6 @@ ListenerStatus HttpServer::start() {
     return listening();
 }
 
-void HttpServer::openPairingWindow() {
-    if (impl_)
-        impl_->pairing.open(std::chrono::steady_clock::now());
-}
-
-void HttpServer::closePairingWindow() {
-    if (impl_)
-        impl_->pairing.close();
-}
-
-HttpServer::PairingState HttpServer::pairingState() const {
-    PairingState state;
-    if (!impl_)
-        return state;
-
-    const auto now = std::chrono::steady_clock::now();
-    state.open = impl_->pairing.isOpen(now);
-    state.remainingSeconds = static_cast<int>(impl_->pairing.remaining(now).count());
-    state.history = impl_->pairing.history();
-    return state;
-}
-
 void HttpServer::stop() {
     if (!impl_ || impl_->stopping.exchange(true))
         return;
@@ -2526,6 +2541,10 @@ void HttpServer::stop() {
 
     if (impl_->thread.joinable())
         impl_->thread.join();
+}
+
+void HttpServer::applyReload(const ReloadDecision& decision) {
+    impl_->applyReload(decision);
 }
 
 }  // namespace jean

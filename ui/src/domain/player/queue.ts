@@ -82,12 +82,11 @@ export const startsIn = (entry: QueueEntry, remaining: number) =>
 export async function recheckQueue(
 	client: QueryClient,
 	origin: string,
-	token: string,
 	revision: number,
 ): Promise<void> {
 	const cached = client.getQueryData<QueueRead>(QUEUE_KEY);
 	if (cached?.revision === revision) return;
 
-	const read = await fetchQueue(origin, token);
+	const read = await fetchQueue(origin);
 	if (read) client.setQueryData(QUEUE_KEY, read);
 }

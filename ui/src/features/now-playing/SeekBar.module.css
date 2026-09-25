@@ -12,6 +12,11 @@
 	cursor: pointer;
 }
 
+.bar[aria-disabled="true"] {
+	cursor: default;
+	opacity: 0.6;
+}
+
 .rail {
 	position: absolute;
 	inset-inline: 0;

@@ -8,7 +8,6 @@ const required = (name: string) => {
 };
 
 export const COMPONENT = () => required("LIVE_COMPONENT");
-export const TOKEN = () => required("LIVE_FOO_JEAN_TOKEN");
 
 export const component = async <T>(
 	path: string,
@@ -17,7 +16,6 @@ export const component = async <T>(
 	const response = await fetch(`${COMPONENT()}${path}`, {
 		...init,
 		headers: {
-			Authorization: `Bearer ${TOKEN()}`,
 			"Content-Type": "application/json",
 			...init?.headers,
 		},

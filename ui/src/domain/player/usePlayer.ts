@@ -18,6 +18,7 @@ import {
 	removePlaylist,
 	renamePlaylist,
 	requireFooJean,
+	switchRefusalOf,
 } from "@/shared/api/fooJean";
 import {
 	nextTrack,
@@ -44,6 +45,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 import { clamp } from "@/shared/lib/math";
+import { pushToast } from "@/shared/ui/toastStore";
 import { useAudibleSnapshot } from "./audible";
 import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
@@ -105,13 +107,12 @@ const PLAYLISTS_SEEN_REVISION_KEY = ["playlistsSeenRevision"];
 export async function recheckPlaylists(
 	client: QueryClient,
 	origin: string,
-	token: string,
 	revision: number,
 ): Promise<void> {
 	client.setQueryData(PLAYLISTS_SEEN_REVISION_KEY, revision);
 	if (client.getQueryData<number>(PLAYLISTS_REVISION_KEY) === revision) return;
 
-	const annotations = await fetchPlaylistAnnotations(origin, token);
+	const annotations = await fetchPlaylistAnnotations(origin);
 	if (!annotations) return;
 
 	client.setQueryData(PLAYLISTS_KEY, annotations.map(playlistInfoOf));
@@ -159,6 +160,16 @@ export function useResolvedPlaylistId(
 	);
 }
 
+// The one place every playback-affecting write's `403` is read, so a caller does not parse the
+// refusal again per command, whether the command is a mutation here or a plain throw a caller
+// elsewhere in `domain/` awaits directly. `writePlaylists` off is not this function's concern:
+// `useAddTracks` is the write path that switch refuses.
+export function reportPlaybackRefusal(error: unknown, recheck: () => void) {
+	if (switchRefusalOf(error) !== "playbackDisabled") return;
+	pushToast({ tone: "error", message: translate("player.controlOffToast") });
+	recheck();
+}
+
 function useOptimisticWrite<TData, TInput, TResult = unknown>(
 	queryKey: QueryKey,
 	mutationFn: (input: TInput) => Promise<TResult>,
@@ -167,6 +178,7 @@ function useOptimisticWrite<TData, TInput, TResult = unknown>(
 	revisionKey?: QueryKey,
 ) {
 	const queryClient = useQueryClient();
+	const { recheck } = useFooJean();
 
 	return useMutation({
 		mutationFn,
@@ -191,10 +203,11 @@ function useOptimisticWrite<TData, TInput, TResult = unknown>(
 			: undefined,
 
 		onError: (
-			_error: unknown,
+			error: unknown,
 			_input: TInput,
 			context: { previous?: TData; previousRevision?: unknown } | undefined,
 		) => {
+			reportPlaybackRefusal(error, recheck);
 			if (!context?.previous) return;
 			if (
 				revisionKey &&
@@ -231,17 +244,17 @@ const usePlayerPatch = <TInput>(
 
 const useCommand = (
 	discovery: FooJeanDiscovery,
-	command: (origin: string, token: string) => Promise<void>,
-) =>
-	useMutation({
+	command: (origin: string) => Promise<void>,
+) => {
+	const { recheck } = useFooJean();
+	return useMutation({
 		mutationFn: async () => {
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			await command(origin, token);
+			const origin = requireFooJean(discovery.origin);
+			await command(origin);
 		},
+		onError: (error: unknown) => reportPlaybackRefusal(error, recheck),
 	});
+};
 
 // `index` is positional, and the player renumbers the whole list when any playlist moves or goes away.
 const renumber = (playlists: PlaylistInfo[]) =>
@@ -271,11 +284,8 @@ export function usePlaylistActions() {
 
 	const create = usePlaylistPatch<{ id: string; title: string }, PlaylistInfo>(
 		async ({ title }) => {
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			return playlistInfoOf(await createPlaylist(origin, token, { title }));
+			const origin = requireFooJean(discovery.origin);
+			return playlistInfoOf(await createPlaylist(origin, { title }));
 		},
 		(playlists, { id, title }) => [
 			...playlists,
@@ -300,11 +310,8 @@ export function usePlaylistActions() {
 
 		rename: usePlaylistPatch(
 			({ id, title }: { id: string; title: string }) => {
-				const { origin, token } = requireFooJean(
-					discovery.origin,
-					discovery.token,
-				);
-				return renamePlaylist(origin, token, id, title);
+				const origin = requireFooJean(discovery.origin);
+				return renamePlaylist(origin, id, title);
 			},
 			(playlists, { id, title }) =>
 				playlists.map((entry) =>
@@ -314,22 +321,16 @@ export function usePlaylistActions() {
 
 		remove: usePlaylistPatch(
 			(id: string) => {
-				const { origin, token } = requireFooJean(
-					discovery.origin,
-					discovery.token,
-				);
-				return removePlaylist(origin, token, id);
+				const origin = requireFooJean(discovery.origin);
+				return removePlaylist(origin, id);
 			},
 			(playlists, id) => playlists.filter((entry) => entry.id !== id),
 		),
 
 		move: usePlaylistPatch(
 			({ id, index }: { id: string; index: number }) => {
-				const { origin, token } = requireFooJean(
-					discovery.origin,
-					discovery.token,
-				);
-				return movePlaylist(origin, token, id, index);
+				const origin = requireFooJean(discovery.origin);
+				return movePlaylist(origin, id, index);
 			},
 			(playlists, { id, index }) => {
 				const from = playlists.findIndex((entry) => entry.id === id);
@@ -385,12 +386,9 @@ export const usePlayItem = () => {
 
 	return usePlayerPatch(
 		async ({ playlistId, index }: { playlistId: string; index: number }) => {
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			await playPlaylistItem(origin, token, playlistId, index);
-			await pollPlayerNow(queryClient, origin, token);
+			const origin = requireFooJean(discovery.origin);
+			await playPlaylistItem(origin, playlistId, index);
+			await pollPlayerNow(queryClient, origin);
 		},
 		() => ({ playbackState: "playing" }),
 	);
@@ -400,11 +398,8 @@ export const usePlayPause = () => {
 	const { discovery } = useFooJean();
 	return usePlayerPatch<void>(
 		async () => {
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			await playPause(origin, token);
+			const origin = requireFooJean(discovery.origin);
+			await playPause(origin);
 		},
 		(player, _input, previous) => ({
 			playbackState: player.playbackState === "playing" ? "paused" : "playing",
@@ -422,11 +417,8 @@ export const useSeek = () => {
 	const { discovery } = useFooJean();
 	return usePlayerPatch(
 		async (position: number) => {
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			await seekTo(origin, token, position);
+			const origin = requireFooJean(discovery.origin);
+			await seekTo(origin, position);
 		},
 		(player, position: number) => {
 			if (!player.activeItem) return null;
@@ -440,11 +432,8 @@ export const useSeekBy = () => {
 	const { discovery } = useFooJean();
 	return usePlayerPatch(
 		async (offset: number) => {
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			await seekBy(origin, token, offset);
+			const origin = requireFooJean(discovery.origin);
+			await seekBy(origin, offset);
 		},
 		(player, offset: number, previous) => {
 			const item = player.activeItem;
@@ -509,11 +498,8 @@ export function usePlaybackOrder() {
 
 	const mutation = usePlayerPatch(
 		async (next: PlaybackMode) => {
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			await setPlaybackOrder(origin, token, next);
+			const origin = requireFooJean(discovery.origin);
+			await setPlaybackOrder(origin, next);
 		},
 		(_player, next: PlaybackMode) => ({ jeanPlaybackMode: next }),
 	);
@@ -544,18 +530,18 @@ const VOLUME_EPSILON = 0.5;
 
 export function useVolume() {
 	const { data } = usePlayer();
-	const { discovery } = useFooJean();
-	const send = useCoalescedWrite((value: number) => {
-		const { origin, token } = requireFooJean(discovery.origin, discovery.token);
-		return setVolume(origin, token, value);
-	});
+	const { discovery, recheck } = useFooJean();
+	const send = useCoalescedWrite(
+		(value: number) => {
+			const origin = requireFooJean(discovery.origin);
+			return setVolume(origin, value);
+		},
+		(error) => reportPlaybackRefusal(error, recheck),
+	);
 	const mute = usePlayerPatch(
 		async (isMuted: boolean) => {
-			const { origin, token } = requireFooJean(
-				discovery.origin,
-				discovery.token,
-			);
-			await setMuted(origin, token, isMuted);
+			const origin = requireFooJean(discovery.origin);
+			await setMuted(origin, isMuted);
 		},
 		(player, isMuted: boolean) => ({
 			volume: { ...player.volume, isMuted },

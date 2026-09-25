@@ -132,7 +132,7 @@ function StartsIn({
 	);
 }
 
-function DropZones({ at }: { at: number | null }) {
+function DropZones({ at, refuses }: { at: number | null; refuses?: string }) {
 	if (at === null) return null;
 	return (
 		<>
@@ -140,12 +140,14 @@ function DropZones({ at }: { at: number | null }) {
 				className={styles.dropZone}
 				data-edge="top"
 				data-drop-target={queueDropAt(at)}
+				data-drop-refuses={refuses}
 				aria-hidden="true"
 			/>
 			<span
 				className={styles.dropZone}
 				data-edge="bottom"
 				data-drop-target={queueDropAt(at + 1)}
+				data-drop-refuses={refuses}
 				aria-hidden="true"
 			/>
 		</>
@@ -157,7 +159,8 @@ const QueueRow = memo(function QueueRow({
 	cover,
 	snapshot,
 	isPlaying,
-	canQueue,
+	isReachable,
+	canControlPlayback,
 	dropAt,
 	hasDropLine,
 	onRemove,
@@ -169,7 +172,8 @@ const QueueRow = memo(function QueueRow({
 	cover: QueueCover;
 	snapshot: PlayerSnapshot | null | undefined;
 	isPlaying: boolean;
-	canQueue: boolean;
+	isReachable: boolean;
+	canControlPlayback: boolean;
 	dropAt: number | null;
 	hasDropLine: boolean;
 	onRemove: () => void;
@@ -192,7 +196,10 @@ const QueueRow = memo(function QueueRow({
 				} as CSSProperties
 			}
 		>
-			<DropZones at={dropAt} />
+			<DropZones
+				at={dropAt}
+				refuses={canControlPlayback ? undefined : t("player.controlOff")}
+			/>
 
 			<Artwork
 				className={styles.tick}
@@ -218,12 +225,19 @@ const QueueRow = memo(function QueueRow({
 
 			<StartsIn entry={entry} snapshot={snapshot} isPlaying={isPlaying} />
 
-			{canQueue ? (
+			{isReachable ? (
 				<span className={styles.controls}>
 					<button
 						type="button"
 						className={styles.grip}
-						aria-label={t("queue.reorder", { track: entry.title })}
+						aria-disabled={canControlPlayback ? undefined : "true"}
+						aria-label={
+							canControlPlayback
+								? t("queue.reorder", { track: entry.title })
+								: t("player.controlOffName", {
+										control: t("queue.reorder", { track: entry.title }),
+									})
+						}
 						tabIndex={-1}
 						data-owns-touch=""
 						{...handleProps}
@@ -233,8 +247,15 @@ const QueueRow = memo(function QueueRow({
 					<button
 						type="button"
 						className={styles.remove}
-						aria-label={t("queue.removeTrack", { track: entry.title })}
-						onClick={onRemove}
+						aria-disabled={canControlPlayback ? undefined : "true"}
+						aria-label={
+							canControlPlayback
+								? t("queue.removeTrack", { track: entry.title })
+								: t("player.controlOffName", {
+										control: t("queue.removeTrack", { track: entry.title }),
+									})
+						}
+						onClick={canControlPlayback ? onRemove : undefined}
 					>
 						<X size={15} strokeWidth={2.2} />
 					</button>
@@ -256,10 +277,12 @@ export function QueuePanel({
 	const t = useTranslate();
 	const { data: snapshot } = usePlayer();
 	const { entries, count } = useQueue();
-	const { canQueue, remove, clear, move } = useQueueActions();
+	const { canQueue, canControlPlayback, remove, clear, move } =
+		useQueueActions();
 
 	const { discovery } = useFooJean();
 	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
+	const isReachable = origin !== null;
 
 	const isPlaying = snapshot?.player?.playbackState === "playing";
 
@@ -288,7 +311,8 @@ export function QueuePanel({
 	);
 
 	const drag = useDragState();
-	const isDropping = isOpen && canQueue && drag.isDragging;
+	const isDropping = isOpen && isReachable && drag.isDragging;
+	const dropRefusal = canControlPlayback ? undefined : t("player.controlOff");
 
 	const keyboardOwner = useKeyboardOwner();
 
@@ -329,8 +353,20 @@ export function QueuePanel({
 						</p>
 					</div>
 
-					{count > 0 && canQueue ? (
-						<button type="button" className={styles.clear} onClick={clear}>
+					{count > 0 && isReachable ? (
+						<button
+							type="button"
+							className={styles.clear}
+							aria-disabled={canControlPlayback ? undefined : "true"}
+							aria-label={
+								canControlPlayback
+									? undefined
+									: t("player.controlOffName", {
+											control: t("action.clear"),
+										})
+							}
+							onClick={canControlPlayback ? clear : undefined}
+						>
 							{t("action.clear")}
 						</button>
 					) : null}
@@ -350,6 +386,7 @@ export function QueuePanel({
 					ref={scrollRef}
 					data-drop-scroller=""
 					data-drop-target={isDropping ? queueDropAt(count) : undefined}
+					data-drop-refuses={isDropping ? dropRefusal : undefined}
 				>
 					<div className={styles.origin} data-live={isPlaying}>
 						<span className={styles.pip} aria-hidden="true" />
@@ -380,7 +417,8 @@ export function QueuePanel({
 										cover={covers[index]}
 										snapshot={snapshot}
 										isPlaying={isPlaying}
-										canQueue={canQueue}
+										isReachable={isReachable}
+										canControlPlayback={canControlPlayback}
 										dropAt={isDropping ? index : null}
 										hasDropLine={drag.over === queueDropAt(index)}
 										onRemove={() => remove(entry.at)}

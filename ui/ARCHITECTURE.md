@@ -59,7 +59,7 @@ Two mechanisms, and the split is not arbitrary.
 | `["player"]` | player state and `activeItem` | `applyPoll`, from `startPlayerPoll`'s tick and from `pollPlayerNow` |
 | `["playlists"]` | the playlist list | `recheckPlaylists`, off the poll's `playlistsRevision` |
 | `["queue"]` | the whole queue, from `foo_jean` | `recheckQueue`, off the poll's `queueRevision` |
-| `["fooJean", token]` | the discovery result | backoff while retryable, focus otherwise |
+| `["fooJean"]` | the discovery result | backoff while retryable, focus otherwise |
 | `["fooJeanPlaylists", …]` | which playlists the player fills itself | when the playlist count changes |
 | `["artistInfo", artist]` | MusicBrainz and Wikipedia | never; off unless switched on in Settings |
 
@@ -124,7 +124,9 @@ A fact the player may spell two ways gets an *alternative* rather than a branch,
 | `src/domain/track/tagWriter.ts` | `{ kind, canWrite, allowedFields, allows, write }` | `NO_WRITER`, `agentWriter` |
 | `src/domain/player/listener.ts` | `{ kind, canListen, formats, target }` | `NO_LISTENER`, the agent listener |
 
-Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether writing is switched off at the player, the device is unpaired, or the write was declined. If anything outside these files has to branch on `kind`, the seam is in the wrong place.
+Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether writing is switched off at the player, the component is unreachable, or the write was declined. If anything outside these files has to branch on `kind`, the seam is in the wrong place.
+
+**Every switch behind either seam is the player owner's**, held in `config.json` and reloaded live from the Permissions page; Jean neither grants nor stores one. **Playing a set is playback, not a playlist edit.** Filling the scratch playlist to play an arbitrary row follows `controlPlayback`, never `writePlaylists`, however much it looks like a playlist write from here.
 
 **`write` is handed an address, never a filesystem path.** A track is named by one of three forms. Where the media library holds it, by its library-relative path with the subsong inside the file it names, or by its ordinal in the snapshot with the generation that ordinal was read at. Where the library does not hold it, by a playlist GUID, a position and the structure generation those rows were read at. A source answers the forms for its own rows out of tables it already holds, so nothing between a star and the write resolves anything, and the component matches each of them against what the player itself produced. A row the media library holds takes a library form even where it was read from a playlist: a relative path survives a reorder and a rebuild, a position survives neither, and what stops a stale position writing to somebody else's file is the component comparing that generation and answering `409`. No filesystem path crosses the wire at all, which is what makes a library on a UNC share rateable.
 
@@ -134,13 +136,13 @@ Both are fed by one discovery, in `src/shared/api/fooJean.ts`, deduped through `
 
 ## The `foo_jean` security model
 
-`discoverFooJean()` in `fooJean.ts` takes the component's origin straight off `window.location.origin`, so there is no address to verify before a token may be sent. **The token is attached from the first authenticated call, `GET /api/capabilities`, and nothing before it asks unauthenticated.**
+`discoverFooJean()` in `fooJean.ts` takes the component's origin straight off `window.location.origin` and asks `GET /api/capabilities` with no credential to attach; nothing Jean sends needs one. What decides whether the request lands at all is the component's own admission rule, a private source address behind a `Host` it recognises, run ahead of anything Jean does; `plugins/fb2k/ARCHITECTURE.md` has the rule itself.
 
-**Pairing needs no CORS exception of its own.** `POST /api/pair` follows the same rule as every other route: with `allowedOrigins` empty the component reflects no origin, so only a page served by the component itself, same-origin, can reach it.
+**Every route follows the same CORS rule.** With `allowedOrigins` empty the component reflects no origin, so only a page it served itself, same-origin, can reach any of them.
 
-**Discovery resolves to a state, and none of the states is silence.** `FooJeanState` is `unreachable`, `no-token`, `unauthorized` or `ready`, the union declared beside `discoverFooJean()`. `src/features/settings/TagWriting.tsx` holds one message and one remedy per state.
+**Discovery resolves to a state, and neither one is silence.** `FooJeanState` is `unreachable` or `ready`, the union declared beside `discoverFooJean()`. `src/features/settings/TagWriting.tsx` holds a message and a remedy for each, plus for a ready component with no writable field and one with no stream.
 
-**Which project owns which setting.** The component's `config.json` holds what the *player owner* decides: port, bind address, the write allowlist. Jean never edits it and there is no route to it. Jean owns the token and, per field, whether to offer the control at all. **Those switches narrow and never widen.** Settings lists exactly the permitted fields and turns them off, never on.
+**Which project owns which setting.** The component's `config.json` holds what the *player owner* decides: port, bind address, and every switch named beside *The two seams* above. Jean never edits it and there is no route to it. Jean owns, per field, whether to offer the control at all. **Those switches narrow and never widen.** Settings lists exactly the permitted fields and turns them off, never on.
 
 ## Sequencing
 

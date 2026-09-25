@@ -21,9 +21,7 @@ std::string ratingWriteAtRow(const std::string& playlist, uint32_t index, uint64
 }
 
 Settings servingSettings() {
-    Settings settings;
-    settings.authToken = kToken;
-    return settings;
+    return Settings();
 }
 
 Settings servingSettingsAllowing(std::vector<std::string> fields) {

@@ -8,12 +8,10 @@
 #include "fb2k/running_server.h"
 #include "fb2k/running_settings.h"
 #include "fb2k/strings.h"
-#include "fb2k/token.h"
 
 #include <foobar2000/SDK/coreDarkMode.h>
 
 #include <cstddef>
-#include <ctime>
 #include <string>
 
 namespace {
@@ -22,13 +20,13 @@ using namespace jean;
 
 constexpr char kPageName[] = "Jean";
 
-constexpr char kDevicesName[] = "Devices";
+constexpr char kPermissionsName[] = "Permissions";
 
 constexpr GUID kPageGuid = {
     0x833e5a93, 0x92ba, 0x4dfe, {0x95, 0x93, 0xd5, 0x02, 0x90, 0xd8, 0xdd, 0x4c}};
 
-constexpr GUID kDevicesGuid = {
-    0x0f1c2b64, 0x5d7a, 0x4e18, {0xa2, 0x6b, 0x71, 0x14, 0x9c, 0x3f, 0x8e, 0x05}};
+constexpr GUID kPermissionsGuid = {
+    0x7e78cbe3, 0xc7ac, 0x4484, {0xae, 0x0d, 0x59, 0xe1, 0x06, 0x5a, 0xae, 0xcf}};
 
 struct Control {
     int id;
@@ -61,12 +59,18 @@ using BoolControls = ControlList<BoolControl>;
 
 constexpr Control kMainControls[] = {{IDC_PORT, &SettingsForm::port},
                                      {IDC_BIND, &SettingsForm::bindAddress},
-                                     {IDC_ORIGINS, &SettingsForm::allowedOrigins},
-                                     {IDC_FIELDS, &SettingsForm::allowedFields}};
+                                     {IDC_ORIGINS, &SettingsForm::allowedOrigins}};
 
-constexpr Control kDevicesControls[] = {{IDC_TOKEN, &SettingsForm::authToken}};
+constexpr Control kPermissionsControls[] = {
+    {IDC_FIELDS, &SettingsForm::allowedFields},
+    {IDC_MAX_AUTOPLAYLISTS, &SettingsForm::maxAutoPlaylists},
+    {IDC_HOSTS, &SettingsForm::allowedHosts}};
 
-constexpr BoolControl kMainBoolControls[] = {{IDC_WRITE_PLAYLISTS, &SettingsForm::writePlaylists}};
+constexpr BoolControl kPermissionsBoolControls[] = {
+    {IDC_CONTROL_PLAYBACK, &SettingsForm::controlPlayback},
+    {IDC_WRITE_PLAYLISTS, &SettingsForm::writePlaylists},
+    {IDC_CHANGE_OUTPUT, &SettingsForm::changeOutput},
+    {IDC_STREAMING_ENABLED, &SettingsForm::streamingEnabled}};
 
 struct Page {
     const char* name;
@@ -74,13 +78,12 @@ struct Page {
     Controls controls;
     BoolControls boolControls;
 
-    bool pairing;
     bool configPath;
 };
 
-constexpr Page kMainPage{kPageName, IDD_PREFERENCES, kMainControls, kMainBoolControls, false, true};
-constexpr Page kDevicesPage{kDevicesName,   IDD_DEVICES, kDevicesControls,
-                            BoolControls(), true,        false};
+constexpr Page kMainPage{kPageName, IDD_PREFERENCES, kMainControls, BoolControls(), true};
+constexpr Page kPermissionsPage{kPermissionsName, IDD_PERMISSIONS, kPermissionsControls,
+                                kPermissionsBoolControls, false};
 
 std::string readControl(HWND dialog, int id) {
     const auto control = GetDlgItem(dialog, id);
@@ -102,26 +105,6 @@ bool readCheckbox(HWND dialog, int id) {
 
 void writeCheckbox(HWND dialog, int id, bool checked) {
     CheckDlgButton(dialog, id, checked ? BST_CHECKED : BST_UNCHECKED);
-}
-
-constexpr UINT_PTR kPairTimer = 1;
-
-std::string minutesAndSeconds(int seconds) {
-    return std::to_string(seconds / 60) + ":" + (seconds % 60 < 10 ? "0" : "") +
-           std::to_string(seconds % 60);
-}
-
-std::string whenPaired(std::chrono::system_clock::time_point at) {
-    const auto stamp = std::chrono::system_clock::to_time_t(at);
-    std::tm parts{};
-    if (localtime_s(&parts, &stamp) != 0)
-        return "at an unknown time";
-
-    char buffer[32];
-    if (std::strftime(buffer, sizeof buffer, "%Y-%m-%d %H:%M", &parts) == 0)
-        return "at an unknown time";
-
-    return buffer;
 }
 
 std::string displayConfigPath() {
@@ -156,7 +139,7 @@ public:
     }
 
     void reset() override {
-        show(defaultForm(currentForm().authToken));
+        show(defaultForm());
         callback_->on_state_changed();
     }
 
@@ -177,10 +160,15 @@ public:
             return;
         }
 
-        logInfo("configuration saved from the preferences page; restart to apply it");
+        logInfo(restartNeeded(reading.settings)
+                    ? "configuration saved from the preferences page; a restart is needed "
+                      "for some changes to take effect"
+                    : "configuration saved from the preferences page");
 
         saved_ = reading.settings;
         show(toForm(saved_));
+        if (page_.configPath)
+            updateConfigNote();
         callback_->on_state_changed();
     }
 
@@ -199,18 +187,8 @@ private:
 
         if (message == WM_DESTROY) {
             self->live_ = false;
-
-            // The pairing window outlives this dialog on purpose, so closing preferences
-            // mid-pair does not strand a device about to press Pair. The timer must not.
-            KillTimer(dialog, kPairTimer);
-
             SetWindowLongPtrW(dialog, GWLP_USERDATA, 0);
             return FALSE;
-        }
-
-        if (message == WM_TIMER && wParam == kPairTimer) {
-            self->showPairing();
-            return TRUE;
         }
 
         return message == WM_COMMAND ? self->onCommand(HIWORD(wParam), LOWORD(wParam)) : FALSE;
@@ -224,34 +202,13 @@ private:
 
         show(toForm(saved_));
 
-        if (page_.configPath) {
-            const auto status = listenerStatus();
-            if (!status.listening && !status.error.empty()) {
-                writeControl(dialog, IDC_CONFIG_PATH, status.error);
-            } else {
-                writeControl(dialog, IDC_CONFIG_PATH,
-                             "Saved to " + displayConfigPath() +
-                                 ". Changes take effect when foobar2000 restarts.");
-            }
-        }
-
-        if (page_.pairing)
-            showPairing();
+        if (page_.configPath)
+            updateConfigNote();
 
         live_ = true;
     }
 
     INT_PTR onCommand(int notification, int id) {
-        if (id == IDC_REGENERATE && notification == BN_CLICKED) {
-            regenerateToken();
-            return TRUE;
-        }
-
-        if (id == IDC_PAIR && notification == BN_CLICKED) {
-            togglePairing();
-            return TRUE;
-        }
-
         for (const BoolControl& control : page_.boolControls) {
             if (control.id == id && notification == BN_CLICKED) {
                 if (live_)
@@ -267,65 +224,17 @@ private:
         return TRUE;
     }
 
-    void togglePairing() {
-        if (!isServing()) {
-            popup_message::g_show(
-                "foo_jean is not listening, so there is nothing to pair with. Check the port "
-                "and the log, then restart foobar2000.",
-                page_.name);
+    void updateConfigNote() {
+        const auto status = listenerStatus();
+        if (!status.listening && !status.error.empty()) {
+            writeControl(dialog_, IDC_CONFIG_PATH, status.error);
             return;
         }
 
-        if (pairingState().open)
-            closePairingWindow();
-        else
-            openPairingWindow();
-
-        showPairing();
-    }
-
-    void showPairing() {
-        const auto state = pairingState();
-
-        writeControl(dialog_, IDC_PAIR, state.open ? "Stop pairing" : "Pair a device");
-
-        if (!isServing()) {
-            writeControl(dialog_, IDC_PAIR_STATUS, "Not listening, so pairing is unavailable.");
-        } else if (state.open) {
-            writeControl(dialog_, IDC_PAIR_STATUS,
-                         "Open for " + minutesAndSeconds(state.remainingSeconds) +
-                             " — press Pair in Jean on the device now.");
-        } else {
-            writeControl(dialog_, IDC_PAIR_STATUS, "Closed. One device may pair per press.");
-        }
-
-        if (state.history.empty()) {
-            writeControl(dialog_, IDC_PAIR_HISTORY, "Nothing has paired with this install.");
-        } else {
-            const auto& last = state.history.back();
-            writeControl(
-                dialog_, IDC_PAIR_HISTORY,
-                "Last paired: " +
-                    (last.name.empty() ? last.address : last.name + " (" + last.address + ")") +
-                    ", " + whenPaired(last.at) + ".");
-        }
-
-        if (state.open)
-            SetTimer(dialog_, kPairTimer, 1000, nullptr);
-        else
-            KillTimer(dialog_, kPairTimer);
-    }
-
-    void regenerateToken() {
-        const auto token = generateToken();
-
-        if (token.empty()) {
-            popup_message::g_show("The operating system would not supply a random token.",
-                                  page_.name);
-            return;
-        }
-
-        writeControl(dialog_, IDC_TOKEN, token);
+        auto note = "Saved to " + displayConfigPath() + ".";
+        if (restartNeeded(saved_))
+            note += " A restart is needed for some changes to take effect.";
+        writeControl(dialog_, IDC_CONFIG_PATH, note);
     }
 
     void show(const SettingsForm& form) {
@@ -367,19 +276,19 @@ public:
     }
 };
 
-class DevicesPage : public preferences_page_v3 {
+class PermissionsPage : public preferences_page_v3 {
 public:
-    const char* get_name() override { return kDevicesName; }
-    GUID get_guid() override { return kDevicesGuid; }
+    const char* get_name() override { return kPermissionsName; }
+    GUID get_guid() override { return kPermissionsGuid; }
     GUID get_parent_guid() override { return kPageGuid; }
 
     preferences_page_instance::ptr instantiate(fb2k::hwnd_t parent,
                                                preferences_page_callback::ptr callback) override {
-        return fb2k::service_new<PreferencesInstance>(kDevicesPage, parent, callback);
+        return fb2k::service_new<PreferencesInstance>(kPermissionsPage, parent, callback);
     }
 };
 
 preferences_page_factory_t<PreferencesPage> g_preferences_page;
-preferences_page_factory_t<DevicesPage> g_devices_page;
+preferences_page_factory_t<PermissionsPage> g_permissions_page;
 
 }  // namespace

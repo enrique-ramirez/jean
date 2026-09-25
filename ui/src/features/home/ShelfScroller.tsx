@@ -9,9 +9,11 @@ import type { FilledShelf } from "./shelves";
 export function ShelfScroller({
 	shelf,
 	onPlayAlbum,
+	canControlPlayback = true,
 }: {
 	shelf: FilledShelf<CoveredAlbum>;
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
+	canControlPlayback?: boolean;
 }) {
 	const t = useTranslate();
 	const format = useFormats();
@@ -74,6 +76,7 @@ export function ShelfScroller({
 						album={album}
 						caption={shelf.caption(album, t, format.locale)}
 						onPlay={() => onPlayAlbum(shelf, album)}
+						canControlPlayback={canControlPlayback}
 					/>
 				))}
 			</div>

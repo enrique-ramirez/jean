@@ -4,8 +4,8 @@
 #include "core/artwork.h"
 #include "core/audience.h"
 #include "core/library.h"
-#include "core/pairing.h"
 #include "core/player_state.h"
+#include "core/reload.h"
 #include "core/settings.h"
 #include "core/stream.h"
 #include "core/stream_ticket.h"
@@ -59,7 +59,8 @@ using MoveQueueEntry =
     std::function<PlaylistOutcome(uint32_t from, uint32_t to, uint64_t revision)>;
 using RemoveQueueEntry = std::function<PlaylistOutcome(uint32_t index, uint64_t revision)>;
 using ClearQueue = std::function<PlaylistOutcome()>;
-using AutoPlaylistCreator = std::function<PlaylistResult(const AutoPlaylistSpec&)>;
+using AutoPlaylistCreator =
+    std::function<PlaylistResult(const AutoPlaylistSpec&, int maxAutoPlaylists)>;
 using AutoPlaylistUpdater =
     std::function<PlaylistResult(const std::string& id, const AutoPlaylistSpec&)>;
 using AutoPlaylistRemover = std::function<PlaylistResult(const std::string& id)>;
@@ -313,16 +314,10 @@ public:
     // Idempotent, and safe to call from the main thread during shutdown.
     void stop();
 
-    void openPairingWindow();
-    void closePairingWindow();
-
-    struct PairingState {
-        bool open = false;
-        int remainingSeconds = 0;
-        std::vector<PairingWindow::Record> history;
-    };
-
-    PairingState pairingState() const;
+    // Swaps the live settings for `decision.next` and moves the generation `GET /api/state`
+    // reports when a changed key is one `GET /api/capabilities` reflects. Safe to call from
+    // any thread; a request already in flight keeps whatever snapshot it already took.
+    void applyReload(const ReloadDecision& decision);
 
     HttpServer(const HttpServer&) = delete;
     HttpServer& operator=(const HttpServer&) = delete;

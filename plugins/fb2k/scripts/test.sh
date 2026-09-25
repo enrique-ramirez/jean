@@ -3,7 +3,7 @@
 #
 #   scripts/test.sh                        everything
 #   scripts/test.sh '-sf=*cors_test.cpp'   one file
-#   scripts/test.sh '-tc=*bearer*'         test cases whose name matches
+#   scripts/test.sh '-tc=*ticket*'         test cases whose name matches
 #
 #   scripts/test.sh --sanitize=address     AddressSanitizer and UndefinedBehaviorSanitizer
 #   scripts/test.sh --sanitize=thread      ThreadSanitizer, which is what covers the rings and the hold

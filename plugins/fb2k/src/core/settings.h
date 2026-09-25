@@ -11,9 +11,9 @@ struct Settings {
     // Narrowing this to 127.0.0.1 is the hardening step for a single-machine deployment.
     std::string bindAddress = "0.0.0.0";
 
-    std::string authToken;
-
     std::vector<std::string> allowedOrigins;
+
+    std::vector<std::string> allowedHosts;
 
     std::vector<std::string> allowedFields{"rating"};
 
@@ -21,6 +21,8 @@ struct Settings {
     int maxAutoPlaylists = 100;
 
     bool writePlaylists = true;
+
+    bool controlPlayback = true;
 
     bool changeOutput = true;
 
@@ -55,13 +57,23 @@ constexpr int kAacBitrates[] = {96000, 128000, 160000, 192000};
 constexpr int kMinTicketTtlSeconds = 10;
 constexpr int kMaxTicketTtlSeconds = 3600;
 
-// Generated tokens are 64 hex characters; anything near hand-typed length is a mistake.
-constexpr size_t kMinTokenLength = 32;
-
 bool operator==(const Settings& a, const Settings& b);
 inline bool operator!=(const Settings& a, const Settings& b) {
     return !(a == b);
 }
+
+struct SettingsParse {
+    Settings settings;
+    std::vector<std::string> logLines;
+
+    // False when `text` was not a JSON object at all, in which case `settings` holds only
+    // the defaults and a caller decides for itself what to keep instead.
+    bool documentValid = true;
+};
+
+// Never throws. Does what `parseSettings` does, but hands the log lines back rather than
+// sending them to `logError`, so `decideReload` can log them only where they land.
+SettingsParse parseSettingsLogging(const std::string& text);
 
 // Never throws.
 Settings parseSettings(const std::string& text);

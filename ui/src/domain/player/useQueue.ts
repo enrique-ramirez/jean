@@ -5,6 +5,7 @@ import {
 	fetchPlaylistAnnotations,
 	isFooJeanReady,
 	moveQueueEntry,
+	permitsPlaybackControl,
 	postQueue,
 	type QueueLibraryTracksRequest,
 	type QueueMutationResult,
@@ -36,9 +37,10 @@ export function useQueue() {
 
 export function useQueueActions() {
 	const queryClient = useQueryClient();
-	const { discovery } = useFooJean();
-	const canQueue = isFooJeanReady(discovery);
-	const { origin, token } = discovery;
+	const { discovery, recheck } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canQueue = isFooJeanReady(discovery) && canControlPlayback;
+	const { origin } = discovery;
 
 	const patchEntries = useCallback(
 		(next: (entries: QueueRead["entries"]) => QueueRead["entries"]) => {
@@ -65,26 +67,31 @@ export function useQueueActions() {
 					if (current?.revision === previous.revision)
 						patchEntries(() => previous.entries);
 				}
+				const refused =
+					result.reason === "failed" && result.refusal === "playbackDisabled";
 				pushToast({
 					tone: "error",
 					message: translate(
-						result.reason === "stale"
-							? drag
-								? "queue.movedUnderYou"
-								: "queue.staleRefused"
-							: "queue.refused",
+						refused
+							? "player.controlOffToast"
+							: result.reason === "stale"
+								? drag
+									? "queue.movedUnderYou"
+									: "queue.staleRefused"
+								: "queue.refused",
 					),
 				});
+				if (refused) recheck();
 			}
-			if (origin && token) await pollPlayerNow(queryClient, origin, token);
+			if (origin) await pollPlayerNow(queryClient, origin);
 			return result.ok;
 		},
-		[queryClient, origin, token, patchEntries],
+		[queryClient, origin, patchEntries, recheck],
 	);
 
 	const queue = useCallback(
 		async (source: QueueSource, at?: number, drag = false) => {
-			if (!canQueue || !origin || !token) return;
+			if (!canQueue || !origin) return;
 			if (source.kind === "rows" && source.targets.length === 0) return;
 
 			askToShowQueue();
@@ -100,7 +107,7 @@ export function useQueueActions() {
 
 			let request: QueuePlaylistRowsRequest | QueueLibraryTracksRequest;
 			if (source.kind === "rows") {
-				const annotations = await fetchPlaylistAnnotations(origin, token);
+				const annotations = await fetchPlaylistAnnotations(origin);
 				let playlistId: string;
 				try {
 					playlistId = guidOf(source.targets[0].playlistId, annotations);
@@ -118,38 +125,37 @@ export function useQueueActions() {
 				request = { ...source.request, ...atFields };
 			}
 
-			await settle(await postQueue(origin, token, request), { drag });
+			await settle(await postQueue(origin, request), { drag });
 		},
-		[canQueue, origin, token, queryClient, settle],
+		[canQueue, origin, queryClient, settle],
 	);
 
 	const remove = useCallback(
 		(at: number) => {
-			if (!canQueue || !origin || !token) return Promise.resolve(false);
+			if (!canQueue || !origin) return Promise.resolve(false);
 
 			const previous = patchEntries((entries) =>
 				entries.filter((_, index) => index !== at),
 			);
-			return removeQueueEntry(origin, token, at, previous?.revision ?? 0).then(
+			return removeQueueEntry(origin, at, previous?.revision ?? 0).then(
 				(result) => settle(result, { previous }),
 			);
 		},
-		[canQueue, origin, token, patchEntries, settle],
+		[canQueue, origin, patchEntries, settle],
 	);
 
 	const clear = useCallback(() => {
-		if (!canQueue || !origin || !token) return Promise.resolve(false);
+		if (!canQueue || !origin) return Promise.resolve(false);
 
 		const previous = patchEntries(() => []);
-		return writeClearQueue(origin, token).then((result) =>
+		return writeClearQueue(origin).then((result) =>
 			settle(result, { previous }),
 		);
-	}, [canQueue, origin, token, patchEntries, settle]);
+	}, [canQueue, origin, patchEntries, settle]);
 
 	const move = useCallback(
 		(from: number, to: number) => {
-			if (!canQueue || from === to || !origin || !token)
-				return Promise.resolve(false);
+			if (!canQueue || from === to || !origin) return Promise.resolve(false);
 
 			const previous = patchEntries((entries) => {
 				const next = [...entries];
@@ -157,14 +163,14 @@ export function useQueueActions() {
 				next.splice(to, 0, item);
 				return next;
 			});
-			return moveQueueEntry(origin, token, {
+			return moveQueueEntry(origin, {
 				from,
 				to,
 				revision: previous?.revision ?? 0,
 			}).then((result) => settle(result, { previous, drag: true }));
 		},
-		[canQueue, origin, token, patchEntries, settle],
+		[canQueue, origin, patchEntries, settle],
 	);
 
-	return { canQueue, queue, remove, clear, move };
+	return { canQueue, canControlPlayback, queue, remove, clear, move };
 }

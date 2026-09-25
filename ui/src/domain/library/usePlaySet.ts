@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import { usePlayItem } from "@/domain/player/usePlayer";
+import { reportPlaybackRefusal, usePlayItem } from "@/domain/player/usePlayer";
 import type { Refs } from "@/domain/track/project";
-import { isFooJeanReady } from "@/shared/api/fooJean";
+import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Library } from "./useLibrary";
@@ -14,8 +14,9 @@ export function usePlaySet({
 	library: Library;
 	playlists: PlaylistInfo[];
 }) {
-	const { discovery } = useFooJean();
+	const { discovery, recheck } = useFooJean();
 	const canPlaySets = isFooJeanReady(discovery);
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	const scratch = useScratchPlaylist({
 		playlists,
 		canEdit: canPlaySets,
@@ -34,24 +35,38 @@ export function usePlaySet({
 			refs: Refs;
 			position: number;
 		}) => {
+			if (!canControlPlayback) return null;
+			let id: string | null;
 			try {
-				const id = await scratch.ensure({
+				id = await scratch.ensure({
 					kind,
 					label,
 					refs,
 					source: library.source,
 				});
-				return id
-					? playItem.mutateAsync({ playlistId: id, index: position })
-					: null;
-			} catch {
+			} catch (error) {
+				reportPlaybackRefusal(error, recheck);
 				// foo_jean answers a fill it refuses or cannot attempt with a non-2xx status, most often
 				// a 409 for a structure that moved under it, rather than an empty result: there is
 				// nothing here to play until whatever asked for this tries again.
 				return null;
 			}
+			// `usePlayItem`'s own mutation already reports a playback refusal through the same helper,
+			// so this swallows only to keep a mutation's rejection from reaching a caller that never
+			// reads it, not to answer for it a second time.
+			return id
+				? playItem
+						.mutateAsync({ playlistId: id, index: position })
+						.catch(() => null)
+				: null;
 		},
-		[scratch, library.source, playItem.mutateAsync],
+		[
+			scratch,
+			library.source,
+			playItem.mutateAsync,
+			recheck,
+			canControlPlayback,
+		],
 	);
 
 	return { play, scratch, canPlaySets };

@@ -11,8 +11,8 @@ import {
 import { coverKey } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import {
-	bearer,
 	isFooJeanReady,
+	permitsPlaybackControl,
 	playingArtworkUrl,
 } from "@/shared/api/fooJean";
 import type { NowPlayingTrack, PlayerSnapshot } from "@/shared/api/types";
@@ -81,9 +81,7 @@ const LOCK_SCREEN_TYPE = "image/jpeg";
 const LOCK_SCREEN_QUALITY = 0.85;
 
 // Chrome on iOS refuses a `blob:` URL on the lock screen, so the cover is redrawn onto a
-// canvas and handed over encoded. `blobUrl` names a blob Jean already fetched with the
-// token, never an address requested straight from here, so drawing it never taints the
-// canvas.
+// canvas and handed over encoded.
 async function shrinkForLockScreen(blobUrl: string): Promise<MediaImage> {
 	const image = new Image();
 	image.src = blobUrl;
@@ -137,7 +135,7 @@ export function useMediaSession(
 
 	const isReady = isFooJeanReady(discovery);
 	const origin = isReady ? discovery.origin : null;
-	const token = isReady ? discovery.token : null;
+	const canControlPlayback = permitsPlaybackControl(discovery);
 
 	const canonical = album
 		? canonicalPlayingArtworkUrl(origin, album, credited || "")
@@ -154,17 +152,14 @@ export function useMediaSession(
 
 	useEffect(() => {
 		setCover(null);
-		if (!artworkUrl || !playingCover || !token) return;
+		if (!artworkUrl || !playingCover) return;
 
 		const key = playingCover;
 		const abort = new AbortController();
 		let cancelled = false;
 
 		const read = async () => {
-			const response = await fetch(artworkUrl, {
-				signal: abort.signal,
-				headers: bearer(token),
-			});
+			const response = await fetch(artworkUrl, { signal: abort.signal });
 			if (!response.ok) throw new Error(`no artwork: ${response.status}`);
 			return response.blob();
 		};
@@ -187,7 +182,7 @@ export function useMediaSession(
 			cancelled = true;
 			abort.abort();
 		};
-	}, [artworkUrl, playingCover, token]);
+	}, [artworkUrl, playingCover]);
 
 	useEffect(() => {
 		const target = mediaSession();
@@ -218,7 +213,7 @@ export function useMediaSession(
 	}, [live, snapshot, item?.duration]);
 
 	useEffect(() => {
-		if (!live) {
+		if (!live || !canControlPlayback) {
 			setHandlers({});
 			return;
 		}
@@ -247,6 +242,7 @@ export function useMediaSession(
 		return () => setHandlers({});
 	}, [
 		live,
+		canControlPlayback,
 		isPlaying,
 		playPause,
 		previous,

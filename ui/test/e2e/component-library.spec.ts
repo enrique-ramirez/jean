@@ -4,7 +4,6 @@ import {
 	expect,
 	expectSettlesAt,
 	type FakePlayer,
-	FOO_JEAN_TOKEN,
 	openSidebar,
 	type Page,
 	playedFrom,
@@ -128,7 +127,7 @@ const fileInto = async (
 };
 
 test.describe("the library as one snapshot", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	test("every track arrives in one export and beefweb is never paged", async ({
 		page,
@@ -175,7 +174,6 @@ test.describe("the library as one snapshot", () => {
 test.describe("a snapshot that has to be built first", () => {
 	test.use({
 		fooJean: { libraryBuilds: 2 },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("the 202 is waited out rather than reported as a failure", async ({
@@ -194,7 +192,6 @@ test.describe("a snapshot that has to be built first", () => {
 test.describe("a component that does not serve the library", () => {
 	test.use({
 		fooJean: { canReadLibrary: false },
-		fooJeanToken: FOO_JEAN_TOKEN,
 	});
 
 	test("nothing stands in for it and beefweb is not asked", async ({
@@ -215,7 +212,6 @@ test.describe("a component that does not serve the library", () => {
 test.describe("a library that moved while Jean was open", () => {
 	test.use({
 		fooJean: {},
-		fooJeanToken: FOO_JEAN_TOKEN,
 		countsPlays: true,
 	});
 
@@ -242,7 +238,6 @@ test.describe("a library that moved while Jean was open", () => {
 test.describe("a library rebuilt under Jean", () => {
 	test.use({
 		fooJean: { libraryRebuilds: 1 },
-		fooJeanToken: FOO_JEAN_TOKEN,
 		countsPlays: true,
 	});
 
@@ -266,7 +261,7 @@ test.describe("a library rebuilt under Jean", () => {
 });
 
 test.describe("a library rebuilt while Jean was reading the one before it", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	const ADDED = "Late Arrival";
 
@@ -355,7 +350,7 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 });
 
 test.describe("playing a set out of the library", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	test("asks the component for its scratch playlist by role, titled, and makes none through beefweb", async ({
 		page,
@@ -403,7 +398,6 @@ test.describe("the order a library set plays in", () => {
 	// set that arrived through beefweb would land scrambled.
 	test.use({
 		fooJean: {},
-		fooJeanToken: FOO_JEAN_TOKEN,
 		mediaLibrarySize: 4000,
 	});
 
@@ -428,7 +422,7 @@ test.describe("the order a library set plays in", () => {
 });
 
 test.describe("a second view played before the first one has landed", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	// The component applies fills in the order they arrived, so the later click
 	// wins the playlist whichever response Jean waited for. What is left to get
@@ -455,7 +449,7 @@ test.describe("a second view played before the first one has landed", () => {
 });
 
 test.describe("a view whose fill was refused because the library moved", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	// Two genres the captured library holds the same number of tracks in, so that a
 	// refused fill is worse than wasted: the playlist keeps the first one's rows
@@ -544,7 +538,7 @@ test.describe("a view whose fill was refused because the library moved", () => {
 });
 
 test.describe("filing a library row into a playlist of your own", () => {
-	test.use({ fooJean: {}, fooJeanToken: FOO_JEAN_TOKEN });
+	test.use({ fooJean: {} });
 
 	test("goes to the component by playlist id, and adds nothing through beefweb", async ({
 		page,

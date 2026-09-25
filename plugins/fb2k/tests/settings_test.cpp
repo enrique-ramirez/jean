@@ -5,11 +5,15 @@
 
 #include "core/settings.h"
 
+#include <algorithm>
+#include <initializer_list>
 #include <string>
 #include "support/log_capture.h"
+#include "third_party/json.hpp"
 
 using namespace jean;
 using namespace jean::testing;
+using nlohmann::json;
 
 namespace {
 
@@ -27,14 +31,12 @@ TEST_CASE("an empty object leaves every default in place") {
     CHECK(settings.port == defaults.port);
     CHECK(settings.bindAddress == defaults.bindAddress);
     CHECK(settings.allowedFields == defaults.allowedFields);
-    CHECK(settings.authToken.empty());
 }
 
 TEST_CASE("the defaults are reachable, and closed where it counts") {
     const Settings defaults;
 
     CHECK(defaults.bindAddress == "0.0.0.0");
-    CHECK(defaults.authToken.empty());
     CHECK(defaults.allowedFields == std::vector<std::string>{"rating"});
 }
 
@@ -42,7 +44,6 @@ TEST_CASE("a well-formed file is read as written") {
     const auto settings = parseFresh(R"({
         "port": 9000,
         "bindAddress": "0.0.0.0",
-        "authToken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "allowedOrigins": ["https://jean.example"],
         "allowedFields": ["rating", "comment"]
     })");
@@ -57,7 +58,6 @@ TEST_CASE("a settings round trip through the file format is lossless") {
     Settings original;
     original.port = 9001;
     original.bindAddress = "192.168.1.10";
-    original.authToken = std::string(64, 'a');
     original.allowedOrigins = {"https://jean.example"};
     original.allowedFields = {"rating", "comment"};
 
@@ -65,7 +65,6 @@ TEST_CASE("a settings round trip through the file format is lossless") {
 
     CHECK(restored.port == original.port);
     CHECK(restored.bindAddress == original.bindAddress);
-    CHECK(restored.authToken == original.authToken);
     CHECK(restored.allowedOrigins == original.allowedOrigins);
     CHECK(restored.allowedFields == original.allowedFields);
 }
@@ -73,7 +72,6 @@ TEST_CASE("a settings round trip through the file format is lossless") {
 TEST_CASE("a file that is not JSON at all still starts the player, serving nothing") {
     const auto settings = parseFresh("this is not json {{{");
 
-    CHECK(settings.authToken.empty());
     CHECK(settings.port == Settings().port);
     CHECK(logged("could not parse"));
 }
@@ -81,7 +79,7 @@ TEST_CASE("a file that is not JSON at all still starts the player, serving nothi
 TEST_CASE("a JSON array where an object belongs is refused rather than misread") {
     const auto settings = parseFresh(R"(["port", 9000])");
 
-    CHECK(settings.authToken.empty());
+    CHECK(settings.port == Settings().port);
     CHECK(logged("expected a JSON object"));
 }
 
@@ -107,29 +105,6 @@ TEST_CASE("an empty bindAddress takes the default and reports itself") {
 
     CHECK(settings.bindAddress == Settings().bindAddress);
     CHECK(logged("'bindAddress'"));
-}
-
-TEST_CASE("a token too short to be worth anything is refused outright") {
-    const auto settings = parseFresh(R"({"authToken": "hunter2"})");
-
-    CHECK(settings.authToken.empty());
-    CHECK(logged("'authToken'"));
-}
-
-// The log is echoed to the foobar2000 console, which is what people paste into bug reports.
-TEST_CASE("a rejected token is never echoed into the log") {
-    parseFresh(R"({"authToken": "hunter2"})");
-    CHECK_FALSE(logged("hunter2"));
-
-    parseFresh(R"({"authToken": ")" + std::string(64, 'a') + R"("})");
-    CHECK_FALSE(logged(std::string(64, 'a')));
-}
-
-TEST_CASE("a token of legal length is kept") {
-    const auto token = std::string(kMinTokenLength, 'a');
-    const auto settings = parseFresh(R"({"authToken": ")" + token + R"("})");
-
-    CHECK(settings.authToken == token);
 }
 
 TEST_CASE("a misspelled key is reported, because otherwise it is invisible") {
@@ -280,4 +255,99 @@ TEST_CASE("writePlaylists survives a round trip through the file format") {
 
     CHECK_FALSE(parseFresh(serialiseSettings(original)).writePlaylists);
     CHECK(parseFresh(serialiseSettings(Settings())).writePlaylists);
+}
+
+TEST_CASE("allowedHosts is read from the file and written back as it was") {
+    const auto settings = parseFresh(R"({"allowedHosts": ["music.example", "jukebox.example"]})");
+
+    CHECK_FALSE(logged("'allowedHosts' is not a setting"));
+
+    const auto written = json::parse(serialiseSettings(settings));
+    REQUIRE(written.contains("allowedHosts"));
+    CHECK(written["allowedHosts"] == json{"music.example", "jukebox.example"});
+}
+
+TEST_CASE("an absent allowedHosts is written as an empty list, admitting only the built-in names") {
+    const auto written = json::parse(serialiseSettings(parseFresh("{}")));
+
+    REQUIRE(written.contains("allowedHosts"));
+    CHECK(written["allowedHosts"] == json::array());
+}
+
+TEST_CASE("the configuration a first run writes carries no authToken") {
+    const auto written = json::parse(serialiseSettings(Settings()));
+
+    CHECK_FALSE(written.contains("authToken"));
+}
+
+TEST_CASE("an authToken left in an existing file is reported as unread, and the rest still loads") {
+    const auto settings = parseFresh(R"({
+        "port": 9000,
+        "authToken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "allowedHosts": ["music.example"]
+    })");
+
+    CHECK(logged("'authToken' is not a setting"));
+    CHECK(settings.port == 9000);
+    CHECK(settings.allowedHosts == std::vector<std::string>{"music.example"});
+}
+
+TEST_CASE("controlPlayback defaults to on, and an explicit false turns it off") {
+    const auto absent = json::parse(serialiseSettings(parseFresh("{}")));
+    REQUIRE(absent.contains("controlPlayback"));
+    CHECK(absent["controlPlayback"] == true);
+
+    const auto off = parseFresh(R"({"controlPlayback": false})");
+    CHECK_FALSE(logged("'controlPlayback' is not a setting"));
+    CHECK(json::parse(serialiseSettings(off))["controlPlayback"] == false);
+
+    const auto on = parseFresh(R"({"controlPlayback": true})");
+    CHECK(json::parse(serialiseSettings(on))["controlPlayback"] == true);
+}
+
+TEST_CASE("a malformed controlPlayback keeps playback permitted and names itself") {
+    for (const auto* text : {R"({"controlPlayback": "false"})", R"({"controlPlayback": 0})",
+                             R"({"controlPlayback": null})"}) {
+        INFO(std::string(text));
+        const auto settings = parseFresh(text);
+
+        CHECK(logged("ignoring 'controlPlayback'"));
+        CHECK(json::parse(serialiseSettings(settings)).value("controlPlayback", false) == true);
+    }
+}
+
+// Criterion 11 is a promise to change nothing, and T6 edits the code that writes these keys.
+TEST_CASE("the switches beside controlPlayback keep their names and defaults in the file") {
+    const auto written = json::parse(serialiseSettings(parseFresh("{}")));
+
+    CHECK(written["allowedFields"] == json{"rating"});
+    CHECK(written["writePlaylists"] == true);
+    CHECK(written["changeOutput"] == true);
+    CHECK(written["streamingEnabled"] == true);
+    CHECK(written["maxAutoPlaylists"] == 100);
+}
+
+// A malformed switch turns the thing it guards on, so the log line is the only sign the owner
+// gets that the file did not say what they meant.
+TEST_CASE("a malformed key at startup logs the key, the value it refused and the default it used") {
+    const auto lineWith = [](std::initializer_list<const char*> fragments) {
+        const auto lines = loggedLines();
+        return std::any_of(lines.begin(), lines.end(), [fragments](const std::string& line) {
+            return std::all_of(fragments.begin(), fragments.end(), [&line](const char* fragment) {
+                return line.find(fragment) != std::string::npos;
+            });
+        });
+    };
+
+    CHECK(parseFresh(R"({"writePlaylists": "yes"})").writePlaylists);
+    CHECK(lineWith({"writePlaylists", "yes", "true"}));
+
+    CHECK(parseFresh(R"({"allowedFields": "title"})").allowedFields == Settings().allowedFields);
+    CHECK(lineWith({"allowedFields", "title", "rating"}));
+
+    CHECK(parseFresh(R"({"port": "eight thousand"})").port == Settings().port);
+    CHECK(lineWith({"port", "eight thousand", "8881"}));
+
+    CHECK(parseFresh(R"({"maxAutoPlaylists": -7})").maxAutoPlaylists == Settings().maxAutoPlaylists);
+    CHECK(lineWith({"maxAutoPlaylists", "-7", "100"}));
 }

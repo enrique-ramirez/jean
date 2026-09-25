@@ -4,7 +4,7 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
 	componentLibraryKey,
 	playlistSnapshot,
@@ -21,6 +21,7 @@ import type {
 	PlayerSnapshot,
 	PlayerState,
 } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { rememberSnapshot } from "./audible";
 import { notePlaybackState } from "./listenerStore";
 import { recheckQueue } from "./queue";
@@ -105,20 +106,22 @@ export function useExportHeldWhenLibraryUnbuilt(): number | null {
 async function applyPoll(
 	client: QueryClient,
 	origin: string,
-	token: string,
 	tag: string | null,
 	capabilities: FooJeanCapabilities | undefined,
+	onConfigGeneration?: (generation: number) => void,
 ): Promise<string | null> {
 	const exportHeldWhenAsked = playlistSnapshot(
 		componentLibraryKey(origin),
 	).structure;
-	const result = await fetchState(origin, token, tag);
+	const result = await fetchState(origin, tag);
 	if (!result.ok) return tag;
 
 	// Asked on every tick the player answers, not only on one that carries a change: a quiet player
 	// answers `304` forever, and a read lost under it has nothing else coming to carry its value.
-	void retryFailedPlaylistReads(origin, token);
+	void retryFailedPlaylistReads(origin);
 	if (result.kind === "unchanged") return tag;
+
+	onConfigGeneration?.(result.state.configGeneration);
 
 	const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
 	const snapshot: PlayerSnapshot = {
@@ -136,40 +139,50 @@ async function applyPoll(
 		result.state.library.ready ? null : exportHeldWhenAsked,
 	);
 
-	void recheckComponentLibrary(origin, token, result.state.library);
-	void recheckQueue(client, origin, token, result.state.player.queueRevision);
-	void recheckPlaylists(
-		client,
-		origin,
-		token,
-		result.state.player.playlistsRevision,
-	);
+	void recheckComponentLibrary(origin, result.state.library);
+	void recheckQueue(client, origin, result.state.player.queueRevision);
+	void recheckPlaylists(client, origin, result.state.player.playlistsRevision);
 	return result.tag;
 }
 
 export async function pollPlayerNow(
 	client: QueryClient,
 	origin: string,
-	token: string,
 ): Promise<void> {
-	await applyPoll(client, origin, token, null, undefined);
+	await applyPoll(client, origin, null, undefined);
 }
 
 export function startPlayerPoll(
 	client: QueryClient,
 	origin: string,
-	token: string,
-	capabilities?: FooJeanCapabilities,
+	capabilities?: FooJeanCapabilities | (() => FooJeanCapabilities | undefined),
+	onConfigChange?: () => void,
 ): () => void {
 	let tag: string | null = null;
 	let inFlight = false;
+	let lastGeneration: number | undefined;
+
+	const readCapabilities = () =>
+		typeof capabilities === "function" ? capabilities() : capabilities;
+
+	const noticeGeneration = (generation: number) => {
+		if (lastGeneration !== undefined && generation !== lastGeneration)
+			onConfigChange?.();
+		lastGeneration = generation;
+	};
 
 	const tick = async () => {
 		if (document.visibilityState !== "visible" || inFlight) return;
 
 		inFlight = true;
 		try {
-			tag = await applyPoll(client, origin, token, tag, capabilities);
+			tag = await applyPoll(
+				client,
+				origin,
+				tag,
+				readCapabilities(),
+				noticeGeneration,
+			);
 		} finally {
 			inFlight = false;
 		}
@@ -182,13 +195,22 @@ export function startPlayerPoll(
 
 export function usePlayerPoll(
 	origin: string | null,
-	token: string | null,
 	capabilities: FooJeanCapabilities | null,
 ) {
 	const client = useQueryClient();
+	const { recheck } = useFooJean();
+
+	const capabilitiesRef = useRef(capabilities);
+	capabilitiesRef.current = capabilities;
+	const isReady = capabilities !== null;
 
 	useEffect(() => {
-		if (!origin || !token || !capabilities) return undefined;
-		return startPlayerPoll(client, origin, token, capabilities);
-	}, [client, origin, token, capabilities]);
+		if (!origin || !isReady) return undefined;
+		return startPlayerPoll(
+			client,
+			origin,
+			() => capabilitiesRef.current ?? undefined,
+			recheck,
+		);
+	}, [client, origin, isReady, recheck]);
 }

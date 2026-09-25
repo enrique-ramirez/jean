@@ -155,17 +155,39 @@ bool publishes(const std::string& method, const std::string& path, int status) {
 
 TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
-    CHECK(keysOf(statusDocument()) == Keys{"name", "version", "apiVersion", "authRequired"});
+    CHECK(keysOf(statusDocument()) == Keys{"name", "version", "apiVersion"});
 }
 
 TEST_CASE("GET /capabilities is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
     CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true, true, "foobar2000",
                                       "2.25.3", -100, 0, "db", {"Default"})) ==
-          Keys{"apiVersion", "allowedFields", "canWrite", "canWritePlaylists", "canChangeOutput",
-               "maxAutoPlaylists", "canCreateAutoPlaylists", "canStream", "streamFormats",
-               "canMuteWhileStreaming", "canReadLibrary", "playerName", "playerVersion",
-               "volumeMin", "volumeMax", "volumeUnit", "playbackModes"});
+          Keys{"apiVersion", "allowedFields", "canWrite", "canWritePlaylists", "canControlPlayback",
+               "canChangeOutput", "maxAutoPlaylists", "canCreateAutoPlaylists", "canStream",
+               "streamFormats", "canMuteWhileStreaming", "canReadLibrary", "playerName",
+               "playerVersion", "volumeMin", "volumeMax", "volumeUnit", "playbackModes"});
+}
+
+TEST_CASE("a client is told what it may write") {
+    const TestServer server(servingSettingsAllowing({"rating", "comment"}));
+    const auto response = server.client().Get("/api/capabilities");
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto body = json::parse(response->body);
+    CHECK(body["canWrite"] == true);
+    CHECK(body["allowedFields"] == json::array({"rating", "comment"}));
+}
+
+TEST_CASE("an empty allowlist reports that nothing may be written") {
+    const TestServer server(servingSettingsAllowing({}));
+    const auto response = server.client().Get("/api/capabilities");
+
+    REQUIRE(response);
+    const auto body = json::parse(response->body);
+    CHECK(body["canWrite"] == false);
+    CHECK(body["allowedFields"].empty());
 }
 
 TEST_CASE("a listener roster is the shape contract/openapi.yaml publishes") {
@@ -185,11 +207,6 @@ TEST_CASE("a listener roster is the shape contract/openapi.yaml publishes") {
 TEST_CASE("a stream ticket is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
     CHECK(keysOf(streamTicketDocument("ticket-1", 120)) == Keys{"ticket", "expiresIn"});
-}
-
-TEST_CASE("a pairing answer is the shape contract/openapi.yaml publishes") {
-    // The one document carrying the token, read by a caller that has proved only its address.
-    CHECK(keysOf(pairedDocument(std::string(kToken))) == Keys{"token", "apiVersion"});
 }
 
 TEST_CASE("a stream timeline is the shape contract/openapi.yaml publishes") {
@@ -729,8 +746,7 @@ TEST_CASE("no stream route answers a status contract/openapi.yaml does not docum
     const TestServer full(capped, wiredUp());
 
     const auto ticketFrom = [](const TestServer& server) {
-        const auto issued = server.client().Post("/api/stream/ticket", TestServer::bearer(), "",
-                                                 "application/json");
+        const auto issued = server.client().Post("/api/stream/ticket", "", "application/json");
         REQUIRE(issued);
         REQUIRE(issued->status == 200);
         return json::parse(issued->body)["ticket"].get<std::string>();
@@ -739,14 +755,12 @@ TEST_CASE("no stream route answers a status contract/openapi.yaml does not docum
     Statuses seen;
 
     note(seen, "POST /stream/ticket",
-         serving.client().Post("/api/stream/ticket", TestServer::bearer(), "", "application/json"));
-    note(seen, "POST /stream/ticket",
          serving.client().Post("/api/stream/ticket", "", "application/json"));
     note(seen, "POST /stream/ticket", post(serving, "/api/stream/ticket", "[]"));
     note(seen, "POST /stream/ticket",
-         serving.client().Post("/api/stream/ticket", TestServer::bearer(), "x", "text/plain"));
+         serving.client().Post("/api/stream/ticket", "x", "text/plain"));
     note(seen, "POST /stream/ticket",
-         bare.client().Post("/api/stream/ticket", TestServer::bearer(), "", "application/json"));
+         bare.client().Post("/api/stream/ticket", "", "application/json"));
 
     note(seen, "GET /stream", serving.client().Get("/api/stream?ticket=" + ticketFrom(serving)));
     note(seen, "GET /stream", serving.client().Get("/api/stream"));
@@ -754,28 +768,20 @@ TEST_CASE("no stream route answers a status contract/openapi.yaml does not docum
          serving.client().Get("/api/stream?format=flac&ticket=" + ticketFrom(serving)));
     note(seen, "GET /stream", full.client().Get("/api/stream?ticket=" + ticketFrom(full)));
 
-    note(seen, "GET /stream/listeners",
-         serving.client().Get("/api/stream/listeners", TestServer::bearer()));
     note(seen, "GET /stream/listeners", serving.client().Get("/api/stream/listeners"));
 
-    note(seen, "GET /stream/timeline",
-         serving.client().Get("/api/stream/timeline", TestServer::bearer()));
     note(seen, "GET /stream/timeline", serving.client().Get("/api/stream/timeline"));
     note(seen, "GET /stream/timeline",
-         bare.client().Get("/api/stream/timeline", TestServer::bearer()));
+         bare.client().Get("/api/stream/timeline"));
 
-    note(seen, "DELETE /stream/hold",
-         serving.client().Delete("/api/stream/hold", TestServer::bearer()));
     note(seen, "DELETE /stream/hold", serving.client().Delete("/api/stream/hold"));
     note(seen, "DELETE /stream/hold",
-         bare.client().Delete("/api/stream/hold", TestServer::bearer()));
+         bare.client().Delete("/api/stream/hold"));
 
     note(seen, "POST /stream/leave", post(serving, "/api/stream/leave", R"({"deviceId":"a"})"));
     note(seen, "POST /stream/leave", post(serving, "/api/stream/leave", "[]"));
     note(seen, "POST /stream/leave",
-         serving.client().Post("/api/stream/leave", R"({"deviceId":"a"})", "application/json"));
-    note(seen, "POST /stream/leave",
-         serving.client().Post("/api/stream/leave", TestServer::bearer(), "a", "text/plain"));
+         serving.client().Post("/api/stream/leave", "a", "text/plain"));
 
     for (const auto& route : publishedRoutes()) {
         if (route.path.rfind("/stream", 0) != 0)
@@ -804,11 +810,11 @@ TEST_CASE("every operation contract/openapi.yaml publishes has a route behind it
     const auto ask = [&server](const std::string& method, const std::string& path) {
         auto client = server.client();
         if (method == "GET")
-            return client.Get(path, TestServer::bearer());
+            return client.Get(path);
         if (method == "DELETE")
-            return client.Delete(path, TestServer::bearer());
+            return client.Delete(path);
 
-        return client.Post(path, TestServer::bearer(), "{}", "application/json");
+        return client.Post(path, "{}", "application/json");
     };
 
     const auto dialable = [](const std::string& path) {
@@ -831,5 +837,68 @@ TEST_CASE("every operation contract/openapi.yaml publishes has a route behind it
         REQUIRE(unrouted);
         REQUIRE(answered);
         CHECK_FALSE((answered->status == unrouted->status && answered->body == unrouted->body));
+    }
+}
+
+TEST_CASE("capabilities carries canControlPlayback, on by default and off with the key") {
+    const auto capabilities = [](const char* config) {
+        const TestServer server(parseSettings(config));
+        const auto response = server.client().Get("/api/capabilities");
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        return json::parse(response->body);
+    };
+
+    const auto absent = capabilities("{}");
+    REQUIRE(absent.contains("canControlPlayback"));
+    CHECK(absent["canControlPlayback"] == true);
+
+    const auto off = capabilities(R"({"controlPlayback": false})");
+    CHECK(off["canControlPlayback"] == false);
+    CHECK(off["canWritePlaylists"] == true);
+    CHECK(off["canChangeOutput"] == true);
+
+    CHECK(capabilities(R"({"writePlaylists": false})")["canControlPlayback"] == true);
+}
+
+TEST_CASE("the playback refusal is a sentence contract/openapi.yaml publishes as PlaylistFailed") {
+    INFO(kUpdateSpec);
+
+    Player player = servingPlayer();
+    player.commandTransport = [](Transport) { return PlaylistOutcome::done; };
+    const TestServer server(parseSettings(R"({"controlPlayback": false})"), player);
+
+    const auto response = server.client().Post("/api/playback/next", "", "application/json");
+
+    REQUIRE(response);
+    REQUIRE(response->status == 403);
+
+    const auto error = json::parse(response->body, nullptr, false).value("error", json());
+    REQUIRE(error.is_string());
+    CHECK(publishesError("PlaylistFailed", error.get<std::string>()));
+}
+
+TEST_CASE("contract/openapi.yaml publishes a 403 on every route controlPlayback refuses") {
+    INFO(kUpdateSpec);
+
+    std::vector<std::string> guarded;
+    for (const auto& route : publishedRoutes()) {
+        const auto name = route.method + " " + route.path;
+        const bool playback = route.method == "POST" &&
+                              (route.path.rfind("/playback/", 0) == 0 || route.path == "/volume");
+        const bool queueWrite = route.method != "GET" && route.path.rfind("/queue", 0) == 0;
+        const bool named = name == "POST /playlists/{id}/items/{index}/play" ||
+                           name == "POST /playlists/own/{role}/items" ||
+                           name == "DELETE /playlists/own/{role}/items";
+
+        if (playback || queueWrite || named)
+            guarded.push_back(name);
+    }
+
+    REQUIRE(guarded.size() >= 14);
+
+    for (const auto& name : guarded) {
+        INFO("route: ", name);
+        CHECK(publishes(name.substr(0, name.find(' ')), name.substr(name.find(' ') + 1), 403));
     }
 }

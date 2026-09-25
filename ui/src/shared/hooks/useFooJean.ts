@@ -1,20 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 
-import {
-	discoverFooJean,
-	type FooJeanDiscovery,
-	TOKEN_KEY,
-	whenTokenRefused,
-} from "@/shared/api/fooJean";
-import { useStoredState } from "@/shared/hooks/useStoredState";
+import { discoverFooJean, type FooJeanDiscovery } from "@/shared/api/fooJean";
 
 const KEY = "fooJean";
 
 const UNCHECKED: FooJeanDiscovery = {
 	state: { kind: "unreachable" },
 	origin: null,
-	token: null,
 	retryable: false,
 };
 
@@ -22,21 +15,19 @@ const MIN_RETRY_MS = 500;
 const MAX_RETRY_MS = 60_000;
 
 let retryMs = MIN_RETRY_MS;
-let refusedToken: string | null = null;
 
 const isRetryable = (discovery: FooJeanDiscovery | undefined) =>
 	discovery?.retryable ?? false;
 
 export function useFooJean() {
-	const [token, setToken] = useStoredState(TOKEN_KEY, "");
 	const queryClient = useQueryClient();
 
 	const query = useQuery({
-		queryKey: [KEY, token],
+		queryKey: [KEY],
 		// Widened here rather than in `refetchInterval`, which react-query is free to consult more than
 		// once per cycle.
 		queryFn: async () => {
-			const discovery = await discoverFooJean(token || null);
+			const discovery = await discoverFooJean();
 			retryMs = discovery.retryable
 				? Math.min(retryMs * 2, MAX_RETRY_MS)
 				: MIN_RETRY_MS;
@@ -57,23 +48,10 @@ export function useFooJean() {
 		queryClient.invalidateQueries({ queryKey: [KEY] });
 	}, [queryClient]);
 
-	const isReady = query.data?.state.kind === "ready";
-
-	useEffect(() => {
-		if (!isReady) return;
-		return whenTokenRefused(() => {
-			if (refusedToken === token) return;
-			refusedToken = token;
-			recheck();
-		});
-	}, [isReady, recheck, token]);
-
 	return {
 		discovery: query.data ?? UNCHECKED,
 		isDiscovered: query.data !== undefined,
 		isChecking: query.isFetching,
-		token,
-		setToken,
 		recheck,
 	};
 }

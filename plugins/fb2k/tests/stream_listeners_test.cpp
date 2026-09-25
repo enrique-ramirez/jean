@@ -100,21 +100,21 @@ private:
 
 std::string ticketFor(const TestServer& server, const std::string& body) {
     const auto response =
-        server.client().Post("/api/stream/ticket", TestServer::bearer(), body, "application/json");
+        server.client().Post("/api/stream/ticket", body, "application/json");
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body)["ticket"].get<std::string>();
 }
 
 bool capabilityToMute(const TestServer& server) {
-    const auto response = server.client().Get("/api/capabilities", TestServer::bearer());
+    const auto response = server.client().Get("/api/capabilities");
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body)["canMuteWhileStreaming"].get<bool>();
 }
 
 json roster(const TestServer& server) {
-    const auto response = server.client().Get("/api/stream/listeners", TestServer::bearer());
+    const auto response = server.client().Get("/api/stream/listeners");
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body);
@@ -130,7 +130,7 @@ json roster(const TestServer& server) {
 // and the suite's assertion total is only a checkable invariant while it is fixed.
 json rosterOf(const TestServer& server, int connections) {
     for (int attempt = 0; attempt < 200; ++attempt) {
-        const auto response = server.client().Get("/api/stream/listeners", TestServer::bearer());
+        const auto response = server.client().Get("/api/stream/listeners");
         if (response && response->status == 200 &&
             json::parse(response->body)["connections"] == connections)
             break;
@@ -231,7 +231,7 @@ TEST_CASE("a name longer than the limit is refused before a ticket is issued") {
                             }));
 
     const auto response = server.client().Post(
-        "/api/stream/ticket", TestServer::bearer(),
+        "/api/stream/ticket",
         json{{"deviceId", "phone-1"}, {"name", std::string(200, 'x')}}.dump(), "application/json");
 
     REQUIRE(response);
@@ -252,16 +252,6 @@ TEST_CASE("the roster says whether the player was silenced for these listeners")
     // tells a client which sentence to put next to it.
     holding = false;
     CHECK(roster(server)["playerMuted"] == false);
-}
-
-TEST_CASE("the roster is behind the token, like everything but the stream itself") {
-    const Source source;
-    const TestServer server(servingSettings(), source.player());
-    const Listeners live(server, source);
-
-    const auto response = server.client().Get("/api/stream/listeners");
-    REQUIRE(response);
-    CHECK(response->status == 401);
 }
 
 TEST_CASE("leaving is noted, and says nothing about whether there was anything to end") {
@@ -290,7 +280,7 @@ TEST_CASE("a forged anonymous deviceId cannot end a stranger's linger") {
     const auto now = Audience::Clock::now();
     REQUIRE(server.audience().anyListening(now));
 
-    // The key of an unnamed connection is its number. Anybody holding the token can spell
+    // The key of an unnamed connection is its number. Anybody reaching this route can spell
     // one, and nobody may: this device sent no id, so there is no id that ends its linger.
     const auto response = post(server, "/api/stream/leave", R"({"deviceId":"#1"})");
     REQUIRE(response);
@@ -327,8 +317,7 @@ TEST_CASE("leaving needs a device to name, and a refusal never reaches the audie
     }
 
     SUBCASE("with a body that is not JSON at all") {
-        const auto response = server.client().Post("/api/stream/leave", TestServer::bearer(),
-                                                   "phone-1", "text/plain");
+        const auto response = server.client().Post("/api/stream/leave", "phone-1", "text/plain");
         REQUIRE(response);
         CHECK(response->status == 415);
     }
@@ -336,17 +325,9 @@ TEST_CASE("leaving needs a device to name, and a refusal never reaches the audie
     // POST /api/stream/ticket takes an empty body as an anonymous device; this one has
     // nothing to be anonymous about, so the asymmetry is deliberate.
     SUBCASE("with no body at all") {
-        const auto response =
-            server.client().Post("/api/stream/leave", TestServer::bearer(), "", "text/plain");
+        const auto response = server.client().Post("/api/stream/leave", "", "text/plain");
         REQUIRE(response);
         CHECK(response->status == 415);
-    }
-
-    SUBCASE("without the token") {
-        const auto response =
-            server.client().Post("/api/stream/leave", R"({"deviceId":"a"})", "application/json");
-        REQUIRE(response);
-        CHECK(response->status == 401);
     }
 
     CHECK(server.audience().anyListening(now));
@@ -357,21 +338,21 @@ TEST_CASE("asking for both outputs reaches the hold") {
     const Source source;
     const TestServer server(servingSettings(), source.player({}, [&released] { ++released; }));
 
-    const auto response = server.client().Delete("/api/stream/hold", TestServer::bearer());
+    const auto response = server.client().Delete("/api/stream/hold");
     REQUIRE(response);
     CHECK(response->status == 204);
     CHECK(released == 1);
 
     // Idempotent, and it says nothing about whether there was a hold: with nobody listening
     // there is nothing to release and nothing has gone wrong.
-    CHECK(server.client().Delete("/api/stream/hold", TestServer::bearer())->status == 204);
+    CHECK(server.client().Delete("/api/stream/hold")->status == 204);
 }
 
 TEST_CASE("an install that never mutes says so rather than answering as though it did") {
     const Source source;
     const TestServer server(servingSettings(), source.player());
 
-    const auto response = server.client().Delete("/api/stream/hold", TestServer::bearer());
+    const auto response = server.client().Delete("/api/stream/hold");
     REQUIRE(response);
     CHECK(response->status == 503);
 }
@@ -385,7 +366,7 @@ TEST_CASE("canMuteWhileStreaming says in advance what the hold route will answer
         const TestServer server(servingSettings(), source.player({}, [] {}));
 
         CHECK(capabilityToMute(server) == true);
-        CHECK(server.client().Delete("/api/stream/hold", TestServer::bearer())->status == 204);
+        CHECK(server.client().Delete("/api/stream/hold")->status == 204);
     }
 
     // muteWhileStreaming is on by default, so a component that never started an encoder has
@@ -395,17 +376,70 @@ TEST_CASE("canMuteWhileStreaming says in advance what the hold route will answer
         const TestServer server(servingSettings(), source.player());
 
         CHECK(capabilityToMute(server) == false);
-        CHECK(server.client().Delete("/api/stream/hold", TestServer::bearer())->status == 503);
+        CHECK(server.client().Delete("/api/stream/hold")->status == 503);
     }
 }
 
-TEST_CASE("the hold is behind the token") {
-    std::atomic<int> released{0};
-    const Source source;
-    const TestServer server(servingSettings(), source.player({}, [&released] { ++released; }));
+namespace {
 
-    const auto response = server.client().Delete("/api/stream/hold");
-    REQUIRE(response);
-    CHECK(response->status == 401);
-    CHECK(released == 0);
+struct Cut {
+    std::atomic<bool> reloaded{false};
+    std::atomic<int> callsAfterReload{0};
+    std::atomic<bool> overran{false};
+};
+
+constexpr int kCallsAllowedAfterReload = 4;
+
+// Never ends by itself while it is wanted. Once the reload has landed it allows a few more calls
+// and then ends anyway, so a server that never cuts fails this test rather than hanging it.
+class LiveStream : public StreamSession {
+public:
+    LiveStream(std::shared_ptr<Cut> cut, bool paused) : cut_(std::move(cut)), paused_(paused) {}
+
+    bool next(std::vector<std::uint8_t>& out) override {
+        if (cut_->reloaded && ++cut_->callsAfterReload > kCallsAllowedAfterReload) {
+            cut_->overran = true;
+            return false;
+        }
+
+        out.clear();
+        if (!sent_ || !paused_)
+            out = {'o', 'g', 'g'};
+        sent_ = true;
+        return true;
+    }
+
+private:
+    std::shared_ptr<Cut> cut_;
+    bool paused_;
+    bool sent_ = false;
+};
+
+}  // namespace
+
+// A paused player sends nothing, so a server that only looks at the switch when it writes audio
+// would keep a paused listener for as long as the pause lasts.
+TEST_CASE("a listener is cut when a reload turns streamingEnabled off, playing or paused") {
+    for (const bool paused : {false, true}) {
+        INFO("player: ", std::string(paused ? "paused" : "playing"));
+
+        auto cut = std::make_shared<Cut>();
+        TestServer server(servingSettings(),
+                          TestServer::streaming([cut, paused](const std::string&) -> OpenedStream {
+                              return {"audio/ogg", std::make_unique<LiveStream>(cut, paused)};
+                          }));
+
+        const auto ticket = ticketFor(server, "");
+        server.client().Get("/api/stream?ticket=" + ticket, [&server, &cut](const char*, size_t) {
+            if (!cut->reloaded) {
+                server.reload(R"({"streamingEnabled": false})");
+                cut->reloaded = true;
+            }
+            return true;
+        });
+
+        CHECK(cut->reloaded);
+        CHECK_FALSE(cut->overran);
+        rosterOf(server, 0);
+    }
 }

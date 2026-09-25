@@ -395,6 +395,9 @@ std::string describe(PlaylistOutcome outcome) {
             return "another component has locked that playlist against that edit";
         case PlaylistOutcome::ownPlaylist:
             return "that playlist is foo_jean's own; address it by its role rather than by its id";
+        case PlaylistOutcome::playbackDisabled:
+            return "this install has playback control turned off; turn on controlPlayback in "
+                   "config.json to allow it";
     }
     return "unknown";
 }

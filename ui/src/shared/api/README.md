@@ -369,7 +369,7 @@ A foobar2000 component listening on a port of its own, typically 8881. Its sourc
 
 ## Discovery
 
-`discoverFooJean()` in `fooJean.ts` takes the origin straight off `window.location.origin` and asks `GET /api/capabilities` with the stored token. `ui/ARCHITECTURE.md`, *The `foo_jean` security model*, has the states that call resolves to.
+`discoverFooJean()` in `fooJean.ts` takes the origin straight off `window.location.origin` and asks `GET /api/capabilities`, with no credential to attach. `ui/ARCHITECTURE.md`, *The `foo_jean` security model*, has the states that call resolves to.
 
 ## What Jean does about state
 
@@ -419,7 +419,7 @@ Queueing, moving, removing and clearing each send exactly one request: `POST /qu
 
 The component's clock, not beefweb's, is what a listener hears; the spec carries the arithmetic that turns one into the other, and `src/domain/player/CLAUDE.md` is what Jean builds on it.
 
-> **The ticket travels in the query string and the bearer token never does.** An `<audio>` element sends no headers, so `GET /stream?ticket=…&format=…` is a capability URL bounded by a short lifetime. It grants nothing but the audio already playing. Clients MUST NOT store, log, or otherwise place a ticket where a bearer token would not go.
+> **The ticket is the one credential `foo_jean` still asks for, because an `<audio>` element sends no header at all.** Every other route needs none, but `GET /stream?ticket=…&format=…` would otherwise be a plain address any page could open. Minting one is a `POST` with a JSON body, refused cross-origin by the same CORS rule as every other route, so only a page the component served can ever get one. A ticket is a capability URL bounded by a short lifetime and grants nothing but the audio already playing. Clients MUST NOT store, log, or otherwise place a ticket where a credential would not go.
 
 - `deviceId` is untrusted: it labels a row in somebody else's picker and nothing branches on it. Generate it at random, keep it, and never derive it from anything about the person.
 
@@ -427,4 +427,4 @@ The component's clock, not beefweb's, is what a listener hears; the spec carries
 
 `libraryArtworkUrl()`, `playingArtworkUrl()` and `playlistRowArtworkUrl()` in `fooJean.ts` build the three client-side addresses; `GET /artwork`, `GET /artwork/playing` and the positional route in the contract are what they name, and the contract's *Artwork* section is the reference for what each one answers. Every in-library cover is addressed by its album's canonical track rather than by the row's own path: `canonicalTrackRefs` and `albumCanonicalIndex` in `domain/track/grouping.ts` pick that track once from the library index, and `canonicalArtworkUrl()` / `canonicalPlayingArtworkUrl()` in `domain/track/librarySource.ts` turn a raw path, or the playing track's album and album artist, into the shared address.
 
-The status bar, the now-playing screen and the cover wheel resolve the playing track's album this way, off `PlayerState.activeItem` on the same poll title and artist already ride, and fall back to `playingArtworkUrl()` for a track the library holds no album for. A playlist row, a queue entry or a wheel neighbour with a library path reads the same canonical address; one with no library path but a known playlist position reads `playlistRowArtworkUrl()` instead, and one with neither draws no cover. The media session takes neither address directly: the OS fetches whatever it is given itself and cannot carry a bearer token, so it is handed a `data:` URL built from the cover Jean already fetched with the token. `src/app/CLAUDE.md`'s *The media session* has that half.
+The status bar, the now-playing screen and the cover wheel resolve the playing track's album this way, off `PlayerState.activeItem` on the same poll title and artist already ride, and fall back to `playingArtworkUrl()` for a track the library holds no album for. A playlist row, a queue entry or a wheel neighbour with a library path reads the same canonical address; one with no library path but a known playlist position reads `playlistRowArtworkUrl()` instead, and one with neither draws no cover. The media session takes neither address directly: the OS fetches whatever it is given itself, out of process from the page, so it is handed a `data:` URL built from the cover Jean already fetched. `src/app/CLAUDE.md`'s *The media session* has that half.

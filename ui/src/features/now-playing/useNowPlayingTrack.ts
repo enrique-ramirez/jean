@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 
 import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
 import { fetchPlayingTrack } from "@/shared/api/fooJean";
@@ -91,26 +91,23 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 	const nothingPlaying = snapshot !== undefined && track === null;
 	const path = track?.path ?? null;
 	const subsong = track?.subsong ?? 0;
-	const { discovery, isChecking } = useFooJean();
-	const { origin, token, retryable } = discovery;
+	const { discovery } = useFooJean();
+	const { origin } = discovery;
 
 	const addresses = addressesOfPlaying(snapshot?.player?.activeItem, playlists);
 
-	const ready = enabled && path !== null && Boolean(origin && token);
+	const ready = enabled && path !== null && Boolean(origin);
 
 	const queryClient = useQueryClient();
 	const query = useQuery({
 		queryKey: keyOf(path, subsong),
 		enabled: ready,
 		queryFn: async ({ signal }): Promise<NowPlayingDetails> => {
-			if (!origin || !token) throw new Error("foo_jean is not ready");
+			if (!origin) throw new Error("foo_jean is not ready");
 
-			const answer = await fetchPlayingTrack(
-				origin,
-				token,
-				NOW_PLAYING_EXPRESSIONS,
-				{ signal },
-			);
+			const answer = await fetchPlayingTrack(origin, NOW_PLAYING_EXPRESSIONS, {
+				signal,
+			});
 			if (answer.path !== path || answer.subsong !== subsong)
 				throw new Error("the playing track answered for another track");
 
@@ -131,37 +128,9 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 		},
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
-		retry: (failureCount, error) => failureCount < 1 && error.cause !== 401,
+		retry: (failureCount) => failureCount < 1,
 		retryDelay: 0,
 	});
-
-	// `errorUpdateCount` is a running total for the query's own key, so it says "has this
-	// track already had its one recovery attempt" without a ledger kept beside it: a 401
-	// never auto-retries (see `retry` below), so the count reads 1 until this effect's own
-	// `refetch` either lands or fails and pushes it to 2.
-	const has401ToRecover =
-		query.status === "error" &&
-		query.error?.cause === 401 &&
-		query.errorUpdateCount === 1;
-
-	const wasChecking = useRef(isChecking);
-	useEffect(() => {
-		const justSettled = wasChecking.current && !isChecking;
-		wasChecking.current = isChecking;
-		if (!justSettled || !origin || !token || !has401ToRecover) return;
-
-		// Multiple mounted instances of this hook settle onto the same query key at once,
-		// so `cancelRefetch: false` is what keeps a second call from cancelling the first
-		// attempt and restarting it, rather than sharing it.
-		void query.refetch({ cancelRefetch: false });
-	}, [isChecking, origin, token, has401ToRecover, query.refetch]);
-
-	// The gap between the 401 settling and the recovery `refetch` above landing is exactly
-	// the recheck, and pairing is only given up on once it settles without coming back:
-	// `retryable` is what tells a recheck still due another attempt of its own apart from one
-	// that is not coming back at all.
-	const givenUp = !isChecking && !(origin && token) && !retryable;
-	const awaitingRecovery = has401ToRecover && !givenUp;
 
 	useEffect(() => {
 		const previous = lastAnnouncedPoll;
@@ -224,7 +193,7 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 		nothingPlaying,
 		addresses,
 		details: query.isError ? null : (query.data ?? null),
-		isPending: (ready && query.isPending) || awaitingRecovery,
+		isPending: ready && query.isPending,
 		setRating,
 		confirmRating,
 		restoreRating,

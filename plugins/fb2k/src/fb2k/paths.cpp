@@ -47,4 +47,10 @@ void ensureComponentDir() {
     }
 }
 
+std::filesystem::path nativePathOf(const std::string& profilePath) {
+    pfc::string8 display;
+    filesystem::g_get_display_path(profilePath.c_str(), display);
+    return std::filesystem::path(toWide(toStd(display)));
+}
+
 }  // namespace jean

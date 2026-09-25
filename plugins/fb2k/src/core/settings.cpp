@@ -13,13 +13,13 @@ namespace jean {
 
 namespace {
 
-void ignoring(const std::string& key, const std::string& why) {
-    logError("config: ignoring '" + key + "': " + why);
+void ignoring(std::vector<std::string>& log, const std::string& key, const std::string& why) {
+    log.push_back("config: ignoring '" + key + "': " + why);
 }
 
 class ConfigDocument {
 public:
-    explicit ConfigDocument(const json& root) : root_(root) {}
+    ConfigDocument(const json& root, std::vector<std::string>& log) : root_(root), log_(log) {}
 
     template <typename T>
     void read(const char* key, T& out) {
@@ -29,8 +29,8 @@ public:
 
         try {
             out = value->get<T>();
-        } catch (const std::exception& e) {
-            ignoring(key, e.what());
+        } catch (const std::exception&) {
+            ignoring(log_, key, value->dump() + " is not valid; using " + json(out).dump());
         }
     }
 
@@ -40,14 +40,15 @@ public:
             return;
 
         if (!value->is_array()) {
-            ignoring(key, "expected an array");
+            ignoring(log_, key,
+                     value->dump() + " -- expected an array; using " + json(out).dump());
             return;
         }
 
         out = std::accumulate(value->begin(), value->end(), std::vector<std::string>{},
-                              [key](std::vector<std::string> kept, const json& entry) {
+                              [this, key](std::vector<std::string> kept, const json& entry) {
                                   if (!entry.is_string())
-                                      ignoring(key, "an entry is not a string");
+                                      ignoring(log_, key, "an entry is not a string");
                                   else if (auto text = entry.get<std::string>(); !text.empty())
                                       kept.push_back(std::move(text));
                                   return kept;
@@ -61,7 +62,7 @@ public:
 
         std::for_each(entries.begin(), entries.end(), [this](const auto& entry) {
             if (std::find(read_.begin(), read_.end(), entry.key()) == read_.end())
-                logError("config: '" + entry.key() + "' is not a setting this component reads");
+                log_.push_back("config: '" + entry.key() + "' is not a setting this component reads");
         });
     }
 
@@ -73,6 +74,7 @@ private:
     }
 
     const json& root_;
+    std::vector<std::string>& log_;
     std::vector<std::string> read_;
 };
 
@@ -84,78 +86,77 @@ std::string join(const int (&values)[N]) {
     return text;
 }
 
-int inRange(const char* key, int value, int low, std::optional<int> high, int fallback) {
+int inRange(std::vector<std::string>& log, const char* key, int value, int low,
+            std::optional<int> high, int fallback) {
     if (value >= low && (!high || value <= *high))
         return value;
 
     const auto bounds = high ? std::to_string(low) + " to " + std::to_string(*high)
                              : std::to_string(low) + " or more";
 
-    ignoring(key, std::to_string(value) + " is out of range (" + bounds + "); using " +
-                      std::to_string(fallback));
+    ignoring(log, key, std::to_string(value) + " is out of range (" + bounds + "); using " +
+                          std::to_string(fallback));
     return fallback;
 }
 
-Settings validated(Settings settings) {
+Settings validated(Settings settings, std::vector<std::string>& log) {
     const Settings defaults;
 
-    settings.port = inRange("port", settings.port, kMinPort, kMaxPort, defaults.port);
+    settings.port = inRange(log, "port", settings.port, kMinPort, kMaxPort, defaults.port);
 
     if (settings.bindAddress.empty()) {
-        ignoring("bindAddress", "empty; using " + defaults.bindAddress);
+        ignoring(log, "bindAddress", "empty; using " + defaults.bindAddress);
         settings.bindAddress = defaults.bindAddress;
     }
 
-    settings.maxAutoPlaylists = inRange("maxAutoPlaylists", settings.maxAutoPlaylists, 0,
+    settings.maxAutoPlaylists = inRange(log, "maxAutoPlaylists", settings.maxAutoPlaylists, 0,
                                         std::nullopt, defaults.maxAutoPlaylists);
 
-    settings.opusBitrate = inRange("opusBitrate", settings.opusBitrate, kMinOpusBitrate,
+    settings.opusBitrate = inRange(log, "opusBitrate", settings.opusBitrate, kMinOpusBitrate,
                                    kMaxOpusBitrate, defaults.opusBitrate);
 
     if (std::find(std::begin(kAacBitrates), std::end(kAacBitrates), settings.aacBitrate) ==
         std::end(kAacBitrates)) {
-        ignoring("aacBitrate", std::to_string(settings.aacBitrate) + " is not one of " +
-                                   join(kAacBitrates) + "; using " +
-                                   std::to_string(defaults.aacBitrate));
+        ignoring(log, "aacBitrate", std::to_string(settings.aacBitrate) + " is not one of " +
+                                       join(kAacBitrates) + "; using " +
+                                       std::to_string(defaults.aacBitrate));
         settings.aacBitrate = defaults.aacBitrate;
     }
 
-    settings.maxConcurrentStreams = inRange("maxConcurrentStreams", settings.maxConcurrentStreams,
-                                            0, std::nullopt, defaults.maxConcurrentStreams);
+    settings.maxConcurrentStreams = inRange(log, "maxConcurrentStreams",
+                                            settings.maxConcurrentStreams, 0, std::nullopt,
+                                            defaults.maxConcurrentStreams);
 
     settings.streamTicketTtlSeconds =
-        inRange("streamTicketTtlSeconds", settings.streamTicketTtlSeconds, kMinTicketTtlSeconds,
-                kMaxTicketTtlSeconds, defaults.streamTicketTtlSeconds);
-
-    if (!settings.authToken.empty() && settings.authToken.size() < kMinTokenLength) {
-        ignoring("authToken", "shorter than " + std::to_string(kMinTokenLength) +
-                                  " characters; refusing to serve with it");
-        settings.authToken.clear();
-    }
+        inRange(log, "streamTicketTtlSeconds", settings.streamTicketTtlSeconds,
+                kMinTicketTtlSeconds, kMaxTicketTtlSeconds, defaults.streamTicketTtlSeconds);
 
     return settings;
 }
 
 }  // namespace
 
-Settings parseSettings(const std::string& text) {
+SettingsParse parseSettingsLogging(const std::string& text) {
+    SettingsParse parse;
+
     const auto document = parseJsonObject(text);
     if (!document.ok()) {
-        logError("config: " + document.error);
-        logError("config: falling back to defaults, which serve nothing until a token is set");
-        return Settings();
+        parse.documentValid = false;
+        parse.logLines.push_back("config: " + document.error);
+        return parse;
     }
 
     Settings settings;
-    ConfigDocument keys(document.value);
+    ConfigDocument keys(document.value, parse.logLines);
 
     keys.read("port", settings.port);
     keys.read("bindAddress", settings.bindAddress);
-    keys.read("authToken", settings.authToken);
     keys.readList("allowedOrigins", settings.allowedOrigins);
+    keys.readList("allowedHosts", settings.allowedHosts);
     keys.readList("allowedFields", settings.allowedFields);
     keys.read("maxAutoPlaylists", settings.maxAutoPlaylists);
     keys.read("writePlaylists", settings.writePlaylists);
+    keys.read("controlPlayback", settings.controlPlayback);
     keys.read("changeOutput", settings.changeOutput);
     keys.read("opusBitrate", settings.opusBitrate);
     keys.read("aacBitrate", settings.aacBitrate);
@@ -166,7 +167,19 @@ Settings parseSettings(const std::string& text) {
 
     keys.warnAboutLeftovers();
 
-    return validated(std::move(settings));
+    parse.settings = validated(std::move(settings), parse.logLines);
+    return parse;
+}
+
+Settings parseSettings(const std::string& text) {
+    const auto parse = parseSettingsLogging(text);
+
+    for (const auto& line : parse.logLines)
+        logError(line);
+    if (!parse.documentValid)
+        logError("config: falling back to defaults");
+
+    return parse.settings;
 }
 
 bool operator==(const Settings& a, const Settings& b) {
@@ -176,11 +189,12 @@ bool operator==(const Settings& a, const Settings& b) {
 std::string serialiseSettings(const Settings& settings) {
     const json root{{"port", settings.port},
                     {"bindAddress", settings.bindAddress},
-                    {"authToken", settings.authToken},
                     {"allowedOrigins", settings.allowedOrigins},
+                    {"allowedHosts", settings.allowedHosts},
                     {"allowedFields", settings.allowedFields},
                     {"maxAutoPlaylists", settings.maxAutoPlaylists},
                     {"writePlaylists", settings.writePlaylists},
+                    {"controlPlayback", settings.controlPlayback},
                     {"changeOutput", settings.changeOutput},
                     {"opusBitrate", settings.opusBitrate},
                     {"aacBitrate", settings.aacBitrate},

@@ -54,9 +54,7 @@ TestServer serving(Library* library, const Player& player, PlayerStateStore* pla
 
 httplib::Result getHolding(const TestServer& server, const std::string& path,
                            const std::string& tag) {
-    auto headers = TestServer::bearer();
-    headers.emplace("If-None-Match", tag);
-    return server.client().Get(path, headers);
+    return server.client().Get(path, httplib::Headers{{"If-None-Match", tag}});
 }
 
 httplib::Result refresh(const TestServer& server) {
@@ -172,14 +170,12 @@ constexpr int kPollsPastTheBudget = 30;
 
 constexpr char kOrigin[] = "https://jean.example";
 
-httplib::Headers bearerFrom(const char* origin) {
-    auto headers = TestServer::bearer();
-    headers.emplace("Origin", origin);
-    return headers;
+httplib::Headers withOrigin(const char* origin) {
+    return httplib::Headers{{"Origin", origin}};
 }
 
-std::optional<httplib::Response> pollPastTheBudget(
-    httplib::Client& client, const httplib::Headers& headers = TestServer::bearer()) {
+std::optional<httplib::Response> pollPastTheBudget(httplib::Client& client,
+                                                   const httplib::Headers& headers = {}) {
     for (int attempt = 0; attempt < kPollBurst + kPollsPastTheBudget; attempt++) {
         const auto response = client.Get("/api/state", headers);
         if (response && response->status == 429)
@@ -1328,7 +1324,7 @@ TEST_CASE("one column named twice is refused, however it was spelled") {
     auto raw = server.client();
     raw.set_path_encode(false);
 
-    const auto spelled = raw.Get("/api/library/export?columns=a&columns=%61", TestServer::bearer());
+    const auto spelled = raw.Get("/api/library/export?columns=a&columns=%61");
     REQUIRE(spelled);
     CHECK(spelled->status == 400);
     CHECK(json::parse(spelled->body)["error"] == "duplicate column");
@@ -1657,7 +1653,7 @@ TEST_CASE("a refused poll says how long to wait and why, where a browser can rea
     const TestServer server(settings, Player{}, &library);
 
     auto client = server.client();
-    const auto refusal = pollPastTheBudget(client, bearerFrom(kOrigin));
+    const auto refusal = pollPastTheBudget(client, withOrigin(kOrigin));
     REQUIRE(refusal.has_value());
 
     const auto wait = refusal->get_header_value("Retry-After");
@@ -1701,18 +1697,18 @@ TEST_CASE("a client on another address polls on while one is being refused") {
     auto elsewhere = overIpv6(server);
 
     INFO("the second address is ::1, reached through a dual-stack bind");
-    const auto reachable = elsewhere.Get("/api/state", TestServer::bearer());
+    const auto reachable = elsewhere.Get("/api/state");
     REQUIRE(reachable);
     REQUIRE(reachable->status == 200);
 
     auto looping = server.client();
     REQUIRE(pollPastTheBudget(looping).has_value());
 
-    const auto unaffected = elsewhere.Get("/api/state", TestServer::bearer());
+    const auto unaffected = elsewhere.Get("/api/state");
     REQUIRE(unaffected);
     CHECK(unaffected->status == 200);
 
-    const auto stillRefused = looping.Get("/api/state", TestServer::bearer());
+    const auto stillRefused = looping.Get("/api/state");
     REQUIRE(stillRefused);
     CHECK(stillRefused->status == 429);
 }
@@ -1728,7 +1724,7 @@ TEST_CASE("the answer to a poll ends its connection rather than waiting on it fo
 
     auto client = polling(server);
 
-    const auto document = client.Get("/api/state", TestServer::bearer());
+    const auto document = client.Get("/api/state");
     REQUIRE(document);
     REQUIRE(document->status == 200);
 
@@ -1737,8 +1733,7 @@ TEST_CASE("the answer to a poll ends its connection rather than waiting on it fo
     }
 
     SUBCASE("the 304 that says nothing moved") {
-        auto headers = TestServer::bearer();
-        headers.emplace("If-None-Match", document->get_header_value("ETag"));
+        const httplib::Headers headers{{"If-None-Match", document->get_header_value("ETag")}};
 
         const auto again = client.Get("/api/state", headers);
         REQUIRE(again);
@@ -1762,27 +1757,11 @@ TEST_CASE("an export is still answered on a connection a client may ask again on
     const TestServer server = serving(&library);
 
     auto client = polling(server);
-    const auto response = client.Get(kExport, TestServer::bearer());
+    const auto response = client.Get(kExport);
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
     CHECK_FALSE(endsTheConnection(*response));
-}
-
-TEST_CASE("no library route answers without a token") {
-    Library library;
-    fill(library);
-    const TestServer server = serving(&library);
-
-    const auto rejected = [](const httplib::Result& answer) {
-        REQUIRE(answer);
-        CHECK(answer->status == 401);
-    };
-
-    rejected(server.client().Get("/api/state"));
-    rejected(server.client().Get(kExport));
-    rejected(server.client().Get("/api/library/changes?since=1"));
-    rejected(server.client().Post("/api/library/refresh", "", "application/json"));
 }
 
 TEST_CASE("the library is reported as a capability rather than discovered by a 503") {
@@ -1902,4 +1881,82 @@ TEST_CASE("no library or track route answers a status contract/openapi.yaml does
 
         CHECK(undocumented.empty());
     }
+}
+
+namespace {
+
+uint64_t configGenerationOf(const httplib::Result& response) {
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    const auto body = json::parse(response->body);
+    REQUIRE(body.contains("configGeneration"));
+    REQUIRE(body["configGeneration"].is_number_unsigned());
+    return body["configGeneration"].get<uint64_t>();
+}
+
+uint64_t configGenerationOf(const TestServer& server) {
+    return configGenerationOf(get(server, "/api/state"));
+}
+
+}  // namespace
+
+TEST_CASE("the poll's configGeneration moves each time a reload changes a switch") {
+    TestServer server;
+
+    const auto before = configGenerationOf(server);
+
+    server.reload(R"({"controlPlayback": false})");
+    const auto turnedOff = configGenerationOf(server);
+
+    server.reload("{}");
+    const auto turnedOn = configGenerationOf(server);
+
+    CHECK(turnedOff > before);
+    CHECK(turnedOn > turnedOff);
+}
+
+// A client polls this so it can skip asking for capabilities on every tick. A generation that
+// moved on a save that changed nothing would send every client for capabilities anyway.
+TEST_CASE("a reload that changes no switch leaves configGeneration where it was") {
+    TestServer server;
+    server.reload(R"({"controlPlayback": false})");
+    const auto settled = configGenerationOf(server);
+
+    SUBCASE("the same switches saved again") {
+        server.reload(R"({"controlPlayback": false})");
+    }
+
+    SUBCASE("only a restart-only key moved") {
+        server.reload(R"({"controlPlayback": false, "opusBitrate": 128000})");
+    }
+
+    SUBCASE("a file caught halfway through a save") {
+        server.reload(R"({"controlPlayback": tr)");
+    }
+
+    CHECK(configGenerationOf(server) == settled);
+}
+
+TEST_CASE("a conditional poll is a 200 once a reload changes a switch, and a 304 after one that did not") {
+    TestServer server;
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    server.reload(R"({"writePlaylists": false})");
+
+    const auto changed = getHolding(server, "/api/state", tag);
+    REQUIRE(changed);
+    CHECK(changed->status == 200);
+    const auto changedTag = changed->get_header_value("ETag");
+    CHECK(changedTag != tag);
+
+    server.reload(R"({"writePlaylists": false})");
+
+    const auto unchanged = getHolding(server, "/api/state", changedTag);
+    REQUIRE(unchanged);
+    CHECK(unchanged->status == 304);
 }

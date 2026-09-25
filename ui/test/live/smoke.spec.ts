@@ -175,16 +175,10 @@ test("settings reports what the discovery actually found on this player", async 
 	const panel = page.getByRole("region", { name: "foo_jean" });
 	await expect(panel).toBeVisible();
 
-	const pair = panel.getByRole("button", { name: "Pair", exact: true });
 	if (install.hasFooJean) {
-		// The button renders on a non-null `discovery.origin` rather than on the record, and origin
-		// is non-null exactly when the unauthenticated probe answered as foo_jean. So a Pair button
-		// here is the proof that the whole chain ran against a real component: record, then probe,
-		// and only then anything that would carry the token.
-		await expect(pair).toBeVisible();
+		await expect(panel).toContainText("Connected");
 	} else {
-		await expect(panel).toContainText("Not installed");
-		await expect(pair).toHaveCount(0);
+		await expect(panel).toContainText("Not connected");
 	}
 });
 

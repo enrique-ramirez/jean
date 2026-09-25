@@ -9,8 +9,10 @@ import {
 } from "@/domain/player/audience";
 import { type ListenPhase, useListener } from "@/domain/player/useListener";
 import { useIsPlaying, useVolume } from "@/domain/player/usePlayer";
+import { permitsPlaybackControl } from "@/shared/api/fooJean";
 import type { PlayerInfo } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Equalizer } from "@/shared/ui/Equalizer";
 import styles from "./ListenHere.module.css";
@@ -107,6 +109,8 @@ export function ListenHere({ playerName }: { playerName: string }) {
 	const deviceNoteId = useId();
 
 	const { volume, setValue } = useVolume();
+	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	const playerMuted = volume?.isMuted === true;
 	const isPlaying = useIsPlaying();
 
@@ -186,6 +190,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 										onChange={setValue}
 										className={styles.slider}
 										label={t("listen.volumeOn", { player: playerName })}
+										disabled={!canControlPlayback}
 									/>
 								</span>
 							) : null}

@@ -23,6 +23,8 @@ Four roles, and a script that touches one MUST NOT assume it is another: **a bui
 
 The loop against the build machine is: edit, sync, build over SSH, install, restart, test. `scripts/deploy.local.sh` does that round trip and refuses to sync if the tests fail; `--skip-tests` overrides that when a change is genuinely Windows-only.
 
+**A deploy reaches two installs off one build: the player on the build machine as staging, and the deploy target as production.** `deploy.local.sh --install --deploy` is that run. `--install` leaves the staging player stopped, so start it again afterwards.
+
 | | |
 |---|---|
 | Build machine | `<build-machine>`, key auth, **default shell is `cmd`** |

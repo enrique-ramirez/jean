@@ -60,15 +60,12 @@ MainThreadQueue::~MainThreadQueue() {
 
 void MainThreadQueue::enqueue(std::function<void()> work, std::function<void()> abandon) {
     bool refused = false;
-    bool needsScheduling = false;
 
     {
         const std::lock_guard<std::mutex> lock(state_->mutex);
         refused = state_->closed;
-        if (!refused) {
-            needsScheduling = state_->pending.empty();
+        if (!refused)
             state_->pending.push_back({std::move(work), std::move(abandon)});
-        }
     }
 
     if (refused) {
@@ -76,9 +73,9 @@ void MainThreadQueue::enqueue(std::function<void()> work, std::function<void()> 
         return;
     }
 
-    if (!needsScheduling)
-        return;
-
+    // A main-thread callback foobar2000 accepted can still never arrive, observed under
+    // Wine; scheduling one on every enqueue rather than only when the queue was empty means
+    // a later enqueue's callback picks up whatever an earlier, lost one left pending.
     fb2k::inMainThread([weak = std::weak_ptr<State>(state_)] {
         const auto state = weak.lock();
         if (!state)

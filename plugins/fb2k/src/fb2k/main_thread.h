@@ -3,10 +3,11 @@
 #include <functional>
 #include <memory>
 
-// fb2k::inMainThread does the marshalling; what this adds is coalescing, in the shape of
-// beefweb's ExternalWorkQueue -- it schedules a callback only when the pending batch was
-// empty, so a burst of requests costs one main-thread callback rather than one each. On a
-// thread that is also decoding audio, that is the point.
+// fb2k::inMainThread does the marshalling; what this adds is a queue that survives one of
+// those callbacks going missing. A drain runs on every enqueue rather than only when the
+// pending batch was empty, so a burst still tends to land in one main-thread callback when
+// they arrive close together, but no enqueue depends on a specific earlier callback showing
+// up: whichever one runs takes everything pending, and one that finds nothing just returns.
 namespace jean {
 
 class MainThreadQueue {

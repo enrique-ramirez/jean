@@ -394,6 +394,31 @@ test("the status bar and the playing row follow a track change made at the playe
 	await expect(trackRow(page, 1)).toHaveAttribute("data-active", "true");
 });
 
+test("a skip redraws the track without waiting for the next tick", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, 0).dblclick();
+	await expect(statusBar(page)).toContainText("Los Calientes");
+	await expect.poll(() => ticksTaken(player)).toBeGreaterThanOrEqual(2);
+
+	// Every tick after the first carries the validator it was last answered with,
+	// so refusing those leaves the skip's own read as the only way through.
+	await page.route("**/api/state", (route) =>
+		route.request().headers()["if-none-match"]
+			? route.abort()
+			: route.continue(),
+	);
+
+	const controls = await globalControls(page, isMobile);
+	await expect(controls).not.toContainText("Fizz");
+	await controls.getByRole("button", { name: /^Next track\b/ }).click();
+
+	await expect(controls).toContainText("Fizz");
+});
+
 test("the status bar follows a song a station announces, with the track never changing", async ({
 	page,
 	player,

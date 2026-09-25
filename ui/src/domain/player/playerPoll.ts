@@ -164,9 +164,15 @@ export function startPlayerPoll(
 		}
 	};
 
+	const onVisibilityChange = () => void tick();
+
 	void tick();
 	const timer = setInterval(() => void tick(), POLL_MS);
-	return () => clearInterval(timer);
+	document.addEventListener("visibilitychange", onVisibilityChange);
+	return () => {
+		clearInterval(timer);
+		document.removeEventListener("visibilitychange", onVisibilityChange);
+	};
 }
 
 export function usePlayerPoll(

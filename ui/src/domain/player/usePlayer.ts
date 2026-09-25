@@ -258,6 +258,15 @@ const useCommand = (
 	});
 };
 
+const useSkip = (command: (origin: string) => Promise<void>) => {
+	const queryClient = useQueryClient();
+	const { discovery } = useFooJean();
+	return useCommand(discovery, async (origin) => {
+		await command(origin);
+		await pollPlayerNow(queryClient, origin);
+	});
+};
+
 // `index` is positional, and the player renumbers the whole list when any playlist moves or goes away.
 const renumber = (playlists: PlaylistInfo[]) =>
 	playlists.map((entry, index) => ({ ...entry, index }));
@@ -605,9 +614,8 @@ const RESTART_AFTER_SECONDS = 5;
 
 export function usePrevious() {
 	const queryClient = useQueryClient();
-	const { discovery } = useFooJean();
 	const seek = useSeek().mutate;
-	const skip = useCommand(discovery, previousTrack).mutate;
+	const skip = useSkip(previousTrack).mutate;
 
 	return useCallback(
 		(stepBack: () => void = () => skip()) => {
@@ -622,8 +630,8 @@ export function usePrevious() {
 export const useTransport = () => {
 	const { discovery } = useFooJean();
 	return {
-		next: useCommand(discovery, nextTrack),
-		previous: useCommand(discovery, previousTrack),
+		next: useSkip(nextTrack),
+		previous: useSkip(previousTrack),
 		stop: useCommand(discovery, stop),
 	};
 };

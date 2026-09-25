@@ -387,6 +387,20 @@ test("a hidden tab stops asking, and asks again when it comes back", async (t) =
 	);
 });
 
+test("a tab coming back asks at once, rather than on the next tick", async (t) => {
+	const poll = harness(t, () => document200("playing"));
+	await poll.settle();
+
+	poll.hide();
+	await poll.ticks(2);
+	const askedWhileHidden = poll.stateCalls().length;
+
+	poll.show();
+	await poll.settle();
+
+	assert.equal(poll.stateCalls().length, askedWhileHidden + 1);
+});
+
 test("a tick draws the player's name, the fader's range and what the install permits from capabilities", async (t) => {
 	const poll = harness(
 		t,

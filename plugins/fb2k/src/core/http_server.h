@@ -314,9 +314,8 @@ public:
     // Idempotent, and safe to call from the main thread during shutdown.
     void stop();
 
-    // Swaps the live settings for `decision.next` and moves the generation `GET /api/state`
-    // reports when a changed key is one `GET /api/capabilities` reflects. Safe to call from
-    // any thread; a request already in flight keeps whatever snapshot it already took.
+    // Safe to call from any thread; a request already in flight keeps whatever snapshot it
+    // already took.
     void applyReload(const ReloadDecision& decision);
 
     HttpServer(const HttpServer&) = delete;

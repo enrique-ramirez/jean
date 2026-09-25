@@ -149,12 +149,6 @@ std::string generationsOf(const Library::State& state, uint64_t playerVersion = 
     return tag;
 }
 
-std::string withConfigGeneration(const std::string& document, uint64_t configGeneration) {
-    auto body = nlohmann::json::parse(document);
-    body["configGeneration"] = configGeneration;
-    return body.dump();
-}
-
 // cpp-httplib evaluates If-None-Match for its own file handler alone, so a route serving
 // anything else answers the conditional request itself.
 bool alreadyHolds(const httplib::Request& req, const std::string& tag) {
@@ -590,8 +584,6 @@ struct HttpServer::Impl {
         return settingsSnapshot;
     }
 
-    // Moves only when a reload changes a key GET /api/capabilities reflects, so a client
-    // polling GET /api/state learns a switch moved without asking for capabilities every tick.
     std::atomic<uint64_t> configGeneration{0};
 
     void applyReload(const ReloadDecision& decision) {
@@ -1045,12 +1037,10 @@ struct HttpServer::Impl {
                 playerState ? playerState->read() : PlayerStateStore::Published{};
             sendIfChanged(req, res, generationsOf(state, published.version, generation),
                           "application/json", [&state, &published, generation] {
-                              return withConfigGeneration(
-                                  stateDocument(state, published.state,
-                                               std::chrono::steady_clock::now(),
-                                               published.queueRevision,
-                                               published.playlistsRevision),
-                                  generation);
+                              return stateDocument(state, published.state,
+                                                   std::chrono::steady_clock::now(),
+                                                   published.queueRevision,
+                                                   published.playlistsRevision, generation);
                           });
         });
 

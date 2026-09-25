@@ -818,7 +818,6 @@ function Shell() {
 							onSearch={searchFor}
 							canPlay={home.canPlay}
 							canShuffle={home.canShuffle}
-							canControlPlayback={canControlPlayback}
 						/>
 					) : isGenres ? (
 						<GenresView library={library} onOpenRoute={openRoute} />

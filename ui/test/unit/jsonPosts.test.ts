@@ -41,8 +41,6 @@ beforeEach(() => {
 	received = [];
 });
 
-// Matched the way foo_jean matches it: a case-insensitive prefix, so a charset
-// parameter still counts.
 const isJson = (contentType: string | null) =>
 	contentType?.toLowerCase().startsWith("application/json") ?? false;
 

@@ -190,8 +190,6 @@ bool isPrivateIpv6(const std::string& address) {
 
     const Bytes& bytes = *parsed;
 
-    // A v4-mapped address is a v4 address; admitting one spelling and refusing the other
-    // would leave a hole.
     if (isV4Mapped(bytes))
         return isPrivateIpv4(Octets{bytes[12], bytes[13], bytes[14], bytes[15]});
 

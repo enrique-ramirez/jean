@@ -26,7 +26,6 @@ export function HomeView({
 	onSearch,
 	canPlay,
 	canShuffle,
-	canControlPlayback,
 }: {
 	library: Library;
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
@@ -36,7 +35,6 @@ export function HomeView({
 	onSearch: (query: string) => void;
 	canPlay: boolean;
 	canShuffle: boolean;
-	canControlPlayback: boolean;
 }) {
 	const t = useTranslate();
 	const rows = useMemo(() => trackRows(library.columns), [library.columns]);
@@ -84,7 +82,6 @@ export function HomeView({
 				onSearch={onSearch}
 				canPlay={canPlay && rows.length > 0}
 				canShuffle={canShuffle && rows.length > 0}
-				canControlPlayback={canControlPlayback}
 			/>
 
 			{shelves.length === 0 ? (
@@ -93,19 +90,9 @@ export function HomeView({
 				</p>
 			) : (
 				<div className={styles.shelves}>
-					{free ? (
-						<ShelfRow
-							shelf={free}
-							onPlayAlbum={onPlayAlbum}
-							canControlPlayback={canControlPlayback}
-						/>
-					) : null}
+					{free ? <ShelfRow shelf={free} onPlayAlbum={onPlayAlbum} /> : null}
 					{tabbed.length > 0 ? (
-						<ShelfTabs
-							shelves={tabbed}
-							onPlayAlbum={onPlayAlbum}
-							canControlPlayback={canControlPlayback}
-						/>
+						<ShelfTabs shelves={tabbed} onPlayAlbum={onPlayAlbum} />
 					) : null}
 				</div>
 			)}

@@ -37,7 +37,6 @@ test("every POST a session sends says it is JSON, the body-less commands include
 		await expect.poll(() => requestsTo(player, route).length).toBe(1);
 	}
 
-	// foo_jean reads the header as a case-insensitive prefix.
 	const notJson = () =>
 		posted
 			.filter(

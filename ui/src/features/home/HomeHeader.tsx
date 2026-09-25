@@ -1,6 +1,8 @@
 import { ChevronRight, Shuffle } from "lucide-react";
 import { GENRES_HREF } from "@/domain/library/genreRoute";
 import { spellDuration } from "@/domain/track/stats";
+import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
@@ -32,7 +34,6 @@ export function HomeHeader({
 	onSearch,
 	canPlay,
 	canShuffle,
-	canControlPlayback,
 }: {
 	stats: LibraryStats;
 	isLoading: boolean;
@@ -41,9 +42,10 @@ export function HomeHeader({
 	onSearch: (query: string) => void;
 	canPlay: boolean;
 	canShuffle: boolean;
-	canControlPlayback: boolean;
 }) {
 	const t = useTranslate();
+	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	const playLabel = t("player.play");
 	const shuffleLabel = t("player.shuffle");
 	const duration = spellDuration(stats.seconds);

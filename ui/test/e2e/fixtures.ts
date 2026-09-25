@@ -474,8 +474,6 @@ export const refusedAsks = (player: FakePlayer, since = 0) =>
 export const expectNothingRefusedSent = (player: FakePlayer) =>
 	expectSettlesAt(player, () => refusedAsks(player), []);
 
-// `aria-disabled` rather than `disabled`, so a keyboard can still land on the
-// control and hear why it does nothing.
 export const expectDisabledWithReason = async (control: Locator) => {
 	await expect(control).toBeVisible();
 	await expect(control).toHaveAttribute("aria-disabled", "true");

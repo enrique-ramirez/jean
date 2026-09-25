@@ -87,9 +87,6 @@ export function handleControl({
 		return empty(response);
 	}
 
-	// Mirrors `writePlaylists`: flips `canControlPlayback` and moves `configGeneration`
-	// only on a change that actually took, since a poll relies on that number never
-	// moving on a flip to the value it already held.
 	if (action === "controlPlayback") {
 		const next = input.canControl !== false;
 		if (next !== state.fooJean.canControlPlayback)

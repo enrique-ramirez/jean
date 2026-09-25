@@ -96,7 +96,7 @@ const parameter = (id: string, name: string) => {
 	return found;
 };
 
-test("the contract carries a fill per owner, and refuses only the one addressing a user's playlist", () => {
+test("the contract carries a fill per owner, and each is refused with a 403 of its own", () => {
 	const own = operation("fillOwnPlaylist");
 	const users = operation("fillPlaylist");
 

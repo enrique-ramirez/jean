@@ -48,8 +48,6 @@ struct FormReading {
 // hand.
 FormReading readForm(const SettingsForm& form, const Settings& unshown);
 
-// True where a restart-only key in `saved` differs from `running`, sharing the comparison
-// decideReload makes rather than a second copy of which keys those are.
 bool restartNeeded(const Settings& running, const Settings& saved);
 
 }  // namespace jean

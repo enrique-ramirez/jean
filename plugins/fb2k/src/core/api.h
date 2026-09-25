@@ -362,7 +362,8 @@ std::string libraryDocument(const Library::State& state);
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
                           std::chrono::steady_clock::time_point now, uint64_t queueRevision = 0,
-                          uint64_t playlistsRevision = 0);
+                          uint64_t playlistsRevision = 0,
+                          std::optional<uint64_t> configGeneration = std::nullopt);
 
 std::string libraryRefusedDocument(const LibraryRequest& request);
 std::string libraryFailedDocument(DeltaOutcome outcome);

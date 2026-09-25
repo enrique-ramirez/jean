@@ -214,8 +214,6 @@ private:
     HttpServer server_;
     const ListenerStatus status_;
 
-    // Declared last so it stops, joining its own thread, before anything it might still be
-    // mid-call into starts tearing down.
     ConfigWatch configWatch_;
 };
 

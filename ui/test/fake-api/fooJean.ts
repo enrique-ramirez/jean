@@ -218,8 +218,7 @@ export const fooJeanState = (options: FooJeanOptions): FooJeanFake => ({
 const one = (value: string | string[] | undefined) =>
 	(Array.isArray(value) ? value[0] : value) ?? "";
 
-// Mirrors core/http_server.cpp's isJsonRequest: a prefix match on the lowercased header, so a
-// charset riding along still counts.
+// Mirrors core/http_server.cpp's isJsonRequest. See src/shared/api/README.md.
 const isJsonContentType = (headers: RequestHeaders) =>
 	one(headers["content-type"]).toLowerCase().startsWith("application/json");
 

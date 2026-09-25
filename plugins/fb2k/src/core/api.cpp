@@ -1142,10 +1142,12 @@ std::string libraryDocument(const Library::State& state) {
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
                           std::chrono::steady_clock::time_point now, uint64_t queueRevision,
-                          uint64_t playlistsRevision) {
-    return json{{"library", libraryFields(state)},
-                {"player", playerFields(player, now, queueRevision, playlistsRevision)}}
-        .dump();
+                          uint64_t playlistsRevision, std::optional<uint64_t> configGeneration) {
+    auto body = json{{"library", libraryFields(state)},
+                     {"player", playerFields(player, now, queueRevision, playlistsRevision)}};
+    if (configGeneration)
+        body["configGeneration"] = *configGeneration;
+    return body.dump();
 }
 
 std::string libraryRefusedDocument(const LibraryRequest& request) {

@@ -13,6 +13,8 @@ What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it
 | SPA fallback | none. A path that names no file is a `404`, and a directory answers its own `index.html`, so a client-side route has to live in the hash |
 | Owner's config | `<profile>/foo_jean/config.json`, which Jean never edits and has no route to. `plugins/fb2k/README.md` has the keys |
 
+**Every `POST` needs `Content-Type: application/json`, matched as a case-insensitive prefix**, so a charset parameter riding along still counts. `foo_jean` checks this ahead of the body, so a body-less command such as a transport call still needs the header, and a request sending anything else is refused `415`.
+
 ## Discovery
 
 `discoverFooJean()` in `fooJean.ts` takes the origin straight off `window.location.origin` and asks `GET /api/capabilities`, with no credential to attach. `ui/ARCHITECTURE.md`, *The `foo_jean` security model*, has the states that call resolves to.

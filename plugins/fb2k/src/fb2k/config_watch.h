@@ -20,7 +20,6 @@ public:
     ConfigWatch(const ConfigWatch&) = delete;
     ConfigWatch& operator=(const ConfigWatch&) = delete;
 
-    // Safe to call more than once, and safe to call before the destructor runs.
     void stop();
 
 private:

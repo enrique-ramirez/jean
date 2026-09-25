@@ -20,6 +20,7 @@ import { pushToast } from "@/shared/ui/toastStore";
 import { pollPlayerNow } from "./playerPoll";
 import { guidOf, QUEUE_KEY, type QueueSource, readQueue } from "./queue";
 import { askToShowQueue } from "./showQueue";
+import { announcePlaybackRefusal } from "./usePlayer";
 
 export function useQueue() {
 	const { data } = useQuery<QueueRead>({
@@ -69,19 +70,20 @@ export function useQueueActions() {
 				}
 				const refused =
 					result.reason === "failed" && result.refusal === "playbackDisabled";
-				pushToast({
-					tone: "error",
-					message: translate(
-						refused
-							? "player.controlOffToast"
-							: result.reason === "stale"
+				if (refused) {
+					announcePlaybackRefusal(recheck);
+				} else {
+					pushToast({
+						tone: "error",
+						message: translate(
+							result.reason === "stale"
 								? drag
 									? "queue.movedUnderYou"
 									: "queue.staleRefused"
 								: "queue.refused",
-					),
-				});
-				if (refused) recheck();
+						),
+					});
+				}
 			}
 			if (origin) await pollPlayerNow(queryClient, origin);
 			return result.ok;

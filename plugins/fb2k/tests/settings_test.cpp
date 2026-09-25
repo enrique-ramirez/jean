@@ -316,7 +316,6 @@ TEST_CASE("a malformed controlPlayback keeps playback permitted and names itself
     }
 }
 
-// Criterion 11 is a promise to change nothing, and T6 edits the code that writes these keys.
 TEST_CASE("the switches beside controlPlayback keep their names and defaults in the file") {
     const auto written = json::parse(serialiseSettings(parseFresh("{}")));
 

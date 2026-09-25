@@ -58,14 +58,10 @@ FormReading refusing(std::string error) {
     return reading;
 }
 
-// A listed name is compared whole against the Host a browser sends, with its scheme, port,
-// path and any space already gone, so an entry carrying one of those admits nobody.
 bool couldMatchARequest(const std::string& host) {
     return host.find_first_of(":/ \t") == std::string::npos;
 }
 
-// admission.cpp trims one trailing dot from the request's own Host before comparing; an
-// entry that keeps its own dot would then never equal it.
 std::string withoutTrailingDot(std::string host) {
     if (!host.empty() && host.back() == '.')
         host.pop_back();

@@ -7,7 +7,6 @@
 #include "core/text.h"
 #include "fb2k/ask_player.h"
 #include "fb2k/columns.h"
-#include "fb2k/running_settings.h"
 #include "fb2k/strings.h"
 
 #include <algorithm>

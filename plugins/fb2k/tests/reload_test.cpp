@@ -251,7 +251,7 @@ TEST_CASE("a reload that changes keys logs one line naming each once with its ne
     }
 }
 
-// T8's configGeneration moves only when a reload changed something, and an editor that rewrites
+// configGeneration moves only when a reload changed something, and an editor that rewrites
 // the file with the same values in another layout is the everyday case of changing nothing.
 TEST_CASE("a reload that changes nothing says so and names no key") {
     const auto running = runningAwayFromDefaults();

@@ -81,10 +81,8 @@ test.describe("the media session", () => {
 		expect(live.state).toBe("playing");
 	});
 
-	// The operating system fetches an artwork address itself and cannot be handed the blob URL Jean
-	// already resolved: Chrome on iOS refuses a `blob:` on the lock screen. So the picture handed
-	// over is the one Jean already fetched, redrawn small and encoded into the URL itself. No test
-	// can see a lock screen, so this is as close as the suite gets to it.
+	// `app/CLAUDE.md`'s *The media session* has why the cover is redrawn rather than addressed.
+	// No test can see a lock screen, so this is as close as the suite gets to it.
 	test("carries the cover as an encoded picture, and keeps naming the track it moves to", async ({
 		page,
 		player,

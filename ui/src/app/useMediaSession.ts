@@ -80,8 +80,6 @@ const LOCK_SCREEN_MAX_EDGE = 512;
 const LOCK_SCREEN_TYPE = "image/jpeg";
 const LOCK_SCREEN_QUALITY = 0.85;
 
-// Chrome on iOS refuses a `blob:` URL on the lock screen, so the cover is redrawn onto a
-// canvas and handed over encoded.
 async function shrinkForLockScreen(blobUrl: string): Promise<MediaImage> {
 	const image = new Image();
 	image.src = blobUrl;

@@ -155,14 +155,21 @@ export function useResolvedPlaylistId(
 	);
 }
 
+// The one place the toast and the recheck for a `playbackDisabled` refusal are spelled, so
+// `useQueue`'s `settle`, which already holds the refusal as data rather than a thrown error, reaches
+// this rather than repeating the pair.
+export function announcePlaybackRefusal(recheck: () => void) {
+	pushToast({ tone: "error", message: translate("player.controlOffToast") });
+	recheck();
+}
+
 // The one place every playback-affecting write's `403` is read, so a caller does not parse the
 // refusal again per command, whether the command is a mutation here or a plain throw a caller
 // elsewhere in `domain/` awaits directly. `writePlaylists` off is not this function's concern:
 // `useAddTracks` is the write path that switch refuses.
 export function reportPlaybackRefusal(error: unknown, recheck: () => void) {
 	if (switchRefusalOf(error) !== "playbackDisabled") return;
-	pushToast({ tone: "error", message: translate("player.controlOffToast") });
-	recheck();
+	announcePlaybackRefusal(recheck);
 }
 
 function useOptimisticWrite<TData, TInput, TResult = unknown>(

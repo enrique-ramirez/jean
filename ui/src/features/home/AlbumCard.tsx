@@ -1,4 +1,6 @@
 import type { CoveredAlbum } from "@/domain/track/albums";
+import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./AlbumCard.module.css";
@@ -7,14 +9,14 @@ export function AlbumCard({
 	album,
 	caption,
 	onPlay,
-	canControlPlayback = true,
 }: {
 	album: CoveredAlbum;
 	caption?: string | null;
 	onPlay: () => void;
-	canControlPlayback?: boolean;
 }) {
 	const t = useTranslate();
+	const { discovery } = useFooJean();
+	const canControlPlayback = permitsPlaybackControl(discovery);
 	const title = `${album.artistTag ?? t("track.unknownArtist")} — ${album.album}`;
 	return (
 		<button

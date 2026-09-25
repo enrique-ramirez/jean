@@ -101,11 +101,10 @@ std::string dialable(std::string path) {
     return "/api" + path;
 }
 
-// The contract lists POST /pair until the contract itself drops it, and the route is gone.
 std::vector<std::string> publishedPosts() {
     std::vector<std::string> posts;
     for (const auto& route : publishedRoutes())
-        if (route.method == "POST" && route.path != "/pair")
+        if (route.method == "POST")
             posts.push_back(dialable(route.path));
 
     return posts;

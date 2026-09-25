@@ -270,6 +270,8 @@ Every `POST` under `/api/` needs `Content-Type: application/json` or it is `415`
 
 **What is accepted rather than solved.** Admission and CORS bind a browser: only a browser is held to the `Host` its address bar carries and to the preflight a `Content-Type` forces. Anything else on the private network sets whatever `Host` and `Content-Type` it likes, so it may do whatever the switches in `config.json` permit, exactly as a person at the player may. A malformed switch takes its default, which for every one of them is on, and the log line naming the key, the value it refused and the default it took is the only sign that happened. Neither is a gap to close later: the boundary this component keeps is the private network a caller sits on, not a credential it carries.
 
+Admission answers who; it answers nothing about how often. A source it has already let through could still make every call it is entitled to make many times a second, so `core/rate_limit.h`'s token buckets sit in front of playlist writes, library rebuilds, artwork reads and state polls, bounding how fast a client bug turns into a burst of them.
+
 ## Facts about the player
 
 Each of these is a trap to design back into. They are here rather than in the files that depend on them because each one bites in several places, and a source comment may point at this section in a clause rather than restating it.

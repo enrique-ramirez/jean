@@ -8,11 +8,9 @@ import type { FilledShelf } from "./shelves";
 export function ShelfRow({
 	shelf,
 	onPlayAlbum,
-	canControlPlayback = true,
 }: {
 	shelf: FilledShelf<CoveredAlbum>;
 	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
-	canControlPlayback?: boolean;
 }) {
 	const t = useTranslate();
 	return (
@@ -32,11 +30,7 @@ export function ShelfRow({
 				<p className={styles.blurb}>{t(shelf.blurb)}</p>
 			</header>
 
-			<ShelfScroller
-				shelf={shelf}
-				onPlayAlbum={onPlayAlbum}
-				canControlPlayback={canControlPlayback}
-			/>
+			<ShelfScroller shelf={shelf} onPlayAlbum={onPlayAlbum} />
 		</section>
 	);
 }

@@ -202,6 +202,7 @@ Two rules outrank the rest.
 |---|---|
 | Finding things | `trackRow`, `rowByTitle`, `statusBar`, `withNoListOnScreen`, `viewHeader`, `globalControls`, `sidebar`, `openSidebar`, `closeSidebar`, `openLibrary`, `openNowPlaying`, `nowPlayingScreen`, `listenHere`, `settingsDialog`, `openSettings`, `expectPlayingFrom` |
 | Reading the player | `requestsTo`, `expectSettlesAt`, `scratchOf`, `playedFrom`, `trackPlayed` |
+| Playback control off | `REASON`, `REFUSED_ROUTES`, `refusedAsks`, `expectNothingRefusedSent`, `expectDisabledWithReason` |
 | Gestures | `touchDrag`, `dragTo`, `pressAndHold` |
 | Scrolling | `isRowOnScreen`, `scrollUntilMounted`, `scrollTop`, `scrollTo` |
 | Steps | `inSequence`, `times` |

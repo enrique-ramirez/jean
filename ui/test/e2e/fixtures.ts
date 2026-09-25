@@ -451,6 +451,39 @@ export const expectSettlesAt = async <T>(
 	expect(settled).toEqual(expected);
 };
 
+// ---- playback control off ---------------------------------------------------
+
+// The fragment every refused control's name and every visible line must carry.
+export const REASON = /playback control is off/i;
+
+// The fourteen routes a player with `controlPlayback` off answers `403`.
+export const REFUSED_ROUTES = [
+	/^POST \/api\/playback\//,
+	/^POST \/api\/volume$/,
+	/^POST \/api\/playlists\/[^/]+\/items\/\d+\/play$/,
+	/^(POST|DELETE) \/api\/queue(\/move|\/\d+)?$/,
+	/^(POST|DELETE) \/api\/playlists\/own\/scratch\/items$/,
+];
+
+export const refusedAsks = (player: FakePlayer, since = 0) =>
+	player.requests
+		.slice(since)
+		.map((entry) => `${entry.method} ${entry.path.split("?")[0]}`)
+		.filter((route) => REFUSED_ROUTES.some((pattern) => pattern.test(route)));
+
+export const expectNothingRefusedSent = (player: FakePlayer) =>
+	expectSettlesAt(player, () => refusedAsks(player), []);
+
+// `aria-disabled` rather than `disabled`, so a keyboard can still land on the
+// control and hear why it does nothing.
+export const expectDisabledWithReason = async (control: Locator) => {
+	await expect(control).toBeVisible();
+	await expect(control).toHaveAttribute("aria-disabled", "true");
+	await expect(control).toHaveAccessibleName(REASON);
+	await control.focus();
+	await expect(control).toBeFocused();
+};
+
 // Ticks handed over one at a time. A change made at the player reaches Jean on
 // the poll and nowhere else, so what "within one poll" can be measured against
 // is a supply of ticks the test owns: every one is refused, the change is made,

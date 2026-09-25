@@ -1,13 +1,17 @@
-import type { FakePlayer, Locator, Page } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	dragFrom,
 	dragTo,
 	expect,
+	expectDisabledWithReason,
+	expectNothingRefusedSent,
 	expectSettlesAt,
 	holdThePoll,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	REASON,
+	refusedAsks,
 	revealSearch,
 	scratchOf,
 	searchField,
@@ -21,38 +25,11 @@ import {
 } from "./fixtures.ts";
 import { openPanels, panelTab, TAGGED } from "./nowPlaying.ts";
 
-const REASON = /playback control is off/i;
-
-const REFUSED_ROUTES = [
-	/^POST \/api\/playback\//,
-	/^POST \/api\/volume$/,
-	/^POST \/api\/playlists\/[^/]+\/items\/\d+\/play$/,
-	/^(POST|DELETE) \/api\/queue(\/move|\/\d+)?$/,
-	/^(POST|DELETE) \/api\/playlists\/own\/scratch\/items$/,
-];
-
-const refusedAsks = (player: FakePlayer, since = 0) =>
-	player.requests
-		.slice(since)
-		.map((entry) => `${entry.method} ${entry.path.split("?")[0]}`)
-		.filter((route) => REFUSED_ROUTES.some((pattern) => pattern.test(route)));
-
-const expectNothingRefusedSent = (player: FakePlayer) =>
-	expectSettlesAt(player, () => refusedAsks(player), []);
-
 const volumeWrites = (player: FakePlayer) =>
 	player.requests.filter(
 		(entry) =>
 			entry.method === "POST" && entry.path.split("?")[0] === "/api/volume",
 	).length;
-
-const expectDisabledWithReason = async (control: Locator) => {
-	await expect(control).toBeVisible();
-	await expect(control).toHaveAttribute("aria-disabled", "true");
-	await expect(control).toHaveAccessibleName(REASON);
-	await control.focus();
-	await expect(control).toBeFocused();
-};
 
 const allowPlayback = async (page: Page, canControl: boolean) => {
 	const answered = await page.request.post("/__control/controlPlayback", {

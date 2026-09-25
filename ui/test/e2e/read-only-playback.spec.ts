@@ -2,47 +2,19 @@ import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	dragFrom,
 	expect,
-	expectSettlesAt,
+	expectDisabledWithReason,
+	expectNothingRefusedSent,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
 	pressAndHold,
+	REASON,
 	searchFor,
 	statusBar,
 	test,
 	trackRow,
 	viewHeader,
 } from "./fixtures.ts";
-
-// The fragment every refused control's name and every visible line must carry.
-const REASON = /playback control is off/i;
-
-// The fourteen routes a player with `controlPlayback` off answers `403`.
-const REFUSED_ROUTES = [
-	/^POST \/api\/playback\//,
-	/^POST \/api\/volume$/,
-	/^POST \/api\/playlists\/[^/]+\/items\/\d+\/play$/,
-	/^(POST|DELETE) \/api\/queue(\/move|\/\d+)?$/,
-	/^(POST|DELETE) \/api\/playlists\/own\/scratch\/items$/,
-];
-
-const refusedAsks = (player: FakePlayer) =>
-	player.requests
-		.map((entry) => `${entry.method} ${entry.path.split("?")[0]}`)
-		.filter((route) => REFUSED_ROUTES.some((pattern) => pattern.test(route)));
-
-const expectNothingRefusedSent = (player: FakePlayer) =>
-	expectSettlesAt(player, () => refusedAsks(player), []);
-
-// `aria-disabled` rather than `disabled`, so a keyboard can still land on the
-// control and hear why it does nothing.
-const expectDisabledWithReason = async (control: Locator) => {
-	await expect(control).toBeVisible();
-	await expect(control).toHaveAttribute("aria-disabled", "true");
-	await expect(control).toHaveAccessibleName(REASON);
-	await control.focus();
-	await expect(control).toBeFocused();
-};
 
 const button = (scope: Locator, name: RegExp) =>
 	scope.getByRole("button", { name });

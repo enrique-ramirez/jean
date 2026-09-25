@@ -5,6 +5,7 @@ import {
 	holdThePoll,
 	openLibrary,
 	pressAndHold,
+	REASON,
 	refusePlaylistWrites,
 	searchFor,
 	statusBar,
@@ -13,8 +14,6 @@ import {
 	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
-
-const REASON = /playback control is off/i;
 
 const playPause = (page: Page) =>
 	statusBar(page).getByRole("button", { name: /^(Play|Pause)\b/ });

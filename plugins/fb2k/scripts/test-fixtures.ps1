@@ -69,10 +69,8 @@ function Get-Json($uri) {
 
 function Send-Json($uri, $method, $body) {
   $call = @{ Uri = $uri; Method = $method; UseBasicParsing = $true; TimeoutSec = 30 }
-  if ($null -ne $body) {
-    $call.Body = [System.Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Compress -Depth 5))
-    $call.ContentType = 'application/json'
-  }
+  if ($null -ne $body) { $call.Body = [System.Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Compress -Depth 5)) }
+  if ($method -ieq 'Post') { $call.ContentType = 'application/json' }
   $resp = Invoke-WebRequest @call
   if ($resp.RawContentStream.Length -eq 0) { return $null }
   [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json

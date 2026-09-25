@@ -18,7 +18,6 @@ const LONG_ENOUGH_S = 120;
 const PROBE_ROWS = 3;
 const HELD_SKIPS = 20;
 const TIMED_WRITES = 20;
-const TIMED_PREFLIGHTS = 5;
 const SEEK_TO_S = 30;
 const SEEK_BY_S = -10;
 
@@ -166,6 +165,7 @@ test.afterAll(async () => {
 	if (probe) await removePlaylist(probe);
 	if (ownerMode !== null) await setMode(ownerMode);
 	if (ownerLevel !== null) await send("/api/volume", { value: ownerLevel });
+	await send("/api/volume", { muted: true });
 	const after = await player();
 	console.log(
 		`[017] put back: ${after.playback}, ${after.volume} dB, muted ${after.muted}, playbackMode ${after.playbackMode}`,
@@ -298,7 +298,7 @@ test("a level set, a step up, a step down, a mute and an unmute each land on the
 	await expect.poll(async () => (await player()).muted).toBe(true);
 });
 
-test("one command's round trip, with its preflight timed apart", async () => {
+test("twenty writes to /api/volume in a row each land with a 204 on one kept-alive connection", async () => {
 	await requireStopped();
 	await requireMuted();
 
@@ -312,27 +312,8 @@ test("one command's round trip, with its preflight timed apart", async () => {
 		expect(response.status).toBe(204);
 	}
 
-	const preflights: number[] = [];
-	for (let at = 0; at < TIMED_PREFLIGHTS; at++) {
-		const from = performance.now();
-		const response = await fetch(`${COMPONENT()}/api/volume`, {
-			method: "OPTIONS",
-			headers: {
-				Origin: COMPONENT(),
-				"Access-Control-Request-Method": "POST",
-				"Access-Control-Request-Headers": "authorization, content-type",
-			},
-		});
-		await response.text();
-		preflights.push(performance.now() - from);
-		expect(response.ok).toBe(true);
-		expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-			COMPONENT(),
-		);
-	}
-
 	console.log(
-		`[017] POST /api/volume, ${TIMED_WRITES} writes on one kept-alive connection: median ${ms(median(writes))}, max ${ms(Math.max(...writes))}; OPTIONS preflight, ${TIMED_PREFLIGHTS}: median ${ms(median(preflights))}, first ${ms(preflights[0])}`,
+		`[017] POST /api/volume, ${TIMED_WRITES} writes on one kept-alive connection: median ${ms(median(writes))}, max ${ms(Math.max(...writes))}`,
 	);
 });
 

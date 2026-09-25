@@ -1,4 +1,5 @@
 import { test as base, expect } from "@playwright/test";
+import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { fetchLibrary } from "../../src/shared/api/fooJeanLibrary.ts";
 import { COMPONENT, capabilities, component, send } from "./component.ts";
 
@@ -27,6 +28,7 @@ export interface Install {
 }
 
 const LIBRARY_BUILD_MS = 5 * 60_000;
+const LIBRARY_BUILDS = 2;
 
 const readInstall = async (): Promise<Install> => {
 	const root = process.env.LIVE_LIBRARY_ROOT;
@@ -66,10 +68,18 @@ const readInstall = async (): Promise<Install> => {
 			`${strays.length} of ${tracks.length} tracks sit outside ${root}, refusing to drive this player. First: ${strays[0]?.path}`,
 		);
 
+	// Warmed here, once, under this fixture's own budget, so a page in a later spec finds Jean's
+	// columns already built instead of waiting out a fresh one under its test's shorter timeout.
+	const warmed = await fetchLibrary(COMPONENT(), TRACK_EXPRESSIONS);
+	if (!warmed.ok)
+		throw new Error(
+			`GET /api/library/export -> ${warmed.reason} ${warmed.detail}`,
+		);
+
 	const allowed = await capabilities();
 	return {
 		root,
-		structure: library.structure,
+		structure: warmed.library.structure,
 		itemCount: library.trackCount,
 		tracks,
 		canWriteRatings:
@@ -96,7 +106,7 @@ export const test = base.extend<Record<never, never>, LiveFixtures>({
 		async ({}, use) => {
 			await use(await readInstall());
 		},
-		{ scope: "worker", auto: true, timeout: LIBRARY_BUILD_MS },
+		{ scope: "worker", auto: true, timeout: LIBRARY_BUILDS * LIBRARY_BUILD_MS },
 	],
 
 	// Reduced motion for the same reason the fake suite does it: Playwright will not click a

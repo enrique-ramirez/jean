@@ -15,11 +15,30 @@ export const COMPONENT = () => {
 	return new URL(live).origin;
 };
 
+const RATE_LIMITED_ATTEMPTS = 20;
+const RETRY_AFTER_FALLBACK_MS = 1000;
+
+const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+// foo_jean meters requests per client and answers `429` with `Retry-After` in seconds. Through
+// the tunnel this process and the browser beside it are one client, so a poll here can be
+// refused for traffic the page made.
+const fetchPatiently = async (url: string, init: RequestInit) => {
+	for (let attempt = 1; ; attempt++) {
+		const response = await fetch(url, init);
+		if (response.status !== 429 || attempt === RATE_LIMITED_ATTEMPTS)
+			return response;
+		await response.body?.cancel();
+		const seconds = Number(response.headers.get("Retry-After"));
+		await wait(seconds > 0 ? seconds * 1000 : RETRY_AFTER_FALLBACK_MS);
+	}
+};
+
 export const component = async <T>(
 	path: string,
 	init?: RequestInit,
 ): Promise<T> => {
-	const response = await fetch(`${COMPONENT()}${path}`, {
+	const response = await fetchPatiently(`${COMPONENT()}${path}`, {
 		...init,
 		headers: {
 			"Content-Type": "application/json",
